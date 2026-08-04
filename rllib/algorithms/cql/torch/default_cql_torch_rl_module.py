@@ -1,11 +1,12 @@
-import tree
 from typing import Any, Dict, Optional
 
+import tree
+
+from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     QF_PREDS,
     QF_TWIN_PREDS,
 )
-from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
     DefaultSACTorchRLModule,
 )
@@ -164,13 +165,11 @@ class DefaultCQLTorchRLModule(DefaultSACTorchRLModule):
             action_logits = self.pi(pi_encoder_outs[ENCODER_OUT])
             # Generate the squashed Gaussian from the model's logits.
             action_dist = self.get_train_action_dist_cls().from_logits(action_logits)
-            # Sample the actions. Note, we want to make a backward pass through
-            # these actions.
-            output[Columns.ACTIONS] = action_dist.rsample()
-            # Compute the action log-probabilities.
-            output[Columns.ACTION_LOGP] = action_dist.logp(
-                output[Columns.ACTIONS]
-            ).view(batch_size, num_actions, 1)
+            # Sample the actions (reparameterized, for backprop) together with
+            # their log-probs, so logp is exact even if the policy saturates.
+            actions, action_logp = action_dist.rsample_and_logp()
+            output[Columns.ACTIONS] = actions
+            output[Columns.ACTION_LOGP] = action_logp.view(batch_size, num_actions, 1)
         else:
             output[Columns.ACTIONS] = actions
 

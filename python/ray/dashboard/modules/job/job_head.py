@@ -15,15 +15,18 @@ from aiohttp.web import Request, Response, StreamResponse
 
 import ray
 from ray import NodeID
-from ray._common.utils import get_or_create_event_loop, load_class
+from ray._common.network_utils import build_address
 from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
+from ray._common.utils import get_or_create_event_loop, load_class
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
-from ray._common.network_utils import build_address
 from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
     GCS_RPC_TIMEOUT_SECONDS,
@@ -44,13 +47,13 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import (
     find_job_by_ids,
     get_driver_jobs,
-    get_head_node_id,
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
+from ray.dashboard.utils import get_head_node_id
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -117,6 +120,10 @@ class JobAgentSubmissionClient:
         self._agent_address = dashboard_agent_address
         self._session = aiohttp.ClientSession()
 
+    def _get_headers(self):
+        """Get auth headers if token authentication is enabled."""
+        return get_auth_headers_if_auth_enabled({})
+
     async def _raise_error(self, resp: ClientResponse):
         status = resp.status
         error_text = await resp.text()
@@ -126,7 +133,9 @@ class JobAgentSubmissionClient:
         logger.debug(f"Submitting job with submission_id={req.submission_id}.")
 
         async with self._session.post(
-            f"{self._agent_address}/api/job_agent/jobs/", json=dataclasses.asdict(req)
+            f"{self._agent_address}/api/job_agent/jobs/",
+            json=dataclasses.asdict(req),
+            headers=self._get_headers(),
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -138,7 +147,8 @@ class JobAgentSubmissionClient:
         logger.debug(f"Stopping job with job_id={job_id}.")
 
         async with self._session.post(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}/stop"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/stop",
+            headers=self._get_headers(),
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -150,7 +160,8 @@ class JobAgentSubmissionClient:
         logger.debug(f"Deleting job with job_id={job_id}.")
 
         async with self._session.delete(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}",
+            headers=self._get_headers(),
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -160,7 +171,8 @@ class JobAgentSubmissionClient:
 
     async def get_job_logs_internal(self, job_id: str) -> JobLogsResponse:
         async with self._session.get(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs",
+            headers=self._get_headers(),
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -171,7 +183,8 @@ class JobAgentSubmissionClient:
     async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Get an iterator that follows the logs of a job."""
         ws = await self._session.ws_connect(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs/tail"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs/tail",
+            headers=self._get_headers(),
         )
 
         while True:
@@ -180,8 +193,16 @@ class JobAgentSubmissionClient:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 yield msg.data
             elif msg.type == aiohttp.WSMsgType.CLOSED:
+                logger.info(
+                    f"WebSocket to job agent closed for job {job_id} "
+                    f"with close code {ws.close_code}"
+                )
                 break
             elif msg.type == aiohttp.WSMsgType.ERROR:
+                logger.warning(
+                    f"WebSocket to job agent received an error message "
+                    f"while tailing logs for job {job_id}: {ws.exception()!r}. "
+                )
                 pass
 
     async def close(self, ignore_error=True):
@@ -385,16 +406,21 @@ class JobHead(SubprocessModule):
             job_agent_client = await self.get_target_agent()
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out waiting for an available job agent to submit the job."
+            )
             return Response(
                 text="No available agent to submit job, please try again later.",
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
         except (TypeError, ValueError):
+            logger.warning("Failed to submit job due to an invalid request.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
         except Exception:
+            logger.exception("Failed to submit job due to unexpected exception.")
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,

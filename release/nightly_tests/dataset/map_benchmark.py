@@ -1,5 +1,4 @@
 import argparse
-
 import functools
 import time
 import numpy
@@ -37,8 +36,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--batch-size",
-        type=int,
-        default=10_000,
+        type=lambda v: v if v == "auto" else int(v),
+        default="auto",
         help="Batch size to use with 'map_batches'.",
     )
     parser.add_argument(
@@ -69,6 +68,13 @@ def parse_args() -> argparse.Namespace:
             "output of the first run as input."
         ),
     )
+    parser.add_argument(
+        "--concurrency",
+        default=[1, 1024],
+        nargs=2,
+        type=int,
+        help="Concurrency to use with 'map_batches'.",
+    )
     return parser.parse_args()
 
 
@@ -80,7 +86,8 @@ def main(args: argparse.Namespace) -> None:
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
     path = [path] * args.repeat_inputs
 
-    def apply_map_batches(ds, use_actors=False):
+    def apply_map_batches(ds):
+        use_actors = args.compute == "actors"
         if not use_actors:
             return ds.map_batches(
                 functools.partial(
@@ -100,21 +107,22 @@ def main(args: argparse.Namespace) -> None:
                 fn_constructor_args=[model_ref, args.map_batches_sleep_ms],
                 batch_format=args.batch_format,
                 batch_size=args.batch_size,
-                concurrency=(1, 1024),
+                concurrency=tuple(args.concurrency),
             )
 
     def benchmark_fn():
-        # Load the dataset.
+        ctx = ray.data.DataContext.get_current()
+        ctx.use_datasource_v2 = False
+        # Use V1 for this benchmark, since V2 is currently spilling
         ds = ray.data.read_parquet(path)
 
         # Apply the map transformation.
         if args.api == "map":
             ds = ds.map(increment_row)
         elif args.api == "map_batches":
-            use_actors = args.compute == "actors"
-            ds = apply_map_batches(ds, use_actors)
+            ds = apply_map_batches(ds)
             if args.repeat_map_batches == "repeat":
-                ds = apply_map_batches(ds, use_actors)
+                ds = apply_map_batches(ds)
         elif args.api == "flat_map":
             ds = ds.flat_map(flat_increment_row)
 

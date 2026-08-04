@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import gymnasium as gym
@@ -12,7 +13,6 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
 )
 from ray.rllib.utils.spaces.space_utils import batch
-
 
 if __name__ == "__main__":
     # Configure and train an old stack default ModelV2.
@@ -53,8 +53,10 @@ if __name__ == "__main__":
     print("done")
 
     # Move the old API stack (trained) ModelV2 into the new API stack's RLModule.
-    # Run a simple CartPole inference experiment.
-    env = gym.make("CartPole-v1", render_mode="human")
+    # Run a simple CartPole inference experiment. Render only if a display is
+    # available (local runs); skip rendering in headless CI to avoid pygame/X11 errors.
+    render_mode = "human" if os.environ.get("DISPLAY") else None
+    env = gym.make("CartPole-v1", render_mode=render_mode)
     rl_module = ModelV2ToRLModule(
         observation_space=env.observation_space,
         action_space=env.action_space,

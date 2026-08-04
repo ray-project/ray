@@ -14,8 +14,9 @@
 
 #pragma once
 
+#include <atomic>
+#include <future>
 #include <memory>
-#include <string>
 #include <string_view>
 
 #include "ray/core_worker/shutdown_coordinator.h"
@@ -48,11 +49,17 @@ class CoreWorker;
 ///   idleness and only proceeds when idle; otherwise it is ignored.
 class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
  public:
-  /// Constructor with CoreWorker reference for accessing internals
-  /// \param core_worker Reference to the CoreWorker instance
-  explicit CoreWorkerShutdownExecutor(CoreWorker *core_worker);
+  /// Constructor with CoreWorker shared_ptr for safe access to internals
+  /// \param core_worker Shared pointer to the CoreWorker instance
+  explicit CoreWorkerShutdownExecutor(std::shared_ptr<CoreWorker> core_worker);
 
   ~CoreWorkerShutdownExecutor() override = default;
+
+  /// Wait for shutdown to complete with timeout.
+  /// Blocks until shutdown operations finish or timeout expires.
+  /// If timeout, calls QuickExit to prevent undefined behavior.
+  /// \param timeout_ms Maximum time to wait
+  void WaitForCompletion(std::chrono::milliseconds timeout_ms) override;
 
   /// Execute graceful shutdown sequence.
   /// Stops task execution, flushes task events, stops IO/gRPC services, joins IO
@@ -69,20 +76,15 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   /// Execute worker exit sequence with task draining.
   /// Drains tasks/references as applicable for worker mode, then performs
   /// graceful shutdown.
-  void ExecuteWorkerExit(std::string_view exit_type,
-                         std::string_view detail,
-                         std::chrono::milliseconds timeout_ms) override;
-
   void ExecuteExit(std::string_view exit_type,
                    std::string_view detail,
                    std::chrono::milliseconds timeout_ms,
                    const std::shared_ptr<LocalMemoryBuffer>
                        &creation_task_exception_pb_bytes) override;
 
-  /// Execute handle exit sequence with idle checking.
-  /// Only performs worker exit if the worker is currently idle; otherwise, it
+  /// Execute exit sequence only if the worker is currently idle; otherwise, it
   /// logs and returns without action.
-  void ExecuteHandleExit(std::string_view exit_type,
+  void ExecuteExitIfIdle(std::string_view exit_type,
                          std::string_view detail,
                          std::chrono::milliseconds timeout_ms) override;
 
@@ -91,8 +93,15 @@ class CoreWorkerShutdownExecutor : public ShutdownExecutorInterface {
   bool ShouldWorkerIdleExit() const override;
 
  private:
-  /// Reference to CoreWorker for accessing shutdown operations
-  CoreWorker *core_worker_;
+  // Weak pointer prevents use-after-free during async shutdown operations.
+  std::weak_ptr<CoreWorker> core_worker_;
+
+  // Shutdown completion tracking
+  std::promise<void> shutdown_complete_promise_;
+  std::shared_future<void> shutdown_complete_future_;
+  std::atomic<bool> shutdown_notified_{false};
+
+  void NotifyComplete();
 
   void DisconnectServices(
       std::string_view exit_type,

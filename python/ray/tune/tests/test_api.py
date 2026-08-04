@@ -37,7 +37,7 @@ from ray.tune.callback import Callback
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Experiment, Trial
-from ray.tune.logger import LegacyLoggerCallback, Logger
+from ray.tune.logger import LoggerCallback
 from ray.tune.result import (
     DONE,
     EPISODES_TOTAL,
@@ -92,12 +92,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def on_trial_complete(self, runner, trial, result):
                 scheduler_notif.append(result)
 
-        class ClassAPILogger(Logger):
-            def on_result(self, result):
+        class ClassAPILoggerCallback(LoggerCallback):
+            def log_trial_result(self, iteration, trial, result):
                 class_output.append(result)
 
-        class FunctionAPILogger(Logger):
-            def on_result(self, result):
+        class FunctionAPILoggerCallback(LoggerCallback):
+            def log_trial_result(self, iteration, trial, result):
                 function_output.append(result)
 
         class _WrappedTrainable(Trainable):
@@ -124,14 +124,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         [trial1] = run(
             _function_trainable,
-            callbacks=[LegacyLoggerCallback([FunctionAPILogger])],
+            callbacks=[FunctionAPILoggerCallback()],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
 
         [trial2] = run(
             class_trainable_name,
-            callbacks=[LegacyLoggerCallback([ClassAPILogger])],
+            callbacks=[ClassAPILoggerCallback()],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
@@ -1430,7 +1430,7 @@ def test_with_resources_and_parameters_fn(ray_start_2_cpus_2_gpus, num_gpus):
 class SerializabilityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -1699,7 +1699,7 @@ class ApiTestFast(unittest.TestCase):
 class MaxConcurrentTrialsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, num_gpus=0, local_mode=False, include_dashboard=False)
+        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):

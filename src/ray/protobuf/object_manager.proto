@@ -39,14 +39,8 @@ message PushRequest {
 }
 
 message PullRequest {
-  // Node ID of the requesting client.
   bytes node_id = 1;
-  // Requested ObjectID.
-  bytes object_id = 2;
-}
-
-message FreeObjectsRequest {
-  repeated bytes object_ids = 1;
+  repeated bytes object_ids = 2;
 }
 
 // Reply for request
@@ -54,14 +48,12 @@ message PushReply {
 }
 message PullReply {
 }
-message FreeObjectsReply {
-}
 
 service ObjectManagerService {
   // Push service used to send object chunks
+  // Failure: Retries, it's idempotent. TODO: Failure behavior needs more tests.
   rpc Push(PushRequest) returns (PushReply);
   // Try to pull object from remote object manager
+  // Failure: Retries, it's idempotent. TODO: Failure behavior needs more tests.
   rpc Pull(PullRequest) returns (PullReply);
-  // Tell remote object manager to free some objects
-  rpc FreeObjects(FreeObjectsRequest) returns (FreeObjectsReply);
 }

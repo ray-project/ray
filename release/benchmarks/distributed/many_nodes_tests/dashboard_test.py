@@ -7,15 +7,17 @@ from pprint import pprint
 import requests
 import ray
 import logging
+import os
 
 from collections import defaultdict
 from ray.util.state import list_nodes
-from ray._private.test_utils import fetch_prometheus_metrics
-from ray._common.network_utils import build_address
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.test_utils import get_system_metric_for_component
 from pydantic import BaseModel
-from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.utils import get_address_for_submission_client
+from ray.dashboard.modules.metrics.metrics_head import (
+    DEFAULT_PROMETHEUS_HOST,
+    PROMETHEUS_HOST_ENV_VAR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +108,7 @@ class DashboardTestAtScale:
         node = nodes[0]
         # Schedule on a head node.
         self.tester = DashboardTester.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node["node_id"], soft=False
-            )
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node["node_id"]}
         ).remote()
 
         self.tester.run.remote()
@@ -125,19 +125,16 @@ class DashboardTestAtScale:
             return Result(success=False)
 
         # Get the memory usage.
-        dashboard_export_addr = build_address(
-            self.addr["node_ip_address"], DASHBOARD_METRIC_PORT
+        memories = get_system_metric_for_component(
+            "ray_component_uss_bytes",
+            "dashboard",
+            os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST),
         )
-        metrics = fetch_prometheus_metrics([dashboard_export_addr])
-        memories = []
-        for name, samples in metrics.items():
-            if name == "ray_component_uss_mb":
-                for sample in samples:
-                    if sample.labels["Component"] == "dashboard":
-                        memories.append(sample.value)
 
         return Result(
-            success=True, result=result, memory_mb=max(memories) if memories else None
+            success=True,
+            result=result,
+            memory_mb=max(memories) / 1.0e6 if memories else None,
         )
 
     def update_release_test_result(self, release_result: dict):

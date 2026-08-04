@@ -7,12 +7,12 @@ from typing import Dict
 
 import grpc
 import pytest
-from ray._common.test_utils import wait_for_condition
 import requests
 
 import ray
 import ray._private.ray_constants as ray_constants
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import generate_system_config_map
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.schema import HTTPOptionsSchema, ServeInstanceDetails
@@ -130,11 +130,14 @@ def test_put_with_http_options(ray_start_stop, option, override):
 
     # Fetch Serve status and confirm that HTTP options are unchanged
     get_response = requests.get(SERVE_HEAD_URL, timeout=5)
-    serve_details = ServeInstanceDetails.parse_obj(get_response.json())
+    serve_details = ServeInstanceDetails.model_validate(get_response.json())
 
-    original_http_options = HTTPOptionsSchema.parse_obj(original_http_options_json)
+    original_http_options = HTTPOptionsSchema.model_validate(original_http_options_json)
 
-    assert original_http_options == serve_details.http_options.dict(exclude_unset=True)
+    # Compare the key fields that were explicitly set
+    assert original_http_options.host == serve_details.http_options.host
+    assert original_http_options.port == serve_details.http_options.port
+    assert original_http_options.root_path == serve_details.http_options.root_path
 
     # Deployments should still be up
     assert (

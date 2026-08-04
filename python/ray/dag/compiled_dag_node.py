@@ -1,88 +1,82 @@
-import weakref
 import asyncio
+import logging
+import threading
+import time
+import traceback
+import uuid
+import weakref
 from collections import defaultdict
 from contextlib import nullcontext
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import (
     Any,
     Dict,
     List,
-    Tuple,
-    Union,
     Optional,
     Set,
+    Tuple,
+    Union,
 )
-import logging
-import threading
-import time
-import uuid
-import traceback
 
-from ray.experimental.channel.auto_transport_type import (
-    AutoTransportType,
-    TypeHintResolver,
-)
+import ray
 import ray.exceptions
-from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
-from ray.experimental.channel.cached_channel import CachedChannel
-from ray.experimental.channel.communicator import Communicator
 from ray.dag.constants import (
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
     RAY_CGRAPH_ENABLE_TORCH_PROFILING,
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
-import ray
-from ray.exceptions import (
-    RayCgraphCapacityExceeded,
-    RayTaskError,
-    RayChannelError,
-    RayChannelTimeoutError,
-)
-from ray.experimental.compiled_dag_ref import (
-    CompiledDAGRef,
-    CompiledDAGFuture,
-    _process_return_vals,
-)
-from ray.experimental.channel import (
-    ChannelContext,
-    ChannelInterface,
-    ChannelOutputType,
-    ReaderInterface,
-    SynchronousReader,
-    WriterInterface,
-    SynchronousWriter,
-    AwaitableBackgroundReader,
-    AwaitableBackgroundWriter,
-    CompiledDAGArgs,
-    CompositeChannel,
-    IntraProcessChannel,
-)
-from ray.util.annotations import DeveloperAPI
-
-from ray.experimental.channel.shared_memory_channel import (
-    SharedMemoryType,
-)
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
-from ray.experimental.channel.torch_tensor_accelerator_channel import (
-    _init_communicator,
-    _destroy_communicator,
-)
-
 from ray.dag.dag_node_operation import (
+    _build_dag_node_operation_graph,
     _DAGNodeOperation,
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
-    _build_dag_node_operation_graph,
     _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
     _generate_overlapped_execution_schedule,
     _visualize_execution_schedule,
 )
-
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
+from ray.dag.dag_operation_future import DAGOperationFuture, GPUFuture, ResolvedFuture
+from ray.exceptions import (
+    RayCgraphCapacityExceeded,
+    RayChannelError,
+    RayChannelTimeoutError,
+    RayTaskError,
+)
+from ray.experimental.channel import (
+    AwaitableBackgroundReader,
+    AwaitableBackgroundWriter,
+    ChannelContext,
+    ChannelInterface,
+    ChannelOutputType,
+    CompiledDAGArgs,
+    CompositeChannel,
+    IntraProcessChannel,
+    ReaderInterface,
+    SynchronousReader,
+    SynchronousWriter,
+    WriterInterface,
+)
 from ray.experimental.channel.accelerator_context import AcceleratorContext
+from ray.experimental.channel.auto_transport_type import (
+    AutoTransportType,
+    TypeHintResolver,
+)
+from ray.experimental.channel.cached_channel import CachedChannel
+from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.shared_memory_channel import (
+    SharedMemoryType,
+)
+from ray.experimental.channel.torch_tensor_accelerator_channel import (
+    _destroy_communicator,
+    _init_communicator,
+)
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.compiled_dag_ref import (
+    CompiledDAGFuture,
+    CompiledDAGRef,
+    _process_return_vals,
+)
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +102,7 @@ def _shutdown_all_compiled_dags():
 
 def _check_unused_dag_input_attributes(
     output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
-) -> Set[str]:
+) -> None:
     """
     Helper function to check that all input attributes are used in the DAG.
     For example, if the user creates an input attribute by calling
@@ -154,7 +148,7 @@ def _check_unused_dag_input_attributes(
 
 @DeveloperAPI
 def do_allocate_channel(
-    self,
+    self: Any,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
     driver_actor_id: Optional[str] = None,
@@ -162,6 +156,7 @@ def do_allocate_channel(
     """Generic actor method to allocate an output channel.
 
     Args:
+        self: The actor instance this method is bound to.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
@@ -189,7 +184,7 @@ def do_allocate_channel(
 
 @DeveloperAPI
 def do_exec_tasks(
-    self,
+    self: Any,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
     overlap_gpu_communication: bool = False,
@@ -200,6 +195,7 @@ def do_exec_tasks(
     exception is thrown.
 
     Args:
+        self: The actor instance this method is bound to.
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
         overlap_gpu_communication: Whether to overlap GPU communication with
@@ -267,7 +263,7 @@ def do_exec_tasks(
 
 @DeveloperAPI
 def do_profile_tasks(
-    self,
+    self: Any,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
     overlap_gpu_communication: bool = False,
@@ -275,6 +271,7 @@ def do_profile_tasks(
     """A generic actor method similar to `do_exec_tasks`, but with profiling enabled.
 
     Args:
+        self: The actor instance this method is bound to.
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
         overlap_gpu_communication: Whether to overlap GPU communication with
@@ -370,6 +367,7 @@ def _device_context_manager():
         return nullcontext()
 
     import torch
+
     from ray.experimental.channel.accelerator_context import AcceleratorContext
 
     device = ChannelContext.get_current().torch_device
@@ -390,7 +388,8 @@ class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
 
     def __init__(self, idx: int, dag_node: "ray.dag.DAGNode"):
-        """
+        """Initialize a CompiledTask.
+
         Args:
             idx: A unique index into the original DAG.
             dag_node: The original DAG node created by the user.
@@ -469,6 +468,10 @@ class _ExecutableTaskInput:
 
         Args:
             channel_results: The results from reading the input channels.
+
+        Returns:
+            The resolved input value (either a value read from the channel or
+            the passthrough value).
         """
 
         if isinstance(self.input_variant, ChannelInterface):
@@ -490,7 +493,8 @@ class ExecutableTask:
         resolved_args: List[Any],
         resolved_kwargs: Dict[str, Any],
     ):
-        """
+        """Initialize an ExecutableTask.
+
         Args:
             task: The CompiledTask that this ExecutableTask corresponds to.
             resolved_args: The arguments to the method. Arguments that are
@@ -576,7 +580,7 @@ class ExecutableTask:
         """
         GPUFuture.remove_gpu_future(self.task_idx)
 
-    def prepare(self, overlap_gpu_communication: bool = False):
+    def prepare(self, overlap_gpu_communication: bool = False) -> None:
         """
         Prepare the task for execution. The `exec_operation` function can only
         be called after `prepare` has been called.
@@ -688,7 +692,7 @@ class ExecutableTask:
     def _compute(
         self,
         overlap_gpu_communication: bool,
-        class_handle,
+        class_handle: Any,
     ) -> bool:
         """
         Retrieve the intermediate result from the READ operation and perform the
@@ -760,7 +764,7 @@ class ExecutableTask:
 
     def exec_operation(
         self,
-        class_handle,
+        class_handle: Any,
         op_type: _DAGNodeOperationType,
         overlap_gpu_communication: bool = False,
     ) -> bool:
@@ -843,7 +847,8 @@ class CompiledDAG:
         overlap_gpu_communication: Optional[bool] = None,
         default_communicator: Optional[Union[Communicator, str]] = "create",
     ):
-        """
+        """Initialize the compiled DAG.
+
         Args:
             submit_timeout: The maximum time in seconds to wait for execute() calls.
                 None means using default timeout (DAGContext.submit_timeout),
@@ -874,7 +879,7 @@ class CompiledDAG:
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
-            _default_communicator: The default communicator to use to transfer
+            default_communicator: The default communicator to use to transfer
                 tensors. Three types of values are valid. (1) Communicator:
                 For p2p operations, this is the default communicator
                 to use for nodes annotated with `with_tensor_transport()` and when
@@ -889,9 +894,6 @@ class CompiledDAG:
                 an already created collective communicator if the p2p actors are a subset.
                 Otherwise, a new communicator is created.
                 (3) None: a ValueError will be thrown if a custom communicator is not specified.
-
-        Returns:
-            Channel: A wrapper around ray.ObjectRef.
         """
         from ray.dag import DAGContext
 
@@ -1045,9 +1047,9 @@ class CompiledDAG:
             # resized, etc.). The driver actor serves as a way for the output writer
             # to invoke remote functions on the driver node.
             return CompiledDAG.DAGDriverProxyActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                label_selector={
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
             ).remote()
 
         self._proxy_actor = _create_proxy_actor()
@@ -1091,9 +1093,9 @@ class CompiledDAG:
         This function is idempotent.
         """
         from ray.dag import (
-            DAGNode,
             ClassMethodNode,
             CollectiveOutputNode,
+            DAGNode,
             FunctionNode,
             InputAttributeNode,
             InputNode,
@@ -1491,8 +1493,8 @@ class CompiledDAG:
         Check if there are leaf nodes in the DAG and raise an error if there are.
         """
         from ray.dag import (
-            DAGNode,
             ClassMethodNode,
+            DAGNode,
         )
 
         leaf_nodes: List[DAGNode] = []
@@ -1565,11 +1567,11 @@ class CompiledDAG:
         outputs for the DAG.
         """
         from ray.dag import (
-            DAGNode,
-            InputNode,
-            InputAttributeNode,
-            MultiOutputNode,
             ClassMethodNode,
+            DAGNode,
+            InputAttributeNode,
+            InputNode,
+            MultiOutputNode,
         )
 
         if self.input_task_idx is None:
@@ -2549,14 +2551,14 @@ class CompiledDAG:
 
     def execute(
         self,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> Union[CompiledDAGRef, List[CompiledDAGRef]]:
         """Execute this DAG using the compiled execution path.
 
         Args:
-            args: Args to the InputNode.
-            kwargs: Kwargs to the InputNode
+            *args: Args to the InputNode.
+            **kwargs: Kwargs to the InputNode
 
         Returns:
             A list of Channels that can be used to read the DAG result.
@@ -2630,16 +2632,16 @@ class CompiledDAG:
 
     async def execute_async(
         self,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> Union[CompiledDAGFuture, List[CompiledDAGFuture]]:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not thread-safe.
 
         Args:
-            args: Args to the InputNode.
-            kwargs: Kwargs to the InputNode.
+            *args: Args to the InputNode.
+            **kwargs: Kwargs to the InputNode.
 
         Returns:
             A list of Channels that can be used to read the DAG result.
@@ -2789,11 +2791,11 @@ class CompiledDAG:
         """
 
         from ray.dag import (
+            ClassMethodNode,
+            DAGNode,
             InputAttributeNode,
             InputNode,
             MultiOutputNode,
-            ClassMethodNode,
-            DAGNode,
         )
 
         # Check that the DAG has been compiled
@@ -3048,10 +3050,10 @@ class CompiledDAG:
 
     def visualize(
         self,
-        filename="compiled_graph",
-        format="png",
-        view=False,
-        channel_details=False,
+        filename: str = "compiled_graph",
+        format: str = "png",
+        view: bool = False,
+        channel_details: bool = False,
     ) -> str:
         """
         Visualize the compiled graph by showing tasks and their dependencies.
@@ -3097,11 +3099,11 @@ class CompiledDAG:
                 "You can install it by running `pip install graphviz`."
             )
         from ray.dag import (
+            ClassMethodNode,
+            DAGNode,
             InputAttributeNode,
             InputNode,
             MultiOutputNode,
-            ClassMethodNode,
-            DAGNode,
         )
 
         # Check that the DAG has been compiled

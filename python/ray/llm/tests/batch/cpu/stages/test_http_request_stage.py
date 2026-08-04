@@ -1,12 +1,24 @@
 import asyncio
+import json
 import sys
 from unittest.mock import AsyncMock, call, patch
 
 import aiohttp
+import aiohttp.web
 import aiohttp.web_exceptions
+import numpy as np
 import pytest
+from aiohttp.test_utils import TestServer
 
-from ray.llm._internal.batch.stages.http_request_stage import HttpRequestUDF
+import ray.data
+from ray.llm._internal.batch.processor import ProcessorBuilder
+from ray.llm._internal.batch.processor.http_request_proc import (
+    HttpRequestProcessorConfig,
+)
+from ray.llm._internal.batch.stages.http_request_stage import (
+    HttpRequestUDF,
+    NumpyEncoder,
+)
 
 
 @pytest.fixture
@@ -47,7 +59,7 @@ async def test_http_request_udf_basic(mock_session):
             "Content-Type": "application/json",
             "Authorization": "Bearer 1234567890",
         },
-        json={"text": "hello", "metadata": "test"},
+        data=json.dumps({"text": "hello", "metadata": "test"}),
     )
 
 
@@ -124,6 +136,90 @@ async def test_http_request_udf_with_retry(mock_response):
                 call(udf.base_retry_wait_time_in_s * 2 * 2),
             ]
         )
+
+
+def test_numpy_encoder():
+    """Test NumpyEncoder correctly serializes numpy data types."""
+    data = {
+        "ndarray": np.array([1, 2, 3]),
+        "integer": np.int64(10),
+        "float": np.float64(3.14),
+        "bool": np.bool_(True),
+        "list": [np.int32(1), np.float32(2.0)],
+    }
+
+    json_str = json.dumps(data, cls=NumpyEncoder)
+    decoded = json.loads(json_str)
+
+    assert decoded["ndarray"] == [1, 2, 3]
+    assert decoded["integer"] == 10
+    assert decoded["float"] == 3.14
+    assert decoded["bool"] is True
+    assert decoded["list"] == [1, 2.0]
+
+
+@pytest.fixture
+async def numpy_payload_server():
+    # Handler that verifies numpy array was correctly serialized
+    async def handler(request):
+        data = await request.json()
+        assert data["model"] == "test-model"
+        assert data["embedding"] == [1.0, 2.0, 3.0]
+        assert data["flags"] == [True, False]
+        assert len(data["messages"]) == 1
+        assert data["messages"][0]["role"] == "user"
+        assert len(data["messages"][0]["content"]) == 2
+        return aiohttp.web.json_response({"response": "success"})
+
+    # Create test app and server
+    app = aiohttp.web.Application()
+    app.router.add_post("/", handler)
+    server = TestServer(app)
+    await server.start_server()
+    yield server
+    await server.close()
+
+
+@pytest.mark.asyncio
+async def test_http_request_udf_with_numpy_payload_server(numpy_payload_server):
+    """Test HttpRequestUDF with numpy arrays using a real aiohttp server."""
+    data = [
+        {
+            "payload": {
+                "model": "test-model",
+                "embedding": np.array([1.0, 2.0, 3.0]),
+                "flags": np.array([True, False]),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "http://example.com/image.png"},
+                            },
+                            {
+                                "type": "text",
+                                "text": "hello",
+                            },
+                        ],
+                    }
+                ],
+            }
+        }
+    ]
+    config = HttpRequestProcessorConfig(
+        url=str(numpy_payload_server.make_url("/")),
+        headers={"Content-Type": "application/json"},
+        qps=None,
+    )
+
+    processor = ProcessorBuilder.build(config)
+    ds = processor(ray.data.from_items(data * 10))
+    results = await asyncio.to_thread(ds.take_all)
+
+    assert len(results) == 10
+    for result in results:
+        assert result["http_response"]["response"] == "success"
 
 
 if __name__ == "__main__":

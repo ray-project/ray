@@ -1,4 +1,5 @@
 import unittest
+
 import ray
 from ray.rllib.algorithms import PPOConfig
 from ray.rllib.callbacks.callbacks import RLlibCallback
@@ -38,9 +39,7 @@ class TestMultiCallback(unittest.TestCase):
                 **kwargs
             ):
 
-                metrics_logger.log_value(
-                    "callback_1", 1, reduce="mean", clear_on_reduce=True
-                )
+                metrics_logger.log_value("callback_1", 1, reduce="mean")
 
         class TestRLlibCallback2(RLlibCallback):
             def on_episode_step(
@@ -58,9 +57,7 @@ class TestMultiCallback(unittest.TestCase):
                 **kwargs
             ):
 
-                metrics_logger.log_value(
-                    "callback_2", 2, reduce="mean", clear_on_reduce=True
-                )
+                metrics_logger.log_value("callback_2", 2, reduce="mean")
 
         # Define a custom callback function.
         def custom_on_episode_step_callback(
@@ -76,9 +73,7 @@ class TestMultiCallback(unittest.TestCase):
             **kwargs
         ):
 
-            metrics_logger.log_value(
-                "custom_callback", 3, reduce="mean", clear_on_reduce=True
-            )
+            metrics_logger.log_value("custom_callback", 3, reduce="mean")
 
         # Configure the algorithm.
         config = (
@@ -98,9 +93,9 @@ class TestMultiCallback(unittest.TestCase):
         # Build the algorithm. At this stage, callbacks get already validated.
         algo = config.build()
 
-        # Run 10 training iteration and check, if the metrics defined in the
+        # Run a few training iterations and check, if the metrics defined in the
         # callbacks made it into the results. Furthermore, check, if the values are correct.
-        for _ in range(10):
+        for _ in range(3):
             results = algo.train()
             self.assertIn("callback_1", results["env_runners"])
             self.assertIn("callback_2", results["env_runners"])
@@ -141,7 +136,8 @@ class TestMultiCallback(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

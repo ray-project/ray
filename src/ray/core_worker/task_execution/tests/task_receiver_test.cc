@@ -19,10 +19,11 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/common/test_util.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/common/test_utils.h"
+#include "ray/core_worker_rpc_client/core_worker_client_interface.h"
+#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
@@ -42,7 +43,9 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   task.GetMutableMessage().mutable_caller_address()->set_worker_id(
       caller_worker_id.Binary());
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
-  task.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(counter);
+  task.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(counter);
   task.GetMutableMessage().set_num_returns(0);
   return task;
 }
@@ -56,7 +59,8 @@ rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id,
 
   rpc::PushTaskRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  request.set_sequence_number(request.task_spec().actor_task_spec().sequence_number());
+  request.set_sequence_number(
+      request.task_spec().actor_task_spec().concurrency_group_sequence_number());
   request.set_client_processed_up_to(-1);
   return request;
 }
@@ -88,13 +92,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   int64_t acked_seqno = 0;
 };
 
-class MockDependencyWaiter : public DependencyWaiter {
- public:
-  MOCK_METHOD2(Wait,
-               void(const std::vector<rpc::ObjectReference> &dependencies,
-                    std::function<void()> on_dependencies_available));
-};
-
 class MockTaskEventBuffer : public worker::TaskEventBuffer {
  public:
   void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
@@ -122,11 +119,17 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::string DebugString() override { return ""; }
 
   std::string GetSessionName() const override { return "test-session-name"; }
+
+  NodeID GetNodeID() const override { return NodeID::Nil(); }
 };
 
 class TaskReceiverTest : public ::testing::Test {
  public:
-  TaskReceiverTest() : dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
+  TaskReceiverTest()
+      : actor_task_execution_arg_waiter_(std::make_unique<ActorTaskExecutionArgWaiter>(
+            [](const std::vector<rpc::ObjectReference> &args,
+               const TaskID &task_id,
+               int32_t attempt_number) {})) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,
@@ -141,9 +144,8 @@ class TaskReceiverTest : public ::testing::Test {
         task_execution_service_,
         task_event_buffer_,
         execute_task,
-        *dependency_waiter_,
-        /* initialize_thread_callback= */ []() { return []() { return; }; },
-        /* actor_creation_task_done= */ []() { return Status::OK(); });
+        *actor_task_execution_arg_waiter_,
+        /* initialize_thread_callback= */ []() { return []() { return; }; });
   }
 
   Status MockExecuteTask(
@@ -170,7 +172,7 @@ class TaskReceiverTest : public ::testing::Test {
 
   instrumented_io_context task_execution_service_;
   MockTaskEventBuffer task_event_buffer_;
-  std::unique_ptr<DependencyWaiter> dependency_waiter_;
+  std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 };
 
 TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
@@ -198,7 +200,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->HandleTask(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
   }
 
   // Push a task request with actor counter 1. This should succeed
@@ -213,7 +215,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->HandleTask(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
   }
 
   // Create another request with the same caller id, but a different worker id,
@@ -232,7 +234,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->HandleTask(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
   }
 
   // Push a task request with actor counter 1, but with a different worker id,
@@ -248,7 +250,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(!status.ok());
     };
-    receiver_->HandleTask(request, &reply, reply_callback);
+    receiver_->QueueTaskForExecution(request, &reply, reply_callback);
   }
 
   StartIOService();

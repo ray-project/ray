@@ -4,10 +4,11 @@ import time
 
 import boto3
 import click
-from ray_release.test_automation.state_machine import TestStateMachine
-from ray_release.util import get_write_state_machine_aws_bucket
 
 from ci.ray_ci.utils import ci_init, logger
+
+from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.util import get_write_state_machine_aws_bucket
 
 AWS_WEEKLY_GREEN_METRIC = "ray_weekly_green_metric"
 

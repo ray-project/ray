@@ -18,10 +18,11 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/chunk_object_reader.h"
@@ -30,13 +31,17 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
-#include "ray/rpc/object_manager/object_manager_client.h"
-#include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/object_manager_rpc_client/object_manager_client_interface.h"
+#include "ray/rpc/object_manager_server.h"
 #include "ray/stats/metric.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+
+namespace rpc {
+class ClientCallManager;
+}
 
 struct ObjectManagerConfig {
   /// The IP address this object manager is running on.
@@ -53,7 +58,7 @@ struct ObjectManagerConfig {
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
   /// Max object push bytes in flight.
-  int64_t max_bytes_in_flight;
+  uint64_t max_bytes_in_flight;
   /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
@@ -78,6 +83,7 @@ struct LocalObjectInfo {
   /// Information from the object store about the object.
   ObjectInfo object_info;
 };
+
 class ObjectStoreRunner {
  public:
   ObjectStoreRunner(const ObjectManagerConfig &config,
@@ -97,21 +103,32 @@ class ObjectManagerInterface {
                         BundlePriority prio,
                         const TaskMetricsKey &task_key) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
+  /// Mark the specified object as failed with the given error type.
+  ///
+  /// \param object_id The object id to store error message into.
+  /// \param error_type The type of the error that caused this task to fail.
+  virtual void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual int64_t PullManagerNumInactivePullsByTaskName(
       const TaskMetricsKey &task_key) const = 0;
   virtual int GetServerPort() const = 0;
-  virtual void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) = 0;
+  virtual void FreeObjects(const std::vector<ObjectID> &object_ids) = 0;
   virtual void HandleNodeRemoved(const NodeID &node_id) = 0;
+  virtual std::vector<ObjectID> GetLocalObjectsOwnedBy(
+      const WorkerID &worker_id) const = 0;
+  virtual std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const = 0;
   virtual bool IsPlasmaObjectSpillable(const ObjectID &object_id) = 0;
   virtual int64_t GetUsedMemory() const = 0;
   virtual bool PullManagerHasPullsQueued() const = 0;
   virtual int64_t GetMemoryCapacity() const = 0;
   virtual std::string DebugString() const = 0;
-  virtual void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const = 0;
+  virtual void FillObjectStoreStats(rpc::GetNodeStatsReply *repOly) const = 0;
   virtual double GetUsedMemoryPercentage() const = 0;
   virtual void Stop() = 0;
   virtual void RecordMetrics() = 0;
+  virtual void HandleObjectAdded(const ObjectInfo &object_info) = 0;
+  virtual void HandleObjectDeleted(const ObjectID &object_id) = 0;
 
   virtual ~ObjectManagerInterface() = default;
 };
@@ -143,15 +160,6 @@ class ObjectManager : public ObjectManagerInterface,
                   rpc::PullReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle free objects request
-  ///
-  /// \param request Free objects request
-  /// \param reply Reply
-  /// \param send_reply_callback
-  void HandleFreeObjects(rpc::FreeObjectsRequest request,
-                         rpc::FreeObjectsReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
-
   /// Get the port of the object manager rpc server.
   int GetServerPort() const override { return object_manager_server_.GetPort(); }
 
@@ -164,7 +172,6 @@ class ObjectManager : public ObjectManagerInterface,
     return pull_manager_->NumInactivePulls(task_key);
   }
 
- public:
   /// Takes user-defined IObjectDirectory implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
   /// the given ObjectDirectory instance.
@@ -180,12 +187,14 @@ class ObjectManager : public ObjectManagerInterface,
       IObjectDirectory *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
-      SpillObjectsCallback spill_objects_callback,
-      std::function<void()> object_store_full_callback,
-      AddObjectCallback add_object_callback,
-      DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request);
+      const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
+      std::unique_ptr<ObjectStoreRunner> object_store_internal,
+      std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
+          const std::string &address,
+          const int port,
+          rpc::ClientCallManager &client_call_manager)> object_manager_client_factory,
+      instrumented_io_context &rpc_service);
 
   ~ObjectManager() override;
 
@@ -225,18 +234,25 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
 
-  /// Free a list of objects from object store.
+  void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) override;
+
+  /// Free a list of objects from the local object store.
   ///
   /// \param object_ids the The list of ObjectIDs to be deleted.
-  /// \param local_only Whether keep this request with local object store
-  ///                   or send it to all the object stores.
-  void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only) override;
+  void FreeObjects(const std::vector<ObjectID> &object_ids) override;
 
   /// Cancel all pushes that have not yet been sent to the removed node and erases the
   /// associated client if it exists.
   ///
   /// \param node_id The ID of the node that was removed.
   void HandleNodeRemoved(const NodeID &node_id) override;
+
+  /// Return IDs of local plasma-resident objects whose owner matches the given
+  /// worker or node. Includes both primary copies (also tracked by
+  /// LocalObjectManager) and secondary copies pulled from other nodes.
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override;
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override;
 
   /// Returns debug string for class.
   ///
@@ -267,20 +283,17 @@ class ObjectManager : public ObjectManagerInterface,
   }
 
  private:
-  friend class TestObjectManager;
+  friend class ObjectManagerTest;
 
-  /// Spread the Free request to all objects managers.
-  ///
-  /// \param object_ids the The list of ObjectIDs to be deleted.
-  void SpreadFreeObjectsRequest(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients);
-
-  /// Pushing a known local object to a remote object manager.
+  /// Try to push an object to a remote object manager from this node's in-memory
+  /// object store.
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
+  /// \return true if the object was resident and the push was started; false if the
+  ///         store read failed (stale mirror from ObjectManager's local_objects_),
+  ///         so the caller should fall back to the spilled copy.
+  bool PushFromPlasma(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pushing a known spilled object to a remote object manager.
   /// \param object_id The object's object id.
@@ -320,7 +333,7 @@ class ObjectManager : public ObjectManagerInterface,
                        const ObjectID &object_id,
                        const NodeID &node_id,
                        uint64_t chunk_index,
-                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                       std::shared_ptr<rpc::ObjectManagerClientInterface> rpc_client,
                        std::function<void(const Status &)> on_complete,
                        std::shared_ptr<ChunkObjectReader> chunk_reader,
                        bool from_disk);
@@ -333,12 +346,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// Handle an object being added to this node. This adds the object to the
   /// directory, pushes the object to other nodes if necessary, and cancels any
   /// outstanding Pull requests for the object.
-  void HandleObjectAdded(const ObjectInfo &object_info);
+  void HandleObjectAdded(const ObjectInfo &object_info) override;
 
   /// Handle an object being deleted from this node. This registers object remove
   /// with directory. This also asks the pull manager to fetch this object again
   /// as soon as possible.
-  void HandleObjectDeleted(const ObjectID &object_id);
+  void HandleObjectDeleted(const ObjectID &object_id) override;
 
   /// This is used to notify the main thread that the sending of a chunk has
   /// completed.
@@ -389,16 +402,19 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t chunk_index,
                           const std::string &data);
 
-  /// Send pull request
-  ///
-  /// \param object_id Object id
-  /// \param client_id Remote server client id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
+  /**
+   * Send pull request for a batch of objects to a single remote node.
+   *
+   * \param object_ids Objects to pull from the same remote node. Must be
+   *     non-empty.
+   * \param client_id Remote server client id.
+   */
+  void SendPullRequest(const std::vector<ObjectID> &object_ids, const NodeID &client_id);
 
   /// Get the rpc client according to the node ID
   ///
   /// \param node_id Remote node id, will send rpc request to it
-  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &node_id);
+  std::shared_ptr<rpc::ObjectManagerClientInterface> GetRpcClient(const NodeID &node_id);
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
@@ -418,20 +434,13 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Used by the buffer pool to read and write objects in the local store
   /// during object transfers.
-  std::shared_ptr<plasma::PlasmaClient> buffer_pool_store_client_;
+  std::shared_ptr<plasma::PlasmaClientInterface> buffer_pool_store_client_;
 
   /// Manages accesses to local objects for object transfers.
   ObjectBufferPool buffer_pool_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
-  instrumented_io_context rpc_service_;
-
-  /// Keep rpc service running when no task in rpc service.
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> rpc_work_;
-
-  /// The thread pool used for running `rpc_service`.
-  /// Data copy operations during request are done in this thread pool.
-  std::vector<std::thread> rpc_threads_;
+  instrumented_io_context &rpc_service_;
 
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.
@@ -456,7 +465,7 @@ class ObjectManager : public ObjectManagerInterface,
   rpc::ClientCallManager client_call_manager_;
 
   /// Client id - object manager gRPC client.
-  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>
       remote_object_manager_clients_;
 
   /// Callback to trigger direct restoration of an object.
@@ -474,6 +483,13 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Object pull manager.
   std::unique_ptr<PullManager> pull_manager_;
+
+  /// Factory function to create object manager client.
+  std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
+      const std::string &address,
+      const int port,
+      rpc::ClientCallManager &client_call_manager)>
+      object_manager_client_factory_;
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;
@@ -499,31 +515,19 @@ class ObjectManager : public ObjectManagerInterface,
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
 
-  /// Metrics
-  ray::stats::Gauge ray_metric_object_store_available_memory_{
-      /*name=*/"object_store_available_memory",
-      /*description=*/"Amount of memory currently available in the object store.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_used_memory_{
-      /*name=*/"object_store_used_memory",
-      /*description=*/"Amount of memory currently occupied in the object store.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_fallback_memory_{
-      /*name=*/"object_store_fallback_memory",
-      /*description=*/"Amount of memory in fallback allocations in the filesystem.",
-      /*unit=*/"bytes"};
-
-  ray::stats::Gauge ray_metric_object_store_local_objects_{
-      /*name=*/"object_store_num_local_objects",
-      /*description=*/"Number of objects currently in the object store.",
-      /*unit=*/"objects"};
-
-  ray::stats::Gauge ray_metric_object_manager_pull_requests_{
-      /*name=*/"object_manager_num_pull_requests",
-      /*description=*/"Number of active pull requests for objects.",
-      /*unit=*/"requests"};
+  ray::stats::Gauge object_store_available_memory_gauge_{
+      GetObjectStoreAvailableMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_used_memory_gauge_{
+      ray::GetObjectStoreUsedMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_fallback_memory_gauge_{
+      ray::GetObjectStoreFallbackMemoryGaugeMetric()};
+  ray::stats::Gauge object_store_local_objects_gauge_{
+      ray::GetObjectStoreLocalObjectsGaugeMetric()};
+  ray::stats::Gauge object_manager_pull_requests_gauge_{
+      ray::GetObjectManagerPullRequestsGaugeMetric()};
+  ray::stats::Gauge object_manager_bytes_gauge_{ray::GetObjectManagerBytesGaugeMetric()};
+  ray::stats::Gauge object_manager_received_chunks_gauge_{
+      ray::GetObjectManagerReceivedChunksGaugeMetric()};
 };
 
 }  // namespace ray

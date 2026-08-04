@@ -64,15 +64,8 @@
 #include "ray/util/macros.h"
 
 #if defined(_WIN32)
-#ifndef _WINDOWS_
-#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
-                             // headers you need manually.
-                             // (https://stackoverflow.com/a/8294669)
-#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
-#endif
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
-#endif
-#ifdef ERROR  // Should be true unless someone else undef'd it already
+#ifdef ERROR          // Should be true unless someone else undef'd it already
 #undef ERROR  // Windows GDI defines this macro; make it a global enum so it doesn't
               // conflict with our code
 enum { ERROR = 0 };
@@ -89,7 +82,7 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
-/// Sync with ray._private.ray_logging.constants.LogKey
+/// Sync with ray._common.logging_constants.LogKey
 inline constexpr std::string_view kLogKeyAsctime = "asctime";
 inline constexpr std::string_view kLogKeyLevelname = "levelname";
 inline constexpr std::string_view kLogKeyMessage = "message";
@@ -104,6 +97,7 @@ inline constexpr std::string_view kLogKeyActorID = "actor_id";
 inline constexpr std::string_view kLogKeyTaskID = "task_id";
 inline constexpr std::string_view kLogKeyObjectID = "object_id";
 inline constexpr std::string_view kLogKeyPlacementGroupID = "placement_group_id";
+inline constexpr std::string_view kLogKeyLeaseID = "lease_id";
 
 // Define your specialization DefaultLogKey<your_type>::key to get .WithField(t)
 // See src/ray/common/id.h

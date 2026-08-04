@@ -24,6 +24,12 @@ def h():
 
 # __nested_end__
 
+ray.init(num_cpus=4, num_gpus=1)
+
+obj_refs = ray.get(g.remote())
+assert len(obj_refs) == 4
+assert all(isinstance(o, ray.ObjectRef) for o in obj_refs)
+
 
 # __yield_start__
 @ray.remote(num_cpus=1, num_gpus=1)
@@ -32,3 +38,5 @@ def g():
 
 
 # __yield_end__
+
+assert ray.get(g.remote()) == 1

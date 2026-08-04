@@ -1,4 +1,6 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Reference for the AlgorithmConfig API: type-safe configuration of training, environment, learner, and framework settings for any RLlib Algorithm.
+
 
 .. _rllib-algo-configuration-docs:
 
@@ -12,7 +14,7 @@ the auto-validated and type-safe gateway into configuring and building an RLlib
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
 
 In essence, you first create an instance of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-and then call some of its methods to set various configuration options. RLlib uses the following, `black <https://github.com/psf/black>`__ compliant format
+and then call some of its methods to set various configuration options. RLlib uses the following `black <https://github.com/psf/black>`__-compliant format
 in all parts of its code.
 
 Note that you can chain together more than one method call, including the constructor:

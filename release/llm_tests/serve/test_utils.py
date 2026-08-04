@@ -2,12 +2,15 @@ import json
 import logging
 import os
 import re
+import subprocess
+import time
 import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Union
 
-import time
-import anyscale
+import requests
+from openai import OpenAI
+
 import boto3
 import ray
 import yaml
@@ -16,6 +19,7 @@ from anyscale.compute_config.models import ComputeConfig
 from anyscale.service.models import ServiceState
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
+
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +32,7 @@ SECRET_NAME = "llm_release_test_hf_token"
 # Buildkite is also configured to have read access to this bucket
 S3_BUCKET = "rayllm-ci-results"
 S3_PREFIX = "vllm_perf_results"
+ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR = "ANYSCALE_JOB_CLUSTER_COMPUTE_NAME"
 
 
 def check_service_state(
@@ -80,7 +85,7 @@ def start_service(
     add_unique_suffix: bool = True,
     cloud: Optional[str] = None,
     env_vars: Optional[Dict[str, str]] = None,
-    timeout_s: int = 600,  # seconds
+    timeout_s: int = 900,  # seconds
 ):
     """Starts an Anyscale Service with the specified configs.
 
@@ -165,14 +170,20 @@ def start_service(
         logger.info(f"Service '{service_name}' terminated successfully.")
 
 
-def get_current_compute_config_name() -> str:
-    """Get the name of the current compute config."""
-    cluster_id = os.environ["ANYSCALE_CLUSTER_ID"]
-    sdk = anyscale.AnyscaleSDK()
-    cluster = sdk.get_cluster(cluster_id)
-    return anyscale.compute_config.get(
-        name="", _id=cluster.result.cluster_compute_id
-    ).name
+def get_service_compute_config(
+    compute_config: Optional[str] = None,
+) -> str:
+    """Get the compute config to use when starting the Anyscale Service."""
+    service_compute_config = compute_config or os.environ.get(
+        ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR
+    )
+    if service_compute_config is None:
+        raise RuntimeError(
+            "No compute config was provided for the Anyscale Service. Set "
+            f"--compute-config or {ANYSCALE_JOB_CLUSTER_COMPUTE_NAME_ENV_VAR}; "
+            "release jobs should provide this automatically."
+        )
+    return service_compute_config
 
 
 def get_applications(serve_config_file: str) -> List[Any]:
@@ -234,3 +245,70 @@ def get_vllm_s3_storage_path() -> str:
     storage_path = f"s3://{S3_BUCKET}/{S3_PREFIX}/vllm-perf-results-{unique_id}.jsonl"
 
     return storage_path
+
+
+def create_openai_client(server_url: str) -> OpenAI:
+    return OpenAI(base_url=f"{server_url}/v1", api_key="fake-key")
+
+
+def wait_for_server_ready(
+    url: str,
+    model_id: str,
+    timeout: int = 300,
+    retry_interval: int = 2,
+) -> None:
+    """Poll the server until it's ready or timeout is reached."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            resp = requests.post(
+                f"{url}/v1/completions",
+                json={
+                    "model": model_id,
+                    "prompt": "test",
+                    "max_tokens": 5,
+                    "temperature": 0,
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                print(f"Server at {url} is ready to handle requests!")
+                return
+        except Exception:
+            pass
+
+        print(f"Waiting for server at {url} to be ready...")
+        time.sleep(retry_interval)
+    raise TimeoutError(f"Server at {url} not ready within {timeout}s")
+
+
+def get_gpu_memory_used_mb() -> List[float]:
+    """Return GPU memory used (MB) per device via nvidia-smi."""
+    result = subprocess.run(
+        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [float(x.strip()) for x in result.stdout.strip().split("\n") if x.strip()]
+
+
+def get_total_gpu_memory_mb() -> float:
+    """Return total GPU memory used (MB) across all devices."""
+    return sum(get_gpu_memory_used_mb())
+
+
+def wait_for_gpu_memory_to_clear(threshold_mb: float, timeout: float = 240) -> None:
+    """Block until total GPU memory used falls below threshold_mb.
+
+    serve.shutdown() can return before a replica has released its GPU memory,
+    since the engine tears down asynchronously and, under direct ingress, the
+    drain keeps the old replica resident for its graceful shutdown window. A
+    test that redeploys on the same GPUs must wait for the previous replica to
+    free memory first or the next deployment OOMs.
+    """
+    wait_for_condition(
+        lambda: get_total_gpu_memory_mb() < threshold_mb,
+        timeout=timeout,
+        retry_interval_ms=2000,
+    )

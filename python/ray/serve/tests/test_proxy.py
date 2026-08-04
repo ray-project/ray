@@ -1,4 +1,3 @@
-import os
 import sys
 
 import grpc
@@ -9,6 +8,7 @@ from ray import serve
 from ray._common.network_utils import build_address
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
+from ray.cluster_utils import Cluster
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
@@ -17,10 +17,23 @@ from ray.serve._private.test_utils import (
     ping_grpc_healthz,
     ping_grpc_list_applications,
     request_with_retries,
+    skip_if_haproxy,
 )
 from ray.serve.config import gRPCOptions
+from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2
+from ray.serve.schema import ProxyStatus, ServeInstanceDetails
+from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
+
+
+@pytest.fixture
+def shutdown_ray():
+    if ray.is_initialized():
+        ray.shutdown()
+    yield
+    if ray.is_initialized():
+        ray.shutdown()
 
 
 class TestTimeoutKeepAliveConfig:
@@ -56,48 +69,10 @@ class TestTimeoutKeepAliveConfig:
             == keep_alive_timeout_s
         )
 
-    @pytest.mark.parametrize(
-        "ray_instance",
-        [
-            {"RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "333"},
-        ],
-        indirect=True,
-    )
-    def test_set_keep_alive_timeout_in_env(self, ray_instance, ray_shutdown):
-        """Test when keep_alive_timeout_s is in env.
 
-        When the keep_alive_timeout_s is set in env, the uvicorn keep alive
-        is set correctly.
-        """
-        serve.start()
-        proxy_actor = self.get_proxy_actor()
-        assert (
-            ray.get(proxy_actor._get_http_options.remote()).keep_alive_timeout_s == 333
-        )
-
-    @pytest.mark.parametrize(
-        "ray_instance",
-        [
-            {"RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "333"},
-        ],
-        indirect=True,
-    )
-    def test_set_timeout_keep_alive_in_both_config_and_env(
-        self, ray_instance, ray_shutdown
-    ):
-        """Test when keep_alive_timeout_s is in both http configs and env.
-
-        When the keep_alive_timeout_s is set in env, the uvicorn keep alive
-        is set to the one in env.
-        """
-        keep_alive_timeout_s = 222
-        serve.start(http_options={"keep_alive_timeout_s": keep_alive_timeout_s})
-        proxy_actor = self.get_proxy_actor()
-        assert (
-            ray.get(proxy_actor._get_http_options.remote()).keep_alive_timeout_s == 333
-        )
-
-
+@skip_if_haproxy(
+    "no per-node gRPC proxy to drain, tested via test_drain_and_undrain_haproxy_manager"
+)
 def test_grpc_proxy_on_draining_nodes(ray_cluster):
     """Test gRPC request on the draining node.
 
@@ -116,12 +91,12 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Setup worker gRPC proxy to be pointing to port 9001. Head node gRPC proxy will
     # continue to be pointing to the default port 9000.
-    os.environ["TEST_WORKER_NODE_GRPC_PORT"] = str(worker_node_grpc_port)
-
-    # Set up a cluster with 2 nodes.
     cluster = ray_cluster
     cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=2)
+    cluster.add_node(
+        num_cpus=2,
+        env_vars={"RAY_SERVE_WORKER_PROXY_GRPC_PORT": str(worker_node_grpc_port)},
+    )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -223,6 +198,89 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensures Healthz method on the worker node is draining.
     ping_grpc_healthz(worker_node_channel, test_draining=True)
+
+
+@skip_if_haproxy(
+    "drains the native Serve ProxyActor, which is not the ingress under HAProxy. "
+    "HAProxy draining is covered by test_drain_and_undrain_haproxy_manager"
+)
+def test_drain_and_undrain_http_proxy_actors(
+    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test the state transtion of the proxy actor between
+    HEALTHY, DRAINING and DRAINED
+    """
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
+
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=head_node.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    @serve.deployment
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    serve.run(HelloModel.options(num_replicas=2).bind())
+
+    # 3 proxies, 1 controller, 2 replicas.
+    wait_for_condition(lambda: len(list_actors()) == 6)
+    assert len(ray.nodes()) == 3
+
+    client = _get_global_client()
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
+
+    assert len(proxy_actor_ids) == 3
+
+    serve.run(HelloModel.options(num_replicas=1).bind())
+    # 1 proxy should be draining
+
+    def check_proxy_status(proxy_status_to_count):
+        serve_details = ServeInstanceDetails(
+            **ray.get(client._controller.get_serve_instance_details.remote())
+        )
+        proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
+        current_status = {
+            status: proxy_status_list.count(status) for status in proxy_status_list
+        }
+        return current_status == proxy_status_to_count, current_status
+
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2, ProxyStatus.DRAINING: 1},
+    )
+
+    serve.run(HelloModel.options(num_replicas=2).bind())
+    # The draining proxy should become healthy.
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        proxy_status_to_count={ProxyStatus.HEALTHY: 3},
+    )
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+
+    assert {
+        proxy.actor_id for _, proxy in serve_details.proxies.items()
+    } == proxy_actor_ids
+
+    serve.run(HelloModel.options(num_replicas=1).bind())
+    # 1 proxy should be draining and eventually be drained.
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        timeout=40,
+        proxy_status_to_count={ProxyStatus.HEALTHY: 2},
+    )
+
+    # Clean up serve.
+    serve.shutdown()
 
 
 def _kill_http_proxies():

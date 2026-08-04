@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import sys
 from typing import Dict, Optional, Tuple
 
 import ray
@@ -10,6 +9,7 @@ from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray._private import accelerators
 from ray._private.accelerators import AcceleratorManager
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +123,10 @@ class ResourceAndLabelSpec:
         return resources
 
     def resolve(
-        self, is_head: bool, node_ip_address: Optional[str] = None
+        self,
+        is_head: bool,
+        node_ip_address: Optional[str] = None,
+        resource_isolation_config: Optional[ResourceIsolationConfig] = None,
     ) -> "ResourceAndLabelSpec":
         """Fills out this ResourceAndLabelSpec instance with merged values from system defaults and user specification.
 
@@ -131,6 +134,9 @@ class ResourceAndLabelSpec:
             is_head: Whether this is the head node.
             node_ip_address: The IP address of the node that we are on.
                 This is used to automatically create a node id resource.
+            resource_isolation_config: Optional resource isolation config. When
+                enabled and memory is not explicitly set, the system reserved
+                memory for resource isolation is subtracted from available user memory.
 
         Returns:
             ResourceAndLabelSpec: This instance with all fields resolved.
@@ -155,7 +161,7 @@ class ResourceAndLabelSpec:
         self._resolve_labels(accelerator_manager)
 
         # Resolve memory resources
-        self._resolve_memory_resources()
+        self._resolve_memory_resources(resource_isolation_config)
 
         self._is_resolved = True
         assert self._all_fields_set()
@@ -369,55 +375,40 @@ class ResourceAndLabelSpec:
         if additional_resources:
             self.resources.update(additional_resources)
 
-    def _resolve_memory_resources(self):
+    def _resolve_memory_resources(
+        self,
+        resource_isolation_config: Optional[ResourceIsolationConfig] = None,
+    ):
+        """
+        Resolves logical and object store memory resources if not
+        explicitly set.
+
+        Args:
+            resource_isolation_config: Optional resource isolation config. When
+                enabled and memory is not explicitly set, the system reserved
+                memory for resource isolation is subtracted from available user memory.
+        """
         # Choose a default object store size.
         system_memory = ray._common.utils.get_system_memory()
-        avail_memory = ray._private.utils.estimate_available_memory()
-        object_store_memory = self.object_store_memory
-        if object_store_memory is None:
-            object_store_memory = int(
-                avail_memory * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        if (
+            resource_isolation_config is not None
+            and resource_isolation_config.is_enabled()
+        ):
+            available_memory_bytes = (
+                system_memory
+                - resource_isolation_config.system_reserved_memory
+                - ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES
             )
-
-            # Set the object_store_memory size to 2GB on Mac
-            # to avoid degraded performance.
-            # (https://github.com/ray-project/ray/issues/20388)
-            if sys.platform == "darwin":
-                object_store_memory = min(
-                    object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
-                )
-
-            object_store_memory_cap = (
-                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+        else:
+            available_memory_bytes = ray._private.utils.estimate_available_memory()
+        if self.object_store_memory is None:
+            self.object_store_memory = ray._private.utils.resolve_object_store_memory(
+                available_memory_bytes
             )
-
-            # Cap by shm size by default to avoid low performance, but don't
-            # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
-            if sys.platform == "linux" or sys.platform == "linux2":
-                # Multiple by 0.95 to give a bit of wiggle-room.
-                # https://github.com/ray-project/ray/pull/23034/files
-                shm_avail = ray._private.utils.get_shared_memory_bytes() * 0.95
-                shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
-
-                object_store_memory_cap = min(object_store_memory_cap, shm_cap)
-
-            # Cap memory to avoid memory waste and perf issues on large nodes
-            if (
-                object_store_memory_cap
-                and object_store_memory > object_store_memory_cap
-            ):
-                logger.debug(
-                    "Warning: Capping object memory store to {}GB. ".format(
-                        object_store_memory_cap // 1e9
-                    )
-                    + "To increase this further, specify `object_store_memory` "
-                    "when calling ray.init() or ray start."
-                )
-                object_store_memory = object_store_memory_cap
 
         memory = self.memory
         if memory is None:
-            memory = avail_memory - object_store_memory
+            memory = available_memory_bytes - self.object_store_memory
             if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
                     "After taking into account object store and redis memory "
@@ -430,8 +421,6 @@ class ResourceAndLabelSpec:
                     )
                 )
 
-        # Set the resolved memory and object_store_memory
-        self.object_store_memory = object_store_memory
         self.memory = memory
 
     @staticmethod

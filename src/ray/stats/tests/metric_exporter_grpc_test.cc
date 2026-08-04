@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #ifdef _WIN32
-// Prevent inclusion of winsock.h
-#define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
@@ -30,9 +28,9 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/internal/stats_exporter_impl.h"
 #include "opencensus/stats/stats.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/stats.h"
+#include "ray/stats/tag_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -77,7 +75,7 @@ const auto status_tag_key = TagKey::Register("grpc_client_status");
 
 TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
   const stats::TagsType global_tags = {{stats::LanguageKey, "CPP"},
-                                       {stats::WorkerPidKey, "1000"}};
+                                       {stats::WorkerIdKey, "1000"}};
   StatsConfig::instance().SetGlobalTags(global_tags);
 
   auto measure = MeasureInt64::Register(
@@ -118,7 +116,7 @@ TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
   std::unordered_map<std::string, std::string> expected_labels = {
       {method_tag_key.name(), "MyService.myMethod"},
       {stats::LanguageKey.name(), "CPP"},
-      {stats::WorkerPidKey.name(), "1000"}};
+      {stats::WorkerIdKey.name(), "1000"}};
   ASSERT_EQ(labels, expected_labels);
 }
 
@@ -325,8 +323,3 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

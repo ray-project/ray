@@ -21,7 +21,9 @@ class TestJsonReader(unittest.TestCase):
         """Test that the json reader iterates over batches of rows correctly."""
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "rllib/tests/data/pendulum/large.json")
+        data_file = os.path.join(
+            rllib_dir, "rllib/offline/tests/data/pendulum/large.json"
+        )
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
         ioctx = IOContext(

@@ -4,25 +4,16 @@ from collections import defaultdict
 import pytest
 
 import ray
-
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
-    fetch_prometheus_metrics,
-    run_string_as_driver_nonblocking,
-)
 from ray._common.network_utils import build_address
-
-
-METRIC_CONFIG = {
-    "_system_config": {
-        "metrics_report_interval_ms": 100,
-    }
-}
+from ray._common.test_utils import (
+    fetch_prometheus_metrics,
+    wait_for_condition,
+)
+from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 def raw_metrics(info):
     metrics_page = build_address("localhost", info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
     res = fetch_prometheus_metrics([metrics_page])
     return res
 
@@ -43,8 +34,9 @@ def resources_by_state(info) -> dict:
         return {}
 
 
-def test_resources_metrics(shutdown_only):
-    info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 3}, **METRIC_CONFIG)
+def test_resources_metrics(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_metrics_report_interval_ms", "100")
+    info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 3})
 
     driver = """
 import ray

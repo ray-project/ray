@@ -1,13 +1,14 @@
-import random
-import ray
 import os
+import random
 import sys
 import time
+
 import pytest
+
+import ray
+import ray.remote_function
 from ray._common.test_utils import wait_for_condition
 from ray.dag import InputNode, MultiOutputNode
-import ray.remote_function
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.tests.conftest import *  # noqa
 
 if sys.platform != "linux" and sys.platform != "darwin":
@@ -279,9 +280,9 @@ def test_payload_large(ray_start_cluster, monkeypatch):
     assert len(nodes) == 2
 
     def create_actor(node):
-        return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
-        ).remote(0)
+        return Actor.options(label_selector={ray._raylet.RAY_NODE_ID_KEY: node}).remote(
+            0
+        )
 
     def get_node_id(self):
         return ray.get_runtime_context().get_node_id()
@@ -382,9 +383,9 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
     class DriverActor:
         def __init__(self):
             self._base_actor = SameNodeActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                label_selector={
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
             ).remote()
             self._refiner_actor = RemoteNodeActor.remote()
 

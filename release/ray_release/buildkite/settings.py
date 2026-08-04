@@ -1,7 +1,7 @@
 import enum
 import os
 import subprocess
-from typing import Optional, Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.logger import logger
@@ -63,7 +63,7 @@ def get_priority(priority_str: str) -> Priority:
     return priority_str_to_enum[priority_str]
 
 
-def get_test_filters(filters_str: str) -> Dict[str, str]:
+def get_test_filters(filters_str: str) -> Dict[str, list]:
     if not filters_str:
         return {}
 
@@ -77,7 +77,10 @@ def get_test_filters(filters_str: str) -> Dict[str, str]:
             raise ReleaseTestConfigError(
                 f"Invalid test filter: {line}. " "Should be of the form attr:value"
             )
-        test_filters[parts[0]] = parts[1]
+        # Support multiple values for the same attribute (OR logic)
+        if parts[0] not in test_filters:
+            test_filters[parts[0]] = []
+        test_filters[parts[0]].append(parts[1])
     return test_filters
 
 
@@ -193,7 +196,9 @@ def update_settings_from_buildkite(settings: Dict):
     if test_name_filter:
         settings["test_filters"] = get_test_filters("name:" + test_name_filter)
 
-    test_filters = get_buildkite_prompt_value("release-test-filters")
+    test_filters = get_buildkite_prompt_value(
+        "release-test-filters"
+    ) or get_buildkite_prompt_value("release-test-attr-regex-filters")
     if test_filters:
         settings["test_filters"] = get_test_filters(test_filters)
 

@@ -1,9 +1,22 @@
+import logging
 import math
 import time
-from collections import deque
-from typing import Any, Collection, Dict, List, Optional, Tuple
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Tuple
 
+if TYPE_CHECKING:
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+
+from typing_extensions import override
+
+from ray._common.utils import env_float
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    FIFOBundleQueue,
+    HashLinkedQueue,
+)
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionOptions,
     NodeIdStr,
     PhysicalOperator,
@@ -18,6 +31,12 @@ from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
+    "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR", 2
+)
 
 
 class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
@@ -47,13 +66,13 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             f"split({n}, equal={equal})",
             [input_op],
             data_context,
-            target_max_block_size=None,
+            num_output_splits=n,
         )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
-        self._buffer: List[RefBundle] = []
+        self._buffer: HashLinkedQueue = HashLinkedQueue()
         # The outputted bundles with output_split attribute set.
-        self._output_queue: deque[RefBundle] = deque()
+        self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
         # The time of the overhead for the output splitter (operator level)
@@ -66,16 +85,38 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                     f"len({locality_hints}) != {n}"
                 )
         self._locality_hints = locality_hints
+
+        # To optimize locality, we might defer dispatching of the bundles to allow
+        # for better node affinity by allowing next receiver to wait for a block
+        # with preferred locality (minimizing data movement).
+        #
+        # However, to guarantee liveness we cap buffering to not exceed
+        #
+        #   DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR * N
+        #
+        # Where N is the number of outputs the sequence is being split into
         if locality_hints:
-            # To optimize locality, we should buffer a certain number of elements
-            # internally before dispatch to allow the locality algorithm a good chance
-            # of selecting a preferred location. We use a small multiple of `n` since
-            # it's reasonable to buffer a couple blocks per consumer.
-            self._min_buffer_size = 2 * n
+            self._max_buffer_size = DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR * n
         else:
-            self._min_buffer_size = 0
+            self._max_buffer_size = 0
+
         self._locality_hits = 0
         self._locality_misses = 0
+
+        logger.debug(
+            f"OutputSplitter created: {n=}, {equal=}, {locality_hints=}, "
+            f"{self._max_buffer_size=}"
+        )
+
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._buffer]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
 
     def num_outputs_total(self) -> Optional[int]:
         # OutputSplitter does not change the number of blocks,
@@ -86,13 +127,17 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # The total number of rows is the same as the number of input rows.
         return self.input_dependencies[0].num_output_rows_total()
 
-    def start(self, options: ExecutionOptions) -> None:
+    def start(
+        self,
+        options: ExecutionOptions,
+        block_ref_counter: "BlockRefCounter",
+    ) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.
             self._locality_hints = None
-            self._min_buffer_size = 0
+            self._max_buffer_size = 0
 
-        super().start(options)
+        super().start(options, block_ref_counter)
 
     def throttling_disabled(self) -> bool:
         """Disables resource-based throttling.
@@ -104,10 +149,10 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         return True
 
     def has_next(self) -> bool:
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        output = self._output_queue.popleft()
+        output = self._output_queue.get_next()
         self._metrics.on_output_dequeued(output)
         return output
 
@@ -124,20 +169,31 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def _add_input_inner(self, bundle, input_index) -> None:
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
-        self._buffer.append(bundle)
-        self._metrics.on_input_queued(bundle)
-        self._dispatch_bundles()
+        self._buffer.add(bundle)
+        self._metrics.on_input_queued(bundle, input_index=0)
+        # Try dispatch buffered bundles
+        self._try_dispatch_bundles()
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
-        if not self._equal:
-            self._dispatch_bundles(dispatch_all=True)
-            assert not self._buffer, "Should have dispatched all bundles."
+
+        # First, attempt to dispatch bundles based on the locality preferences
+        # (if configured)
+        if self._locality_hints:
+            # NOTE: If equal distribution is not requested, we will force
+            #       the dispatching
+            self._try_dispatch_bundles(force=not self._equal)
+
+            if not self._equal:
+                assert not self._buffer, "All bundles should have been dispatched"
+                return
+
+        if not self._buffer:
             return
 
         # Otherwise:
         # Need to finalize distribution of buffered data to output splits.
-        buffer_size = sum(b.num_rows() for b in self._buffer)
+        buffer_size = self._buffer.num_rows()
         max_n = max(self._num_output)
 
         # First calculate the min rows to add per output to equalize them.
@@ -154,13 +210,14 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         for i, count in enumerate(allocation):
             bundles = self._split_from_buffer(count)
             for b in bundles:
-                b.output_split_idx = i
-                self._output_queue.append(b)
+                b = replace(b, output_split_idx=i)
+                self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
-        self._buffer = []
-
-    def internal_queue_size(self) -> int:
-        return len(self._buffer)
+        # Drain truncated remainder through the metrics layer.
+        # A bare self._buffer.clear() would bypass on_input_dequeued,
+        # orphaning RefBundle references in _metrics._internal_inqueues
+        # that pin ObjectRefs in the object store.
+        self.clear_internal_input_queue()
 
     def progress_str(self) -> str:
         if self._locality_hints:
@@ -168,59 +225,92 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         else:
             return "[locality disabled]"
 
-    def _dispatch_bundles(self, dispatch_all: bool = False) -> None:
+    def _try_dispatch_bundles(self, force: bool = False) -> None:
         start_time = time.perf_counter()
-        # Dispatch all dispatchable bundles from the internal buffer.
-        # This may not dispatch all bundles when equal=True.
-        while self._buffer and (
-            dispatch_all or len(self._buffer) >= self._min_buffer_size
-        ):
-            target_index = self._select_output_index()
-            target_bundle = self._pop_bundle_to_dispatch(target_index)
-            if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
-                target_bundle.output_split_idx = target_index
-                self._num_output[target_index] += target_bundle.num_rows()
-                self._output_queue.append(target_bundle)
-                self._metrics.on_output_queued(target_bundle)
-                if self._locality_hints:
-                    preferred_loc = self._locality_hints[target_index]
-                    if preferred_loc in self._get_locations(target_bundle):
-                        self._locality_hits += 1
-                    else:
-                        self._locality_misses += 1
+
+        # Currently, there are 2 modes of operation when dispatching
+        # accumulated bundles:
+        #
+        #   1. Best-effort: we do a single pass over the whole buffer
+        #      and try to dispatch all bundles either
+        #
+        #      a) Based on their locality (if feasible)
+        #      b) Longest-waiting if buffer exceeds max-size threshold
+        #
+        #   2. Mandatory: when whole buffer has to be dispatched (for ex,
+        #      upon completion of the dataset execution)
+        #
+        for _ in range(len(self._buffer)):
+            # Get target output index of the next receiver
+            target_output_index = self._select_next_output_index()
+            # Look up preferred bundle
+            preferred_bundle = self._find_preferred_bundle(target_output_index)
+
+            if preferred_bundle:
+                target_bundle = preferred_bundle
+            elif len(self._buffer) >= self._max_buffer_size or force:
+                # If we're not able to find a preferred bundle and buffer size is above
+                # the cap, we pop the longest awaiting and pass to the next receiver
+                target_bundle = self._buffer.peek_next()
+                assert target_bundle is not None
             else:
-                # Put it back and abort.
-                self._buffer.insert(0, target_bundle)
-                self._metrics.on_input_queued(target_bundle)
+                # Provided that we weren't able to either locate preferred bundle
+                # or dequeue the head one, we bail out from iteration
                 break
+
+            # In case, when we can't safely dispatch (to avoid violating distribution
+            # requirements), short-circuit
+            if not self._can_safely_dispatch(
+                target_output_index, target_bundle.num_rows()
+            ):
+                break
+
+            # Pop preferred bundle from the buffer
+            self._buffer.remove(target_bundle)
+            self._metrics.on_input_dequeued(target_bundle, input_index=0)
+
+            target_bundle = replace(target_bundle, output_split_idx=target_output_index)
+
+            self._num_output[target_output_index] += target_bundle.num_rows()
+            self._output_queue.add(target_bundle)
+            self._metrics.on_output_queued(target_bundle)
+
+            if self._locality_hints:
+                if preferred_bundle:
+                    self._locality_hits += 1
+                else:
+                    self._locality_misses += 1
+
         self._output_splitter_overhead_time += time.perf_counter() - start_time
 
-    def _select_output_index(self) -> int:
+    def _select_next_output_index(self) -> int:
         # Greedily dispatch to the consumer with the least data so far.
         i, _ = min(enumerate(self._num_output), key=lambda t: t[1])
         return i
 
-    def _pop_bundle_to_dispatch(self, target_index: int) -> RefBundle:
+    def _find_preferred_bundle(self, target_output_index: int) -> Optional[RefBundle]:
         if self._locality_hints:
-            preferred_loc = self._locality_hints[target_index]
+            preferred_loc = self._locality_hints[target_output_index]
+
+            # TODO make this more efficient (adding inverse hash-map)
             for bundle in self._buffer:
                 if preferred_loc in self._get_locations(bundle):
-                    self._buffer.remove(bundle)
-                    self._metrics.on_input_dequeued(bundle)
                     return bundle
 
-        bundle = self._buffer.pop(0)
-        self._metrics.on_input_dequeued(bundle)
-        return bundle
+        return None
 
-    def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
+    def _can_safely_dispatch(self, target_index: int, target_num_rows: int) -> bool:
         if not self._equal:
             # If not in equals mode, dispatch away with no buffer requirements.
             return True
+
+        # Simulate dispatching a bundle to the target receiver
         output_distribution = self._num_output.copy()
-        output_distribution[target_index] += nrow
+        output_distribution[target_index] += target_num_rows
         buffer_requirement = self._calculate_buffer_requirement(output_distribution)
-        buffer_size = sum(b.num_rows() for b in self._buffer)
+        # Subtract target bundle size from the projected buffer
+        buffer_size = self._buffer.num_rows() - target_num_rows
+        # Check if we have enough rows LEFT after dispatching to equalize.
         return buffer_size >= buffer_requirement
 
     def _calculate_buffer_requirement(self, output_distribution: List[int]) -> int:
@@ -232,18 +322,29 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def _split_from_buffer(self, nrow: int) -> List[RefBundle]:
         output = []
         acc = 0
+        label_selector = self.data_context.execution_options.label_selector
         while acc < nrow:
-            b = self._buffer.pop()
-            self._metrics.on_input_dequeued(b)
+            b = self._buffer.get_next()
+            self._metrics.on_input_dequeued(b, input_index=0)
             if acc + b.num_rows() <= nrow:
                 output.append(b)
                 acc += b.num_rows()
             else:
-                left, right = _split(b, nrow - acc)
+                input_refs = {entry.ref for entry in b.blocks}
+                left, right = _split(b, nrow - acc, label_selector)
+                # Only register genuinely new blocks created by _split_block.
+                for part in (left, right):
+                    for entry in part.blocks:
+                        if entry.ref not in input_refs:
+                            self._block_ref_counter.on_block_produced(
+                                entry.ref,
+                                entry.metadata.size_bytes or 0,
+                                self.id,
+                            )
                 output.append(left)
                 acc += left.num_rows()
-                self._buffer.append(right)
-                self._metrics.on_input_queued(right)
+                self._buffer.add(right)
+                self._metrics.on_input_queued(right, input_index=0)
                 assert acc == nrow, (acc, nrow)
 
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
@@ -255,6 +356,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         This method may be overridden for testing.
 
+        Args:
+            bundle: The ``RefBundle`` whose object locations to look up.
+
         Returns:
             A list of node ids where the objects in the bundle are located
         """
@@ -262,15 +366,18 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         return preferred_locations.keys()
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        return True
 
-
-def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
+def _split(
+    bundle: RefBundle,
+    left_size: int,
+    label_selector: Optional[Dict[str, str]] = None,
+) -> Tuple[RefBundle, RefBundle]:
     left_blocks, left_meta = [], []
     right_blocks, right_meta = [], []
     acc = 0
-    for b, m in bundle.blocks:
+    for entry in bundle.blocks:
+        b = entry.ref
+        m = entry.metadata
         if acc >= left_size:
             right_blocks.append(b)
             right_meta.append(m)
@@ -281,7 +388,7 @@ def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
         else:
             # Trouble case: split it up.
             lm, rm = _split_meta(m, left_size - acc)
-            lb, rb = _split_block(b, left_size - acc)
+            lb, rb = _split_block(b, left_size - acc, label_selector)
             left_meta.append(lm)
             right_meta.append(rm)
             left_blocks.append(lb)
@@ -289,12 +396,12 @@ def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
             acc += lm.num_rows
             assert acc == left_size
     left = RefBundle(
-        list(zip(left_blocks, left_meta)),
+        [BlockEntry(b, m) for b, m in zip(left_blocks, left_meta)],
         owns_blocks=bundle.owns_blocks,
         schema=bundle.schema,
     )
     right = RefBundle(
-        list(zip(right_blocks, right_meta)),
+        [BlockEntry(b, m) for b, m in zip(right_blocks, right_meta)],
         owns_blocks=bundle.owns_blocks,
         schema=bundle.schema,
     )
@@ -323,12 +430,15 @@ def _split_meta(
 
 
 def _split_block(
-    b: ObjectRef[Block], left_size: int
+    b: ObjectRef[Block],
+    left_size: int,
+    label_selector: Optional[Dict[str, str]] = None,
 ) -> Tuple[ObjectRef[Block], ObjectRef[Block]]:
     split_single_block = cached_remote_fn(_split_single_block)
-    left, right = split_single_block.options(num_cpus=0, num_returns=2).remote(
-        b, left_size
-    )
+    options: Dict[str, Any] = {"num_cpus": 0, "num_returns": 2}
+    if label_selector:
+        options["label_selector"] = label_selector
+    left, right = split_single_block.options(**options).remote(b, left_size)
     return left, right
 
 

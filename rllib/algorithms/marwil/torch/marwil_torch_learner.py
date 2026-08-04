@@ -39,10 +39,16 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
-            num_valid = torch.sum(batch[Columns.LOSS_MASK])
+            # Get the loss mask from the batch.
+            mask = batch[Columns.LOSS_MASK].clone()
+            # Check, if a burn-in should be used to recover from a poor state.
+            if self.config.burnin_len > 0:
+                # Train only on the timesteps after the burn-in period.
+                mask[:, : self.config.burnin_len] = False
+            num_valid = torch.sum(mask)
 
             def possibly_masked_mean(data_):
-                return torch.sum(data_[batch[Columns.LOSS_MASK]]) / num_valid
+                return torch.sum(data_[mask]) / num_valid
 
         else:
             possibly_masked_mean = torch.mean

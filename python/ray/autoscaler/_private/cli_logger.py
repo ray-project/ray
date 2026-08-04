@@ -146,36 +146,26 @@ def _format_msg(
     `*args` and `**kwargs`.
 
     Args:
-        *args (Any): `.format` arguments for `msg`.
-        no_format (bool):
-            If `no_format` is `True`,
-            `.format` will not be called on the message.
-
-            Useful if the output is user-provided or may otherwise
+        msg: The message to format.
+        *args: `.format` arguments for `msg`.
+        no_format: If `no_format` is `True`, `.format` will not be called on
+            the message. Useful if the output is user-provided or may otherwise
             contain an unexpected formatting string (e.g. "{}").
-        _tags (Dict[str, Any]):
-            key-value pairs to display at the end of
-            the message in square brackets.
-
-            If a tag is set to `True`, it is printed without the value,
-            the presence of the tag treated as a "flag".
+        _tags: key-value pairs to display at the end of the message in
+            square brackets. If a tag is set to `True`, it is printed without
+            the value, the presence of the tag treated as a "flag".
 
             E.g. `_format_msg("hello", _tags=dict(from=mom, signed=True))`
                  `hello [from=Mom, signed]`
-        _numbered (Tuple[str, int, int]):
-            `(brackets, i, n)`
-
-            The `brackets` string is composed of two "bracket" characters,
-            `i` is the index, `n` is the total.
-
+        _numbered: `(brackets, i, n)` The `brackets` string is composed of
+            two "bracket" characters, `i` is the index, `n` is the total.
             The string `{i}/{n}` surrounded by the "brackets" is
-            prepended to the message.
-
-            This is used to number steps in a procedure, with different
-            brackets specifying different major tasks.
+            prepended to the message. This is used to number steps in a
+            procedure, with different brackets specifying different major tasks.
 
             E.g. `_format_msg("hello", _numbered=("[]", 0, 5))`
                  `[0/5] hello`
+        **kwargs: `.format` keyword arguments for `msg`.
 
     Returns:
         The formatted message.
@@ -243,20 +233,12 @@ class _CliLogger:
     to 'record' style logging.
 
     Attributes:
-        color_mode (str):
-            Can be "true", "false", or "auto".
-
-            Enables or disables `colorful`.
-
-            If `color_mode` is "auto", is set to `not stdout.isatty()`
-        indent_level (int):
-            The current indentation level.
-
-            All messages will be indented by prepending `"  " * indent_level`
-        vebosity (int):
-            Output verbosity.
-
-            Low verbosity will disable `verbose` and `very_verbose` messages.
+        color_mode: Can be "true", "false", or "auto". Enables or disables
+            `colorful`. If `color_mode` is "auto", is set to `not stdout.isatty()`
+        indent_level: The current indentation level. All messages will
+            be indented by prepending `"  " * indent_level`
+        _verbosity: Output verbosity. Low verbosity will disable
+            `verbose` and `very_verbose` messages.
     """
 
     color_mode: str
@@ -372,14 +354,15 @@ class _CliLogger:
         _level_str: str = "INFO",
         _linefeed: bool = True,
         end: str = None,
-    ):
+    ) -> None:
         """Proxy for printing messages.
 
         Args:
             msg: Message to print.
-            linefeed (bool):
-                If `linefeed` is `False` no linefeed is printed at the
-                end of the message.
+            _level_str: Log level label used by the non-pretty formatter.
+            _linefeed: If `_linefeed` is `False` no linefeed is printed at
+                the end of the message.
+            end: String appended after the last value, passed to print().
         """
         if self.pretty:
             rendered_message = "  " * self.indent_level + msg
@@ -469,8 +452,9 @@ class _CliLogger:
 
         Args:
             key: Label that is prepended to the message.
-
-        For other arguments, see `_format_msg`.
+            msg: Message to print after the label. See `_format_msg`.
+            *args: Additional positional args forwarded to `_format_msg`.
+            **kwargs: Additional keyword args forwarded to `_format_msg`.
         """
         self._print(cf.skyBlue(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
 
@@ -585,8 +569,9 @@ class _CliLogger:
 
         Args:
             val: Value to check.
-
-        For other arguments, see `_format_msg`.
+            msg: Message to print on assertion failure. See `_format_msg`.
+            *args: Additional positional args forwarded to `_format_msg`.
+            **kwargs: Additional keyword args forwarded to `_format_msg`.
         """
         if not val:
             exc = None
@@ -620,15 +605,17 @@ class _CliLogger:
         Args:
             yes: If `yes` is `True` the dialog will default to "yes"
                         and continue without waiting for user input.
-            _abort (bool):
-                If `_abort` is `True`,
-                "no" means aborting the program.
-            _default (bool):
-                The default action to take if the user just presses enter
-                with no input.
-            _timeout_s (float):
-                If user has no input within _timeout_s seconds, the default
-                action is taken. None means no timeout.
+            msg: The prompt message to display. See `_format_msg`.
+            *args: Additional positional args forwarded to `_format_msg`.
+            _abort: If `_abort` is `True`, "no" means aborting the program.
+            _default: The default action to take if the user just presses
+                enter with no input.
+            _timeout_s: If user has no input within _timeout_s seconds,
+                the default action is taken. None means no timeout.
+            **kwargs: Additional keyword args forwarded to `_format_msg`.
+
+        Returns:
+            True if the user confirmed (or `yes` was set); False otherwise.
         """
         should_abort = _abort
         default = _default
@@ -743,7 +730,9 @@ class _CliLogger:
         """Prompt the user for some text input.
 
         Args:
-            msg: The mesage to display to the user before the prompt.
+            msg: The message to display to the user before the prompt.
+            *args: Additional positional args forwarded to `_format_msg`.
+            **kwargs: Additional keyword args forwarded to `_format_msg`.
 
         Returns:
             The string entered by the user.

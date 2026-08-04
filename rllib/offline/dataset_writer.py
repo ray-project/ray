@@ -1,14 +1,14 @@
 import logging
 import os
 import time
+from typing import Dict, List
 
 from ray import data
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_writer import _to_json_dict
 from ray.rllib.offline.output_writer import OutputWriter
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.typing import SampleBatchType
-from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,6 @@ class DatasetWriter(OutputWriter):
             elif self.format == "parquet":
                 ds.write_parquet(self.path, try_create_dir=True)
             else:
-                raise ValueError("Unknown output type: ", self.format)
+                raise ValueError(f"Unknown output type: {self.format}")
             self.samples = []
             logger.debug("Wrote dataset in {}s".format(time.time() - start))

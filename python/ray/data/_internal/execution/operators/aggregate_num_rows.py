@@ -1,6 +1,10 @@
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -23,7 +27,6 @@ class AggregateNumRows(PhysicalOperator):
             "AggregateNumRows",
             input_dependencies,
             data_context,
-            target_max_block_size=None,
         )
 
         self._column_name = column_name
@@ -46,8 +49,13 @@ class AggregateNumRows(PhysicalOperator):
 
         metadata = BlockAccessor.for_block(block).get_metadata()
         schema = BlockAccessor.for_block(block).schema()
-        bundle = RefBundle([(block_ref, metadata)], owns_blocks=True, schema=schema)
+        bundle = RefBundle(
+            [BlockEntry(block_ref, metadata)], owns_blocks=True, schema=schema
+        )
 
+        self._block_ref_counter.on_block_produced(
+            block_ref, metadata.size_bytes or 0, self.id
+        )
         self._has_outputted = True
         return bundle
 
@@ -59,7 +67,4 @@ class AggregateNumRows(PhysicalOperator):
         self._num_rows += refs.num_rows()
 
     def throttling_disabled(self) -> bool:
-        return True
-
-    def implements_accurate_memory_accounting(self) -> bool:
         return True

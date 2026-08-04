@@ -1,11 +1,11 @@
 import copy
-from typing import Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
-import ray
 from ray.actor import ActorHandle
-from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
-from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 
 
 @PublicAPI(stability="stable")
@@ -13,13 +13,15 @@ class DataConfig:
     """Class responsible for configuring Train dataset preprocessing.
 
     For advanced use cases, this class can be subclassed and the `configure()` method
-    overriden for custom data preprocessing.
+    overridden for custom data preprocessing.
     """
 
     def __init__(
         self,
         datasets_to_split: Union[Literal["all"], List[str]] = "all",
-        execution_options: Optional[ExecutionOptions] = None,
+        execution_options: Optional[
+            Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
+        ] = None,
         enable_shard_locality: bool = True,
     ):
         """Construct a DataConfig.
@@ -28,12 +30,21 @@ class DataConfig:
             datasets_to_split: Specifies which datasets should be split among workers.
                 Can be set to "all" or a list of dataset names. Defaults to "all",
                 i.e. split all datasets.
-            execution_options: The execution options to pass to Ray Data. By default,
-                the options will be optimized for data ingest. When overriding this,
-                base your options off of `DataConfig.default_ingest_options()`.
-            enable_shard_locality: If true, when sharding the datasets across Train
-                workers, locality will be considered to minimize cross-node data transfer.
-                This is on by default.
+            execution_options: Optional Ray Data execution options. When set, they are
+                applied to dataset shards. When ``None`` (the default), Train applies
+                :meth:`default_ingest_options` to each dataset shard. Can be either:
+
+                1. A single ExecutionOptions object applied to all datasets.
+                2. A dict mapping dataset names to ExecutionOptions for per-dataset
+                   overrides. Datasets not present in the dict use
+                   :meth:`default_ingest_options`.
+
+                NOTE: For exclude_resources and resource_limits, those options only affect
+                Ray Data *after* train performs its cluster resource reservation.
+                So if you specify exclude_resources, it will exclude the resources
+                from data's reservation, *not* train's reservation.
+            enable_shard_locality: If true, dataset sharding across Train workers will
+                consider locality to minimize cross-node data transfer. Enabled by default.
         """
         if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
@@ -44,33 +55,42 @@ class DataConfig:
                 f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
             )
 
-        self._execution_options: ExecutionOptions = (
-            execution_options or DataConfig.default_ingest_options()
-        )
+        self._user_execution_options = execution_options
         self._enable_shard_locality = enable_shard_locality
 
-        self._num_train_cpus = 0.0
-        self._num_train_gpus = 0.0
+    def _get_user_execution_options(
+        self, dataset_name: str
+    ) -> Optional["ExecutionOptions"]:
+        """Return user-provided execution options for a dataset, if any."""
+        if self._user_execution_options is None:
+            return None
+        if isinstance(self._user_execution_options, dict):
+            if dataset_name not in self._user_execution_options:
+                return None
+            return self._user_execution_options[dataset_name]
+        return self._user_execution_options
 
-    def set_train_total_resources(self, num_train_cpus: float, num_train_gpus: float):
-        """Set the total number of CPUs and GPUs used by training.
+    def _resolve_execution_options(self, dataset_name: str) -> "ExecutionOptions":
+        """Return a deep copy of the effective execution options for a dataset shard.
 
-        If CPU or GPU resource limits are not set, they will be set to the
-        total cluster resources minus the resources used by training.
+        Returns a deep copy so callers (including subclasses that override
+        ``configure``) can mutate the result without aliasing the driver
+        ``DataContext`` or the user-supplied ``ExecutionOptions`` object.
         """
-        # TODO: We may also include other resources besides CPU and GPU.
-        self._num_train_cpus = num_train_cpus
-        self._num_train_gpus = num_train_gpus
+        return copy.deepcopy(
+            self._get_user_execution_options(dataset_name)
+            or self.default_ingest_options()
+        )
 
     @DeveloperAPI
     def configure(
         self,
-        datasets: Dict[str, Dataset],
+        datasets: Dict[str, "Dataset"],
         world_size: int,
         worker_handles: Optional[List[ActorHandle]],
-        worker_node_ids: Optional[List[NodeIdStr]],
+        worker_node_ids: Optional[List["NodeIdStr"]],
         **kwargs,
-    ) -> List[Dict[str, DataIterator]]:
+    ) -> List[Dict[str, "DataIterator"]]:
         """Configure how Train datasets should be assigned to workers.
 
         Args:
@@ -78,7 +98,7 @@ class DataConfig:
             world_size: The number of Train workers in total.
             worker_handles: The actor handles of the Train workers.
             worker_node_ids: The node ids of the Train workers.
-            kwargs: Forwards compatibility placeholder.
+            **kwargs: Forwards compatibility placeholder.
 
         Returns:
             A list of dataset splits for each worker. The size of the list must be
@@ -98,21 +118,8 @@ class DataConfig:
 
         locality_hints = worker_node_ids if self._enable_shard_locality else None
         for name, ds in datasets.items():
-            execution_options = copy.deepcopy(self._execution_options)
-
-            if execution_options.is_resource_limits_default():
-                # If "resource_limits" is not overriden by the user,
-                # add training-reserved resources to Data's exclude_resources.
-                execution_options.exclude_resources = (
-                    execution_options.exclude_resources.add(
-                        ExecutionResources(
-                            cpu=self._num_train_cpus, gpu=self._num_train_gpus
-                        )
-                    )
-                )
-
             ds = ds.copy(ds)
-            ds.context.execution_options = execution_options
+            ds.context.execution_options = self._resolve_execution_options(name)
 
             if name in datasets_to_split:
                 for i, split in enumerate(
@@ -128,17 +135,17 @@ class DataConfig:
         return output
 
     @staticmethod
-    def default_ingest_options() -> ExecutionOptions:
+    def default_ingest_options() -> "ExecutionOptions":
         """The default Ray Data options used for data ingest.
 
         By default, configurations are carried over from what is already set
         in DataContext.
         """
-        ctx = ray.data.DataContext.get_current()
+        from ray.data import ExecutionOptions
+        from ray.data.context import DataContext
+
+        ctx = DataContext.get_current()
         return ExecutionOptions(
-            # TODO(hchen): Re-enable `locality_with_output` by default after fixing
-            # https://github.com/ray-project/ray/issues/40607
-            locality_with_output=ctx.execution_options.locality_with_output,
             resource_limits=ctx.execution_options.resource_limits,
             exclude_resources=ctx.execution_options.exclude_resources,
             preserve_order=ctx.execution_options.preserve_order,

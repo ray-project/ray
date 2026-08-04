@@ -1,8 +1,22 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
+# Default main function that configures the Ray logger and sets up failure signal
+# handling to aid with debugging.
+#
+# Included by default in ray_cc_test (see bazel/ray.bzl for ray_cc_test definition).
+# To use a custom main function instead (like `gtest_main`), set
+# `use_ray_gtest_main = False` in the `ray_cc_test` target.
 ray_cc_library(
-    name = "compat",
-    hdrs = ["compat.h"],
+    name = "ray_gtest_main",
+    testonly = True,
+    srcs = ["ray_gtest_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/util:logging",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 ray_cc_library(
@@ -11,14 +25,20 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "test_util",
-    srcs = ["test_util.cc"],
-    hdrs = ["test_util.h"],
+    name = "test_utils",
+    srcs = ["test_utils.cc"],
+    hdrs = ["test_utils.h"],
     deps = [
-        ":asio",
+        ":function_descriptor",
         ":id",
+        ":placement_group",
         ":ray_object",
+        ":task_common",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/protobuf:autoscaler_cc_grpc",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
@@ -70,30 +90,12 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "memory_monitor",
-    srcs = [
-        "memory_monitor.cc",
-    ],
-    hdrs = [
-        "memory_monitor.h",
-    ],
-    deps = [
-        ":asio",
-        ":ray_config",
-        "//src/ray/util:process",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_prod",
-        "@nlohmann_json",
-    ],
-)
-
-ray_cc_library(
     name = "file_system_monitor",
     srcs = ["file_system_monitor.cc"],
     hdrs = ["file_system_monitor.h"],
     deps = [
-        ":asio",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/util:event",
         "@com_google_googletest//:gtest_prod",
     ],
@@ -119,99 +121,151 @@ ray_cc_library(
 ray_cc_library(
     name = "id",
     srcs = [
-        "common_protocol.cc",
         "id.cc",
     ],
     hdrs = [
-        "common_protocol.h",
         "id.h",
         "id_def.h",
     ],
     deps = [
         ":constants",
-        ":status",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/thirdparty:sha256",
+        "//src/ray/util:logging",
         "//src/ray/util:random",
-        "@com_github_google_flatbuffers//:flatbuffers",
+        "//src/ray/util:visibility",
         "@msgpack",
+    ],
+)
+
+ray_cc_library(
+    name = "filter_local_objects_util",
+    hdrs = ["filter_local_objects_util.h"],
+    deps = [":id"],
+)
+
+ray_cc_library(
+    name = "flatbuf_utils",
+    hdrs = [
+        "flatbuf_utils.h",
+    ],
+    deps = [
+        "@com_github_google_flatbuffers//:flatbuffers",
+    ],
+)
+
+ray_cc_library(
+    name = "bundle_spec",
+    srcs = [
+        "bundle_spec.cc",
+    ],
+    hdrs = [
+        "bundle_spec.h",
+    ],
+    deps = [
+        ":grpc_util",
+        ":id",
+        "//src/ray/common/scheduling:cluster_resource_data",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:placement_group_util",
+        "//src/ray/common/scheduling:scheduling_ids",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "placement_group",
+    srcs = [
+        "placement_group.cc",
+    ],
+    hdrs = [
+        "placement_group.h",
+    ],
+    deps = [
+        ":bundle_spec",
+        ":id",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "function_descriptor",
+    srcs = ["function_descriptor.cc"],
+    hdrs = ["function_descriptor.h"],
+    deps = [
+        ":grpc_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "bundle_location_index",
+    srcs = ["bundle_location_index.cc"],
+    hdrs = ["bundle_location_index.h"],
+    deps = [
+        ":id",
+        ":placement_group",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
 ray_cc_library(
     name = "task_common",
     srcs = [
-        "bundle_location_index.cc",
-        "bundle_spec.cc",
-        "function_descriptor.cc",
-        "placement_group.cc",
-        "scheduling/cluster_resource_data.cc",
-        "scheduling/fixed_point.cc",
-        "scheduling/label_selector.cc",
-        "scheduling/resource_instance_set.cc",
-        "scheduling/resource_set.cc",
-        "scheduling/scheduling_ids.cc",
-        "task/task.cc",
         "task/task_spec.cc",
     ],
     hdrs = [
-        "bundle_location_index.h",
-        "bundle_spec.h",
-        "function_descriptor.h",
-        "placement_group.h",
-        "scheduling/cluster_resource_data.h",
-        "scheduling/fixed_point.h",
-        "scheduling/label_selector.h",
-        "scheduling/resource_instance_set.h",
-        "scheduling/resource_set.h",
-        "scheduling/scheduling_ids.h",
-        "task/task.h",
         "task/task_common.h",
         "task/task_spec.h",
         "task/task_util.h",
     ],
     deps = [
         ":event_stats",
+        ":function_descriptor",
         ":grpc_util",
-        ":id",
         ":ray_config",
         ":ray_object",
         ":runtime_env",
+        "//src/ray/common/scheduling:fallback_strategy",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:resource_set",
+        "//src/ray/common/scheduling:scheduling_class_util",
         "//src/ray/flatbuffers:node_manager_generated",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/util:clock",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
 ray_cc_library(
-    name = "asio",
+    name = "lease",
     srcs = [
-        "asio/asio_chaos.cc",
-        "asio/instrumented_io_context.cc",
-        "asio/io_service_pool.cc",
-        "asio/periodical_runner.cc",
+        "lease/lease_spec.cc",
     ],
     hdrs = [
-        "asio/asio_chaos.h",
-        "asio/asio_util.h",
-        "asio/instrumented_io_context.h",
-        "asio/io_service_pool.h",
-        "asio/periodical_runner.h",
-        "asio/postable.h",
+        "lease/lease.h",
+        "lease/lease_spec.h",
     ],
     deps = [
-        ":event_stats",
-        ":ray_config",
-        "//src/ray/util:array",
-        "//src/ray/util:function_traits",
-        "@boost//:asio",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
+        ":function_descriptor",
+        ":id",
+        ":runtime_env",
+        "//src/ray/common/scheduling:label_selector",
+        "//src/ray/common/scheduling:resource_set",
+        "//src/ray/common/scheduling:scheduling_class_util",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 
@@ -224,10 +278,10 @@ ray_cc_library(
         "event_stats.h",
     ],
     deps = [
+        ":metrics",
         ":ray_config",
         "//src/ray/stats:stats_metric",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
+        "//src/ray/util:time",
     ],
 )
 
@@ -240,36 +294,11 @@ ray_cc_library(
         "ray_internal_flag_def.h",
     ],
     deps = [
+        "//src/ray/common/monitors:cpu_monitor_utils",
         "//src/ray/util:logging",
         "@boost//:algorithm",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
-    ],
-)
-
-ray_cc_library(
-    name = "ray_syncer",
-    srcs = [
-        "ray_syncer/node_state.cc",
-        "ray_syncer/ray_syncer.cc",
-        "ray_syncer/ray_syncer_client.cc",
-        "ray_syncer/ray_syncer_server.cc",
-    ],
-    hdrs = [
-        "ray_syncer/common.h",
-        "ray_syncer/node_state.h",
-        "ray_syncer/ray_syncer.h",
-        "ray_syncer/ray_syncer_bidi_reactor.h",
-        "ray_syncer/ray_syncer_bidi_reactor_base.h",
-        "ray_syncer/ray_syncer_client.h",
-        "ray_syncer/ray_syncer_server.h",
-    ],
-    deps = [
-        ":asio",
-        ":id",
-        "//:ray_syncer_cc_grpc",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -309,4 +338,37 @@ ray_cc_library(
     name = "source_location",
     srcs = ["source_location.cc"],
     hdrs = ["source_location.h"],
+)
+
+ray_cc_library(
+    name = "protobuf_utils",
+    srcs = ["protobuf_utils.cc"],
+    hdrs = ["protobuf_utils.h"],
+    deps = [
+        ":constants",
+        ":id",
+        ":ray_config",
+        ":task_common",
+        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:export_task_event_cc_proto",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:time",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics",
+    hdrs = ["metrics.h"],
+    deps = [
+        "//src/ray/stats:percentile_metric",
+        "//src/ray/stats:stats_metric",
+    ],
+)
+
+ray_cc_library(
+    name = "python_callbacks",
+    hdrs = [
+        "python_callbacks.h",
+    ],
 )

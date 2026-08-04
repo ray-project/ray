@@ -1,9 +1,11 @@
 import os
+import platform
 import subprocess
 import sys
 from typing import List, Optional, Tuple
 
-from ci.ray_ci.container import Container
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.container import Container, get_docker_image
 
 _DOCKER_CAP_ADD = [
     "SYS_PTRACE",
@@ -18,7 +20,9 @@ class LinuxContainer(Container):
         docker_tag: str,
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
+        python_version: Optional[str] = None,
         tmp_filesystem: Optional[str] = None,
+        architecture: Optional[str] = None,
         privileged: bool = False,
     ) -> None:
         super().__init__(docker_tag, volumes, envs)
@@ -26,8 +30,18 @@ class LinuxContainer(Container):
         if tmp_filesystem is not None:
             if tmp_filesystem != "tmpfs":
                 raise ValueError("Only tmpfs is supported for tmp filesystem")
+
+        self.python_version = python_version or DEFAULT_PYTHON_VERSION
         self.tmp_filesystem = tmp_filesystem
         self.privileged = privileged
+
+        if architecture is None:
+            architecture = platform.machine()
+            if architecture.lower() == "amd64":
+                architecture = "x86_64"
+            if architecture == "arm64":
+                architecture = "aarch64"
+        self.architecture = architecture
 
     def install_ray(
         self, build_type: Optional[str] = None, mask: Optional[str] = None
@@ -50,13 +64,33 @@ class LinuxContainer(Container):
             "--build-arg",
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
         ]
+
+        if not build_type or build_type in (
+            "optimized",
+            "wheel",
+            "wheel-aarch64",
+        ):
+            for base_tag, arg_name in [
+                (f"ray-core-py{self.python_version}", "RAY_CORE_IMAGE"),
+                ("ray-dashboard", "RAY_DASHBOARD_IMAGE"),
+            ]:
+                if self.architecture != DEFAULT_ARCHITECTURE:
+                    base_tag += f"-{self.architecture}"
+                build_cmd += ["--build-arg", f"{arg_name}={get_docker_image(base_tag)}"]
+
+        if build_type in ("wheel", "wheel-aarch64"):
+            base_tag = f"ray-wheel-py{self.python_version}"
+            if self.architecture != DEFAULT_ARCHITECTURE:
+                base_tag += f"-{self.architecture}"
+            build_cmd += [
+                "--build-arg",
+                f"RAY_WHEEL_IMAGE={get_docker_image(base_tag)}",
+            ]
+
         if mask:
             build_cmd += ["--build-arg", "RAY_INSTALL_MASK=" + mask]
-        build_cmd += [
-            "-f",
-            "/ray/ci/ray_ci/tests.env.Dockerfile",
-            "/ray",
-        ]
+
+        build_cmd += ["-f", "ci/ray_ci/tests.env.Dockerfile", "/ray"]
         subprocess.check_call(
             build_cmd,
             env=env,

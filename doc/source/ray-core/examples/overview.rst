@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Core code examples from beginner (Monte Carlo pi) to intermediate (MapReduce, web crawler) to advanced (parameter server, pong).
+
 .. _ray-core-examples-tutorial:
 
 Ray Core Examples
@@ -30,7 +33,7 @@ Intermediate
 .. list-table::
 
   * - :doc:`Running a Simple MapReduce Example with Ray Core <map_reduce>`
-  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web-crawler>`
+  * - :doc:`Speed Up Your Web Crawler by Parallelizing it with Ray <web_crawler>`
 
 
 Advanced

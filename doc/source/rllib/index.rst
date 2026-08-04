@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Industry-grade, scalable reinforcement learning with a unified API for single-agent, multi-agent, and offline RL training and deployment.
 
 .. sphinx_rllib_readme_begin
 
@@ -55,7 +56,6 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     user-guides
     rllib-examples
     new-api-stack-migration-guide
-    package_ref/index
 
 
 .. sphinx_rllib_readme_2_begin
@@ -138,8 +138,8 @@ on the collected data, and a model update step.
     # Build the algorithm.
     algo = config.build_algo()
 
-    # Train it for 5 iterations ...
-    for _ in range(5):
+    # Train it for 2 iterations ...
+    for _ in range(2):
         pprint(algo.train())
 
 At the end of your script, you evaluate the trained Algorithm and release all its resources:
@@ -299,7 +299,7 @@ Why chose RLlib?
     **Ray.Data** has been integrated into RLlib, enabling **large-scale data ingestion** for offline RL and behavior
     cloning (BC) workloads.
 
-    See here for a basic `tuned example for the behavior cloning algo <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
+    See here for a basic `tuned example for the behavior cloning algo <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/cartpole_bc.py>`__
     and here for how to `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
 
 .. dropdown:: **Support for External Env Clients**

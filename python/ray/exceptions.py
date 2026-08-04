@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from traceback import format_exception
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 
 import colorama
 
@@ -13,12 +13,12 @@ from ray.core.generated.common_pb2 import (
     PYTHON,
     ActorDiedErrorContext,
     Address,
+    ErrorType,
     Language,
     NodeDeathInfo,
     RayException,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -48,19 +48,16 @@ class RayError(Exception):
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
-            except Exception as e:
-                msg = "Failed to unpickle serialized exception"
-                # Include a fallback string/stacktrace to aid debugging.
-                #  formatted_exception_string is set in to_bytes() above by calling
+            except Exception:
+                # formatted_exception_string is set in to_bytes() above by calling
                 # traceback.format_exception() on the original exception. It contains
                 # the string representation and stack trace of the original error.
-                formatted = getattr(
+                original_stacktrace = getattr(
                     ray_exception,
                     "formatted_exception_string",
                     "No formatted exception string available.",
                 )
-                msg += f"\nOriginal exception (string repr):\n{formatted}"
-                raise RuntimeError(msg) from e
+                return UnserializableException(original_stacktrace)
         else:
             return CrossLanguageError(ray_exception)
 
@@ -80,16 +77,19 @@ class CrossLanguageError(RayError):
 
 @PublicAPI
 class TaskCancelledError(RayError):
-    """Raised when this task is cancelled.
-
-    Args:
-        task_id: The TaskID of the function that was directly
-            cancelled.
-    """
+    """Raised when this task is cancelled."""
 
     def __init__(
         self, task_id: Optional[TaskID] = None, error_message: Optional[str] = None
     ):
+        """Initialize a ``TaskCancelledError``.
+
+        Args:
+            task_id: The TaskID of the function that was directly
+                cancelled.
+            error_message: Optional additional error message describing why
+                the task was cancelled.
+        """
         self.task_id = task_id
         self.error_message = error_message
 
@@ -100,6 +100,49 @@ class TaskCancelledError(RayError):
         if self.error_message:
             msg += self.error_message
         return msg
+
+
+# Path fragments (POSIX "/") identifying traceback ``File ...`` frames that
+# belong to Ray-internal machinery -- noise in a user-facing traceback. Ray
+# Core frames are always hidden; callers can hide additional library-internal
+# frames by passing their own markers (Ray Data passes the DATA markers below).
+_RAY_CORE_INTERNAL_FRAME_MARKERS = (
+    "ray/worker.py",
+    "ray/_private/",
+    "ray/util/tracing/",
+    "ray/_raylet.pyx",
+)
+
+# Ray Data execution-layer frames (scheduler/executor/planner), hidden on top
+# of the core set when a traceback's root cause is user code (a Ray Data UDF).
+_RAY_DATA_INTERNAL_FRAME_MARKERS = ("ray/data/_internal/",)
+
+
+def _is_hidden_internal_frame(line: str, extra_markers: Sequence[str] = ()) -> bool:
+    """Return True if ``line`` is a traceback ``  File ...`` header for a frame
+    that belongs to Ray-internal machinery and should be stripped from a
+    user-facing traceback.
+
+    Library-agnostic: Ray Core frames (``_RAY_CORE_INTERNAL_FRAME_MARKERS``) are
+    always matched. ``extra_markers`` lets a caller additionally hide its own
+    internal frames on top of the core set (Ray Data passes
+    ``_RAY_DATA_INTERNAL_FRAME_MARKERS`` when the root cause is a UDF).
+    """
+    # TODO(windows): markers use POSIX "/" separators; Windows tracebacks render
+    # paths with "\", so these substrings won't match and internal frames won't
+    # be stripped there.
+    if not line.startswith("  File "):
+        return False
+    return any(
+        marker in line for marker in (*_RAY_CORE_INTERNAL_FRAME_MARKERS, *extra_markers)
+    )
+
+
+def _is_caret_line(line: str) -> bool:
+    """Return True if ``line`` is a caret annotation such as ``    ^^^^`` that
+    Python prints beneath a frame to point at the offending sub-expression."""
+    stripped = line.strip()
+    return bool(stripped) and all(c in "^~" for c in stripped)
 
 
 @PublicAPI
@@ -142,12 +185,16 @@ class RayTaskError(RayError):
         try:
             pickle.dumps(cause)
         except (pickle.PicklingError, TypeError) as e:
+            err_type = f"{cause.__class__.__module__}.{cause.__class__.__name__}"
+
             err_msg = (
-                "The original cause of the RayTaskError"
-                f" ({self.cause.__class__}) isn't serializable: {e}."
-                " Overwriting the cause to a RayError."
+                f"Exception {err_type} isn't serializable: {e}.\n"
+                f"Original exception details:\n{traceback_str}"
             )
-            logger.warning(err_msg)
+
+            logger.exception(
+                f"The original cause of the RayTaskError ({err_type}) isn't serializable."
+            )
             self.cause = RayError(err_msg)
 
         # BaseException implements a __reduce__ method that returns
@@ -178,10 +225,20 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
-                self.args = (cause,)
+                # Store args separately to avoid writing to user-defined
+                # read-only or property-based `args`.
+                self._ray_task_error_args = (cause,)
+
+            @property
+            def args(self):
+                return self._ray_task_error_args
+
+            @args.setter
+            def args(self, value):
+                self._ray_task_error_args = value
 
             def __reduce__(self):
-                return (cls, self.args)
+                return (cls, self._ray_task_error_args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -206,10 +263,18 @@ class RayTaskError(RayError):
 
             def __init__(self, cause):
                 self.cause = cause
-                self.args = (cause,)
+                self._ray_task_error_args = (cause,)
+
+            @property
+            def args(self):
+                return self._ray_task_error_args
+
+            @args.setter
+            def args(self, value):
+                self._ray_task_error_args = value
 
             def __reduce__(self):
-                return (cls, self.args)
+                return (cls, self._ray_task_error_args)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -246,23 +311,40 @@ class RayTaskError(RayError):
                 f" access the user exception. Failure in subclassing: {e}"
             )
             return self
+        except Exception as e:
+            logger.warning(
+                "Failed to combine RayTaskError with user exception type "
+                f"{type(self.cause)}; raising RayTaskError only. This can "
+                "happen when the user exception overrides attributes like "
+                "`args` or otherwise blocks subclass construction. "
+                f"Failure in subclassing: {e}"
+            )
+            return self
 
     def __str__(self):
         """Format a RayTaskError as a string."""
         lines = self.traceback_str.strip().split("\n")
         out = []
-        code_from_internal_file = False
+        # Per-call mode: when the root cause is user code (e.g. a Ray Data UDF),
+        # also hide Ray Data's internal execution frames (scheduler/executor/
+        # planner) so the user's own traceback isn't buried under Ray Data
+        # machinery. Ray Core internal frames are hidden regardless.
+        hide_data_frames = isinstance(self.cause, UserCodeException)
+        # State: True while we're inside a hidden internal frame and should drop
+        # the indented continuation lines that follow its ``File ...`` header.
+        in_hidden_frame = False
 
-        # Format tracebacks.
-        # Python stacktrace consists of
-        # Traceback...: Indicate the next line will be a traceback.
-        #   File [file_name + line number]
-        #     code
-        # XError: [message]
-        # NOTE: For _raylet.pyx (Cython), the code is not always included.
-        for i, line in enumerate(lines):
-            # Convert traceback to the readable information.
+        # A Python traceback is a repeating block of:
+        #   Traceback ...            <- header
+        #     File "<path>", line N  <- frame header (2-space indent)
+        #       <source code>        <- continuation (4-space indent)
+        #       ^^^^^                <- optional caret annotation (4-space indent)
+        #   XError: <message>        <- final cause
+        # We drop the frames that belong to Ray internals and keep the rest.
+        # NOTE: For _raylet.pyx (Cython), the source-code line may be absent.
+        for line in lines:
             if line.startswith("Traceback "):
+                in_hidden_frame = False
                 traceback_line = (
                     f"{colorama.Fore.CYAN}"
                     f"{self.proctitle}()"
@@ -275,40 +357,39 @@ class RayTaskError(RayError):
                     )
                 else:
                     traceback_line += ")"
-                code_from_internal_file = False
                 out.append(traceback_line)
-            elif line.startswith("  File ") and (
-                "ray/worker.py" in line
-                or "ray/_private/" in line
-                or "ray/util/tracing/" in line
-                or "ray/_raylet.pyx" in line
+            elif _is_hidden_internal_frame(
+                line,
+                _RAY_DATA_INTERNAL_FRAME_MARKERS if hide_data_frames else (),
             ):
-                # TODO(windows)
-                # Process the internal file line.
-                # The file line always starts with 2 space and File.
-                # https://github.com/python/cpython/blob/0a0a135bae2692d069b18d2d590397fbe0a0d39a/Lib/traceback.py#L421 # noqa
+                # Drop this frame's ``File ...`` header and mark its continuation
+                # lines for removal.
+                in_hidden_frame = True
                 if "ray._raylet.raise_if_dependency_failed" in line:
-                    # It means the current task is failed
-                    # due to the dependency failure.
-                    # Print out an user-friendly
-                    # message to explain that..
+                    # A dependency (input argument) failed; show a user friendly
+                    # note in place of the internal frame.
                     out.append(
                         "  At least one of the input arguments for "
                         "this task could not be computed:"
                     )
-                if i + 1 < len(lines) and lines[i + 1].startswith("    "):
-                    # If the next line is indented with 2 space,
-                    # that means it contains internal code information.
-                    # For example,
-                    #   File [file_name] [line]
-                    #     [code] # if the next line is indented, it is code.
-                    # Note there there are 4 spaces in the code line.
-                    code_from_internal_file = True
-            elif code_from_internal_file:
-                # If the current line is internal file's code,
-                # the next line is not code anymore.
-                code_from_internal_file = False
+            elif in_hidden_frame and line.startswith("    "):
+                # A continuation line (source code or caret) of a hidden frame.
+                if not hide_data_frames:
+                    # Ray Core-only: drop the source line, keep any caret.
+                    in_hidden_frame = False
+            elif (
+                hide_data_frames
+                and _is_caret_line(line)
+                and not (out and out[-1].startswith("    "))
+            ):
+                # An orphaned caret line: its source-code line was a hidden
+                # internal frame or is absent (the raw traceback can place a
+                # stray "^^^^" right after the header), so there's nothing left
+                # for it to point at. Carets still sitting under a kept code line
+                # (the user's own frames) are preserved by the guard above.
+                pass
             else:
+                in_hidden_frame = False
                 out.append(line)
         return "\n".join(out)
 
@@ -377,14 +458,6 @@ class ActorDiedError(RayActorError):
 
     This exception could happen either because the actor process dies while
     executing a task, or because a task is submitted to a dead actor.
-
-    Args:
-        cause: The cause of the actor error. `RayTaskError` type means
-            the actor has died because of an exception within `__init__`.
-            `ActorDiedErrorContext` means the actor has died because of
-            an unexpected system error. None means the cause isn't known.
-            Theoretically, this shouldn't happen,
-            but it's there as a safety check.
     """
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
@@ -392,8 +465,15 @@ class ActorDiedError(RayActorError):
     def __init__(
         self, cause: Optional[Union[RayTaskError, ActorDiedErrorContext]] = None
     ):
-        """
-        Construct a RayActorError by building the arguments.
+        """Construct a RayActorError by building the arguments.
+
+        Args:
+            cause: The cause of the actor error. ``RayTaskError`` type means
+                the actor has died because of an exception within ``__init__``.
+                ``ActorDiedErrorContext`` means the actor has died because of
+                an unexpected system error. None means the cause isn't known.
+                Theoretically, this shouldn't happen, but it's there as a
+                safety check.
         """
 
         actor_id = None
@@ -413,7 +493,7 @@ class ActorDiedError(RayActorError):
                 f"{cause.__str__()}"
             )
         else:
-            # Inidicating system-level actor failures.
+            # Indicating system-level actor failures.
             assert isinstance(cause, ActorDiedErrorContext)
             error_msg_lines = [ActorDiedError.BASE_ERROR_MSG]
             error_msg_lines.append(f"\tclass_name: {cause.class_name}")
@@ -479,6 +559,49 @@ class RaySystemError(RayError):
         if self.traceback_str:
             error_msg += f"\ntraceback: {self.traceback_str}"
         return error_msg
+
+
+@PublicAPI
+class AuthenticationError(RayError):
+    """Indicates that an authentication error occurred.
+
+    Most commonly, this is caused by a missing or mismatching token set on the client
+    (e.g., a Ray CLI command interacting with a remote cluster).
+
+    Only applicable when `RAY_AUTH_MODE` is not set to `disabled`.
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+
+        # Always hide traceback for cleaner output
+        self.__suppress_context__ = True
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        # Check if RAY_AUTH_MODE is set to token and add a heads-up if not
+        auth_mode_note = ""
+
+        from ray._private.authentication.authentication_utils import (
+            get_authentication_mode_name,
+        )
+        from ray._raylet import AuthenticationMode, get_authentication_mode
+
+        current_mode = get_authentication_mode()
+        if current_mode != AuthenticationMode.TOKEN:
+            mode_name = get_authentication_mode_name(current_mode)
+            auth_mode_note = (
+                f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
+            )
+
+        help_text = (
+            " Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via "
+            "RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. "
+            "To generate a token for local development, use `ray get-auth-token --generate` "
+            "For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. "
+            "For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html"
+        )
+        return self.message + "." + auth_mode_note + help_text
 
 
 @DeveloperAPI
@@ -560,12 +683,23 @@ class NodeDiedError(RayError):
 class ObjectLostError(RayError):
     """Indicates that the object is lost from distributed memory, due to
     node failure or system error.
-
-    Args:
-        object_ref_hex: Hex ID of the object.
     """
 
-    def __init__(self, object_ref_hex, owner_address, call_site):
+    def __init__(
+        self,
+        object_ref_hex: str,
+        owner_address: Optional[bytes],
+        call_site: str,
+    ):
+        """Initialize an ``ObjectLostError``.
+
+        Args:
+            object_ref_hex: Hex ID of the object.
+            owner_address: Address of the worker that owns the object, if
+                known.
+            call_site: Stringified Python call site at which the ``ObjectRef``
+                was originally created. Newlines are normalized for display.
+        """
         self.object_ref_hex = object_ref_hex
         self.owner_address = owner_address
         self.call_site = call_site.replace(
@@ -680,12 +814,19 @@ class OwnerDiedError(ObjectLostError):
 
     def __str__(self):
         log_loc = "`/tmp/ray/session_latest/logs`"
+        owner_location = None
         if self.owner_address:
             try:
                 addr = Address()
                 addr.ParseFromString(self.owner_address)
                 ip_addr = addr.ip_address
                 worker_id = WorkerID(addr.worker_id)
+                node_id = addr.node_id.hex() if addr.node_id else "unknown"
+                owner_location = (
+                    f"Owner worker ID: {worker_id.hex()}, "
+                    f"owner node ID: {node_id}, "
+                    f"owner address: {ip_addr}:{addr.port}."
+                )
                 log_loc = (
                     f"`/tmp/ray/session_latest/logs/*{worker_id.hex()}*`"
                     f" at IP address {ip_addr}"
@@ -704,72 +845,88 @@ class OwnerDiedError(ObjectLostError):
                 "`ray.put()`. "
                 f"Check cluster logs ({log_loc}) for more "
                 "information about the Python worker failure."
+                + (f"\n\n{owner_location}" if owner_location else "")
             )
         )
 
 
 @PublicAPI
 class ObjectReconstructionFailedError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed.
+    """Indicates that the object cannot be reconstructed."""
 
-    Args:
-        object_ref_hex: Hex ID of the object.
-    """
+    REASON_MESSAGES = {
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED: (
+            "The object cannot be reconstructed because the maximum number of "
+            "task retries has been exceeded. "
+            "Consider increasing the number of retries using `@ray.remote(max_retries=N)`."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED: (
+            "The object cannot be reconstructed because its lineage has been "
+            "evicted to reduce memory pressure. "
+            "To prevent this error, set the environment variable "
+            "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_PUT: (
+            "The object cannot be reconstructed because it was created by "
+            "ray.put(), which has no task lineage. "
+            "To prevent this error, return the value from a task instead."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_RETRIES_DISABLED: (
+            "The object cannot be reconstructed because the task was created "
+            "with max_retries=0. "
+            "Consider enabling retries using `@ray.remote(max_retries=N)`."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_BORROWED: (
+            "The object cannot be reconstructed because it crossed an ownership "
+            "boundary. Only the owner of an object can trigger reconstruction, "
+            "but this worker borrowed the object from another worker."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND: (
+            "The object cannot be reconstructed because its reference was "
+            "not found in the reference counter. "
+            "Please file an issue at https://github.com/ray-project/ray/issues."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED: (
+            "The object cannot be reconstructed because the task that would "
+            "produce it was cancelled."
+        ),
+        ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_DISABLED: (
+            "The object cannot be reconstructed because lineage reconstruction "
+            "is disabled system-wide (object_reconstruction_enabled=False)."
+        ),
+    }
 
-    def __str__(self):
-        return (
-            self._base_str()
-            + "\n\n"
-            + (
-                "The object cannot be reconstructed "
-                "because it was created by an actor, ray.put() call, or its "
-                "ObjectRef was created by a different worker."
-            )
+    def __init__(
+        self,
+        object_ref_hex: str,
+        reason: "ErrorType" = None,
+        reason_message: str = None,
+        owner_address: Optional[Address] = None,
+        call_site: str = "",
+    ):
+        """Initialize ObjectReconstructionFailedError.
+
+        Args:
+            object_ref_hex: Hex string of the object reference.
+            reason: ErrorType enum value indicating why reconstruction failed.
+            reason_message: Human-readable explanation of the failure.
+            owner_address: Address of the object's owner.
+            call_site: Call site where the object was created.
+        """
+        super().__init__(object_ref_hex, owner_address, call_site)
+        self.reason = reason
+        self.reason_message = reason_message or self.REASON_MESSAGES.get(
+            self.reason,
+            "Unknown error reason. This should not happen, please file an issue "
+            "at https://github.com/ray-project/ray/issues.",
         )
 
-
-@PublicAPI
-class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed because the maximum
-    number of task retries has been exceeded.
-
-    Args:
-        object_ref_hex: Hex ID of the object.
-    """
-
     def __str__(self):
-        return (
-            self._base_str()
-            + "\n\n"
-            + (
-                "The object cannot be reconstructed "
-                "because the maximum number of task retries has been exceeded. "
-                "To prevent this error, set "
-                "`@ray.remote(max_retries=<num retries>)` (default 3)."
-            )
-        )
-
-
-@PublicAPI
-class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
-    """Indicates that the object cannot be reconstructed because its lineage
-    was evicted due to memory pressure.
-
-    Args:
-        object_ref_hex: Hex ID of the object.
-    """
-
-    def __str__(self):
-        return (
-            self._base_str()
-            + "\n\n"
-            + (
-                "The object cannot be reconstructed because its lineage has been "
-                "evicted to reduce memory pressure. "
-                "To prevent this error, set the environment variable "
-                "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`."
-            )
-        )
+        base = self._base_str()
+        if self.reason_message:
+            reason_name = ErrorType.Name(self.reason) if self.reason else "UNKNOWN"
+            return base + f"\n\n[{reason_name}] {self.reason_message}"
+        return base
 
 
 @PublicAPI
@@ -878,6 +1035,20 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@PublicAPI
+class StreamingGeneratorReplayInconsistentError(RaySystemError):
+    """Raised when a streaming generator task's replay produces a different
+    number of objects than the first successful attempt.
+
+    This indicates the generator output is non-deterministic. The task is
+    failed fast to prevent downstream consumers from hanging (when fewer
+    objects are produced) or silently dropping data (when more objects are
+    produced).
+    """
+
+    pass
+
+
 @DeveloperAPI
 class OufOfBandObjectRefSerializationException(RayError):
     """Raised when an `ray.ObjectRef` is out of band serialized by
@@ -910,6 +1081,80 @@ class RayCgraphCapacityExceeded(RaySystemError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class RayDirectTransportError(RaySystemError):
+    """Raised when there is an error during a Ray direct transport transfer."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class UnserializableException(RayError):
+    """Raised when there is an error deserializing a serialized exception.
+
+    This occurs when deserializing (unpickling) a previously serialized exception
+    fails. In this case, we fall back to raising the string representation of
+    the original exception along with its stack trace that was captured at the
+    time of serialization.
+
+    For more details and how to handle this with custom serializers, :ref:`configuring custom exception serializers <custom-exception-serializer>`
+
+    Args:
+        original_stack_trace: The string representation and stack trace of the
+            original exception that was captured during serialization.
+    """
+
+    def __init__(self, original_stack_trace: str):
+        self._original_stack_trace = original_stack_trace
+
+    def __str__(self):
+        return (
+            "Failed to deserialize exception. Refer to https://docs.ray.io/en/latest/ray-core/objects/serialization.html#custom-serializers-for-exceptions for more information.\n"
+            "Original exception:\n"
+            f"{self._original_stack_trace}"
+        )
+
+
+@DeveloperAPI
+class ActorAlreadyExistsError(ValueError, RayError):
+    """Raised when a named actor already exists.
+
+    Note that this error is not only a subclass of RayError, but also a subclass of ValueError, to maintain backward compatibility.
+
+    Args:
+        error_message: The error message that contains information about the actor name and namespace.
+    """
+
+    def __init__(self, error_message: str):
+        super().__init__(error_message)
+        self.error_message = error_message
+
+    def __str__(self):
+        return self.error_message
+
+
+@DeveloperAPI
+class ActorHandleNotFoundError(ValueError, RayError):
+    """Raised when trying to kill an actor handle that doesn't exist.
+
+    This typically happens when using an actor handle from a previous Ray session
+    after calling ray.shutdown() and ray.init().
+
+    Note that this error is not only a subclass of RayError, but also a subclass of ValueError,
+    to maintain backward compatibility.
+
+    Args:
+        error_message: The error message that contains information about the actor handle.
+    """
+
+    def __init__(self, error_message: str):
+        super().__init__(error_message)
+        self.error_message = error_message
+
+    def __str__(self):
+        return self.error_message
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -921,8 +1166,6 @@ RAY_EXCEPTION_TYPES = [
     ObjectFetchTimedOutError,
     ReferenceCountingAssertionError,
     ObjectReconstructionFailedError,
-    ObjectReconstructionFailedMaxAttemptsExceededError,
-    ObjectReconstructionFailedLineageEvictedError,
     OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,
@@ -939,4 +1182,8 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
+    UnserializableException,
+    ActorAlreadyExistsError,
+    ActorHandleNotFoundError,
+    AuthenticationError,
 ]

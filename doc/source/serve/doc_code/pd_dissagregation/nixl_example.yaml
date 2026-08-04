@@ -1,4 +1,5 @@
 # Example: Basic NIXLConnector configuration for prefill/decode disaggregation
+# nixl_config.yaml
 
 applications:
   - args:

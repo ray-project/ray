@@ -1,11 +1,16 @@
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
+from ray._common.retry import call_with_retry
+from ray._private.utils import INT32_MAX
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    reorder_columns_by_schema,
+)
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
-from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import _FileDatasink
@@ -16,17 +21,6 @@ if TYPE_CHECKING:
 
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
-
-# Map Ray Data's SaveMode to pyarrow's existing_data_behavior property which is exposed via the
-# `pyarrow.dataset.write_dataset` function.
-# Docs: https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
-EXISTING_DATA_BEHAVIOR_MAP = {
-    SaveMode.APPEND: "overwrite_or_ignore",
-    SaveMode.OVERWRITE: "overwrite_or_ignore",  # delete_matching is not a suitable choice for parallel writes.
-    SaveMode.IGNORE: "overwrite_or_ignore",
-    SaveMode.ERROR: "error",
-}
-
 FILE_FORMAT = "parquet"
 
 # These args are part of https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_output_stream
@@ -36,6 +30,8 @@ UNSUPPORTED_OPEN_STREAM_ARGS = {"path", "buffer", "metadata"}
 # https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
 ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024
 
+DEFAULT_PARTITIONING_FLAVOR = "hive"
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,12 +40,18 @@ def choose_row_group_limits(
     min_rows_per_file: Optional[int],
     max_rows_per_file: Optional[int],
 ) -> tuple[Optional[int], Optional[int], Optional[int]]:
-    """
-    Configure `min_rows_per_group`, `max_rows_per_group`, `max_rows_per_file` parameters of Pyarrow's `write_dataset` API based on Ray Data's configuration
+    """Configure row-group limits for Pyarrow's ``write_dataset`` API.
 
-    Returns
-    -------
-    (min_rows_per_group, max_rows_per_group, max_rows_per_file)
+    Configures the ``min_rows_per_group``, ``max_rows_per_group``, and
+    ``max_rows_per_file`` parameters based on Ray Data's configuration.
+
+    Args:
+        row_group_size: The requested row-group size.
+        min_rows_per_file: The minimum number of rows per file.
+        max_rows_per_file: The maximum number of rows per file.
+
+    Returns:
+        A tuple of (min_rows_per_group, max_rows_per_group, max_rows_per_file).
     """
 
     if (
@@ -101,6 +103,72 @@ def choose_row_group_limits(
         return clamped_group_size, clamped_group_size, max_rows_per_file
 
 
+def _widen_offset_overflowing_columns(
+    tables: List["pyarrow.Table"], schema: "pyarrow.Schema"
+) -> "pyarrow.Schema":
+    """Promote `string`/`binary` columns to 64-bit-offset variants when needed.
+
+    Arrow addresses the data of `string` and `binary` columns with int32
+    offsets, so a single contiguous array can hold at most `INT32_MAX` bytes.
+    When the writer coalesces blocks into a large row group (e.g. because
+    `min_rows_per_file` set `min_rows_per_group`), pyarrow must materialize each
+    column of that row group as one contiguous array. If a `string`/`binary`
+    column's combined size across the blocks in this write exceeds the int32
+    limit, `write_dataset` fails with an offset-overflow error that surfaces as
+    a column-length mismatch (the column is truncated to what fits).
+
+    Promoting such columns to `large_string`/`large_binary` (int64 offsets)
+    removes the ceiling. The promotion is invisible on disk -- parquet stores
+    both as `BYTE_ARRAY` -- so only the in-memory Arrow type changes.
+
+    Only top-level `string`/`binary` columns are promoted. Other int32-offset
+    types are not handled: `string`/`binary` nested inside `list`/`struct`/`map`
+    (whose inner offsets carry the same byte ceiling) and `list`/`map` columns
+    themselves (which overflow on cumulative child-element count rather than
+    bytes). These require recursive type rewriting and are far rarer in practice.
+
+    Args:
+        tables: The blocks about to be written together in one task.
+        schema: The unified output schema for those blocks.
+
+    Returns:
+        ``schema`` unchanged when no column overflows, otherwise a copy with the
+        overflowing variable-width columns promoted to their ``large_*`` type.
+    """
+    import pyarrow as pa
+
+    candidate_types = {}
+    for field in schema:
+        if pa.types.is_string(field.type):
+            candidate_types[field.name] = pa.large_string()
+        elif pa.types.is_binary(field.type):
+            candidate_types[field.name] = pa.large_binary()
+    if not candidate_types:
+        return schema
+
+    # `.nbytes` is O(1) buffer metadata, so summing across blocks is cheap.
+    overflowing: set = set()
+    combined_nbytes: Dict[str, int] = defaultdict(int)
+    for table in tables:
+        for name in candidate_types:
+            idx = table.schema.get_field_index(name)
+            if idx != -1:
+                combined_nbytes[name] += table.column(idx).nbytes
+                if combined_nbytes[name] > INT32_MAX:
+                    overflowing.add(name)
+
+    if not overflowing:
+        return schema
+
+    new_fields = [
+        field.with_type(candidate_types[field.name])
+        if field.name in overflowing
+        else field
+        for field in schema
+    ]
+    return pa.schema(new_fields, metadata=schema.metadata)
+
+
 class ParquetDatasink(_FileDatasink):
     def __init__(
         self,
@@ -131,9 +199,10 @@ class ParquetDatasink(_FileDatasink):
         self.partition_cols = partition_cols
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
-            assert (
-                self.min_rows_per_file <= self.max_rows_per_file
-            ), "min_rows_per_file must be less than or equal to max_rows_per_file"
+            if self.min_rows_per_file > self.max_rows_per_file:
+                raise ValueError(
+                    "min_rows_per_file must be less than or equal to max_rows_per_file"
+                )
 
         if open_stream_args is not None:
             intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
@@ -148,6 +217,15 @@ class ParquetDatasink(_FileDatasink):
 
             if "compression" in open_stream_args:
                 self.arrow_parquet_args["compression"] = open_stream_args["compression"]
+
+        if ("partitioning_flavor" in self.arrow_parquet_args) or (
+            self.arrow_parquet_args_fn is not None
+            and "partitioning_flavor" in self.arrow_parquet_args_fn()
+        ):
+            if self.partition_cols is None:
+                raise ValueError(
+                    "partition_cols must be provided when partitioning_flavor is set."
+                )
 
         super().__init__(
             path,
@@ -176,18 +254,30 @@ class ParquetDatasink(_FileDatasink):
             block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0
         ]
 
-        filename = self.filename_provider.get_filename_for_block(
-            blocks[0], ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, 0
+        filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx
         )
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
         )
         user_schema = write_kwargs.pop("schema", None)
 
+        # For partitioning_flavor, if it's not provided, the default is "hive"
+        # Otherwise, it follows pyarrow's behavior: None for directory,
+        # "hive" for hive, and "filename" for FilenamePartitioning.
+        partitioning_flavor = write_kwargs.pop(
+            "partitioning_flavor", DEFAULT_PARTITIONING_FLAVOR
+        )
+
         def write_blocks_to_path():
             tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
             if user_schema is None:
                 output_schema = pa.unify_schemas([table.schema for table in tables])
+                # Coalescing many blocks into one row group can push a
+                # `string`/`binary` column past Arrow's 2 GiB int32-offset
+                # limit; promote such columns to their `large_*` variant so the
+                # contiguous row-group array can address all of its bytes.
+                output_schema = _widen_offset_overflowing_columns(tables, output_schema)
             else:
                 output_schema = user_schema
 
@@ -197,6 +287,7 @@ class ParquetDatasink(_FileDatasink):
                 output_schema,
                 ctx.kwargs[WRITE_UUID_KWARG_NAME],
                 write_kwargs,
+                partitioning_flavor,
             )
 
         logger.debug(f"Writing {filename} file to {self.path}.")
@@ -246,20 +337,22 @@ class ParquetDatasink(_FileDatasink):
         output_schema: "pyarrow.Schema",
         write_uuid: str,
         write_kwargs: Dict[str, Any],
+        partitioning_flavor: Optional[str],
     ) -> None:
         import pyarrow.dataset as ds
 
-        # Make every incoming batch conform to the final schema *before* writing
+        # Make every incoming batch conform to the final schema *before* writing.
+        # `pa.unify_schemas` above fixed column order from the first block.
         for idx, table in enumerate(tables):
             if output_schema and not table.schema.equals(output_schema):
+                table = reorder_columns_by_schema(table, output_schema)
                 table = table.cast(output_schema)
             tables[idx] = table
 
         row_group_size = write_kwargs.pop("row_group_size", None)
 
-        existing_data_behavior = EXISTING_DATA_BEHAVIOR_MAP.get(
-            self.mode, "overwrite_or_ignore"
-        )
+        # We set this to "overwrite_or_ignore", to avoid the race condition seen in parallel writes when this is set to "error". The driver already handles the save mode check in on_write_start.
+        existing_data_behavior = "overwrite_or_ignore"
 
         (
             min_rows_per_group,
@@ -273,6 +366,7 @@ class ParquetDatasink(_FileDatasink):
 
         basename_template = self._get_basename_template(filename, write_uuid)
 
+        # Note that the driver already handles the save mode logic, checking if the directory exists and raising an error if it does on SaveMode.ERROR
         ds.write_dataset(
             data=tables,
             base_dir=self.path,
@@ -282,12 +376,13 @@ class ParquetDatasink(_FileDatasink):
             partitioning=self.partition_cols,
             format=FILE_FORMAT,
             existing_data_behavior=existing_data_behavior,
-            partitioning_flavor="hive",
+            partitioning_flavor=partitioning_flavor,
             use_threads=True,
             min_rows_per_group=min_rows_per_group,
             max_rows_per_group=max_rows_per_group,
             max_rows_per_file=max_rows_per_file,
             file_options=ds.ParquetFileFormat().make_write_options(**write_kwargs),
+            create_dir=self.try_create_dir,
         )
 
     @property

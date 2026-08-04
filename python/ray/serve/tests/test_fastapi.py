@@ -16,6 +16,7 @@ from fastapi import (
     Query,
     Request,
     Response,
+    params as fastapi_params,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -28,8 +29,13 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import GetTimeoutError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.http_util import make_fastapi_class_based_view
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+)
+from ray.serve._private.http_util import (
+    _walk_fastapi_routes,
+    make_fastapi_class_based_view,
+)
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -121,39 +127,65 @@ def test_class_based_view(serve_instance):
     assert handle.other.remote("world").result() == "world"
 
 
+def _find_route(app, endpoint):
+    """Return the route whose endpoint is ``endpoint``, searching nested routers.
+
+    FastAPI >= 0.137 nests routes registered via ``include_router`` under
+    ``_IncludedRouter`` nodes, so we can't rely on flat ``app.routes`` indexing.
+    """
+    for route, _parent, _prefix in _walk_fastapi_routes(app):
+        if route.endpoint == endpoint:
+            return route
+    raise AssertionError(f"route for {endpoint} not found")
+
+
 @pytest.mark.parametrize("websocket", [False, True])
-def test_make_fastapi_class_based_view(websocket: bool):
+@pytest.mark.parametrize("via_router", [False, True])
+def test_make_fastapi_class_based_view(websocket: bool, via_router: bool):
     app = FastAPI()
+    router = APIRouter(prefix="/prefix")
+    # When `via_router` is set, register the endpoint through `include_router`.
+    # On FastAPI >= 0.137 such routes are nested under an `_IncludedRouter`,
+    # which previously hid them from the class-based-view transform (#64475).
+    target = router if via_router else app
 
     if websocket:
 
         class A:
-            @app.get("/{i}")
+            @target.websocket("/{i}")
             def b(self, i: int):
                 pass
 
     else:
 
         class A:
-            @app.websocket("/{i}")
+            @target.get("/{i}")
             def b(self, i: int):
                 pass
 
-    # before, "self" is treated as a query params
-    assert app.routes[-1].endpoint == A.b
-    assert app.routes[-1].dependant.query_params[0].name == "self"
-    assert len(app.routes[-1].dependant.dependencies) == 0
+    if via_router:
+        app.include_router(router)
+
+    # before, "self" is treated as a query param.
+    route = _find_route(app, A.b)
+    assert route.dependant.query_params[0].name == "self"
+    assert len(route.dependant.dependencies) == 0
 
     make_fastapi_class_based_view(app, A)
 
-    # after, "self" is treated as a dependency instead of query params
-    assert app.routes[-1].endpoint == A.b
-    assert len(app.routes[-1].dependant.query_params) == 0
-    assert len(app.routes[-1].dependant.dependencies) == 1
-    self_dep = app.routes[-1].dependant.dependencies[0]
-    assert self_dep.name == "self"
-    assert inspect.isfunction(self_dep.call)
-    assert "get_current_servable" in str(self_dep.call)
+    # After the transform "self" is injected via a dependency. We assert on the
+    # endpoint signature (which the transform rewrites directly) rather than on
+    # `route.dependant`: FastAPI >= 0.137 recomputes the dependant lazily at
+    # request time for routes registered via `include_router`, so the route
+    # object's cached `dependant` may still reflect the pre-transform signature.
+    params = list(inspect.signature(A.b).parameters.values())
+    assert params[0].name == "self"
+    assert isinstance(params[0].default, fastapi_params.Depends)
+    assert "get_current_servable" in str(params[0].default.dependency)
+    # Remaining params become keyword-only since `self` is no longer positional.
+    assert all(p.kind == inspect.Parameter.KEYWORD_ONLY for p in params[1:]), [
+        (p.name, p.kind) for p in params[1:]
+    ]
 
 
 class Nested(BaseModel):
@@ -1108,6 +1140,186 @@ def test_ingress_with_starlette_builder_with_deployment_class(serve_instance):
 
     docs_path = ray.get(serve_instance._controller.get_docs_path.remote("default"))
     assert docs_path is None
+
+
+def test_ingress_multi_level_inheritance(serve_instance):
+    """Test multi-level inheritance works correctly with serve.ingress.
+
+    Tests: Grandparent -> Parent -> Child -> ServedIngress
+
+    This tests the fix in make_fastapi_class_based_view that properly handles
+    inherited methods by checking the MRO instead of just the immediate class.
+
+    Without the fix, inherited endpoints would fail with:
+    'Field required at ('query', 'self')'
+
+    Also tests that unrelated classes whose names CONTAIN an MRO class name
+    as a substring don't cause false positives. For example, if MRO contains
+    "Child", an unrelated class "ChildExtra" should not have its routes matched
+    because "Child" in "ChildExtra.method" would be True with substring matching.
+    This validates that the matching uses prefix matching with a dot delimiter.
+    """
+    app = FastAPI()
+
+    class Grandparent:
+        @app.get("/grandparent")
+        def grandparent_endpoint(self):
+            return {"level": "grandparent"}
+
+    class Parent(Grandparent):
+        @app.get("/parent")
+        def parent_endpoint(self):
+            return {"level": "parent"}
+
+    class Child(Parent):
+        @app.get("/child")
+        def child_endpoint(self):
+            return {"level": "child"}
+
+    # Unrelated class whose name CONTAINS "Child" (an MRO class) as a substring.
+    # With substring matching, "Child" in "ChildExtra.extra_endpoint" would be
+    # True, causing incorrect self injection into this unrelated route.
+    class ChildExtra:
+        @app.get("/extra")
+        def extra_endpoint(self):
+            # This should NOT have self injection since ChildExtra is not in MRO
+            return {"level": "extra"}
+
+    @serve.deployment
+    @serve.ingress(app)
+    class ServedIngress(Child):
+        pass
+
+    serve.run(ServedIngress.bind())
+
+    url = get_application_url("HTTP")
+
+    # Test all inherited endpoints
+    resp = httpx.get(f"{url}/grandparent")
+    assert resp.status_code == 200, f"Grandparent failed: {resp.text}"
+    assert resp.json() == {"level": "grandparent"}
+
+    resp = httpx.get(f"{url}/parent")
+    assert resp.status_code == 200, f"Parent failed: {resp.text}"
+    assert resp.json() == {"level": "parent"}
+
+    resp = httpx.get(f"{url}/child")
+    assert resp.status_code == 200, f"Child failed: {resp.text}"
+    assert resp.json() == {"level": "child"}
+
+    # Test that the unrelated ChildExtra route is NOT processed.
+    # With substring matching bug, "Child" in "ChildExtra.extra_endpoint" would
+    # be True, incorrectly applying self injection and making this route work.
+    # With the fix, the route is correctly excluded from processing, so `self`
+    # is not injected. FastAPI then treats `self` as a required query parameter,
+    # which fails with 422 (unprocessable entity).
+    resp = httpx.get(f"{url}/extra")
+    assert resp.status_code == 422, f"Expected 422 for unprocessed route: {resp.text}"
+
+
+def test_ingress_direct_inheritance(serve_instance):
+    """Test direct inheritance works correctly with serve.ingress.
+
+    Tests: BaseIngress -> DirectServedIngress (with own endpoint)
+
+    This tests the fix in make_fastapi_class_based_view that properly handles
+    inherited methods by checking the MRO instead of just the immediate class.
+
+    Without the fix, inherited endpoints would fail with:
+    'Field required at ('query', 'self')'
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        @app.get("/base")
+        def base_endpoint(self):
+            return {"level": "base"}
+
+    @serve.deployment
+    @serve.ingress(app)
+    class DirectServedIngress(BaseIngress):
+        @app.get("/direct")
+        def direct_endpoint(self):
+            return {"level": "direct"}
+
+    serve.run(DirectServedIngress.bind())
+
+    url = get_application_url("HTTP")
+
+    # Test both inherited and own endpoints
+    resp = httpx.get(f"{url}/base")
+    assert resp.status_code == 200, f"Base failed: {resp.text}"
+    assert resp.json() == {"level": "base"}
+
+    resp = httpx.get(f"{url}/direct")
+    assert resp.status_code == 200, f"Direct failed: {resp.text}"
+    assert resp.json() == {"level": "direct"}
+
+
+def test_ingress_include_router_with_self(serve_instance):
+    """Endpoints registered via ``include_router`` must strip ``self`` (#64475).
+
+    FastAPI >= 0.137 nests routes added through ``include_router`` under an
+    ``_IncludedRouter`` node instead of flattening them into ``app.routes``.
+    The class-based-view transform previously only scanned the flat list, so
+    ``self`` was left in the signature and treated as a required query param,
+    causing requests to fail with 'Field required at ('query', 'self')' (422).
+    """
+    app = FastAPI()
+    # A router whose prefix is baked into the route path via `APIRouter(prefix=)`.
+    router = APIRouter(prefix="/prefix")
+    # A router whose prefix is supplied at `include_router(..., prefix=)` time.
+    # On FastAPI >= 0.137 this prefix lives on the `_IncludedRouter` node rather
+    # than in the route's own path, so the transform must fold it back in when
+    # re-mounting the route (otherwise the endpoint moves to the wrong path).
+    prefixed_router = APIRouter()
+
+    class Ingress:
+        @router.get("/routed")
+        def routed_endpoint(self, name: str = "world"):
+            return {"source": "router", "name": name}
+
+        @prefixed_router.get("/models/{model_id}")
+        def prefixed_endpoint(self, model_id: str):
+            return {"source": "prefixed", "model_id": model_id}
+
+        @app.get("/direct")
+        def direct_endpoint(self):
+            return {"source": "app"}
+
+    # Registered before the class is wrapped by `serve.ingress`, mirroring how
+    # applications (e.g. vLLM) compose their routers.
+    app.include_router(router)
+    app.include_router(prefixed_router, prefix="/api")
+
+    @serve.deployment
+    @serve.ingress(app)
+    class ServedIngress(Ingress):
+        pass
+
+    serve.run(ServedIngress.bind())
+
+    url = get_application_url("HTTP")
+
+    # The included route must resolve without a bogus `self` query param.
+    resp = httpx.get(f"{url}/prefix/routed")
+    assert resp.status_code == 200, f"Routed failed: {resp.text}"
+    assert resp.json() == {"source": "router", "name": "world"}
+
+    # Regular query params on the included route still work.
+    resp = httpx.get(f"{url}/prefix/routed", params={"name": "serve"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"source": "router", "name": "serve"}
+
+    # An include-time prefix must be preserved (route stays at /api/...).
+    resp = httpx.get(f"{url}/api/models/gpt")
+    assert resp.status_code == 200, f"Prefixed failed: {resp.text}"
+    assert resp.json() == {"source": "prefixed", "model_id": "gpt"}
+
+    # Directly decorated routes keep working too.
+    resp = httpx.get(f"{url}/direct")
+    assert resp.status_code == 200, f"Direct failed: {resp.text}"
+    assert resp.json() == {"source": "app"}
 
 
 if __name__ == "__main__":

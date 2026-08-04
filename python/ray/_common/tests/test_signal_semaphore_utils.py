@@ -5,12 +5,13 @@ from ray._common.test_utils. These test utility classes are used for coordinatio
 and synchronization in Ray tests.
 """
 
-import pytest
 import sys
-import ray
-from ray._common.test_utils import SignalActor, Semaphore
-from ray._common.test_utils import wait_for_condition
 import time
+
+import pytest
+
+import ray
+from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
 
 
 @pytest.fixture(scope="module")

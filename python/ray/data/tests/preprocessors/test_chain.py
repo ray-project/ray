@@ -2,9 +2,9 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import Chain, LabelEncoder, SimpleImputer, StandardScaler
+from ray.data.util.data_batch_conversion import BatchFormat
 
 
 def test_chain():
@@ -22,6 +22,10 @@ def test_chain():
 
     # Fit data.
     chain.fit(ds)
+    # Transform data.
+    transformed = chain.transform(ds)
+    out_df = transformed.to_pandas()
+
     assert imputer.stats_ == {
         "mean(B)": 0.0,
     }
@@ -35,18 +39,14 @@ def test_chain():
         "unique_values(C)": {"monday": 0, "sunday": 1, "tuesday": 2}
     }
 
-    # Transform data.
-    transformed = chain.transform(ds)
-    out_df = transformed.to_pandas()
-
     processed_col_a = [-1.0, -1.0, 1.0, 1.0]
     processed_col_b = [0.0, 0.0, 0.0, 0.0]
     processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = [1, 2, None]
@@ -67,9 +67,9 @@ def test_chain():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
 
 def test_nested_chain_state():
@@ -119,6 +119,10 @@ def test_nested_chain():
 
     # Fit data.
     chain.fit(ds)
+    # Transform data.
+    transformed = chain.transform(ds)
+    out_df = transformed.to_pandas()
+
     assert imputer.stats_ == {
         "mean(B)": 0.0,
     }
@@ -132,18 +136,14 @@ def test_nested_chain():
         "unique_values(C)": {"monday": 0, "sunday": 1, "tuesday": 2}
     }
 
-    # Transform data.
-    transformed = chain.transform(ds)
-    out_df = transformed.to_pandas()
-
     processed_col_a = [-1.0, -1.0, 1.0, 1.0]
     processed_col_b = [0.0, 0.0, 0.0, 0.0]
     processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = [1, 2, None]
@@ -164,9 +164,9 @@ def test_nested_chain():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
 
 class PreprocessorWithoutTransform(Preprocessor):
@@ -193,6 +193,48 @@ def test_determine_transform_to_use():
     format2 = chain2._determine_transform_to_use()
 
     assert format1 == format2
+
+
+def test_chain_serialization():
+    """Test Chain serialization and deserialization functionality."""
+    import ray
+    from ray.data.preprocessor import SerializablePreprocessorBase
+    from ray.data.preprocessors import Normalizer, StandardScaler
+
+    # Create and fit chain
+    scaler = StandardScaler(columns=["A"])
+    normalizer = Normalizer(columns=["A"])
+    chain = Chain(scaler, normalizer)
+
+    df = pd.DataFrame({"A": [1.0, 2.0, 3.0]})
+    ds = ray.data.from_pandas(df)
+    fitted_chain = chain.fit(ds)
+
+    # Serialize using CloudPickle
+    serialized = fitted_chain.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = Chain.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, Chain)
+    assert len(deserialized._preprocessors) == 2
+    assert isinstance(deserialized._preprocessors[0], StandardScaler)
+    assert isinstance(deserialized._preprocessors[1], Normalizer)
+    # Verify the StandardScaler is fitted (Normalizer is stateless)
+    assert deserialized._preprocessors[0]._fitted
+
+    # Verify it works correctly
+    test_df = pd.DataFrame({"A": [1.5, 2.5]})
+    result = deserialized.transform_batch(test_df)
+
+    # Result should have been transformed by both preprocessors
+    assert "A" in result.columns
+    assert len(result) == 2
 
 
 if __name__ == "__main__":

@@ -21,7 +21,13 @@
 
 import asyncio
 import asyncio.events
-from typing import Callable, Optional
+from typing import Callable, Optional, Set
+
+# Strong references to background tasks to prevent them from being garbage
+# collected mid-execution. The asyncio event loop only keeps weak references
+# to tasks, so a task with no other strong references can be collected at
+# any time. See https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+_BACKGROUND_TASKS: Set[asyncio.Task] = set()
 
 
 def enable_monitor_loop_lag(
@@ -29,13 +35,17 @@ def enable_monitor_loop_lag(
     interval_s: float = 0.25,
     loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> None:
-    """
-    Start logging event loop lags to the callback. In ideal circumstances they should be
-    very close to zero. Lags may increase if event loop callbacks block for too long.
+    """Start logging event loop lags to the callback.
+
+    In ideal circumstances they should be very close to zero. Lags may increase
+    if event loop callbacks block for too long.
 
     Note: this works for all event loops, including uvloop.
 
-    :param callback: Callback to call with the lag in seconds.
+    Args:
+        callback: Callback to call with the lag in seconds.
+        interval_s: How often to measure the lag, in seconds.
+        loop: The event loop to monitor. If None, uses the running loop.
     """
     if loop is None:
         loop = asyncio.get_running_loop()
@@ -49,4 +59,7 @@ def enable_monitor_loop_lag(
             lag = loop.time() - t0 - interval_s  # Should be close to zero.
             callback(lag)
 
-    loop.create_task(monitor(), name="async_utils.monitor_loop_lag")
+    task = loop.create_task(monitor(), name="async_utils.monitor_loop_lag")
+    # Keep a strong reference so the task isn't garbage collected mid-execution.
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)

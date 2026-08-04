@@ -6,6 +6,7 @@ import sys
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +104,9 @@ class NeuronAcceleratorManager(AcceleratorManager):
         given visible_neuron_core_ids.
 
         Args:
-            visible_neuron_core_ids (List[str]): List of int representing core IDs.
+            visible_neuron_core_ids: List of str representing core IDs.
         """
-        if os.environ.get(NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR):
+        if env_bool(NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR, False):
             return
 
         os.environ[

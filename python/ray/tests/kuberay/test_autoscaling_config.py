@@ -1,23 +1,23 @@
 import copy
-from pathlib import Path
 import platform
-import requests
 import sys
+from pathlib import Path
 from typing import Any, Dict, Optional, Type
 from unittest import mock
-import yaml
 
 import pytest
+import requests
+import yaml
 
 from ray.autoscaler._private.kuberay.autoscaling_config import (
     GKE_TPU_ACCELERATOR_LABEL,
     GKE_TPU_TOPOLOGY_LABEL,
-    _derive_autoscaling_config_from_ray_cr,
     AutoscalingConfigProducer,
-    _round_up_k8s_quantity,
-    _get_num_tpus,
+    _derive_autoscaling_config_from_ray_cr,
     _get_custom_resources,
+    _get_num_tpus,
     _get_ray_resources_from_group_spec,
+    _round_up_k8s_quantity,
 )
 from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
 
@@ -74,6 +74,7 @@ def _get_basic_autoscaling_config() -> dict:
         },
         "available_node_types": {
             "headgroup": {
+                "labels": {},
                 "max_workers": 0,
                 "min_workers": 0,
                 "node_config": {},
@@ -85,6 +86,7 @@ def _get_basic_autoscaling_config() -> dict:
                 },
             },
             "small-group": {
+                "labels": {},
                 "max_workers": 300,
                 "min_workers": 0,
                 "node_config": {},
@@ -98,6 +100,7 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a GPU resource entry added
             # and modified max_workers.
             "gpu-group": {
+                "labels": {},
                 "max_workers": 200,
                 "min_workers": 0,
                 "node_config": {},
@@ -112,6 +115,7 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
+                "labels": {},
                 "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
@@ -219,6 +223,72 @@ def _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource() -> dict:
     return cr
 
 
+def _get_ray_cr_with_top_level_labels() -> dict:
+    """CR with a top-level `labels` field."""
+    cr = get_basic_ray_cr()
+    # This top-level structured labels take priority.
+    cr["spec"]["workerGroupSpecs"][0]["labels"] = {"instance-type": "mx5"}
+
+    # rayStartParams labels field should be ignored.
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["labels"] = "instance-type=n2"
+    return cr
+
+
+def _get_autoscaling_config_with_top_level_labels() -> dict:
+    config = _get_basic_autoscaling_config()
+    config["available_node_types"]["small-group"]["labels"] = {"instance-type": "mx5"}
+    return config
+
+
+def _get_ray_cr_with_invalid_top_level_labels() -> dict:
+    """CR with a syntactically invalid top-level `labels` field."""
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][0]["labels"] = {"!!invalid-key!!": "some-value"}
+    return cr
+
+
+def _get_ray_cr_with_top_level_resources() -> dict:
+    """CR with a top-level `resources` field to test priority."""
+    cr = get_basic_ray_cr()
+
+    # The top-level resources field should take priority.
+    cr["spec"]["workerGroupSpecs"][1]["resources"] = {
+        "CPU": "16",
+        "GPU": "8",
+        "memory": "2Gi",
+        "CustomResource": "99",
+    }
+    # These rayStartParams should be ignored.
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"]["num-cpus"] = "1"
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"]["memory"] = "100000"
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"]["num-gpus"] = "2"
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"][
+        "resources"
+    ] = '"{"Custom2": 1}"'
+    return cr
+
+
+def _get_autoscaling_config_with_top_level_resources() -> dict:
+    config = _get_basic_autoscaling_config()
+
+    config["available_node_types"]["gpu-group"]["resources"] = {
+        "CPU": 16,
+        "GPU": 8,
+        "memory": 2147483648,
+        "CustomResource": 99,
+    }
+    return config
+
+
+def _get_ray_cr_with_top_level_tpu_resource() -> dict:
+    """CR with a top-level `resources` field for the TPU custom resource."""
+    cr = _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource()
+
+    # The top-level field should take priority.
+    cr["spec"]["workerGroupSpecs"][2]["resources"] = {"TPU": "8"}
+    return cr
+
+
 def _get_ray_cr_with_no_tpus() -> dict:
     cr = get_basic_ray_cr()
     # remove TPU worker group
@@ -236,6 +306,45 @@ def _get_ray_cr_with_only_requests() -> dict:
             container["resources"]["requests"] = container["resources"]["limits"]
             del container["resources"]["limits"]
     return cr
+
+
+def _get_ray_cr_with_labels() -> dict:
+    """CR with labels in rayStartParams of head and worker groups."""
+    cr = get_basic_ray_cr()
+
+    # Pass invalid labels to the head group to test error handling.
+    cr["spec"]["headGroupSpec"]["rayStartParams"]["labels"] = "!!ray.io/node-group=,"
+    # Pass valid labels to each of the worker groups.
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"][
+        "labels"
+    ] = "ray.io/availability-region=us-central2, ray.io/market-type=spot"
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"][
+        "labels"
+    ] = "ray.io/accelerator-type=A100"
+    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"][
+        "labels"
+    ] = "ray.io/accelerator-type=TPU-V4"
+    return cr
+
+
+def _get_autoscaling_config_with_labels() -> dict:
+    """Autoscaling config with parsed labels for each group."""
+    config = _get_basic_autoscaling_config()
+
+    # Since we passed invalid labels to the head group `rayStartParams`,
+    # we expect an empty dictionary in the autoscaling config.
+    config["available_node_types"]["headgroup"]["labels"] = {}
+    config["available_node_types"]["small-group"]["labels"] = {
+        "ray.io/availability-region": "us-central2",
+        "ray.io/market-type": "spot",
+    }
+    config["available_node_types"]["gpu-group"]["labels"] = {
+        "ray.io/accelerator-type": "A100"
+    }
+    config["available_node_types"]["tpu-group"]["labels"] = {
+        "ray.io/accelerator-type": "TPU-V4"
+    }
+    return config
 
 
 def _get_autoscaling_config_with_options() -> dict:
@@ -264,6 +373,50 @@ def _get_tpu_group_without_topology_node_selector() -> dict[str, Any]:
     tpu_group = cr["spec"]["workerGroupSpecs"][2]
     tpu_group["template"]["spec"]["nodeSelector"].pop(GKE_TPU_TOPOLOGY_LABEL, None)
     return tpu_group
+
+
+def _get_tpu_group_with_v7x_node_selectors() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"]["nodeSelector"][GKE_TPU_TOPOLOGY_LABEL] = "2x2x2"
+    tpu_group["template"]["spec"]["nodeSelector"][GKE_TPU_ACCELERATOR_LABEL] = "tpu7x"
+    return tpu_group
+
+
+def _get_ray_cr_with_tpu_v7x() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][2] = _get_tpu_group_with_v7x_node_selectors()
+    return cr
+
+
+def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
+    config = _get_basic_autoscaling_config()
+    config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
+    config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    return config
+
+
+def _get_tpu_group_with_v5litepod_node_selectors() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"]["nodeSelector"][GKE_TPU_TOPOLOGY_LABEL] = "2x4"
+    tpu_group["template"]["spec"]["nodeSelector"][
+        GKE_TPU_ACCELERATOR_LABEL
+    ] = "tpu-v5-lite-podslice"
+    return tpu_group
+
+
+def _get_ray_cr_with_tpu_v5litepod() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][2] = _get_tpu_group_with_v5litepod_node_selectors()
+    return cr
+
+
+def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
+    config = _get_basic_autoscaling_config()
+    config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
+    config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    return config
 
 
 @pytest.mark.parametrize(
@@ -359,6 +512,46 @@ TEST_DATA = (
             None,
             id="tpu-k8s-resource-limit-and-custom-resource",
         ),
+        pytest.param(
+            _get_ray_cr_with_labels(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            "Ignoring labels: ray.io/accelerator-type=TPU-V4 set in rayStartParams for group 'tpu-group'. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
+            id="groups-with-raystartparam-labels",
+        ),
+        pytest.param(
+            _get_ray_cr_with_top_level_labels(),
+            _get_autoscaling_config_with_top_level_labels(),
+            None,
+            None,
+            "Ignoring labels: instance-type=n2 set in rayStartParams for group 'small-group'. Group labels are supported in the top-level Labels field starting in KubeRay v1.5",
+            id="groups-with-top-level-labels",
+        ),
+        pytest.param(
+            _get_ray_cr_with_invalid_top_level_labels(),
+            _get_basic_autoscaling_config(),
+            ValueError,
+            None,
+            None,
+            id="invalid-top-level-labels",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_v7x(),
+            _get_autoscaling_config_with_v7x(),
+            None,
+            None,
+            None,
+            id="tpu-v7x",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_v5litepod(),
+            _get_autoscaling_config_with_v5litepod(),
+            None,
+            None,
+            None,
+            id="tpu-v5litepod",
+        ),
     ]
 )
 
@@ -373,6 +566,10 @@ def test_autoscaling_config(
     expected_log_warning: Optional[str],
 ):
     ray_cr_in["metadata"]["namespace"] = "default"
+    # Reset log_once state to ensure each test case is independent.
+    from ray.util.debug import _logged
+
+    _logged.clear()
     with mock.patch(f"{AUTOSCALING_CONFIG_MODULE_PATH}.logger") as mock_logger:
         if expected_error:
             with pytest.raises(expected_error, match=expected_error_message):
@@ -486,13 +683,13 @@ TPU_TYPES_DATA = (
         pytest.param(
             "tpu-v5-lite-device",
             "2x2",
-            "v5e-4",
+            "v5litepod-4",
             id="tpu-v5e-device-test",
         ),
         pytest.param(
             "tpu-v5-lite-podslice",
             "2x4",
-            "v5e-8",
+            "v5litepod-8",
             id="tpu-v5e-podslice-test",
         ),
         pytest.param(
@@ -506,6 +703,12 @@ TPU_TYPES_DATA = (
             "16x16",
             "v6e-256",
             id="tpu-v6e-test",
+        ),
+        pytest.param(
+            "tpu7x",
+            "2x2x2",
+            "v7x-16",
+            id="tpu-v7x-test",
         ),
     ]
 )
@@ -553,6 +756,11 @@ TPU_TEST_DATA = (
             0,
             id="no-tpus-requested",
         ),
+        pytest.param(
+            _get_ray_cr_with_top_level_tpu_resource(),
+            8,
+            id="tpu-top-level-resource",
+        ),
     ]
 )
 
@@ -562,13 +770,14 @@ TPU_TEST_DATA = (
 def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
     """Verify that _get_num_tpus correctly returns the number of requested TPUs."""
     for worker_group in ray_cr_in["spec"]["workerGroupSpecs"]:
+        group_resources = worker_group.get("resources", {})
         ray_start_params = worker_group["rayStartParams"]
         custom_resources = _get_custom_resources(
-            ray_start_params, worker_group["groupName"]
+            group_resources, ray_start_params, worker_group["groupName"]
         )
         k8s_resources = worker_group["template"]["spec"]["containers"][0]["resources"]
 
-        num_tpus = _get_num_tpus(custom_resources, k8s_resources)
+        num_tpus = _get_num_tpus(group_resources, custom_resources, k8s_resources)
 
         if worker_group["groupName"] == "tpu-group":
             assert num_tpus == expected_num_tpus
@@ -670,6 +879,32 @@ RAY_RESOURCES_TEST_DATA = (
             },
             id="tpu-group-no-topology-node-selector",
         ),
+        pytest.param(
+            _get_tpu_group_with_v7x_node_selectors(),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "TPU": 4,
+                "TPU-v7x-16-head": 1,
+            },
+            id="tpu-group-v7x",
+        ),
+        pytest.param(
+            _get_tpu_group_with_v5litepod_node_selectors(),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "TPU": 4,
+                "TPU-v5litepod-8-head": 1,
+            },
+            id="tpu-group-v5litepod",
+        ),
     ]
 )
 
@@ -682,6 +917,42 @@ def test_get_ray_resources_from_group_spec(
     expected_resources: Dict[str, Any],
 ):
     assert _get_ray_resources_from_group_spec(group_spec, is_head) == expected_resources
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_top_level_resources_override_warnings():
+    """
+    Verify all override warnings are logged when a top-level `resources` field is used in
+    addition to specifying those resources in the rayStartParams.
+    """
+    ray_cr_in = _get_ray_cr_with_top_level_resources()
+    ray_cr_in["metadata"]["namespace"] = "default"
+
+    with mock.patch(f"{AUTOSCALING_CONFIG_MODULE_PATH}.logger") as mock_logger:
+        _derive_autoscaling_config_from_ray_cr(ray_cr_in)
+
+        expected_calls = [
+            mock.call(
+                "'CPU' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                "Using the value from 'resources': 16."
+            ),
+            mock.call(
+                "'GPU' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                "Using the value from 'resources': 8."
+            ),
+            mock.call(
+                "'memory' specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                "Using the value from 'resources': 2Gi."
+            ),
+            mock.call(
+                "custom resources specified in both the top-level 'resources' field and in 'rayStartParams'. "
+                "Using the values from 'resources': {'CPU': '16', 'GPU': '8', 'memory': '2Gi', 'CustomResource': '99'}."
+            ),
+        ]
+
+        # Assert that all expected calls were made, in any order.
+        mock_logger.warning.assert_has_calls(expected_calls, any_order=True)
+        assert mock_logger.warning.call_count == 4
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ We have the following Mock:
 - An engine that returns a string of form "test_i" for i in range(max_tokens)
 """
 
+import sys
 from typing import Optional
 
 import pytest
@@ -82,6 +83,48 @@ class TestMockLLMEngine:
         async for response in engine.embeddings(request):
             LLMResponseValidator.validate_embedding_response(response, dimensions)
 
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize("temperature", [0.0])
+    @pytest.mark.parametrize("language", ["en", "hi"])
+    @pytest.mark.asyncio
+    async def test_transcription_mock_engine(
+        self,
+        mock_llm_config,
+        mock_transcription_request,
+        stream: bool,
+        temperature: float,
+        language: Optional[str],
+    ):
+        """Test transcription API with different language and temperature, streaming and non-streaming."""
+
+        engine = MockVLLMEngine(mock_llm_config)
+        await engine.start()
+
+        request = mock_transcription_request
+        response_generator = engine.transcriptions(request)
+
+        print(
+            f"\n\n_____ TRANSCRIPTION ({'STREAMING' if stream else 'NON-STREAMING'}) language={language} temperature={temperature} _____\n\n"
+        )
+
+        if stream:
+            # Collect streaming chunks
+            chunks = []
+            async for chunk in response_generator:
+                assert isinstance(chunk, str)
+                chunks.append(chunk)
+
+            # Validate streaming response
+            LLMResponseValidator.validate_transcription_response(
+                chunks, temperature, language
+            )
+        else:
+            # Validate non-streaming response
+            async for response in response_generator:
+                LLMResponseValidator.validate_transcription_response(
+                    response, temperature, language
+                )
+
     @pytest.mark.asyncio
     async def test_score_mock_engine(self, mock_llm_config, mock_score_request):
         """Test score API for text similarity."""
@@ -96,3 +139,49 @@ class TestMockLLMEngine:
 
         async for response in engine.score(request):
             LLMResponseValidator.validate_score_response(response)
+
+    @pytest.mark.parametrize("return_token_strs", [False, True])
+    @pytest.mark.asyncio
+    async def test_tokenize_mock_engine(
+        self, mock_llm_config, mock_tokenize_request, return_token_strs: bool
+    ):
+        """Test tokenize API."""
+        # Create and start the engine
+        engine = MockVLLMEngine(mock_llm_config)
+        await engine.start()
+
+        # Create tokenize request
+        request = mock_tokenize_request
+
+        print(f"\n\n_____ TOKENIZE return_token_strs={return_token_strs} _____\n\n")
+
+        async for response in engine.tokenize(request):
+            LLMResponseValidator.validate_tokenize_response(
+                response,
+                expected_prompt="Hello, world!",
+                return_token_strs=return_token_strs,
+            )
+
+    @pytest.mark.asyncio
+    async def test_detokenize_mock_engine(
+        self, mock_llm_config, mock_detokenize_request
+    ):
+        """Test detokenize API."""
+        # Create and start the engine
+        engine = MockVLLMEngine(mock_llm_config)
+        await engine.start()
+
+        # Create detokenize request
+        request = mock_detokenize_request
+
+        print("\n\n_____ DETOKENIZE _____\n\n")
+
+        async for response in engine.detokenize(request):
+            LLMResponseValidator.validate_detokenize_response(
+                response,
+                expected_text="Hello",  # [72, 101, 108, 108, 111] = "Hello"
+            )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

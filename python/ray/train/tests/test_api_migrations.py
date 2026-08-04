@@ -141,5 +141,18 @@ def test_train_context_deprecations(ray_start_4_cpus, tmp_path):
     trainer.fit()
 
 
+def test_v2_enabled_error(monkeypatch):
+    """Running a V1 Trainer with V2 enabled should raise an error."""
+    from ray.train.v2._internal.constants import V2_ENABLED_ENV_VAR
+
+    monkeypatch.setenv(V2_ENABLED_ENV_VAR, "1")
+
+    with pytest.raises(DeprecationWarning, match="Detected use of a deprecated"):
+        DataParallelTrainer(
+            lambda _: None,
+            scaling_config=ray.train.ScalingConfig(num_workers=1),
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-x", __file__]))

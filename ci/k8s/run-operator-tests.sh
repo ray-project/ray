@@ -4,8 +4,11 @@ set -euo pipefail
 
 # TODO(aslonnie): refactor this test to be hermetic.
 
+PYTHON_VERSION=3.10
+
 echo "--- Build image"
 bazel run //ci/ray_ci:build_in_docker -- docker \
+    --python-version "$PYTHON_VERSION" \
     --platform cpu --canonical-tag kuberay-test
 docker tag rayproject/ray:kuberay-test ray-ci:kuberay-test
 
@@ -49,6 +52,7 @@ bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
     --test-env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test \
     --test-env=PULL_POLICY=Never \
     --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
+    --python-version "$PYTHON_VERSION" \
     "--test-env=KUBECONFIG_BASE64=$(base64 -w0 "$HOME/.kube/config")"
 
 # Test for autoscaler v2.
@@ -59,4 +63,5 @@ bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... kuberay \
     --test-env=PULL_POLICY=Never \
     --test-env=AUTOSCALER_V2=True \
     --test-env=KUBECONFIG=/tmp/rayci-kubeconfig \
+    --python-version "$PYTHON_VERSION" \
     "--test-env=KUBECONFIG_BASE64=$(base64 -w0 "$HOME/.kube/config")"

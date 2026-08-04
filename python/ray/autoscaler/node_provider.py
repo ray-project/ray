@@ -25,6 +25,17 @@ class NodeProvider:
     Nodes may be in one of three states: {pending, running, terminated}. Nodes
     appear immediately once started by `create_node`, and transition
     immediately to terminated when `terminate_node` is called.
+
+    Threading and concurrency:
+    - The autoscaler calls the following methods from multiple threads
+      (NodeLauncher, NodeUpdaterThread, autoscaler main loop, and
+       NodeProviderAdapter executors).
+    - These methods MUST be thread-safe:
+      non_terminated_nodes, is_running, is_terminated, node_tags, internal_ip,
+      external_ip, get_node_id, create_node/create_node_with_resources_and_labels,
+      set_node_tags, terminate_node/terminate_nodes.
+
+    TODO (rueian): make sure all the existing implementations are thread-safe.
     """
 
     def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:
@@ -49,6 +60,13 @@ class NodeProvider:
         (e.g. is_running(node_id)). This means that non_terminate_nodes() must
         be called again to refresh results.
 
+        Args:
+            tag_filters: Tag key/value pairs that nodes must match to be
+                included in the result.
+
+        Returns:
+            A list of node ids matching the given tag filters.
+
         Examples:
             >>> from ray.autoscaler.node_provider import NodeProvider
             >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND
@@ -59,6 +77,23 @@ class NodeProvider:
 
         """
         raise NotImplementedError
+
+    def nodes_for_teardown(self, tag_filters: Dict[str, str]) -> List[str]:
+        """Return all node ids matching tag_filters, including terminated nodes.
+
+        Used during teardown to ensure cleanup of external resources (e.g.
+        Docker containers) on nodes whose state may not be accurately tracked
+        by this provider instance. For example, LocalNodeProvider on the
+        machine invoking ``ray down`` may show workers as terminated even
+        though the head node's autoscaler started them and their Docker
+        containers are still running.
+
+        The default delegates to non_terminated_nodes(), which is correct for
+        cloud providers that always query live infrastructure state. Providers
+        that maintain state locally should override this to include all known
+        nodes regardless of recorded state.
+        """
+        return self.non_terminated_nodes(tag_filters)
 
     def is_running(self, node_id: str) -> bool:
         """Return whether the specified node is running."""
@@ -89,6 +124,9 @@ class NodeProvider:
             ip_address: Address of node.
             use_internal_ip: Whether the ip address is
                 public or private.
+
+        Returns:
+            The node id corresponding to the given IP address.
 
         Raises:
             ValueError: If not found.
@@ -220,6 +258,9 @@ class NodeProvider:
                 or external ip.
             docker_config: If set, the docker information of the docker
                 container that commands should be run on.
+
+        Returns:
+            A CommandRunner instance for the node.
         """
         common_args = {
             "log_prefix": log_prefix,

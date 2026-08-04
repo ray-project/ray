@@ -1,11 +1,8 @@
 release_byod:
-  ray_ecr: rayproject
-  ray_cr_repo: ray
-  ray_ml_cr_repo: ray-ml
-  ray_llm_cr_repo: ray-llm
   byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
-  aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
+  byod_ecr_region: us-west-2
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
+  azure_cr: rayreleasetest.azurecr.io
   aws2gce_credentials: release/aws2gce_iam.json
 ci_pipeline:
   premerge:
@@ -17,8 +14,17 @@ ci_pipeline:
     - 018af6d3-58e1-463f-90ec-d9aa4a4f57f1  # release
     - 018773ff-b5db-4dcb-8a49-1c6492b4d0f4  # bisect
   buildkite_secret: ray_ci_buildkite_token
+  buildkite_org: ray-project
 state_machine:
   pr:
     aws_bucket: ray-ci-pr-results
   branch:
     aws_bucket: ray-ci-results
+  github_repo: anyscale/ray
+  bisect:
+    disabled: 0
+release_image_step:
+  ray_cpu: anyscalecpubuild
+  ray_cuda: anyscalecudabuild
+  ray_ml: anyscalemlbuild
+  ray_llm: anyscalellmbuild

@@ -3,6 +3,7 @@ import os
 import posixpath
 import time
 from collections import defaultdict
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -10,14 +11,16 @@ import pyarrow as pa
 import pytest
 
 import ray
-import ray.util.state
 from ray._common.test_utils import wait_for_condition
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray.data import Schema
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
@@ -25,6 +28,30 @@ from ray.data.tests.mock_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
+from ray.util.state import list_actors
+
+
+def mock_all_to_all_op(input_op, name="MockAllToAll"):
+    """Create a mock AllToAllOperator for testing.
+
+    Creates an AllToAllOperator which is NOT eligible for resource allocation
+    (throttling_disabled=True) but is a blocking materializing operator.
+
+    Note: Creating this operator automatically adds it to input_op._output_dependencies.
+    """
+    op = AllToAllOperator(
+        bulk_fn=MagicMock(),
+        input_op=input_op,
+        data_context=ray.data.DataContext.get_current(),
+        name=name,
+    )
+    op.start = MagicMock(side_effect=lambda *_: None)
+    return op
+
+
+def noop_counter():
+    """BlockRefCounter that works without a Ray cluster."""
+    return BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
 
 
 @pytest.fixture(scope="module")
@@ -145,19 +172,38 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 
-    fs = pa.fs.S3FileSystem(
-        region="us-west-2",
-        endpoint_override=s3_server,
-        **kwargs,
-    )
-    if s3_path.startswith("s3://"):
-        if "@" in s3_path:
-            s3_path = s3_path.split("@")[-1]
-        else:
-            s3_path = s3_path[len("s3://") :]
-    s3_path = urllib.parse.quote(s3_path)
-    fs.create_dir(s3_path)
-    yield fs
+    fs = None
+    try:
+        fs = pa.fs.S3FileSystem(
+            region="us-west-2",
+            endpoint_override=s3_server,
+            **kwargs,
+        )
+        if s3_path.startswith("s3://"):
+            if "@" in s3_path:
+                s3_path = s3_path.split("@")[-1]
+            else:
+                s3_path = s3_path[len("s3://") :]
+        s3_path = urllib.parse.quote(s3_path)
+        fs.create_dir(s3_path)
+        yield fs
+
+    finally:
+        # Explicit cleanup for S3FileSystem resources
+        if fs is not None:
+            try:
+                # Clean up test directory if it exists
+                try:
+                    file_info = fs.get_file_info(s3_path)
+                    if file_info.type != pa.fs.FileType.NotFound:
+                        fs.delete_dir(s3_path)
+                except (OSError, pa.lib.ArrowIOError):
+                    # Directory doesn't exist or can't be deleted, that's fine
+                    pass
+            except Exception as e:
+                print(f"Warning: S3 filesystem cleanup error: {e}")
+            finally:
+                fs = None
 
 
 @pytest.fixture(scope="function")
@@ -213,65 +259,6 @@ def write_partitioned_df():
     yield _write_partitioned_df
 
 
-@pytest.fixture(scope="function")
-def write_base_partitioned_df(base_partitioned_df, write_partitioned_df):
-    def _write_base_partitioned_df(
-        partition_keys,
-        partition_path_encoder,
-        file_writer_fn,
-    ):
-        write_partitioned_df(
-            base_partitioned_df,
-            partition_keys,
-            partition_path_encoder,
-            file_writer_fn,
-        )
-
-    yield _write_base_partitioned_df
-
-
-@pytest.fixture(scope="function")
-def assert_base_partitioned_ds():
-    def _assert_base_partitioned_ds(
-        ds,
-        count=6,
-        num_input_files=2,
-        num_rows=6,
-        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.string())])),
-        sorted_values=None,
-        ds_take_transform_fn=None,
-        sorted_values_transform_fn=None,
-    ):
-        if ds_take_transform_fn is None:
-            ds_take_transform_fn = lambda taken: [  # noqa: E731
-                [s["one"], s["two"]] for s in taken
-            ]
-
-        if sorted_values_transform_fn is None:
-            sorted_values_transform_fn = (  # noqa: E731
-                lambda sorted_values: sorted_values
-            )
-
-        if sorted_values is None:
-            sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
-        # Test metadata ops.
-        assert not ds._plan.has_started_execution
-        assert ds.count() == count, f"{ds.count()} != {count}"
-        assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
-        assert ds.schema() == schema
-        actual_input_files = ds.input_files()
-        assert len(actual_input_files) == num_input_files, actual_input_files
-
-        # Force a data read.
-        values = ds_take_transform_fn(ds.take_all())
-        actual_sorted_values = sorted_values_transform_fn(sorted(values))
-        assert (
-            actual_sorted_values == sorted_values
-        ), f"{actual_sorted_values} != {sorted_values}"
-
-    yield _assert_base_partitioned_ds
-
-
 @pytest.fixture
 def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
@@ -279,6 +266,48 @@ def restore_data_context(request):
     original = copy.deepcopy(ctx)
     yield ctx
     ray.data.context.DataContext._set_current(original)
+
+
+def _get_supported_tensor_formats():
+    """Get list of supported tensor formats based on PyArrow version.
+
+    Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 16 (which supports
+    native FixedShapeTensorScalar, FixedShapeTensorType, FixedShapeTensorArray).
+    """
+    from ray.data._internal.tensor_extensions.arrow import (
+        MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+        FixedShapeTensorFormat,
+    )
+
+    formats = [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+    if get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR:
+        formats.append(FixedShapeTensorFormat.ARROW_NATIVE)
+    return formats
+
+
+@pytest.fixture(params=_get_supported_tensor_formats())
+def tensor_format(request):
+    """Fixture that yields supported tensor formats.
+
+    Yields V1, V2 for all PyArrow versions.
+    Yields ARROW_NATIVE only when PyArrow >= 16.
+
+    This allows tests to use `tensor_format.to_type()` safely without
+    needing fallback logic for unsupported PyArrow versions.
+    """
+    return request.param
+
+
+@pytest.fixture
+def tensor_format_context(request, restore_data_context, tensor_format):
+    """Fixture that sets the DataContext to use the given tensor format.
+
+    Combines restore_data_context with tensor_format to automatically
+    configure the context for tensor format testing.
+    """
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
+    return tensor_format
 
 
 @pytest.fixture
@@ -289,7 +318,14 @@ def disable_fallback_to_object_extension(request, restore_data_context):
     )
 
 
-@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+@pytest.fixture(
+    params=[
+        s
+        for s in ShuffleStrategy
+        if s != ShuffleStrategy.GPU_SHUFFLE
+        or os.environ.get("RAY_PYTEST_USE_GPU") == "1"
+    ]
+)
 def configure_shuffle_method(request):
     shuffle_strategy = request.param
 
@@ -297,19 +333,28 @@ def configure_shuffle_method(request):
 
     original_shuffle_strategy = ctx.shuffle_strategy
     original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
+    original_gpu_shuffle_num_actors = ctx.gpu_shuffle_num_actors
 
     ctx.shuffle_strategy = shuffle_strategy
 
     # NOTE: We override default parallelism for hash-based shuffling to
     #       avoid excessive partitioning of the data (to achieve desired
     #       parallelism
-    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+    if shuffle_strategy in [
+        ShuffleStrategy.HASH_SHUFFLE,
+        ShuffleStrategy.HASH_SHUFFLE_V2,
+        ShuffleStrategy.GPU_SHUFFLE,
+    ]:
         ctx.default_hash_shuffle_parallelism = 8
+
+    if shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+        ctx.gpu_shuffle_num_actors = 1
 
     yield request.param
 
     ctx.shuffle_strategy = original_shuffle_strategy
     ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
+    ctx.gpu_shuffle_num_actors = original_gpu_shuffle_num_actors
 
 
 @pytest.fixture(params=[True, False])
@@ -446,33 +491,12 @@ def ds_numpy_list_of_ndarray_tensor_format(ray_start_regular_shared):
     yield ray.data.from_numpy([np.arange(4).reshape((1, 2, 2))] * 4)
 
 
-@pytest.fixture(params=["5.0.0"])
-def unsupported_pyarrow_version(request):
-    orig_version = pa.__version__
-    pa.__version__ = request.param
-    # Unset pyarrow version cache.
-    import ray._private.arrow_utils
-
-    ray._private.arrow_utils._PYARROW_INSTALLED = None
-    ray._private.arrow_utils._PYARROW_VERSION = None
-    yield request.param
-    pa.__version__ = orig_version
-
-
-@pytest.fixture
-def disable_pyarrow_version_check():
-    os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
-    yield
-    del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]
-
-
 # ===== Observability & Logging Fixtures =====
 @pytest.fixture
 def op_two_block():
     block_params = {
         "num_rows": [10000, 5000],
         "size_bytes": [100, 50],
-        "uss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
         "udf_time": [1.1, 1.7],
@@ -483,18 +507,17 @@ def op_two_block():
     block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
-        block_exec_stats = BlockExecStats()
+        start_time_s = time.perf_counter() + i * block_delay
         # The blocks are executing from [0, 5] and [20, 30].
-        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
-        block_exec_stats.end_time_s = (
-            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        block_exec_stats = BlockExecStats(
+            start_time_s=start_time_s,
+            end_time_s=start_time_s + block_params["wall_time"][i],
+            wall_time_s=block_params["wall_time"][i],
+            cpu_time_s=block_params["cpu_time"][i],
+            udf_time_s=block_params["udf_time"][i],
+            node_id=block_params["node_id"][i],
+            task_idx=block_params["task_idx"][i],
         )
-        block_exec_stats.wall_time_s = block_params["wall_time"][i]
-        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
-        block_exec_stats.udf_time_s = block_params["udf_time"][i]
-        block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_uss_bytes = block_params["uss_bytes"][i]
-        block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],
@@ -627,7 +650,7 @@ class PhysicalCoreExecutionMetrics(CoreExecutionMetrics):
             ),
         }
 
-        self.actor_metrics = ray.util.state.list_actors(limit=10_000)
+        self.actor_metrics = list_actors(limit=10_000)
 
     def clear_task_count(self):
         self.task_metrics = []
@@ -792,5 +815,5 @@ def assert_blocks_expected_in_plasma(
 
 
 @pytest.fixture(autouse=True, scope="function")
-def log_internal_stack_trace_to_stdout(restore_data_context):
-    ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+def log_internal_stack_trace(restore_data_context):
+    ray.data.context.DataContext.get_current().log_internal_stack_trace = True

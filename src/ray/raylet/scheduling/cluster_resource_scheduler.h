@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/resource_set.h"
@@ -31,6 +32,7 @@
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
+#include "ray/util/clock.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -51,24 +53,28 @@ class ClusterResourceScheduler {
   /// with the local node.
   /// \param is_node_available_fn: Function to determine whether a node is available.
   /// \param is_local_node_with_raylet: Whether there is a raylet on the local node.
-  ClusterResourceScheduler(instrumented_io_context &io_service,
+  ClusterResourceScheduler(std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                            scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
+                           ray::observability::MetricInterface &resource_usage_gauge,
+                           ClockInterface &clock,
                            bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
-      instrumented_io_context &io_service,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
       scheduling::NodeID local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
+      ray::observability::MetricInterface &resource_usage_gauge,
+      ClockInterface &clock,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
           nullptr,
       const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
-  /// Schedule the specified resources to the cluster nodes.
+  /// Schedule a placement group with the specified resources to the cluster nodes.
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
   /// \param options: scheduling options.
@@ -77,14 +83,14 @@ class ClusterResourceScheduler {
   /// \return `SchedulingResult`, including the
   /// selected nodes if schedule successful, otherwise, it will return an empty vector and
   /// a flag to indicate whether this request can be retry or not.
-  SchedulingResult Schedule(
+  SchedulingResult SchedulePlacementGroup(
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///
-  ///  \param task_spec: Task/Actor to be scheduled.
+  ///  \param lease_spec: Lease to be scheduled.
   ///  \param preferred_node_id: the node where the task is preferred to be placed. An
   ///  empty `preferred_node_id` (string) means no preferred node.
   ///  \param exclude_local_node: true if we want to avoid local node. This will cancel
@@ -96,7 +102,7 @@ class ClusterResourceScheduler {
   ///
   ///  \return empty string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
-  scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
+  scheduling::NodeID GetBestSchedulableNode(const LeaseSpecification &lease_spec,
                                             const std::string &preferred_node_id,
                                             bool exclude_local_node,
                                             bool requires_object_store_memory,
@@ -119,8 +125,9 @@ class ClusterResourceScheduler {
   /// Check whether a task request is schedulable on a given node. A node is
   /// schedulable if it has the available resources needed to execute the task.
   ///
-  /// \param node_name Name of the node.
+  /// \param node_id Id of the node.
   /// \param label_selector: label requirements to schedule on a node.
+  /// \param requires_object_store_memory
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape,
@@ -136,11 +143,13 @@ class ClusterResourceScheduler {
   bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
  private:
-  void Init(instrumented_io_context &io_service,
+  void Init(std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
             const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
             std::function<bool(void)> get_pull_manager_at_capacity,
-            std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
+            std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+            ray::observability::MetricInterface &resource_usage_gauge,
+            ClockInterface &clock);
 
   bool NodeAvailable(scheduling::NodeID node_id) const;
 
@@ -244,10 +253,13 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, DirtyLocalViewTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
-  FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
+  FRIEND_TEST(ClusterLeaseManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, LabelSelectorHardNodeAffinityTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ScheduleWithFallbackStrategyTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, FallbackStrategyWithUnavailableNodesTest);
 };
 
 }  // end namespace ray

@@ -21,6 +21,7 @@ from ray._private.gcs_pubsub import (
     GcsAioNodeInfoSubscriber,
     GcsAioResourceUsageSubscriber,
 )
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS,
@@ -39,6 +40,7 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
+from ray.dashboard.modules.reporter.reporter_models import StatsPayload
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.utils import async_loop_forever
@@ -116,6 +118,7 @@ def _actor_table_data_to_dict(message):
         "placementGroupId",
         "callSite",
         "labelSelector",
+        "fallbackStrategy",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -197,7 +200,7 @@ class NodeHead(SubprocessModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self.gcs_client.async_get_all_node_info(timeout=None)
+        node_infos, _ = await self.gcs_client.async_get_all_node_info(timeout=None)
 
         def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
             return [_gcs_node_info_to_dict(m) for m in messages]
@@ -205,7 +208,7 @@ class NodeHead(SubprocessModule):
         all_node_infos = await self._loop.run_in_executor(
             self._node_executor,
             _convert_to_dict,
-            all_node_info.values(),
+            node_infos.values(),
         )
 
         for node in all_node_infos:
@@ -234,7 +237,7 @@ class NodeHead(SubprocessModule):
                 logger.exception("Failed handling updated nodes.")
 
     async def _update_node(self, node: dict):
-        node_id = node["nodeId"]  # hex
+        node_id = node["nodeId"]
         if (
             node["isHeadNode"]
             and node["state"] == "ALIVE"
@@ -280,18 +283,16 @@ class NodeHead(SubprocessModule):
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
-                node_id = self._dead_node_queue.popleft()
-                DataSource.nodes.pop(node_id, None)
-                self._stubs.pop(node_id, None)
+                evicted_node_id = self._dead_node_queue.popleft()
+                DataSource.nodes.pop(evicted_node_id, None)
+                self._stubs.pop(evicted_node_id, None)
         DataSource.nodes[node_id] = node
         # TODO(fyrestone): Handle exceptions.
         address = "{}:{}".format(
             node["nodeManagerAddress"], int(node["nodeManagerPort"])
         )
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            address, options, asynchronous=True
-        )
+        channel = init_grpc_channel(address, options, asynchronous=True)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         self._stubs[node_id] = stub
 
@@ -538,7 +539,7 @@ class NodeHead(SubprocessModule):
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
                 parsed_data = await self._loop.run_in_executor(
-                    self._node_executor, json.loads, data
+                    self._node_executor, _parse_node_stats, data
                 )
 
                 node_id = key.split(":")[-1]
@@ -763,3 +764,13 @@ class NodeHead(SubprocessModule):
             task = self._loop.create_task(coro)
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
+
+
+def _parse_node_stats(node_stats_str: str) -> dict:
+    stats_dict = json.loads(node_stats_str)
+    if StatsPayload is not None:
+        # Validate the response by parsing the stats_dict.
+        StatsPayload.parse_obj(stats_dict)
+        return stats_dict
+    else:
+        return stats_dict

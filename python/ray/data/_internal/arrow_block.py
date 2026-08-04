@@ -15,19 +15,19 @@ from typing import (
 )
 
 import numpy as np
+import pandas as pd
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.ray_constants import env_integer
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.arrow import (
+from ray._common.utils import env_integer
+from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
+from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
+from ray.data._internal.row import row_repr, row_repr_pretty, row_str
+from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
-from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
-from ray.data._internal.row import TableRow
-from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -39,6 +39,7 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
+from ray.data.expressions import Expr
 
 try:
     import pyarrow
@@ -57,6 +58,11 @@ logger = logging.getLogger(__name__)
 
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
+_BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
+
+
+def _is_user_visible_column(name: str) -> bool:
+    return name != _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 
 
 # Set the max chunk size in bytes for Arrow to Batches conversion in
@@ -83,10 +89,13 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
         return transform_pyarrow.concat_and_sort
 
 
-class ArrowRow(TableRow):
+class ArrowRow(Mapping):
     """
     Row of a tabular Dataset backed by a Arrow Table block.
     """
+
+    def __init__(self, row: Any):
+        self._row = row
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import get_arrow_extension_tensor_types
@@ -99,7 +108,9 @@ class ArrowRow(TableRow):
                 # Build a tensor row.
                 return tuple(
                     [
-                        ArrowBlockAccessor._build_tensor_row(self._row, col_name=key)
+                        ArrowBlockAccessor._build_tensor_row(
+                            self._row, col_name=key, row_idx=0
+                        )
                         for key in keys
                     ]
                 )
@@ -140,6 +151,15 @@ class ArrowRow(TableRow):
     def as_pydict(self) -> Dict[str, Any]:
         return dict(self.items())
 
+    def __str__(self):
+        return row_str(self)
+
+    def __repr__(self):
+        return row_repr(self)
+
+    def _repr_pretty_(self, p, cycle):
+        return row_repr_pretty(self, p, cycle)
+
 
 class ArrowBlockBuilder(TableBlockBuilder):
     def __init__(self):
@@ -157,8 +177,13 @@ class ArrowBlockBuilder(TableBlockBuilder):
         )
 
     @staticmethod
-    def _concat_tables(tables: List[Block]) -> Block:
-        return transform_pyarrow.concat(tables, promote_types=True)
+    def _combine_tables(tables: List[Block]) -> Block:
+        if len(tables) > 1:
+            return transform_pyarrow.concat(
+                tables, promote_types=True, preserve_order=True
+            )
+        else:
+            return tables[0]
 
     @staticmethod
     def _concat_would_copy() -> bool:
@@ -187,7 +212,7 @@ def _get_max_chunk_size(
     if table.nbytes == 0:
         return None
     else:
-        avg_row_size = int(table.nbytes / table.num_rows)
+        avg_row_size = table.nbytes / table.num_rows
         return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
@@ -198,23 +223,31 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
+        self._max_chunk_size: Optional[int] = None
+
+    def _get_row(self, index: int) -> ArrowRow:
+        base_row = self.slice(index, index + 1, copy=False)
+        return ArrowRow(base_row)
 
     def column_names(self) -> List[str]:
         return self._table.column_names
 
     def fill_column(self, name: str, value: Any) -> Block:
-        assert name not in self._table.column_names
-
         import pyarrow.compute as pc
 
-        if isinstance(value, pyarrow.Scalar):
-            type = value.type
+        # Check if value is array-like - if so, use upsert_column logic
+        if isinstance(value, (pyarrow.Array, pyarrow.ChunkedArray)):
+            return self.upsert_column(name, value)
         else:
-            type = pyarrow.infer_type([value])
+            # Scalar value - use original fill_column logic
+            if isinstance(value, pyarrow.Scalar):
+                type = value.type
+            else:
+                type = pyarrow.infer_type([value])
 
-        array = pyarrow.nulls(len(self._table), type=type)
-        array = pc.fill_null(array, value)
-        return self._table.append_column(name, array)
+            array = pyarrow.nulls(len(self._table), type=type)
+            array = pc.fill_null(array, value)
+            return self.upsert_column(name, array)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
@@ -222,31 +255,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return cls(reader.read_all())
 
     @staticmethod
-    def _build_tensor_row(
-        row: ArrowRow, col_name: str = TENSOR_COLUMN_NAME
-    ) -> np.ndarray:
-        from packaging.version import parse as parse_version
+    def _build_tensor_row(row: ArrowRow, row_idx: int, col_name: str) -> np.ndarray:
 
-        element = row[col_name][0]
-        # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
-        # 9.0.0+.
-        pyarrow_version = get_pyarrow_version()
-        if pyarrow_version is None or pyarrow_version >= parse_version("8.0.0"):
-            assert isinstance(element, pyarrow.ExtensionScalar)
-            if pyarrow_version is None or pyarrow_version >= parse_version("9.0.0"):
-                # For Arrow 9.0.0+, accessing an element in a chunked tensor array
-                # produces an ArrowTensorScalar, which we convert to an ndarray using
-                # .as_py().
-                element = element.as_py()
-            else:
-                # For Arrow 8.*, accessing an element in a chunked tensor array produces
-                # an ExtensionScalar, which we convert to an ndarray using our custom
-                # method.
-                element = element.type._extension_scalar_to_ndarray(element)
-        # For Arrow < 8.0.0, accessing an element in a chunked tensor array produces an
-        # ndarray, which we return directly.
-        assert isinstance(element, np.ndarray), type(element)
-        return element
+        element = row[col_name][row_idx]
+        arr = element.as_py()
+
+        assert isinstance(arr, np.ndarray), type(arr)
+        return arr
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
@@ -261,12 +276,47 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+        from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
-        df = self._table.to_pandas()
+        # We specify ignore_metadata=True because pyarrow will use the metadata
+        # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
+
+        # types_mapper preserves Arrow dtypes through the pandas round-trip:
+        # - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
+        #   can reconstruct them exactly without lossy numpy conversion.
+        # - Extension types (Ray's ArrowTensorType / ArrowPythonObjectType and
+        #   pyarrow's native FixedShapeTensorType) return None, falling back to
+        #   their own to_pandas_dtype() hooks. Note: native FixedShapeTensorType
+        #   subclasses BaseExtensionType but not ExtensionType, so we check the
+        #   broader BaseExtensionType.
+        # - Arrow's null type carries no type information, and pandas cannot box a
+        #   non-null value into a null[pyarrow] column, so fillna and masked
+        #   assignment raise ArrowInvalid (and can abort the worker from Arrow
+        #   C++). Fall back to pandas' default conversion; PandasBlockAccessor
+        #   .to_arrow() coerces all-null columns back to pa.null(), so the
+        #   round-trip is unchanged. A column that is all-null in every block
+        #   therefore stays null-typed rather than being promoted.
+        def _types_mapper(t):
+            if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(
+                t
+            ):
+                return None
+            if pyarrow.types.is_null(t):
+                return None
+            return pd.ArrowDtype(t)
+
+        # Gated on enable_arrow_backed_pandas_conversion so callers can restore the
+        # pre-2.56 numpy conversion (standard Arrow types -> numpy dtypes). See
+        # https://github.com/ray-project/ray/issues/64765.
+        df = self._table.to_pandas(
+            ignore_metadata=ctx.pandas_block_ignore_metadata,
+            types_mapper=(
+                _types_mapper if ctx.enable_arrow_backed_pandas_conversion else None
+            ),
+        )
         if ctx.enable_tensor_extension_casting:
-            df = _cast_tensor_columns_to_ndarrays(df)
+            df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
         return df
 
     def to_numpy(
@@ -335,6 +385,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
             r = r.append_column(col_name, col)
         return r
 
+    def upsert_column(
+        self, column_name: str, column_data: BlockColumn
+    ) -> "pyarrow.Table":
+        assert isinstance(
+            column_data, (pyarrow.Array, pyarrow.ChunkedArray)
+        ), f"Expected either a pyarrow.Array or pyarrow.ChunkedArray, got: {type(column_data)}"
+
+        column_idx = self._table.schema.get_field_index(column_name)
+        if column_idx == -1:
+            return self._table.append_column(column_name, column_data)
+        else:
+            return self._table.set_column(column_idx, column_name, column_data)
+
     @staticmethod
     def builder() -> ArrowBlockBuilder:
         return ArrowBlockBuilder()
@@ -354,16 +417,40 @@ class ArrowBlockAccessor(TableBlockAccessor):
         """
         return transform_pyarrow.take_table(self._table, indices)
 
+    def drop(self, columns: List[str]) -> Block:
+        return self._table.drop(columns)
+
     def select(self, columns: List[str]) -> "pyarrow.Table":
         if not all(isinstance(col, str) for col in columns):
             raise ValueError(
                 "Columns must be a list of column name strings when aggregating on "
                 f"Arrow blocks, but got: {columns}."
             )
+        if len(columns) == 0:
+            # Empty projection (e.g. count or ``select_columns([])``).
+            # Drop every existing column, then append the stub so row
+            # counts survive downstream ``pa.concat_tables`` calls (which
+            # collapse num_rows to 0 when all inputs have 0 columns).
+            # ``pa.Table`` tracks num_rows as metadata independent of
+            # columns, so ``select([])`` preserves it here. The stub is
+            # filtered out of the user-visible schema; it's a physical
+            # placeholder only.
+            narrowed = self._table.select([])
+            return ArrowBlockAccessor(narrowed).fill_column(
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME, None
+            )
         return self._table.select(columns)
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
         return self._table.rename_columns(columns_rename)
+
+    def hstack(self, other_block: "pyarrow.Table") -> "pyarrow.Table":
+
+        result_table = self._table
+        for name, column in zip(other_block.column_names, other_block.columns):
+            result_table = result_table.append_column(name, column)
+
+        return result_table
 
     def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
@@ -412,7 +499,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key, promote_types=True)
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(
+            ret, block_exec_stats=stats.build()
+        )
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
@@ -422,17 +511,77 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
-            if not hasattr(self, "_max_chunk_size"):
+            from ray.data._internal.utils.transform_pyarrow import (
+                _is_native_tensor_type,
+            )
+
+            if self._max_chunk_size is None:
                 # Calling _get_max_chunk_size in constructor makes it slow, so we
                 # are calling it here only when needed.
                 self._max_chunk_size = _get_max_chunk_size(
-                    self._table, ARROW_MAX_CHUNK_SIZE_BYTES
+                    table, ARROW_MAX_CHUNK_SIZE_BYTES
                 )
+            contains_native_tensor_columns = any(
+                _is_native_tensor_type(column.type) for column in table.columns
+            )
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
-                yield from batch.to_pylist()
+                if contains_native_tensor_columns:
+                    # HACK: For v1 and v2 tensors, we can control what is returned
+                    # by overriding ExtensionScalar.as_py (see ArrowTensorScalar).
+                    # For pyarrow native FixedShapeTensorArrays we cannot, so we
+                    # use _iter_rows_from_batch_with_tensors to handle conversion.
+                    yield from _iter_rows_from_batch_with_tensors(batch)
+                else:
+                    yield from batch.to_pylist()
         else:
-            for i in range(self.num_rows()):
+            num_rows = self.num_rows()
+            for i in range(num_rows):
                 yield self._get_row(i)
+
+    def filter(self, predicate_expr: "Expr") -> "pyarrow.Table":
+        """Filter rows based on a predicate expression."""
+        if self._table.num_rows == 0:
+            return self._table
+
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
+        )
+
+        # Evaluate the expression to get a boolean mask
+        mask = eval_expr(predicate_expr, self._table)
+
+        # Use PyArrow's built-in filter method
+        return self._table.filter(mask)
+
+
+def _iter_rows_from_batch_with_tensors(
+    batch: "pyarrow.RecordBatch",
+) -> Iterator[Dict[str, Any]]:
+    """Iterate over rows in a batch that may contain native tensor columns.
+
+    For pyarrow native FixedShapeTensorArrays, we must manually convert them
+    to ndarrays which preserve shape/ndim. Without this, FixedShapeTensorArrays
+    would be translated to contiguous 1d arrays.
+
+    See: https://arrow.apache.org/docs/python/generated/pyarrow.FixedShapeTensorArray.html
+
+    Args:
+        batch: A PyArrow RecordBatch that may contain tensor columns.
+
+    Yields:
+        Dict[str, Any]: Dictionaries mapping column names to values for each row.
+    """
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
+    col_values = []
+    for column in batch.columns:
+        if _is_native_tensor_type(column.type):
+            col_values.append(column.to_numpy_ndarray())
+        else:
+            col_values.append(column.to_pylist())
+
+    for idx in range(batch.num_rows):
+        yield {name: col[idx] for name, col in zip(batch.column_names, col_values)}
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):
@@ -499,22 +648,61 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
     def unique(self) -> BlockColumn:
         import pyarrow.compute as pac
 
+        if self.is_composed_of_lists():
+            # NOTE: Arrow doesn't provide unique kernels for `ListArray`s and
+            #       such, so we rely on Polars to encode and compute unique
+            #       values instead
+            import polars
+
+            return polars.from_arrow(self._column).unique().to_arrow()
+
         return pac.unique(self._column)
+
+    def value_counts(self) -> Optional[Dict[str, List]]:
+        import pyarrow.compute as pac
+
+        value_counts: pyarrow.StructArray = pac.value_counts(self._column)
+        if len(value_counts) == 0:
+            return None
+        return {
+            "values": value_counts.field("values").to_pylist(),
+            "counts": value_counts.field("counts").to_pylist(),
+        }
+
+    def hash(self) -> BlockColumn:
+        import polars as pl
+
+        df = pl.DataFrame({"col": self._column})
+        hashes = df.hash_rows().cast(pl.Int64, wrap_numerical=True)
+        return hashes.to_arrow()
 
     def flatten(self) -> BlockColumn:
         import pyarrow.compute as pac
 
         return pac.list_flatten(self._column)
 
+    def dropna(self) -> BlockColumn:
+        import pyarrow.compute as pac
+
+        return pac.drop_null(self._column)
+
+    def is_composed_of_lists(self) -> bool:
+        types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
+        return isinstance(self._column.type, types)
+
     def to_pylist(self) -> List[Any]:
         return self._column.to_pylist()
 
     def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
-        # NOTE: Pyarrow < 13.0.0 does not support ``zero_copy_only``
         if get_pyarrow_version() < _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY:
-            return self._column.to_numpy()
+            if isinstance(
+                self._column, pyarrow.ChunkedArray
+            ):  # NOTE: ChunkedArray in Pyarrow < 13.0.0 does not support ``zero_copy_only``
+                return self._column.to_numpy()
+            else:
+                return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
         return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
         return self._column

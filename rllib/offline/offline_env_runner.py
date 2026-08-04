@@ -1,24 +1,22 @@
 import logging
-import ray
-
 from pathlib import Path
 from typing import List
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
     OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+    override,
 )
 from ray.rllib.utils.compression import pack_if_needed
-from ray.rllib.utils.spaces.space_utils import to_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType
-from ray.util.debug import log_once
 from ray.util.annotations import PublicAPI
+from ray.util.debug import log_once
 
 logger = logging.Logger(__file__)
 
@@ -35,6 +33,9 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
     def __init__(self, *, config: AlgorithmConfig, **kwargs):
         # Initialize the parent.
         super().__init__(config=config, **kwargs)
+
+        # override SingleAgentEnvRunner
+        self.episodes_to_numpy = False
 
         # Get the data context for this `EnvRunner`.
         data_context = ray.data.DataContext.get_current()
@@ -56,8 +57,19 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # Set the output base path.
         self.output_path = self.config.output
-        # Set the subdir (environment specific).
-        self.subdir_path = self.config.env.lower()
+
+        if self.env:
+            # Set the subdir (environment specific).
+            self.subdir_path = self._get_subdir_path()
+        elif not self.env and (
+            (self.config.create_env_on_local_worker and self.worker_index == 0)
+            or self.worker_index > 0
+        ):
+            raise ValueError(
+                "To set up the output path, the environment "
+                "`env` must be provided when creating the "
+                "`OfflineSingleAgentEnvRunner`."
+            )
         # Set the worker-specific path name. Note, this is
         # specifically to enable multi-threaded writing into
         # the same directory.
@@ -119,6 +131,32 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Define the buffer for experiences stored until written to disk.
         self._samples = []
 
+    def _get_subdir_path(self) -> str:
+        """Returns the subdir path for storing data.
+
+        Returns:
+            The subdir path as a string.
+        """
+        # Set the subdir (environment specific).
+        if isinstance(self.env, str):
+            # `env` is a string.
+            return self.env.lower()
+        else:
+            # `env` is a class or callable we use its class name.
+            if self.config.gym_env_vectorize_mode == "sync":
+                return self.env.unwrapped.envs[0].unwrapped.__class__.__name__.lower()
+            elif self.config.gym_env_vectorize_mode == "async":
+                return self.env.unwrapped.get_attr("unwrapped")[
+                    0
+                ].__class__.__name__.lower()
+            elif self.config.gym_env_vectorize_mode == "vector_entry_point":
+                return self.env.unwrapped.__class__.__name__.lower()
+            else:
+                raise ValueError(
+                    f"Unknown `gym_env_vectorize_mode`: "
+                    f"{self.config.gym_env_vectorize_mode}"
+                )
+
     @override(SingleAgentEnvRunner)
     @OverrideToImplementCustomLogic
     def sample(
@@ -157,6 +195,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 )
             # Note, we serialize episodes with `msgpack` and `msgpack_numpy` to
             # ensure version compatibility.
+            assert all(eps.is_numpy is False for eps in samples)
             self._samples.extend(
                 [msgpack.packb(eps.get_state(), default=mnp.encode) for eps in samples]
             )
@@ -265,8 +304,6 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             samples: List of episodes to be converted.
         """
         # Loop through all sampled episodes.
-        obs_space = self.env.observation_space
-        action_space = self.env.action_space
         for sample in samples:
             # Loop through all items of the episode.
             for i in range(len(sample)):
@@ -275,26 +312,18 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                     Columns.AGENT_ID: sample.agent_id,
                     Columns.MODULE_ID: sample.module_id,
                     # Compress observations, if requested.
-                    Columns.OBS: pack_if_needed(
-                        to_jsonable_if_needed(sample.get_observations(i), obs_space)
-                    )
+                    Columns.OBS: pack_if_needed(sample.get_observations(i))
                     if Columns.OBS in self.output_compress_columns
-                    else to_jsonable_if_needed(sample.get_observations(i), obs_space),
+                    else sample.get_observations(i),
                     # Compress actions, if requested.
-                    Columns.ACTIONS: pack_if_needed(
-                        to_jsonable_if_needed(sample.get_actions(i), action_space)
-                    )
+                    Columns.ACTIONS: pack_if_needed(sample.get_actions(i))
                     if Columns.ACTIONS in self.output_compress_columns
-                    else to_jsonable_if_needed(sample.get_actions(i), action_space),
+                    else sample.get_actions(i),
                     Columns.REWARDS: sample.get_rewards(i),
                     # Compress next observations, if requested.
-                    Columns.NEXT_OBS: pack_if_needed(
-                        to_jsonable_if_needed(sample.get_observations(i + 1), obs_space)
-                    )
+                    Columns.NEXT_OBS: pack_if_needed(sample.get_observations(i + 1))
                     if Columns.OBS in self.output_compress_columns
-                    else to_jsonable_if_needed(
-                        sample.get_observations(i + 1), obs_space
-                    ),
+                    else sample.get_observations(i + 1),
                     Columns.TERMINATEDS: False
                     if i < len(sample) - 1
                     else sample.is_terminated,

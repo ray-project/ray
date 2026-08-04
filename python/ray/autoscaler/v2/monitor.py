@@ -13,16 +13,22 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.ray_constants import (
-    LOGGING_ROTATE_BYTES,
-    LOGGING_ROTATE_BACKUP_COUNT,
+from ray._common.network_utils import (
+    build_address,
+    get_localhost_ip,
+    is_localhost,
+    parse_address,
 )
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
+from ray._common.usage.usage_lib import record_extra_usage_tag
+from ray._private import logging_utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
-from ray._common.usage.usage_lib import record_extra_usage_tag
 from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
-from ray._common.network_utils import parse_address, build_address
 from ray.autoscaler._private.constants import (
     AUTOSCALER_METRIC_PORT,
     AUTOSCALER_UPDATE_INTERVAL_S,
@@ -33,13 +39,13 @@ from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import (
     FileConfigReader,
     IConfigReader,
+    Provider,
     ReadOnlyProviderConfigReader,
 )
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
-from ray._private import logging_utils
 
 try:
     import prometheus_client
@@ -95,7 +101,11 @@ class AutoscalerMonitor:
                 ray_event_logger = get_event_logger(
                     RayEvent.SourceType.AUTOSCALER, log_dir
                 )
-                self.event_logger = AutoscalerEventLogger(ray_event_logger)
+                self.event_logger = AutoscalerEventLogger(
+                    ray_event_logger,
+                    log_cluster_shape=config_reader.get_cached_autoscaling_config().provider
+                    != Provider.READ_ONLY,
+                )
             except Exception:
                 self.event_logger = None
         else:
@@ -114,7 +124,9 @@ class AutoscalerMonitor:
                         AUTOSCALER_METRIC_PORT
                     )
                 )
-                kwargs = {"addr": "127.0.0.1"} if head_node_ip == "127.0.0.1" else {}
+                kwargs = (
+                    {"addr": get_localhost_ip()} if is_localhost(head_node_ip) else {}
+                )
                 prometheus_client.start_http_server(
                     port=AUTOSCALER_METRIC_PORT,
                     registry=prom_metrics.registry,

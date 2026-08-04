@@ -1,15 +1,21 @@
 """Code to wrap some NCCL API calls."""
+from typing import Any, List
+
 import numpy
 
 try:
     import cupy
-    from cupy.cuda import nccl
-    from cupy.cuda import Device  # noqa: F401
-    from cupy.cuda.nccl import get_version
-    from cupy.cuda.nccl import get_build_version
-    from cupy.cuda.nccl import NcclCommunicator
-    from cupy.cuda.nccl import groupStart  # noqa: F401
-    from cupy.cuda.nccl import groupEnd  # noqa: F401
+    from cupy.cuda import (
+        Device,  # noqa: F401
+        nccl,
+    )
+    from cupy.cuda.nccl import (
+        NcclCommunicator,
+        get_build_version,
+        get_version,
+        groupEnd,  # noqa: F401
+        groupStart,  # noqa: F401
+    )
 except ImportError:
     raise ImportError("NCCL in Ray requires Cupy being available!")
 
@@ -100,27 +106,29 @@ def get_nccl_unique_id():
     return nccl.get_unique_id()
 
 
-def create_nccl_communicator(world_size, nccl_unique_id, rank):
+def create_nccl_communicator(world_size: int, nccl_unique_id: bytes, rank: int):
     """Create an NCCL communicator using NCCL APIs.
 
     Args:
         world_size: the number of processes of this communicator group.
         nccl_unique_id: the NCCLUniqueID for this group.
         rank: the rank of this process.
+
     Returns:
-        comm (nccl.ncclComm_t): an NCCL communicator.
+        comm: an NCCL communicator.
     """
     comm = NcclCommunicator(world_size, nccl_unique_id, rank)
     return comm
 
 
-def get_nccl_reduce_op(reduce_op):
+def get_nccl_reduce_op(reduce_op: ReduceOp):
     """Map the reduce op to NCCL reduce op type.
 
     Args:
         reduce_op: ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
+
     Returns:
-        (nccl.ncclRedOp_t): the mapped NCCL reduce op.
+        the mapped NCCL reduce op.
     """
     if reduce_op not in NCCL_REDUCE_OP_MAP:
         raise RuntimeError("NCCL does not support reduce op: '{}'.".format(reduce_op))
@@ -233,15 +241,12 @@ def get_tensor_device(tensor):
     return device
 
 
-def copy_tensor(dst_tensor, src_tensor):
+def copy_tensor(dst_tensor: Any, src_tensor: Any):
     """Copy the content from src_tensor to dst_tensor.
 
     Args:
         dst_tensor: the tensor to copy from.
         src_tensor: the tensor to copy to.
-
-    Returns:
-        None
     """
     copied = True
     if isinstance(dst_tensor, cupy.ndarray) and isinstance(src_tensor, cupy.ndarray):
@@ -274,7 +279,7 @@ def copy_tensor(dst_tensor, src_tensor):
         )
 
 
-def get_tensor_device_list(tensors):
+def get_tensor_device_list(tensors: List[Any]):
     """Returns the gpu devices of the list of input tensors.
 
     Args:

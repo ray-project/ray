@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
-import numpy as np
 import os
 import shutil
 import unittest
+
+import numpy as np
 
 import ray
 import ray._common
@@ -48,7 +49,8 @@ def export_test(
         test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
-        ray._common.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
+        ray._common.utils.get_default_ray_temp_dir(),
+        "export_dir_%s" % alg_name,
     )
 
     print("Exporting policy checkpoint", alg_name, export_dir)
@@ -66,7 +68,9 @@ def export_test(
 
     # Test loading exported model and perform forward pass.
     if framework == "torch":
-        model = torch.load(os.path.join(export_dir, "model", "model.pt"))
+        model = torch.load(
+            os.path.join(export_dir, "model", "model.pt"), weights_only=False
+        )
         assert model
         results = model(
             input_dict={"obs": torch.from_numpy(test_obs)},
@@ -93,7 +97,7 @@ def export_test(
     # Test loading exported model and perform forward pass.
     if framework == "torch":
         filename = os.path.join(export_dir, "model.pt")
-        model = torch.load(filename)
+        model = torch.load(filename, weights_only=False)
         assert model
         results = model(
             input_dict={"obs": torch.from_numpy(test_obs)},
@@ -133,7 +137,8 @@ class TestExportCheckpointAndModel(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,19 +1,19 @@
-from functools import partial
-import gymnasium as gym
-from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
-import numpy as np
-import tree  # pip install dm_tree
+from functools import partial
 from typing import List, Optional, Type, Union
 
-from ray.tune.registry import (
-    RLLIB_MODEL,
-    RLLIB_ACTION_DIST,
-    _global_registry,
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
 )
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
+from ray.rllib.models.preprocessors import Preprocessor, get_preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
     Categorical,
     Deterministic,
@@ -25,22 +25,23 @@ from ray.rllib.models.tf.tf_action_dist import (
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDeterministic,
-    TorchDirichlet,
     TorchDiagGaussian,
+    TorchDirichlet,
     TorchMultiActionDistribution,
     TorchMultiCategorical,
 )
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.tune.registry import (
+    RLLIB_ACTION_DIST,
+    RLLIB_MODEL,
+    _global_registry,
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -768,21 +769,21 @@ class ModelCatalog:
         ComplexNet = None
 
         if framework in ["tf2", "tf"]:
+            from ray.rllib.models.tf.complex_input_net import (
+                ComplexInputNetwork as ComplexNet,
+            )
             from ray.rllib.models.tf.fcnet import (
                 FullyConnectedNetwork as FCNet,
             )
             from ray.rllib.models.tf.visionnet import (
                 VisionNetwork as VisionNet,
             )
-            from ray.rllib.models.tf.complex_input_net import (
-                ComplexInputNetwork as ComplexNet,
-            )
         elif framework == "torch":
-            from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as FCNet
-            from ray.rllib.models.torch.visionnet import VisionNetwork as VisionNet
             from ray.rllib.models.torch.complex_input_net import (
                 ComplexInputNetwork as ComplexNet,
             )
+            from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as FCNet
+            from ray.rllib.models.torch.visionnet import VisionNetwork as VisionNet
         elif framework == "jax":
             from ray.rllib.models.jax.fcnet import FullyConnectedNetwork as FCNet
         else:

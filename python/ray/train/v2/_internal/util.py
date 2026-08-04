@@ -1,9 +1,12 @@
+import asyncio
 import contextlib
 import functools
 import logging
+import threading
 import time
 import traceback
 from datetime import datetime
+from enum import Enum
 from typing import (
     Any,
     Callable,
@@ -11,6 +14,7 @@ from typing import (
     Dict,
     Generator,
     Generic,
+    Iterator,
     List,
     Optional,
     TypeVar,
@@ -20,7 +24,6 @@ from typing import (
 import ray
 from ray.train._internal.utils import count_required_parameters
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
-from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +55,19 @@ def construct_train_func(
     fn_arg_name: Optional[str] = "train_loop_per_worker",
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
+
     Args:
         train_func: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
-        config (Optional[Dict]): Configurations to pass into
-            ``train_func``. If None then an empty Dict will be created.
+        config: Configurations to pass into ``train_func``. If None then an
+            empty Dict will be created.
         train_func_context: Context manager for user's `train_func`, which executes
             backend-specific logic before and after the training function.
-        fn_arg_name (Optional[str]): The name of training function to use for error
-            messages.
+        fn_arg_name: The name of training function to use for error messages.
+
     Returns:
         A valid training function.
+
     Raises:
         ValueError: if the input ``train_func`` is invalid.
     """
@@ -93,6 +98,36 @@ def construct_train_func(
     return train_fn
 
 
+class TrainingFramework(Enum):
+    TORCH = "torch"
+    JAX = "jax"
+    TENSORFLOW = "tensorflow"
+    XGBOOST = "xgboost"
+    LIGHTGBM = "lightgbm"
+
+    def module_names(self) -> tuple[str, ...]:
+        """Returns the relevant module names for the training framework.
+
+        These module names are used by Train state version collection (see
+        `_get_framework_version`) to gather versions of key framework-related packages.
+
+        Note: If adding a new module, make sure to use the module name rather than
+        the distribution name. (e.g. sklearn instead of scikit-learn)
+        """
+        if self is TrainingFramework.TORCH:
+            return ("torch",)
+        if self is TrainingFramework.JAX:
+            return ("jax", "jaxlib")
+        if self is TrainingFramework.TENSORFLOW:
+            return ("tensorflow", "keras")
+        if self is TrainingFramework.XGBOOST:
+            return ("xgboost",)
+        if self is TrainingFramework.LIGHTGBM:
+            return ("lightgbm",)
+
+        return (self.value,)
+
+
 class ObjectRefWrapper(Generic[T]):
     """Thin wrapper around ray.put to manually control dereferencing."""
 
@@ -114,50 +149,22 @@ def time_monotonic():
     return time.monotonic()
 
 
+def time_seconds():
+    """Wall-clock time in seconds since the epoch.
+
+    Separate from `time_monotonic` because preemption deadlines from Ray Core
+    are epoch-based timestamps, not monotonic. Wrapped here so it can be mocked
+    in tests.
+    """
+    return time.time()
+
+
 def _copy_doc(copy_func):
     def wrapped(func):
         func.__doc__ = copy_func.__doc__
         return func
 
     return wrapped
-
-
-def ray_get_safe(
-    object_refs: Union[ObjectRef, List[ObjectRef]],
-) -> Union[Any, List[Any]]:
-    """This is a safe version of `ray.get` that raises an exception immediately
-    if an input task dies, while the others are still running.
-
-    TODO(ml-team, core-team): This is NOT a long-term solution,
-    and we should not maintain this function indefinitely.
-    This is a mitigation for a Ray Core bug, and should be removed when
-    that is fixed.
-    See here: https://github.com/ray-project/ray/issues/47204
-
-    Args:
-        object_refs: A single or list of object refs to wait on.
-
-    Returns:
-        task_outputs: The outputs of the tasks.
-
-    Raises:
-        `RayTaskError`/`RayActorError`: if any of the tasks encounter a runtime error
-            or fail due to actor/task death (ex: node failure).
-    """
-    is_list = isinstance(object_refs, list)
-    object_refs = object_refs if is_list else [object_refs]
-
-    unready = object_refs
-    task_to_output = {}
-    while unready:
-        ready, unready = ray.wait(unready, num_returns=1)
-        if ready:
-            for task, task_output in zip(ready, ray.get(ready)):
-                task_to_output[task] = task_output
-
-    assert len(task_to_output) == len(object_refs)
-    ordered_outputs = [task_to_output[task] for task in object_refs]
-    return ordered_outputs if is_list else ordered_outputs[0]
 
 
 @contextlib.contextmanager
@@ -190,6 +197,12 @@ def get_module_name(obj: object) -> str:
 
 def get_callable_name(fn: Callable) -> str:
     """Returns a readable name for any callable.
+
+    Args:
+        fn: The callable to extract a name from.
+
+    Returns:
+        A human-readable name for the callable.
 
     Examples:
 
@@ -238,3 +251,129 @@ def construct_user_exception_with_traceback(
     )
     logger.error(f"Error in training function:\n{exc_traceback_str}")
     return UserExceptionWithTraceback(e, traceback_str=exc_traceback_str)
+
+
+def _in_ray_train_worker() -> bool:
+    """Check if the current process is a Ray Train V2 worker."""
+    from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
+
+    try:
+        get_train_fn_utils()
+        return True
+    except RuntimeError:
+        return False
+
+
+def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
+    """Check that the caller is a Ray Train worker spawned by Ray Train,
+    with access to training function utilities.
+
+    Args:
+        raise_in_tune_session: Whether to raise a specific error message if the caller
+            is in a Tune session. If True, will raise a DeprecationWarning.
+
+    Returns:
+        A decorator that performs this check, which raises an error if the caller
+        is not a Ray Train worker.
+    """
+
+    def _wrap(fn: Callable) -> Callable:
+        @functools.wraps(fn)
+        def _wrapped_fn(*args, **kwargs):
+            from ray.tune.trainable.trainable_fn_utils import _in_tune_session
+
+            if raise_in_tune_session and _in_tune_session():
+                raise DeprecationWarning(
+                    f"`ray.train.{fn.__name__}` is deprecated when running in a function "
+                    "passed to Ray Tune. Please use the equivalent `ray.tune` API instead. "
+                    "See this issue for more context: "
+                    "https://github.com/ray-project/ray/issues/49454"
+                )
+
+            if not _in_ray_train_worker():
+                raise RuntimeError(
+                    f"`{fn.__name__}` cannot be used outside of a Ray Train training function. "
+                    "You are calling this API from the driver or another non-training process. "
+                    "These utilities are only available within a function launched by `trainer.fit()`."
+                )
+            return fn(*args, **kwargs)
+
+        return _wrapped_fn
+
+    return _wrap
+
+
+async def wait_with_logging(
+    condition: asyncio.Condition,
+    predicate: Optional[Callable[[], bool]] = None,
+    generate_warning_message: Optional[Callable[[], str]] = None,
+    warn_interval_s: float = 60,
+    timeout_s: Optional[float] = None,
+):
+    """Waits for condition to be notified, logging warnings and eventually timing out.
+
+    You must acquire the condition before calling this function.
+
+    Args:
+        condition: The condition to wait for.
+        predicate: Wait until this predicate is True. If None, wait until the condition
+            is notified.
+        generate_warning_message: A function that generates the warning message to log.
+            If None, no warning is logged.
+        warn_interval_s: The interval in seconds to log a warning.
+        timeout_s: The timeout in seconds. Defaults to``None`` to not time out.
+    """
+
+    async def _wait_loop():
+        while True:
+            try:
+                await asyncio.wait_for(
+                    condition.wait()
+                    if predicate is None
+                    else condition.wait_for(predicate),
+                    timeout=warn_interval_s,
+                )
+                return
+            # asyncio.wait_for() raises `asyncio.TimeoutError` for asyncio<=3.10
+            # and raises `TimeoutError` for asyncio>=3.11
+            # https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for
+            except (asyncio.TimeoutError, TimeoutError):
+                if generate_warning_message is not None:
+                    warning_message = generate_warning_message()
+                    logger.warning(warning_message)
+
+    await asyncio.wait_for(
+        _wait_loop(),
+        timeout=timeout_s,
+    )
+
+
+@contextlib.contextmanager
+def context_watchdog(fn: Callable, *args: Any) -> Iterator[None]:
+    """Run a function in a background thread for the duration of the context.
+
+    The function is started in a daemon thread on entry. On exit, a
+    threading.Event is set to signal the thread to stop. The function is
+    responsible for checking the event and returning promptly once it is set.
+
+    Args:
+        fn: A function whose first argument is a threading.Event stop signal.
+            The function should return when stop_event.is_set() or
+            stop_event.wait(...) returns True.
+        *args: Additional arguments forwarded to fn after the stop event.
+
+    Yields:
+        None: Control is yielded to the caller while the watchdog thread runs.
+    """
+    stop_event = threading.Event()
+    thread = threading.Thread(
+        target=fn,
+        args=(stop_event, *args),
+        daemon=True,  # thread will end even if the finally is bypassed by an abnormal exit
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        thread.join()

@@ -1,10 +1,12 @@
-import numpy as np
-import gymnasium as gym
-from gymnasium.spaces import Discrete, MultiDiscrete
 import logging
-import tree  # pip install dm_tree
 from typing import Dict, List, Tuple
 
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Discrete, MultiDiscrete
+
+from ray._common.deprecation import deprecation_warning
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
@@ -15,7 +17,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()

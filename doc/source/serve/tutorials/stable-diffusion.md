@@ -15,10 +15,10 @@ This example runs a Stable Diffusion application with Ray Serve.
 To run this example, install the following:
 
 ```bash
-pip install "ray[serve]" requests torch diffusers==0.12.1 transformers
+pip install "ray[serve]" requests torch diffusers==0.35.2 transformers
 ```
 
-This example uses the [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) model and [FastAPI](https://fastapi.tiangolo.com/) to build the example. Save the following code to a file named stable_diffusion.py. 
+This example uses the [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) model and [FastAPI](https://fastapi.tiangolo.com/) to build the example. Save the following code to a file named stable_diffusion.py. 
 
 The Serve code is as follows:
 ```{literalinclude} ../doc_code/stable_diffusion.py
@@ -53,5 +53,4 @@ resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={input}")
 with open("output.png", 'wb') as f:
     f.write(resp.content)
 ```
-The app saves the `output.png` file locally. The following is an example of an output image.
-![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/stable_diffusion_output.png)
+The app saves the `output.png` file locally. The following is an example of an output image. ![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/stable_diffusion_output.png)

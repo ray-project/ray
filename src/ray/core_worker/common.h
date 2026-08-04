@@ -22,6 +22,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -64,27 +65,30 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() = default;
-  TaskOptions(
-      std::string name_p,
-      int num_returns_p,
-      std::unordered_map<std::string, double> &resources_p,
-      std::string concurrency_group_name_p = "",
-      int64_t generator_backpressure_num_objects_p = -1,
-      std::string serialized_runtime_env_info_p = "{}",
-      bool enable_task_events_p = kDefaultTaskEventEnabled,
-      std::unordered_map<std::string, std::string> labels_p = {},
-      std::unordered_map<std::string, std::string> label_selector_p = {},
-      rpc::TensorTransport tensor_transport_p = rpc::TensorTransport::OBJECT_STORE)
+  TaskOptions(std::string name_p,
+              int num_returns_p,
+              std::unordered_map<std::string, double> &resources_p,
+              std::string concurrency_group_name_p = "",
+              int64_t generator_backpressure_num_objects_p = -1,
+              int64_t num_objects_per_yield_p = 1,
+              std::string serialized_runtime_env_info_p = "{}",
+              bool enable_task_events_p = kDefaultTaskEventEnabled,
+              std::unordered_map<std::string, std::string> labels_p = {},
+              LabelSelector label_selector_p = {},
+              std::optional<std::string> tensor_transport_p = std::nullopt,
+              std::vector<FallbackOption> fallback_strategy_p = {})
       : name(std::move(name_p)),
         num_returns(num_returns_p),
         resources(resources_p),
         concurrency_group_name(std::move(concurrency_group_name_p)),
         serialized_runtime_env_info(std::move(serialized_runtime_env_info_p)),
         generator_backpressure_num_objects(generator_backpressure_num_objects_p),
+        num_objects_per_yield(num_objects_per_yield_p),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
         label_selector(std::move(label_selector_p)),
-        tensor_transport(tensor_transport_p) {}
+        fallback_strategy(std::move(fallback_strategy_p)),
+        tensor_transport(std::move(tensor_transport_p)) {}
 
   /// The name of this task.
   std::string name;
@@ -102,14 +106,19 @@ struct TaskOptions {
   /// -1 means either streaming generator is not used or
   /// it is used but the feature is disabled.
   int64_t generator_backpressure_num_objects;
+  /// Only applicable when streaming generator is used.
+  /// The number of ObjectRefs produced by each generator yield.
+  int64_t num_objects_per_yield = 1;
   /// True if task events (worker::TaskEvent) from this task should be reported, default
   /// to true.
   bool enable_task_events = kDefaultTaskEventEnabled;
   std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this task.
-  std::unordered_map<std::string, std::string> label_selector;
+  LabelSelector label_selector;
+  // A list of fallback options defining scheduling strategies.
+  std::vector<FallbackOption> fallback_strategy;
   // The tensor transport (e.g., NCCL, GLOO, etc.) to use for this task.
-  rpc::TensorTransport tensor_transport;
+  std::optional<std::string> tensor_transport;
 };
 
 /// Options for actor creation tasks.
@@ -130,9 +139,12 @@ struct ActorCreationOptions {
                        std::vector<ConcurrencyGroup> concurrency_groups_p = {},
                        bool allow_out_of_order_execution_p = false,
                        int32_t max_pending_calls_p = -1,
+                       bool enable_tensor_transport_p = false,
                        bool enable_task_events_p = kDefaultTaskEventEnabled,
                        std::unordered_map<std::string, std::string> labels_p = {},
-                       std::unordered_map<std::string, std::string> label_selector_p = {})
+                       LabelSelector label_selector_p = {},
+                       std::vector<FallbackOption> fallback_strategy_p = {},
+                       int64_t actor_generator_backpressure_num_objects_p = -1)
       : max_restarts(max_restarts_p),
         max_task_retries(max_task_retries_p),
         max_concurrency(max_concurrency_p),
@@ -148,10 +160,14 @@ struct ActorCreationOptions {
         concurrency_groups(std::move(concurrency_groups_p)),
         allow_out_of_order_execution(allow_out_of_order_execution_p),
         max_pending_calls(max_pending_calls_p),
+        enable_tensor_transport(enable_tensor_transport_p),
         scheduling_strategy(std::move(scheduling_strategy_p)),
         enable_task_events(enable_task_events_p),
         labels(std::move(labels_p)),
-        label_selector(std::move(label_selector_p)) {
+        label_selector(std::move(label_selector_p)),
+        fallback_strategy(std::move(fallback_strategy_p)),
+        actor_generator_backpressure_num_objects(
+            actor_generator_backpressure_num_objects_p) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -201,6 +217,7 @@ struct ActorCreationOptions {
   const bool allow_out_of_order_execution = false;
   /// The maximum actor call pending count.
   const int max_pending_calls = -1;
+  const bool enable_tensor_transport = false;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
   /// True if task events (worker::TaskEvent) from this creation task should be reported
@@ -208,7 +225,13 @@ struct ActorCreationOptions {
   const bool enable_task_events = kDefaultTaskEventEnabled;
   const std::unordered_map<std::string, std::string> labels;
   // The label constraints of the node to schedule this actor.
-  const std::unordered_map<std::string, std::string> label_selector;
+  const LabelSelector label_selector;
+  // A list of scheduling options defining fallback strategies for scheduling.
+  const std::vector<FallbackOption> fallback_strategy;
+  // Cap on unconsumed streaming-generator objects across all generator tasks
+  // on this actor. -1 disables the cap. See proto field
+  // ActorCreationTaskSpec.actor_generator_backpressure_num_objects.
+  const int64_t actor_generator_backpressure_num_objects = -1;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
@@ -221,13 +244,15 @@ struct PlacementGroupCreationOptions {
       bool is_detached_p,
       NodeID soft_target_node_id = NodeID::Nil(),
       std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
-          {})
+          {},
+      std::unordered_map<std::string, PlacementStrategy> topology_strategy = {})
       : name_(std::move(name)),
         strategy_(strategy),
         bundles_(std::move(bundles)),
         is_detached_(is_detached_p),
         soft_target_node_id_(soft_target_node_id),
-        bundle_label_selector_(std::move(bundle_label_selector)) {
+        bundle_label_selector_(std::move(bundle_label_selector)),
+        topology_strategy_(std::move(topology_strategy)) {
     RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
@@ -248,26 +273,25 @@ struct PlacementGroupCreationOptions {
   const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
   const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
+  /// Topology strategy. Maps each non-node topology label (e.g.
+  /// "ray.io/gpu-domain") to the placement strategy applied at that label.
+  const std::unordered_map<std::string, PlacementStrategy> topology_strategy_;
 };
 
 class ObjectLocation {
  public:
-  ObjectLocation(NodeID primary_node_id,
-                 int64_t object_size,
+  ObjectLocation(int64_t object_size,
                  std::vector<NodeID> node_ids,
                  bool is_spilled,
                  std::string spilled_url,
                  NodeID spilled_node_id,
                  bool did_spill)
-      : primary_node_id_(primary_node_id),
-        object_size_(object_size),
+      : object_size_(object_size),
         node_ids_(std::move(node_ids)),
         is_spilled_(is_spilled),
         spilled_url_(std::move(spilled_url)),
         spilled_node_id_(spilled_node_id),
         did_spill_(did_spill) {}
-
-  const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
 
   const int64_t GetObjectSize() const { return object_size_; }
 
@@ -282,9 +306,6 @@ class ObjectLocation {
   const bool GetDidSpill() const { return did_spill_; }
 
  private:
-  /// The ID of the node has the primary copy of the object.
-  /// Nil if the object is pending resolution.
-  const NodeID primary_node_id_;
   /// The size of the object in bytes. -1 if unknown.
   const int64_t object_size_;
   /// The IDs of the nodes that this object appeared on or was evicted by.

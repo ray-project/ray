@@ -7,7 +7,8 @@ import unittest
 # coding: utf-8
 # coding: utf-8
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest  # noqa
@@ -22,6 +23,7 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    NO_DRIVER_TTL_EXPIRED_ANNOTATION,
     KubeRayProvider,
 )
 from ray.autoscaler.v2.instance_manager.config import (
@@ -193,6 +195,7 @@ def get_provider():
 def test_node_providers_basic(get_provider, provider_name):
     # Test launching.
     provider = get_provider(name=provider_name)
+    timeout_s = 30 if provider_name == "fake_multi" else 10
     provider.launch(
         shape={"worker_nodes": 2},
         request_id="1",
@@ -212,7 +215,7 @@ def test_node_providers_basic(get_provider, provider_name):
         assert nodes_by_type == {"worker_nodes": 4, "worker_nodes1": 1}
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(verify, timeout=timeout_s)
 
     nodes = provider.get_non_terminated().keys()
 
@@ -238,7 +241,7 @@ def test_node_providers_basic(get_provider, provider_name):
             assert node.request_id == "4"
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(verify, timeout=timeout_s)
 
 
 @pytest.mark.parametrize(
@@ -353,11 +356,16 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
         raise NotImplementedError(f"get {path}")
 
-    def patch(self, path: str, patches: List[Dict[str, Any]]):
+    def patch(
+        self,
+        path: str,
+        patches: Union[List[Dict[str, Any]], Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ):
         self._patches[path] = patches
         return {path: patches}
 
-    def get_patches(self, path: str) -> List[Dict[str, Any]]:
+    def get_patches(self, path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         return self._patches[path]
 
 
@@ -377,8 +385,12 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=self.mock_client,
         )
+        # In production _sync_with_api_server caches the CR before the
+        # no-driver annotation is set; mirror that for the dispatch tests.
+        self.provider._ray_cluster = raycluster_cr
 
     def test_get_nodes(self):
         nodes = self.provider.get_non_terminated()
@@ -616,6 +628,65 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             },
         ]
 
+    def test_decrease_cr_replicas_below_observed_then_scale_down(self):
+        """
+        If a user/operator decreases the CR's replicas below the observed number of
+        Pods without specifying workersToDelete, scaling down should base the
+        new desired on observed (floor), decrement by one, and add the pod to
+        workersToDelete.
+        """
+        # Prepare a RayCluster CR with replicas set to 0 for the small-group
+        # while the pod list contains multiple small-group pods.
+        raycluster_cr = get_basic_ray_cr()
+        mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+
+        small_group = "small-group"
+        pod_names = []
+        for pod in mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                pod_names.append(pod["metadata"]["name"])
+        assert len(pod_names) >= 2
+
+        # Decrease CR replicas below observed without workersToDelete.
+        assert raycluster_cr["spec"]["workerGroupSpecs"][0]["groupName"] == small_group
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 0
+
+        provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            gcs_client=MagicMock(),
+            k8s_api_client=mock_client,
+        )
+
+        # Terminate a single observed pod.
+        pod_to_delete = pod_names[0]
+        provider.terminate(ids=[pod_to_delete], request_id="term-decrease")
+
+        # Expected: replicas becomes observed-1; workersToDelete contains the pod.
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+        assert len(patches) == 2
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": len(pod_names) - 1,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": [
+                        pod_to_delete,
+                    ]
+                },
+            },
+        ]
+
     def test_scale_down_multiple_pods_of_node_type(self):
         """
         Test the case where multiple pods of the same node type are scaled
@@ -626,8 +697,6 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         # here because podlist1 only contains one running worker.
         raycluster_cr = get_basic_ray_cr()
         raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
-        raycluster_cr["spec"]["workerGroupSpecs"][1]["replicas"] = 0
-        raycluster_cr["spec"]["workerGroupSpecs"][2]["replicas"] = 0
         mock_client = MockKubernetesHttpApiClient(
             _get_test_yaml("podlist2.yaml"), raycluster_cr
         )
@@ -637,6 +706,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -711,6 +781,158 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert finished_deletes == set()
         assert workers_to_delete == {pod_names[0], pod_names[1]}
 
+    def test_set_no_driver_annotation_adds_when_absent(self):
+        self.provider._set_no_driver_annotation()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        patch = self.mock_client.get_patches(path)
+        assert patch == {
+            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
+        }
+
+    def test_set_no_driver_annotation_idempotent(self):
+        self.provider._ray_cluster.setdefault("metadata", {}).setdefault(
+            "annotations", {}
+        )[NO_DRIVER_TTL_EXPIRED_ANNOTATION] = "true"
+
+        self.provider._set_no_driver_annotation()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert path not in self.mock_client._patches
+
+    def test_set_no_driver_annotation_swallows_patch_failure(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+
+        def failing_patch(*args, **kwargs):
+            raise RuntimeError("k8s unreachable")
+
+        self.mock_client.patch = failing_patch
+        # Should not raise.
+        self.provider._set_no_driver_annotation()
+        assert path not in self.mock_client._patches
+
+    # --- No-driver termination predicate + dispatch ---
+
+    def _make_gcs(self, *jobs):
+        class _Config:
+            def __init__(self, ray_namespace):
+                self.ray_namespace = ray_namespace
+
+        class _Job:
+            def __init__(self, dead, ray_namespace, end_time=0):
+                self.is_dead = dead
+                self.end_time = end_time
+                self.config = _Config(ray_namespace)
+
+        class _Gcs:
+            def get_all_job_info(self, **_):
+                return {i: _Job(*job) for i, job in enumerate(jobs)}
+
+        return _Gcs()
+
+    def test_driver_status_filters_internal(self):
+        gcs = self._make_gcs(
+            (False, "_ray_internal_dashboard"),
+            (False, "_ray_internal_something"),
+        )
+        self.provider._gcs_client = gcs
+        assert self.provider._driver_status()[0] is False
+
+    def test_driver_status_counts_user_driver(self):
+        gcs = self._make_gcs(
+            (False, "_ray_internal_dashboard"),
+            (False, "default"),
+        )
+        self.provider._gcs_client = gcs
+        assert self.provider._driver_status()[0] is True
+
+    def test_driver_status_ignores_dead(self):
+        gcs = self._make_gcs((True, "default", 42))
+        self.provider._gcs_client = gcs
+        assert self.provider._driver_status() == (False, 42)
+
+    def test_driver_status_fail_closed(self):
+        class _FailingGcs:
+            def get_all_job_info(self, **_):
+                raise RuntimeError("gcs unreachable")
+
+        self.provider._gcs_client = _FailingGcs()
+        assert self.provider._driver_status()[0] is True
+
+    def test_evaluate_no_driver_termination_disabled_when_timeout_none(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._gcs_client = self._make_gcs()  # no drivers
+        self.provider._no_driver_timeout_seconds = None
+        self.provider._evaluate_no_driver_termination()
+        assert path not in self.mock_client._patches
+        assert self.provider._no_driver_observed_since is None
+
+    def test_evaluate_no_driver_termination_waits_for_timeout(self):
+        self.provider._gcs_client = self._make_gcs()  # no drivers
+        self.provider._no_driver_timeout_seconds = 100.0
+
+        def evaluate_at(t):
+            with mock.patch("time.monotonic", return_value=t):
+                self.provider._evaluate_no_driver_termination()
+
+        path = f"rayclusters/{self.provider._cluster_name}"
+        evaluate_at(0.0)
+        assert path not in self.mock_client._patches  # anchored, not yet
+        evaluate_at(50.0)
+        assert path not in self.mock_client._patches  # still below timeout
+        evaluate_at(100.0)
+        assert self.mock_client._patches.get(path) == {
+            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
+        }
+
+    def test_evaluate_no_driver_termination_resets_when_driver_attaches(self):
+        path = f"rayclusters/{self.provider._cluster_name}"
+        self.provider._no_driver_timeout_seconds = 100.0
+
+        with mock.patch("time.monotonic", return_value=0.0):
+            self.provider._gcs_client = self._make_gcs()  # no drivers
+            self.provider._evaluate_no_driver_termination()
+        assert self.provider._no_driver_observed_since == 0.0
+
+        # Driver attaches → anchor cleared, no patch.
+        with mock.patch("time.monotonic", return_value=50.0):
+            self.provider._gcs_client = self._make_gcs((False, "default"))
+            self.provider._evaluate_no_driver_termination()
+        assert self.provider._no_driver_observed_since is None
+        assert path not in self.mock_client._patches
+
+    def test_evaluate_no_driver_termination_resets_on_intermittent_driver(self):
+        self.provider._no_driver_timeout_seconds = 100.0
+
+        # No driver: anchor at t=0.
+        with mock.patch("time.monotonic", return_value=0.0):
+            self.provider._gcs_client = self._make_gcs()
+            self.provider._evaluate_no_driver_termination()
+        assert self.provider._no_driver_observed_since == 0.0
+
+        # A short-lived driver started and finished between loops (a dead job
+        # with a newer end time): the timer must restart.
+        with mock.patch("time.monotonic", return_value=50.0):
+            self.provider._gcs_client = self._make_gcs((True, "default", 42))
+            self.provider._evaluate_no_driver_termination()
+        assert self.provider._no_driver_observed_since == 50.0
+        assert self.provider._last_seen_job_end_time == 42
+
+    def test_refresh_no_driver_timeout_seconds_reads_value(self):
+        self.provider._ray_cluster = {
+            "spec": {"autoscalerOptions": {"noDriverTimeoutSeconds": 1800}}
+        }
+        self.provider._refresh_no_driver_timeout_seconds()
+        assert self.provider._no_driver_timeout_seconds == 1800.0
+
+    def test_refresh_no_driver_timeout_seconds_unset(self):
+        self.provider._ray_cluster = {"spec": {"autoscalerOptions": {}}}
+        self.provider._refresh_no_driver_timeout_seconds()
+        assert self.provider._no_driver_timeout_seconds is None
+
+    def test_refresh_no_driver_timeout_seconds_no_autoscaler_options(self):
+        self.provider._ray_cluster = {"spec": {}}
+        self.provider._refresh_no_driver_timeout_seconds()
+        assert self.provider._no_driver_timeout_seconds is None
+
     def test_scale_down_with_multi_host_group(self):
         """
         Test the case where a worker group has numOfHosts > 1.
@@ -720,6 +942,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         # Setup mock RayCluster CR with numOfHosts: 2 and replicas: 1,
         # resulting in 2 workers total.
         raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
         mock_client = MockKubernetesHttpApiClient(
             _get_test_yaml("podlist2.yaml"), raycluster_cr
         )
@@ -729,6 +952,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 

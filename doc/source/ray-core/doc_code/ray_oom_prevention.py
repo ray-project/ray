@@ -10,7 +10,7 @@ ray.init(
 # __last_task_start__
 import ray
 
-@ray.remote(max_retries=-1)
+@ray.remote(max_retries=0)
 def leaks_memory():
     chunks = []
     bits_to_allocate = 8 * 100 * 1024 * 1024  # ~100 MiB
@@ -67,11 +67,11 @@ second_actor = MemoryHogger.options(
     max_restarts=0, max_task_retries=0, name="second_actor"
 ).remote()
 
-# each task requests 0.3 of the system memory when the memory threshold is 0.4.
-allocate_bytes = get_additional_bytes_to_reach_memory_usage_pct(0.3)
+# We want total bytes to exceed 40% threshold to trigger the memory monitor.
+allocate_bytes = get_additional_bytes_to_reach_memory_usage_pct(0.5)
 
-first_actor_task = first_actor.allocate.remote(allocate_bytes)
-second_actor_task = second_actor.allocate.remote(allocate_bytes)
+first_actor_task = first_actor.allocate.remote(0.9 * allocate_bytes)
+second_actor_task = second_actor.allocate.remote(0.1* allocate_bytes)
 
 error_thrown = False
 try:

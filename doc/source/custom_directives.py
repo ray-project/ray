@@ -20,7 +20,6 @@ import requests
 import sphinx
 import yaml
 from docutils import nodes
-from pydata_sphinx_theme.toctree import add_collapse_checkboxes
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import PythonLexer
@@ -40,6 +39,7 @@ __all__ = [
     "update_context",
     "LinkcheckSummarizer",
     "setup_context",
+    "collect_example_orphans",
 ]
 
 # Taken from https://github.com/edx/edx-documentation
@@ -65,6 +65,30 @@ TRACKED_FILES = (
     .strip()
     .split("\n")
 )
+
+_EXTERNAL_HREF_RE = re.compile(r"^[a-z][a-z0-9+.-]*:|^//", re.IGNORECASE)
+
+
+def canonicalize_collection_href(
+    href: str, known_docs: Optional[Iterable[str]] = None
+) -> str:
+    """Map moved collection doc links to their generated _collections pages."""
+    if not known_docs or _EXTERNAL_HREF_RE.match(href) or href.startswith("#"):
+        return href
+
+    path, sep, fragment = href.partition("#")
+    if not path.endswith(".html"):
+        return href
+
+    docname = path[: -len(".html")]
+    if docname in known_docs or docname.startswith("_collections/"):
+        return href
+
+    collection_docname = f"_collections/{docname}"
+    if collection_docname in known_docs:
+        return f"{collection_docname}.html{sep}{fragment}"
+
+    return href
 
 
 def feedback_form_url(project, page):
@@ -244,11 +268,127 @@ def parse_navbar_config(app: sphinx.application.Sphinx, config: sphinx.config.Co
 NavEntry = Dict[str, Union[str, List["NavEntry"]]]
 
 
+def add_collapse_checkboxes(soup: bs4.BeautifulSoup) -> None:
+    """Add checkboxes to collapse children in a toctree.
+
+    Vendored from ``pydata_sphinx_theme.toctree.add_collapse_checkboxes`` so the
+    sidebar build does not reach into a private theme API. That symbol is not
+    part of the theme's public interface (the module has no ``__all__``) and the
+    sibling ``generate_toctree_html`` that ``preload_sidebar_nav`` below is
+    forked from has already been removed upstream, so depending on it makes
+    theme upgrades fragile.
+    """
+    # based on https://github.com/pradyunsg/furo
+
+    for element in soup.find_all("li", recursive=True):
+        # We check all "li" elements, to add a "current-page" to the correct li.
+        classes = element.get("class", [])
+
+        # expanding the parent part explicitly, if present
+        if "current" in classes:
+            parentli = element.find_parent("li", class_="toctree-l0")
+            if parentli:
+                parentli.find("details")["open"] = None
+
+        # Nothing more to do, unless this has "children"
+        if not element.find("ul"):
+            continue
+
+        # Add a class to indicate that this has children.
+        element["class"] = [*classes, "has-children"]
+
+        if soup.new_tag is None:
+            continue
+
+        # For table of contents nodes that have subtrees, we modify the HTML so
+        # that the subtree can be expanded or collapsed in the browser.
+        #
+        # The HTML markup tree at the parent node starts with this structure:
+        #
+        # - li.has-children
+        #   - a.reference or p.caption
+        #   - ul
+        #
+        # Note the first child of li.has-children is p.caption only if this node
+        # is a section heading. (This only happens when show_nav_level is set to
+        # 0.)
+        #
+        # Now we modify the tree structure in one of two ways.
+        #
+        # (1) If the node holds a section heading, the HTML tree will be
+        # modified like so:
+        #
+        # - li.has-children
+        #   - details
+        #     - summary
+        #       - p.caption
+        #       - .toctree-toggle
+        #     - ul
+        #
+        # (2) Otherwise, if the node holds a link to a page in the docs:
+        #
+        # - li.has-children
+        #   - a.reference
+        #   - details
+        #     - summary
+        #       - .toctree-toggle
+        #   - ul
+        #
+        # Why the difference? In the first case, the TOC section heading is not
+        # a link, but in the second case it is. So in the first case it makes
+        # sense to put the (non-link) text inside the summary tag so that the
+        # user can click either the text or the .toctree-toggle chevron icon to
+        # expand/collapse the TOC subtree. But in the second case, putting the
+        # link in the summary tag would make it unclear whether clicking on the
+        # link should expand the subtree or take you to the link.
+
+        # Create <details> and put the entire subtree into it
+        details = soup.new_tag("details")
+        details.extend(element.contents)
+        element.append(details)
+
+        # Hoist the link to the top if there is one
+        toc_link = element.select_one("details > a.reference")
+        if toc_link:
+            element.insert(0, toc_link)
+
+        # Create <summary> with chevron icon
+        summary = soup.new_tag("summary")
+        span = soup.new_tag(
+            "span",
+            attrs={
+                "class": "toctree-toggle",
+                # This element and the chevron it contains are purely decorative;
+                # the actual expand/collapse functionality is delegated to the
+                # <summary> tag
+                "role": "presentation",
+            },
+        )
+        span.append(soup.new_tag("i", attrs={"class": "fa-solid fa-chevron-down"}))
+        summary.append(span)
+
+        # Prepend section heading (if there is one) to <summary>
+        collapsible_section_heading = element.select_one("details > p.caption")
+        if collapsible_section_heading:
+            # Put heading inside summary so that the heading text (and chevron) are both
+            # clickable
+            summary.insert(0, collapsible_section_heading)
+
+        # Prepend <summary> to <details>
+        details.insert(0, summary)
+
+        # If this TOC node has a "current" class, be expanded by default
+        # (by opening the details/summary disclosure widget)
+        if "current" in classes:
+            details["open"] = "open"
+
+
 def preload_sidebar_nav(
     get_toctree: Callable[[Any], str],
     pathto: Callable[[str], str],
     root_doc: str,
     pagename: str,
+    known_docs: Optional[Iterable[str]] = None,
 ) -> bs4.BeautifulSoup:
     """Return the navigation link structure in HTML.
 
@@ -277,6 +417,8 @@ def preload_sidebar_nav(
     ----------
     get_toctree : Callable[[Any], str]
         The function defined in context["toctree"] when html-page-context is triggered
+    known_docs : Optional[Iterable[str]]
+        Sphinx docnames known to the build environment.
 
     Returns
     -------
@@ -348,7 +490,12 @@ def preload_sidebar_nav(
         to_root_prefix = re.sub(f"{root_doc}.html", "", pathto(root_doc))
 
     for a in soup.select("a"):
-        absolute_href = re.sub(r"^(\.\.\/)*", "", a["href"])
+        href = a["href"]
+        if _EXTERNAL_HREF_RE.match(href):
+            continue
+
+        absolute_href = re.sub(r"^(\.\.\/)*", "", href)
+        absolute_href = canonicalize_collection_href(absolute_href, known_docs)
         a["href"] = to_root_prefix + absolute_href
 
         if absolute_href == f"{pagename}.html":
@@ -357,8 +504,14 @@ def preload_sidebar_nav(
             parent_li = a.find_parent("li")
             parent_li["class"] = parent_li.get("class", []) + ["current-page"]
 
-            # Open the dropdowns of every parent li for the active page
+            # Open the dropdowns of every parent li for the active page.
+            # pydata-sphinx-theme 0.17 replaced the <input class="toctree-checkbox">
+            # toggle with HTML5 <details>; keep <input> as a fallback for 0.14.
             for parent_li in a.find_parents("li", attrs={"class": "has-children"}):
+                details = parent_li.find("details", recursive=False)
+                if details is not None:
+                    details.attrs["open"] = ""
+                    continue
                 el = parent_li.find("input")
                 if el:
                     el.attrs["checked"] = True
@@ -452,6 +605,13 @@ class UseCase(ExampleEnum):
     GENERATIVE_AI = "Generative AI"
     COMPUTER_VISION = "Computer Vision"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
+    TIME_SERIES_FORECASTING = "Time Series Forecasting"
+    RECOMMENDATION_SYSTEMS = "Recommendation Systems"
+    ETL = "ETL"
+    DATA_INGESTION = "Data Ingestion"
+    DATA_WAREHOUSING = "Data Warehousing"
+    DOCUMENT_PROCESSING = "Document Processing"
+    REINFORCEMENT_LEARNING = "Reinforcement Learning"
 
     @classmethod
     def formatted_name(cls):
@@ -483,6 +643,8 @@ class Framework(ExampleEnum):
 
     AWSNEURON = "AWS Neuron"
     PYTORCH = "PyTorch"
+    JAX = "JAX"
+    FLAX = "Flax"
     LIGHTNING = "Lightning"
     TRANSFORMERS = "Transformers"
     ACCELERATE = "Accelerate"
@@ -493,7 +655,10 @@ class Framework(ExampleEnum):
     HUGGINGFACE = "Hugging Face"
     DATAJUICER = "Data-Juicer"
     VLLM = "vLLM"
+    PANDAS = "Pandas"
+    TRL = "TRL"
     ANY = "Any"
+    UNSTRUCTURED = "Unstructured"
 
     @classmethod
     def formatted_name(cls):
@@ -509,6 +674,7 @@ class RelatedTechnology(ExampleEnum):
     LLM_APPLICATIONS = "LLM Applications"
     INTEGRATIONS = "Integrations"
     AI_ACCELERATORS = "AI Accelerators"
+    DEPLOYMENT_PATTERNS = "Deployment Patterns"
 
     @classmethod
     def formatted_name(cls):
@@ -1111,6 +1277,7 @@ def setup_context(app, pagename, templatename, context, doctree):
         context["pathto"],
         context["root_doc"],
         pagename,
+        getattr(app.env, "found_docs", None),
     )
     context["render_header_nav_links"] = render_header_nav_links
     context["render_library_examples"] = render_library_examples
@@ -1224,6 +1391,51 @@ def render_example_gallery_dropdown(cls: type) -> bs4.BeautifulSoup:
 
     soup.append(dropdown_container)
     return soup
+
+
+def collect_example_orphans(
+    confdir: os.PathLike,
+    srcdir: os.PathLike,
+    example_configs: Optional[List[str]] = None,
+) -> set:
+    """Collect document paths from examples.yml files to mark as orphans.
+
+    This function parses example configuration files and returns a set of
+    document paths that should be marked as orphan documents during the build.
+
+    Parameters
+    ----------
+    confdir : os.PathLike
+        Path to the Sphinx configuration directory (app.confdir)
+    srcdir : os.PathLike
+        Path to the Sphinx source directory (app.srcdir)
+    example_configs : Optional[List[str]]
+        Configuration files to parse. Defaults to EXAMPLE_GALLERY_CONFIGS.
+
+    Returns
+    -------
+    set
+        Set of document paths (without file extensions) to mark as orphans
+    """
+    if example_configs is None:
+        example_configs = EXAMPLE_GALLERY_CONFIGS
+
+    example_orphan_documents = set()
+
+    for config in example_configs:
+        config_path = pathlib.Path(confdir) / pathlib.Path(config).relative_to(
+            "source"
+        )
+
+        example_config = ExampleConfig(config_path, srcdir)
+        for example in example_config:
+            if not example.link.startswith("http"):
+                # Normalize path and remove file extension to get docname
+                normalized = pathlib.PurePath(os.path.normpath(example.link))
+                docname = str(normalized.with_suffix(''))
+                example_orphan_documents.add(docname)
+
+    return example_orphan_documents
 
 
 def pregenerate_example_rsts(

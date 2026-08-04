@@ -1,3 +1,6 @@
+.. meta::
+   :description: Distributed model training and fine-tuning at scale across PyTorch, Lightning, Hugging Face Transformers, XGBoost, and JAX.
+
 .. _train-docs:
 
 Ray Train: Scalable Model Training
@@ -11,11 +14,12 @@ Ray Train: Scalable Model Training
     PyTorch Lightning Guide <getting-started-pytorch-lightning>
     Hugging Face Transformers Guide <getting-started-transformers>
     XGBoost Guide <getting-started-xgboost>
+    JAX Guide <getting-started-jax>
     more-frameworks
     User Guides <user-guides>
+    Tutorials </_collections/train/tutorials/README>
     Examples <examples>
     Benchmarks <benchmarks>
-    api/api
 
 
 .. div:: sd-d-flex-row sd-align-major-center sd-align-minor-center
@@ -129,6 +133,21 @@ Get started
 
             Try Ray Train with Transformers
 
+    .. grid-item-card::
+
+        **JAX**
+        ^^^
+
+        Get started on distributed model training with Ray Train and JAX.
+
+        +++
+        .. button-ref:: train-jax
+            :color: primary
+            :outline:
+            :expand:
+
+            Try Ray Train with JAX
+
 Learn more
 ----------
 
@@ -165,6 +184,22 @@ Learn more
             :expand:
 
             Read how-to guides
+
+    .. grid-item-card::
+
+        **Tutorials**
+        ^^^
+
+        Hands-on tutorials covering ML workload patterns from vision to recommendation systems.
+
+        +++
+        .. button-ref:: /_collections/train/tutorials/README
+            :color: primary
+            :outline:
+            :expand:
+            :ref-type: doc
+
+            Follow tutorials
 
     .. grid-item-card::
 

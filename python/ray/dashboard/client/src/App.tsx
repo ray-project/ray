@@ -4,8 +4,16 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  authenticateWithToken,
+  getAuthenticationMode,
+} from "./authentication/authentication";
+import { AUTHENTICATION_ERROR_EVENT } from "./authentication/constants";
+import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialog";
+import { API_REFRESH_INTERVAL_MS } from "./common/constants";
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
+import PlatformEventsPage from "./pages/events/PlatformEventsPage";
 import Loading from "./pages/exception/Loading";
 import JobList, { JobsLayout } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
@@ -56,7 +64,8 @@ import {
 } from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
-import { lightTheme } from "./theme";
+import { getPlatformEventsEnabled } from "./service/platform";
+import { darkTheme, lightTheme } from "./theme";
 
 dayjs.extend(duration);
 
@@ -85,6 +94,10 @@ export type GlobalContextType = {
    */
   grafanaOrgId: string;
   /**
+   * The filter for the Cluster variable in grafana dashboards.
+   */
+  grafanaClusterFilter: string | undefined;
+  /**
    * The uids of the dashboards that ray exports that powers the various metrics UIs.
    */
   dashboardUids: DashboardUids | undefined;
@@ -92,6 +105,10 @@ export type GlobalContextType = {
    * Whether prometheus is runing or not
    */
   prometheusHealth: boolean | undefined;
+  /**
+   * Whether platform events are enabled
+   */
+  platformEventsEnabled?: boolean;
   /**
    * The name of the currently running ray session.
    */
@@ -108,6 +125,18 @@ export type GlobalContextType = {
    * The globally selected current time zone.
    */
   currentTimeZone: string | undefined;
+  /**
+   * The current theme mode (light or dark)
+   */
+  themeMode: "light" | "dark";
+  /**
+   * Function to toggle between light and dark mode
+   */
+  toggleTheme: () => void;
+  /**
+   * Whether accelerators (GPU/TPU) are present on any node.
+   */
+  showAcceleratorColumns: boolean;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -116,18 +145,45 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   metricsContextLoaded: false,
   grafanaHost: undefined,
   grafanaOrgId: "1",
+  grafanaClusterFilter: undefined,
   dashboardUids: undefined,
   prometheusHealth: undefined,
+  platformEventsEnabled: false,
   sessionName: undefined,
   dashboardDatasource: undefined,
   serverTimeZone: undefined,
   currentTimeZone: undefined,
+  themeMode: "light",
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  toggleTheme: () => {},
+  showAcceleratorColumns: true,
 });
 
 const App = () => {
   const [currentTimeZone, setCurrentTimeZone] = useState<string>();
+  const [themeMode, setThemeMode] = useState<"light" | "dark">(() => {
+    // Check URL query param first (for embedded views)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTheme = urlParams.get("theme");
+    if (urlTheme === "dark" || urlTheme === "light") {
+      return urlTheme;
+    }
+    // Then check localStorage
+    const stored = localStorage.getItem("themeMode");
+    if (stored === "dark" || stored === "light") {
+      return stored;
+    }
+    // Fall back to system preference
+    if (
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      return "dark";
+    }
+    return "light";
+  });
   const [context, setContext] = useState<
-    Omit<GlobalContextType, "currentTimeZone">
+    Omit<GlobalContextType, "currentTimeZone" | "themeMode" | "toggleTheme">
   >({
     nodeMap: {},
     nodeMapByIp: {},
@@ -135,29 +191,89 @@ const App = () => {
     metricsContextLoaded: false,
     grafanaHost: undefined,
     grafanaOrgId: "1",
+    grafanaClusterFilter: undefined,
     dashboardUids: undefined,
     prometheusHealth: undefined,
+    platformEventsEnabled: false,
     sessionName: undefined,
     dashboardDatasource: undefined,
     serverTimeZone: undefined,
+    showAcceleratorColumns: true,
   });
+
+  const toggleTheme = () => {
+    setThemeMode((prevMode) => {
+      const newMode = prevMode === "light" ? "dark" : "light";
+      localStorage.setItem("themeMode", newMode);
+      return newMode;
+    });
+  };
+
+  // Listen for system theme changes
   useEffect(() => {
-    getNodeList().then((res) => {
-      if (res?.data?.data?.summary) {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (e: MediaQueryListEvent) => {
+      // Only update if user hasn't explicitly set a preference via localStorage or URL
+      const stored = localStorage.getItem("themeMode");
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlTheme = urlParams.get("theme");
+      if (!stored && !urlTheme) {
+        setThemeMode(e.matches ? "dark" : "light");
+      }
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  // Authentication state
+  const [authenticationDialogOpen, setAuthenticationDialogOpen] =
+    useState(false);
+  const [hasAttemptedAuthentication, setHasAttemptedAuthentication] =
+    useState(false);
+  const [authenticationError, setAuthenticationError] =
+    useState<string | undefined>();
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchNodeList = async () => {
+      try {
+        const res = await getNodeList();
+        if (cancelled || !res?.data?.data?.summary) {
+          return;
+        }
         const nodeMap = {} as { [key: string]: string };
         const nodeMapByIp = {} as { [key: string]: string };
-        res.data.data.summary.forEach(({ hostname, raylet, ip }) => {
-          nodeMap[hostname] = raylet.nodeId;
-          nodeMapByIp[ip] = raylet.nodeId;
-        });
+        let hasAccelerators = false;
+        res.data.data.summary.forEach(
+          ({ hostname, raylet, ip, gpus, tpus }) => {
+            nodeMap[hostname] = raylet.nodeId;
+            nodeMapByIp[ip] = raylet.nodeId;
+            if (
+              !hasAccelerators &&
+              ((gpus && gpus.length > 0) || (tpus && tpus.length > 0))
+            ) {
+              hasAccelerators = true;
+            }
+          },
+        );
         setContext((existingContext) => ({
           ...existingContext,
           nodeMap,
           nodeMapByIp,
           namespaceMap: {},
+          showAcceleratorColumns: hasAccelerators,
         }));
+      } catch {
+        // Poll will retry on next interval
       }
-    });
+    };
+    fetchNodeList();
+    const intervalId = setInterval(fetchNodeList, API_REFRESH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, []);
 
   // Detect if grafana is running
@@ -166,6 +282,7 @@ const App = () => {
       const {
         grafanaHost,
         grafanaOrgId,
+        grafanaClusterFilter,
         sessionName,
         prometheusHealth,
         dashboardUids,
@@ -176,6 +293,7 @@ const App = () => {
         metricsContextLoaded: true,
         grafanaHost,
         grafanaOrgId,
+        grafanaClusterFilter,
         dashboardUids,
         sessionName,
         prometheusHealth,
@@ -183,6 +301,16 @@ const App = () => {
       }));
     };
     doEffect();
+  }, []);
+
+  // Detect if platform events are enabled
+  useEffect(() => {
+    getPlatformEventsEnabled().then((platformEventsEnabled) => {
+      setContext((existingContext) => ({
+        ...existingContext,
+        platformEventsEnabled,
+      }));
+    });
   }, []);
 
   useEffect(() => {
@@ -210,12 +338,112 @@ const App = () => {
     updateTimezone();
   }, []);
 
+  // Check authentication mode on mount and cache in sessionStorage
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      try {
+        const { authentication_mode } = await getAuthenticationMode();
+        sessionStorage.setItem("ray-authentication-mode", authentication_mode);
+      } catch (error) {
+        console.error("Failed to check authentication mode:", error);
+      }
+    };
+
+    checkAuthentication();
+  }, []);
+
+  // Listen for authentication errors from axios interceptor
+  useEffect(() => {
+    const handleAuthenticationError = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ hadToken: boolean }>;
+      const hadToken = customEvent.detail?.hadToken ?? false;
+
+      // Check cached auth mode first, fall back to API if not cached
+      let authMode = sessionStorage.getItem("ray-authentication-mode");
+      if (!authMode) {
+        try {
+          const { authentication_mode } = await getAuthenticationMode();
+          authMode = authentication_mode;
+          sessionStorage.setItem(
+            "ray-authentication-mode",
+            authentication_mode,
+          );
+        } catch (error) {
+          console.error("Failed to check authentication mode:", error);
+          return;
+        }
+      }
+
+      if (authMode === "token" || authMode === "k8s") {
+        setHasAttemptedAuthentication(hadToken);
+        setAuthenticationDialogOpen(true);
+      }
+    };
+
+    window.addEventListener(
+      AUTHENTICATION_ERROR_EVENT,
+      handleAuthenticationError,
+    );
+
+    return () => {
+      window.removeEventListener(
+        AUTHENTICATION_ERROR_EVENT,
+        handleAuthenticationError,
+      );
+    };
+  }, []);
+
+  // Handle token submission from dialog
+  const handleTokenSubmit = async (token: string) => {
+    try {
+      // Authenticate with the server - this will validate the token
+      // and set an HttpOnly cookie if valid
+      const isValid = await authenticateWithToken(token);
+
+      if (isValid) {
+        // Token is valid and server has set HttpOnly cookie
+        setHasAttemptedAuthentication(true);
+        setAuthenticationDialogOpen(false);
+        setAuthenticationError(undefined);
+
+        // Reload the page to refetch all data with the new token
+        window.location.reload();
+      } else {
+        // Token is invalid
+        setHasAttemptedAuthentication(true);
+        setAuthenticationError(
+          "Invalid authentication token. Please check and try again.",
+        );
+      }
+    } catch (error) {
+      console.error("Failed to authenticate:", error);
+      setAuthenticationError(
+        "Failed to authenticate. Please check your connection and try again.",
+      );
+    }
+  };
+
+  const currentTheme = themeMode === "dark" ? darkTheme : lightTheme;
+
   return (
     <StyledEngineProvider injectFirst>
-      <ThemeProvider theme={lightTheme}>
+      <ThemeProvider theme={currentTheme}>
         <Suspense fallback={Loading}>
-          <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
+          <GlobalContext.Provider
+            value={{
+              ...context,
+              currentTimeZone,
+              themeMode,
+              toggleTheme,
+            }}
+          >
             <CssBaseline />
+            <TokenAuthenticationDialog
+              open={authenticationDialogOpen}
+              hasExistingToken={hasAttemptedAuthentication}
+              onSubmit={handleTokenSubmit}
+              error={authenticationError}
+            />
             <HashRouter>
               <Routes>
                 {/* Redirect people hitting the /new path to root. TODO(aguo): Delete this redirect in ray 2.5 */}
@@ -223,6 +451,10 @@ const App = () => {
                 <Route element={<MainNavLayout />} path="/">
                   <Route element={<Navigate replace to="overview" />} path="" />
                   <Route element={<OverviewPage />} path="overview" />
+                  <Route
+                    element={<PlatformEventsPage />}
+                    path="platform-events"
+                  />
                   <Route element={<ClusterMainPageLayout />} path="cluster">
                     <Route element={<ClusterLayout />} path="">
                       <Route

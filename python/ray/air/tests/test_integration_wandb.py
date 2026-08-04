@@ -50,10 +50,10 @@ from ray.air.integrations.wandb import (
     WANDB_POPULATE_RUN_LOCATION_HOOK,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
+    RunDisabled,
     WandbLoggerCallback,
     _QueueItem,
     _WandbLoggingActor,
-    RunDisabled,
     setup_wandb,
 )
 from ray.air.tests.mocked_wandb_integration import (

@@ -22,6 +22,10 @@ from ray._common.usage import usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.cli_logger import cf, cli_logger
+from ray.autoscaler._private.cli_output_helpers import (
+    USEFUL_COMMANDS_HEADING,
+    print_head_node_context_separator_if_needed,
+)
 from ray.autoscaler._private.cluster_dump import (
     Archive,
     GetParameters,
@@ -114,7 +118,10 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
 
 
 def debug_status(
-    status, error, verbose: bool = False, address: Optional[str] = None
+    status: bytes,
+    error: bytes,
+    verbose: bool = False,
+    address: Optional[str] = None,
 ) -> str:
     """
     Return a debug string for the autoscaler.
@@ -126,7 +133,7 @@ def debug_status(
         address: The address of the cluster (gcs address).
 
     Returns:
-        str: A debug string for the cluster's status.
+        A debug string for the cluster's status.
     """
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
@@ -135,10 +142,10 @@ def debug_status(
         from ray.autoscaler.v2.utils import ClusterStatusFormatter
 
         cluster_status = get_cluster_status(address)
-        status = ClusterStatusFormatter.format(cluster_status, verbose=verbose)
+        status_str = ClusterStatusFormatter.format(cluster_status, verbose=verbose)
     elif status:
-        status = status.decode("utf-8")
-        status_dict = json.loads(status)
+        decoded_status = status.decode("utf-8")
+        status_dict = json.loads(decoded_status)
         lm_summary_dict = status_dict.get("load_metrics_report")
         autoscaler_summary_dict = status_dict.get("autoscaler_report")
         timestamp = status_dict.get("time")
@@ -157,7 +164,7 @@ def debug_status(
                 **autoscaler_summary_dict,
             )
             report_time = datetime.datetime.fromtimestamp(timestamp)
-            status = format_info_string(
+            status_str = format_info_string(
                 lm_summary,
                 autoscaler_summary,
                 time=report_time,
@@ -166,27 +173,34 @@ def debug_status(
                 verbose=verbose,
             )
         else:
-            status = (
+            status_str = (
                 "No cluster status. It may take a few seconds "
                 "for the Ray internal services to start up."
             )
     else:
-        status = (
+        status_str = (
             "No cluster status. It may take a few seconds "
             "for the Ray internal services to start up."
         )
 
     if error:
-        status += "\n"
-        status += error.decode("utf-8")
+        status_str += "\n"
+        status_str += error.decode("utf-8")
 
-    return status
+    return status_str
 
 
 def request_resources(
-    num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
+    num_cpus: Optional[int] = None,
+    bundles: Optional[List[dict]] = None,
+    bundle_label_selectors: Optional[List[dict]] = None,
 ) -> None:
-    """Remotely request some CPU or GPU resources from the autoscaler.
+    """Remotely request some CPU or GPU resources from the autoscaler. Optionally
+    specify label selectors for nodes with the requested resources.
+
+    If `bundle_label_selectors` is provided, `bundles` must also be provided.
+    Both must be lists of the same length, and `bundle_label_selectors` expects a list
+    of string dictionaries.
 
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.
@@ -195,28 +209,44 @@ def request_resources(
         num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made.
-        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
-            resource shapes can fit. This request is persistent until another
-            call to request_resources() is made.
+        bundles: Scale the cluster to ensure this set of resource shapes can
+            fit. This request is persistent until another call to
+            request_resources() is made.
+        bundle_label_selectors: Optional label selectors that new nodes
+            must satisfy (e.g. [{"accelerator-type": "A100"}]). The elements
+            in the bundle_label_selectors should be one-to-one mapping
+            to the elements in bundles.
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
     to_request = []
-    if num_cpus:
-        to_request += [{"CPU": 1}] * num_cpus
+    for _ in range(num_cpus or 0):
+        to_request.append({"resources": {"CPU": 1}, "label_selector": {}})
+    assert not bundle_label_selectors or (
+        bundles and len(bundles) == len(bundle_label_selectors)
+    ), "If bundle_label_selectors is provided, bundles must also be provided and have the same length."
     if bundles:
-        to_request += bundles
-    _internal_kv_put(
-        AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
-    )
+        for i, bundle in enumerate(bundles):
+            selector = bundle_label_selectors[i] if bundle_label_selectors else {}
+            to_request.append({"resources": bundle, "label_selector": selector})
 
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
     if is_autoscaler_v2():
+        # For v2 autoscaler: use new format with label_selectors via GCS RPC
         from ray.autoscaler.v2.sdk import request_cluster_resources
 
         gcs_address = internal_kv_get_gcs_client().address
         request_cluster_resources(gcs_address, to_request)
+    else:
+        # For v1 autoscaler: write old format (ResourceDict) to KV
+        # Extract resources field for backward compatibility
+        to_request_v1 = [req["resources"] for req in to_request]
+        _internal_kv_put(
+            AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+            json.dumps(to_request_v1),
+            overwrite=True,
+        )
 
 
 def create_or_update_cluster(
@@ -336,7 +366,7 @@ def _bootstrap_config(
     config = prepare_config(config)
     # NOTE: multi-node-type autoscaler is guaranteed to be in use after this.
 
-    hasher = hashlib.sha1()
+    hasher = hashlib.sha256()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
     cache_key = os.path.join(
         tempfile.gettempdir(), "ray-config-{}".format(hasher.hexdigest())
@@ -368,7 +398,10 @@ def _bootstrap_config(
                     cf.bold("--no-config-cache"),
                 )
 
-            return config_cache["config"]
+            cached_config = config_cache["config"]
+            if "provider" in cached_config:
+                cached_config["provider"]["_config_cache_path"] = cache_key
+            return cached_config
         else:
             cli_logger.warning(
                 "Found cached cluster config "
@@ -415,6 +448,7 @@ def _bootstrap_config(
             "update your install command."
         )
     resolved_config = provider_cls.bootstrap_config(config)
+    resolved_config["provider"]["_config_cache_path"] = cache_key
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
@@ -472,7 +506,7 @@ def teardown_cluster(
     provider = _get_node_provider(config["provider"], config["cluster_name"])
 
     def remaining_nodes():
-        workers = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        workers = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
         if keep_min_workers:
             min_workers = config.get("min_workers", 0)
@@ -482,8 +516,10 @@ def teardown_cluster(
                 cf.bold(min_workers),
                 cf.bold("--keep-min-workers"),
             )
-
-            workers = random.sample(workers, len(workers) - min_workers)
+            if len(workers) > min_workers:
+                workers = random.sample(workers, len(workers) - min_workers)
+            else:
+                workers = []
 
         # todo: it's weird to kill the head node but not all workers
         if workers_only:
@@ -491,11 +527,9 @@ def teardown_cluster(
                 "The head node will not be shut down. " + cf.dimmed("(due to {})"),
                 cf.bold("--workers-only"),
             )
-
             return workers
 
-        head = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
-
+        head = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
         return head + workers
 
     def run_docker_stop(node, container_name):
@@ -561,6 +595,20 @@ def teardown_cluster(
                 "{} nodes remaining after {} second(s).", cf.bold(len(A)), POLL_INTERVAL
             )
         cli_logger.success("No nodes remaining.")
+
+        # Cleanup shared cluster resources if provider supports it
+        if hasattr(provider, "cleanup_cluster_resources") and not workers_only:
+            try:
+                cli_logger.print("Cleaning up shared cluster resources...")
+                provider.cleanup_cluster_resources()
+                cli_logger.success("Shared cluster resources cleaned up.")
+            except Exception as e:
+                cli_logger.verbose_error("{}", str(e))
+                cli_logger.warning(
+                    "Failed to cleanup shared cluster resources "
+                    "(use -v to see details). "
+                    "You may need to manually delete MSI, NSG, and Subnet resources."
+                )
 
 
 def kill_node(
@@ -824,8 +872,16 @@ def get_or_create_head_node(
 
         # Use RAY_UP_enable_autoscaler_v2 instead of RAY_enable_autoscaler_v2
         # to avoid accidentally enabling autoscaler v2 for ray up
-        # due to env inheritance.
-        if os.getenv("RAY_UP_enable_autoscaler_v2", "0") == "1":
+        # due to env inheritance. The default value is 1 since Ray 2.50.0.
+        if os.getenv("RAY_UP_enable_autoscaler_v2", "1") == "1":
+            if "RAY_UP_enable_autoscaler_v2" not in os.environ:
+                # TODO (rueian): Remove this notice after Ray 2.52.0.
+                cli_logger.print(
+                    "Autoscaler v2 is now enabled by default (since Ray 2.50.0). "
+                    "To switch back to v1, set {}=0. This message can be suppressed by setting {} explicitly.",
+                    cf.bold("RAY_UP_enable_autoscaler_v2"),
+                    cf.bold("RAY_UP_enable_autoscaler_v2"),
+                )
             ray_start_commands = with_envs(
                 ray_start_commands,
                 {
@@ -883,7 +939,8 @@ def get_or_create_head_node(
         modifiers = ""
 
     cli_logger.newline()
-    with cli_logger.group("Useful commands:"):
+    print_head_node_context_separator_if_needed(ray_start_commands, cli_logger, cf)
+    with cli_logger.group(USEFUL_COMMANDS_HEADING):
         printable_config_file = os.path.abspath(printable_config_file)
 
         cli_logger.print("To terminate the cluster:")
@@ -926,6 +983,18 @@ def get_or_create_head_node(
         )
         cli_logger.newline()
 
+    # Clean up temporary config file if it was created
+    # Clean up temporary config file if it was created on Windows
+    if (
+        sys.platform == "win32"
+        and not no_monitor_on_head
+        and "remote_config_file" in locals()
+    ):
+        try:
+            os.remove(remote_config_file.name)
+        except OSError:
+            pass  # Ignore cleanup errors
+
 
 def _should_create_new_head(
     head_node_id: Optional[str],
@@ -943,12 +1012,13 @@ def _should_create_new_head(
         node's node_type.
 
     Args:
-        head_node_id (Optional[str]): head node id if a head exists, else None
+        head_node_id: head node id if a head exists, else None
         new_launch_hash: hash of current user-submitted head config
         new_head_node_type: current user-submitted head node-type key
+        provider: Node provider used to read tags on the existing head.
 
     Returns:
-        bool: True if a new Ray head node should be launched, False otherwise
+        True if a new Ray head node should be launched, False otherwise
     """
     if not head_node_id:
         # No head node exists, need to create it.
@@ -1025,9 +1095,14 @@ def _set_up_config_for_head_node(
     remote_config = provider.prepare_for_head_node(remote_config)
 
     # Now inject the rewritten config and SSH key into the head node
-    remote_config_file = tempfile.NamedTemporaryFile("w", prefix="ray-bootstrap-")
+    is_windows = sys.platform == "win32"
+    remote_config_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-bootstrap-", delete=not is_windows
+    )
     remote_config_file.write(json.dumps(remote_config))
     remote_config_file.flush()
+    if is_windows:
+        remote_config_file.close()  # Close the file handle to ensure it's accessible
     config["file_mounts"].update(
         {"~/ray_bootstrap_config.yaml": remote_config_file.name}
     )
@@ -1051,6 +1126,7 @@ def attach_cluster(
     no_config_cache: bool = False,
     new: bool = False,
     port_forward: Optional[Port_forward] = None,
+    node_ip: Optional[str] = None,
 ) -> None:
     """Attaches to a screen for the specified cluster.
 
@@ -1060,8 +1136,10 @@ def attach_cluster(
         use_screen: whether to use screen as multiplexer
         use_tmux: whether to use tmux as multiplexer
         override_cluster_name: set the name of the cluster
+        no_config_cache: whether to skip the config cache
         new: whether to force a new screen
-        port_forward ( (int,int) or list[(int,int)] ): port(s) to forward
+        port_forward: port(s) to forward
+        node_ip: IP address of the node to attach to
     """
 
     if use_tmux:
@@ -1091,6 +1169,7 @@ def attach_cluster(
         no_config_cache=no_config_cache,
         port_forward=port_forward,
         _allow_uninitialized_state=True,
+        node_ip=node_ip,
     )
 
 
@@ -1109,6 +1188,7 @@ def exec_cluster(
     with_output: bool = False,
     _allow_uninitialized_state: bool = False,
     extra_screen_args: Optional[str] = None,
+    node_ip: Optional[str] = None,
 ) -> str:
     """Runs a command on the specified cluster.
 
@@ -1118,14 +1198,20 @@ def exec_cluster(
         run_env: whether to run the command on the host or in a container.
             Select between "auto", "host" and "docker"
         screen: whether to run in a screen
-        extra_screen_args: optional custom additional args to screen command
         tmux: whether to run in a tmux session
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
-        port_forward ( (int, int) or list[(int, int)] ): port(s) to forward
+        no_config_cache: whether to skip the config cache
+        port_forward: port(s) to forward
+        with_output: whether to return the command output
         _allow_uninitialized_state: whether to execute on an uninitialized head
             node.
+        extra_screen_args: optional custom additional args to screen command
+        node_ip: IP address of the node to execute on
+
+    Returns:
+        The command output if ``with_output`` is True, otherwise an empty string.
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(RUN_ENV_TYPES)
@@ -1139,17 +1225,48 @@ def exec_cluster(
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
-    head_node = _get_running_head_node(
-        config,
-        config_file,
-        override_cluster_name,
-        create_if_needed=start,
-        _allow_uninitialized_state=_allow_uninitialized_state,
-    )
-
     provider = _get_node_provider(config["provider"], config["cluster_name"])
+
+    if node_ip:
+        # IP specified by user, find the node with the IP
+        if start:
+            cli_logger.warning(
+                "The {} flag is ignored when {} is specified, "
+                "as the node IP can be either head or worker node. "
+                "If you need to start the cluster, run {} first, "
+                "or use {} without {}.",
+                cf.bold("--start"),
+                cf.bold("--node-ip"),
+                cf.bold(f"ray up {config_file}"),
+                cf.bold("ray attach"),
+                cf.bold("--node-ip"),
+            )
+        use_internal_ip = config.get("provider", {}).get("use_internal_ips", False)
+        try:
+            target_node = provider.get_node_id(node_ip, use_internal_ip=use_internal_ip)
+            cli_logger.print("Attaching to node with IP: {}", cf.bold(node_ip))
+        except ValueError as e:
+            cli_logger.abort(
+                "Could not find node with IP {}. {}", cf.bold(node_ip), str(e)
+            )
+
+        is_head_node = (
+            provider.node_tags(target_node)[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
+        )
+    else:
+        # Default attaching to head node
+        target_node = _get_running_head_node(
+            config,
+            config_file,
+            override_cluster_name,
+            create_if_needed=start,
+            _provider=provider,
+            _allow_uninitialized_state=_allow_uninitialized_state,
+        )
+        is_head_node = True
+
     updater = NodeUpdaterThread(
-        node_id=head_node,
+        node_id=target_node,
         provider_config=config["provider"],
         provider=provider,
         auth_config=config["auth"],
@@ -1160,7 +1277,7 @@ def exec_cluster(
         ray_start_commands=[],
         runtime_hash="",
         file_mounts_contents_hash="",
-        is_head_node=True,
+        is_head_node=is_head_node,
         rsync_options={
             "rsync_exclude": config.get("rsync_exclude"),
             "rsync_filter": config.get("rsync_filter"),
@@ -1194,6 +1311,8 @@ def exec_cluster(
             attach_command_parts.append(
                 "--cluster-name={}".format(override_cluster_name)
             )
+        if node_ip is not None:
+            attach_command_parts.append("--node-ip={}".format(node_ip))
         if tmux:
             attach_command_parts.append("--tmux")
         elif screen:
@@ -1274,12 +1393,13 @@ def rsync(
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
-        ip_address: Address of node. Raise Exception
-            if both ip_address and 'all_nodes' are provided.
-        use_internal_ip: Whether the provided ip_address is
-            public or private.
+        ip_address: Address of node. Raise Exception if both ip_address
+            and 'all_nodes' are provided.
+        use_internal_ip: Whether the provided ip_address is public or private.
+        no_config_cache: whether to skip the config cache when bootstrapping.
         all_nodes: whether to sync worker nodes in addition to the head node
         should_bootstrap: whether to bootstrap cluster config before syncing
+        _runner: subprocess-like module used to invoke rsync. Mainly for testing.
     """
     if bool(source) != bool(target):
         cli_logger.abort("Expected either both a source and a target, or neither.")
@@ -1420,8 +1540,9 @@ def _get_running_head_node(
     _allow_uninitialized_state: bool = False,
 ) -> str:
     """Get a valid, running head node.
+
     Args:
-        config (Dict[str, Any]): Cluster Config dictionary
+        config: Cluster Config dictionary
         printable_config_file: Used for printing formatted CLI commands.
         override_cluster_name: Passed to `get_or_create_head_node` to
             override the cluster name present in `config`.
@@ -1431,6 +1552,8 @@ def _get_running_head_node(
             is not 'UP TO DATE'. This is used to allow `ray attach` and
             `ray exec` to debug a cluster in a bad state.
 
+    Returns:
+        The node id of the running head node.
     """
     provider = _provider or _get_node_provider(
         config["provider"], config["cluster_name"]

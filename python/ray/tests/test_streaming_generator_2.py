@@ -1,16 +1,17 @@
 import asyncio
-import pytest
-import numpy as np
+import gc
 import sys
 import time
-import gc
+
+import numpy as np
+import pytest
 
 import ray
-from ray.experimental.state.api import list_actors
-from ray._common.test_utils import SignalActor
 from ray._common.test_utils import (
+    SignalActor,
     wait_for_condition,
 )
+from ray.experimental.state.api import list_actors
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
@@ -332,9 +333,21 @@ def test_python_object_leak(shutdown_only):
     @ray.remote
     class AsyncActor:
         def __init__(self):
+            # Force pyarrow (and its ABCMeta-based ListScalar/StructScalar
+            # classes introduced in pyarrow 21) to import before we freeze,
+            # so its one-shot class-definition cycle is captured in the
+            # permanent generation. On py3.10 workers pyarrow is imported
+            # lazily and a freeze here would otherwise miss it.
+            import pyarrow  # noqa: F401
+
             # Clear any existing circular references
             # before testing leaks in actor tasks.
             gc.collect()
+            # Exempt import-time cycles (e.g. pyarrow's ABCMeta-based
+            # ListScalar/StructScalar introduced in pyarrow 21) from
+            # DEBUG_SAVEALL — the test measures only leaks produced by the
+            # workload below, not class-definition cycles in dependencies.
+            gc.freeze()
             self.gc_garbage_len = 0
 
         def get_gc_garbage_len(self):
@@ -363,9 +376,21 @@ def test_python_object_leak(shutdown_only):
     @ray.remote
     class A:
         def __init__(self):
+            # Force pyarrow (and its ABCMeta-based ListScalar/StructScalar
+            # classes introduced in pyarrow 21) to import before we freeze,
+            # so its one-shot class-definition cycle is captured in the
+            # permanent generation. On py3.10 workers pyarrow is imported
+            # lazily and a freeze here would otherwise miss it.
+            import pyarrow  # noqa: F401
+
             # Clear any existing circular references
             # before testing leaks in actor tasks.
             gc.collect()
+            # Exempt import-time cycles (e.g. pyarrow's ABCMeta-based
+            # ListScalar/StructScalar introduced in pyarrow 21) from
+            # DEBUG_SAVEALL — the test measures only leaks produced by the
+            # workload below, not class-definition cycles in dependencies.
+            gc.freeze()
             self.gc_garbage_len = 0
 
         def get_gc_garbage_len(self):

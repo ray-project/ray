@@ -4,17 +4,15 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Uni
 
 import ray
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
-from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
     ExchangeTaskSpec,
 )
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import (
     convert_bytes_to_human_readable_str,
-    unify_schemas_with_validation,
     unzip,
 )
 from ray.data.block import (
@@ -23,6 +21,7 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockMetadataWithSchema,
+    _take_first_non_empty_schema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -30,7 +29,7 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-
+    from ray.data._internal.progress.base_progress import BaseProgressBar
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -189,7 +188,7 @@ class _PipelinedStageExecutor:
         stage_iter,
         num_tasks_per_round: int,
         max_concurrent_rounds: int = 1,
-        progress_bar: Optional[ProgressBar] = None,
+        progress_bar: Optional["BaseProgressBar"] = None,
     ):
         self._stage_iter = stage_iter
         self._num_tasks_per_round = num_tasks_per_round
@@ -652,12 +651,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         for block, meta_with_schema in zip(new_blocks, reduce_stage_metadata_schema):
             output.append(
                 RefBundle(
-                    [
-                        (
-                            block,
-                            meta_with_schema.metadata,
-                        )
-                    ],
+                    [BlockEntry(block, meta_with_schema.metadata)],
                     owns_blocks=input_owned,
                     schema=meta_with_schema.schema,
                 )
@@ -743,14 +737,15 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             del block
             schemas.append(meta_with_schema.schema)
 
+        schema = _take_first_non_empty_schema(iter(schemas))
+
         meta = BlockMetadata(
             num_rows=num_rows,
             size_bytes=size_bytes,
             input_files=None,
             exec_stats=stats.build(),
         )
-        schema = unify_schemas_with_validation(schemas)
-        meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
+        meta_with_schema = BlockMetadataWithSchema.from_metadata(meta, schema=schema)
         yield meta_with_schema
 
     @staticmethod

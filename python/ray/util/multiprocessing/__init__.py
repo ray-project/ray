@@ -1,4 +1,4 @@
-from multiprocessing import TimeoutError, JoinableQueue
+from multiprocessing import JoinableQueue, TimeoutError
 
 from .pool import Pool
 

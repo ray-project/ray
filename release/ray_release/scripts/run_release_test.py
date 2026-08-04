@@ -1,15 +1,16 @@
 import os
 import sys
-from typing import Optional, Tuple
 from pathlib import Path
+from typing import Optional, Tuple
 
 import click
+
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
+    RELEASE_TEST_CONFIG_FILES,
     as_smoke_test,
     find_test,
     read_and_validate_release_test_collection,
-    RELEASE_TEST_CONFIG_FILES,
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
@@ -18,10 +19,9 @@ from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
-from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.reporter.log import LogReporter
+from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.result import Result
-from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 
 @click.command()
@@ -47,18 +47,6 @@ from ray_release.anyscale_util import LAST_LOGS_LENGTH
     help="Report results to database",
 )
 @click.option(
-    "--cluster-id",
-    default=None,
-    type=str,
-    help="Cluster ID of existing cluster to be re-used.",
-)
-@click.option(
-    "--cluster-env-id",
-    default=None,
-    type=str,
-    help="Cluster env ID of existing cluster env to be re-used.",
-)
-@click.option(
     "--env",
     default=None,
     # Get the names without suffixes of all files in "../environments"
@@ -76,26 +64,10 @@ from ray_release.anyscale_util import LAST_LOGS_LENGTH
     help="Global config to use for test execution.",
 )
 @click.option(
-    "--no-terminate",
-    default=False,
-    type=bool,
-    is_flag=True,
-    help=(
-        "Do not terminate cluster after test. "
-        "Will switch `anyscale_job` run type to `job` (Ray Job)."
-    ),
-)
-@click.option(
     "--test-definition-root",
     default=None,
     type=str,
     help="Root of the test definition files. Default is the root of the repo.",
-)
-@click.option(
-    "--log-streaming-limit",
-    default=LAST_LOGS_LENGTH,
-    type=int,
-    help="Limit of log streaming in number of lines. Set to -1 to stream all logs.",
 )
 @click.option(
     "--image",
@@ -108,13 +80,9 @@ def main(
     test_collection_file: Tuple[str],
     smoke_test: bool = False,
     report: bool = False,
-    cluster_id: Optional[str] = None,
-    cluster_env_id: Optional[str] = None,
     env: Optional[str] = None,
     global_config: str = "oss_config.yaml",
-    no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
-    log_streaming_limit: int = LAST_LOGS_LENGTH,
     image: Optional[str] = None,
 ):
     global_config_file = os.path.join(
@@ -169,11 +137,7 @@ def main(
             result=result,
             reporters=reporters,
             smoke_test=smoke_test,
-            cluster_id=cluster_id,
-            cluster_env_id=cluster_env_id,
-            no_terminate=no_terminate,
             test_definition_root=test_definition_root,
-            log_streaming_limit=log_streaming_limit,
             image=image,
         )
         return_code = result.return_code

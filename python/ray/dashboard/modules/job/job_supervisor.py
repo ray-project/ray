@@ -11,9 +11,11 @@ from typing import Any, Dict, List, Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter, TextFormatter
+from ray._common.network_utils import build_address
+from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.utils import remove_ray_internal_flags_from_env
 from ray._raylet import GcsClient
@@ -24,8 +26,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
-from ray.job_submission import JobStatus, JobErrorType
-from ray._common.network_utils import build_address
+from ray.job_submission import JobErrorType, JobStatus
 
 import psutil
 
@@ -142,6 +143,7 @@ class JobSupervisor:
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        env_vars.pop(NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR)
         env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
@@ -164,6 +166,7 @@ class JobSupervisor:
         A jobObject is created to enable fate sharing for the entire process group.
 
         Args:
+            env: Environment variables passed through to the driver subprocess.
             logs_path: File path on head node's local disk to store driver
                 command's stdout & stderr.
         Returns:
@@ -173,6 +176,9 @@ class JobSupervisor:
         # Open in append mode to avoid overwriting runtime_env setup logs for the
         # supervisor actor, which are also written to the same file.
         with open(logs_path, "a") as logs_file:
+            logs_file.write(
+                f"Running entrypoint for job {self._job_id}: {self._entrypoint}\n"
+            )
             child_process = subprocess.Popen(
                 self._entrypoint,
                 shell=True,
@@ -207,9 +213,16 @@ class JobSupervisor:
                 # Open a new subprocess to kill the child process when the parent
                 # process dies kill -s 0 parent_pid will succeed if the parent is
                 # alive. If it fails, SIGKILL the child process group and exit
+                #
+                # start_new_session=True detaches this watcher into its own
+                # session/process group. Otherwise it would inherit the supervisor
+                # actor's process group and the raylet's per-worker process-group
+                # cleanup (killpg on worker exit) would kill this watcher before it
+                # can reap the driver, potentially leaking the driver subprocess.
                 subprocess.Popen(
                     f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
                     shell=True,
+                    start_new_session=True,
                     # Suppress output
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,

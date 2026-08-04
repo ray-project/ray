@@ -206,7 +206,7 @@ Tune will automatically include some metrics, such as the training iteration, ti
 In our example, we want to maximize the `metric`. We will report it each epoch to Tune, and set the `metric` and `mode` arguments in `tune.TuneConfig` to let Tune know that it should use it as the optimization objective.
 
 ```python
-from ray import train
+from ray import tune
 
 
 def training_function(config, data):
@@ -287,7 +287,7 @@ tuner = tune.Tuner(
 
 Aside from metrics, you may want to save the state of your trained model and any other artifacts to allow resumption from training failure and further inspection and usage. Those cannot be saved as metrics, as they are often far too large and may not be easily serializable. Finally, they should be persisted on disk or cloud storage to allow access after the Tune run is interrupted or terminated.
 
-Ray Train provides a {class}`Checkpoint <ray.train.Checkpoint>` API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
+Ray Train provides a {class}`Checkpoint <ray.tune.Checkpoint>` API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
 
 In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `tune.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](tune-analysis-guide).
 
@@ -318,7 +318,7 @@ def training_function(config, data):
     start_epoch = 0
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "model.pkl"), "w") as f:
+            with open(os.path.join(checkpoint_dir, "model.pkl"), "rb") as f:
                 checkpoint_dict = pickle.load(f)
         start_epoch = checkpoint_dict["epoch"] + 1
         model = checkpoint_dict["state"]
@@ -335,7 +335,7 @@ def training_function(config, data):
 
         # Create the checkpoint.
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            with open(os.path.join(temp_checkpoint_dir, "model.pkl"), "w") as f:
+            with open(os.path.join(temp_checkpoint_dir, "model.pkl"), "wb") as f:
                 pickle.dump(checkpoint_dict, f)
             tune.report(
                 {"metric": metric},
@@ -368,142 +368,18 @@ results.get_dataframe()
 
 <div>
 <style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
+    .dataframe tbody tr th:only-of-type { vertical-align: middle; }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
+    .dataframe tbody tr th { vertical-align: top; }
 
-    .dataframe thead th {
-        text-align: right;
-    }
+    .dataframe thead th { text-align: right; }
 </style>
 <table border="1" class="dataframe">
   <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>metric</th>
-      <th>time_this_iter_s</th>
-      <th>should_checkpoint</th>
-      <th>done</th>
-      <th>timesteps_total</th>
-      <th>episodes_total</th>
-      <th>training_iteration</th>
-      <th>trial_id</th>
-      <th>experiment_id</th>
-      <th>date</th>
-      <th>...</th>
-      <th>hostname</th>
-      <th>node_ip</th>
-      <th>time_since_restore</th>
-      <th>timesteps_since_restore</th>
-      <th>iterations_since_restore</th>
-      <th>warmup_time</th>
-      <th>config/epochs</th>
-      <th>config/hyperparameter_a</th>
-      <th>config/hyperparameter_b</th>
-      <th>logdir</th>
-    </tr>
+    <tr style="text-align: right;"> <th></th> <th>metric</th> <th>time_this_iter_s</th> <th>should_checkpoint</th> <th>done</th> <th>timesteps_total</th> <th>episodes_total</th> <th>training_iteration</th> <th>trial_id</th> <th>experiment_id</th> <th>date</th> <th>...</th> <th>hostname</th> <th>node_ip</th> <th>time_since_restore</th> <th>timesteps_since_restore</th> <th>iterations_since_restore</th> <th>warmup_time</th> <th>config/epochs</th> <th>config/hyperparameter_a</th> <th>config/hyperparameter_b</th> <th>logdir</th> </tr>
   </thead>
   <tbody>
-    <tr>
-      <th>0</th>
-      <td>-58.399962</td>
-      <td>1.015951</td>
-      <td>True</td>
-      <td>False</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>10</td>
-      <td>0b239_00000</td>
-      <td>acf38c19d59c4cf2ad7955807657b6ea</td>
-      <td>2022-11-30_17-40-26</td>
-      <td>...</td>
-      <td>ip-172-31-43-110</td>
-      <td>172.31.43.110</td>
-      <td>10.282120</td>
-      <td>0</td>
-      <td>10</td>
-      <td>0.003541</td>
-      <td>10</td>
-      <td>18.065981</td>
-      <td>-98.298928</td>
-      <td>/home/ubuntu/ray_results/training_function_202...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>-24.461518</td>
-      <td>1.030420</td>
-      <td>True</td>
-      <td>False</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>10</td>
-      <td>0b239_00001</td>
-      <td>5ca9e03d7cca46a7852cd501bc3f7b38</td>
-      <td>2022-11-30_17-40-28</td>
-      <td>...</td>
-      <td>ip-172-31-43-110</td>
-      <td>172.31.43.110</td>
-      <td>10.362581</td>
-      <td>0</td>
-      <td>10</td>
-      <td>0.004031</td>
-      <td>10</td>
-      <td>1.544918</td>
-      <td>-47.741455</td>
-      <td>/home/ubuntu/ray_results/training_function_202...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>18.510299</td>
-      <td>1.034228</td>
-      <td>True</td>
-      <td>False</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>10</td>
-      <td>0b239_00002</td>
-      <td>aa38dd786c714486a8d69fa5b372df48</td>
-      <td>2022-11-30_17-40-28</td>
-      <td>...</td>
-      <td>ip-172-31-43-110</td>
-      <td>172.31.43.110</td>
-      <td>10.333781</td>
-      <td>0</td>
-      <td>10</td>
-      <td>0.005286</td>
-      <td>10</td>
-      <td>8.129285</td>
-      <td>28.846415</td>
-      <td>/home/ubuntu/ray_results/training_function_202...</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>-16.138780</td>
-      <td>1.020072</td>
-      <td>True</td>
-      <td>False</td>
-      <td>NaN</td>
-      <td>NaN</td>
-      <td>10</td>
-      <td>0b239_00003</td>
-      <td>5b401e15ab614332b631d552603a8d77</td>
-      <td>2022-11-30_17-40-28</td>
-      <td>...</td>
-      <td>ip-172-31-43-110</td>
-      <td>172.31.43.110</td>
-      <td>10.242707</td>
-      <td>0</td>
-      <td>10</td>
-      <td>0.003809</td>
-      <td>10</td>
-      <td>17.982020</td>
-      <td>-27.867871</td>
-      <td>/home/ubuntu/ray_results/training_function_202...</td>
-    </tr>
+    <tr> <th>0</th> <td>-58.399962</td> <td>1.015951</td> <td>True</td> <td>False</td> <td>NaN</td> <td>NaN</td> <td>10</td> <td>0b239_00000</td> <td>acf38c19d59c4cf2ad7955807657b6ea</td> <td>2022-11-30_17-40-26</td> <td>...</td> <td>ip-172-31-43-110</td> <td>172.31.43.110</td> <td>10.282120</td> <td>0</td> <td>10</td> <td>0.003541</td> <td>10</td> <td>18.065981</td> <td>-98.298928</td> <td>/home/ubuntu/ray_results/training_function_202...</td> </tr> <tr> <th>1</th> <td>-24.461518</td> <td>1.030420</td> <td>True</td> <td>False</td> <td>NaN</td> <td>NaN</td> <td>10</td> <td>0b239_00001</td> <td>5ca9e03d7cca46a7852cd501bc3f7b38</td> <td>2022-11-30_17-40-28</td> <td>...</td> <td>ip-172-31-43-110</td> <td>172.31.43.110</td> <td>10.362581</td> <td>0</td> <td>10</td> <td>0.004031</td> <td>10</td> <td>1.544918</td> <td>-47.741455</td> <td>/home/ubuntu/ray_results/training_function_202...</td> </tr> <tr> <th>2</th> <td>18.510299</td> <td>1.034228</td> <td>True</td> <td>False</td> <td>NaN</td> <td>NaN</td> <td>10</td> <td>0b239_00002</td> <td>aa38dd786c714486a8d69fa5b372df48</td> <td>2022-11-30_17-40-28</td> <td>...</td> <td>ip-172-31-43-110</td> <td>172.31.43.110</td> <td>10.333781</td> <td>0</td> <td>10</td> <td>0.005286</td> <td>10</td> <td>8.129285</td> <td>28.846415</td> <td>/home/ubuntu/ray_results/training_function_202...</td> </tr> <tr> <th>3</th> <td>-16.138780</td> <td>1.020072</td> <td>True</td> <td>False</td> <td>NaN</td> <td>NaN</td> <td>10</td> <td>0b239_00003</td> <td>5b401e15ab614332b631d552603a8d77</td> <td>2022-11-30_17-40-28</td> <td>...</td> <td>ip-172-31-43-110</td> <td>172.31.43.110</td> <td>10.242707</td> <td>0</td> <td>10</td> <td>0.003809</td> <td>10</td> <td>17.982020</td> <td>-27.867871</td> <td>/home/ubuntu/ray_results/training_function_202...</td> </tr>
   </tbody>
 </table>
 <p>4 rows × 23 columns</p>

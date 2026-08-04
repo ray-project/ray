@@ -1,4 +1,4 @@
-load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:python.bzl", "doctest", "doctest_each", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
 
@@ -108,12 +108,28 @@ py_test(
 )
 
 py_test(
+    name = "map_reduce",
+    size = "medium",
+    srcs = ["test_myst_doc.py"],
+    args = [
+        "--path",
+        "doc/source/ray-core/examples/map_reduce.ipynb",
+    ],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    main = "test_myst_doc.py",
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+)
+
+py_test(
     name = "web_crawler",
     size = "medium",
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/ray-core/examples/web-crawler.ipynb",
+        "doc/source/ray-core/examples/web_crawler.ipynb",
     ],
     data = ["//doc/source/ray-core/examples:core_examples"],
     main = "test_myst_doc.py",
@@ -150,6 +166,7 @@ py_test(
     tags = [
         "exclusive",
         "post_wheel_build",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -162,6 +179,7 @@ py_test(
     tags = [
         "exclusive",
         "mem_pressure",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -174,6 +192,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -186,6 +205,7 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -198,6 +218,44 @@ py_test(
     tags = [
         "exclusive",
         "multi_gpu",
+        "custom_setup",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_direct_transport_gloo",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/direct_transport_gloo.py"],
+    main = "source/ray-core/doc_code/direct_transport_gloo.py",
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_direct_transport_nccl",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/direct_transport_nccl.py"],
+    main = "source/ray-core/doc_code/direct_transport_nccl.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "custom_setup",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_direct_transport_nixl",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/direct_transport_nixl.py"],
+    main = "source/ray-core/doc_code/direct_transport_nixl.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "custom_setup",
         "team:core",
     ],
 )
@@ -214,6 +272,8 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/cgraph_overlap.py",
         # not testing this as it purposefully segfaults
         "source/ray-core/doc_code/cgraph_troubleshooting.py",
+        "source/ray-core/doc_code/direct_transport_nccl.py",
+        "source/ray-core/doc_code/direct_transport_nixl.py",
     ],
     extra_srcs = [],
     tags = [
@@ -239,8 +299,10 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/vllm_example.py",
+        "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/llm/llm_yaml_config_example.py",
         "source/serve/doc_code/llm/qwen_example.py",
+        "source/serve/doc_code/capacity_queue_request_router_app.py",
     ],
     extra_srcs = [],
     tags = [
@@ -282,17 +344,117 @@ filegroup(
     visibility = ["//doc:__subpackages__"],
 )
 
-# GPU Tests
+# GPU Tests (standard GPU tests)
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/llm/doc_code/serve/**/*.py"],
-    exclude = [],
+    exclude = [
+        "source/llm/doc_code/serve/direct_streaming/**/*.py",
+        "source/llm/doc_code/serve/multi_gpu/**/*.py",
+        "source/llm/doc_code/serve/sglang/**/*.py",
+        # custom_vllm runs in its own direct-streaming target below.
+        "source/llm/doc_code/serve/custom_vllm/**/*.py",
+    ],
     extra_srcs = [],
     data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
+    # vLLM 0.26.0 defaults to Model Runner V2, which skips multimodal encoder
+    # memory profiling and OOMs these GPU tests. Force Model Runner V1 for now.
+    # The image ENV can't reach these bazel test actions, so set it here.
+    # TODO (jeffreywang): Use the default MRV2 when upgrading to vLLM 0.27.0.
+    env = {"VLLM_USE_V2_MODEL_RUNNER": "0"},
     tags = [
         "exclusive",
         "gpu",
         "team:llm",
+    ],
+)
+
+# Custom vLLM model (Qwen3 reward model) GPU tests
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/custom_vllm/**/*.py"],
+    exclude = [
+        "source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/**/*.py",
+        # setup.py packages the plugin; it is not a runnable example.
+        "source/llm/doc_code/serve/custom_vllm/setup.py",
+    ],
+    extra_srcs = [],
+    data = ["source/llm/doc_code/serve/custom_vllm/custom_vllm_config.yaml"],
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+    },
+    tags = [
+        "exclusive",
+        "gpu",
+        "custom_vllm_plugin",
+        "team:llm",
+    ],
+)
+
+# Direct streaming GPU Tests. Isolated into their own target so they run with
+# the direct streaming flags set, which exercises the real direct streaming
+# path. The flags can't go on the shared target above because they would force
+# every other serve example into direct streaming mode, and build_openai_app
+# rejects multi-config apps (such as the qwen example) under direct streaming.
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/direct_streaming/**/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    data = ["source/llm/doc_code/serve/direct_streaming/direct_streaming_config.yaml"],
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        # Direct streaming wires LLMRouter as the ingress_request_router,
+        # which build_app.py rejects unless HAProxy is enabled.
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+    },
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:llm",
+    ],
+)
+
+# Multi-GPU Tests (4+ GPUs)
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = [
+        "exclusive",
+        "gpu",
+        "multi_gpu_4",
+        "team:llm",
+    ],
+)
+
+# --------------------------------------------------------------------
+# Test all doc/source/data/doc_code/working-with-llms code included in rst/md files.
+# --------------------------------------------------------------------
+
+filegroup(
+    name = "data_llm_examples",
+    srcs = glob(["source/data/doc_code/working-with-llms/**/*.py"]),
+    visibility = ["//doc:__subpackages__"],
+)
+
+# GPU Tests
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["source/data/doc_code/working-with-llms/**/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    # vLLM 0.26.0 defaults to Model Runner V2, which skips multimodal encoder
+    # memory profiling and OOMs these GPU tests. Force Model Runner V1 for now.
+    # The image ENV can't reach these bazel test actions, so set it here.
+    # TODO (jeffreywang): Use the default MRV2 when upgrading to vLLM 0.27.0.
+    env = {"VLLM_USE_V2_MODEL_RUNNER": "0"},
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:llm"
     ],
 )
 
@@ -309,6 +471,7 @@ py_test_run_all_subdirectory(
         "exclusive",
         "team:ml",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
 # --------------------------------------------------------------------
@@ -332,9 +495,11 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "large",
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     include = ["source/train/doc_code/*.py"],
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
+        "source/train/doc_code/asynchronous_validation.py",  # pseudocode snippets, not runnable
     ],
     extra_srcs = [],
     tags = [
@@ -369,6 +534,7 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = [
         "dask",
+        "custom_setup",
         "exclusive",
         "team:data",
     ],
@@ -400,17 +566,17 @@ py_test(
 # Test all doc/external code
 # --------------------------------------------------------------------
 
-py_test_run_all_subdirectory(
-    size = "enormous",
-    include = ["external/*.py"],
-    exclude = ["external/test_hashes.py"],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "external",
-        "team:ml",
-    ],
-)
+# py_test_run_all_subdirectory(
+#     size = "enormous",
+#     include = ["external/*.py"],
+#     exclude = ["external/test_hashes.py"],
+#     extra_srcs = [],
+#     tags = [
+#         "exclusive",
+#         "external",
+#         "team:ml",
+#     ],
+# )
 
 py_test(
     name = "test_external_hashes",
@@ -419,7 +585,7 @@ py_test(
         ["external/*.py"],
         exclude = ["external/test_hashes.py"],
     ),
-    exec_compatible_with = ["//:hermetic_python"],
+    exec_compatible_with = ["//bazel:py3"],
     main = "external/test_hashes.py",
     tags = ["team:ml"],
     deps = [
@@ -440,8 +606,9 @@ doctest(
             "source/**/*.rst",
         ],
         exclude = [
-            "source/ray-contribute/getting-involved.rst",
-            "source/ray-contribute/testing-tips.rst",
+            "source/ray-contribute/getting-involved.md",
+            "source/ray-contribute/testing-tips.md",
+            "source/ray-contribute/writing-code-snippets.md",
             "source/ray-observability/user-guides/ray-tracing.rst",
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
@@ -467,6 +634,7 @@ doctest(
 
 doctest(
     name = "doctest[core]",
+    size = "large",
     files = glob(
         include = [
             "source/ray-core/**/*.md",
@@ -474,6 +642,7 @@ doctest(
         ],
         exclude = [
             "source/ray-core/handling-dependencies.rst",
+            # The `doc_code/` snippet for `nested-tasks.rst` is tested.
             "source/ray-core/tasks/nested-tasks.rst",
         ],
     ),
@@ -490,14 +659,14 @@ doctest_each(
             # These tests run on GPU (see below).
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            # These tests are currently failing.
-            "source/data/working-with-llms.rst",
             # These don't contain code snippets.
             "source/data/api/**/*.rst",
         ],
     ),
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
 )
 
 doctest(
@@ -529,13 +698,14 @@ doctest(
 
 doctest(
     name = "doctest[rllib2]",
-    size = "large",
+    size = "enormous",
     files = glob(
         include = [
             "source/rllib/getting-started.rst",
         ],
     ),
-    tags = ["team:rllib"],
+    # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
+    tags = ["manual", "team:rllib"],
 )
 
 doctest(
@@ -558,6 +728,11 @@ doctest(
 
 doctest(
     name = "doctest[train]",
+    # TODO: [V2] Migrate
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "0",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     files = glob(
         include = [
             "source/train/**/*.md",
@@ -568,7 +743,7 @@ doctest(
             "source/train/horovod.rst",
             # These tests run on GPU (see below).
             "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-gpus.rst",
+            "source/train/user-guides/using-accelerators.rst",
         ],
     ),
     tags = ["team:ml"],
@@ -578,8 +753,9 @@ doctest(
     name = "doctest[train-gpu]",
     files = [
         "source/train/user-guides/data-loading-preprocessing.rst",
-        "source/train/user-guides/using-gpus.rst",
+        "source/train/user-guides/using-accelerators.rst",
     ],
+    env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
     gpu = True,
 )
@@ -592,10 +768,28 @@ doctest(
         "source/tune/**/*.rst",
     ],
     tags = ["team:ml"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
 )
 
+# --------------------------------------------------------------------
+# Discover the Anyscale Jobs compute configs .yaml for release tests in CI
+# --------------------------------------------------------------------
+
+# Comprehensive filegroup that aggregates all CI compute configs from across the docs.
+# This includes a general glob pattern + references to filegroups in existing child BUILD.bazel
+# Following the standard structure: doc/source/<path>/my_example/ci/{aws,gce}.yaml
 filegroup(
-    name = "example_configs",
-    srcs = glob(["source/ray-overview/examples/**/*.yaml"]),
+    name = "all_examples_ci_configs",
+    srcs = glob([
+        "source/ray-overview/examples/**/ci/aws.yaml",
+        "source/ray-overview/examples/**/ci/gce.yaml",
+        "source/serve/tutorials/**/ci/aws.yaml",
+        "source/serve/tutorials/**/ci/gce.yaml",
+    ]) + [
+        "//doc/source/data/examples:data_examples_ci_configs",
+        "//doc/source/tune/examples:tune_examples_ci_configs",
+        "//doc/source/ray-core/examples:core_examples_ci_configs",
+        "//doc/source/train/examples:train_examples_ci_configs",
+    ],
     visibility = ["//release:__pkg__"],
 )

@@ -1,7 +1,9 @@
 import abc
+from concurrent.futures import ThreadPoolExecutor
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Generic,
     List,
@@ -14,7 +16,7 @@ from typing import (
 
 import numpy as np
 
-from ray.data.block import DataBatch
+from ray._common.utils import env_integer
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -22,10 +24,11 @@ if TYPE_CHECKING:
     import pyarrow
     import torch
 
+    from ray.data.block import DataBatch
     from ray.data.dataset import CollatedData
 
 
-DataBatchType = TypeVar("DataBatchType", bound=DataBatch)
+DataBatchType = TypeVar("DataBatchType", bound="DataBatch")
 
 TensorSequenceType = Union[
     List["torch.Tensor"],
@@ -223,32 +226,44 @@ class PandasBatchCollateFn(CollateFn["pandas.DataFrame"]):
 class DefaultCollateFn(ArrowBatchCollateFn):
     """Default collate function for converting Arrow batches to PyTorch tensors."""
 
+    _DEFAULT_NUM_WORKERS = env_integer(
+        "RAY_DATA_DEFAULT_COLLATE_FN_THREADPOOL_MAX_WORKERS",
+        4,
+    )
+
     def __init__(
         self,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[Union[str, "torch.device"]] = None,
-        pin_memory: bool = False,
+        combine_chunks: bool = False,
+        num_workers: int = _DEFAULT_NUM_WORKERS,
     ):
         """Initialize the collate function.
 
         Args:
             dtypes: The torch dtype(s) for the created tensor(s); if None, the dtype
                 will be inferred from the tensor data.
-            device: The device on which the tensor should be placed. Can be a string
-                (e.g. "cpu", "cuda:0") or a torch.device object.
-            pin_memory: Whether to pin the memory of the created tensors.
+            combine_chunks: If True, combine chunks in the Arrow batch before
+                converting to tensors, producing a single tensor per column.
+                If False, each column is converted to a list of tensors (one per
+                chunk), which are combined during GPU transfer in
+                `move_tensors_to_device`.
+            num_workers: Number of worker threads for parallel tensor conversion.
+                Defaults to `RAY_DATA_DEFAULT_COLLATE_FN_THREADPOOL_MAX_WORKERS`.
         """
-        import torch
-
         super().__init__()
         self.dtypes = dtypes
-        if isinstance(device, str):
-            self.device = torch.device(device)
-        else:
-            self.device = device
-        self.pin_memory = pin_memory
+        self.combine_chunks = combine_chunks
+        self.num_workers = num_workers
+        self._threadpool: Optional[ThreadPoolExecutor] = None
 
-    def __call__(self, batch: "pyarrow.Table") -> Dict[str, List["torch.Tensor"]]:
+    def __del__(self):
+        """Clean up threadpool on destruction."""
+        if getattr(self, "_threadpool", None):
+            self._threadpool.shutdown(wait=False)
+
+    def __call__(
+        self, batch: "pyarrow.Table"
+    ) -> Union[Dict[str, "torch.Tensor"], Dict[str, List["torch.Tensor"]]]:
         """Convert an Arrow batch to PyTorch tensors.
 
         Args:
@@ -257,19 +272,35 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         Returns:
             Dictionary mapping column names to lists of tensors
         """
-        from ray.air._internal.torch_utils import (
+        from ray.data.util.torch_utils import (
             arrow_batch_to_tensors,
         )
 
-        # For GPU transfer, we can skip the combining chunked arrays. This is because
-        # we can convert the chunked arrays to corresponding numpy format and then to
-        # Tensors and transfer the corresponding list of Tensors to GPU directly.
-        # However, for CPU transfer, we need to combine the chunked arrays first
-        # before converting to numpy format and then to Tensors.
-        combine_chunks = self.device.type == "cpu"
+        if self.num_workers > 0 and self._threadpool is None:
+            self._threadpool = ThreadPoolExecutor(max_workers=self.num_workers)
+
         return arrow_batch_to_tensors(
             batch,
             dtypes=self.dtypes,
-            combine_chunks=combine_chunks,
-            pin_memory=self.pin_memory,
+            combine_chunks=self.combine_chunks,
+            threadpool=self._threadpool,
         )
+
+
+class _PinMemoryCollateFnWrapper:
+    """Composes a collate fn with recursive memory pinning.
+
+    Runs in the same threadpool as the collate step. Pins only if the collated
+    output is a TensorBatchType; other output types pass through unchanged.
+    """
+
+    def __init__(self, collate_fn: Union[CollateFn, Callable[[Any], Any]]):
+        self._collate_fn = collate_fn
+
+    def __call__(self, batch: Any) -> Any:
+        from ray.data.util.torch_utils import pin_tensors_to_memory
+
+        collated = self._collate_fn(batch)
+        if is_tensor_batch_type(collated):
+            return pin_tensors_to_memory(collated)
+        return collated

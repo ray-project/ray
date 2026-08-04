@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import ContextManager, Iterator, Optional
+from typing import ContextManager, Iterator, List, Optional
 
 from .execution_options import ExecutionOptions
 from .physical_operator import PhysicalOperator
@@ -25,6 +25,9 @@ class OutputIterator(Iterator[RefBundle], ABC):
             output_split_idx: The output split index to get results for. This arg is
                 only allowed for iterators created by `Dataset.streaming_split()`.
 
+        Returns:
+            The next ``RefBundle`` of outputs for the given split index.
+
         Raises:
             StopIteration: If there are no more outputs to return.
         """
@@ -48,7 +51,10 @@ class Executor(ContextManager, ABC):
 
     @abstractmethod
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
+        self,
+        dag: PhysicalOperator,
+        initial_stats: Optional[DatasetStats] = None,
+        callbacks: Optional[List] = None,
     ) -> OutputIterator:
         """Start execution.
 
@@ -56,6 +62,13 @@ class Executor(ContextManager, ABC):
             dag: The operator graph to execute.
             initial_stats: The DatasetStats to prepend to the stats returned by the
                 executor. These stats represent actions done to compute inputs.
+            callbacks: A list of ExecutionCallbacks to run during execution.
+                This method keeps and uses the exact list you pass in, so do not
+                pass an empty list like ``[]`` directly. Create the list first,
+                then pass it.
+
+        Returns:
+            An ``OutputIterator`` over the execution's output ref bundles.
         """
         ...
 

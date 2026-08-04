@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import Union
+from typing import Optional, Union
 
 INTERNAL_TIMESTAMP_LOG_KEY = "_ray_timestamp_ns"
 
@@ -115,3 +115,36 @@ def generate_logging_config():
 
         # Set up the LogRecord factory.
         _setup_log_record_factory()
+
+
+def setup_process_exit_logger(
+    process_exit_log_path: str,
+    level: int = logging.INFO,
+    formatter: Optional[logging.Formatter] = None,
+) -> logging.Logger:
+    """Configure and return the 'ray.process_exit' logger with a FileHandler."""
+    logger = logging.getLogger("ray.process_exit")
+    logger.setLevel(level)
+    logger.propagate = False
+
+    fh = logging.FileHandler(process_exit_log_path, encoding="utf-8")
+    if formatter is None:
+        formatter = logging.Formatter(
+            "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
+        )
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    return logger
+
+
+def format_returncode(rc: Optional[int]) -> str:
+    """Return a consistent string for process return code."""
+    if rc is None:
+        return "None"
+    try:
+        rc_int = int(rc)
+    except Exception:
+        return str(rc)
+    if rc_int < 0:
+        return f"{rc_int} (signal {-rc_int})"
+    return f"{rc_int}"

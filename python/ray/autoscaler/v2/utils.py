@@ -39,23 +39,23 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     PlacementConstraint,
     ResourceRequest,
-)
-from ray.core.generated.autoscaler_pb2 import (
     ResourceRequestByCount as ResourceRequestByCountProto,
 )
 from ray.core.generated.common_pb2 import (
-    LabelSelectorConstraint,
     LabelSelector,
+    LabelSelectorConstraint,
 )
 from ray.experimental.internal_kv import internal_kv_get_gcs_client
 
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:
     """
-    Count the number of items by the given keys.
+    Count the number of items by the given key.
+
     Args:
         data: the data to be counted
-        keys: the keys to count by
+        key: the key to count by
+
     Returns:
         counts: the counts
     """
@@ -72,7 +72,7 @@ class ProtobufUtil:
     """
 
     @staticmethod
-    def to_dict(proto):
+    def to_dict(proto: Any) -> Dict[str, Any]:
         """
         Convert a protobuf object to a dict.
 
@@ -81,6 +81,7 @@ class ProtobufUtil:
 
         Args:
             proto: the protobuf object
+
         Returns:
             dict: the dict
         """
@@ -93,12 +94,13 @@ class ProtobufUtil:
         )
 
     @staticmethod
-    def to_dict_list(protos):
+    def to_dict_list(protos: List[Any]) -> List[Dict[str, Any]]:
         """
         Convert a list of protobuf objects to a list of dicts.
 
         Args:
             protos: the list of protobuf objects
+
         Returns:
             dict_list: the list of dicts
         """
@@ -400,9 +402,9 @@ class ClusterStatusFormatter:
             separator,
             "Total Usage:",
             cluster_usage_report,
-            "Total Constraints:",
+            "From request_resources:",
             constraints_report,
-            "Total Demands:",
+            "Pending Demands:",
             demand_report,
             node_usage_report,
         ]
@@ -474,7 +476,7 @@ class ClusterStatusFormatter:
         return "\n".join(node_usage_report_lines)
 
     @staticmethod
-    def _header_info(data: ClusterStatus, verbose: bool) -> (str, int):
+    def _header_info(data: ClusterStatus, verbose: bool) -> Tuple[str, int]:
         # Get the request timestamp or default to the current time
         time = (
             datetime.fromtimestamp(data.stats.request_ts_s)
@@ -605,7 +607,8 @@ class ClusterStatusFormatter:
         """Returns a formatted string describing the resource constraints from request_resources().
 
         Args:
-            data: ClusterStatus object containing resource demand information.
+            cluster_constraint_demand: List of cluster constraint demands
+                containing resource demand information.
 
         Returns:
             String containing the formatted constraints report, either listing each constraint
@@ -631,7 +634,7 @@ class ClusterStatusFormatter:
             constraint_lines.append(f" {bundle}: {count} from request_resources()")
         if constraint_lines:
             return "\n".join(constraint_lines)
-        return " (no request_resources() constraints)"
+        return " (none)"
 
     @staticmethod
     def _demand_report(data: ClusterStatus) -> str:

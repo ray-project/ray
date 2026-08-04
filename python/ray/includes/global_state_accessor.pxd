@@ -24,7 +24,7 @@ from ray.includes.optional cimport (
     optional
 )
 
-cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
+cdef extern from "ray/gcs_rpc_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
         CGlobalStateAccessor(const CGcsClientOptions&)
         c_bool Connect()
@@ -60,9 +60,6 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         )
         c_vector[c_string] GetAllPlacementGroupInfo()
         c_string GetSystemConfig()
-        CRayStatus GetNodeToConnectForDriver(
-            const c_string &node_ip_address,
-            c_string *node_to_connect)
         CRayStatus GetNode(
           const c_string &node_id_hex_str,
           c_string *node_info)
@@ -70,8 +67,9 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
 cdef extern from * namespace "ray::gcs" nogil:
     """
     #include <thread>
-    #include "ray/gcs/gcs_server/store_client_kv.h"
+    #include "ray/gcs/store_client_kv.h"
     #include "ray/gcs/store_client/redis_store_client.h"
+    #include "ray/util/clock.h"
     #include "ray/util/raii.h"
     namespace ray {
     namespace gcs {
@@ -100,8 +98,9 @@ cdef extern from * namespace "ray::gcs" nogil:
 
       instrumented_io_context io_service{/*enable_lag_probe=*/false, /*running_on_single_thread=*/true};
       RedisClientOptions options{host, port, username, password, use_ssl};
+      Clock clock;
       auto client = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(io_service, options));
+        std::make_unique<RedisStoreClient>(io_service, options, clock));
 
       bool ret_val = false;
       client->Get("session", key, {[&](std::optional<std::string> result) {

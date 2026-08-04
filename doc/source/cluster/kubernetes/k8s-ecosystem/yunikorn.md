@@ -21,20 +21,19 @@ kind create cluster
 
 ## Step 2: Install Apache YuniKorn
 
-You need to successfully install Apache YuniKorn on your Kubernetes cluster before enabling Apache YuniKorn integration with KubeRay.
-See [Get Started](https://yunikorn.apache.org/docs/) for Apache YuniKorn installation instructions.
+You need to successfully install Apache YuniKorn on your Kubernetes cluster before enabling Apache YuniKorn integration with KubeRay. See [Get Started](https://yunikorn.apache.org/docs/) for Apache YuniKorn installation instructions.
 
 ## Step 3: Install the KubeRay operator with Apache YuniKorn support
 
 When installing KubeRay operator using Helm, pass the `--set batchScheduler.name=yunikorn` flag at the command line:
 
 ```shell
-helm install kuberay-operator kuberay/kuberay-operator --version 1.4.2 --set batchScheduler.name=yunikorn
+helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0 --set batchScheduler.name=yunikorn
 ```
 
 ## Step 4: Use Apache YuniKorn for gang scheduling
 
-This example uses gang scheduling with Apache YuniKorn and KubeRay.
+This example demonstrates gang scheduling of RayCluster custom resources with Apache YuniKorn and KubeRay. Starting with KubeRay 1.6.0, KubeRay also supports gang scheduling for RayJob custom resources.
 
 First, create a queue with a capacity of 4 CPUs and 6Gi of RAM by editing the ConfigMap:
 

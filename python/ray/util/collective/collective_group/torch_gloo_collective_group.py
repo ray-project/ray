@@ -1,38 +1,58 @@
-from typing import TYPE_CHECKING, List, Optional
+import logging
 import os
-import torch
-import torch.distributed as dist
+import socket
+import time
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
+import numpy as np
+import torch
+
+import ray
 import ray.experimental.internal_kv as internal_kv
+from ray._common.network_utils import find_free_port, is_ipv6
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
-from ray._common.network_utils import parse_address
 from ray.util.collective.types import (
+    AllGatherOptions,
     AllReduceOptions,
-    BarrierOptions,
     Backend,
+    BarrierOptions,
+    BroadcastOptions,
+    RecvOptions,
     ReduceOp,
     ReduceOptions,
-    BroadcastOptions,
-    AllGatherOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
 )
 
 if TYPE_CHECKING:
     import torch
 
+logger = logging.getLogger(__name__)
 
-TORCH_REDUCE_OP_MAP = {
-    ReduceOp.SUM: dist.ReduceOp.SUM,
-    ReduceOp.PRODUCT: dist.ReduceOp.PRODUCT,
-    ReduceOp.MIN: dist.ReduceOp.MIN,
-    ReduceOp.MAX: dist.ReduceOp.MAX,
-}
+try:
+    import torch.distributed as dist
+
+    _TORCH_DISTRIBUTED_AVAILABLE = True
+    TORCH_REDUCE_OP_MAP = {
+        ReduceOp.SUM: dist.ReduceOp.SUM,
+        ReduceOp.PRODUCT: dist.ReduceOp.PRODUCT,
+        ReduceOp.MIN: dist.ReduceOp.MIN,
+        ReduceOp.MAX: dist.ReduceOp.MAX,
+    }
+except ImportError:
+    _TORCH_DISTRIBUTED_AVAILABLE = False
+    TORCH_REDUCE_OP_MAP = None
 
 
 def get_master_address_metadata_key(group_name: str):
     return f"collective_group_master_address_{group_name}"
+
+
+def get_address_and_port() -> Tuple[str, int]:
+    """Returns the IP address and a free port on this node."""
+    addr = ray.util.get_node_ip_address()
+    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
+    return addr, port
 
 
 class TorchGLOOGroup(BaseGroup):
@@ -41,62 +61,149 @@ class TorchGLOOGroup(BaseGroup):
         world_size: int,
         rank: int,
         group_name: str,
+        gloo_timeout: Optional[int] = None,
     ):
-        metadata_key = get_master_address_metadata_key(group_name)
-        try:
-            metadata = internal_kv._internal_kv_get(metadata_key)
-        except ValueError:
-            raise RuntimeError(
-                f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. "
-                "TorchGLOOGroup should not be instantiated directly. "
-                "Use ray.experimental.collective.create_collective_group to create the group."
+        # Initialize the default process group only once per process.
+        if not dist.is_initialized():
+            # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
+            self._rendezvous(group_name, rank, gloo_timeout)
+
+            metadata_key = get_master_address_metadata_key(group_name)
+            try:
+                metadata = internal_kv._internal_kv_get(metadata_key)
+            except ValueError:
+                raise RuntimeError(
+                    f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. "
+                    "TorchGLOOGroup should not be instantiated directly. "
+                    "Use ray.experimental.collective.create_collective_group to create a group."
+                )
+            if metadata is None:
+                raise RuntimeError(
+                    f"Missing rendezvous metadata for group `{group_name}` under key `{metadata_key}`."
+                )
+            metadata = metadata.decode()
+            master_addr, master_port = metadata.split(":")
+            os.environ["MASTER_ADDR"] = master_addr
+            os.environ["MASTER_PORT"] = master_port
+
+            dist.init_process_group(
+                backend="gloo", init_method="env://", world_size=world_size, rank=rank
             )
 
-        metadata = metadata.decode()
-        master_addr, master_port = parse_address(metadata)
-        os.environ["MASTER_ADDR"] = master_addr
-        os.environ["MASTER_PORT"] = master_port
+            # Clean up rendezvous metadata after all ranks have initialized.
+            # dist.init_process_group is synchronous, so all ranks have read the metadata by now.
+            if rank == 0:
+                try:
+                    internal_kv._internal_kv_del(metadata_key)
+                except Exception as e:
+                    # Ignore errors during cleanup (e.g., key already deleted)
+                    logger.warning(
+                        f"Failed to delete rendezvous key '{metadata_key}' during init: {e}"
+                    )
 
-        dist.init_process_group(
-            backend="gloo", init_method="env://", world_size=world_size, rank=rank
-        )
         super().__init__(world_size, rank, group_name)
+
+        # Create a subgroup for this logical group. For the default group, use WORLD.
+        self._is_default_group = group_name == "default"
+        if self._is_default_group:
+            self._pg = dist.group.WORLD
+        else:
+            # All ranks participate in this subgroup with global ranks [0..world_size-1].
+            ranks = list(range(world_size))
+            self._pg = dist.new_group(ranks=ranks, backend="gloo")
+
+        # Compatibility shim for legacy tests expecting a pygloo context with getTimeout().
+        # Store the rendezvous timeout in milliseconds, defaulting to 30000 if unspecified.
+        class _GlooCompatContext:
+            def __init__(self, timeout_ms: int):
+                self._timeout_ms = timeout_ms
+
+            def getTimeout(self) -> int:
+                return self._timeout_ms
+
+        self._gloo_context = _GlooCompatContext(
+            gloo_timeout if gloo_timeout is not None else 30000
+        )
+
+    def _rendezvous(
+        self, group_name: str, rank: int, gloo_timeout: Optional[int]
+    ) -> None:
+        """Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
+
+        Rank 0 publishes the address and port, other ranks wait for it.
+        """
+        metadata_key = get_master_address_metadata_key(group_name)
+        if rank == 0:
+            addr, port = get_address_and_port()
+            internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
+        else:
+            # Wait until rank 0 publishes the metadata or timeout.
+            deadline_s = time.time() + (gloo_timeout / 1000.0 if gloo_timeout else 30.0)
+            while True:
+                meta = internal_kv._internal_kv_get(metadata_key)
+                if meta is not None:
+                    break
+                if time.time() > deadline_s:
+                    raise TimeoutError(
+                        f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
+                    )
+                time.sleep(0.05)
 
     def destroy_group(self):
         """GC the communicators."""
-        dist.destroy_process_group()
+        # Destroy only the subgroup for non-default groups. Allow default to be torn down explicitly.
+        if self._is_default_group:
+            # Destroy default process group to allow re-init in tests that recreate the same group.
+            dist.destroy_process_group()
+        else:
+            # Destroy just this subgroup.
+            if self._pg is not None:
+                dist.destroy_process_group(self._pg)
 
     @classmethod
     def backend(cls):
         """The backend of this collective group."""
-        return Backend.TORCH_GLOO
+        return Backend.GLOO
+
+    @classmethod
+    def check_backend_availability(cls) -> bool:
+        return _TORCH_DISTRIBUTED_AVAILABLE
 
     def _check_tensor_input(self, tensor: List["torch.Tensor"]) -> "torch.Tensor":
-        """ray.util.collective wraps tensor arguments in a list. Check for a
-        single tensor and unwrap it.
+        """ray.util.collective wraps tensor arguments in a list.
+        Accept a single torch.Tensor or numpy.ndarray and unwrap/convert it.
         """
         assert isinstance(tensor, list) and len(tensor) == 1
-        tensor = tensor[0]
-        if not isinstance(tensor, torch.Tensor):
-            raise ValueError(
-                f"torch_gloo group only accepts torch.Tensor types, received {tensor}"
-            )
-        return tensor
+        t = tensor[0]
+        if isinstance(t, torch.Tensor):
+            return t
+        if isinstance(t, np.ndarray):
+            return torch.from_numpy(t)
+        raise ValueError(
+            f"torch_gloo group only accepts torch.Tensor or numpy.ndarray, received {type(t)}"
+        )
 
     def _check_tensor_list_input(
         self, tensor_list: List[List["torch.Tensor"]]
     ) -> List["torch.Tensor"]:
-        """ray.util.collective wraps tensor arguments in a list. Check for a
-        single list of tensors and unwrap it.
+        """ray.util.collective wraps tensor arguments in a list.
+        Accept a single list containing torch.Tensors or numpy.ndarrays and
+        unwrap/convert items as needed.
         """
         assert isinstance(tensor_list, list) and len(tensor_list) == 1
         tensor_list = tensor_list[0]
+        converted_tensor_list = []
         for tensor in tensor_list:
-            if not isinstance(tensor, torch.Tensor):
+            if isinstance(tensor, np.ndarray):
+                tensor = torch.from_numpy(tensor)
+                converted_tensor_list.append(tensor)
+            elif isinstance(tensor, torch.Tensor):
+                converted_tensor_list.append(tensor)
+            else:
                 raise ValueError(
-                    f"torch_gloo group only accepts torch.Tensor types, received tensor list with value {tensor}"
+                    f"torch_gloo group only accepts torch.Tensor or numpy.ndarray types, received tensor list with value {tensor}"
                 )
-        return tensor_list
+        return converted_tensor_list
 
     def allreduce(
         self,
@@ -107,10 +214,10 @@ class TorchGLOOGroup(BaseGroup):
             allreduce_options = AllReduceOptions()
         tensor = self._check_tensor_input(tensor)
         torch_reduce_op = TORCH_REDUCE_OP_MAP[allreduce_options.reduceOp]
-        dist.all_reduce(tensor, op=torch_reduce_op)
+        dist.all_reduce(tensor, op=torch_reduce_op, group=self._pg)
 
     def barrier(self, barrier_options=BarrierOptions()) -> None:
-        dist.barrier()
+        dist.barrier(group=self._pg)
 
     def reduce(
         self,
@@ -119,9 +226,18 @@ class TorchGLOOGroup(BaseGroup):
     ) -> None:
         if reduce_options is None:
             reduce_options = ReduceOptions()
-        tensor = self._check_tensor_input(tensor)
+        t = self._check_tensor_input(tensor)
         torch_reduce_op = TORCH_REDUCE_OP_MAP[reduce_options.reduceOp]
-        dist.reduce(tensor, dst=reduce_options.root_rank, op=torch_reduce_op)
+        # Avoid mutating non-root ranks' user tensors to match util.collective semantics.
+        if self._rank == reduce_options.root_rank:
+            dist.reduce(
+                t, dst=reduce_options.root_rank, op=torch_reduce_op, group=self._pg
+            )
+        else:
+            tmp = t.detach().clone()
+            dist.reduce(
+                tmp, dst=reduce_options.root_rank, op=torch_reduce_op, group=self._pg
+            )
 
     def allgather(
         self,
@@ -133,13 +249,13 @@ class TorchGLOOGroup(BaseGroup):
             allgather_options = AllGatherOptions()
         tensor_list = self._check_tensor_list_input(tensor_list)
         tensor = self._check_tensor_input(tensor)
-        dist.all_gather(tensor_list, tensor)
+        dist.all_gather(tensor_list, tensor, group=self._pg)
 
     def broadcast(
         self, tensor: List["torch.Tensor"], broadcast_options=BroadcastOptions()
     ) -> None:
         tensor = self._check_tensor_input(tensor)
-        dist.broadcast(tensor, src=broadcast_options.root_rank)
+        dist.broadcast(tensor, src=broadcast_options.root_rank, group=self._pg)
 
     def reducescatter(
         self,
@@ -160,7 +276,7 @@ class TorchGLOOGroup(BaseGroup):
         # torch.distributed gloo doesn't support reducescatter. Implement a
         # simple version using allreduce.
         for tensor in tensor_list:
-            dist.all_reduce(tensor, op=torch_reduce_op)
+            dist.all_reduce(tensor, op=torch_reduce_op, group=self._pg)
 
         if output_tensor.data_ptr() != tensor_list[self._rank].data_ptr():
             output_tensor.copy_(tensor_list[self._rank])

@@ -3,398 +3,707 @@
 Working with LLMs
 =================
 
-The :ref:`ray.data.llm <llm-ref>` module integrates with key large language model (LLM) inference engines and deployed models to enable LLM batch inference.
+The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray Data datasets. It supports two modes: running LLM inference engines directly (vLLM, SGLang) or querying hosted endpoints through :class:`~ray.data.llm.ServeDeploymentProcessorConfig`.
 
-This guide shows you how to use :ref:`ray.data.llm <llm-ref>` to:
+**Getting started:**
 
-* :ref:`Perform batch inference with LLMs <batch_inference_llm>`
-* :ref:`Configure vLLM for LLM inference <vllm_llm>`
-* :ref:`Query deployed models with an OpenAI compatible API endpoint <openai_compatible_api_endpoint>`
+* :ref:`Quickstart <vllm_quickstart>` - Run your first batch inference job
+* :ref:`Architecture <processor_architecture>` - Understand the processor pipeline
+* :ref:`Scaling <horizontal_scaling>` - Scale your LLM stage to multiple replicas
 
-.. _batch_inference_llm:
+**Common use cases:**
 
-Perform batch inference with LLMs
+* :ref:`Text generation <text_generation>` - Chat completions with LLMs
+* :ref:`Embeddings <embedding_models>` - Generate text embeddings
+* :ref:`Classification <classification_models>` - Content classifiers and sentiment analyzers
+* :ref:`Multimodality <multimodal>` - Batch inference with VLM / omni models on multimodal data
+* :ref:`OpenAI-compatible endpoints <openai_compatible_api_endpoint>` - Query deployed models
+* :ref:`Serve deployments <serve_deployments>` - Share vLLM engines across processors
+* :ref:`Custom tokenizers <custom_tokenizers>` - Use vLLM tokenizers for models not supported by HuggingFace
+
+**Operations:**
+
+* :ref:`Troubleshooting <troubleshooting>` - GPU memory, model loading issues
+* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA, batch concurrency
+
+.. _vllm_quickstart:
+
+Quickstart: vLLM batch inference
 ---------------------------------
 
-At a high level, the :ref:`ray.data.llm <llm-ref>` module provides a :class:`Processor <ray.data.llm.Processor>` object which encapsulates
-logic for performing batch inference with LLMs on a Ray Data dataset.
-
-You can use the :func:`build_llm_processor <ray.data.llm.build_llm_processor>` API to construct a processor.
-The following example uses the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
-
-To run this example, install vLLM, which is a popular and optimized LLM inference engine.
-
-.. testcode::
-
-    # Later versions *should* work but are not tested yet.
-    pip install -U vllm==0.7.2
-
-The :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` is a configuration object for the vLLM engine.
-It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
-Upon execution, the Processor object instantiates replicas of the vLLM engine (using :meth:`map_batches <ray.data.Dataset.map_batches>` under the hood).
-
-.. testcode::
-
-    import ray
-    from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
-    
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={
-            "enable_chunked_prefill": True,
-            "max_num_batched_tokens": 4096,
-            "max_model_len": 16384,
-        },
-        concurrency=1,
-        batch_size=64,
-    )
-    processor = build_llm_processor(
-        config,
-        preprocess=lambda row: dict(
-            messages=[
-                {"role": "system", "content": "You are a bot that responds with haikus."},
-                {"role": "user", "content": row["item"]}
-            ],
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=250,
-            )
-        ),
-        postprocess=lambda row: dict(
-            answer=row["generated_text"],
-            **row  # This will return all the original columns in the dataset.
-        ),
-    )
-
-    ds = ray.data.from_items(["Start of the haiku is: Complete this for me..."])
-
-    ds = processor(ds)
-    ds.show(limit=1)
-
-.. testoutput::
-    :options: +MOCK
-
-    {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
-
-Each processor requires specific input columns. You can find more info by using the following API:
-
-.. testcode::
-
-    processor.log_input_column_names()
-
-.. testoutput::
-    :options: +MOCK
-
-    The first stage of the processor is ChatTemplateStage.
-    Required input columns:
-            messages: A list of messages in OpenAI chat format. See https://platform.openai.com/docs/api-reference/chat/create for details.
-
-Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
-
-.. testcode::
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
-        concurrency=1,
-        batch_size=64,
-    )
-
-.. _vllm_llm:
-
-Configure vLLM for LLM inference
---------------------------------
-
-Use the :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` to configure the vLLM engine.
-
-.. testcode::
-
-    from ray.data.llm import vLLMEngineProcessorConfig
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={"max_model_len": 20000},
-        concurrency=1,
-        batch_size=64,
-    )
-
-For handling larger models, specify model parallelism.
-
-.. testcode::
-
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={
-            "max_model_len": 16384,
-            "tensor_parallel_size": 2,
-            "pipeline_parallel_size": 2,
-            "enable_chunked_prefill": True,
-            "max_num_batched_tokens": 2048,
-        },
-        concurrency=1,
-        batch_size=64,
-    )
-
-The underlying :class:`Processor <ray.data.llm.Processor>` object instantiates replicas of the vLLM engine and automatically
-configure parallel workers to handle model parallelism (for tensor parallelism and pipeline parallelism,
-if specified).
-
-To optimize model loading, you can configure the `load_format` to `runai_streamer` or `tensorizer`.
+Get started with vLLM batch inference in just a few steps. This example shows the minimal setup needed to run batch inference on a dataset.
 
 .. note::
-    In this case, install vLLM with runai dependencies: `pip install -U "vllm[runai]==0.7.2"`
+    This quickstart requires a GPU as vLLM is GPU-accelerated.
 
-.. testcode::
+First, install Ray Data with LLM support:
 
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={"load_format": "runai_streamer"},
-        concurrency=1,
-        batch_size=64,
-    )
+.. code-block:: bash
 
-If your model is hosted on AWS S3, you can specify the S3 path in the `model_source` argument, and specify `load_format="runai_streamer"` in the `engine_kwargs` argument.
+    pip install -U "ray[data, llm]>=2.53.0"
 
-.. testcode::
+Here's a complete minimal example that runs batch inference:
 
-    config = vLLMEngineProcessorConfig(
-        model_source="s3://your-bucket/your-model/",  # Make sure adding the trailing slash!
-        engine_kwargs={"load_format": "runai_streamer"},
-        runtime_env={"env_vars": {
-            "AWS_ACCESS_KEY_ID": "your_access_key_id",
-            "AWS_SECRET_ACCESS_KEY": "your_secret_access_key",
-            "AWS_REGION": "your_region",
-        }},
-        concurrency=1,
-        batch_size=64,
-    )
+.. literalinclude:: doc_code/working-with-llms/minimal_quickstart.py
+    :language: python
+    :start-after: __minimal_vllm_quickstart_start__
+    :end-before: __minimal_vllm_quickstart_end__
 
-To do multi-LoRA batch inference, you need to set LoRA related parameters in `engine_kwargs`. See :doc:`the vLLM with LoRA example</llm/examples/batch/vllm-with-lora>` for details.
+This example:
 
-.. testcode::
+1. Creates a simple dataset with prompts
+2. Configures a vLLM processor with minimal settings
+3. Builds a processor that handles preprocessing (converting prompts to OpenAI chat format) and postprocessing (extracting generated text)
+4. Runs inference on the dataset
+5. Iterates through results
 
-    config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={
-            enable_lora=True,
-            max_lora_rank=32,
-            max_loras=1,
-        },
-        concurrency=1,
-        batch_size=64,
-    )
+The processor expects input rows with a ``prompt`` field and outputs rows with both ``prompt`` and ``response`` fields. You can consume results using ``iter_rows()``, ``take()``, ``show()``, or save to files with ``write_parquet()``.
 
-.. _vision_language_model:
+For more configuration options and advanced features, see the sections below.
 
-Batch inference with vision-language-model (VLM)
+.. _processor_architecture:
+
+Processor architecture
+----------------------
+
+Ray Data LLM uses a **multi-stage processor pipeline** to transform your data through LLM inference. Understanding this architecture helps you optimize performance and debug issues.
+
+.. code-block:: text
+
+    Input Dataset
+         |
+         v
+    - Preprocess (Custom Function)
+    - PrepareMultimodal (Optional, for VLM / Omni models)
+    - ChatTemplate (Applies chat template to messages)
+    - Tokenize (Optional -- converts text to token IDs)
+    - LLM Engine (vLLM/SGLang inference on GPU)
+    - Detokenize (Optional -- converts token IDs back to text)
+    - Postprocess (Custom Function)
+         |
+         v
+    Output Dataset
+
+**Stage descriptions:**
+
+- **Preprocess**: Your custom function that transforms input rows into the format expected by downstream stages (typically OpenAI chat format with ``messages``).
+- **PrepareMultimodal**: Extracts and prepares multimodal inputs. Enable with ``prepare_multimodal_stage=True``.
+- **ChatTemplate**: Applies the model's chat template to convert messages into a prompt string.
+- **Tokenize**: Converts the prompt string into token IDs for the model.
+- **LLM Engine**: The accelerated (GPU/TPU) inference stage running vLLM or SGLang.
+- **Detokenize**: Converts output token IDs back to readable text.
+- **Postprocess**: Your custom function that extracts and formats the final output.
+
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. All stages (CPU and GPU) use autoscaling actor pools by default, except for the ServeDeployment stage which uses a fixed pool.
+
+.. _horizontal_scaling:
+
+Scaling to multiple GPUs
+------------------------
+
+Horizontally scale the LLM stage to multiple GPU replicas using the ``concurrency`` parameter:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_example_start__
+    :end-before: __concurrent_config_example_end__
+
+Each replica runs an independent inference engine. Set ``concurrency`` to match the number of available GPUs or GPU nodes.
+
+By default, when you set ``concurrency`` to an integer ``n``, GPU stages autoscale from 1 to ``n`` actors. To use a fixed pool of ``n`` actors, set ``concurrency`` to ``(n, n)``.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_fixed_pool_example_start__
+    :end-before: __concurrent_config_fixed_pool_example_end__
+
+.. _text_generation:
+
+Text generation
+---------------
+
+Use :class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>` or :class:`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` for chat completions and text generation tasks.
+
+**Key configuration options:**
+
+- ``model_source``: HuggingFace model ID or path to model weights
+- ``concurrency``: Number of vLLM engine replicas (typically 1 per GPU node)
+- ``batch_size``: Rows per batch (reduce if hitting memory limits)
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __basic_config_example_start__
+    :end-before: __basic_config_example_end__
+
+For gated models requiring authentication, pass your HuggingFace token through ``runtime_env``:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __hf_token_config_example_start__
+    :end-before: __hf_token_config_example_end__
+
+.. _multimodal:
+
+Multimodality
 --------------------------------------------------------
 
 Ray Data LLM also supports running batch inference with vision language
-models. This example shows how to prepare a dataset with images and run
-batch inference with a vision language model.
+and omni-modal models on multimodal data. To enable multimodal batch inference,
+apply the following 2 adjustments on top of the previous example:
 
-This example applies 2 adjustments on top of the previous example:
+- Set `prepare_multimodal_stage=True` in the `vLLMEngineProcessorConfig`
+- Prepare multimodal data inside the preprocessor.
 
-- set `has_image=True` in `vLLMEngineProcessorConfig`
-- prepare image input inside preprocessor
+Image batch inference with vision language model (VLM)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. testcode::
+First, load a vision dataset:
 
-    # Load "LMMs-Eval-Lite" dataset from Hugging Face.
-    vision_dataset_llms_lite = datasets.load_dataset("lmms-lab/LMMs-Eval-Lite", "coco2017_cap_val")
-    vision_dataset = ray.data.from_huggingface(vision_dataset_llms_lite["lite"])
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
+    :language: python
+    :start-after: __vlm_image_load_dataset_example_start__
+    :end-before: __vlm_image_load_dataset_example_end__
+    :dedent: 0
 
-    vision_processor_config = vLLMEngineProcessorConfig(
-        model_source="Qwen/Qwen2.5-VL-3B-Instruct",
-        engine_kwargs=dict(
-            tensor_parallel_size=1,
-            pipeline_parallel_size=1,
-            max_model_len=4096,
-            enable_chunked_prefill=True,
-            max_num_batched_tokens=2048,
-        ),
-        # Override Ray's runtime env to include the Hugging Face token. Ray Data uses Ray under the hood to orchestrate the inference pipeline.
-        runtime_env=dict(
-            env_vars=dict(
-                HF_TOKEN=HF_TOKEN,
-                VLLM_USE_V1="1",
-            ),
-        ),
-        batch_size=16,
-        accelerator_type="L4",
-        concurrency=1,
-        has_image=True,
-    )
+Next, configure the VLM processor with the essential settings:
 
-    def vision_preprocess(row: dict) -> dict:
-        choice_indices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-        return dict(
-            messages=[
-                {
-                    "role": "system",
-                    "content": """Analyze the image and question carefully, using step-by-step reasoning.
-    First, describe any image provided in detail. Then, present your reasoning. And finally your final answer in this format:
-    Final Answer: <answer>
-    where <answer> is:
-    - The single correct letter choice A, B, C, D, E, F, etc. when options are provided. Only include the letter.
-    - Your direct answer if no options are given, as a single phrase or number.
-    - If your answer is a number, only include the number without any unit.
-    - If your answer is a word or phrase, do not paraphrase or reformat the text you see in the image.
-    - You cannot answer that the question is unanswerable. You must either pick an option or provide a direct answer.
-    IMPORTANT: Remember, to end your answer with Final Answer: <answer>.""",
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": row["question"] + "\n\n"
-                        },
-                        {
-                            "type": "image",
-                            # Ray Data accepts PIL Image or image URL.
-                            "image": Image.open(BytesIO(row["image"]["bytes"]))
-                        },
-                        {
-                            "type": "text",
-                            "text": "\n\nChoices:\n" + "\n".join([f"{choice_indices[i]}. {choice}" for i, choice in enumerate(row["answer"])])
-                        }
-                    ]
-                },
-            ],
-            sampling_params=dict(
-                temperature=0.3,
-                max_tokens=150,
-                detokenize=False,
-            ),
-        )
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
+    :language: python
+    :start-after: __vlm_config_example_start__
+    :end-before: __vlm_config_example_end__
 
-    def vision_postprocess(row: dict) -> dict:
-        return {
-            "resp": row["generated_text"],
-        }
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the VLM and extract model responses. Within the preprocessor,
+structure image data as part of an OpenAI-compatible message. Both image URL and
+`PIL.Image.Image` object are supported.
 
-    vision_processor = build_llm_processor(
-        vision_processor_config,
-        preprocess=vision_preprocess,
-        postprocess=vision_postprocess,
-    )
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
+    :language: python
+    :start-after: __image_message_format_example_start__
+    :end-before: __image_message_format_example_end__
 
-    vision_processed_ds = vision_processor(vision_dataset).materialize()
-    vision_processed_ds.show(3)
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
+    :language: python
+    :start-after: __vlm_preprocess_example_start__
+    :end-before: __vlm_preprocess_example_end__
 
+Finally, run the VLM inference:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_image_example.py
+    :language: python
+    :start-after: __vlm_run_example_start__
+    :end-before: __vlm_run_example_end__
+    :dedent: 0
+
+Video batch inference with vision language model (VLM)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, load a video dataset:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
+    :language: python
+    :start-after: __vlm_video_load_dataset_example_start__
+    :end-before: __vlm_video_load_dataset_example_end__
+    :dedent: 0
+
+Next, configure the VLM processor with the essential settings:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
+    :language: python
+    :start-after: __vlm_video_config_example_start__
+    :end-before: __vlm_video_config_example_end__
+
+Ray Data LLM forwards ``mm_processor_kwargs`` to vLLM, which invokes
+the model's HuggingFace processor with it. The accepted keys are
+defined by the HF processor and differ by model family, for example
+``max_pixels`` on Qwen2-VL, ``size`` on Qwen3-VL. Refer to the HF
+processor source for your model, for example `Qwen3VLVideoProcessor
+<https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L86>`_.
+
+.. note::
+
+   Understanding multimodal arguments:
+
+   - ``engine_kwargs.limit_mm_per_prompt={"video": 1}``: caps the number of videos per request.
+   - ``engine_kwargs.mm_processor_kwargs.size``: per-frame resize budget;
+     inputs are resized to fall within the range
+     ``shortest_edge`` to ``longest_edge`` in total pixels.
+   - ``engine_kwargs.mm_processor_kwargs.do_sample_frames=False``: skip the
+     HF processor's own frame sampling because ``media_io_kwargs`` already
+     produced the final frames. Set this whenever frame sampling has
+     already happened upstream.
+   - ``prepare_multimodal_stage.model_config_kwargs.allowed_local_media_path``:
+     required for ``file://`` or local-path media inputs.
+   - ``prepare_multimodal_stage.model_config_kwargs.media_io_kwargs``:
+     frame sampling at decode time.
+
+
+.. warning::
+   If a multimodal input exceeds ``mm_processor_kwargs.size``, the HF
+   processor's `smart_resize
+   <https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L35>`_
+   downscales it automatically. Size ``size.longest_edge``
+   to the largest input you expect to process: ``height * width`` for an
+   image, ``num_frames * height * width`` for a video.
+
+
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the VLM and extract model responses. Within the preprocessor,
+structure video data as part of an OpenAI-compatible message.
+
+.. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
+    :language: python
+    :start-after: __vlm_video_preprocess_example_start__
+    :end-before: __vlm_video_preprocess_example_end__
+
+Finally, run the VLM inference:
+
+.. literalinclude:: doc_code/working-with-llms/vlm_video_example.py
+    :language: python
+    :start-after: __vlm_video_run_example_start__
+    :end-before: __vlm_video_run_example_end__
+    :dedent: 0
+
+Audio batch inference with omni-modal model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, load an audio dataset:
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: __omni_audio_load_dataset_example_start__
+    :end-before: __omni_audio_load_dataset_example_end__
+    :dedent: 0
+
+Next, configure the omni-modal processor with the essential settings:
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: __omni_audio_config_example_start__
+    :end-before: __omni_audio_config_example_end__
+
+Define preprocessing and postprocessing functions to convert dataset rows into
+the format expected by the omni-modal model and extract model responses. Within the preprocessor,
+structure audio data as part of an OpenAI-compatible message. Both audio URL and audio
+binary data are supported.
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: __audio_message_format_example_start__
+    :end-before: __audio_message_format_example_end__
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: __omni_audio_preprocess_example_start__
+    :end-before: __omni_audio_preprocess_example_end__
+
+Finally, run the omni-modal inference:
+
+.. literalinclude:: doc_code/working-with-llms/omni_audio_example.py
+    :language: python
+    :start-after: __omni_audio_run_example_start__
+    :end-before: __omni_audio_run_example_end__
+    :dedent: 0
+
+.. _embedding_models:
+
+Embeddings
+----------
+
+For embedding models, set ``task_type="embed"`` and disable chat templating:
+
+.. literalinclude:: doc_code/working-with-llms/embedding_example.py
+    :language: python
+    :start-after: __embedding_example_start__
+    :end-before: __embedding_example_end__
+
+Key differences from text generation:
+
+- Use ``prompt`` input instead of ``messages``
+- Access results through ``row["embeddings"]``
+
+.. _classification_models:
+
+Classification
+--------------
+
+Ray Data LLM supports batch inference with sequence classification models, such as content classifiers and sentiment analyzers:
+
+.. literalinclude:: doc_code/working-with-llms/classification_example.py
+    :language: python
+    :start-after: __classification_example_start__
+    :end-before: __classification_example_end__
+
+Key differences for classification models:
+
+- Set ``task_type="classify"`` (or ``task_type="score"`` for scoring models)
+- Set ``chat_template_stage=False`` and ``detokenize_stage=False``
+- Use direct ``prompt`` input instead of ``messages``
+- Access classification logits through ``row["embeddings"]``
 
 .. _openai_compatible_api_endpoint:
 
-Batch inference with an OpenAI-compatible endpoint
---------------------------------------------------
+OpenAI-compatible endpoints
+---------------------------
 
-You can also make calls to deployed models that have an OpenAI compatible API endpoint.
+Query deployed models with an OpenAI-compatible API:
 
-.. testcode::
+.. literalinclude:: doc_code/working-with-llms/openai_api_example.py
+    :language: python
+    :start-after: __openai_example_start__
+    :end-before: __openai_example_end__
 
-    import ray
-    import os
-    from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
+.. _tokenization_disaggregation:
 
-    OPENAI_KEY = os.environ["OPENAI_API_KEY"]
-    ds = ray.data.from_items(["Hand me a haiku."])
+Tokenization disaggregation
+---------------------------
+
+By default, tokenization and detokenization run as **separate CPU stages** in the processor pipeline. This offloads tokenizer work from the GPU stage, allowing independent scaling of CPU and GPU stages.
+
+.. note::
+    When the detokenize stage is enabled, set ``detokenize=False`` in ``sampling_params`` so the engine returns raw token IDs for the CPU stage to decode. When disabled, set ``detokenize=True`` so the engine decodes the output itself.
+
+**Disaggregated (default)**: tokenize and detokenize as separate CPU stages:
+
+.. literalinclude:: doc_code/working-with-llms/tokenization_disaggregation_example.py
+    :language: python
+    :start-after: __disaggregated_tokenization_start__
+    :end-before: __disaggregated_tokenization_end__
+
+Alternatively, you can disable these stages so the vLLM engine handles tokenization and detokenization internally.
+
+**Aggregated**: the vLLM engine handles tokenization internally:
+
+.. literalinclude:: doc_code/working-with-llms/tokenization_aggregation_example.py
+    :language: python
+    :start-after: __aggregated_tokenization_start__
+    :end-before: __aggregated_tokenization_end__
+
+.. tip::
+    Disaggregated tokenization is most beneficial when the tokenizer is a bottleneck, for example, with large vocabularies or long sequences.
+    If the GPU engine is already saturated, the overhead of extra stages may not help.
 
 
-    config = HttpRequestProcessorConfig(
-        url="https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-        qps=1,
+.. _custom_tokenizers:
+
+Custom tokenizers
+-----------------
+
+Use this pattern when a model is supported by vLLM but not by HuggingFace ``transformers`` — for example, Mistral Tekken (``mistral``), DeepSeek-V3 (``deepseek_v32``), or Grok-2 (``grok2``).
+The built-in ChatTemplate, Tokenize, and Detokenize stages rely on HuggingFace and will fail for these models. In the following example, we disable the built-in CPU stages and replace them with ``map_batches`` callables.
+
+**Chat template**: Converts OpenAI-format messages into the prompt string the model expects. Required because each model family defines its own chat format:
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_chat_template_start__
+    :end-before: __custom_chat_template_end__
+
+**Tokenize**: Converts the prompt string into token IDs for the model.
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_tokenize_start__
+    :end-before: __custom_tokenize_end__
+
+**Detokenize** (optional): Decodes generated token IDs back to text. The vLLM engine already returns ``generated_text``, so this is only needed for custom decoding (e.g. different ``skip_special_tokens`` settings):
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_detokenize_start__
+    :end-before: __custom_detokenize_end__
+
+Build a processor with built-in stages disabled and compose the full pipeline:
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_tokenizer_pipeline_start__
+    :end-before: __custom_tokenizer_pipeline_end__
+    :dedent: 4
+
+.. note::
+    This example uses a standard model because models that truly require vLLM's custom tokenizer are too large for Ray CI environments. The pattern is identical — just replace ``MODEL_ID`` and set ``tokenizer_mode`` explicitly.
+
+.. _resiliency:
+
+Resiliency
+----------------------
+
+Row-level fault tolerance
+~~~~~~~~~~~~~~~~~~~~~~~~~
+In Ray Data LLM, row-level fault tolerance is achieved by setting the ``should_continue_on_error`` parameter to ``True`` in the processor config.
+This means that if a single row fails due to a request level error from the engine, the job continues processing the remaining rows.
+This is useful for long-running jobs where you want to minimize the impact of request failures.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __row_level_fault_tolerance_config_example_start__
+    :end-before: __row_level_fault_tolerance_config_example_end__
+
+
+Actor-level fault tolerance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+When an actor dies in the middle of a pipeline execution, it's restarted and rejoins the actor pool to process remaining rows.
+This feature is enabled by default, and there are no additional configuration needed.
+
+
+Checkpoint recovery
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data supports checkpoint recovery, which lets you resume pipeline execution from a checkpoint stored in local or cloud storage.
+Checkpointing works only for pipelines that start with a read operation and end with a write operation.
+For checkpointing to take effect, successful blocks must reach the write sink before a failure occurs. After a failure, you can resume processing from the checkpoint in a subsequent run.
+
+First, set up the checkpoint configuration and specify the ID column for checkpointing.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __checkpoint_config_setup_example_start__
+    :end-before: __checkpoint_config_setup_example_end__
+
+Then, include a read and write operation in the pipeline to enable checkpoint recovery. It's important to preserve the ID column during postprocess to ensure that the ID column is stored in the checkpoint.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __checkpoint_usage_example_start__
+    :end-before: __checkpoint_usage_example_end__
+
+To resume from a checkpoint, run the same code again. Ray Data discovers the checkpoint and resumes from the last successful block.
+
+.. _advanced_configuration:
+
+Advanced configuration
+----------------------
+
+Model parallelism
+~~~~~~~~~~~~~~~~~
+
+For large models that don't fit on a single GPU, use tensor and pipeline parallelism:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __parallel_config_example_start__
+    :end-before: __parallel_config_example_end__
+
+Cross-node parallelism
+~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data LLM supports cross-node parallelism, including tensor parallelism and pipeline parallelism. Configure the parallelism level through ``engine_kwargs``. The ``distributed_executor_backend`` defaults to ``"ray"`` for cross-node support.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __cross_node_parallelism_config_example_start__
+    :end-before: __cross_node_parallelism_config_example_end__
+
+You can customize the placement group configuration to control how Ray places vLLM engine workers across nodes. Use ``bundle_per_worker`` for basic per-worker resource specification (auto-replicated based on TP*PP), or ``bundles`` for full control over individual bundles. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine.
+
+.. note::
+   In each bundle dict, omitted ``CPU`` or ``GPU`` keys are treated as **0**. Specify the resources each worker needs explicitly.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __custom_placement_group_strategy_config_example_start__
+    :end-before: __custom_placement_group_strategy_config_example_end__
+
+Per-stage configuration
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Configure individual pipeline stages for fine-grained resource control:
+
+.. code-block:: python
+
+    config = vLLMEngineProcessorConfig(
+        model_source="meta-llama/Llama-3.1-8B-Instruct",
+        chat_template_stage={
+            "enabled": True,
+            "batch_size": 256,
+            "concurrency": 4,
+        },
+        tokenize_stage={
+            "enabled": True,
+            "batch_size": 512,
+            "num_cpus": 0.5,
+        },
+        detokenize_stage={
+            "enabled": True,
+            "concurrency": (2, 8),  # Autoscaling pool
+        },
     )
 
-    processor = build_llm_processor(
-        config,
-        preprocess=lambda row: dict(
-            payload=dict(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a bot that responds with haikus."},
-                    {"role": "user", "content": row["item"]}
-                ],
-                temperature=0.0,
-                max_tokens=150,
-            ),
-        ),
-        postprocess=lambda row: dict(response=row["http_response"]["choices"][0]["message"]["content"]),
-    )
+See :ref:`stage config classes <stage-configs-ref>` for all available fields.
 
-    ds = processor(ds)
-    print(ds.take_all())
+LoRA adapters
+~~~~~~~~~~~~~
 
-Usage Data Collection
---------------------------
+For multi-LoRA batch inference:
 
-Data for the following features and attributes is collected to improve Ray Data LLM:
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __lora_config_example_start__
+    :end-before: __lora_config_example_end__
 
-- config name used for building the llm processor
-- number of concurrent users for data parallelism
-- batch size of requests
-- model architecture used for building vLLMEngineProcessor
-- task type used for building vLLMEngineProcessor
-- engine arguments used for building vLLMEngineProcessor
-- tensor parallel size and pipeline parallel size used
-- GPU type used and number of GPUs used
+See :doc:`the vLLM with LoRA example</llm/examples/batch/vllm-with-lora>` for details.
 
-If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
-to turn it off.
+Accelerated model loading with RunAI streamer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. _faqs:
+Use `RunAI Model Streamer <https://github.com/run-ai/runai-model-streamer>`_ for faster model loading from cloud storage:
 
-Frequently Asked Questions (FAQs)
---------------------------------------------------
+.. note::
+    Install vLLM with runai dependencies: ``pip install -U "vllm[runai]>=0.10.1"``
 
-.. TODO(#55491): Rewrite this section once the restriction is lifted.
-.. _cross_node_parallelism:
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __runai_config_example_start__
+    :end-before: __runai_config_example_end__
 
-How to configure LLM stage to parallelize across multiple nodes?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _tuning_concurrent_batches:
 
-At the moment, Ray Data LLM doesn't support cross-node parallelism (either
-tensor parallelism or pipeline parallelism).
+Tuning concurrent batch processing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The processing pipeline is designed to run on a single node. The number of
-GPUs is calculated as the product of the tensor parallel size and the pipeline
-parallel size, and apply
-[`STRICT_PACK` strategy](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html#pgroup-strategy)
-to ensure that each replica of the LLM stage is executed on a single node.
+Two parameters control concurrent batch processing: ``max_concurrent_batches`` and ``max_tasks_in_flight_per_actor``. Understanding their interaction helps achieve optimal throughput.
 
-Nevertheless, you can still horizontally scale the LLM stage to multiple nodes
-as long as each replica (TP * PP) fits into a single node. The number of
-replicas is configured by the `concurrency` argument in
-:class:`vLLMEngineProcessorConfig <ray.data.llm.vLLMEngineProcessorConfig>`.
+Understanding the parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``max_concurrent_batches``, default: 8
+    The number of batches that can execute concurrently within a single vLLM engine actor. This overlaps batch processing to hide tail latency. The optimal batch size depends on the workload.
+
+``max_tasks_in_flight_per_actor``, experimental, default: 16
+    The number of tasks Ray Data can queue per actor before waiting for results. This enables task prefetching so tasks are ready when the actor finishes processing.
+
+How they work together
+^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters control different parts of the pipeline:
+
+- ``max_tasks_in_flight_per_actor`` controls how many tasks Ray Data sends to the actor queue
+- ``max_concurrent_batches`` controls how many batches can execute simultaneously
+
+With ``max_tasks_in_flight_per_actor`` < ``max_concurrent_batches``, Ray Data actors are undersaturated. To maximize throughput, increase ``max_tasks_in_flight_per_actor`` to keep the actor task queue saturated.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_batches_tuning_example_start__
+    :end-before: __concurrent_batches_tuning_example_end__
+
+.. _serve_deployments:
+
+Serve deployments
+~~~~~~~~~~~~~~~~~
+
+For multi-turn conversations or complex agentic workflows, share a vLLM engine across multiple processors using :ref:`Ray Serve <serving-llms>`:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __shared_vllm_engine_config_example_start__
+    :end-before: __shared_vllm_engine_config_example_end__
+
+----
+
+.. _troubleshooting:
+
+Troubleshooting
+---------------
+
+vLLM compatibility
+~~~~~~~~~~~~~~~~~~
+
+Each Ray release is fully tested with a compatible vLLM version.
+
+.. list-table::
+   :header-rows: 1
+   :widths: auto
+
+   * - Ray release
+     - vLLM version
+   * - nightly
+     - 0.26.0
+   * - 2.57.0
+     - 0.25.1
+   * - 2.56.0
+     - 0.22.0
+   * - 2.55.0
+     - 0.18.0
+   * - 2.54.0
+     - 0.15.0
+   * - 2.53.0
+     - 0.12.0
+   * - 2.52.0
+     - 0.11.0
+   * - 2.51.0
+     - 0.11.0
+   * - 2.50.0
+     - 0.10.2
+
+GPU memory and CUDA OOM
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If you encounter CUDA out of memory errors, try these strategies:
+
+- Reduce batch size: Start with 8-16 and increase gradually
+- Lower ``max_num_batched_tokens``: Reduce from 4096 to 2048 or 1024
+- Decrease ``max_model_len``: Use shorter context lengths
+- Set ``gpu_memory_utilization``: Use 0.75-0.85 instead of default 0.90
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __gpu_memory_config_example_start__
+    :end-before: __gpu_memory_config_example_end__
+
+.. admonition:: Known issue
+
+    On vLLM 0.25.1 and 0.26.0, VLM inference can OOM because the default Model Runner V2
+    skips multimodal encoder memory profiling and over-allocates KV cache memory.
+    Set ``VLLM_USE_V2_MODEL_RUNNER=0`` to fall back to Model Runner V1.
+
+Model loading at scale
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. _model_cache:
 
-How to cache model weight to remote object storage
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+For large clusters, HuggingFace downloads may be rate-limited. Cache models to S3 or GCS:
 
-While deploying Ray Data LLM to large scale clusters, model loading may be rate
-limited by HuggingFace. In this case, you can cache the model to remote object
-storage (AWS S3 or Google Cloud Storage) for more stable model loading.
+.. code-block:: bash
 
-Ray Data LLM provides the following utility to help uploading models to remote object storage.
-
-.. testcode::
-
-    # Download model from HuggingFace, and upload to GCS
     python -m ray.llm.utils.upload_model \
         --model-source facebook/opt-350m \
-        --bucket-uri gs://my-bucket/path/to/facebook-opt-350m
-    # Or upload a local custom model to S3
-    python -m ray.llm.utils.upload_model \
-        --model-source local/path/to/model \
-        --bucket-uri s3://my-bucket/path/to/model_name
+        --bucket-uri gs://my-bucket/path/to/model
 
-And later you can use remote object store URI as `model_source` in the config.
+Then reference the remote path in your config:
 
-.. testcode::
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __s3_config_example_start__
+    :end-before: __s3_config_example_end__
 
-    config = vLLMEngineProcessorConfig(
-        model_source="gs://my-bucket/path/to/facebook-opt-350m",  # or s3://my-bucket/path/to/model_name
-        ...
-    )
+
+vLLM NIXL EP dependency incompatibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. admonition:: Known issue
+
+   Users who install Ray and vLLM directly may encounter NIXL EP incompatibility error as follows:
+
+   .. code-block:: text
+
+      ImportError: libcudart.so.12: cannot open shared object file: No such file or directory
+
+   Remove the incompatible package or ensure the installed ``nixl_ep`` package is compatible with the CUDA runtime
+   and vLLM build in your environment.
+
+**Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
+
+
+Get Help
+~~~~~~~~~~~~~~~~~
+
+If you encounter issues not covered in this guide:
+
+- `Ray GitHub Issues <https://github.com/ray-project/ray/issues>`_ - Report bugs or request features
+- `Ray Slack <https://ray-distributed.slack.com>`_ - Get help from the community
+- `Ray Discourse Forum <https://discuss.ray.io>`_ - Ask questions and share knowledge
+- `Ray LLM Office Hours <https://zoom-lfx.platform.linuxfoundation.org/meetings/ray?view=month>`_ - Learn about new features, ask questions, and get guidance from the team
+
+  - `Past Office Hours Recordings <https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN>`_ - View recordings from previous sessions

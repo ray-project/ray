@@ -1,11 +1,12 @@
 import logging
 from typing import List, Optional, Union
+
 import tree
 
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import (
-    SampleBatch,
     DEFAULT_POLICY_ID,
+    SampleBatch,
     concat_samples,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI, OldAPIStack
@@ -144,7 +145,8 @@ def synchronous_parallel_sample(
                 )
             else:
                 agent_or_env_steps += sum(
-                    int(stat_dict[NUM_ENV_STEPS_SAMPLED]) for stat_dict in stats_dicts
+                    int(stat_dict.get(NUM_ENV_STEPS_SAMPLED, 0))
+                    for stat_dict in stats_dicts
                 )
             sample_batches_or_episodes.extend(sampled_data)
             all_stats_dicts.extend(stats_dicts)

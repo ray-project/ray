@@ -103,7 +103,7 @@ message ActorTableData {
   // Number of restarts that has been tried on this actor.
   // This will be greater by 1 than what's published before in ALIVE.
   // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
-  uint64 num_restarts = 8;
+  int64 num_restarts = 8;
   // The address of the actor.
   Address address = 9;
   // The address of the actor's owner (parent).
@@ -162,6 +162,9 @@ message ActorTableData {
   map<string, string> label_selector = 35;
   // Number of times this actor is restarted due to node preemption.
   uint64 num_restarts_due_to_node_preemption = 36;
+  // The key-value labels for actor.
+  map<string, string> labels = 37;
+  optional FallbackStrategy fallback_strategy = 38;
 }
 
 message ErrorTableData {
@@ -318,6 +321,12 @@ message GcsNodeInfo {
   // The port at which the runtime env agent listens as HTTP.
   int32 runtime_env_agent_port = 27;
 
+  // The port at which the metrics agent (dashboard agent grpc) listens.
+  int32 metrics_agent_port = 30;
+
+  // The port at which the dashboard agent listens for HTTP requests.
+  int32 dashboard_agent_listen_port = 31;
+
   // The total resources of this node.
   map<string, double> resources_total = 11;
 
@@ -350,6 +359,35 @@ message GcsNodeInfo {
 
   // The death info of this node.
   NodeDeathInfo death_info = 29;
+
+  // Temporary directory of this node.
+  string temp_dir = 32;
+
+  // Session directory of this node.
+  string session_dir = 33;
+}
+
+// A lighter version of GcsNodeInfo containing only essential fields.
+message GcsNodeAddressAndLiveness {
+  // The ID of node.
+  bytes node_id = 1;
+
+  // The IP address of the node manager.
+  string node_manager_address = 2;
+
+  // The port at which the node manager is listening for TCP
+  // connections from other node managers.
+  int32 node_manager_port = 3;
+
+  // The port at which the object manager is listening for TCP
+  // connections from other object managers.
+  int32 object_manager_port = 4;
+
+  // Current state of this node.
+  GcsNodeInfo.GcsNodeState state = 5;
+
+  // The death info of this node.
+  NodeDeathInfo death_info = 6;
 }
 
 // Please keep this in sync with the definition of JobInfo in
@@ -483,7 +521,7 @@ message ResourceLoad {
 }
 
 message ResourcesData {
-  reserved 3, 8, 17;
+  reserved 3, 8, 14, 17;
   // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
@@ -500,15 +538,6 @@ message ResourcesData {
   // the node has more pull requests than available object store
   // memory. This is a proxy for available object store memory.
   bool object_pulls_queued = 10;
-  // Normal task resources.
-  map<string, double> resources_normal_task = 11;
-  // Indicates whether resource normal task is changed. Only used when
-  // light heartbeat enabled.
-  bool resources_normal_task_changed = 12;
-  // The timestamp that normal task resources are measured.
-  int64 resources_normal_task_timestamp = 13;
-  // Whether this node has detected a resource deadlock (full of actors).
-  bool cluster_full_of_actors_detected = 14;
   // The duration in ms during which all the node's resources are idle. If the
   // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 15;
@@ -652,6 +681,13 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
+  // Tracks the selected topology values. Maps each topology label to the
+  // value the scheduler has selected for this PG (e.g. {"rack_id": "rack-1"}).
+  map<string, string> topology_assignments = 17;
+  // Topology strategy that applies to this PG. Mirrors
+  // PlacementGroupSpec.topology_strategy. Empty if the PG does not use
+  // a topology strategy.
+  map<string, PlacementStrategy> topology_strategy = 18;
 }
 
 message JobTableData {

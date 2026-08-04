@@ -77,7 +77,8 @@ export const NodeStatusCard = ({ clusterStatus }: StatusCardProps) => {
     <Box
       style={{
         overflow: "hidden",
-        overflowY: "scroll",
+        overflowY: "auto",
+        height: "100%",
       }}
     >
       {formatNodeStatus(clusterStatus?.data.clusterStatus)}
@@ -90,7 +91,8 @@ export const ResourceStatusCard = ({ clusterStatus }: StatusCardProps) => {
     <Box
       style={{
         overflow: "hidden",
-        overflowY: "scroll",
+        overflowY: "auto",
+        height: "100%",
       }}
     >
       {formatResourcesStatus(clusterStatus?.data.clusterStatus)}

@@ -1,8 +1,7 @@
-from ray.dag import DAGNode
-
 import os
 import tempfile
 
+from ray.dag import DAGNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.util.annotations import DeveloperAPI
 
@@ -63,7 +62,7 @@ def _check_pydot_and_graphviz():
 def _get_nodes_and_edges(dag: DAGNode):
     """Get all unique nodes and edges in the DAG.
 
-    A basic dfs with memorization to get all unique nodes
+    A basic dfs with memoization to get all unique nodes
     and edges in the DAG.
     Unique nodes will be used to generate unique names,
     while edges will be used to construct the graph.

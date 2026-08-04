@@ -1,6 +1,7 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
+from typing import Any, List, Tuple, Union
+
 import numpy as np
-from typing import Union, Tuple, Any, List
 
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -222,7 +223,7 @@ class SlimConv2d(nn.Module):
                 of implicit zero-paddings during the conv operation
             initializer: Initializer function for kernel weights
             activation_fn: Activation function at the end of layer
-            bias_init: Initalize bias weights to bias_init const
+            bias_init: Initialize bias weights to bias_init const
         """
         super(SlimConv2d, self).__init__()
         layers = []
@@ -273,7 +274,7 @@ class SlimFC(nn.Module):
             initializer: Initializer function for FC layer weights
             activation_fn: Activation function at the end of layer
             use_bias: Whether to add bias weights or not
-            bias_init: Initalize bias weights to bias_init const
+            bias_init: Initialize bias weights to bias_init const
         """
         super(SlimFC, self).__init__()
         layers = []

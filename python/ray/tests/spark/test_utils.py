@@ -1,18 +1,19 @@
-from unittest.mock import patch
 import os
 import re
 import sys
+from unittest.mock import patch
 
 import pytest
-from ray.util.spark.utils import (
-    get_spark_task_assigned_physical_gpus,
-    _calc_mem_per_ray_worker_node,
-    _get_avail_mem_per_ray_worker_node,
-)
+
 from ray.util.spark.cluster_init import (
+    _append_default_spilling_dir_config,
     _convert_ray_node_options,
     _verify_node_options,
-    _append_default_spilling_dir_config,
+)
+from ray.util.spark.utils import (
+    _calc_mem_per_ray_worker_node,
+    _get_avail_mem_per_ray_worker_node,
+    get_spark_task_assigned_physical_gpus,
 )
 
 pytestmark = pytest.mark.skipif(

@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import time
+from types import SimpleNamespace
 from typing import AsyncGenerator, Optional
 from unittest.mock import patch
 
@@ -8,8 +9,17 @@ import numpy as np
 import pytest
 
 from ray import serve
-from ray.llm._internal.serve.configs.server_models import LoraConfig
-from ray.llm._internal.serve.deployments.llm.llm_server import LLMServer
+from ray.llm._internal.serve.core.configs.llm_config import (
+    LLMConfig,
+    LoraConfig,
+    ModelLoadingConfig,
+)
+from ray.llm._internal.serve.core.configs.openai_api_models import CompletionRequest
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+    _canonicalize_request_id_header,
+)
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     FakeLoraModelLoader,
     MockVLLMEngine,
@@ -152,6 +162,61 @@ class TestLLMServer:
         # Validate embedding response
         LLMResponseValidator.validate_embedding_response(chunks[0], dimensions)
 
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize("temperature", [0.0])
+    @pytest.mark.parametrize("language", ["en", "hi"])
+    @pytest.mark.asyncio
+    async def test_transcription_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_transcription_request,
+        stream: bool,
+        temperature: float,
+        language: Optional[str],
+    ):
+        """Test transcription API from LLMServer perspective."""
+
+        # Create transcription request
+        request = mock_transcription_request
+
+        print(
+            f"\n\n_____ TRANSCRIPTION SERVER ({'STREAMING' if stream else 'NON-STREAMING'}) language={language} temperature={temperature} _____\n\n"
+        )
+
+        # Get the response
+        batched_chunks = serve_handle.transcriptions.remote(request)
+
+        if stream:
+            # Collect streaming responses
+            chunks = []
+            async for batch in batched_chunks:
+                if isinstance(batch, list):
+                    chunks.extend(batch)
+                else:
+                    chunks.append(batch)
+
+            # Check that we got responses
+            assert len(chunks) > 0
+
+            # Validate streaming response
+            LLMResponseValidator.validate_transcription_response(
+                chunks, temperature, language
+            )
+        else:
+            # Collect non-streaming response
+            chunks = []
+            async for batch in batched_chunks:
+                chunks.append(batch)
+
+            # Check that we got one response
+            assert len(chunks) == 1
+
+            # Validate non-streaming response
+            LLMResponseValidator.validate_transcription_response(
+                chunks[0], temperature, language
+            )
+
     @pytest.mark.asyncio
     async def test_score_llm_server(
         self,
@@ -179,6 +244,73 @@ class TestLLMServer:
 
         # Validate score response
         LLMResponseValidator.validate_score_response(chunks[0])
+
+    @pytest.mark.parametrize("return_token_strs", [False, True])
+    @pytest.mark.asyncio
+    async def test_tokenize_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_tokenize_request,
+        return_token_strs: bool,
+    ):
+        """Test tokenize API from LLMServer perspective."""
+
+        # Create tokenize request
+        request = mock_tokenize_request
+
+        print(
+            f"\n\n_____ TOKENIZE SERVER return_token_strs={return_token_strs} _____\n\n"
+        )
+
+        # Get the response
+        batched_chunks = serve_handle.tokenize.remote(request)
+
+        # Collect responses (should be just one)
+        chunks = []
+        async for batch in batched_chunks:
+            chunks.append(batch)
+
+        # Check that we got one response
+        assert len(chunks) == 1
+
+        # Validate tokenize response
+        LLMResponseValidator.validate_tokenize_response(
+            chunks[0],
+            expected_prompt="Hello, world!",
+            return_token_strs=return_token_strs,
+        )
+
+    @pytest.mark.asyncio
+    async def test_detokenize_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_detokenize_request,
+    ):
+        """Test detokenize API from LLMServer perspective."""
+
+        # Create detokenize request
+        request = mock_detokenize_request
+
+        print("\n\n_____ DETOKENIZE SERVER _____\n\n")
+
+        # Get the response
+        batched_chunks = serve_handle.detokenize.remote(request)
+
+        # Collect responses (should be just one)
+        chunks = []
+        async for batch in batched_chunks:
+            chunks.append(batch)
+
+        # Check that we got one response
+        assert len(chunks) == 1
+
+        # Validate detokenize response
+        LLMResponseValidator.validate_detokenize_response(
+            chunks[0],
+            expected_text="Hello",  # [72, 101, 108, 108, 111] = "Hello"
+        )
 
     @pytest.mark.asyncio
     async def test_check_health(self, mock_llm_config):
@@ -373,7 +505,7 @@ class TestLLMServer:
     async def test_push_telemetry(self, mock_llm_config):
         """Test that the telemetry push is called properly."""
         with patch(
-            "ray.llm._internal.serve.deployments.llm.llm_server.push_telemetry_report_for_all_models"
+            "ray.llm._internal.serve.core.server.llm_server.push_telemetry_report_for_all_models"
         ) as mock_push_telemetry:
             server = LLMServer.sync_init(mock_llm_config, engine_cls=MockVLLMEngine)
             await server.start()
@@ -443,6 +575,214 @@ class TestLLMServer:
         assert np.isclose(
             std_var_llm_server, std_var_engine, atol=1.0
         ), f"{std_var_llm_server=}, {std_var_engine=}"
+
+
+class TestGetDeploymentOptions:
+    def test_placement_group_config(self):
+        """Test that placement_group_config is correctly parsed."""
+
+        # Test the default resource bundle
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
+            {"GPU": 1} for _ in range(5)
+        ]
+
+        # Test the custom placement group config
+        # Note: The first bundle gets merged with replica actor resources (CPU: 1, GPU: 0)
+        llm_config = LLMConfig(
+            model_loading_config=dict(model_id="test_model"),
+            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
+            placement_group_config={
+                "bundles": [{"CPU": 1, "XPU": 1}] + [{"XPU": 1}] * 5,
+                "strategy": "PACK",
+            },
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+        # First bundle has replica actor resources merged in (CPU: 1 from config + 1 from replica = 2)
+        # Bundles are validated via PlacementGroupConfig: unset CPU/GPU are omitted from the output due to exclude_unset=True.
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 2.0, "GPU": 0, "XPU": 1}
+        ] + [{"XPU": 1} for _ in range(5)]
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+    def test_get_serve_options_with_accelerator_type(self):
+        """Test that get_serve_options returns the correct options when accelerator_type is set."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="A100-40G",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "initial_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+            runtime_env={"env_vars": {"FOO": "bar"}},
+        )
+
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        # Test the core functionality without being strict about Ray's automatic runtime env additions
+        assert serve_options["autoscaling_config"] == {
+            "min_replicas": 0,
+            "initial_replicas": 1,
+            "max_replicas": 10,
+        }
+        assert serve_options["placement_group_bundles"] == [
+            {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
+        ]
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+        # Check that our custom env vars are present
+        assert (
+            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
+            == "bar"
+        )
+        assert (
+            "worker_process_setup_hook"
+            in serve_options["ray_actor_options"]["runtime_env"]
+        )
+
+    def test_get_serve_options_without_accelerator_type(self):
+        """Test that get_serve_options returns the correct options when accelerator_type is not set."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "initial_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+            runtime_env={"env_vars": {"FOO": "bar"}},
+        )
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        # Test the core functionality without being strict about Ray's automatic runtime env additions
+        assert serve_options["autoscaling_config"] == {
+            "min_replicas": 0,
+            "initial_replicas": 1,
+            "max_replicas": 10,
+        }
+        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
+        # Default strategy is PACK (cross-node allowed by default)
+        assert serve_options["placement_group_strategy"] == "PACK"
+
+        # Check that our custom env vars are present
+        assert (
+            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
+            == "bar"
+        )
+        assert (
+            "worker_process_setup_hook"
+            in serve_options["ray_actor_options"]["runtime_env"]
+        )
+
+    def test_deferred_placement_group_for_tpu_topology(self):
+        """Test that Serve skips PG creation when deferred placement group is required."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+            accelerator_type="TPU-V6E",
+            accelerator_config={"kind": "tpu", "topology": "4x4"},
+            llm_engine="vLLM",
+        )
+
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        assert "placement_group_bundles" not in serve_options
+        assert "placement_group_strategy" not in serve_options
+
+
+class TestCanonicalizeRequestIdHeader:
+    """Unit tests for the X-Request-Id header canonicalization helper."""
+
+    def test_uncanonical_variants_dropped(self):
+        """Any case/separator variant of the header is dropped and replaced by a
+        single canonical ``x-request-id`` equal to ``request.request_id``."""
+        request = SimpleNamespace(request_id="canonical-id")
+        raw = RawRequestInfo(
+            headers={
+                "X-Request-ID": "stale-upper",
+                "x_request_id": "stale-underscore",
+                "content-type": "application/json",
+            }
+        )
+        out = _canonicalize_request_id_header(request, raw)
+
+        rid_keys = [
+            k for k in out.headers if k.replace("_", "-").lower() == "x-request-id"
+        ]
+        assert rid_keys == ["x-request-id"], rid_keys
+        assert out.headers["x-request-id"] == "canonical-id"
+        # Unrelated headers are preserved.
+        assert out.headers["content-type"] == "application/json"
+
+    def test_noop_when_request_id_unset(self):
+        """With no request_id the helper is a no-op (returns the same object)."""
+        raw = RawRequestInfo(headers={"x-request-id": "keep"})
+        assert (
+            _canonicalize_request_id_header(SimpleNamespace(request_id=None), raw)
+            is raw
+        )
+
+
+class TestMaybeAddRequestId:
+    """``_maybe_add_request_id_to_request`` fills the Serve request id for a
+    defaulted request_id but never clobbers one the caller set explicitly."""
+
+    def _set_ctx(self, request_id):
+        serve.context._serve_request_context.set(
+            serve.context._RequestContext(request_id=request_id)
+        )
+
+    @pytest.mark.asyncio
+    async def test_defaulted_request_id_is_overwritten_with_serve_id(self):
+        server = LLMServer.__new__(LLMServer)
+        req = CompletionRequest(model="m", prompt="hi")  # request_id defaulted
+        assert "request_id" not in req.model_fields_set
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        assert req.request_id == "serve-ctx-id"
+
+    @pytest.mark.asyncio
+    async def test_explicit_request_id_is_preserved(self):
+        server = LLMServer.__new__(LLMServer)
+        req = CompletionRequest(model="m", prompt="hi", request_id="caller-set-id")
+        assert "request_id" in req.model_fields_set
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        # Caller's id wins; the Serve context id does not clobber it.
+        assert req.request_id == "caller-set-id"
+
+    @pytest.mark.asyncio
+    async def test_request_without_request_id_field_is_skipped(self):
+        """Request types without a request_id field (e.g. tokenize/detokenize)
+        must be handled gracefully, not raise."""
+        from pydantic import BaseModel
+
+        class _NoRequestId(BaseModel):
+            pass
+
+        server = LLMServer.__new__(LLMServer)
+        req = _NoRequestId()
+        self._set_ctx("serve-ctx-id")
+        try:
+            await server._maybe_add_request_id_to_request(req)
+        finally:
+            serve.context._serve_request_context.set(serve.context._RequestContext())
+        assert not hasattr(req, "request_id")
 
 
 if __name__ == "__main__":

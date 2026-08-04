@@ -46,12 +46,11 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent.two_step_game import (
     TwoStepGameWithGroupedAgents,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.tune.registry import register_env, get_trainable_cls
-
+from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_reward=7.0)
 

@@ -2,6 +2,7 @@ import copy
 import unittest
 
 import numpy as np
+
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.replay_buffers.prioritized_episode_buffer import (
     PrioritizedEpisodeReplayBuffer,
@@ -85,6 +86,29 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         self.assertTrue(
             {eps.id_ for eps in buffer.episodes}
             == {"3", "4", "5", "6", "7", "8", "9", "G"}
+        )
+
+        # Test for issue #54284. The issue occurred when the episode to be
+        # evicted is being re-added. An incorrect lookup was being performed,
+        # causing a ValueError.
+        buffer.add(self._get_episode(id_="H", episode_len=9))
+        self.assertTrue(buffer.get_num_timesteps() == 100)
+        self.assertTrue(
+            {eps.id_ for eps in buffer.episodes}
+            == {"3", "4", "5", "6", "7", "8", "9", "G", "H"}
+        )
+        # Episode 3 is next for eviction.
+        buffer.add(
+            [
+                self._get_episode(id_="3", episode_len=1),
+                self._get_episode(id_="I", episode_len=1),
+            ]
+        )
+        self.assertEqual(buffer.get_num_timesteps(), 91)
+        self.assertEqual(buffer.get_num_episodes(), 9)
+        self.assertEqual(
+            {eps.id_ for eps in buffer.episodes},
+            {"4", "5", "6", "7", "8", "9", "G", "H", "I"},
         )
 
     def test_buffer_sample_logic(self):
@@ -353,7 +377,8 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

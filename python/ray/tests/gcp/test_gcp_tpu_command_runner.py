@@ -6,10 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
-from ray.autoscaler._private.command_runner import SSHCommandRunner
 from ray._private import ray_constants
+from ray.autoscaler._private.command_runner import SSHCommandRunner
+from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.tests.test_autoscaler import MockProcessRunner, MockProvider
 
 _MOCK_TPU_NAME = "my-tpu"
 _MOCK_ACCELERATOR_TYPE = "v4-16"
@@ -45,8 +45,8 @@ def test_tpu_ssh_command_runner():
     instance = MockTpuInstance(num_workers=num_workers)
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha256(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha256(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )
@@ -119,8 +119,8 @@ def test_tpu_docker_command_runner():
     instance = MockTpuInstance(num_workers=num_workers)
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha256(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha256(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )

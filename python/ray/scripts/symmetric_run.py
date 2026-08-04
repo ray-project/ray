@@ -1,17 +1,20 @@
 """Symmetric Run for Ray."""
 
-from typing import List
-
-import click
-import ray
 import socket
-import psutil
 import subprocess
 import sys
 import time
+from typing import List
 
+import click
+
+import ray
+from ray._common.network_utils import is_localhost
 from ray._private.ray_constants import env_integer
 from ray._raylet import GcsClient
+from ray.exceptions import RpcError
+
+import psutil
 
 CLUSTER_WAIT_TIMEOUT = env_integer("RAY_SYMMETRIC_RUN_CLUSTER_WAIT_TIMEOUT", 30)
 
@@ -49,9 +52,12 @@ def check_head_node_ready(address: str, timeout=CLUSTER_WAIT_TIMEOUT):
     start_time = time.time()
     gcs_client = GcsClient(address=address)
     while time.time() - start_time < timeout:
-        if gcs_client.check_alive([], timeout=1):
+        try:
+            gcs_client.check_alive([], timeout=1)
             click.echo("Ray cluster is ready!")
             return True
+        except RpcError:
+            pass
         time.sleep(5)
     return False
 
@@ -83,7 +89,7 @@ def curate_and_validate_ray_start_args(run_and_start_args: List[str]) -> List[st
 
 USAGE:
 
-    python -m ray.scripts.symmetric_run --address ADDRESS
+    ray symmetric-run --address ADDRESS
 [--min-nodes NUM_NODES] [RAY_START_OPTIONS] -- [ENTRYPOINT_COMMAND]
 
 DESCRIPTION:
@@ -99,15 +105,15 @@ EXAMPLES:
 
     # Start Ray with default settings and run a Python script
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 -- python my_script.py
+    ray symmetric-run --address 127.0.0.1:6379 -- python my_script.py
 
     # Start Ray with specific head node and run a command
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
+    ray symmetric-run --address 127.0.0.1:6379 --min-nodes 4 -- python train_model.py --epochs=100
 
     # Start Ray and run a multi-word command
 
-    python -m ray.scripts.symmetric_run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
+    ray symmetric-run --address 127.0.0.1:6379 --min-nodes 4 --num-cpus=4 -- python -m my_module --config=prod
 
 RAY START OPTIONS:
 
@@ -132,10 +138,17 @@ SEPARATOR REQUIREMENT:
 @click.argument("ray_args_and_entrypoint", nargs=-1, type=click.UNPROCESSED)
 def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     all_args = sys.argv[1:]
-    separator = all_args.index("--")
 
-    if separator == -1:
-        raise click.ClickException("No separator '--' found in arguments.")
+    if all_args and all_args[0] == "symmetric-run":
+        all_args = all_args[1:]
+
+    try:
+        separator = all_args.index("--")
+    except ValueError:
+        raise click.ClickException(
+            "No separator '--' found in arguments. Please use '--' to "
+            "separate Ray start arguments and the entrypoint command."
+        )
 
     run_and_start_args, entrypoint_on_head = (
         all_args[:separator],
@@ -182,7 +195,7 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
     if min_nodes > 1:
         # Ban localhost ips if we are not running on a single node
         # to avoid starting N head nodes
-        my_ips = [ip for ip in my_ips if ip != "127.0.0.1" and ip != "::1"]
+        my_ips = [ip for ip in my_ips if not is_localhost(ip)]
 
     is_head = resolved_gcs_host in my_ips
 

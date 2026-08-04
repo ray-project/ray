@@ -36,13 +36,11 @@ Make sure to replace `head-node-address:port` with the value printed by the comm
 
 Note that if your compute nodes are on their own subnetwork with Network Address Translation, the address printed by the head node will not work if connecting from a machine outside that subnetwork. You will need to use a head node address reachable from the remote machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on DNS.
 
-Ray auto-detects the resources (e.g., CPU) available on each node, but you can also manually override this by passing custom resources to the `ray start` command. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU available for use by Ray, you can do this with the flags `--num-cpus=10` and `--num-gpus=1`.
-See the [Configuration page](configuring-ray) for more information.
+Ray auto-detects the resources (e.g., CPU) available on each node, but you can also manually override this by passing custom resources to the `ray start` command. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU available for use by Ray, you can do this with the flags `--num-cpus=10` and `--num-gpus=1`. See the [Configuration page](configuring-ray) for more information.
 
 ### Troubleshooting
 
-If you see `Unable to connect to GCS at ...`, this means the head node is inaccessible at the given `--address`.
-Some possible causes include:
+If you see `Unable to connect to GCS at ...`, this means the head node is inaccessible at the given `--address`. Some possible causes include:
 
 - the head node is not actually running;
 - a different version of Ray is running at the specified address;
@@ -89,7 +87,7 @@ pip install "ray[default]"
 
 ### Start Ray with the Ray cluster launcher
 
-The provided [example-full.yaml](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml) cluster config file will create a Ray cluster given a list of nodes.
+The provided [example-full.yaml](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml) cluster config file will create a Ray cluster given a list of nodes.
 
 Note that you'll need to fill in your [head_ip](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L20), a list of [worker_ips](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L26), and the [ssh_user](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L34) field in those templates
 

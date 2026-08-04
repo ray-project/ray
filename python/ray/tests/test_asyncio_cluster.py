@@ -2,8 +2,8 @@
 import asyncio
 import sys
 
-import pytest
 import numpy as np
+import pytest
 
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported

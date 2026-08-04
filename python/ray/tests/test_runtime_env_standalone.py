@@ -22,8 +22,8 @@ from ray._private.test_utils import (
     get_log_sources,
 )
 from ray.exceptions import RuntimeEnvSetupError
-from ray.runtime_env import RuntimeEnv
 from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.runtime_env import RuntimeEnv
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
@@ -308,7 +308,7 @@ class TestNoUserInfoInLogs:
             "pip": [USER_SECRET],
             "env_vars": {USER_SECRET: USER_SECRET},
         }
-        ray.init(runtime_env=runtime_env)
+        ray.init(runtime_env=runtime_env, include_dashboard=True)
 
         # Run a function to ensure the runtime env is set up.
         @ray.remote

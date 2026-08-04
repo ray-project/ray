@@ -3,29 +3,33 @@ from typing import List, Optional
 
 import pytest
 
+from ray_release.bazel import bazel_runfile
+from ray_release.configs.global_config import init_global_config
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 from ray_release.test import (
     Test,
     TestResult,
     TestState,
 )
-from ray_release.result import (
-    Result,
-    ResultStatus,
-)
-from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.test_automation.ci_state_machine import (
-    CITestStateMachine,
     CONTINUOUS_FAILURE_TO_FLAKY,
     CONTINUOUS_PASSING_TO_PASSING,
     FAILING_TO_FLAKY_MESSAGE,
-    JAILED_TAG,
     JAILED_MESSAGE,
+    JAILED_TAG,
+    CITestStateMachine,
 )
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.test_automation.state_machine import (
-    TestStateMachine,
-    WEEKLY_RELEASE_BLOCKER_TAG,
     NO_TEAM,
+    WEEKLY_RELEASE_BLOCKER_TAG,
+    TestStateMachine,
 )
+
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 
 class MockLabel:
@@ -72,6 +76,8 @@ class MockIssueDB:
 
 
 class MockRepo:
+    full_name = "anyscale/ray"
+
     def create_issue(self, labels: List[str], title: str, *args, **kwargs):
         label_objs = [MockLabel(label) for label in labels]
         issue = MockIssue(MockIssueDB.issue_id, title=title, labels=label_objs)
@@ -247,7 +253,7 @@ def test_release_move_from_passing_to_failing():
 
 
 def test_release_move_from_failing_to_consisently_failing():
-    test = Test(name="test", team="ci", stable=False)
+    test = Test(name="test", team="ci")
     test[Test.KEY_BISECT_BUILD_NUMBER] = 1
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
@@ -264,7 +270,6 @@ def test_release_move_from_failing_to_consisently_failing():
     assert "Blamed commit: 1234567890" in issue.comments[0]
     labels = [label.name for label in issue.get_labels()]
     assert "ci" in labels
-    assert "unstable-release-test" in labels
 
 
 def test_release_move_from_failing_to_passing():
@@ -347,6 +352,49 @@ def test_get_issue_owner() -> None:
     assert TestStateMachine.get_issue_owner(issue) == "core"
     issue = TestStateMachine.ray_repo.create_issue(labels=["w00t"], title="bye")
     assert TestStateMachine.get_issue_owner(issue) == NO_TEAM
+
+
+def test_release_bisect_disabled(monkeypatch) -> None:
+    """When bisect is disabled in config, no bisect build is triggered."""
+    import ray_release.test_automation.state_machine as sm_mod
+
+    real_get_global_config = sm_mod.get_global_config
+
+    def fake_get_global_config():
+        cfg = dict(real_get_global_config())
+        cfg["state_machine_bisect_disabled"] = True
+        return cfg
+
+    monkeypatch.setattr(sm_mod, "get_global_config", fake_get_global_config)
+
+    test = Test(name="bisect-off", team="ci")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    ]
+    assert test.get_state() == TestState.PASSING
+    test.test_results.insert(
+        0, TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    )
+    sm = ReleaseTestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.FAILING
+    # Bisect gated off -> no build number recorded.
+    assert test.get(Test.KEY_BISECT_BUILD_NUMBER) is None
+
+
+def test_release_bisect_enabled_triggers(monkeypatch) -> None:
+    """When bisect is enabled (default), a bisect build is triggered."""
+    test = Test(name="bisect-on", team="ci")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    ]
+    test.test_results.insert(
+        0, TestResult.from_result(Result(status=ResultStatus.ERROR.value))
+    )
+    sm = ReleaseTestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.FAILING
+    assert test[Test.KEY_BISECT_BUILD_NUMBER] == 1
 
 
 if __name__ == "__main__":

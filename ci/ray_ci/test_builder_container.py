@@ -11,7 +11,7 @@ def test_init() -> None:
     builder = BuilderContainer("3.10", "optimized", "aarch64")
     assert builder.docker_tag == "manylinux-aarch64"
     builder = BuilderContainer("3.10", "optimized", "x86_64")
-    assert builder.docker_tag == "manylinux"
+    assert builder.docker_tag == "manylinux-x86_64"
 
 
 def test_run() -> None:
@@ -33,11 +33,11 @@ def test_run() -> None:
         ]
 
         # test debug build
-        BuilderContainer("3.9", "debug", "x86_64").run()
+        BuilderContainer("3.10", "debug", "x86_64").run()
         assert cmds[-1] == [
             "export RAY_DEBUG_BUILD=debug",
             "./ci/build/build-manylinux-ray.sh",
-            "./ci/build/build-manylinux-wheel.sh cp39-cp39",
+            "./ci/build/build-manylinux-wheel.sh cp310-cp310",
             "chown -R 2000:100 /artifact-mount",
         ]
 

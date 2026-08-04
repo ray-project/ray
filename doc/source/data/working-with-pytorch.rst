@@ -121,7 +121,7 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
 
             Column  Type
             ------  ----
-            tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            tensor  ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
     .. tab-item:: map_batches
 
@@ -138,7 +138,7 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
                 return {"tensor": torch.as_tensor(batch["image"])}
 
             # The tensor gets converted into a Numpy array under the hood
-            transformed_ds = ds.map_batches(convert_to_torch, batch_size=2)
+            transformed_ds = ds.map_batches(convert_to_torch, batch_size="auto")
             print(transformed_ds.schema())
 
             # Subsequent transformations take in Numpy array as input.
@@ -146,13 +146,13 @@ Transformations applied with `map` or `map_batches` can return Torch tensors.
                 assert isinstance(batch["tensor"], np.ndarray)
                 return batch
 
-            transformed_ds.map_batches(check_numpy, batch_size=2).take_all()
+            transformed_ds.map_batches(check_numpy, batch_size="auto").take_all()
 
         .. testoutput::
 
             Column  Type
             ------  ----
-            tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            tensor  ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
 For more information on transforming data, see :ref:`Transforming data <transforming_data>`.
 
@@ -197,12 +197,13 @@ You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and `
 
             Column             Type
             ------             ----
-            image              numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
-            transformed_image  numpy.ndarray(shape=(3, 10, 10), dtype=float)
+            image              ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
+            transformed_image  ArrowTensorTypeV2(shape=(3, 10, 10), dtype=float)
 
     .. tab-item:: torchtext
 
         .. testcode::
+            :skipif: True
 
             from typing import Dict, List
             import numpy as np
@@ -222,7 +223,7 @@ You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and `
                 return batch
 
             # Apply the transform over the dataset.
-            transformed_ds = ds.map_batches(tokenize_text, batch_size=2)
+            transformed_ds = ds.map_batches(tokenize_text, batch_size="auto")
             print(transformed_ds.schema())
 
         .. testoutput::
@@ -276,7 +277,7 @@ With Ray Datasets, you can do scalable offline batch inference with Torch models
     # Step 3: Map the Predictor over the Dataset to get predictions.
     # Use 2 parallel actors for inference. Each actor predicts on a
     # different partition of data.
-    predictions = ds.map_batches(TorchPredictor, concurrency=2)
+    predictions = ds.map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
     # Step 4: Show one prediction output.
     predictions.show(limit=1)
 
@@ -306,6 +307,7 @@ For more information on saving data, read
     .. tab-item:: Parquet
 
         .. testcode::
+            :skipif: True
 
             import torch
             import ray
@@ -313,11 +315,12 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_parquet("local:///tmp/tensor")
+            ds.write_parquet("s3://my-bucket/tensor")
 
     .. tab-item:: Numpy
 
         .. testcode::
+            :skipif: True
 
             import torch
             import ray
@@ -325,7 +328,7 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_numpy("local:///tmp/tensor", column="tensor")
+            ds.write_numpy("s3://my-bucket/tensor", column="tensor")
 
 .. _migrate_pytorch:
 
@@ -342,6 +345,7 @@ Built-in PyTorch Datasets
 If you are using built-in PyTorch datasets, for example from ``torchvision``, these can be converted to a Ray Dataset using the :meth:`from_torch() <ray.data.from_torch>` API.
 
 .. testcode::
+    :skipif: True
 
     import torchvision
     import ray

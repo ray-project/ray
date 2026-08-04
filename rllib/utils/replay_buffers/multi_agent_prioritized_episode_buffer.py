@@ -1,13 +1,15 @@
 import copy
 import hashlib
+from collections import defaultdict, deque
+from typing import Dict, List, Optional, Set, Tuple, Union
+
 import numpy as np
 import scipy
-
-from collections import defaultdict, deque
 from numpy.typing import NDArray
-from typing import Dict, List, Optional, Set, Tuple, Union
+
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_episode_buffer import (
@@ -17,7 +19,6 @@ from ray.rllib.utils.replay_buffers.prioritized_episode_buffer import (
     PrioritizedEpisodeReplayBuffer,
 )
 from ray.rllib.utils.typing import ModuleID
-from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 
 
 class MultiAgentPrioritizedEpisodeReplayBuffer(

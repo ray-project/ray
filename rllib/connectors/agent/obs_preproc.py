@@ -5,10 +5,10 @@ from ray.rllib.connectors.connector import (
     ConnectorContext,
 )
 from ray.rllib.connectors.registry import register_connector
-from ray.rllib.models.preprocessors import get_preprocessor, NoPreprocessor
+from ray.rllib.models.preprocessors import NoPreprocessor, get_preprocessor
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.typing import AgentConnectorDataType
 
 
 @OldAPIStack

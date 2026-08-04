@@ -14,7 +14,7 @@
   },
   "editable": true,
   "gnetId": null,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "iteration": 1667344411089,
   "links": [],
   "panels": [],
@@ -110,7 +110,7 @@
           "value": ["$__all"]
         },
         "datasource": "${datasource}",
-        "definition": "label_values(ray_serve_num_grpc_requests{{{global_filters}}}, method)",
+        "definition": "label_values(ray_serve_num_grpc_requests_total{{{global_filters}}}, method)",
         "description": null,
         "error": null,
         "hide": 0,
@@ -120,7 +120,7 @@
         "name": "gRPC_Method",
         "options": [],
         "query": {
-          "query": "label_values(ray_serve_num_grpc_requests{{{global_filters}}}, method)",
+          "query": "label_values(ray_serve_num_grpc_requests_total{{{global_filters}}}, method)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
         "refresh": 1,
@@ -134,12 +134,13 @@
         "useTags": false
       },
       {
+        "allValue": ".*",
         "current": {
           "selected": false
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
-        "description": "Filter queries to specific Ray clusters for KubeRay. When ingesting metrics across multiple ray clusters, the ray_io_cluster label should be set per cluster. For KubeRay users, this is done automaticaly with Prometheus PodMonitor.",
+        "description": "Filter queries to specific Ray clusters for KubeRay. When ingesting metrics across multiple ray clusters, the ray_io_cluster label should be set per cluster. For KubeRay users, this is done automatically with Prometheus PodMonitor.",
         "error": null,
         "hide": 0,
         "includeAll": true,

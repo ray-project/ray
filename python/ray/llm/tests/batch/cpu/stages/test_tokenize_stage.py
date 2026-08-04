@@ -1,9 +1,11 @@
+import shutil
 import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ray.llm._internal.batch.stages.tokenize_stage import DetokenizeUDF, TokenizeUDF
+from ray.llm._internal.common.utils.download_utils import get_model_entrypoint
 
 
 @pytest.fixture
@@ -72,6 +74,27 @@ async def test_detokenize_udf_basic(mock_tokenizer_setup):
     mock_tokenizer.batch_decode.assert_called_once_with(
         [[1, 2, 3], [4, 5, 6]], skip_special_tokens=True
     )
+
+
+@pytest.mark.parametrize(
+    "udf_cls, expected_input_keys",
+    [
+        (TokenizeUDF, ["prompt"]),
+        (DetokenizeUDF, ["generated_tokens"]),
+    ],
+)
+def test_trust_remote_code(model_internlm2_1_8b, udf_cls, expected_input_keys):
+    model_entry = get_model_entrypoint(model_internlm2_1_8b)
+    if model_entry != model_internlm2_1_8b:
+        shutil.rmtree(model_entry, ignore_errors=True)
+
+    udf = udf_cls(
+        data_column="__data",
+        model=model_internlm2_1_8b,
+        expected_input_keys=expected_input_keys,
+        trust_remote_code=True,
+    )
+    assert udf.tokenizer is not None
 
 
 if __name__ == "__main__":

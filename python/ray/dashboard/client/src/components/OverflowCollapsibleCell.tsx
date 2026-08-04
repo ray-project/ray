@@ -54,7 +54,15 @@ const OverflowCollapsibleCell = ({
           onClick={() => setOpen(!open)}
           sx={{ display: isOverflow ? "block" : "none" }}
         >
-          {open ? <KeyboardArrowDownIcon /> : <KeyboardArrowRightIcon />}
+          {open ? (
+            <KeyboardArrowDownIcon
+              sx={(theme) => ({ color: theme.palette.text.secondary })}
+            />
+          ) : (
+            <KeyboardArrowRightIcon
+              sx={(theme) => ({ color: theme.palette.text.secondary })}
+            />
+          )}
         </IconButton>
       </Box>
     </Tooltip>

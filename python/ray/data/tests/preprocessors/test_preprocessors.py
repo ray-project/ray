@@ -9,8 +9,8 @@ import pyarrow
 import pytest
 
 import ray
-from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.data_batch_conversion import BatchFormat
+from ray.data.aggregate import Mean
+from ray.data.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
     Categorizer,
@@ -31,7 +31,9 @@ from ray.data.preprocessors import (
     SimpleImputer,
     StandardScaler,
     Tokenizer,
+    TorchVisionPreprocessor,
 )
+from ray.data.util.data_batch_conversion import BatchFormat
 
 
 @pytest.fixture
@@ -117,7 +119,7 @@ def test_fitted_preprocessor_without_stats():
 
     class FittablePreprocessor(Preprocessor):
         def _fit(self, ds):
-            return ds
+            return self
 
     preprocessor = FittablePreprocessor()
     ds = ray.data.from_items([1])
@@ -163,6 +165,68 @@ def test_fit_twice(mocked_warn):
         "All previously fitted state will be overwritten!"
     )
     mocked_warn.assert_called_once_with(msg)
+
+
+def test_fit_twice_clears_stale_stats():
+    """Tests that fit() clears stale stats when stat keys are data-dependent.
+
+    When a preprocessor's stat keys depend on the data (e.g., auto-detected columns),
+    calling fit() again on a different dataset should not retain stale stats from
+    the previous fit. This ensures that fit(A).fit(B) is equivalent to fit(B).
+    """
+
+    class DataDependentPreprocessor(Preprocessor):
+        """A preprocessor whose stat keys depend on the data columns present."""
+
+        _is_fittable = True
+
+        def _fit(self, ds):
+            # Dynamically detect columns from the dataset schema
+            schema = ds.schema()
+            column_names = list(schema.names)
+            self.stat_computation_plan.add_aggregator(
+                aggregator_fn=Mean,
+                columns=column_names,
+            )
+            return self
+
+        def _transform_pandas(self, df):
+            return df
+
+    # Dataset A has columns: "a", "b"
+    dataset_a = ray.data.from_items(
+        [
+            {"a": 1.0, "b": 10.0},
+            {"a": 2.0, "b": 20.0},
+            {"a": 3.0, "b": 30.0},
+        ]
+    )
+
+    # Dataset B has columns: "b", "c" (note: "a" is missing, "c" is new)
+    dataset_b = ray.data.from_items(
+        [
+            {"b": 100.0, "c": 1000.0},
+            {"b": 200.0, "c": 2000.0},
+            {"b": 300.0, "c": 3000.0},
+        ]
+    )
+
+    preprocessor = DataDependentPreprocessor()
+
+    # First fit on dataset A
+    preprocessor.fit(dataset_a)
+    assert preprocessor.stats_ == {"mean(a)": 2.0, "mean(b)": 20.0}
+
+    # Second fit on dataset B - stale stats should be cleared
+    preprocessor.fit(dataset_b)
+
+    # Verify stale stat "mean(a)" is NOT present
+    # Verify stats are correct after refit, and stale stats are cleared.
+    expected_stats = {"mean(b)": 200.0, "mean(c)": 2000.0}
+    assert preprocessor.stats_ == expected_stats, (
+        f"Stats after refit are incorrect. "
+        f"Expected: {expected_stats}, Got: {preprocessor.stats_}"
+    )
 
 
 def test_transform_all_configs():
@@ -236,26 +300,34 @@ def test_transform_all_formats(create_dummy_preprocessors, dataset_format):
     with patcher as mock_map_batches:
         with_pandas.transform(ds)
         mock_map_batches.assert_called_once_with(
-            with_pandas._transform_pandas, batch_format=BatchFormat.PANDAS
+            with_pandas._transform_pandas,
+            batch_format=BatchFormat.PANDAS,
+            zero_copy_batch=True,
         )
 
     with patcher as mock_map_batches:
         with_numpy.transform(ds)
         mock_map_batches.assert_called_once_with(
-            with_numpy._transform_numpy, batch_format=BatchFormat.NUMPY
+            with_numpy._transform_numpy,
+            batch_format=BatchFormat.NUMPY,
+            zero_copy_batch=True,
         )
 
     # Pandas preferred by default.
     with patcher as mock_map_batches:
         with_pandas_and_numpy.transform(ds)
     mock_map_batches.assert_called_once_with(
-        with_pandas_and_numpy._transform_pandas, batch_format=BatchFormat.PANDAS
+        with_pandas_and_numpy._transform_pandas,
+        batch_format=BatchFormat.PANDAS,
+        zero_copy_batch=True,
     )
 
     with patcher as mock_map_batches:
         with_pandas_and_numpy_preferred.transform(ds)
     mock_map_batches.assert_called_once_with(
-        with_pandas_and_numpy_preferred._transform_numpy, batch_format=BatchFormat.NUMPY
+        with_pandas_and_numpy_preferred._transform_numpy,
+        batch_format=BatchFormat.NUMPY,
+        zero_copy_batch=True,
     )
 
 
@@ -415,6 +487,81 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     assert isinstance(
         with_pandas_and_numpy_preferred.transform_batch(np_multi_column), dict
     )
+
+
+def test_get_input_output_columns():
+    """Tests get_input_columns() and get_output_columns() methods."""
+    # Test with preprocessors that have columns attribute
+    scaler = StandardScaler(columns=["A", "B"])
+    assert scaler.get_input_columns() == ["A", "B"]
+    assert scaler.get_output_columns() == ["A", "B"]
+
+    # Test with output_columns specified
+    scaler_with_output = StandardScaler(
+        columns=["A", "B"], output_columns=["A_scaled", "B_scaled"]
+    )
+    assert scaler_with_output.get_input_columns() == ["A", "B"]
+    assert scaler_with_output.get_output_columns() == ["A_scaled", "B_scaled"]
+
+    # Test with encoders
+    encoder = OneHotEncoder(columns=["X", "Y"])
+    assert encoder.get_input_columns() == ["X", "Y"]
+    assert encoder.get_output_columns() == ["X", "Y"]
+
+    encoder_with_output = OneHotEncoder(
+        columns=["X", "Y"], output_columns=["X_encoded", "Y_encoded"]
+    )
+    assert encoder_with_output.get_input_columns() == ["X", "Y"]
+    assert encoder_with_output.get_output_columns() == ["X_encoded", "Y_encoded"]
+
+    # Test LabelEncoder without output_column (in-place transformation)
+    label_encoder = LabelEncoder(label_column="target")
+    assert label_encoder.get_input_columns() == ["target"]
+    assert label_encoder.get_output_columns() == ["target"]
+
+    # Test LabelEncoder with output_column (append mode)
+    label_encoder = LabelEncoder(label_column="target", output_column="target_encoded")
+    assert label_encoder.get_input_columns() == ["target"]
+    assert label_encoder.get_output_columns() == ["target_encoded"]
+
+    # Test Concatenator (uses output_column_name instead of output_columns)
+    concatenator = Concatenator(columns=["A", "B"])
+    assert concatenator.get_input_columns() == ["A", "B"]
+    assert concatenator.get_output_columns() == ["concat_out"]
+
+    concatenator_with_output = Concatenator(
+        columns=["A", "B"], output_column_name="AB_concat"
+    )
+    assert concatenator_with_output.get_input_columns() == ["A", "B"]
+    assert concatenator_with_output.get_output_columns() == ["AB_concat"]
+
+    # Test FeatureHasher (uses output_column instead of output_columns)
+    feature_hasher = FeatureHasher(
+        columns=["token1", "token2"], num_features=8, output_column="hashed"
+    )
+    assert feature_hasher.get_input_columns() == ["token1", "token2"]
+    assert feature_hasher.get_output_columns() == ["hashed"]
+
+    # Test TorchVisionPreprocessor (uses _columns and _output_columns)
+    torch_preprocessor = TorchVisionPreprocessor(
+        columns=["image"], transform=lambda x: x
+    )
+    assert torch_preprocessor.get_input_columns() == ["image"]
+    assert torch_preprocessor.get_output_columns() == ["image"]
+
+    torch_preprocessor_with_output = TorchVisionPreprocessor(
+        columns=["image"], transform=lambda x: x, output_columns=["image_transformed"]
+    )
+    assert torch_preprocessor_with_output.get_input_columns() == ["image"]
+    assert torch_preprocessor_with_output.get_output_columns() == ["image_transformed"]
+
+    # Test with preprocessor without columns attribute
+    class CustomPreprocessor(Preprocessor):
+        _is_fittable = False
+
+    custom = CustomPreprocessor()
+    assert custom.get_input_columns() == []
+    assert custom.get_output_columns() == []
 
 
 if __name__ == "__main__":

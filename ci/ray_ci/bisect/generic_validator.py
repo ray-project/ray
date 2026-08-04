@@ -1,14 +1,14 @@
 import time
 
 from pybuildkite.buildkite import Buildkite
-from ray_release.aws import get_secret_token
-from ray_release.configs.global_config import get_global_config
-from ray_release.test import Test
 
 from ci.ray_ci.bisect.validator import Validator
 from ci.ray_ci.utils import logger
 
-BUILDKITE_ORGANIZATION = "ray-project"
+from ray_release.aws import get_secret_token
+from ray_release.configs.global_config import get_global_config
+from ray_release.test import Test
+
 BUILDKITE_POSTMERGE_PIPELINE = "postmerge"
 BUILDKITE_BUILD_RUNNING_STATE = [
     "creating",
@@ -45,8 +45,9 @@ class GenericValidator(Validator):
 
     def run(self, test: Test, revision: str) -> bool:
         buildkite = self._get_buildkite()
+        buildkite_org = get_global_config()["buildkite_org"]
         build = buildkite.builds().create_build(
-            BUILDKITE_ORGANIZATION,
+            buildkite_org,
             BUILDKITE_POSTMERGE_PIPELINE,
             revision,
             "master",
@@ -61,7 +62,7 @@ class GenericValidator(Validator):
             logger.info(f"... waiting for test result ...({total_wait} seconds)")
             time.sleep(WAIT)
             build = buildkite.builds().get_build_by_number(
-                BUILDKITE_ORGANIZATION,
+                buildkite_org,
                 BUILDKITE_POSTMERGE_PIPELINE,
                 build["number"],
             )

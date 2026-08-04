@@ -25,6 +25,7 @@ def ray_start_4_cpus_2_gpus_extra():
     ray.shutdown()
 
 
+# TODO: [V2] Delete the `data_parallel` variant once V1 is fully removed.
 @pytest.mark.parametrize("trainable_type", ["class", "function", "data_parallel"])
 @pytest.mark.parametrize("patch_iter", [False, True])
 def test_checkpoint_freq_dir_name(
@@ -77,7 +78,7 @@ def test_checkpoint_freq_dir_name(
                         (Path(checkpoint_dir) / "data.ckpt").write_text(str(step))
                         ray.tune.report(
                             {"step": step},
-                            checkpoint=ray.train.Checkpoint.from_directory(
+                            checkpoint=ray.tune.Checkpoint.from_directory(
                                 checkpoint_dir
                             ),
                         )

@@ -18,6 +18,10 @@ MAX_CPUS = 'sum(autoscaler_cluster_resources{{resource="CPU",{global_filters}}})
 PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
 MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
 PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
+MAX_MEMORY = 'sum(autoscaler_cluster_resources{{resource="memory",{global_filters}}})'
+PENDING_MEMORY = (
+    'sum(autoscaler_pending_resources{{resource="memory",{global_filters}}})'
+)
 
 
 def max_plus_pending(max_resource, pending_resource):
@@ -26,7 +30,11 @@ def max_plus_pending(max_resource, pending_resource):
 
 MAX_PLUS_PENDING_CPUS = max_plus_pending(MAX_CPUS, PENDING_CPUS)
 MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
+MAX_PLUS_PENDING_MEMORY = max_plus_pending(MAX_MEMORY, PENDING_MEMORY)
 
+MAX_PERCENTAGE_EXPRESSION = (
+    "100"  # To help draw the max limit line on percentage panels
+)
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # IMPORTANT: Please keep this in sync with Metrics.tsx and ray-metrics.rst
@@ -70,7 +78,7 @@ OVERVIEW_AND_HEALTH_PANELS = [
             ),
             # Memory
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})) * 100',
+                expr='sum(ray_node_mem_used_host{{instance=~"$Instance",{global_filters}}}) / on() (sum(ray_node_mem_total_host{{instance=~"$Instance",{global_filters}}})) * 100',
                 legend="Memory (RAM)",
             ),
             # GRAM
@@ -95,12 +103,30 @@ OVERVIEW_AND_HEALTH_PANELS = [
     Panel(
         id=44,
         title="Ray OOM Kills (Tasks and Actors)",
-        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
+        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html. Note: The RayNodeType filter does not work on this graph.",
         unit="failures",
         targets=[
             Target(
-                expr='sum(ray_memory_manager_worker_eviction_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (Name, instance, RayNodeType)',
-                legend="OOM Killed: {{Name}}, {{instance}} ({{RayNodeType}})",
+                expr='sum(ray_memory_manager_worker_eviction_total{{instance=~"$Instance", {global_filters}}}) by (Name, instance)',
+                legend="OOM Killed: {{Name}}, {{instance}}",
+            ),
+        ],
+    ),
+    Panel(
+        id=65,
+        title="Unexpected System Level Worker Failures",
+        description="The number of workers (potentially tasks or actors) that disconnected from the raylet unexpectedly. "
+        "This typically indicates the worker process unexpectedly failed due to "
+        "a Ray system error or a kernel kill (e.g. OOM, SIGKILL, Bad exit code). "
+        "Note that this metric only includes OOM kills from the kernel and does not "
+        "include OOM kills from Ray's memory monitor. "
+        "If errors of this type is encountered when the node is under memory pressure, "
+        "The failures are likely OOM kills.",
+        unit="failures",
+        targets=[
+            Target(
+                expr='sum(ray_node_manager_unexpected_worker_failure_total{{instance=~"$Instance", {global_filters}}}) by (Type, Name, instance)',
+                legend="Unexpected worker failure: {{Name}}, {{Type}}, {{instance}}",
             ),
         ],
     ),
@@ -162,6 +188,20 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
         stack=False,
     ),
     Panel(
+        id=64,
+        title="Running Tasks by Node",
+        description="Current count of tasks that are currently executing, grouped by node.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr='clamp_min(sum(ray_tasks{{State=~"RUNNING*",Source="executor",instance=~"$Instance",{global_filters}}}) by (instance), 0)',
+                legend="{{instance}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=33,
         title="All Actors by State",
         description='Note: not impacted by "Instance" variable.\n\nCurrent count of actors, grouped by lifecycle state (e.g., alive, restarting, dead/terminated).\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.',
@@ -175,7 +215,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=42,
-        title="Active Actors by State",
+        title="Alive Actors by State",
         description="Current count of alive actors (i.e. not dead/terminated), grouped by state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
         unit="actors",
         targets=[
@@ -187,7 +227,7 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     ),
     Panel(
         id=36,
-        title="Active Actors by Name",
+        title="Alive Actors by Name",
         description="Current count of alive actors, grouped by actor name.",
         unit="actors",
         targets=[
@@ -209,12 +249,28 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
             )
         ],
     ),
+    Panel(
+        id=29,
+        title="Object Store Memory by Location",
+        description="Object store memory usage by location. The dotted line indicates the object store memory capacity. This metric can go over the max capacity in case of spillage to disk.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_object_store_memory{{instance=~"$Instance",{global_filters}}}) by (Location)',
+                legend="{{Location}}",
+            ),
+            Target(
+                expr='sum(ray_resources{{Name="object_store_memory",instance=~"$Instance",{global_filters}}})',
+                legend="MAX",
+            ),
+        ],
+    ),
 ]
 
 RAY_RESOURCES_PANELS = [
     Panel(
         id=27,
-        title="Logical CPUs used",
+        title="Logical CPUs Usage",
         description="Logical CPU usage of Ray. The dotted line indicates the total number of CPUs. The logical CPU is allocated by `num_cpus` arguments from tasks and actors. PENDING means the number of CPUs that will be available when new nodes are up after the autoscaler scales up.\n\nNOTE: Ray's logical CPU is different from physical CPU usage. Ray's logical CPU is allocated by `num_cpus` arguments.",
         unit="cores",
         targets=[
@@ -236,7 +292,7 @@ RAY_RESOURCES_PANELS = [
     ),
     Panel(
         id=28,
-        title="Logical GPUs used",
+        title="Logical GPUs Usage",
         description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. PENDING means the number of GPUs that will be available when new nodes are up after the autoscaler scales up.",
         unit="GPUs",
         targets=[
@@ -257,14 +313,34 @@ RAY_RESOURCES_PANELS = [
         ],
     ),
     Panel(
-        id=29,
-        title="Object Store Memory",
-        description="Object store memory usage by location. The dotted line indicates the object store memory capacity.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory. Refer to metric_defs.cc for more information.",
+        id=61,
+        title="Logical Memory Usage",
+        description="Logical memory usage of Ray by node. The dotted line indicates the total amount of memory available. Logical memory refers to Ray's view of memory resources allocated to tasks and actors. PENDING means the amount of memory that will be available when new nodes are up after the autoscaler scales up.",
         unit="bytes",
         targets=[
             Target(
-                expr='sum(ray_object_store_memory{{instance=~"$Instance",{global_filters}}}) by (Location)',
-                legend="{{Location}}",
+                expr='sum(ray_resources{{Name="memory",State="USED",instance=~"$Instance",{global_filters}}}) by (instance)',
+                legend="Memory Usage: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_resources{{Name="memory",instance=~"$Instance",{global_filters}}})',
+                legend="MAX",
+            ),
+            Target(
+                expr=f"({MAX_PLUS_PENDING_MEMORY} and {MAX_PLUS_PENDING_MEMORY} > ({MAX_MEMORY} or vector(0)))",
+                legend="MAX + PENDING",
+            ),
+        ],
+    ),
+    Panel(
+        id=58,
+        title="Object Store Memory Usage",
+        description="Object store memory usage by instance, including memory that has been spilled to disk. The dotted line indicates the object store memory capacity. This metric can go over the max capacity in case of spillage to disk.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_object_store_memory{{instance=~"$Instance",{global_filters}}}) by (instance)',
+                legend="{{instance}}",
             ),
             Target(
                 expr='sum(ray_resources{{Name="object_store_memory",instance=~"$Instance",{global_filters}}})',
@@ -272,12 +348,44 @@ RAY_RESOURCES_PANELS = [
             ),
         ],
     ),
+    Panel(
+        id=59,
+        title="Object Store Memory Usage %",
+        description="Object store memory usage % by instance, including memory that has been spilled to disk. This metric can go over 100% in case of spillage to disk.",
+        unit="%",
+        targets=[
+            Target(
+                expr='sum(ray_object_store_memory{{instance=~"$Instance",{global_filters}}}) by (instance) * 100 / sum(ray_resources{{Name="object_store_memory",instance=~"$Instance",{global_filters}}}) by (instance)',
+                legend="{{instance}}",
+            ),
+            Target(
+                expr=MAX_PERCENTAGE_EXPRESSION,  # To show the memory limit visually
+                legend="MAX",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=60,
+        title="Object Store Memory Spilled to Disk",
+        description="Object store memory that has been spilled to disk, by instance.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_object_store_memory{{instance=~"$Instance",Location="SPILLED",{global_filters}}}) by (instance)',
+                legend="{{instance}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
 ]
 
 NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
     Panel(
         id=37,
-        title="Node CPU by Component",
+        title="Node CPU Usage by Component",
         description="The physical (hardware) CPU usage across the cluster, broken down by component. This reports the summed CPU usage per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the process (that contains method names) names of running tasks/actors.",
         unit="cores",
         targets=[
@@ -294,12 +402,12 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
     ),
     Panel(
         id=34,
-        title="Node Memory by Component",
+        title="Node Memory Usage by Component",
         description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed RSS-SHM per Ray component, which corresponds to an approximate memory usage per proc. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the process (that contains method names) names of running tasks/actors.",
         unit="bytes",
         targets=[
             Target(
-                expr='(sum(ray_component_rss_mb{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (Component)) - (sum(ray_component_mem_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (Component))',
+                expr='(sum(ray_component_rss_bytes{{instance=~"$Instance",{global_filters}}}) by (Component)) - (sum(ray_component_shared_bytes{{instance=~"$Instance",{global_filters}}}) by (Component))',
                 legend="{{Component}}",
             ),
             Target(
@@ -307,31 +415,31 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
                 legend="shared_memory",
             ),
             Target(
-                expr='sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})',
+                expr='min(label_replace(sum(ray_node_mem_total_host{{instance=~"$Instance",{global_filters}}}), "mem_cap_source", "host", "", "") or label_replace(sum(ray_node_cgroup_mem_total{{instance=~"$Instance",{global_filters}}}), "mem_cap_source", "cgroup", "", ""))',
                 legend="MAX",
             ),
         ],
     ),
     Panel(
         id=45,
-        title="Node GPU by Component",
+        title="Node GPU Usage by Component",
         description="The physical (hardware) GPU usage across the cluster, broken down by component. This reports the summed GPU usage per Ray component.",
         unit="GPUs",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_percentage{{{global_filters}}} / 100) by (Component)",
+                expr='sum(ray_component_gpu_percentage{{instance=~"$Instance",{global_filters}}} / 100) by (Component)',
                 legend="{{Component}}",
             ),
         ],
     ),
     Panel(
         id=46,
-        title="Node GPU Memory by Component",
+        title="Node GPU Memory Usage by Component",
         description="The physical (hardware) GPU memory usage across the cluster, broken down by component. This reports the summed GPU memory usage per Ray component.",
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_memory_mb{{{global_filters}}} * 1024 * 1024) by (Component)",
+                expr='sum(ray_component_gpu_memory_mb{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (Component)',
                 legend="{{Component}}",
             ),
             Target(
@@ -345,8 +453,8 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
 NODE_HARDWARE_UTILIZATION_PANELS = [
     Panel(
         id=2,
-        title="Node CPU utilization",
-        description="",
+        title="Node CPU Usage",
+        description="The physical (hardware) CPU usage for each node.",
         unit="cores",
         targets=[
             Target(
@@ -360,8 +468,99 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         ],
     ),
     Panel(
+        id=54,
+        title="Node CPU Usage %",
+        description="The percentage of physical (hardware) CPU usage for each node.",
+        unit="%",
+        targets=[
+            Target(
+                expr='sum(ray_node_cpu_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="CPU Usage: {{instance}} ({{RayNodeType}})",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=4,
+        title="Node Memory Usage (heap + object store)",
+        description="The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. "
+        "Node memory is a sum of object store memory (shared memory) and heap memory.\n\n"
+        "Host targets reflect memory as reported by the host machine. "
+        "Container targets reflect cgroup-limited memory and are only emitted when the ray node reside within a cgroup.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_node_mem_used_host{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used (Host): {{instance}} ({{RayNodeType}})",
+            ),
+            Target(
+                expr='sum(ray_node_mem_total_host{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
+                legend="MAX",
+            ),
+            Target(
+                expr='sum(ray_node_cgroup_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used (Container): {{instance}} ({{RayNodeType}})",
+            ),
+            Target(
+                expr='sum(ray_node_cgroup_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
+                legend="Container MAX",
+            ),
+        ],
+    ),
+    Panel(
+        id=48,
+        title="Node Memory Usage % (heap + object store)",
+        description="The percentage of physical (hardware) memory usage for each node.\n\n"
+        "Host targets reflect memory as reported by the host machine. "
+        "Container targets reflect cgroup-limited memory and are only emitted when the ray node reside within a cgroup.",
+        unit="%",
+        targets=[
+            Target(
+                expr='sum(ray_node_mem_used_host{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) * 100 / sum(ray_node_mem_total_host{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used (Host): {{instance}} ({{RayNodeType}})",
+            ),
+            Target(
+                expr='sum(ray_node_cgroup_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) * 100 / sum(ray_node_cgroup_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Memory Used (Container): {{instance}} ({{RayNodeType}})",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=6,
+        title="Node Disk Usage",
+        description="Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
+                legend="Disk Used: {{instance}} ({{RayNodeType}})",
+            ),
+            Target(
+                expr='sum(ray_node_disk_free{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
+                legend="MAX",
+            ),
+        ],
+    ),
+    Panel(
+        id=57,
+        title="Node Disk Usage %",
+        description="Node's physical (hardware) disk usage. \n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
+        unit="%",
+        targets=[
+            Target(
+                expr='sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) * 100 / (sum(ray_node_disk_free{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType) + sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType))',
+                legend="Disk Used: {{instance}} ({{RayNodeType}})",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=8,
-        title="Node GPU utilization",
+        title="Node GPU Usage",
         description="Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
         unit="GPUs",
         targets=[
@@ -376,30 +575,14 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         ],
     ),
     Panel(
-        id=4,
-        title="Node Memory (heap + object store)",
-        description="The physical (hardware) memory usage for each node. The dotted line means the total amount of memory from the cluster. Node memory is a sum of object store memory (shared memory) and heap memory.\n\nNote: If Ray is deployed within a container, the total memory could be lower than the host machine because Ray may reserve some additional memory space outside the container.",
-        unit="bytes",
-        targets=[
-            Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
-                legend="Memory Used: {{instance}} ({{RayNodeType}})",
-            ),
-            Target(
-                expr='sum(ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
-                legend="MAX",
-            ),
-        ],
-    ),
-    Panel(
-        id=48,
-        title="Node Memory % (heap + object store)",
-        description="The percentage of physical (hardware) memory usage for each node.",
+        id=55,
+        title="Node GPU Usage %",
+        description="Node's physical (hardware) GPU usage.",
         unit="%",
         targets=[
             Target(
-                expr='sum(ray_node_mem_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}} * 100) by (instance, RayNodeType)',
-                legend="Memory Used: {{instance}} ({{RayNodeType}})",
+                expr='sum(ray_node_gpus_utilization{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="GPU Usage: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
         ],
         fill=0,
@@ -407,7 +590,7 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
     ),
     Panel(
         id=18,
-        title="Node GPU Memory (GRAM)",
+        title="Node GPU Memory Usage (GRAM)",
         description="The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
         unit="bytes",
         targets=[
@@ -422,20 +605,46 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         ],
     ),
     Panel(
-        id=6,
-        title="Node Disk",
-        description="Node's physical (hardware) disk usage. The dotted line means the total amount of disk space from the cluster.\n\nNOTE: When Ray is deployed within a container, this shows the disk usage from the host machine. ",
-        unit="bytes",
+        id=56,
+        title="Node GPU Memory Usage (GRAM) %",
+        description="The percentage of physical (hardware) GPU memory usage for each node.",
+        unit="%",
         targets=[
             Target(
-                expr='sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType)',
-                legend="Disk Used: {{instance}} ({{RayNodeType}})",
-            ),
-            Target(
-                expr='sum(ray_node_disk_free{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) + sum(ray_node_disk_usage{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}})',
-                legend="MAX",
+                expr='sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) * 100 / (sum(ray_node_gram_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) + sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName))',
+                legend="Used GRAM: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
         ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=62,
+        title="Node GPU Power",
+        description="Current GPU power draw per node. Reported in milliwatts; displayed in watts. Supported on NVIDIA and AMD GPUs.",
+        unit="mwatt",
+        targets=[
+            Target(
+                expr='sum(ray_node_gpu_power_milliwatts{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Power: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=63,
+        title="Node GPU Temperature",
+        description="Current GPU temperature per node in Celsius. Supported on NVIDIA GPUs.",
+        unit="celsius",
+        targets=[
+            Target(
+                expr='sum(ray_node_gpu_temperature_celsius{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Temperature: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=32,
@@ -534,15 +743,9 @@ DEFAULT_GRAFANA_ROWS = [
         collapsed=False,
     ),
     Row(
-        title="Ray Tasks, Actors and Placement Groups",
-        id=1002,
-        panels=RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS,
-        collapsed=False,
-    ),
-    Row(
-        title="Ray Resources",
-        id=1003,
-        panels=RAY_RESOURCES_PANELS,
+        title="Hardware Utilization by Node",
+        id=1005,
+        panels=NODE_HARDWARE_UTILIZATION_PANELS,
         collapsed=False,
     ),
     Row(
@@ -552,9 +755,15 @@ DEFAULT_GRAFANA_ROWS = [
         collapsed=False,
     ),
     Row(
-        title="Hardware Utilization by Node",
-        id=1005,
-        panels=NODE_HARDWARE_UTILIZATION_PANELS,
+        title="Ray Resources by Node",
+        id=1003,
+        panels=RAY_RESOURCES_PANELS,
+        collapsed=False,
+    ),
+    Row(
+        title="Ray Tasks, Actors and Placement Groups",
+        id=1002,
+        panels=RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS,
         collapsed=False,
     ),
     Row(
@@ -569,6 +778,9 @@ ids = []
 for row in DEFAULT_GRAFANA_ROWS:
     ids.append(row.id)
     ids.extend(panel.id for panel in row.panels)
+
+ids.sort()
+
 assert len(ids) == len(
     set(ids)
 ), f"Duplicated id found. Use unique id for each panel. {ids}"

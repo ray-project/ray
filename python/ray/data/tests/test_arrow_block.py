@@ -2,8 +2,8 @@ import base64
 import os
 import sys
 import types
+from decimal import Decimal
 from tempfile import TemporaryDirectory
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -12,261 +12,15 @@ import pytest
 from pyarrow import ArrowInvalid
 
 import ray
-from ray._private.test_utils import run_string_as_driver
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorArray,
-)
-from ray.data import DataContext
+from ray._common.test_utils import run_string_as_driver
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
-    ArrowBlockColumnAccessor,
-    _get_max_chunk_size,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
-from ray.data.extensions.object_extension import _object_extension_type_allowed
-
-
-def simple_array():
-    return pa.array([1, 2, None, 6], type=pa.int64())
-
-
-def simple_chunked_array():
-    return pa.chunked_array([pa.array([1, 2]), pa.array([None, 6])])
-
-
-def _wrap_as_pa_scalar(v, dtype: pa.DataType):
-    return pa.scalar(v, type=dtype)
-
-
-@pytest.mark.parametrize("arr", [simple_array(), simple_chunked_array()])
-@pytest.mark.parametrize("as_py", [True, False])
-class TestArrowBlockColumnAccessor:
-    @pytest.mark.parametrize(
-        "ignore_nulls, expected",
-        [
-            (True, 3),
-            (False, 4),
-        ],
-    )
-    def test_count(self, arr, ignore_nulls, as_py, expected):
-        accessor = ArrowBlockColumnAccessor(arr)
-        result = accessor.count(ignore_nulls=ignore_nulls, as_py=as_py)
-
-        if not as_py:
-            expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
-
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "ignore_nulls, expected",
-        [
-            (True, 9),
-            (False, None),
-        ],
-    )
-    def test_sum(self, arr, ignore_nulls, as_py, expected):
-        accessor = ArrowBlockColumnAccessor(arr)
-        result = accessor.sum(ignore_nulls=ignore_nulls, as_py=as_py)
-
-        if not as_py:
-            expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
-
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "ignore_nulls, expected",
-        [
-            (True, 1),
-            (False, None),
-        ],
-    )
-    def test_min(self, arr, ignore_nulls, as_py, expected):
-        accessor = ArrowBlockColumnAccessor(arr)
-        result = accessor.min(ignore_nulls=ignore_nulls, as_py=as_py)
-
-        if not as_py:
-            expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
-
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "ignore_nulls, expected",
-        [
-            (True, 6),
-            (False, None),
-        ],
-    )
-    def test_max(self, arr, ignore_nulls, as_py, expected):
-        accessor = ArrowBlockColumnAccessor(arr)
-        result = accessor.max(ignore_nulls=ignore_nulls, as_py=as_py)
-
-        if not as_py:
-            expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
-
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "ignore_nulls, expected",
-        [
-            (True, 3),
-            (False, None),
-        ],
-    )
-    def test_mean(self, arr, ignore_nulls, as_py, expected):
-        accessor = ArrowBlockColumnAccessor(arr)
-        result = accessor.mean(ignore_nulls=ignore_nulls, as_py=as_py)
-
-        if not as_py:
-            expected = _wrap_as_pa_scalar(expected, dtype=pa.float64())
-
-        assert result == expected
-
-    @pytest.mark.parametrize(
-        "provided_mean, expected",
-        [
-            (3.0, 14.0),
-            (None, 14.0),
-        ],
-    )
-    def test_sum_of_squared_diffs_from_mean(self, arr, provided_mean, as_py, expected):
-        accessor = ArrowBlockColumnAccessor(arr)
-        result = accessor.sum_of_squared_diffs_from_mean(
-            ignore_nulls=True, mean=provided_mean, as_py=as_py
-        )
-
-        if not as_py:
-            expected = _wrap_as_pa_scalar(expected, dtype=pa.float64())
-
-        assert result == expected
-
-    def test_to_pylist(self, arr, as_py):
-        accessor = ArrowBlockColumnAccessor(arr)
-        assert accessor.to_pylist() == arr.to_pylist()
-
-
-@pytest.fixture(scope="module")
-def binary_dataset_single_file_gt_2gb():
-    total_size = int(2.1 * GiB)
-    chunk_size = 256 * MiB
-    num_chunks = total_size // chunk_size
-    remainder = total_size % chunk_size
-
-    with TemporaryDirectory() as tmp_dir:
-        dataset_path = f"{tmp_dir}/binary_dataset_gt_2gb_single_file"
-
-        # Create directory
-        os.mkdir(dataset_path)
-
-        with open(f"{dataset_path}/chunk.bin", "wb") as f:
-            for i in range(num_chunks):
-                f.write(b"a" * chunk_size)
-
-                print(f">>> Written chunk #{i}")
-
-            if remainder:
-                f.write(b"a" * remainder)
-
-        print(f">>> Wrote chunked dataset at: {dataset_path}")
-
-        yield dataset_path, total_size
-
-        print(f">>> Cleaning up dataset: {dataset_path}")
-
-
-@pytest.mark.parametrize(
-    "col_name",
-    [
-        "bytes",
-        # TODO fix numpy conversion
-        # "text",
-    ],
-)
-def test_single_row_gt_2gb(
-    ray_start_regular,
-    restore_data_context,
-    binary_dataset_single_file_gt_2gb,
-    col_name,
-):
-    # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
-    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
-
-    dataset_path, target_binary_size = binary_dataset_single_file_gt_2gb
-
-    def _id(row):
-        bs = row[col_name]
-        assert round(len(bs) / GiB, 1) == round(target_binary_size / GiB, 1)
-        return row
-
-    if col_name == "text":
-        ds = ray.data.read_text(dataset_path)
-    elif col_name == "bytes":
-        ds = ray.data.read_binary_files(dataset_path)
-
-    total = ds.map(_id).count()
-
-    assert total == 1
-
-
-@pytest.mark.parametrize(
-    "input_,expected_output",
-    [
-        # Empty chunked array
-        (pa.chunked_array([], type=pa.int8()), pa.array([], type=pa.int8())),
-        # Fixed-shape tensors
-        (
-            pa.chunked_array(
-                [
-                    ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
-                    ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
-                ]
-            ),
-            ArrowTensorArray.from_numpy(
-                np.concatenate(
-                    [
-                        np.arange(3).reshape(3, 1),
-                        np.arange(3).reshape(3, 1),
-                    ]
-                )
-            ),
-        ),
-        # Ragged (variable-shaped) tensors
-        (
-            pa.chunked_array(
-                [
-                    ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
-                    ArrowTensorArray.from_numpy(np.arange(5).reshape(5, 1)),
-                ]
-            ),
-            ArrowTensorArray.from_numpy(
-                np.concatenate(
-                    [
-                        np.arange(3).reshape(3, 1),
-                        np.arange(5).reshape(5, 1),
-                    ]
-                )
-            ),
-        ),
-        # Small (< 2 GiB) arrays
-        (
-            pa.chunked_array(
-                [
-                    pa.array([1, 2, 3], type=pa.int16()),
-                    pa.array([4, 5, 6], type=pa.int16()),
-                ]
-            ),
-            pa.array([1, 2, 3, 4, 5, 6], type=pa.int16()),
-        ),
-    ],
-)
-def test_combine_chunked_array_small(
-    input_, expected_output: Union[pa.Array, pa.ChunkedArray]
-):
-    result = combine_chunked_array(input_)
-
-    expected_output.equals(result)
+from ray.data.context import DataContext
 
 
 def test_combine_chunked_fixed_width_array_large():
@@ -339,29 +93,80 @@ def test_combine_chunked_variable_width_array_large(array_type, input_factory):
     assert num_bytes == expected_num_bytes
 
 
+def test_add_rows_with_different_column_names(ray_start_regular_shared):
+    builder = ArrowBlockBuilder()
+
+    builder.add({"col1": "spam"})
+    builder.add({"col2": "foo"})
+    block = builder.build()
+
+    expected_table = pa.Table.from_pydict(
+        {"col1": ["spam", None], "col2": [None, "foo"]}
+    )
+    assert block.equals(expected_table)
+
+
+@pytest.fixture(scope="module")
+def binary_dataset_single_file_gt_2gb():
+    total_size = int(2.1 * GiB)
+    chunk_size = 256 * MiB
+    num_chunks = total_size // chunk_size
+    remainder = total_size % chunk_size
+
+    with TemporaryDirectory() as tmp_dir:
+        dataset_path = f"{tmp_dir}/binary_dataset_gt_2gb_single_file"
+
+        # Create directory
+        os.mkdir(dataset_path)
+
+        with open(f"{dataset_path}/chunk.bin", "wb") as f:
+            for i in range(num_chunks):
+                f.write(b"a" * chunk_size)
+
+                print(f">>> Written chunk #{i}")
+
+            if remainder:
+                f.write(b"a" * remainder)
+
+        print(f">>> Wrote chunked dataset at: {dataset_path}")
+
+        yield dataset_path, total_size
+
+        print(f">>> Cleaning up dataset: {dataset_path}")
+
+
 @pytest.mark.parametrize(
-    "input_block, fill_column_name, fill_value, expected_output_block",
+    "col_name",
     [
-        (
-            pa.Table.from_pydict({"a": [0, 1]}),
-            "b",
-            2,
-            pa.Table.from_pydict({"a": [0, 1], "b": [2, 2]}),
-        ),
-        (
-            pa.Table.from_pydict({"a": [0, 1]}),
-            "b",
-            pa.scalar(2),
-            pa.Table.from_pydict({"a": [0, 1], "b": [2, 2]}),
-        ),
+        "bytes",
+        # TODO fix numpy conversion
+        # "text",
     ],
 )
-def test_fill_column(input_block, fill_column_name, fill_value, expected_output_block):
-    block_accessor = ArrowBlockAccessor.for_block(input_block)
+def test_single_row_gt_2gb(
+    ray_start_regular_shared,
+    restore_data_context,
+    binary_dataset_single_file_gt_2gb,
+    col_name,
+):
+    # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
 
-    actual_output_block = block_accessor.fill_column(fill_column_name, fill_value)
+    dataset_path, target_binary_size = binary_dataset_single_file_gt_2gb
 
-    assert actual_output_block.equals(expected_output_block)
+    def _id(row):
+        bs = row[col_name]
+        assert round(len(bs) / GiB, 1) == round(target_binary_size / GiB, 1)
+        return row
+
+    if col_name == "text":
+        ds = ray.data.read_text(dataset_path)
+    elif col_name == "bytes":
+        ds = ray.data.read_binary_files(dataset_path)
+
+    total = ds.map(_id).count()
+
+    assert total == 1
 
 
 def test_random_shuffle(ray_start_regular_shared):
@@ -389,16 +194,14 @@ def test_random_shuffle(ray_start_regular_shared):
     ), "The shuffled data should contain all the original values"
 
 
-def test_register_arrow_types(tmp_path):
+def test_register_arrow_types(ray_start_regular_shared, tmp_path):
     # Test that our custom arrow extension types are registered on initialization.
     ds = ray.data.from_items(np.zeros((8, 8, 8), dtype=np.int64))
     tmp_file = f"{tmp_path}/test.parquet"
     ds.write_parquet(tmp_file)
 
     ds = ray.data.read_parquet(tmp_file)
-    schema = (
-        "Column  Type\n------  ----\nitem    numpy.ndarray(shape=(8, 8), dtype=int64)"
-    )
+    schema = "Column  Type\n------  ----\nitem    ArrowTensorTypeV2(shape=(8, 8), dtype=int64)"
     assert str(ds.schema()) == schema
 
     # Also run in driver script to eliminate existing imports.
@@ -412,9 +215,6 @@ assert str(schema) == \"\"\"{1}\"\"\"
     run_string_as_driver(driver_script)
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension type not supported."
-)
 def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, previously, we would
     # fall back to pandas, because we couldn't convert it to
@@ -448,7 +248,10 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
 
 # Test for https://github.com/ray-project/ray/issues/49338.
-def test_build_block_with_null_column(ray_start_regular_shared):
+def test_build_block_with_null_column(ray_start_regular_shared, restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
     # The blocks need to contain a tensor column to trigger the bug.
     block1 = BlockAccessor.batch_to_block(
         {"string": [None], "array": np.zeros((1, 2, 2))}
@@ -464,36 +267,11 @@ def test_build_block_with_null_column(ray_start_regular_shared):
 
     rows = list(BlockAccessor.for_block(block).iter_rows(True))
     assert len(rows) == 2
+
     assert rows[0]["string"] is None
     assert rows[1]["string"] == "spam"
     assert np.array_equal(rows[0]["array"], np.zeros((2, 2)))
     assert np.array_equal(rows[1]["array"], np.zeros((2, 2)))
-
-
-def test_add_rows_with_different_column_names():
-    builder = ArrowBlockBuilder()
-
-    builder.add({"col1": "spam"})
-    builder.add({"col2": "foo"})
-    block = builder.build()
-
-    expected_table = pa.Table.from_pydict(
-        {"col1": ["spam", None], "col2": [None, "foo"]}
-    )
-    assert block.equals(expected_table)
-
-
-def test_add_blocks_with_different_column_names():
-    builder = ArrowBlockBuilder()
-
-    builder.add_block(pa.Table.from_pydict({"col1": ["spam"]}))
-    builder.add_block(pa.Table.from_pydict({"col2": ["foo"]}))
-    block = builder.build()
-
-    expected_table = pa.Table.from_pydict(
-        {"col1": ["spam", None], "col2": [None, "foo"]}
-    )
-    assert block.equals(expected_table)
 
 
 def test_arrow_block_timestamp_ns(ray_start_regular_shared):
@@ -522,35 +300,177 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
         ), f"Timestamp mismatch at row {i} in ArrowBlockBuilder output"
 
 
-def test_arrow_nan_element():
+@pytest.mark.parametrize(
+    "input_array,transform,expected_type,expected_values",
+    [
+        (
+            pa.array([None, None], type=pa.string()),
+            None,
+            pa.string(),
+            [None, None],
+        ),
+        (
+            pa.array([None, None], type=pa.list_(pa.string())),
+            None,
+            pa.list_(pa.string()),
+            [None, None],
+        ),
+        (
+            pa.array([None, None], type=pa.decimal128(10, 2)),
+            lambda df: df.fillna({"x": 0}),
+            pa.decimal128(10, 2),
+            [Decimal("0.00"), Decimal("0.00")],
+        ),
+        (
+            pa.array([["a", "b"], None], type=pa.list_(pa.string())),
+            None,
+            pa.list_(pa.string()),
+            [["a", "b"], None],
+        ),
+    ],
+)
+def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
+    input_array, transform, expected_type, expected_values
+):
+    table = pa.table({"x": input_array})
+
+    df = ArrowBlockAccessor(table).to_pandas()
+    assert isinstance(df.dtypes["x"], pd.ArrowDtype)
+    assert df.dtypes["x"].pyarrow_dtype == expected_type
+
+    if transform is not None:
+        df = transform(df)
+
+    roundtripped = BlockAccessor.for_block(df).to_arrow()
+
+    assert roundtripped.schema.field("x").type == expected_type
+    assert roundtripped.to_pydict() == {"x": expected_values}
+
+
+def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
+    # A block whose column is entirely null is typed pa.null(). Keeping that as
+    # null[pyarrow] makes the column unusable in pandas: fillna and masked
+    # assignment cannot box a non-null value into Arrow's null type. Fall back to
+    # pandas' default conversion instead, which still round-trips to pa.null().
+    table = pa.table({"x": pa.array([None, None], type=pa.null())})
+
+    df = ArrowBlockAccessor(table).to_pandas()
+    assert not isinstance(df.dtypes["x"], pd.ArrowDtype)
+    assert df["x"].tolist() == [None, None]
+
+    # Untouched, the column round-trips back to Arrow's null type.
+    roundtripped = BlockAccessor.for_block(df).to_arrow()
+    assert roundtripped.schema.field("x").type == pa.null()
+    assert roundtripped.to_pydict() == {"x": [None, None]}
+
+    # Filling the nulls now works and yields the fill value's type.
+    filled = BlockAccessor.for_block(df.fillna({"x": 3.0})).to_arrow()
+    assert filled.to_pydict() == {"x": [3.0, 3.0]}
+
+
+def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
+    # One-row blocks type a column with no values as pa.null(), so a pandas UDF
+    # calling fillna used to fail with ArrowInvalid on whichever block happened
+    # to hold only nulls for that column.
     ds = ray.data.from_items(
         [
-            1.0,
-            1.0,
-            2.0,
-            np.nan,
-            np.nan,
+            {"a": 1.0, "b": 2.0},
+            {"a": 3.0, "b": None},
+            {"a": None, "b": 4.0},
+        ],
+        override_num_blocks=3,
+    )
+
+    filled = ds.map_batches(
+        lambda df: df.fillna({"a": 0.0, "b": 0.0}), batch_format="pandas"
+    )
+
+    assert sorted(filled.take_all(), key=lambda row: row["a"]) == [
+        {"a": 0.0, "b": 4.0},
+        {"a": 1.0, "b": 2.0},
+        {"a": 3.0, "b": 0.0},
+    ]
+
+
+def test_arrow_block_to_pandas_opt_out_numpy_dtypes(restore_data_context):
+    # https://github.com/ray-project/ray/issues/64765: opting out restores the
+    # pre-2.56 numpy conversion, so standard Arrow types no longer become
+    # pd.ArrowDtype. This unblocks pandas UDFs that assign multi-dimensional
+    # arrays into columns or rely on numpy-only ops these columns do not support.
+    ctx = DataContext.get_current()
+    table = pa.table({"x": pa.array([1, 2, 3], pa.int64())})
+
+    ctx.enable_arrow_backed_pandas_conversion = True
+    on = ArrowBlockAccessor(table).to_pandas()
+    assert isinstance(on.dtypes["x"], pd.ArrowDtype)
+    assert on.dtypes["x"] == pd.ArrowDtype(pa.int64())
+
+    ctx.enable_arrow_backed_pandas_conversion = False
+    off = ArrowBlockAccessor(table).to_pandas()
+    assert not isinstance(off.dtypes["x"], pd.ArrowDtype)
+    assert off.dtypes["x"] == np.dtype("int64")
+
+
+def test_to_pandas_reconciles_int_and_float_blocks(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/64765 (symptom B): to_pandas must
+    # not overflow when the same column is int64 in some blocks and double in
+    # others (e.g. a block whose values are all null infers double). The int64
+    # values are preserved exactly, without lossy float widening.
+    big = 1782750729409928627  # > 2**53, not exactly representable as float64
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"ts": pa.array([big], pa.int64())}),
+            pa.table({"ts": pa.array([None], pa.float64())}),
         ]
     )
-    ds = ds.groupby("item").count()
-    ds = ds.filter(lambda v: np.isnan(v["item"]))
-    result = ds.take_all()
-    assert result[0]["count()"] == 2
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert df["ts"].dropna().tolist() == [big]
+
+
+def test_to_pandas_does_not_downcast_large_floats(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/64765: a float column above 2**53
+    # must not be silently downcast to int during int/float block reconciliation.
+    # float64 cannot represent every integer past 2**53, so an "integral" float may
+    # not equal the intended value; such blocks are left float-backed rather than
+    # coerced to an int with false exactness.
+    big_float = float(2**53 + 2)  # integral and exactly representable, but > 2**53
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"v": pa.array([3], pa.int64())}),
+            pa.table({"v": pa.array([big_float], pa.float64())}),
+        ]
+    )
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
 
 
 @pytest.mark.parametrize(
-    "table_data,max_chunk_size_bytes,expected",
+    "int_type, float_value",
     [
-        ({"a": []}, 100, None),
-        ({"a": list(range(100))}, 10, 1),
-        ({"a": list(range(100))}, 25, 3),
-        ({"a": list(range(100))}, 50, 6),
-        ({"a": list(range(100))}, 100, 12),
+        (pa.int32(), 3.0e9),  # integral and < 2**53, but exceeds int32 max
+        (pa.uint32(), -5.0),  # integral, but negative does not fit unsigned
+        (pa.uint8(), 300.0),  # integral, but exceeds uint8 max
     ],
 )
-def test_arrow_block_max_chunk_size(table_data, max_chunk_size_bytes, expected):
-    table = pa.table(table_data)
-    assert _get_max_chunk_size(table, max_chunk_size_bytes) == expected
+def test_to_pandas_does_not_downcast_out_of_range_floats(
+    ray_start_regular_shared, int_type, float_value
+):
+    # https://github.com/ray-project/ray/issues/64765: float blocks are downcast
+    # to the int blocks' type only when values fit that type's range (bit width
+    # and signedness). Out-of-range or wrong-sign integral floats must stay
+    # float-backed rather than overflow, wrap, or become invalid.
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"v": pa.array([3], int_type)}),
+            pa.table({"v": pa.array([float_value], pa.float64())}),
+        ]
+    )
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
+    assert float_value in df["v"].dropna().tolist()
 
 
 if __name__ == "__main__":

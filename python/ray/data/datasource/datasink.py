@@ -1,11 +1,15 @@
+import itertools
 import logging
 from dataclasses import dataclass
-from typing import Generic, Iterable, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Generic, Iterable, List, Optional, TypeVar
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +30,18 @@ class WriteResult(Generic[WriteReturnType]):
     # All returned values of `Datasink.write`.
     write_returns: List[WriteReturnType]
 
+    @classmethod
+    def combine(cls, *wrs: "WriteResult") -> "WriteResult":
+        num_rows = sum(wr.num_rows for wr in wrs)
+        size_bytes = sum(wr.size_bytes for wr in wrs)
+        write_returns = list(itertools.chain(*[wr.write_returns for wr in wrs]))
+
+        return WriteResult(
+            num_rows=num_rows,
+            size_bytes=size_bytes,
+            write_returns=write_returns,
+        )
+
 
 @DeveloperAPI
 class Datasink(Generic[WriteReturnType]):
@@ -35,11 +51,20 @@ class Datasink(Generic[WriteReturnType]):
     and call :meth:`~ray.data.Dataset.write_datasink`.
     """
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         """Callback for when a write job starts.
 
         Use this method to perform setup for write tasks. For example, creating a
         staging bucket in S3.
+
+        This is called on the driver when the first input bundle is ready, just
+        before write tasks are submitted. The schema is extracted from the first
+        input bundle, enabling schema-dependent initialization.
+
+        Args:
+            schema: The PyArrow schema of the data being written. This is
+                automatically extracted from the first input bundle. May be None
+                if the input data has no schema.
         """
         pass
 
@@ -162,3 +187,20 @@ class DummyOutputDatasink(Datasink[None]):
 
     def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1
+
+
+def _gen_datasink_write_result(
+    write_result_blocks: List[Block],
+) -> WriteResult:
+    import pandas as pd
+
+    assert all(
+        isinstance(block, pd.DataFrame) and len(block) == 1
+        for block in write_result_blocks
+    )
+
+    total_num_rows = sum(result["num_rows"].sum() for result in write_result_blocks)
+    total_size_bytes = sum(result["size_bytes"].sum() for result in write_result_blocks)
+
+    write_returns = [result["write_return"][0] for result in write_result_blocks]
+    return WriteResult(total_num_rows, total_size_bytes, write_returns)

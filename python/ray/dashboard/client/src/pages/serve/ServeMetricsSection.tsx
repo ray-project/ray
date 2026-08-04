@@ -22,20 +22,24 @@ import {
   TIME_RANGE_TO_FROM_VALUE,
   TimeRangeOptions,
 } from "../metrics";
+import {
+  grafanaClusterQueryParam,
+  grafanaDatasourceQueryParam,
+} from "../metrics/utils";
 
 // NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
 export const APPS_METRICS_CONFIG: MetricConfig[] = [
   {
     title: "QPS per application",
-    pathParams: "theme=light&panelId=7",
+    pathParams: "panelId=7",
   },
   {
     title: "Error QPS per application",
-    pathParams: "theme=light&panelId=8",
+    pathParams: "panelId=8",
   },
   {
     title: "P90 latency per application",
-    pathParams: "theme=light&panelId=15",
+    pathParams: "panelId=15",
   },
 ];
 
@@ -43,27 +47,27 @@ export const APPS_METRICS_CONFIG: MetricConfig[] = [
 export const SERVE_SYSTEM_METRICS_CONFIG: MetricConfig[] = [
   {
     title: "Ongoing HTTP Requests",
-    pathParams: "theme=light&panelId=20",
+    pathParams: "panelId=20",
   },
   {
     title: "Ongoing gRPC Requests",
-    pathParams: "theme=light&panelId=21",
+    pathParams: "panelId=21",
   },
   {
     title: "Scheduling Tasks",
-    pathParams: "theme=light&panelId=22",
+    pathParams: "panelId=22",
   },
   {
     title: "Scheduling Tasks in Backoff",
-    pathParams: "theme=light&panelId=23",
+    pathParams: "panelId=23",
   },
   {
     title: "Controller Control Loop Duration",
-    pathParams: "theme=light&panelId=24",
+    pathParams: "panelId=24",
   },
   {
     title: "Number of Control Loops",
-    pathParams: "theme=light&panelId=25",
+    pathParams: "panelId=25",
   },
 ];
 
@@ -84,6 +88,8 @@ export const ServeMetricsSection = ({
     dashboardUids,
     dashboardDatasource,
     currentTimeZone,
+    themeMode,
+    grafanaClusterFilter,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
@@ -109,6 +115,8 @@ export const ServeMetricsSection = ({
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
+  const clusterQuery = grafanaClusterQueryParam(grafanaClusterFilter);
+  const datasourceQuery = grafanaDatasourceQueryParam(dashboardDatasource);
 
   return grafanaHost === undefined || !prometheusHealth ? null : (
     <CollapsibleSection
@@ -131,7 +139,7 @@ export const ServeMetricsSection = ({
           }}
         >
           <Button
-            href={`${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&var-datasource=${dashboardDatasource}`}
+            href={`${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}${datasourceQuery}${clusterQuery}`}
             target="_blank"
             rel="noopener noreferrer"
             endIcon={<RiExternalLinkLine />}
@@ -201,8 +209,8 @@ export const ServeMetricsSection = ({
         >
           {metricsConfig.map(({ title, pathParams }) => {
             const path =
-              `/d-solo/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&${pathParams}` +
-              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
+              `/d-solo/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&theme=${themeMode}&${pathParams}` +
+              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}${datasourceQuery}${clusterQuery}`;
             return (
               <Paper
                 key={pathParams}

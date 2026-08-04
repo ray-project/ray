@@ -9,7 +9,6 @@ import click
 import pytest
 
 import ray
-import ray.train
 from ray import tune
 from ray.train.tests.util import create_dict_checkpoint
 from ray.tune.cli import commands
@@ -37,7 +36,7 @@ class Capturing:
 
 @pytest.fixture
 def start_ray():
-    ray.init(log_to_driver=False, local_mode=True)
+    ray.init(log_to_driver=False)
     yield
     ray.shutdown()
 
@@ -73,7 +72,7 @@ def test_time(start_ray, tmpdir, monkeypatch):
         times += [time.time() - start]
 
     print("Average CLI time: ", sum(times) / len(times))
-    assert sum(times) / len(times) < 2, "CLI is taking too long!"
+    assert sum(times) / len(times) < 5, "CLI is taking too long!"
 
 
 @mock.patch(

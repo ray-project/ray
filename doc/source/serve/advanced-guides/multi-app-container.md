@@ -10,11 +10,9 @@ This feature is experimental and the API is subject to change. If you have addit
 The `image_uri` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Follow the [Podman Installation Instructions](https://podman.io/docs/installation) to install Podman in the environment for all head and worker nodes.
 
 :::{note}
-For Ubuntu, the Podman package is only available in the official repositories for Ubuntu 20.10 and newer. To install Podman in Ubuntu 20.04 or older, you need to first add the software repository as a debian source. Follow these instructions to install Podman on Ubuntu 20.04 or older:
+For Ubuntu, the Podman package is available in the official repositories for Ubuntu 20.10 and newer.
 
 ```bash
-sudo sh -c "echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
-sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 4D64390375060AA4
 sudo apt-get update
 sudo apt-get install podman -y
 ```
@@ -167,3 +165,5 @@ If raylet is running inside a container, then that container needs the necessary
   * This error should only occur when you're running the Ray cluster inside a container. If you see this error when starting the replica actor, try volume mounting `/var/lib/containers` in the container that runs raylet. That is, add `-v /var/lib/containers:/var/lib/containers` to the command that starts the Docker container.
 * **cannot clone: Operation not permitted; Error: cannot re-exec process**
   * This error should only occur when you're running the Ray cluster inside a container. This error implies that you don't have the permissions to use Podman to start a container. You need to start the container that runs raylet, with privileged permissions by adding `--privileged`.
+* **Very slow or hanging container startup**
+  * This is typically caused by using the default podman storage driver (`vfs`) with large container images. Podman runs in rootless mode, so its startup sequence involves modifying permissions of files in the container. The default storage driver is very slow to do this. Try configuring podman to use the `overlay` storage driver instead. You may need to also configure the `mount_program` to point to `/usr/bin/fuse-overlayfs` (or your appropriate local path).

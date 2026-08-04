@@ -9,9 +9,9 @@ import requests
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
 import ray.dashboard.utils as dashboard_utils
+from ray._common.network_utils import build_address
 from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.utils import async_loop_forever
-from ray._common.network_utils import build_address
 
 logger = logging.getLogger(__name__)
 

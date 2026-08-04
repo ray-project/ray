@@ -6,6 +6,8 @@ import asyncio
 import inspect
 from functools import lru_cache
 
+from ray._private.ray_constants import env_bool
+
 try:
     import uvloop
 except ImportError:
@@ -13,16 +15,16 @@ except ImportError:
 
 
 def get_new_event_loop():
-    """Construct a new event loop. Ray will use uvloop if it exists"""
-    if uvloop:
+    """Construct a new event loop. Ray will use uvloop if it exists and is enabled"""
+    if uvloop and env_bool("RAY_USE_UVLOOP", True):
         return uvloop.new_event_loop()
     else:
         return asyncio.new_event_loop()
 
 
 def try_install_uvloop():
-    """Installs uvloop as event-loop implementation for asyncio (if available)"""
-    if uvloop:
+    """Installs uvloop as event-loop implementation for asyncio (if available and enabled)"""
+    if uvloop and env_bool("RAY_USE_UVLOOP", True):
         uvloop.install()
     else:
         pass

@@ -1,21 +1,31 @@
+import inspect
 import json
 import logging
 import warnings
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from functools import cached_property
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray import cloudpickle
-from ray._common.pydantic_compat import (
+from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
-    validator,
+    field_validator,
+    model_validator,
 )
-from ray._common.utils import import_attr
+
+from ray import cloudpickle
+from ray._common.network_utils import get_localhost_ip
+from ray._common.utils import import_attr, import_module_and_attr
+from ray.actor import ActorClass
+
+# Import types needed for AutoscalingContext
+from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
@@ -26,12 +36,150 @@ from ray.serve._private.constants import (
     DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import validate_ssl_config
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@PublicAPI(stability="stable")
+class AutoscalingContext:
+    """Rich context provided to custom autoscaling policies.
+
+    This class provides comprehensive information about a deployment's current state,
+    metrics, and configuration that can be used by custom autoscaling policies to
+    make intelligent scaling decisions.
+
+    The context includes deployment metadata, current replica state, built-in and
+    custom metrics, capacity bounds, policy state, and timing information.
+
+    Note: The aggregated_metrics and raw_metrics fields support lazy evaluation.
+    You can pass callables that will be evaluated only when accessed, with results
+    cached for subsequent accesses.
+    """
+
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        deployment_name: str,
+        app_name: Optional[str],
+        current_num_replicas: int,
+        target_num_replicas: int,
+        running_replicas: List[ReplicaID],
+        total_num_requests: Union[float, Callable[[], float]],
+        total_queued_requests: Optional[Union[float, Callable[[], float]]],
+        aggregated_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, float]],
+                Callable[[], Dict[str, Dict[ReplicaID, float]]],
+            ]
+        ],
+        raw_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, TimeSeries]],
+                Callable[[], Dict[str, Dict[ReplicaID, TimeSeries]]],
+            ]
+        ],
+        capacity_adjusted_min_replicas: int,
+        capacity_adjusted_max_replicas: int,
+        policy_state: Dict[str, Any],
+        last_scale_up_time: Optional[float],
+        last_scale_down_time: Optional[float],
+        current_time: Optional[float],
+        config: Optional[Any],
+        total_pending_async_requests: int,
+    ):
+        # Deployment information
+        self.deployment_id = deployment_id  #: Unique identifier for the deployment.
+        self.deployment_name = deployment_name  #: Name of the deployment.
+        self.app_name = app_name  #: Name of the application containing this deployment.
+
+        # Current state
+        self.current_num_replicas = (
+            current_num_replicas  #: Current number of running replicas.
+        )
+        self.target_num_replicas = (
+            target_num_replicas  #: Target number of replicas set by the autoscaler.
+        )
+        self.running_replicas = (
+            running_replicas  #: List of currently running replica IDs.
+        )
+
+        # Built-in metrics
+        self._total_num_requests_value = (
+            total_num_requests  #: Total number of requests across all replicas.
+        )
+        self._total_queued_requests_value = (
+            total_queued_requests  #: Number of requests currently queued.
+        )
+
+        # Custom metrics - store potentially lazy callables privately
+        self._aggregated_metrics_value = aggregated_metrics
+        self._raw_metrics_value = raw_metrics
+
+        # Capacity and bounds
+        self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas  #: Minimum replicas adjusted for cluster capacity.
+        self.capacity_adjusted_max_replicas = capacity_adjusted_max_replicas  #: Maximum replicas adjusted for cluster capacity.
+
+        # Policy state
+        self.policy_state = (
+            policy_state  #: Persistent state dictionary for the autoscaling policy.
+        )
+
+        # Timing
+        self.last_scale_up_time = (
+            last_scale_up_time  #: Timestamp of last scale-up action.
+        )
+        self.last_scale_down_time = (
+            last_scale_down_time  #: Timestamp of last scale-down action.
+        )
+        self.current_time = current_time  #: Current timestamp.
+
+        # Config
+        self.config = config  #: Autoscaling configuration for this deployment.
+
+        # Async inference task queue length (from QueueMonitor)
+        self._total_pending_async_requests = total_pending_async_requests
+
+    @cached_property
+    def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
+        if callable(self._aggregated_metrics_value):
+            return self._aggregated_metrics_value()
+        return self._aggregated_metrics_value
+
+    @cached_property
+    def raw_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]:
+        if callable(self._raw_metrics_value):
+            return self._raw_metrics_value()
+        return self._raw_metrics_value
+
+    @cached_property
+    def total_num_requests(self) -> float:
+        if callable(self._total_num_requests_value):
+            return self._total_num_requests_value()
+        return self._total_num_requests_value
+
+    @cached_property
+    def total_queued_requests(self) -> float:
+        if callable(self._total_queued_requests_value):
+            return self._total_queued_requests_value()
+        return self._total_queued_requests_value
+
+    @property
+    def total_running_requests(self) -> float:
+        # NOTE: for non-additive aggregation functions, total_running_requests is not
+        # accurate, consider this is an approximation.
+        return self.total_num_requests - self.total_queued_requests
+
+    @property
+    def total_pending_async_requests(self) -> int:
+        """Broker task queue length for async inference autoscaling."""
+        return self._total_pending_async_requests
 
 
 @PublicAPI(stability="alpha")
@@ -94,10 +242,10 @@ class RequestRouterConfig(BaseModel):
     request_routing_stats_period_s: PositiveFloat = Field(
         default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
         description=(
-            "Duration between record scheduling stats calls for the replica. "
-            "Defaults to 10s. The health check is by default a no-op Actor call "
-            "to the replica, but you can define your own request scheduling stats "
-            "using the 'record_scheduling_stats' method in your deployment."
+            "Duration between record routing stats calls for the replica. "
+            "Defaults to 10s. Recording routing stats is by default a no-op Actor "
+            "call to the replica, but you can define your own routing stats "
+            "using the 'record_routing_stats' method in your deployment."
         ),
     )
 
@@ -109,7 +257,30 @@ class RequestRouterConfig(BaseModel):
         ),
     )
 
-    @validator("request_router_kwargs", always=True)
+    initial_backoff_s: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+        description=(
+            "Initial backoff time (in seconds) before retrying to route a request "
+            "to a replica. Defaults to 0.025."
+        ),
+    )
+
+    backoff_multiplier: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+        description=(
+            "Multiplier applied to the backoff time after each retry. " "Defaults to 2."
+        ),
+    )
+
+    max_backoff_s: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+        description=(
+            "Maximum backoff time (in seconds) between retries. " "Defaults to 0.5."
+        ),
+    )
+
+    @field_validator("request_router_kwargs")
+    @classmethod
     def request_router_kwargs_json_serializable(cls, v):
         if isinstance(v, bytes):
             return v
@@ -123,6 +294,49 @@ class RequestRouterConfig(BaseModel):
 
         return v
 
+    def __eq__(self, other):
+        """Override equality to only compare public fields.
+
+        Pydantic v2 includes PrivateAttr in equality comparison, but
+        _serialized_request_router_cls may differ between instances even
+        when the public fields are identical (due to cloudpickle timestamps).
+        """
+        if not isinstance(other, RequestRouterConfig):
+            return False
+        return (
+            self.request_router_class == other.request_router_class
+            and self.request_router_kwargs == other.request_router_kwargs
+            and self.request_routing_stats_period_s
+            == other.request_routing_stats_period_s
+            and self.request_routing_stats_timeout_s
+            == other.request_routing_stats_timeout_s
+            and self.initial_backoff_s == other.initial_backoff_s
+            and self.backoff_multiplier == other.backoff_multiplier
+            and self.max_backoff_s == other.max_backoff_s
+        )
+
+    def __hash__(self):
+        """Override hash to match __eq__ behavior."""
+        if isinstance(self.request_router_kwargs, dict):
+            kwargs_hashable = json.dumps(
+                self.request_router_kwargs, sort_keys=True, default=str
+            )
+        elif isinstance(self.request_router_kwargs, bytes):
+            kwargs_hashable = self.request_router_kwargs
+        else:
+            kwargs_hashable = ()
+        return hash(
+            (
+                self.request_router_class,
+                kwargs_hashable,
+                self.request_routing_stats_period_s,
+                self.request_routing_stats_timeout_s,
+                self.initial_backoff_s,
+                self.backoff_multiplier,
+                self.max_backoff_s,
+            )
+        )
+
     def __init__(self, **kwargs: dict[str, Any]):
         """Initialize RequestRouterConfig with the given parameters.
 
@@ -132,8 +346,30 @@ class RequestRouterConfig(BaseModel):
         Args:
             **kwargs: Keyword arguments to pass to BaseModel.
         """
+        serialized_request_router_cls = kwargs.pop(
+            "_serialized_request_router_cls", None
+        )
         super().__init__(**kwargs)
-        self._serialize_request_router_cls()
+        if serialized_request_router_cls:
+            self._serialized_request_router_cls = serialized_request_router_cls
+        else:
+            self._serialize_request_router_cls()
+
+    def set_serialized_request_router_cls(
+        self, serialized_request_router_cls: bytes
+    ) -> None:
+        self._serialized_request_router_cls = serialized_request_router_cls
+
+    @classmethod
+    def from_serialized_request_router_cls(
+        cls, request_router_config: dict, serialized_request_router_cls: bytes
+    ) -> "RequestRouterConfig":
+        config = request_router_config.copy()
+        config["_serialized_request_router_cls"] = serialized_request_router_cls
+        return cls(**config)
+
+    def get_serialized_request_router_cls(self) -> Optional[bytes]:
+        return self._serialized_request_router_cls
 
     def _serialize_request_router_cls(self) -> None:
         """Import and serialize request router class with cloudpickle.
@@ -149,42 +385,232 @@ class RequestRouterConfig(BaseModel):
             )
 
         request_router_path = request_router_class or DEFAULT_REQUEST_ROUTER_PATH
-        request_router_class = import_attr(request_router_path)
+        request_router_module, request_router_class = import_module_and_attr(
+            request_router_path
+        )
+        cloudpickle.register_pickle_by_value(request_router_module)
+        self.set_serialized_request_router_cls(cloudpickle.dumps(request_router_class))
+        cloudpickle.unregister_pickle_by_value(request_router_module)
 
-        self._serialized_request_router_cls = cloudpickle.dumps(request_router_class)
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
 
+    def is_default_request_router(self) -> bool:
+        """Whether the configured request router is Serve's default."""
+        return self.request_router_class == DEFAULT_REQUEST_ROUTER_PATH
+
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_request_router_cls)
+        try:
+            return cloudpickle.loads(self._serialized_request_router_cls)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize custom request router: {e}\n\n"
+                "This typically happens when the router depends on external modules "
+                "that aren't available in the current environment. To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image or environment\n"
+                "  - Package your router as a Python package and install it\n"
+                "  - Place the router module in PYTHONPATH\n\n"
+                "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
+                "custom-request-router.html#gotchas-and-limitations"
+            ) from e
 
 
 DEFAULT_METRICS_INTERVAL_S = 10.0
 
 
 @PublicAPI(stability="alpha")
+class AggregationFunction(str, Enum):
+    MEAN = "mean"
+    MAX = "max"
+    MIN = "min"
+
+
+@PublicAPI(stability="stable")
 class AutoscalingPolicy(BaseModel):
-    name: Union[str, Callable] = Field(
+    # Cloudpickled policy definition.
+    _serialized_policy_def: bytes = PrivateAttr(default=b"")
+    # Cached deserialized policy to avoid repeated cloudpickle.loads() calls.
+    _cached_policy: Optional[Callable] = PrivateAttr(default=None)
+
+    policy_function: Union[str, Callable] = Field(
         default=DEFAULT_AUTOSCALING_POLICY_NAME,
-        description="Name of the policy function or the import path of the policy. "
-        "Will be the concatenation of the policy module and the policy name if user passed a callable.",
+        description="Policy function can be a string import path or a function callable. "
+        "If it's a string import path, it must be of the form `path.to.module:function_name`. ",
     )
+    policy_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Keyword arguments passed to the policy class constructor when "
+            "policy_function refers to a class. Ignored when policy_function "
+            "is a plain function. Values must be JSON-serializable."
+        ),
+    )
+
+    @field_validator("policy_kwargs")
+    @classmethod
+    def policy_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"policy_kwargs is not JSON-serializable: {str(e)}.")
+        return v
+
+    def __eq__(self, other):
+        """Override equality to only compare public fields.
+
+        Pydantic v2 includes PrivateAttr in equality comparison, but
+        _serialized_policy_def may differ between instances even when
+        the public fields are identical (due to cloudpickle timestamps).
+        """
+        if not isinstance(other, AutoscalingPolicy):
+            return False
+        return (
+            self.policy_function == other.policy_function
+            and self.policy_kwargs == other.policy_kwargs
+        )
+
+    def __hash__(self):
+        """Override hash to match __eq__ behavior."""
+        kwargs_hashable = (
+            json.dumps(self.policy_kwargs, sort_keys=True, default=str)
+            if self.policy_kwargs
+            else ()
+        )
+        return hash((self.policy_function, kwargs_hashable))
+
+    def __init__(self, **kwargs):
+        serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
+        super().__init__(**kwargs)
+        if serialized_policy_def:
+            self._serialized_policy_def = serialized_policy_def
+        else:
+            self.serialize_policy()
+
+    def set_serialized_policy_def(self, serialized_policy_def: bytes) -> None:
+        self._serialized_policy_def = serialized_policy_def
+        self._cached_policy = None
+
+    @classmethod
+    def from_serialized_policy_def(
+        cls, policy_config: dict, serialized_policy_def: bytes
+    ) -> "AutoscalingPolicy":
+        config = policy_config.copy()
+        config["_serialized_policy_def"] = serialized_policy_def
+        return cls(**config)
+
+    def get_serialized_policy_def(self) -> Optional[bytes]:
+        return self._serialized_policy_def
+
+    def serialize_policy(self) -> None:
+        """Serialize policy with cloudpickle.
+
+        Import the policy if it's passed in as a string import path. Then cloudpickle
+        the policy and set `serialized_policy_def` if it's empty.
+        """
+        policy_path = self.policy_function
+
+        if isinstance(policy_path, Callable):
+            policy_path = f"{policy_path.__module__}.{policy_path.__name__}"
+
+        if not self._serialized_policy_def:
+            policy_module, policy_function = import_module_and_attr(policy_path)
+            cloudpickle.register_pickle_by_value(policy_module)
+            self.set_serialized_policy_def(cloudpickle.dumps(policy_function))
+            cloudpickle.unregister_pickle_by_value(policy_module)
+
+        self.policy_function = policy_path
+
+    def is_default_policy_function(self) -> bool:
+        return self.policy_function == DEFAULT_AUTOSCALING_POLICY_NAME
+
+    def get_policy(self) -> Callable:
+        """Deserialize policy from cloudpickled bytes.
+
+        The result is cached to avoid repeated cloudpickle deserialization on
+        every call (e.g. on every autoscaling tick).
+        """
+        if self._cached_policy is not None:
+            return self._cached_policy
+        try:
+            policy = cloudpickle.loads(self._serialized_policy_def)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize custom autoscaling policy: {e}\n\n"
+                "This typically happens when the policy depends on external modules "
+                "that aren't available in the current environment. To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image or environment\n"
+                "  - Package your policy as a Python package and install it\n"
+                "  - Place the policy module in PYTHONPATH\n\n"
+                "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
+                "advanced-autoscaling.html#gotchas-and-limitations"
+            ) from e
+        self._cached_policy = policy
+        return policy
 
 
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
-    """Config for the Serve Autoscaler."""
+    """Config for the Serve Autoscaler.
+
+    This class configures how Ray Serve scales a deployment's replicas up and down
+    in response to traffic. The autoscaler periodically aggregates request metrics
+    over a look-back window, compares them to ``target_ongoing_requests``, and
+    adjusts the replica count between ``min_replicas`` and ``max_replicas``.
+    ``upscale_delay_s`` and ``downscale_delay_s`` control how quickly the autoscaler
+    reacts to traffic changes, while ``upscaling_factor`` and ``downscaling_factor``
+    dampen the magnitude of each scaling decision.
+
+    For an end-to-end guide, see the
+    `Serve autoscaling guide <https://docs.ray.io/en/latest/serve/autoscaling-guide.html>`_
+    and the
+    `advanced autoscaling guide <https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html>`_.
+    """
 
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
     # Publicly exposed options
-    min_replicas: NonNegativeInt = 1
-    initial_replicas: Optional[NonNegativeInt] = None
-    max_replicas: PositiveInt = 1
+    min_replicas: NonNegativeInt = Field(
+        default=1,
+        description=(
+            "The minimum number of replicas for the deployment. Set this to a "
+            "positive value to keep replicas ready for traffic at all times, or "
+            "set it to 0 to allow scaling to zero when there is no traffic. "
+            "Scaling to zero reduces cost but introduces cold-start latency when "
+            "traffic resumes."
+        ),
+    )
+    initial_replicas: Optional[NonNegativeInt] = Field(
+        default=None,
+        description=(
+            "The number of replicas started when the deployment is first deployed. "
+            "If not set, defaults to the value of ``min_replicas``."
+        ),
+    )
+    max_replicas: PositiveInt = Field(
+        default=1,
+        description=(
+            "The maximum number of replicas for the deployment. Must be greater "
+            "than or equal to ``min_replicas``. Ray Serve relies on the Ray "
+            "Autoscaler to add cluster nodes when existing nodes lack the "
+            "resources (CPUs, GPUs, etc.) needed to schedule additional replicas."
+        ),
+    )
 
-    target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
+    target_ongoing_requests: Optional[PositiveFloat] = Field(
+        default=DEFAULT_TARGET_ONGOING_REQUESTS,
+        description=(
+            "The target number of requests being processed and queued per replica. "
+            "Serve scales the replica count up or down to keep each replica close "
+            "to this value. Lower values reduce per-replica load and tail latency "
+            "at the cost of running more replicas; higher values pack more traffic "
+            "onto each replica. Defaults to 2."
+        ),
+    )
 
     metrics_interval_s: PositiveFloat = Field(
         default=DEFAULT_METRICS_INTERVAL_S,
@@ -223,26 +649,35 @@ class AutoscalingConfig(BaseModel):
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
     downscale_delay_s: NonNegativeFloat = Field(
-        default=600.0, description="How long to wait before scaling down replicas."
+        default=600.0,
+        description="How long to wait before scaling down replicas to a value greater than 0.",
+    )
+    # Optionally set for 1->0 transition
+    downscale_to_zero_delay_s: Optional[NonNegativeFloat] = Field(
+        default=None,
+        description="How long to wait before scaling down replicas from 1 to 0. If not set, the value of `downscale_delay_s` will be used.",
     )
     upscale_delay_s: NonNegativeFloat = Field(
         default=30.0, description="How long to wait before scaling up replicas."
     )
 
-    # Cloudpickled policy definition.
-    _serialized_policy_def: bytes = PrivateAttr(default=b"")
+    aggregation_function: Union[str, AggregationFunction] = Field(
+        default=AggregationFunction.MEAN,
+        description="Function used to aggregate metrics across a time window.",
+    )
 
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
-    _policy: AutoscalingPolicy = Field(default_factory=AutoscalingPolicy)
+    policy: AutoscalingPolicy = Field(
+        default_factory=AutoscalingPolicy,
+        description="The autoscaling policy for the deployment.",
+    )
 
-    # This is to make `_policy` a normal field until its GA ready.
-    class Config:
-        underscore_attrs_are_private = True
+    @model_validator(mode="after")
+    def replicas_settings_valid(self):
+        min_replicas = self.min_replicas
+        max_replicas = self.max_replicas
+        initial_replicas = self.initial_replicas
 
-    @validator("max_replicas", always=True)
-    def replicas_settings_valid(cls, max_replicas, values):
-        min_replicas = values.get("min_replicas")
-        initial_replicas = values.get("initial_replicas")
         if min_replicas is not None and max_replicas < min_replicas:
             raise ValueError(
                 f"max_replicas ({max_replicas}) must be greater than "
@@ -261,9 +696,10 @@ class AutoscalingConfig(BaseModel):
                     f"or equal to initial_replicas ({initial_replicas})!"
                 )
 
-        return max_replicas
+        return self
 
-    @validator("metrics_interval_s")
+    @field_validator("metrics_interval_s")
+    @classmethod
     def metrics_interval_s_deprecation_warning(cls, v: PositiveFloat) -> PositiveFloat:
         if v != DEFAULT_METRICS_INTERVAL_S:
             warnings.warn(
@@ -275,33 +711,29 @@ class AutoscalingConfig(BaseModel):
             )
         return v
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.serialize_policy()
+    @field_validator("look_back_period_s")
+    @classmethod
+    def look_back_period_s_valid(cls, v: PositiveFloat, info):
+        # Get metrics_interval_s from info.data, or use default if not set
+        metrics_interval_s = info.data.get(
+            "metrics_interval_s", DEFAULT_METRICS_INTERVAL_S
+        )
+        if v <= metrics_interval_s:
+            # Warns currently, will raise an exception in a future release
+            warnings.warn(
+                f"`look_back_period_s` ({v}) must be greater than `metrics_interval_s` "
+                f"({metrics_interval_s}). This will raise an exception in a future "
+                f"release. Please set `look_back_period_s` > `metrics_interval_s`.",
+                FutureWarning,
+            )
+        return v
 
-    def serialize_policy(self) -> None:
-        """Serialize policy with cloudpickle.
-
-        Import the policy if it's passed in as a string import path. Then cloudpickle
-        the policy and set `serialized_policy_def` if it's empty.
-        """
-        values = self.dict()
-        policy = values.get("_policy")
-
-        policy_name = None
-        if isinstance(policy, dict):
-            policy_name = policy.get("name")
-
-        if isinstance(policy_name, Callable):
-            policy_name = f"{policy_name.__module__}.{policy_name.__name__}"
-
-        if not policy_name:
-            policy_name = DEFAULT_AUTOSCALING_POLICY_NAME
-
-        if not self._serialized_policy_def:
-            self._serialized_policy_def = cloudpickle.dumps(import_attr(policy_name))
-
-        self._policy = AutoscalingPolicy(name=policy_name)
+    @field_validator("aggregation_function")
+    @classmethod
+    def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
+        if isinstance(v, AggregationFunction):
+            return v
+        return AggregationFunction(str(v).lower())
 
     @classmethod
     def default(cls):
@@ -310,10 +742,6 @@ class AutoscalingConfig(BaseModel):
             min_replicas=1,
             max_replicas=100,
         )
-
-    def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpickled bytes."""
-        return cloudpickle.loads(self._serialized_policy_def)
 
     def get_upscaling_factor(self) -> PositiveFloat:
         if self.upscaling_factor:
@@ -329,14 +757,6 @@ class AutoscalingConfig(BaseModel):
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
         return self.target_ongoing_requests
-
-
-# Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
-@Deprecated
-class DeploymentMode(str, Enum):
-    NoServer = "NoServer"
-    HeadOnly = "HeadOnly"
-    EveryNode = "EveryNode"
 
 
 @PublicAPI(stability="stable")
@@ -357,44 +777,18 @@ class ProxyLocation(str, Enum):
     EveryNode = "EveryNode"
 
     @classmethod
-    def _to_deployment_mode(
-        cls, proxy_location: Union["ProxyLocation", str]
-    ) -> DeploymentMode:
-        if isinstance(proxy_location, str):
-            proxy_location = ProxyLocation(proxy_location)
-        elif not isinstance(proxy_location, ProxyLocation):
-            raise TypeError(
-                f"Must be a `ProxyLocation` or str, got: {type(proxy_location)}."
-            )
-
-        if proxy_location == ProxyLocation.Disabled:
-            return DeploymentMode.NoServer
-        else:
-            return DeploymentMode(proxy_location.value)
-
-    @classmethod
-    def _from_deployment_mode(
-        cls, deployment_mode: Optional[Union[DeploymentMode, str]]
+    def _normalize(
+        cls, location: Optional[Union["ProxyLocation", str]]
     ) -> Optional["ProxyLocation"]:
-        """Converts DeploymentMode enum into ProxyLocation enum.
-
-        DeploymentMode is a deprecated version of ProxyLocation that's still
-        used internally throughout Serve.
-        """
-
-        if deployment_mode is None:
+        if location is None:
             return None
-        elif isinstance(deployment_mode, str):
-            deployment_mode = DeploymentMode(deployment_mode)
-        elif not isinstance(deployment_mode, DeploymentMode):
-            raise TypeError(
-                f"Must be a `DeploymentMode` or str, got: {type(deployment_mode)}."
-            )
-
-        if deployment_mode == DeploymentMode.NoServer:
-            return ProxyLocation.Disabled
-        else:
-            return ProxyLocation(deployment_mode.value)
+        if isinstance(location, cls):
+            return location
+        if isinstance(location, str):
+            if location in {"Disabled", "NoServer"}:
+                return cls.Disabled
+            return cls(location)
+        raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(location)}.")
 
 
 @PublicAPI(stability="stable")
@@ -402,8 +796,8 @@ class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to
-      "127.0.0.1". To expose Serve publicly, you probably want to set
-      this to "0.0.0.0".
+      localhost. To expose Serve publicly, you probably want to set
+      this to "0.0.0.0" for IPv4 or "::" for IPv6.
     - port: Port that the proxies listen for HTTP on. Defaults to 8000.
     - root_path: An optional root path to mount the serve application
       (for example, "/prefix"). All deployment routes are prefixed
@@ -419,23 +813,30 @@ class HTTPOptions(BaseModel):
     - ssl_ca_certs: Optional path to CA certificate file for client certificate
       verification.
 
+    - middlewares: [DEPRECATED] A list of Starlette middlewares to apply to the
+      HTTP proxy. Passing a non-empty list raises an error. Use Serve's FastAPI
+      integration to configure middlewares on ingress deployments instead.
     - location: [DEPRECATED: use `proxy_location` field instead] The deployment
       location of HTTP servers:
 
         - "HeadOnly": start one HTTP server on the head node. Serve
           assumes the head node is the node you executed serve.start
-          on. This is the default.
+          on.
         - "EveryNode": start one HTTP server per node.
-        - "NoServer": disable HTTP server.
+        - "Disabled": disable HTTP server.
+
+      This field defaults to None; Serve uses `proxy_location` when location
+      is unset. If `host` is None, Serve disables proxy startup.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
-      internal Serve HTTP proxy actor.
+      internal Serve HTTP proxy actor. Passing a non-zero value raises an
+      error.
     """
 
-    host: Optional[str] = DEFAULT_HTTP_HOST
+    host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
-    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+    location: Optional[ProxyLocation] = None
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""
@@ -446,45 +847,64 @@ class HTTPOptions(BaseModel):
     ssl_keyfile_password: Optional[str] = None
     ssl_ca_certs: Optional[str] = None
 
-    @validator("location", always=True)
-    def location_backfill_no_server(cls, v, values):
-        if values["host"] is None or v is None:
-            return DeploymentMode.NoServer
+    model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True)
 
-        return v
+    @field_validator("location", mode="before")
+    @classmethod
+    def normalize_location(cls, v):
+        # Only warn when a real (non-None) location is set. location=None is a
+        # no-op that also arrives via internal model_dump() roundtrips (e.g.
+        # direct-ingress replicas rebuilding HTTPOptions), which must stay quiet.
+        if v is not None:
+            warnings.warn(
+                "`location` in HTTPOptions is deprecated and will be removed in a "
+                "future version. Use the `proxy_location` argument to `serve.start` "
+                "or the top-level `proxy_location` field in the Serve config "
+                "instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return ProxyLocation._normalize(v)
 
-    @validator("ssl_certfile")
-    def validate_ssl_certfile(cls, v, values):
-        ssl_keyfile = values.get("ssl_keyfile")
+    @model_validator(mode="after")
+    def location_backfill_no_server(self):
+        if self.host is None:
+            # Use object.__setattr__ since the model may have frozen=True behavior
+            object.__setattr__(self, "location", ProxyLocation.Disabled)
+        return self
+
+    @field_validator("ssl_certfile")
+    @classmethod
+    def validate_ssl_certfile(cls, v, info):
+        ssl_keyfile = info.data.get("ssl_keyfile")
         validate_ssl_config(v, ssl_keyfile)
         return v
 
-    @validator("middlewares", always=True)
-    def warn_for_middlewares(cls, v, values):
+    @field_validator("middlewares")
+    @classmethod
+    def raise_for_middlewares_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `middlewares` to HTTPOptions is deprecated and will be "
-                "removed in a future version. Consider using the FastAPI integration "
-                "to configure middlewares on your deployments: "
-                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"  # noqa 501
+            raise ValueError(
+                "`middlewares` in HTTPOptions has been removed. Use Serve's "
+                "FastAPI integration to configure middlewares on ingress "
+                "deployments instead: "
+                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"
             )
         return v
 
-    @validator("num_cpus", always=True)
-    def warn_for_num_cpus(cls, v, values):
+    @field_validator("num_cpus")
+    @classmethod
+    def raise_for_num_cpus_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `num_cpus` to HTTPOptions is deprecated and will be "
-                "removed in a future version."
+            raise ValueError(
+                "`num_cpus` in HTTPOptions has been removed. Serve no longer "
+                "supports configuring CPU reservations for HTTP proxy actors "
+                "via HTTPOptions."
             )
         return v
 
-    class Config:
-        validate_assignment = True
-        arbitrary_types_allowed = True
 
-
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class gRPCOptions(BaseModel):
     """gRPC options for the proxies. Supported fields:
 
@@ -533,3 +953,285 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
+
+
+_ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS = frozenset({"env_vars"})
+
+
+@PublicAPI(stability="alpha")
+class ControllerOptions(BaseModel):
+    """Options for the Serve controller actor.
+
+    Symmetric with ``HTTPOptions`` and ``gRPCOptions``: pass to
+    ``serve.start(controller_options=...)`` / ``serve.run`` from Python, or
+    as a top-level ``controller_options:`` block in ``serve run foo.yaml``.
+
+    v0 scope is intentionally narrow: only ``runtime_env`` is exposed, and
+    inside ``runtime_env`` only ``env_vars`` is accepted. Other
+    ``runtime_env`` fields (``pip``, ``working_dir``, ``py_modules``,
+    ``container``, ...) would mutate Serve's own dependencies on a
+    detached, long-lived actor and are intentionally rejected by the
+    validator. Per-replica runtime environments belong on the deployment
+    (``serve.deployment(runtime_env=...)``) instead.
+
+    Like ``HTTPOptions``, these options only take effect when the
+    controller is first created. If a Serve controller is already running
+    in the cluster, ``serve.start`` warns and ignores the new options.
+    """
+
+    runtime_env: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Runtime environment for the controller actor. Only the "
+            "``env_vars`` key is supported; other keys are rejected."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("runtime_env")
+    @classmethod
+    def _validate_runtime_env(
+        cls, v: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        # All errors raised as ValueError so pydantic aggregates them into a
+        # single ValidationError. TypeError from a field_validator escapes
+        # unwrapped in pydantic v2.
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise ValueError(f"runtime_env must be a dict, got {type(v).__name__}.")
+
+        disallowed = sorted(set(v) - _ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS)
+        if disallowed:
+            raise ValueError(
+                "ControllerOptions.runtime_env only supports "
+                f"{sorted(_ALLOWED_CONTROLLER_RUNTIME_ENV_KEYS)} in this version; "
+                f"got disallowed keys {disallowed}. Per-replica runtime_env "
+                "belongs on the deployment "
+                "(``serve.deployment(runtime_env=...)``), not on the "
+                "controller actor."
+            )
+
+        if "env_vars" not in v:
+            return v
+        env_vars = v["env_vars"]
+        if not isinstance(env_vars, dict):
+            raise ValueError(
+                "runtime_env.env_vars must be a dict[str, str], got "
+                f"{type(env_vars).__name__}."
+            )
+        for k, val in env_vars.items():
+            if not isinstance(k, str) or not k:
+                raise ValueError(f"env_vars key must be a non-empty str, got {k!r}.")
+            if not isinstance(val, str):
+                raise ValueError(
+                    f"env_vars[{k!r}] must be str (got {type(val).__name__}); "
+                    "coerce explicitly."
+                )
+        return v
+
+
+@PublicAPI(stability="alpha")
+class GangPlacementStrategy(str, Enum):
+    """Placement strategy for replicas within a gang."""
+
+    PACK = "PACK"
+    """Pack replicas on as few nodes as possible (best effort)."""
+
+    SPREAD = "SPREAD"
+    """Spread replicas across distinct nodes as evenly as possible (best effort)."""
+
+
+@PublicAPI(stability="alpha")
+class GangRuntimeFailurePolicy(str, Enum):
+    """Policy for handling runtime failures of replicas in a gang."""
+
+    RESTART_GANG = "RESTART_GANG"
+    """Tear down and restart entire gang atomically when any replica fails."""
+
+    RESTART_REPLICA = "RESTART_REPLICA"
+    """
+    Tear down and restart individual replica when it fails.
+    Other replicas in the gang will continue running.
+    """
+
+
+@PublicAPI(stability="alpha")
+class DeploymentActorConfig(BaseModel):
+    """Configuration for a deployment-scoped actor.
+
+    Deployment-scoped actors are long-lived actors managed by the Serve controller
+    that outlive any single replica but are cleaned up when the deployment is
+    deleted or serve.shutdown() is called. They are shared by all replicas of
+    a deployment.
+
+    The controller periodically health-checks each deployment-scoped actor (via Ray's
+    built-in ``__ray_ready__`` task). If an actor fails repeatedly or its worker dies,
+    the controller stops it and starts a new instance. Ray actor auto-restart is not
+    used (``max_restarts=0``). An ``ActorHandle`` obtained before recreation may stay
+    bound to the dead instance; call :func:`ray.serve.get_deployment_actor` again (or
+    resolve by name with ``ray.get_actor``) instead of caching a handle across
+    potential failures.
+
+    Example:
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import DeploymentActorConfig
+
+            @ray.remote
+            class PrefixTreeActor:
+                def __init__(self, max_depth: int = 100):
+                    self.max_depth = max_depth
+
+                def insert(self, text: str):
+                    self.max_depth += 1
+
+            @serve.deployment(
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="prefix_tree",
+                        actor_class=PrefixTreeActor,
+                        init_kwargs={"max_depth": 100},
+                        actor_options={"num_cpus": 0.1},
+                    ),
+                ],
+            )
+            class MyDeployment:
+                def __init__(self):
+                    self.tree = serve.get_deployment_actor("prefix_tree")
+
+                def __call__(self, request):
+                    ray.get(self.tree.insert.remote(request.text))
+    """
+
+    name: str = Field(
+        description="Unique name for this deployment-scoped actor within the deployment.",
+    )
+    actor_class: Union[type, str, ActorClass] = Field(
+        description=(
+            "The actor class for this deployment-scoped actor. "
+            "Can be a @ray.remote-decorated class or an import path string "
+            "(e.g. 'my_module:PrefixTreeActor')."
+        ),
+    )
+    init_args: Tuple[Any, ...] = Field(
+        default_factory=tuple,
+        description="Positional arguments to pass to the actor constructor.",
+    )
+    init_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Keyword arguments to pass to the actor constructor.",
+    )
+    actor_options: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Ray actor options (e.g. num_cpus, num_gpus, runtime_env). "
+            "Inherits deployment's runtime_env; values here override for this actor."
+        ),
+    )
+
+    _serialized_actor_class: bytes = PrivateAttr(default=b"")
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **kwargs: Any):
+        """Initialize deployment actor config.
+
+        Args:
+            **kwargs: Raw model fields, including optional private
+                ``_serialized_actor_class`` for deserialization path.
+        """
+        serialized_actor_class = kwargs.pop("_serialized_actor_class", None)
+        super().__init__(**kwargs)
+        if serialized_actor_class:
+            self._serialized_actor_class = serialized_actor_class
+        elif not isinstance(self.actor_class, str):
+            self._serialize_actor_class()
+
+    @field_validator("init_args")
+    @classmethod
+    def _init_args_to_tuple(cls, v):
+        if v is not None and isinstance(v, list):
+            return tuple(v)
+        return v or ()
+
+    def _serialize_actor_class(self) -> None:
+        """Import and serialize the actor class with pickle-by-value."""
+        actor_class = self.actor_class
+        if isinstance(actor_class, str):
+            actor_module, actor_class = import_module_and_attr(actor_class)
+            # ActorClass (from @ray.remote) has __ray_actor_class__ for the underlying class
+            cls_for_meta = actor_class.__ray_actor_class__
+        else:
+            # For @ray.remote ActorClass, get module and name from underlying class
+            cls_for_meta = actor_class.__ray_actor_class__
+            actor_module = inspect.getmodule(cls_for_meta)
+        actor_class_name = f"{cls_for_meta.__module__}:{cls_for_meta.__qualname__}"
+
+        if actor_module is not None:
+            cloudpickle.register_pickle_by_value(actor_module)
+        self._serialized_actor_class = cloudpickle.dumps(actor_class)
+        if actor_module is not None:
+            cloudpickle.unregister_pickle_by_value(actor_module)
+
+        self.actor_class = actor_class_name
+
+    def get_actor_class(self) -> type:
+        """Deserialize the actor class from cloudpickled bytes."""
+        try:
+            return cloudpickle.loads(self._serialized_actor_class)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize deployment actor class: {e}\n\n"
+                "This typically happens when the actor class depends on external "
+                "modules that aren't available in the current environment. "
+                "To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image "
+                "or environment\n"
+                "  - Package the actor module as a Python package and install it\n"
+                "  - Place the actor module in PYTHONPATH"
+            ) from e
+
+
+@PublicAPI(stability="alpha")
+class GangSchedulingConfig(BaseModel):
+    """Configuration for gang scheduling of deployment replicas."""
+
+    # Please keep these options in sync with those in `src/ray/protobuf/serve.proto`.
+
+    gang_size: int = Field(
+        description=(
+            "Number of replicas per gang. "
+            "num_replicas must be a multiple of gang_size."
+        ),
+        ge=1,
+    )
+
+    gang_placement_strategy: GangPlacementStrategy = Field(
+        default=GangPlacementStrategy.PACK,
+        description=(
+            "Placement strategy for replicas within a gang. "
+            "Options: PACK (pack with best effort, default), "
+            "SPREAD (maximize availability)."
+        ),
+    )
+
+    runtime_failure_policy: GangRuntimeFailurePolicy = Field(
+        default=GangRuntimeFailurePolicy.RESTART_GANG,
+        description=(
+            "What to do when a replica fails after gang is running. "
+            "RESTART_GANG: kill and restart entire gang atomically. "
+            "RESTART_REPLICA: kill and restart individual replica."
+        ),
+    )
+
+    @field_validator("runtime_failure_policy")
+    @classmethod
+    def _validate_runtime_failure_policy(cls, v):
+        if v == GangRuntimeFailurePolicy.RESTART_REPLICA:
+            raise NotImplementedError(
+                "RESTART_REPLICA policy is not yet implemented. File a GitHub issue if you need this feature."
+            )
+        return v

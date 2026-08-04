@@ -72,7 +72,7 @@ Hugging Face Transformers
 More Frameworks
 ---------------
 
-Tensorflow/Keras
+TensorFlow/Keras
 ~~~~~~~~~~~~~~~~
 
 .. autosummary::
@@ -106,6 +106,16 @@ LightGBM
     ~train.lightgbm.LightGBMTrainer
     ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
+    ~train.lightgbm.normalize_pandas_for_lightgbm
+
+JAX
+~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.v2.jax.JaxTrainer
 
 
 .. _ray-train-configs-api:
@@ -120,8 +130,10 @@ Ray Train Configuration
     ~train.CheckpointConfig
     ~train.DataConfig
     ~train.FailureConfig
+    ~train.LoggingConfig
     ~train.RunConfig
     ~train.ScalingConfig
+    ~train.ValidationConfig
 
 .. _train-loop-api:
 
@@ -135,7 +147,18 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.v2.api.context.TrainContext
+    ~train.CheckpointUploadMode
+    ~train.CheckpointConsistencyMode
+    ~train.TrainContext
+    ~train.ValidationFn
+    ~train.ValidationTaskConfig
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.PreemptionInfo
 
 **Functions**
 
@@ -143,9 +166,11 @@ Ray Train Utilities
     :nosignatures:
     :toctree: doc/
 
+    ~train.get_all_reported_checkpoints
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
+    ~train.get_preemption_info
     ~train.report
 
 **Collective**
@@ -165,6 +190,8 @@ Ray Train Output
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
+    ~train.ReportedCheckpoint
+    ~train.ReportedCheckpointStatus
     ~train.Result
 
 Ray Train Errors
@@ -175,8 +202,10 @@ Ray Train Errors
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.v2.api.exceptions.ControllerError
-    ~train.v2.api.exceptions.WorkerGroupError
+    ~train.ControllerError
+    ~train.PreemptionError
+    ~train.WorkerGroupError
+    ~train.TrainingFailedError
 
 Ray Tune Integration Utilities
 ------------------------------

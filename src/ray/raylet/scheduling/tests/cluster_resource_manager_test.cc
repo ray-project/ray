@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/asio/periodical_runner.h"
 
 namespace ray {
 
@@ -38,7 +39,8 @@ struct ClusterResourceManagerTest : public ::testing::Test {
   void SetUp() {
     ::testing::Test::SetUp();
     static instrumented_io_context io_context;
-    manager = std::make_unique<ClusterResourceManager>(io_context);
+    manager =
+        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_context));
     manager->AddOrUpdateNode(node0,
                              CreateNodeResources(/*available_cpu*/ 1, /*total_cpu*/ 1));
     manager->AddOrUpdateNode(node1,
@@ -183,40 +185,6 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   // Add again and make sure the available == 1 (<= total).
   manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
   ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
-}
-
-TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskResources) {
-  const auto &node_resources = manager->GetNodeResources(node0);
-  ASSERT_TRUE(node_resources.normal_task_resources.IsEmpty());
-
-  rpc::ResourcesData resources_data;
-  resources_data.set_resources_normal_task_changed(true);
-  resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-  resources_data.mutable_resources_normal_task()->insert({"CPU", 0.5});
-
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
-
-  (*resources_data.mutable_resources_normal_task())["CPU"] = 0.8;
-  resources_data.set_resources_normal_task_changed(false);
-  resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
-
-  resources_data.set_resources_normal_task_changed(true);
-  resources_data.set_resources_normal_task_timestamp(0);
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
-
-  resources_data.set_resources_normal_task_changed(true);
-  resources_data.set_resources_normal_task_timestamp(0);
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
-
-  resources_data.set_resources_normal_task_changed(true);
-  resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.8);
 }
 
 }  // namespace ray

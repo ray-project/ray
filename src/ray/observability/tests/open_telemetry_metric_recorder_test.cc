@@ -26,10 +26,9 @@ class OpenTelemetryMetricRecorderTest : public ::testing::Test {
 
   static void SetUpTestSuite() {
     // Initialize the OpenTelemetryMetricRecorder with a mock endpoint and intervals
-    OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-        "localhost:1234",
-        std::chrono::milliseconds(10000),
-        std::chrono::milliseconds(5000));
+    OpenTelemetryMetricRecorder::GetInstance().Start("localhost:1234",
+                                                     std::chrono::milliseconds(10000),
+                                                     std::chrono::milliseconds(5000));
   }
 
   static void TearDownTestSuite() {

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Set up and navigate the Ray Dashboard web UI for monitoring cluster state, tracking task and actor performance, and troubleshooting distributed applications.
+
 .. _observability-getting-started:
 
 Ray Dashboard
@@ -94,6 +97,24 @@ A :ref:`Ray Job <jobs-overview>` is a Ray workload that uses Ray APIs (e.g., ``r
 The Job view displays a list of active, finished, and failed Jobs, and clicking on an ID allows users to view detailed information about that Job.
 For more information on Ray Jobs, see the :ref:`Ray Job Overview section <jobs-overview>`.
 
+Custom names for jobs
+~~~~~~~~~~~~~~~~~~~~~
+
+The **Name** column in the Jobs view displays the value of the ``job_name`` key from the Job's metadata.
+You can set it when submitting a Job via the :ref:`Ray Job API <jobs-quickstart>`:
+
+.. code-block:: python
+
+    from ray.job_submission import JobSubmissionClient
+
+    client = JobSubmissionClient("http://127.0.0.1:8265")
+    client.submit_job(
+        entrypoint="echo hello",
+        metadata={"job_name": "my-training-job"},
+    )
+
+If ``job_name`` is not provided in the metadata, it defaults to the job ID. Job names do not need to be unique.
+
 Job Profiling
 ~~~~~~~~~~~~~
 
@@ -130,7 +151,7 @@ Task Timeline
 
 First, download the chrome tracing file by clicking the download button. Alternatively, you can :ref:`use CLI or SDK to export the tracing file <ray-core-timeline>`.
 
-Second, use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use the Perfetto as it is the recommendation way to visualize chrome tracing files.
+Second, use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use Perfetto as it is the recommended way to visualize chrome tracing files.
 
 In the timeline visualization of Ray Tasks and Actors, there are Node rows (hardware) and Worker rows (processes).
 Each Worker rows display a list of Task events (e.g., Task scheduled, Task running, input/output deserialization, etc.) happening from that Worker over time.
@@ -311,7 +332,7 @@ Additionally, users can see a snapshot of hardware utilization from the :ref:`Cl
 View the resource utilization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors to use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
 These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
 
 - See the logical and physical resource utilization over time from the :ref:`Metrics view <dash-metrics-view>`.

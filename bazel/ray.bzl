@@ -3,20 +3,22 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-COPTS_WITHOUT_LOG = select({
+COPTS_TESTS = select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
     "@platforms//os:windows": [
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
+        # Prevent Windows.h from including WinSock.h, which conflicts with
+        # WinSock2.h used by Boost.Asio.
+        "-DWIN32_LEAN_AND_MEAN",
     ],
     "//conditions:default": [
         "-Wunused-result",
         "-Wconversion-null",
         "-Wno-misleading-indentation",
         "-Wimplicit-fallthrough",
-        "-Wshadow",
     ],
 }) + select({
     "//:clang-cl": [
@@ -26,7 +28,10 @@ COPTS_WITHOUT_LOG = select({
     "//conditions:default": [],
 })
 
-COPTS = COPTS_WITHOUT_LOG
+COPTS = COPTS_TESTS + select({
+    "@platforms//os:windows": [""],
+    "//conditions:default": ["-Wshadow"],
+})
 
 PYX_COPTS = select({
     "//:msvc-cl": [],
@@ -142,10 +147,16 @@ def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility =
         **kwargs
     )
 
-def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
+def ray_cc_test(name, deps = [], linkopts = [], copts = [], use_ray_gtest_main = True, **kwargs):
+    # By default, all `ray_cc_test` targets use `ray_gtest_main`.
+    # Some tests might need bespoke setup logic, so let them skip this dependency.
+    if use_ray_gtest_main:
+      deps = deps + ["//src/ray/common:ray_gtest_main"]
+
     cc_test(
         name = name,
-        copts = COPTS + copts,
+        deps = deps,
+        copts = COPTS_TESTS + copts,
         linkopts = linkopts + ["-pie"],
         **kwargs
     )

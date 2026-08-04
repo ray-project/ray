@@ -1,15 +1,20 @@
 import argparse
 import logging
 import os
+import socket
 import sys
 
+import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private import logging_utils
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_middleware,
+)
 from ray._private.process_watcher import create_check_raylet_task
-from ray._raylet import GcsClient
+from ray._raylet import RUNTIME_ENV_AGENT_PORT_NAME, GcsClient, persist_port
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
@@ -23,12 +28,19 @@ def import_libs():
 
 import_libs()
 
+import aiohttp  # noqa: E402
 import runtime_env_consts  # noqa: E402
 from aiohttp import web  # noqa: E402
 from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runtime env agent.")
+    parser.add_argument(
+        "--node-id",
+        required=True,
+        type=str,
+        help="the unique ID of this node.",
+    )
     parser.add_argument(
         "--node-ip-address",
         required=True,
@@ -41,6 +53,13 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="The port on which the runtime env agent will receive HTTP requests.",
+    )
+    parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="The path of this ray session directory.",
     )
 
     parser.add_argument(
@@ -158,6 +177,8 @@ if __name__ == "__main__":
         runtime_env_agent_port=args.runtime_env_agent_port,
     )
 
+    ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
+
     # POST /get_or_create_runtime_env
     # body is serialzied protobuf GetOrCreateRuntimeEnvRequest
     # reply is serialzied protobuf GetOrCreateRuntimeEnvReply
@@ -194,7 +215,7 @@ if __name__ == "__main__":
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
 
-    app = web.Application()
+    app = web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(
@@ -218,13 +239,24 @@ if __name__ == "__main__":
         check_raylet_task = create_check_raylet_task(
             args.log_dir, gcs_client, parent_dead_callback, loop
         )
+
+    port = args.runtime_env_agent_port or 0
+    infos = socket.getaddrinfo(args.node_ip_address, port, type=socket.SOCK_STREAM)
+    family, socktype, proto, _, sockaddr = infos[0]
+    sock = socket.socket(family, socktype, proto)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(sockaddr)
+
+    bound_port = sock.getsockname()[1]
+    persist_port(
+        args.session_dir,
+        args.node_id,
+        RUNTIME_ENV_AGENT_PORT_NAME,
+        bound_port,
+    )
+
     try:
-        web.run_app(
-            app,
-            host=args.node_ip_address,
-            port=args.runtime_env_agent_port,
-            loop=loop,
-        )
+        web.run_app(app, sock=sock, loop=loop)
     except SystemExit as e:
         agent._logger.info(f"SystemExit! {e}")
         # We have to poke the task exception, or there's an error message

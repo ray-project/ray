@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 # LICENSE: MIT
 """
 Adapted from https://github.com/karpathy/minGPT
@@ -19,8 +21,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+from ray._common.deprecation import Deprecated
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import Deprecated
 
 
 @DeveloperAPI

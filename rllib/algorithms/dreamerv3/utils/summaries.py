@@ -364,7 +364,7 @@ def _report_obs(
         metrics.log_value(
             metrics_key,
             sampled_vs_computed_images,
-            reduce=None,  # No reduction, we want the obs tensor to stay in-tact.
+            reduce="item_series",  # No reduction, we want the obs tensor to stay in-tact.
             window=1,
         )
 

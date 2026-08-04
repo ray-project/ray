@@ -5,6 +5,23 @@ Dataset API
 
 .. include:: ray.data.Dataset.rst
 
+Compute Strategy API
+--------------------
+.. currentmodule:: ray.data
+.. autosummary::
+  :nosignatures:
+  :toctree: doc/
+
+  ActorPoolStrategy
+  TaskPoolStrategy
+
+Mixing API
+----------
+.. currentmodule:: ray.data
+
+.. autoclass:: MixStoppingCondition
+    :members:
+    :undoc-members:
 
 Schema
 ------
@@ -13,7 +30,12 @@ Schema
 .. autoclass:: Schema
     :members:
 
+DatasetSummary
+--------------
+.. currentmodule:: ray.data.stats
 
+.. autoclass:: DatasetSummary
+    :members:
 
 Developer API
 -------------
@@ -32,6 +54,7 @@ Developer API
   block.BlockExecStats
   block.BlockMetadata
   block.BlockAccessor
+  RandomSeedConfig
 
 Deprecated API
 --------------
@@ -43,4 +66,3 @@ Deprecated API
   :toctree: doc/
 
   Dataset.iter_tf_batches
-  Dataset.to_torch

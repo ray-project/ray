@@ -1,8 +1,10 @@
-from typing import Dict
 import logging
+from typing import Dict
+
 import numpy as np
 
-from ray.util.timer import _Timer
+from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
@@ -16,10 +18,9 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
     StorageUnit,
 )
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.util.debug import log_once
+from ray.util.timer import _Timer
 
 logger = logging.getLogger(__name__)
 

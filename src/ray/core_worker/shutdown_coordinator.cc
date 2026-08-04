@@ -17,7 +17,6 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -46,7 +45,7 @@ bool ShutdownCoordinator::RequestShutdown(
   bool should_execute = false;
   bool execute_force = force_shutdown;
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    absl::MutexLock lock(&mu_);
     if (state_ == ShutdownState::kShutdown) {
       return false;
     }
@@ -82,13 +81,8 @@ bool ShutdownCoordinator::RequestShutdown(
   return true;
 }
 
-bool ShutdownCoordinator::TryInitiateShutdown(ShutdownReason reason) {
-  // Legacy compatibility - delegate to graceful shutdown by default
-  return RequestShutdown(false, reason, "", kInfiniteTimeout, nullptr);
-}
-
 bool ShutdownCoordinator::TryTransitionToDisconnecting() {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::MutexLock lock(&mu_);
   if (state_ != ShutdownState::kShuttingDown) {
     return false;
   }
@@ -97,7 +91,7 @@ bool ShutdownCoordinator::TryTransitionToDisconnecting() {
 }
 
 bool ShutdownCoordinator::TryTransitionToShutdown() {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::MutexLock lock(&mu_);
   if (state_ != ShutdownState::kShuttingDown && state_ != ShutdownState::kDisconnecting) {
     return false;
   }
@@ -106,17 +100,17 @@ bool ShutdownCoordinator::TryTransitionToShutdown() {
 }
 
 ShutdownState ShutdownCoordinator::GetState() const {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::ReaderMutexLock lock(&mu_);
   return state_;
 }
 
 ShutdownReason ShutdownCoordinator::GetReason() const {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::ReaderMutexLock lock(&mu_);
   return reason_;
 }
 
 bool ShutdownCoordinator::ShouldEarlyExit() const {
-  std::lock_guard<std::mutex> lock(mu_);
+  absl::ReaderMutexLock lock(&mu_);
   return state_ != ShutdownState::kRunning;
 }
 
@@ -183,7 +177,7 @@ void ShutdownCoordinator::ExecuteForceShutdown(std::string_view detail) {
   // Force shutdown bypasses normal state transitions and terminates immediately
   // This ensures that force shutdowns can interrupt hanging graceful shutdowns
   {
-    std::lock_guard<std::mutex> lock(mu_);
+    absl::MutexLock lock(&mu_);
     if (force_executed_) {
       return;
     }
@@ -229,11 +223,12 @@ void ShutdownCoordinator::ExecuteWorkerShutdown(
              reason == ShutdownReason::kOutOfMemory ||
              reason == ShutdownReason::kActorKilled) {
     TryTransitionToDisconnecting();
-    executor_->ExecuteWorkerExit(GetExitTypeString(), detail, timeout_ms);
+    executor_->ExecuteExit(
+        GetExitTypeString(), detail, timeout_ms, creation_task_exception_pb_bytes);
   } else if (reason == ShutdownReason::kIdleTimeout ||
              reason == ShutdownReason::kJobFinished) {
     TryTransitionToDisconnecting();
-    executor_->ExecuteHandleExit(GetExitTypeString(), detail, timeout_ms);
+    executor_->ExecuteExitIfIdle(GetExitTypeString(), detail, timeout_ms);
   } else {
     ExecuteGracefulShutdown(detail, timeout_ms);
   }

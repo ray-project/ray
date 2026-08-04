@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure HTTP handling in Ray Serve: Starlette request/response API, FastAPI integration, request cancellation, keep-alive timeouts, and custom HTTP adapters."
+---
+
 (serve-set-up-fastapi-http)=
 # Set Up FastAPI and HTTP
 
@@ -63,7 +69,7 @@ When the request is cancelled, a cancellation error is raised inside the `Snorin
 If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
 
 :::{note}
-A Serve application that's integrated with FastAPI still respects the `route_prefix` set through Serve. The routes are that registered through the FastAPI `app` object are layered on top of the route prefix. For instance, if your Serve application has `route_prefix = /my_app` and you decorate a method with `@app.get("/fetch_data")`, then you can call that method by sending a GET request to the path `/my_app/fetch_data`.
+A Serve application that's integrated with FastAPI still respects the `route_prefix` set through Serve. The routes that are registered through the FastAPI `app` object are layered on top of the route prefix. For instance, if your Serve application has `route_prefix = /my_app` and you decorate a method with `@app.get("/fetch_data")`, then you can call that method by sending a GET request to the path `/my_app/fetch_data`.
 :::
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_fastapi__
@@ -87,8 +93,18 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 :language: python
 ```
 
-This is useful for scaling out an existing FastAPI app with no modifications necessary.
-Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
+This is useful for scaling out an existing FastAPI app with no modifications necessary. Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
+
+### FastAPI Middleware
+
+Configure HTTP middleware on the FastAPI app that you pass to {mod}`@serve.ingress <ray.serve.ingress>`.
+The `HTTPOptions.middlewares` field is deprecated.
+
+```{literalinclude} doc_code/http_guide/http_guide.py
+:start-after: __begin_fastapi_middleware__
+:end-before: __end_fastapi_middleware__
+:language: python
+```
 
 ### WebSockets
 
@@ -110,19 +126,24 @@ Query the deployment using the `websockets` package (`pip install websockets`):
 :language: python
 ```
 
+### FastAPI factory pattern
+
+Ray Serve's object-based pattern, shown previously, requires FastAPI objects to be serializable via cloudpickle, which prevents the use of some standard libraries like `FastAPIInstrumentor` due to their reliance on non-serializable components such as thread locks. The factory pattern create the object of FastAPI directly on each replica, avoiding the need for FastAPI object serialization.
+
+```{literalinclude} doc_code/http_guide/http_guide.py
+:start-after: __begin_fastapi_factory_pattern__
+:end-before: __end_fastapi_factory_pattern__
+:language: python
+```
+
 (serve-http-streaming-response)=
 ## Streaming Responses
 
-Some applications must stream incremental results back to the caller.
-This is common for text generation using large language models (LLMs) or video processing applications.
-The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
+Some applications must stream incremental results back to the caller. This is common for text generation using large language models (LLMs) or video processing applications. The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
 
-To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler.
-This is supported for basic HTTP ingress deployments using a `__call__` method and when using the [FastAPI integration](serve-fastapi-http).
+To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler. This is supported for basic HTTP ingress deployments using a `__call__` method and when using the [FastAPI integration](serve-fastapi-http).
 
-The code below defines a Serve application that incrementally streams numbers up to a provided `max`.
-The client-side code is also updated to handle the streaming outputs.
-This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced.html#streaming-requests) library.
+The code below defines a Serve application that incrementally streams numbers up to a provided `max`. The client-side code is also updated to handle the streaming outputs. This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced.html#streaming-requests) library.
 
 ```{literalinclude} doc_code/http_guide/streaming_example.py
 :start-after: __begin_example__
@@ -153,9 +174,7 @@ Got result 0.9s after start: '9'
 
 ### Terminating the stream when a client disconnects
 
-In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned.
-If you pass an async generator to `StreamingResponse`, it is cancelled and raises an `asyncio.CancelledError` when the client disconnects.
-Note that you must `await` at some point in the generator for the cancellation to occur.
+In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned. If you pass an async generator to `StreamingResponse`, it is cancelled and raises an `asyncio.CancelledError` when the client disconnects. Note that you must `await` at some point in the generator for the cancellation to occur.
 
 In the example below, the generator streams responses forever until the client disconnects, then it prints that it was cancelled and exits. Save this code in `stream.py` and run it:
 
@@ -192,11 +211,4 @@ Client disconnecting
 (serve-http-guide-keep-alive-timeout)=
 ## Set keep alive timeout
 
-Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn
-keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive
-timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve
-config files. This config is global to your Ray cluster, and you can't update it during
-runtime. You can also set the `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` environment variable to
-set the keep alive timeout. `RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S` takes
-precedence over the `keep_alive_timeout_s` config if both are set. See
-Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.
+Serve uses a Uvicorn HTTP server internally to serve HTTP requests. By default, Uvicorn keeps HTTP connections alive for 5 seconds between requests. Modify the keep-alive timeout by setting the `keep_alive_timeout_s` in the `http_options` field of the Serve config files. This config is global to your Ray cluster, and you can't update it during runtime. See Uvicorn's keep alive timeout [guide](https://www.uvicorn.org/server-behavior/#timeouts) for more information.

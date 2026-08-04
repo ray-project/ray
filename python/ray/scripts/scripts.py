@@ -1,8 +1,8 @@
-import copy
 import json
 import logging
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -10,36 +10,38 @@ import time
 import urllib
 import urllib.parse
 import warnings
-import shutil
+from collections import deque
 from datetime import datetime
-from typing import Optional, Set, List, Tuple
-from ray._common.utils import load_class
-from ray.dashboard.modules.metrics import install_and_start_prometheus
-from ray.util.check_open_ports import check_open_ports
-import requests
+from typing import List, Optional, Set, Tuple
 
 import click
 import colorama
-import psutil
-import yaml
+import requests
 
 import ray
+import ray._common.usage.usage_constants as usage_constant
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
+from ray._common.network_utils import build_address, get_localhost_ip, parse_address
+from ray._common.usage import usage_lib
+from ray._common.utils import load_class
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
+from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
-    parse_node_labels_json,
     parse_node_labels_from_yaml_file,
+    parse_node_labels_json,
     parse_node_labels_string,
 )
+from ray._private.log import format_returncode, setup_process_exit_logger
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.utils import (
     get_ray_client_dependency_error,
     parse_resources_json,
 )
-from ray._common.network_utils import parse_address, build_address
-from ray._private.internal_api import memory_summary
-from ray._common.usage import usage_lib
-import ray._common.usage.usage_constants as usage_constant
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
+from ray.autoscaler._private.cli_output_helpers import print_next_steps_context_note
 from ray.autoscaler._private.commands import (
     RUN_ENV_TYPES,
     attach_cluster,
@@ -57,12 +59,76 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.util.annotations import PublicAPI
 from ray.core.generated import autoscaler_pb2
-from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.scripts.symmetric_run import symmetric_run
+from ray.util.annotations import PublicAPI
+from ray.util.check_open_ports import check_open_ports
 
+import psutil
 
 logger = logging.getLogger(__name__)
+
+
+def _tail_file(path: str, max_lines: int = 200) -> str:
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return "".join(deque(f, maxlen=max_lines))
+
+
+def _log_unexpected_subprocess_exit_details(
+    unexpected_deceased, logs_dir: str, process_exit_logger
+) -> None:
+    """Log unexpected subprocess exits to both structured and console outputs."""
+    lines_for_file = []
+    exit_codes_by_process_type = {}
+    with cli_logger.indented():
+        for process_type, process in unexpected_deceased:
+            cli_logger.error(
+                "{}",
+                cf.bold(str(process_type)),
+                _tags={"exit code": str(process.returncode)},
+            )
+            rc = getattr(process, "returncode", None)
+            rc_str = format_returncode(rc)
+            exit_codes_by_process_type.setdefault(str(process_type), set()).add(rc_str)
+            lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
+    try:
+        file_msg = "Some Ray subprocesses exited unexpectedly:\n" + "\n".join(
+            lines_for_file
+        )
+        process_exit_logger.error("%s", file_msg)
+    except Exception as e:
+        cli_logger.warning("Failed to write process exit log: {}", e)
+
+    process_types = sorted({str(t) for t, _p in unexpected_deceased})
+    for process_type in process_types:
+        exit_codes = sorted(exit_codes_by_process_type[process_type])
+        exit_codes_display = ", ".join(exit_codes)
+        for fname in (f"{process_type}.err", f"{process_type}.out"):
+            began_tail_output = False
+            try:
+                fpath = os.path.join(logs_dir, fname)
+                if not os.path.exists(fpath) or os.path.getsize(fpath) == 0:
+                    continue
+                cli_logger.newline()
+                cli_logger.error(
+                    "----- BEGIN {} tail (exit code(s)={}) -----",
+                    fname,
+                    exit_codes_display,
+                )
+                began_tail_output = True
+                cli_logger.newline()
+                cli_logger.error("{}", _tail_file(fpath))
+            except Exception as e:
+                cli_logger.error("Failed to tail process log {}: {}", fname, e)
+            finally:
+                if began_tail_output:
+                    cli_logger.newline()
+                    cli_logger.error(
+                        "----- END {} tail (exit code(s)={}) -----",
+                        fname,
+                        exit_codes_display,
+                    )
 
 
 def _check_ray_version(gcs_client):
@@ -72,12 +138,58 @@ def _check_ray_version(gcs_client):
     if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
         raise RuntimeError(
             "Ray version mismatch: cluster has Ray version "
-            f'{cluster_metadata["ray_version"]} '
+            f"{cluster_metadata['ray_version']} "
             f"but local Ray version is {ray.__version__}"
         )
 
 
-@click.group()
+class RayCLI(click.Group):
+    """Custom click.Group that groups observability commands (State CLI commands) in help output.
+
+    This overrides format_commands to split subcommands into "Observability"
+    and "Commands" sections for better readability of ray --help output.
+    """
+
+    def format_commands(self, ctx, formatter):
+        commands = []
+        for subcommand in self.list_commands(ctx):
+            cmd = self.get_command(ctx, subcommand)
+            if cmd is None:
+                continue
+            if cmd.hidden:
+                continue
+            commands.append((subcommand, cmd))
+
+        if len(commands):
+            limit = formatter.width - 6 - max(len(cmd[0]) for cmd in commands)
+
+            observability_commands = []
+            other_commands = []
+
+            observability_names = {
+                "summary",
+                "list",
+                "get",
+                "logs",
+            }
+
+            for subcommand, cmd in commands:
+                help = cmd.get_short_help_str(limit)
+                if subcommand in observability_names:
+                    observability_commands.append((subcommand, help))
+                else:
+                    other_commands.append((subcommand, help))
+
+            if other_commands:
+                with formatter.section("Commands"):
+                    formatter.write_dl(other_commands)
+
+            if observability_commands:
+                with formatter.section("Observability"):
+                    formatter.write_dl(observability_commands)
+
+
+@click.group(cls=RayCLI)
 @click.option(
     "--logging-level",
     required=False,
@@ -489,10 +601,10 @@ Windows powershell users need additional escaping:
 @click.option(
     "--dashboard-host",
     required=False,
-    default=ray_constants.DEFAULT_DASHBOARD_IP,
-    help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is 127.0.0.1",
+    default=get_localhost_ip(),
+    help="the host to bind the dashboard server to. Use localhost "
+    "(127.0.0.1/::1) for local access only, or 0.0.0.0/:: for all "
+    "interfaces. Defaults to localhost.",
 )
 @click.option(
     "--dashboard-port",
@@ -525,7 +637,8 @@ Windows powershell users need additional escaping:
     "--block",
     is_flag=True,
     default=False,
-    help="provide this argument to block forever in this command",
+    help="provide this argument to block forever in this command."
+    "Process exit logs will be saved to ray_process_exit.log in the logs directory.",
 )
 @click.option(
     "--plasma-directory",
@@ -554,8 +667,8 @@ Windows powershell users need additional escaping:
 @click.option(
     "--temp-dir",
     default=None,
-    help="manually specify the root temporary dir of the Ray process, only "
-    "works when --head is specified",
+    help="manually specify the root temporary dir of the Ray process. Can be "
+    "specified per node.",
 )
 @click.option(
     "--system-config",
@@ -647,31 +760,40 @@ Windows powershell users need additional escaping:
     "--system-reserved-cpu",
     required=False,
     type=float,
-    help="The amount of cpu cores to reserve for ray system processes. Cores can be "
-    "fractional i.e. 0.5 means half a cpu core. "
-    "By default, the min of 20% and 1 core will be reserved."
-    "Must be >= 0.5 and < total number of available cores. "
-    "This option only works if --enable-resource-isolation is set.",
+    help=" The number of cpu cores to reserve for ray system processes. "
+    "Cores can be fractional i.e. 1.5 means one and a half a cpu core. "
+    "By default, the value will be atleast 1 core, and at maximum 3 cores. The default value "
+    "is calculated using the formula min(3.0, max(1.0, 0.05 * num_cores_on_the_system)) "
+    "This option only works if --enable_resource_isolation is set.",
 )
 @click.option(
     "--system-reserved-memory",
     required=False,
     type=int,
     help="The amount of memory (in bytes) to reserve for ray system processes. "
-    "By default, the min of 10% and 25GB plus object_store_memory will be reserved. "
-    "Must be >= 100MB and system-reserved-memory + object-store-bytes < total available memory "
-    "This option only works if --enable-resource-isolation is set.",
+    "By default, the value will be atleast 500MB, and at most 10GB. The default value is  "
+    "calculated using the formula min(10GB, max(500MB, 0.10 * memory_available_on_the_system)) "
+    "This option only works if --enable_resource_isolation is set.",
 )
 @click.option(
     "--cgroup-path",
     required=False,
-    hidden=True,
     type=str,
     help="The path for the cgroup the raylet should use to enforce resource isolation. "
     "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
-    "The raylet must have read/write permissions to this path. "
+    "The process starting ray must have read/write permissions to this path.  "
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
-    "This option only works if --enable-resource-isolation is set.",
+    "This option only works if enable_resource_isolation is True.",
+)
+@click.option(
+    "--proxy-server-url",
+    required=False,
+    type=str,
+    help="[Experimental] The server url to redirect dashboard backend requests to. "
+    "By default, the dashboard requests will be directed to the Ray api server. "
+    "If you have a custom server to serve the dashboard requests, "
+    "you can set this option to override the server url. "
+    "Ex: --proxy-server-url=http://historyserver:8080 ",
 )
 @add_click_logging_options
 @PublicAPI
@@ -721,6 +843,7 @@ def start(
     system_reserved_cpu,
     system_reserved_memory,
     cgroup_path,
+    proxy_server_url,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -767,14 +890,6 @@ def start(
                 cf.bold('--labels="key1=val1,key2=val2"'),
             )
     labels_dict = {**labels_from_file, **labels_from_string}
-    if temp_dir and not head:
-        cli_logger.warning(
-            f"`--temp-dir={temp_dir}` option will be ignored. "
-            "`--head` is a required flag to use `--temp-dir`. "
-            "temp_dir is only configurable from a head node. "
-            "All the worker nodes will use the same temp_dir as a head node. "
-        )
-        temp_dir = None
 
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
@@ -783,7 +898,18 @@ def start(
         system_reserved_memory=system_reserved_memory,
     )
 
-    redirect_output = None if not no_redirect_output else True
+    # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
+    # - For worker processes, stdout/stderr redirection is controlled in C++ via
+    #   `RAY_LOG_TO_STDERR`, so we pass it to the raylet/worker subprocess env via
+    #   RayParams.env_vars (without touching os.environ).
+    if no_redirect_output:
+        log_to_stderr = True
+        env_vars = {
+            ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE: "1",
+        }
+    else:
+        log_to_stderr = None
+        env_vars = None
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
@@ -806,7 +932,7 @@ def start(
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
-        redirect_output=redirect_output,
+        log_to_stderr=log_to_stderr,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -830,6 +956,8 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        proxy_server_url=proxy_server_url,
+        env_vars=env_vars,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -853,7 +981,8 @@ def start(
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+                **(ray_params.env_vars or {}),
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
             }
 
         if (
@@ -936,6 +1065,9 @@ def start(
                     " flag of `ray start` command."
                 )
 
+        # Ensure auth token is available if authentication mode is token
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
@@ -951,6 +1083,7 @@ def start(
         cli_logger.success("-" * len(startup_msg))
         cli_logger.newline()
         with cli_logger.group("Next steps"):
+            print_next_steps_context_note(cli_logger, cf)
             dashboard_url = node.address_info["webui_url"]
             if ray_constants.ENABLE_RAY_CLUSTER:
                 cli_logger.print("To add another node to this Ray cluster, run")
@@ -958,9 +1091,11 @@ def start(
                 # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
                     cf.bold(" {} ray start --address='{}'"),
-                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
-                    if ray_constants.IS_WINDOWS_OR_OSX
-                    else "",
+                    (
+                        f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                        if ray_constants.IS_WINDOWS_OR_OSX
+                        else ""
+                    ),
                     bootstrap_address,
                 )
 
@@ -971,11 +1106,13 @@ def start(
                 cli_logger.print(
                     "ray{}init({})",
                     cf.magenta("."),
-                    "_node_ip_address{}{}".format(
-                        cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
-                    )
-                    if include_node_ip_address
-                    else "",
+                    (
+                        "_node_ip_address{}{}".format(
+                            cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
+                        )
+                        if include_node_ip_address
+                        else ""
+                    ),
                 )
 
             if dashboard_url:
@@ -1082,7 +1219,7 @@ def start(
                 cf.bold("--address"),
                 cf.bold(address),
             )
-            raise Exception("Cannot canonicalize address " f"`--address={address}`.")
+            raise Exception(f"Cannot canonicalize address `--address={address}`.")
 
         ray_params.gcs_address = bootstrap_address
 
@@ -1093,17 +1230,17 @@ def start(
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
+        # Ensure auth token is available if authentication mode is token
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+
         node = ray._private.node.Node(
-            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=False,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            connect_only=False,
         )
         temp_dir = node.get_temp_dir_path()
-
-        # TODO(hjiang): Validate whether specified resource is true for physical
-        # resource.
-
-        # Ray and Python versions should probably be checked before
-        # initializing Node.
-        node.check_version_info()
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."
@@ -1119,6 +1256,8 @@ def start(
     ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
     if block:
+        logs_dir = node.get_logs_dir_path()
+        process_exit_log_path = os.path.join(logs_dir, "ray_process_exit.log")
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
@@ -1129,7 +1268,15 @@ def start(
                 "printed if any of them terminate unexpectedly. Subprocesses "
                 "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
+            cli_logger.print(
+                "Process exit logs will be saved to: {}", cf.bold(process_exit_log_path)
+            )
             cli_logger.flush()
+            try:
+                process_exit_logger = setup_process_exit_logger(process_exit_log_path)
+            except Exception as e:
+                cli_logger.warning("Failed to init process exit logger: {}", e)
+                process_exit_logger = None
 
         while True:
             time.sleep(1)
@@ -1155,17 +1302,16 @@ def start(
             if len(unexpected_deceased) > 0:
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprocesses exited unexpectedly:")
-
-                with cli_logger.indented():
-                    for process_type, process in unexpected_deceased:
-                        cli_logger.error(
-                            "{}",
-                            cf.bold(str(process_type)),
-                            _tags={"exit code": str(process.returncode)},
-                        )
+                _log_unexpected_subprocess_exit_details(
+                    unexpected_deceased,
+                    logs_dir,
+                    process_exit_logger,
+                )
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+                cli_logger.flush()
+
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
@@ -1207,6 +1353,16 @@ def stop(force: bool, grace_period: int):
         Unless `force` is specified, it gracefully kills processes. If
         processes are not cleaned within `grace_period`, it force kill all
         remaining processes.
+
+        Args:
+            force: When ``True``, send ``SIGKILL`` immediately. Otherwise send
+                ``SIGTERM`` and escalate to ``SIGKILL`` after ``grace_period``.
+            grace_period: Number of seconds to wait for graceful termination
+                before sending ``SIGKILL`` to processes that are still alive.
+            processes_to_kill: Sequence of ``(keyword, filter_by_cmd)`` pairs
+                identifying the processes to terminate. ``keyword`` is matched
+                against either the process name (when ``filter_by_cmd`` is
+                ``True``) or the joined command line.
 
         Returns:
             total_procs_found: Total number of processes found from
@@ -1353,6 +1509,89 @@ def stop(force: bool, grace_period: int):
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
     ray._common.utils.reset_ray_address()
+
+
+@cli.command(name="kill-actor")
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--name",
+    required=False,
+    type=str,
+    help="Named actor to kill.",
+)
+@click.option(
+    "--namespace",
+    required=False,
+    type=str,
+    help="Namespace for named actor (when using --name).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="If set, kill the actor forcefully. Otherwise, request graceful termination.",
+)
+@click.option(
+    "--no-restart",
+    is_flag=True,
+    default=False,
+    help="Disable automatic restart of the actor after kill."
+    "NOTE: This flag only takes effect when using --force.",
+)
+def kill_actor(
+    address: Optional[str],
+    name: Optional[str],
+    namespace: Optional[str],
+    force: bool,
+    no_restart: bool,
+):
+    """Kill an actor by name.
+    Args:
+        address: Override the address to connect to.
+        name: Named actor to kill.
+        namespace: Namespace for named actor.
+        force: If set, kill the actor forcefully. Otherwise attempt graceful termination.
+        no_restart: If set, the actor will not be restarted after being killed.
+
+    Examples:
+        ray kill-actor MyActor
+        ray kill-actor MyActor --namespace my_namespace
+        ray kill-actor MyActor --force
+        ray kill-actor MyActor --force --no-restart
+    """
+    # Validate input: require a name
+    if not name:
+        raise click.ClickException("Must specify --name to identify the actor.")
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    # Respect token-based authentication when enabled.
+    ensure_token_if_auth_enabled(None, create_token_if_missing=False)
+
+    # Connect to the cluster (no driver logging)
+    if not ray.is_initialized():
+        ray.init(address=address, namespace=namespace, log_to_driver=False)
+
+    if not force and no_restart:
+        click.echo(
+            "WARNING: --no-restart flag is only effective with --force (graceful termination does not support controlling actor restart).",
+            err=True,
+        )
+
+    try:
+        actor_handle = ray.get_actor(name, namespace=namespace)
+    except ValueError:
+        raise click.ClickException(
+            f"No named actor found: {name} (namespace={namespace})"
+        )
+    if force:
+        ray.kill(actor_handle, no_restart=no_restart)
+        click.echo(f"Actor killed (force): {name}")
+    else:
+        actor_handle.__ray_terminate__.remote()
+        click.echo(f"Requested graceful termination for actor: {name}")
 
 
 @cli.command()
@@ -1585,6 +1824,12 @@ def monitor(cluster_config_file, lines, cluster_name):
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.",
 )
+@click.option(
+    "--node-ip",
+    required=False,
+    type=str,
+    help="IP address of the node to attach to. If not specified, attaches to head node.",
+)
 @add_click_logging_options
 @PublicAPI
 def attach(
@@ -1596,6 +1841,7 @@ def attach(
     no_config_cache,
     new,
     port_forward,
+    node_ip,
 ):
     """Create or attach to a SSH session to a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]
@@ -1608,6 +1854,7 @@ def attach(
         no_config_cache=no_config_cache,
         new=new,
         port_forward=port_forward,
+        node_ip=node_ip,
     )
 
 
@@ -1727,18 +1974,18 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
 )
 @add_click_logging_options
 def submit(
-    cluster_config_file,
-    screen,
-    tmux,
-    stop,
-    start,
-    cluster_name,
-    no_config_cache,
-    port_forward,
-    script,
-    args,
-    script_args,
-    disable_usage_stats,
+    cluster_config_file: str,
+    screen: bool,
+    tmux: bool,
+    stop: bool,
+    start: bool,
+    cluster_name: Optional[str],
+    no_config_cache: bool,
+    port_forward: Tuple[int, ...],
+    script: str,
+    args: Optional[str],
+    script_args: Tuple[str, ...],
+    disable_usage_stats: bool,
     extra_screen_args: Optional[str] = None,
 ):
     """Uploads and runs a script on the specified cluster.
@@ -1749,6 +1996,21 @@ def submit(
 
     Example:
         ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
+
+    Args:
+        cluster_config_file: Path to the cluster YAML configuration file.
+        screen: When ``True``, run the script inside a ``screen`` session.
+        tmux: When ``True``, run the script inside a ``tmux`` session.
+        stop: When ``True``, stop the cluster after the script finishes.
+        start: When ``True``, start the cluster if it is not already running.
+        cluster_name: Optional override for the cluster name configured in the cluster YAML.
+        no_config_cache: When ``True``, disable the local cluster config cache.
+        port_forward: Local ports to forward to the cluster head node.
+        script: Path to the Python script to upload and run.
+        args: Deprecated single-string form of ``script_args``. Prefer ``-- --arg1 --arg2``.
+        script_args: Positional arguments forwarded to the remote script.
+        disable_usage_stats: When ``True``, disable usage statistics collection.
+        extra_screen_args: Extra arguments appended to the ``screen`` invocation when ``screen`` is enabled.
     """
     cli_logger.doassert(
         not (screen and tmux),
@@ -2031,11 +2293,10 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._common.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray.get_runtime_context().get_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
-    size = os.path.getsize(filename)
-    logger.info(f"Trace file written to {filename} ({size} bytes).")
+    logger.info(f"Trace file written to {filename} in the ray temp directory.")
     logger.info("You can open this with chrome://tracing in the Chrome browser.")
 
 
@@ -2399,10 +2660,14 @@ def drain_node(
     reason_message: str,
     deadline_remaining_seconds: int,
 ):
-    """
-    This is NOT a public API.
+    """Manually drain a worker node.
 
-    Manually drain a worker node.
+    This is a developer-facing command used to request that GCS gracefully
+    drain a node (e.g., before manual termination). The same underlying API
+    is invoked by autoscaler v2 for idle and preemption-based termination.
+
+    The command is hidden from the top-level `ray --help` output and its
+    interface is not covered by Ray's public API stability guarantees.
     """
     # This should be before get_runtime_context() so get_runtime_context()
     # doesn't start a new worker here.
@@ -2526,63 +2791,6 @@ def healthcheck(address, component, skip_version_check):
 
 
 @cli.command()
-@click.option("-v", "--verbose", is_flag=True)
-@click.option(
-    "--dryrun",
-    is_flag=True,
-    help="Identifies the wheel but does not execute the installation.",
-)
-def install_nightly(verbose, dryrun):
-    """Install the latest wheels for Ray.
-
-    This uses the same python environment as the one that Ray is currently
-    installed in. Make sure that there is no Ray processes on this
-    machine (ray stop) when running this command.
-    """
-    raydir = os.path.abspath(os.path.dirname(ray.__file__))
-    all_wheels_path = os.path.join(raydir, "nightly-wheels.yaml")
-
-    wheels = None
-    if os.path.exists(all_wheels_path):
-        with open(all_wheels_path) as f:
-            wheels = yaml.safe_load(f)
-
-    if not wheels:
-        raise click.ClickException(
-            f"Wheels not found in '{all_wheels_path}'! "
-            "Please visit https://docs.ray.io/en/master/installation.html to "
-            "obtain the latest wheels."
-        )
-
-    platform = sys.platform
-    py_version = "{0}.{1}".format(*sys.version_info[:2])
-
-    matching_wheel = None
-    for target_platform, wheel_map in wheels.items():
-        if verbose:
-            print(f"Evaluating os={target_platform}, python={list(wheel_map)}")
-        if platform.startswith(target_platform):
-            if py_version in wheel_map:
-                matching_wheel = wheel_map[py_version]
-                break
-        if verbose:
-            print("Not matched.")
-
-    if matching_wheel is None:
-        raise click.ClickException(
-            "Unable to identify a matching platform. "
-            "Please visit https://docs.ray.io/en/master/installation.html to "
-            "obtain the latest wheels."
-        )
-    if dryrun:
-        print(f"Found wheel: {matching_wheel}")
-    else:
-        cmd = [sys.executable, "-m", "pip", "install", "-U", matching_wheel]
-        print(f"Running: {' '.join(cmd)}.")
-        subprocess.check_call(cmd)
-
-
-@cli.command()
 @click.option(
     "--show-library-path",
     "-show",
@@ -2597,20 +2805,32 @@ def install_nightly(verbose, dryrun):
     type=str,
     help="The directory to generate the bazel project template to, if provided.",
 )
+@click.option(
+    "--bazel-version",
+    default="6.5.0",
+    required=False,
+    type=str,
+    help="The bazel version to use, if provided.",
+)
 @add_click_logging_options
-def cpp(show_library_path, generate_bazel_project_template_to):
-    """Show the cpp library path and generate the bazel project template."""
+def cpp(show_library_path, generate_bazel_project_template_to, bazel_version):
+    """Show the cpp library path and generate the bazel project template.
+
+    This command MUST be run from the ray project root directory if
+    --generate-bazel-project-template-to is set.
+    """
     if sys.platform == "win32":
-        cli_logger.error("Ray C++ API is not supported on Windows currently.")
-        sys.exit(1)
+        raise click.ClickException("Ray C++ API is not supported on Windows currently.")
+
     if not show_library_path and not generate_bazel_project_template_to:
         raise ValueError(
             "Please input at least one option of '--show-library-path'"
             " and '--generate-bazel-project-template-to'."
         )
+
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
     cpp_dir = os.path.join(raydir, "cpp")
-    cpp_templete_dir = os.path.join(cpp_dir, "example")
+    cpp_template_dir = os.path.join(cpp_dir, "example")
     include_dir = os.path.join(cpp_dir, "include")
     lib_dir = os.path.join(cpp_dir, "lib")
     if not os.path.isdir(cpp_dir):
@@ -2619,33 +2839,33 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
+        out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
-        if os.path.exists(generate_bazel_project_template_to):
-            shutil.rmtree(generate_bazel_project_template_to)
-        shutil.copytree(cpp_templete_dir, generate_bazel_project_template_to)
-        out_include_dir = os.path.join(
-            generate_bazel_project_template_to, "thirdparty/include"
-        )
-        if os.path.exists(out_include_dir):
-            shutil.rmtree(out_include_dir)
+        if os.path.exists(out_dir):
+            shutil.rmtree(out_dir)
+
+        shutil.copytree(cpp_template_dir, out_dir)
+        for filename in ["_WORKSPACE", "_BUILD.bazel", "_.bazelrc"]:
+            # Renames the bazel related files by removing the leading underscore.
+            dest_name = os.path.join(out_dir, filename[1:])
+            shutil.move(os.path.join(out_dir, filename), dest_name)
+
+        out_include_dir = os.path.join(out_dir, "thirdparty/include")
         shutil.copytree(include_dir, out_include_dir)
-        out_lib_dir = os.path.join(generate_bazel_project_template_to, "thirdparty/lib")
-        if os.path.exists(out_lib_dir):
-            shutil.rmtree(out_lib_dir)
+        out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
+
+        with open(os.path.join(out_dir, ".bazelversion"), "w") as f:
+            f.write(bazel_version.strip() + "\n")
 
         cli_logger.print(
             "Project template generated to {}",
-            cf.bold(f"{os.path.abspath(generate_bazel_project_template_to)}"),
+            cf.bold(f"{os.path.abspath(out_dir)}"),
         )
+
         cli_logger.print("To build and run this template, run")
-        cli_logger.print(
-            cf.bold(
-                f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
-                " && bash run.sh"
-            )
-        )
+        cli_logger.print(cf.bold(f"    cd {os.path.abspath(out_dir)} && bash run.sh"))
 
 
 @cli.command(hidden=True)
@@ -2683,10 +2903,45 @@ def shutdown_prometheus():
         sys.exit(1)
 
 
-def add_command_alias(command, name, hidden):
-    new_command = copy.deepcopy(command)
-    new_command.hidden = hidden
-    cli.add_command(new_command, name=name)
+@cli.command(name="get-auth-token")
+@click.option(
+    "--generate",
+    is_flag=True,
+    default=False,
+    help="Generate a new token if none exists",
+)
+def get_auth_token(generate):
+    """Prints the Ray authentication token to stdout.
+
+    If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
+    """
+    from ray._private.authentication.authentication_token_setup import (
+        generate_and_save_token,
+    )
+    from ray._raylet import (
+        AuthenticationTokenLoader,
+    )
+
+    # Try to load existing token
+    loader = AuthenticationTokenLoader.instance()
+
+    if not loader.has_token(ignore_auth_mode=True):
+        if generate:
+            click.echo("Generating new authentication token...", err=True)
+            generate_and_save_token()
+            loader.reset_cache()
+        else:
+            raise click.ClickException(
+                "No authentication token found. Use ray `get-auth-token --generate` to create one.",
+            )
+
+    # Get raw token value (ignore auth mode - explicitly loading token)
+    token = loader.get_raw_token(ignore_auth_mode=True)
+
+    # Print token to stdout (for piping) without newline
+    click.echo(token, nl=False)
+    # Print newline to stderr for clean terminal display (doesn't affect piping)
+    click.echo("", err=True)
 
 
 cli.add_command(dashboard)
@@ -2694,17 +2949,11 @@ cli.add_command(debug)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(up)
-add_command_alias(up, name="create_or_update", hidden=True)
 cli.add_command(attach)
 cli.add_command(exec)
-add_command_alias(exec, name="exec_cmd", hidden=True)
-add_command_alias(rsync_down, name="rsync_down", hidden=True)
-add_command_alias(rsync_up, name="rsync_up", hidden=True)
 cli.add_command(submit)
 cli.add_command(down)
-add_command_alias(down, name="teardown", hidden=True)
 cli.add_command(kill_random_node)
-add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
@@ -2714,7 +2963,6 @@ cli.add_command(local_dump)
 cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
-cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
@@ -2722,19 +2970,22 @@ cli.add_command(metrics_group)
 cli.add_command(drain_node)
 cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
+cli.add_command(symmetric_run, name="symmetric-run")
+cli.add_command(get_auth_token)
+cli.add_command(kill_actor)
 
 try:
     from ray.util.state.state_cli import (
+        logs_state_cli_group,
         ray_get,
         ray_list,
-        logs_state_cli_group,
         summary_state_cli_group,
     )
 
     cli.add_command(ray_list, name="list")
     cli.add_command(ray_get, name="get")
-    add_command_alias(summary_state_cli_group, name="summary", hidden=False)
-    add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+    cli.add_command(summary_state_cli_group, name="summary")
+    cli.add_command(logs_state_cli_group, name="logs")
 except ImportError as e:
     logger.debug(f"Integrating ray state command line tool failed: {e}")
 
@@ -2742,15 +2993,15 @@ except ImportError as e:
 try:
     from ray.dashboard.modules.job.cli import job_cli_group
 
-    add_command_alias(job_cli_group, name="job", hidden=False)
+    cli.add_command(job_cli_group, name="job")
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 
 
 try:
-    from ray.serve.scripts import serve_cli
+    from ray.serve.scripts import cli as serve_cli_group
 
-    cli.add_command(serve_cli)
+    cli.add_command(serve_cli_group, name="serve")
 except Exception as e:
     logger.debug(f"Integrating ray serve command line tool failed with {e}")
 

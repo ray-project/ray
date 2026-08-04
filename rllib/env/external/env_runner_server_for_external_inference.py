@@ -1,10 +1,11 @@
-from collections import defaultdict
 import pickle
 import socket
 import threading
 import time
+from collections import defaultdict
 from typing import Collection, DefaultDict, List, Optional, Union
 
+import ray
 from ray.rllib.core import (
     COMPONENT_RL_MODULE,
     DEFAULT_AGENT_ID,
@@ -12,21 +13,23 @@ from ray.rllib.core import (
 )
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.external.rllink import (
+    RLlink,
     get_rllink_message,
     send_rllink_message,
-    RLlink,
 )
+from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
+    EPISODE_AGENT_RETURN_MEAN,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
     EPISODE_LEN_MIN,
+    EPISODE_MODULE_RETURN_MEAN,
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
@@ -87,7 +90,9 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
         self.client_socket = None
         self.address = None
 
-        self.metrics = MetricsLogger()
+        self.metrics: MetricsLogger = MetricsLogger(
+            stats_cls_lookup=config.stats_cls_lookup, root=False
+        )
 
         self._episode_chunks_to_return: Optional[List[SingleAgentEpisode]] = None
         self._done_episodes_for_metrics: List[SingleAgentEpisode] = []
@@ -219,6 +224,8 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]
+                if isinstance(rl_module_state, ray.ObjectRef):
+                    rl_module_state = ray.get(rl_module_state)
                 if (
                     isinstance(rl_module_state, dict)
                     and DEFAULT_MODULE_ID in rl_module_state
@@ -354,11 +361,11 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
         self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
         # Per-agent returns.
         self.metrics.log_value(
-            ("agent_episode_returns_mean", DEFAULT_AGENT_ID), ret, window=win
+            (EPISODE_AGENT_RETURN_MEAN, DEFAULT_AGENT_ID), ret, window=win
         )
         # Per-RLModule returns.
         self.metrics.log_value(
-            ("module_episode_returns_mean", DEFAULT_MODULE_ID), ret, window=win
+            (EPISODE_MODULE_RETURN_MEAN, DEFAULT_MODULE_ID), ret, window=win
         )
 
         # For some metrics, log min/max as well.

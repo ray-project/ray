@@ -1,15 +1,35 @@
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+import warnings
+from functools import partial
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
+if TYPE_CHECKING:
+    import pyarrow.fs
+
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
 )
+from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+    _SHUFFLE_MAP_RUNTIME_ENV,
+    _make_hash_partition_fn,
+)
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
-from ray.data._internal.execution.operators.join import JoinOperator
+from ray.data._internal.execution.operators.join import (
+    JoinOperator,
+    _make_join_reduce_fn,
+)
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
+    ShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
+    ShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
@@ -17,25 +37,37 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     PhysicalPlan,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     AbstractAllToAll,
-)
-from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.from_operators import AbstractFrom
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.join_operator import Join
-from ray.data._internal.logical.operators.map_operator import (
+    AbstractFrom,
     AbstractUDFMap,
+    Count,
+    Download,
     Filter,
+    InputData,
+    Join,
+    JoinType,
+    Limit,
+    ListFiles,
+    Mix,
     Project,
+    Read,
+    ReadFiles,
     StreamingRepartition,
+    StreamingSplit,
+    Union,
+    Write,
+    Zip,
 )
-from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.planner.checkpoint import (
+    plan_read_files_op_with_checkpoint_filter,
+    plan_read_op_with_checkpoint_filter,
+    plan_write_op_with_checkpoint_writer,
+)
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+from ray.data._internal.planner.plan_download_op import plan_download_op
+from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
+from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
     plan_filter_op,
@@ -44,7 +76,10 @@ from ray.data._internal.planner.plan_udf_map_op import (
     plan_udf_map_op,
 )
 from ray.data._internal.planner.plan_write_op import plan_write_op
-from ray.data.context import DataContext
+from ray.data._internal.usage import create_usage_callback
+from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
+from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.datasource.file_datasink import _FileDatasink
 
 LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
 PlanLogicalOpFn = Callable[
@@ -76,8 +111,18 @@ def plan_from_op(
 
 
 def plan_zip_op(_, physical_children, data_context):
-    assert len(physical_children) == 2
-    return ZipOperator(physical_children[0], physical_children[1], data_context)
+    assert len(physical_children) >= 2
+    return ZipOperator(data_context, *physical_children)
+
+
+def plan_mix_op(logical_op, physical_children, data_context):
+    assert len(physical_children) >= 1
+    return MixOperator(
+        data_context,
+        *physical_children,
+        weights=logical_op.weights,
+        stopping_condition=logical_op.stopping_condition,
+    )
 
 
 def plan_union_op(_, physical_children, data_context):
@@ -87,7 +132,7 @@ def plan_union_op(_, physical_children, data_context):
 
 def plan_limit_op(logical_op, physical_children, data_context):
     assert len(physical_children) == 1
-    return LimitOperator(logical_op._limit, physical_children[0], data_context)
+    return LimitOperator(logical_op.limit, physical_children[0], data_context)
 
 
 def plan_count_op(logical_op, physical_children, data_context):
@@ -97,25 +142,73 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
+def _plan_join_shuffle_v2(
+    logical_op: Join,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
+    left_keys = list(logical_op.left_key_columns)
+    right_keys = list(logical_op.right_key_columns)
+    num_partitions = logical_op.num_partitions
+    join_type = JoinType(logical_op.join_type)
+
+    left_map = ShuffleMapOp(
+        physical_children[0],
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=_make_hash_partition_fn(left_keys, num_partitions),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"JoinShuffleMapLeft(keys={tuple(left_keys)}, parts={num_partitions})",
+    )
+    right_map = ShuffleMapOp(
+        physical_children[1],
+        data_context,
+        num_partitions=num_partitions,
+        partition_fn=_make_hash_partition_fn(right_keys, num_partitions),
+        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
+        name=f"JoinShuffleMapRight(keys={tuple(right_keys)}, parts={num_partitions})",
+    )
+
+    reduce_fn = _make_join_reduce_fn(
+        join_type=join_type,
+        left_key_col_names=tuple(left_keys),
+        right_key_col_names=tuple(right_keys),
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+        left_schema=logical_op.input_dependencies[0].infer_schema(),
+        right_schema=logical_op.input_dependencies[1].infer_schema(),
+    )
+    return ShuffleReduceOp(
+        [left_map, right_map],
+        data_context,
+        num_partitions=num_partitions,
+        reduce_fn=reduce_fn,
+        disallow_block_splitting=False,
+        reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
+        name=f"JoinShuffleReduce(num_partitions={num_partitions})",
+    )
+
+
 def plan_join_op(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
-    assert logical_op._num_outputs is not None
+    if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+        return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
     return JoinOperator(
         data_context=data_context,
         left_input_op=physical_children[0],
         right_input_op=physical_children[1],
-        join_type=logical_op._join_type,
-        left_key_columns=logical_op._left_key_columns,
-        right_key_columns=logical_op._right_key_columns,
-        left_columns_suffix=logical_op._left_columns_suffix,
-        right_columns_suffix=logical_op._right_columns_suffix,
-        num_partitions=logical_op._num_outputs,
-        partition_size_hint=logical_op._partition_size_hint,
-        aggregator_ray_remote_args_override=logical_op._aggregator_ray_remote_args,
+        join_type=logical_op.join_type,
+        left_key_columns=logical_op.left_key_columns,
+        right_key_columns=logical_op.right_key_columns,
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+        num_partitions=logical_op.num_outputs,
+        partition_size_hint=logical_op.partition_size_hint,
+        aggregator_ray_remote_args_override=logical_op.aggregator_ray_remote_args,
     )
 
 
@@ -127,10 +220,10 @@ def plan_streaming_split_op(
     assert len(physical_children) == 1
     return OutputSplitter(
         physical_children[0],
-        n=logical_op._num_splits,
-        equal=logical_op._equal,
+        n=logical_op.num_splits,
+        equal=logical_op.equal,
         data_context=data_context,
-        locality_hints=logical_op._locality_hints,
+        locality_hints=logical_op.locality_hints,
     )
 
 
@@ -143,12 +236,15 @@ class Planner:
 
     _DEFAULT_PLAN_FNS = {
         Read: plan_read_op,
+        ReadFiles: plan_read_files_op,
+        ListFiles: plan_list_files_op,
         InputData: plan_input_data_op,
         Write: plan_write_op,
         AbstractFrom: plan_from_op,
         Filter: plan_filter_op,
         AbstractUDFMap: plan_udf_map_op,
         AbstractAllToAll: plan_all_to_all_op,
+        Mix: plan_mix_op,
         Union: plan_union_op,
         Zip: plan_zip_op,
         Limit: plan_limit_op,
@@ -157,17 +253,61 @@ class Planner:
         StreamingRepartition: plan_streaming_repartition_op,
         Join: plan_join_op,
         StreamingSplit: plan_streaming_split_op,
+        Download: plan_download_op,
     }
+    # Operators that support checkpoint filtering. Subclasses can override.
+    _CHECKPOINT_FILTER_OPS = (Read, ReadFiles)
 
-    def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
+    def __init__(self):
+        self._supports_checkpointing = False
+        self._plan_fns_for_checkpointing = {}
+
+    def plan(
+        self, logical_plan: LogicalPlan
+    ) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
         """Convert logical to physical operators recursively in post-order."""
+        checkpoint_config = logical_plan.context.checkpoint_config
+
+        callbacks = [cls() for cls in logical_plan.context.execution_callback_classes]
+        callbacks.append(create_usage_callback(logical_plan))
+
+        if checkpoint_config is not None and self._check_supports_checkpointing(
+            logical_plan
+        ):
+            self._supports_checkpointing = True
+            data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
+
+            checkpoint_callback = self._create_checkpoint_callback(
+                checkpoint_config,
+            )
+
+            callbacks.append(checkpoint_callback)
+
+            # Dynamically set the plan functions for checkpointing because they
+            # need to a reference to the checkpoint ref.
+            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
+                data_file_dir, data_file_fs
+            )
+
+        elif checkpoint_config is not None:
+            assert not self._check_supports_checkpointing(logical_plan)
+            warnings.warn(
+                "You've enabled checkpointing, but the logical plan doesn't support "
+                "checkpointing. Checkpointing will be disabled."
+            )
         physical_dag, op_map = self._plan_recursively(
             logical_plan.dag, logical_plan.context
         )
         physical_plan = PhysicalPlan(physical_dag, op_map, logical_plan.context)
-        return physical_plan
+        return physical_plan, callbacks
 
     def get_plan_fn(self, logical_op: LogicalOperator) -> PlanLogicalOpFn:
+        if self._supports_checkpointing:
+            assert self._plan_fns_for_checkpointing
+            plan_fn = find_plan_fn(logical_op, self._plan_fns_for_checkpointing)
+            if plan_fn is not None:
+                return plan_fn
+
         plan_fn = find_plan_fn(logical_op, self._DEFAULT_PLAN_FNS)
         if plan_fn is not None:
             return plan_fn
@@ -209,15 +349,79 @@ class Planner:
         queue = [physical_op]
         while queue:
             curr_physical_op = queue.pop()
-            # Once we find an operator with a logical operator set, we can stop.
             if curr_physical_op._logical_operators:
-                break
+                continue
 
             curr_physical_op.set_logical_operators(logical_op)
-            queue.extend(physical_op.input_dependencies)
+            # Add this operator to the op_map so optimizer can find it
+            op_map[curr_physical_op] = logical_op
+            queue.extend(curr_physical_op.input_dependencies)
 
+        # Also add the final operator (in case the loop didn't catch it)
         op_map[physical_op] = logical_op
         return physical_op, op_map
+
+    def _create_checkpoint_callback(
+        self,
+        checkpoint_config,
+    ) -> LoadCheckpointCallback:
+        """Factory method to create the LoadCheckpointCallback.
+
+        Subclasses can override this to use a different callback implementation.
+        """
+        return LoadCheckpointCallback(
+            checkpoint_config,
+        )
+
+    @staticmethod
+    def _get_data_file_info(logical_plan: LogicalPlan):
+        """Extract the data file directory and filesystem from the Write op's datasink.
+
+        Returns (path, filesystem) for file-based datasinks, or (None, None)
+        for non-file datasinks.
+        """
+        last_op = logical_plan.dag
+        if isinstance(last_op, Write):
+            datasink = last_op.datasink_or_legacy_datasource
+            if isinstance(datasink, _FileDatasink):
+                return datasink.unresolved_path, datasink.filesystem
+        return None, None
+
+    def _get_plan_fns_for_checkpointing(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
+        plan_fns = {
+            Read: partial(
+                plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem
+            ),
+            ReadFiles: partial(
+                plan_read_files_op_with_checkpoint_filter,
+                data_file_dir,
+                data_file_filesystem,
+            ),
+            Write: plan_write_op_with_checkpoint_writer,
+        }
+        return plan_fns
+
+    def _check_supports_checkpointing(self, logical_plan: LogicalPlan) -> bool:
+        """Check if the logical plan supports checkpointing.
+
+        Subclasses can override _CHECKPOINT_FILTER_OPS to support more operators.
+        """
+        if not isinstance(logical_plan.dag, (Write, StreamingSplit)):
+            return False
+
+        def _all_paths_contain_checkpoint_filter(op: LogicalOperator) -> bool:
+            if isinstance(op, self._CHECKPOINT_FILTER_OPS):
+                return True
+            return all(
+                _all_paths_contain_checkpoint_filter(input_dep)
+                for input_dep in op.input_dependencies
+            )
+
+        return _all_paths_contain_checkpoint_filter(logical_plan.dag)
 
 
 def find_plan_fn(

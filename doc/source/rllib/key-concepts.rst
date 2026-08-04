@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Core RLlib architecture: the Algorithm, AlgorithmConfig, EnvRunner actors for sampling, Learner actors for updates, and RLModule models.
 
 .. _rllib-key-concepts:
 
@@ -117,8 +118,8 @@ The following examples demonstrate this on RLlib's :py:class:`~ray.rllib.algorit
             results = tune.Tuner(
                 "PPO",
                 param_space=config,
-                # Train for 4000 timesteps (2 iterations).
-                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000}),
+                # Train for 2000 timesteps (1 iteration).
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 2000}),
             ).fit()
 
 .. _rllib-key-concepts-environments:
@@ -142,7 +143,7 @@ and the rules that govern environment transitions when applying actions.
 
     A simple **RL environment** where an agent starts with an initial observation returned by the ``reset()`` method.
     The agent, possibly controlled by a neural network policy, sends actions, like ``right`` or ``jump``,
-    to the environmant's ``step()`` method, which returns a reward. Here, the reward values are +5 for reaching the goal
+    to the environment's ``step()`` method, which returns a reward. Here, the reward values are +5 for reaching the goal
     and 0 otherwise. The environment also returns a boolean flag indicating whether the episode is complete.
 
 Environments may vary in complexity, from simple tasks, like navigating a grid world, to highly intricate systems, like autonomous
@@ -184,7 +185,7 @@ network models and defines how to use them during the three phases of its RL lif
 **Exploration**, for collecting training data, **inference** when computing actions for evaluation or in production,
 and **training** for computing the loss function inputs.
 
-You can chose to use :ref:`RLlib's built-in default models and configure these <rllib-default-rl-modules-docs>` as needed,
+You can choose to use :ref:`RLlib's built-in default models and configure these <rllib-default-rl-modules-docs>` as needed,
 for example for changing the number of layers or the activation functions, or
 :ref:`write your own custom models in PyTorch <rllib-implementing-custom-rl-modules>`,
 allowing you to implement any architecture and computation logic.

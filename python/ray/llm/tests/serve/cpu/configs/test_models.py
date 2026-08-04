@@ -1,14 +1,25 @@
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
 
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.serve.core.configs.accelerators import (
+    CPUAccelerator,
+    CPUConfig,
+    GPUAccelerator,
+    GPUConfig,
+    TPUAccelerator,
+    TPUConfig,
+)
+from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
@@ -156,100 +167,6 @@ class TestModelConfig:
             "upscaling_factor" not in llm_config.deployment_config["autoscaling_config"]
         )
 
-    def test_get_serve_options_with_accelerator_type(self):
-        """Test that get_serve_options returns the correct options when accelerator_type is set."""
-        serve_options = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            accelerator_type="A100-40G",
-            deployment_config={
-                "autoscaling_config": {
-                    "min_replicas": 0,
-                    "initial_replicas": 1,
-                    "max_replicas": 10,
-                },
-            },
-            runtime_env={"env_vars": {"FOO": "bar"}},
-        ).get_serve_options(name_prefix="Test:")
-
-        # Test the core functionality without being strict about Ray's automatic runtime env additions
-        assert serve_options["autoscaling_config"] == {
-            "min_replicas": 0,
-            "initial_replicas": 1,
-            "max_replicas": 10,
-        }
-        assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 1, "accelerator_type:A100-40G": 0.001},
-        ]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
-        assert serve_options["name"] == "Test:test_model"
-
-        # Check that our custom env vars are present
-        assert (
-            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
-            == "bar"
-        )
-        assert (
-            "worker_process_setup_hook"
-            in serve_options["ray_actor_options"]["runtime_env"]
-        )
-
-    def test_get_serve_options_without_accelerator_type(self):
-        """Test that get_serve_options returns the correct options when accelerator_type is not set."""
-        serve_options = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            deployment_config={
-                "autoscaling_config": {
-                    "min_replicas": 0,
-                    "initial_replicas": 1,
-                    "max_replicas": 10,
-                },
-            },
-            runtime_env={"env_vars": {"FOO": "bar"}},
-        ).get_serve_options(name_prefix="Test:")
-
-        # Test the core functionality without being strict about Ray's automatic runtime env additions
-        assert serve_options["autoscaling_config"] == {
-            "min_replicas": 0,
-            "initial_replicas": 1,
-            "max_replicas": 10,
-        }
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}]
-        assert serve_options["placement_group_strategy"] == "STRICT_PACK"
-        assert serve_options["name"] == "Test:test_model"
-
-        # Check that our custom env vars are present
-        assert (
-            serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
-            == "bar"
-        )
-        assert (
-            "worker_process_setup_hook"
-            in serve_options["ray_actor_options"]["runtime_env"]
-        )
-
-    def test_resources_per_bundle(self):
-        """Test that resources_per_bundle is correctly parsed."""
-
-        # Test the default resource bundle
-        serve_options = LLMConfig(
-            model_loading_config=dict(model_id="test_model"),
-            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
-        ).get_serve_options(name_prefix="Test:")
-
-        assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 1}] + [
-            {"GPU": 1} for _ in range(5)
-        ]
-
-        # Test the custom resource bundle
-        serve_options = LLMConfig(
-            model_loading_config=dict(model_id="test_model"),
-            engine_kwargs=dict(tensor_parallel_size=3, pipeline_parallel_size=2),
-            resources_per_bundle={"XPU": 1},
-        ).get_serve_options(name_prefix="Test:")
-        assert serve_options["placement_group_bundles"] == [
-            {"CPU": 1, "GPU": 0, "XPU": 1}
-        ] + [{"XPU": 1} for _ in range(5)]
-
     def test_engine_config_cached(self):
         """Test that the engine config is cached and not recreated when calling
         get_engine_config so the attributes on the engine will be persisted."""
@@ -263,6 +180,49 @@ class TestModelConfig:
         old_engine_config.hf_model_id = "fake_hf_model_id"
         new_engine_config = llm_config.get_engine_config()
         assert new_engine_config is old_engine_config
+
+    def test_remote_model_source_uses_model_id_as_hf_model_id(self):
+        """A remote model_source must not leak its URI into hf_model_id.
+
+        Using the URI verbatim propagates the scheme and slashes into the HF
+        cache directory name (e.g. ``models--s3:----bucket--...``). The URI
+        should instead be carried by mirror_config while hf_model_id falls back
+        to the user-supplied model_id.
+        """
+        bucket_uri = "s3://my-bucket/my-model"
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source=bucket_uri,
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == "llm_model_id"
+        assert engine_config.mirror_config is not None
+        assert engine_config.mirror_config.bucket_uri == bucket_uri
+
+    def test_hf_model_source_used_as_hf_model_id(self):
+        """A plain HuggingFace model_source is used directly as hf_model_id."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+                model_source="facebook/opt-1.3b",
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == "facebook/opt-1.3b"
+        assert engine_config.mirror_config is None
+
+    def test_no_model_source_falls_back_to_model_id(self):
+        """With no model_source, hf_model_id falls back to model_id."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="llm_model_id",
+            ),
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.hf_model_id == "llm_model_id"
+        assert engine_config.mirror_config is None
 
     def test_experimental_configs(self):
         """Test that `experimental_configs` can be used."""
@@ -301,6 +261,31 @@ class TestModelConfig:
                 log_engine_metrics=True,
                 engine_kwargs={"disable_log_stats": True},
             )
+
+    @pytest.mark.parametrize(
+        "load_format,expected_download_model",
+        [
+            ("runai_streamer", NodeModelDownloadable.NONE),
+            ("runai_streamer_sharded", NodeModelDownloadable.NONE),
+            ("tensorizer", NodeModelDownloadable.NONE),
+            (None, NodeModelDownloadable.MODEL_AND_TOKENIZER),
+        ],
+    )
+    def test_load_format_callback_context(self, load_format, expected_download_model):
+        """Test that different load_format values set correct worker_node_download_model in callback context."""
+        engine_kwargs = {"load_format": load_format} if load_format is not None else {}
+
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            engine_kwargs=engine_kwargs,
+        )
+
+        # Get the callback instance which should trigger the context setup
+        callback = llm_config.get_or_create_callback()
+
+        # Check that the callback context has the correct worker_node_download_model value
+        assert hasattr(callback, "ctx"), "Callback should have ctx attribute"
+        assert callback.ctx.worker_node_download_model == expected_download_model
 
 
 class TestFieldValidators:
@@ -359,6 +344,271 @@ class TestFieldValidators:
             )
 
         assert "Invalid lora_config" in str(exc_info.value)
+
+
+class TestAcceleratorConfigLogic:
+    """Test the accelerator_config logic and its interaction with accelerator_type."""
+
+    def test_accelerator_config_field_basic(self):
+        """Test that accelerator_config field works with basic values."""
+        # Test CPU config
+        llm_config_cpu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_config={"kind": "cpu"},
+        )
+        assert llm_config_cpu.accelerator_config.kind == "cpu"
+        engine_config = llm_config_cpu.get_engine_config()
+        assert engine_config.accelerator_config.kind == "cpu"
+
+        # Test GPU config
+        llm_config_gpu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_config={"kind": "gpu"},
+        )
+        assert llm_config_gpu.accelerator_config.kind == "gpu"
+        engine_config_gpu = llm_config_gpu.get_engine_config()
+        assert engine_config_gpu.accelerator_config.kind == "gpu"
+
+    def test_accelerator_type_with_cpu_config_raises_error(self):
+        """Test that accelerator_type with CPU config raises a validation error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_config={"kind": "cpu"},
+                accelerator_type="L4",
+            )
+
+    def test_accelerator_type_with_cpu_only_placement_group_raises_error(self):
+        """Test that accelerator_type with CPU-only placement_group_config raises error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_accelerator_type_with_empty_bundles_raises_error(self):
+        """Test that accelerator_type with empty bundles list raises error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
+            )
+
+    def test_accelerator_type_with_gpu_placement_group_succeeds(self):
+        """Test that accelerator_type with GPU-containing placement_group_config succeeds."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+            placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
+        )
+        assert llm_config.accelerator_type == "L4"
+
+    def test_accelerator_type_with_gpu_config_succeeds(self):
+        """Test that accelerator_type with GPU config succeeds."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+            accelerator_config={"kind": "gpu"},
+        )
+        assert llm_config.accelerator_type == "L4"
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.accelerator_type == "L4"
+
+    def test_vllm_engine_config_accelerator_type_with_cpu_config_raises_error(self):
+        """Test that VLLMEngineConfig rejects accelerator_type with CPU config."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test-model",
+                accelerator_type="L4",
+                accelerator_config=CPUConfig(kind="cpu"),
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_gpu_config_succeeds(self):
+        """Test that VLLMEngineConfig accepts accelerator_type with GPU config."""
+        engine_config = VLLMEngineConfig(
+            model_id="test-model",
+            accelerator_type="L4",
+            accelerator_config=GPUConfig(kind="gpu"),
+        )
+
+        assert engine_config.accelerator_type == "L4"
+
+    def test_llm_config_accelerator_type_hardware_mismatch(self):
+        """Test that passing a GPU accelerator_type with a TPU config raises an error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="Hardware mismatch",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                accelerator_config={"kind": "tpu", "topology": "4x4"},
+            )
+
+    def test_engine_config_infers_tpu_from_accelerator_type_string(self):
+        """Test that the engine config infers a TPU backend directly from the accelerator_type string."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="TPU-V6E",
+        )
+
+        # Validate engine correctly inferred the TPU backend
+        engine_config = llm_config.get_engine_config()
+
+        assert isinstance(engine_config.accelerator, TPUAccelerator)
+        assert engine_config.accelerator_type == "TPU-V6E"
+
+    def test_requires_deferred_placement_group(self):
+        """Test that requires_deferred_placement_group correctly identifies deferred PG requirements."""
+        cpu_accel = CPUAccelerator()
+        assert cpu_accel.requires_deferred_placement_group is False
+
+        gpu_accel = GPUAccelerator()
+        assert gpu_accel.requires_deferred_placement_group is False
+
+        tpu_accel_no_topo = TPUAccelerator(TPUConfig(kind="tpu"))
+        assert tpu_accel_no_topo.requires_deferred_placement_group is False
+
+        tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        assert tpu_accel_with_topo.requires_deferred_placement_group is True
+
+    @pytest.mark.parametrize(
+        "topology,num_devices,accelerator_type_str,expected_bundles_count,expected_chips_per_host",
+        [
+            ("1x1", 1, "TPU-V6E", 1, 1),
+            ("1x1", 1, "TPU-V7X", 1, 1),
+            ("4x4", 16, "TPU-V6E", 4, 4),
+            ("2x2x2", 8, "TPU-V5P", 2, 4),
+            ("2x2", 4, "TPU-V5LITEPOD", 1, 4),
+            ("2x2x1", 4, "TPU-V4", 1, 4),
+            ("2x4", 8, "TPU-V6E", 1, 8),
+        ],
+    )
+    def test_default_bundles_topology(
+        self,
+        topology,
+        num_devices,
+        accelerator_type_str,
+        expected_bundles_count,
+        expected_chips_per_host,
+    ):
+        """Test that different topologies return correct per-host bundles."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology=topology))
+        bundles = tpu_accel.default_bundles(
+            num_devices=num_devices, accelerator_type_str=accelerator_type_str
+        )
+
+        assert len(bundles) == expected_bundles_count
+        for bundle in bundles:
+            assert bundle["TPU"] == expected_chips_per_host
+            assert f"accelerator_type:{accelerator_type_str}" in bundle
+
+    def test_default_bundles_topology_missing_accelerator_type_raises(self):
+        """Test that ValueError is raised when topology is present but accelerator type is missing."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        with pytest.raises(
+            ValueError,
+            match="`accelerator_type` must be specified when `topology` is present",
+        ):
+            tpu_accel.default_bundles(num_devices=16, accelerator_type_str=None)
+
+    def test_default_bundles_topology_non_multiple_num_devices_raises(self):
+        """Test that ValueError is raised when num_devices is not a multiple of chips_per_host."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        with pytest.raises(ValueError, match="must be a multiple of chips_per_host"):
+            tpu_accel.default_bundles(num_devices=6, accelerator_type_str="TPU-V6E")
+
+
+class TestCheckpointInfo:
+    def test_apply_checkpoint_info_uses_autoconfig_and_threads_trust_remote_code(self):
+        """apply_checkpoint_info uses AutoConfig (not PretrainedConfig) and forwards
+        trust_remote_code to every HF config load call."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model")
+        )
+        mock_hf_config = MagicMock(spec=["architectures", "vision_config"])
+        mock_hf_config.architectures = ["LlavaForCausalLM"]
+
+        with patch(
+            "transformers.AutoConfig.from_pretrained", return_value=mock_hf_config
+        ) as mock_auto:
+            llm_config.apply_checkpoint_info("vision/model", trust_remote_code=True)
+
+        assert all(
+            call.kwargs["trust_remote_code"] is True
+            for call in mock_auto.call_args_list
+        )
+        assert llm_config._supports_vision is True
+        assert llm_config._model_architecture == "LlavaForCausalLM"
+
+
+class TestApplyCheckpointInfo:
+    """Test that apply_checkpoint_info derives capabilities from the HF config."""
+
+    @pytest.fixture
+    def mock_hf_config(self):
+        hf_config = MagicMock()
+        hf_config.architectures = ["Qwen2ForCausalLM"]
+        del hf_config.vision_config
+        return hf_config
+
+    def _make_llm_config(self, model_id="org/model"):
+        return LLMConfig(model_loading_config=ModelLoadingConfig(model_id=model_id))
+
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_uses_provided_hf_config_without_reloading(
+        self, mock_from_pretrained, mock_hf_config
+    ):
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info("org/repo:Q5_K_M", hf_config=mock_hf_config)
+
+        mock_from_pretrained.assert_not_called()
+        assert config._model_architecture == "Qwen2ForCausalLM"
+        assert config._supports_vision is False
+
+    def test_detects_vision_from_provided_hf_config(self, mock_hf_config):
+        mock_hf_config.vision_config = MagicMock()
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info("org/repo", hf_config=mock_hf_config)
+
+        assert config._supports_vision is True
+
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_falls_back_to_loading_from_path(
+        self, mock_from_pretrained, mock_hf_config
+    ):
+        mock_from_pretrained.return_value = mock_hf_config
+        config = self._make_llm_config()
+
+        config.apply_checkpoint_info("org/plain-model")
+
+        mock_from_pretrained.assert_called_once()
+        assert mock_from_pretrained.call_args.args[0] == "org/plain-model"
+        assert config._model_architecture == "Qwen2ForCausalLM"
+
+    @patch("transformers.AutoConfig.from_pretrained")
+    def test_load_failure_raises_value_error(self, mock_from_pretrained):
+        mock_from_pretrained.side_effect = OSError("no config.json")
+        config = self._make_llm_config()
+
+        with pytest.raises(ValueError, match="Failed to load Hugging Face config"):
+            config.apply_checkpoint_info("org/missing-model")
 
 
 if __name__ == "__main__":

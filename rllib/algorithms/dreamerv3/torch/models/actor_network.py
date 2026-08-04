@@ -9,7 +9,6 @@ import numpy as np
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
 from ray.rllib.utils.framework import try_import_torch
 
-
 torch, nn = try_import_torch()
 
 

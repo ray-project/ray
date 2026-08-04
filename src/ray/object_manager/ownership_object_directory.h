@@ -14,20 +14,20 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/pubsub/subscriber.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/pubsub/subscriber_interface.h"
 #include "ray/stats/metric.h"
 
 namespace ray {
@@ -50,12 +50,13 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
-                                       const rpc::Address &owner_address,
-                                       const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
+  void SubscribeObjectLocations(const UniqueID &callback_id,
+                                const ObjectID &object_id,
+                                const rpc::Address &owner_address,
+                                const OnLocationsFound &callback) override;
+
+  void UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                  const ObjectID &object_id) override;
 
   /// Report to the owner that the given object is added to the current node.
   /// This method guarantees ordering and batches requests.
@@ -79,6 +80,13 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   void RecordMetrics(uint64_t duration_ms) override;
 
   std::string DebugString() const override;
+
+  /// Signal that the owning node is shutting down. After this call,
+  /// object-location subscription failures caused by local client
+  /// teardown are no longer surfaced as fatal remote-owner failures
+  /// to dependent tasks. Other signals (e.g. object deletion) and
+  /// location updates still flow.
+  void MarkShuttingDown() override { is_shutting_down_ = true; }
 
  private:
   friend class OwnershipBasedObjectDirectoryTest;
@@ -113,8 +121,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   gcs::GcsClient &gcs_client_;
   /// Info about subscribers to object locations.
   absl::flat_hash_map<ObjectID, LocationListenerState> listeners_;
-  /// The client call manager used to create the RPC clients.
-  rpc::ClientCallManager client_call_manager_;
   /// The object location subscriber.
   pubsub::SubscriberInterface *object_location_subscriber_;
   /// Client pool to owners.
@@ -135,6 +141,14 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   /// A set of in-flight UpdateObjectLocationBatch requests.
   absl::flat_hash_set<WorkerID> in_flight_requests_;
+
+  /// Whether this node is shutting down. When true, object-location
+  /// subscription failures are no longer surfaced as fatal remote-owner
+  /// failures, to avoid misclassifying local client teardown as remote
+  /// owner death. Atomic because it can be set from the shutdown path
+  /// (e.g. agent-monitor thread) while the pubsub failure callback
+  /// reads it on the main service thread.
+  std::atomic<bool> is_shutting_down_ = false;
 
   /// Get or create the rpc client in the worker_rpc_clients.
   std::shared_ptr<rpc::CoreWorkerClientInterface> GetClient(

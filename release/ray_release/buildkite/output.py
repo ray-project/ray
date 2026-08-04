@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 
 def buildkite_echo(message: str, print_fn: Callable[[str], None] = print):

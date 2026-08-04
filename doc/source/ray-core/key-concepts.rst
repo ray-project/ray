@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Core primitives: tasks (remote functions), actors (stateful remote classes), objects in the distributed object store, and placement groups.
+
 .. _core-key-concepts:
 
 Key Concepts

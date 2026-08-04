@@ -15,6 +15,7 @@ from typing import Callable, Optional
 import ray
 import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
+from ray._common.serialization import pickle_dumps
 from ray._private import ray_constants
 from ray._private.inspect_util import (
     is_class_method,
@@ -22,7 +23,6 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
-from ray._private.serialization import pickle_dumps
 from ray._private.utils import (
     check_oversized_function,
     ensure_str,
@@ -34,6 +34,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
 )
 from ray.remote_function import RemoteFunction
+from ray.util.tracing.tracing_helper import _inject_tracing_into_class
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -55,6 +56,36 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode(), key])
 
 
+def build_setup_hook_export_entry(
+    setup_func: Callable, job_id: JobID
+) -> tuple[bytes, bytes, bytes]:
+    """Compute the exported payload and GCS key for a setup hook callable.
+
+    Args:
+        setup_func: The setup hook function to export.
+        job_id: The job ID to export the setup hook for.
+
+    Returns:
+        A tuple of (pickled_function, function_id, key).
+    """
+    pickled_function = pickle_dumps(
+        setup_func,
+        "Cannot serialize the worker_process_setup_hook " f"{setup_func.__name__}",
+    )
+    function_to_run_id = hashlib.shake_128(pickled_function).digest(
+        ray_constants.ID_SIZE
+    )
+    key = make_function_table_key(
+        # This value should match with gcs_function_manager.h.
+        # Otherwise, it won't be GC'ed.
+        WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS.encode(),
+        # b"FunctionsToRun",
+        job_id,
+        function_to_run_id,
+    )
+    return pickled_function, function_to_run_id, key
+
+
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
     Attributes:
@@ -71,7 +102,12 @@ class FunctionActorManager:
             ActorClass:function_id) that are already in GCS.
     """
 
-    def __init__(self, worker):
+    def __init__(self, worker: "ray._private.worker.Worker"):
+        """Initialize FunctionActorManager.
+
+        Args:
+            worker: The worker this manager belongs to.
+        """
         self._worker = worker
         self._functions_to_export = []
         self._actors_to_export = []
@@ -108,7 +144,7 @@ class FunctionActorManager:
         function_id = function_descriptor.function_id
         return self._num_task_executions[function_id]
 
-    def compute_collision_identifier(self, function_or_class):
+    def compute_collision_identifier(self, function_or_class: Callable) -> bytes:
         """The identifier is used to detect excessive duplicate exports.
         The identifier is used to determine when the same function or class is
         exported many times. This can yield false positives.
@@ -131,7 +167,7 @@ class FunctionActorManager:
         collision_identifier = function_or_class.__name__ + ":" + string_file.getvalue()
 
         # Return a hash of the identifier in case it is too large.
-        return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
+        return hashlib.sha256(collision_identifier.encode("utf-8")).digest()
 
     def load_function_or_class_from_local(self, module_name, function_or_class_name):
         """Try to load a function or class in the module from local."""
@@ -149,21 +185,8 @@ class FunctionActorManager:
         self, setup_func: Callable, timeout: Optional[int] = None
     ) -> bytes:
         """Export the setup hook function and return the key."""
-        pickled_function = pickle_dumps(
-            setup_func,
-            "Cannot serialize the worker_process_setup_hook " f"{setup_func.__name__}",
-        )
-
-        function_to_run_id = hashlib.shake_128(pickled_function).digest(
-            ray_constants.ID_SIZE
-        )
-        key = make_function_table_key(
-            # This value should match with gcs_function_manager.h.
-            # Otherwise, it won't be GC'ed.
-            WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS.encode(),
-            # b"FunctionsToRun",
-            self._worker.current_job_id.binary(),
-            function_to_run_id,
+        pickled_function, function_to_run_id, key = build_setup_hook_export_entry(
+            setup_func, self._worker.current_job_id.binary()
         )
 
         check_oversized_function(
@@ -193,8 +216,9 @@ class FunctionActorManager:
 
         return key
 
-    def export(self, remote_function):
+    def export(self, remote_function: RemoteFunction) -> None:
         """Pickle a remote function and export it to redis.
+
         Args:
             remote_function: the RemoteFunction object.
         """
@@ -330,7 +354,9 @@ class FunctionActorManager:
                 )
         return True
 
-    def get_execution_info(self, job_id, function_descriptor):
+    def get_execution_info(
+        self, job_id: JobID, function_descriptor: PythonFunctionDescriptor
+    ) -> FunctionExecutionInfo:
         """Get the FunctionExecutionInfo of a remote function.
         Args:
             job_id: ID of the job that the function belongs to.
@@ -398,18 +424,25 @@ class FunctionActorManager:
         else:
             return False
 
-    def _wait_for_function(self, function_descriptor, job_id: str, timeout=10):
+    def _wait_for_function(
+        self,
+        function_descriptor: PythonFunctionDescriptor,
+        job_id: str,
+        timeout: float = 10,
+    ):
         """Wait until the function to be executed is present on this worker.
         This method will simply loop until the import thread has imported the
         relevant function. If we spend too long in this loop, that may indicate
         a problem somewhere and we will push an error message to the user.
         If this worker is an actor, then this will wait until the actor has
         been defined.
+
         Args:
-            function_descriptor : The FunctionDescriptor of the function that
+            function_descriptor: The FunctionDescriptor of the function that
                 we want to execute.
             job_id: The ID of the job to push the error message to
                 if this times out.
+            timeout: Seconds to wait before pushing a warning to the user.
         """
         start_time = time.time()
         # Only send the warning once.
@@ -512,7 +545,11 @@ class FunctionActorManager:
         # within tasks. I tried to disable this, but it may be necessary
         # because of https://github.com/ray-project/ray/issues/1146.
 
-    def load_actor_class(self, job_id, actor_creation_function_descriptor):
+    def load_actor_class(
+        self,
+        job_id: JobID,
+        actor_creation_function_descriptor: PythonFunctionDescriptor,
+    ) -> type:
         """Load the actor class.
         Args:
             job_id: job ID of the actor.
@@ -544,6 +581,16 @@ class FunctionActorManager:
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
+
+            # Re-inject tracing into the loaded class. This is necessary because
+            # cloudpickle doesn't preserve __signature__ attributes on module-level
+            # functions. When a class is pickled and unpickled, user-defined methods
+            # are looked up from the module, losing the __signature__ that was set by
+            # _inject_tracing_into_class during actor creation. Re-injecting tracing
+            # ensures the method signatures include _ray_trace_ctx when tracing is
+            # enabled, matching the behavior expected by _tracing_actor_method_invocation.
+            _inject_tracing_into_class(actor_class)
+
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
@@ -592,7 +639,7 @@ class FunctionActorManager:
             if isinstance(object, ray.actor.ActorClass):
                 return object.__ray_metadata__.modified_class
             else:
-                return object
+                return ray.actor._modify_class(object)
         else:
             return None
 
@@ -667,7 +714,7 @@ class FunctionActorManager:
         actor_class.__module__ = module_name
         return actor_class
 
-    def _make_actor_method_executor(self, method_name: str, method):
+    def _make_actor_method_executor(self, method_name: str, method: Callable):
         """Make an executor that wraps a user-defined actor method.
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.

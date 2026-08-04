@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: How to connect RL environments to RLlib, covering single-agent, multi-agent, hierarchical, and external environment setups with the EnvRunner API.
 
 .. _rllib-environments-doc:
 
@@ -289,7 +290,7 @@ in combination.
    controlled through your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`:
    ``config.env_runners(num_env_runners=..)``.
 
-1. **Vectorization within a single process:** Many environments achieve high
+#. **Vectorization within a single process:** Many environments achieve high
    frame rates per core but are limited by policy inference latency. To address
    this limitation, create multiple environments per process to batch the policy forward pass
    across these vectorized environments. Set ``config.env_runners(num_envs_per_env_runner=..)``

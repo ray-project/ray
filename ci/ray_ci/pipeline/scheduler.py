@@ -1,9 +1,10 @@
 import click
-from ray_release.aws import get_secret_token
-from ray_release.configs.global_config import get_global_config
 
 from ci.ray_ci.pipeline.gap_filling_scheduler import GapFillingScheduler
 from ci.ray_ci.utils import ci_init, logger
+
+from ray_release.aws import get_secret_token
+from ray_release.configs.global_config import get_global_config
 
 
 @click.command()

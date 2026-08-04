@@ -1,9 +1,16 @@
 import collections
+import time
 from contextlib import contextmanager, nullcontext
-from typing import Any, Callable, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import ray
-from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
+from ray._common.utils import env_integer
+from ray.data._internal.block_batching.interfaces import (
+    Batch,
+    BlockPrefetcher,
+    FinalizedBatch,
+    FinalizedData,
+)
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
     WaitBlockPrefetcher,
@@ -11,15 +18,43 @@ from ray.data._internal.block_batching.util import (
     collate,
     finalize_batches,
     format_batches,
+    iter_threaded,
     resolve_block_refs,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatasetStats, StatsManager
-from ray.data._internal.util import make_async_gen
+from ray.data._internal.stats import DatasetStats, TimeSpan, _StatsManager
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS = env_integer(
+    "RAY_DATA_MAX_FORMAT_THREADPOOL_NUM_WORKERS", 4
+)
+
+
+def _merged_duration(
+    spans: List["TimeSpan"], blocked_start_s: float, blocked_end_s: float
+) -> float:
+    """Total time ``spans`` overlap with ``[blocked_start_s, blocked_end_s]``,
+    with overlapping spans merged so nothing is double-counted."""
+    intervals = []
+    for s in spans:
+        lo = max(s.start_s, blocked_start_s)
+        hi = min(s.end_s, blocked_end_s)
+        if hi > lo:
+            intervals.append((lo, hi))
+    if not intervals:
+        return 0.0
+    intervals.sort()
+    merged = [intervals[0]]
+    for i in range(1, len(intervals)):
+        lo, hi = intervals[i]
+        if lo <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    return sum(hi - lo for lo, hi in merged)
 
 
 class BatchIterator:
@@ -54,13 +89,16 @@ class BatchIterator:
         4. Then, in a threadpool consisting of `prefetch_batches` threads:
             a. Format the batches to the provided batch format.
             b. Apply the collate function.
-        5. Finalize each of the collated batches
-        6. Fetch outputs from the threadpool, maintaining order of the batches.
+        5. If preserve_order, restore the original batch order from the
+            threadpool output.
+        6. Finalize each of the (now ordered) collated batches.
 
     Args:
         ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
-        dataset_tag: The tag of the dataset to record timing and other statistics.
+        dataset_tags: The iterator's iteration-metric tags, a dict with keys
+            ``dataset`` (the dataset id) and ``split_index`` (the output split
+            index for stream-split iterators, or ``None`` for plain iterators).
         clear_block_after_read: Whether to clear the block from object store
             manually (i.e. without waiting for Python's automatic GC) after it
             is read. Doing so will reclaim memory faster and hence reduce the
@@ -90,28 +128,39 @@ class BatchIterator:
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
             formatting to be overlapped with the UDF. Defaults to 1.
+        prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
+            resource manager.
+        preserve_order: Whether to maintain the original order that the batches
+            were formed from the blocks (e.g., the input block order).
+            This only takes effect in the case that the format/collate threadpool
+            has more than one thread and the output batches have non-deterministic
+            order.
     """
+
+    UPDATE_METRICS_INTERVAL_S: float = 5.0
 
     def __init__(
         self,
         ref_bundles: Iterator[RefBundle],
         *,
         stats: Optional[DatasetStats] = None,
-        dataset_tag: Optional[str] = None,
+        dataset_tags: Optional[Dict[str, Optional[str]]] = None,
         clear_block_after_read: bool = False,
         batch_size: Optional[int] = None,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-        finalize_fn: Optional[Callable[[Any], Any]] = None,
+        finalize_fn: Optional[Callable[[Any], FinalizedData]] = None,
         shuffle_buffer_min_size: Optional[int] = None,
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
+        prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        preserve_order: bool = False,
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
-        self._dataset_tag = dataset_tag
+        self._dataset_tags = dataset_tags
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._drop_last = drop_last
@@ -121,6 +170,8 @@ class BatchIterator:
         self._shuffle_seed = shuffle_seed
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
+        self._prefetch_bytes_callback = prefetch_bytes_callback
+        self._preserve_order = preserve_order
         self._eager_free = (
             clear_block_after_read and DataContext.get_current().eager_free
         )
@@ -137,6 +188,11 @@ class BatchIterator:
         )
         self._yielded_first_batch = False
 
+        # This stores the last time we updated the metrics.
+        # This allows us to update metrics on some interval,
+        # by comparing it with the current timestamp.
+        self._metrics_last_updated: float = 0.0
+
     def _prefetch_blocks(
         self, ref_bundles: Iterator[RefBundle]
     ) -> Iterator[ObjectRef[Block]]:
@@ -146,11 +202,12 @@ class BatchIterator:
             num_batches_to_prefetch=self._prefetch_batches,
             batch_size=self._batch_size,
             eager_free=self._eager_free,
+            stats=self._stats,
         )
 
     def _resolve_block_refs(
         self, block_refs: Iterator[ObjectRef[Block]]
-    ) -> Iterator[Block]:
+    ) -> Iterator[Any]:
         return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
 
     def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
@@ -165,21 +222,22 @@ class BatchIterator:
         )
 
     def _format_batches(self, batches: Iterator[Batch]) -> Iterator[Batch]:
+        num_threadpool_workers = min(
+            DEFAULT_FORMAT_THREADPOOL_NUM_WORKERS, self._prefetch_batches
+        )
         return _format_in_threadpool(
             batch_iter=batches,
             stats=self._stats,
             batch_format=self._batch_format,
             collate_fn=self._collate_fn,
-            num_threadpool_workers=self._prefetch_batches,
+            num_threadpool_workers=num_threadpool_workers,
+            ensure_copy=self._ensure_copy,
         )
 
     def _finalize_batches(
         self,
         batch_iter: Iterator[Batch],
-    ) -> Iterator[Batch]:
-        if self._finalize_fn is None:
-            return batch_iter
-
+    ) -> Iterator[FinalizedBatch]:
         return finalize_batches(
             batch_iter, finalize_fn=self._finalize_fn, stats=self._stats
         )
@@ -189,7 +247,7 @@ class BatchIterator:
     ) -> Iterator[Batch]:
         return restore_original_order(batches)
 
-    def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[Batch]:
+    def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[FinalizedBatch]:
         # Step 1: Prefetch logical batches locally.
         block_iter = self._prefetch_blocks(ref_bundles)
 
@@ -202,35 +260,80 @@ class BatchIterator:
         # Step 4: Format and collate the batches in a threadpool.
         batch_iter = self._format_batches(batch_iter)
 
-        # Step 5: Finalize the batches (e.g., move to GPU).
-        batch_iter = self._finalize_batches(batch_iter)
+        # Step 5 (optional): Restore the original order of the batches
+        # if preserve_order is True, in the case that the format/collate threadpool
+        # shuffles around the batches non-deterministically.
+        # NOTE: This should happen before finalize_fn so the reorder buffer
+        # holds CPU batches rather than finalize_fn outputs (e.g., GPU tensors).
+        if self._preserve_order:
+            batch_iter = self._restore_original_batch_order(batch_iter)
 
-        # Step 6: Restore the original order of the batches, as the prior
-        # threadpool operations may have reordered the batches non-deterministically.
-        batch_iter = self._restore_original_batch_order(batch_iter)
+        # Step 6: Finalize the batches (e.g., move to GPU).
+        batch_iter = self._finalize_batches(batch_iter)
 
         yield from batch_iter
 
     def _iter_batches(self) -> Iterator[DataBatch]:
-        async_batch_iter = make_async_gen(
-            self._ref_bundles,
-            fn=self._pipeline,
-            num_workers=1,
-            preserve_ordering=False,
-        )
+        """Pull batches from the pipeline and yield batch data.
+
+        Captures the training thread's blocked window around each ``next()``
+        call and attributes it to pipeline stages via
+        ``_attribute_blocked_time``.
+        """
+        batch_iter = iter_threaded(self._ref_bundles, fn=self._pipeline)
 
         self.before_epoch_start()
 
         while True:
             with self.get_next_batch_context():
+                blocked_start_s = time.perf_counter()
                 try:
-                    batch = next(async_batch_iter)
+                    batch = next(batch_iter)
                 except StopIteration:
                     break
+                blocked_end_s = time.perf_counter()
+            self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
             with self.yield_batch_context(batch):
                 yield batch.data
 
         self.after_epoch_end()
+
+    def _attribute_blocked_time(
+        self, batch: Batch, blocked_start_s: float, blocked_end_s: float
+    ) -> None:
+        """Attribute per-stage blocked time via overlap with the training window.
+
+        Each stage's spans on ``batch.metadata.stage_timings`` are intersected
+        with the training thread's blocked window ``[blocked_start_s,
+        blocked_end_s]``. Overlapping spans are merged first, so the result
+        is the total time the stage was active during the stall (no
+        double-counting).
+
+        Limitation: only the yielded batch's spans are attributed. Other
+        in-flight batches (being processed by background threads) may also
+        overlap with the training stall window but are not counted.
+        TODO: track in-flight batches and union their spans for complete
+        attribution. The current implementation suffices for capturing
+        data-loading bottlenecks.
+
+        TODO: reorder buffer wait under ``preserve_order`` is unattributed
+        (per-stage spans are recorded at format/collate completion, before
+        the batch leaves ``restore_original_order``).
+
+        Args:
+            batch: Batch whose per-stage timings should be attributed.
+            blocked_start_s: perf_counter() just before next().
+            blocked_end_s: perf_counter() just after next() returned.
+        """
+        if self._stats is None:
+            return
+        timings = batch.metadata.stage_timings
+        for stage, spans in timings.stages():
+            overlap_s = _merged_duration(spans, blocked_start_s, blocked_end_s)
+            if overlap_s > 0:
+                self._stats.get_blocked_timer(stage).add(overlap_s)
+        self._stats.iter_batches_total += 1
+        self._stats.iter_rows_total += batch.metadata.num_rows
 
     def __iter__(self) -> Iterator[DataBatch]:
         return self._iter_batches()
@@ -239,10 +342,23 @@ class BatchIterator:
         self._yielded_first_batch = False
 
     def after_epoch_end(self):
-        StatsManager.clear_iteration_metrics(self._dataset_tag)
+        # Report 0 prefetched bytes at the end of iteration.
+        if self._prefetch_bytes_callback is not None:
+            self._prefetch_bytes_callback(0)
+
+        if self._stats is None or self._dataset_tags is None:
+            return
+
+        _StatsManager.update_iteration_metrics(
+            self._stats,
+            self._dataset_tags["dataset"],
+            self._dataset_tags["split_index"],
+        )
 
     @contextmanager
     def get_next_batch_context(self):
+        """Context around ``next(batch_iter)``: tracks total blocked time
+        and time-to-first-batch."""
         try:
             if self._stats:
                 # Always track total blocked time
@@ -261,10 +377,29 @@ class BatchIterator:
             self._yielded_first_batch = True
 
     @contextmanager
-    def yield_batch_context(self, batch: Batch):
+    def yield_batch_context(self, batch: FinalizedBatch):
+        """Context around yielding a batch to the user: tracks user time
+        and periodically flushes metrics."""
+        assert isinstance(batch, FinalizedBatch)
+        if batch.on_consume is not None:
+            batch.on_consume()
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
-        StatsManager.update_iteration_metrics(self._stats, self._dataset_tag)
+
+        # Report prefetched bytes to the executor's resource manager.
+        if self._prefetch_bytes_callback is not None and self._stats is not None:
+            self._prefetch_bytes_callback(self._stats.iter_prefetched_bytes)
+
+        if self._stats is None or self._dataset_tags is None:
+            return
+        now = time.time()
+        if (now - self._metrics_last_updated) > self.UPDATE_METRICS_INTERVAL_S:
+            _StatsManager.update_iteration_metrics(
+                self._stats,
+                self._dataset_tags["dataset"],
+                self._dataset_tags["split_index"],
+            )
+            self._metrics_last_updated = now
 
 
 def _format_in_threadpool(
@@ -273,11 +408,12 @@ def _format_in_threadpool(
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
+    ensure_copy: bool = False,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
 
     Args:
-        logical_batch_iterator: An iterator over logical batches.
+        batch_iter: An iterator over logical batches.
         stats: DatasetStats object to record timing and other statistics.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
@@ -287,6 +423,11 @@ def _format_in_threadpool(
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
         num_threadpool_workers: The number of threads to use in the threadpool.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
+
+    Returns:
+        An iterator over batches with formatting and collation applied.
     """
 
     def threadpool_computations_format_collate(
@@ -294,7 +435,7 @@ def _format_in_threadpool(
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
         formatted_batch_iter = format_batches(
-            batch_iter, batch_format=batch_format, stats=stats
+            batch_iter, batch_format=batch_format, stats=stats, ensure_copy=ensure_copy
         )
 
         # Step 4b: Apply the collate function if applicable.
@@ -302,17 +443,21 @@ def _format_in_threadpool(
             formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
-        yield from formatted_batch_iter
+
+        return formatted_batch_iter
 
     if num_threadpool_workers > 0:
-        collated_iter = make_async_gen(
+        # Output order is non-deterministic across workers and is restored
+        # downstream by `restore_original_order`.
+        collated_iter = iter_threaded(
             base_iterator=batch_iter,
             fn=threadpool_computations_format_collate,
-            preserve_ordering=False,
             num_workers=num_threadpool_workers,
+            output_buffer_size=num_threadpool_workers,
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
+
     return collated_iter
 
 
@@ -322,6 +467,7 @@ def prefetch_batches_locally(
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
     eager_free: bool = False,
+    stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
     corresponding block references while prefetching `num_batches_to_prefetch`
@@ -334,12 +480,22 @@ def prefetch_batches_locally(
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
         eager_free: Whether to eagerly free the object reference from the object store.
+        stats: Dataset stats object used to store ref bundle retrieval time.
+
+    Yields:
+        Block: Block references (as ObjectRefs), in order.
     """
+
+    def get_next_ref_bundle() -> RefBundle:
+        with stats.iter_get_ref_bundles_s.timer() if stats else nullcontext():
+            return next(ref_bundles)
 
     sliding_window = collections.deque()
     current_window_size = 0
 
     if num_batches_to_prefetch <= 0:
+        if stats:
+            stats.iter_prefetched_bytes = 0
         for ref_bundle in ref_bundles:
             for block_ref in ref_bundle.block_refs:
                 yield block_ref
@@ -358,30 +514,36 @@ def prefetch_batches_locally(
         batch_size is None and len(sliding_window) < num_batches_to_prefetch
     ):
         try:
-            next_ref_bundle = next(ref_bundles)
+            next_ref_bundle = get_next_ref_bundle()
             sliding_window.extend(next_ref_bundle.blocks)
             current_window_size += next_ref_bundle.num_rows()
         except StopIteration:
             break
 
-    prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
+    prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
+    if stats:
+        stats.iter_prefetched_bytes = sum(
+            entry.metadata.size_bytes or 0 for entry in sliding_window
+        )
 
     while sliding_window:
-        block_ref, metadata = sliding_window.popleft()
-        current_window_size -= metadata.num_rows
+        entry = sliding_window.popleft()
+        current_window_size -= entry.metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
-                next_ref_bundle = next(ref_bundles)
-                for block_ref_and_md in next_ref_bundle.blocks:
-                    sliding_window.append(block_ref_and_md)
-                    current_window_size += block_ref_and_md[1].num_rows
-                prefetcher.prefetch_blocks(
-                    [block_ref for block_ref, _ in list(sliding_window)]
-                )
+                next_ref_bundle = get_next_ref_bundle()
+                for next_entry in next_ref_bundle.blocks:
+                    sliding_window.append(next_entry)
+                    current_window_size += next_entry.metadata.num_rows
+                prefetcher.prefetch_blocks([entry.ref for entry in sliding_window])
             except StopIteration:
                 pass
-        yield block_ref
-        trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+        if stats:
+            stats.iter_prefetched_bytes = sum(
+                entry.metadata.size_bytes or 0 for entry in sliding_window
+            )
+        yield entry.ref
+        trace_deallocation(entry.ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()
 
 

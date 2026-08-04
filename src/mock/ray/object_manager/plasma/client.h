@@ -35,7 +35,7 @@ class MockPlasmaClient : public PlasmaClientInterface {
               (const ObjectID &object_id, bool *has_object),
               (override));
 
-  MOCK_METHOD(Status, Disconnect, (), (override));
+  MOCK_METHOD(void, Disconnect, (), (override));
 
   MOCK_METHOD(Status,
               Get,
@@ -79,6 +79,8 @@ class MockPlasmaClient : public PlasmaClientInterface {
               (override));
 
   MOCK_METHOD(Status, Delete, (const std::vector<ObjectID> &object_ids), (override));
+
+  MOCK_METHOD(StatusOr<std::string>, GetMemoryUsage, (), (override));
 };
 
 }  // namespace plasma

@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar, Dict
-from ray.util.annotations import DeveloperAPI
-from ray.experimental.channel.accelerator_context import AcceleratorContext
+from typing import Any, Dict, Generic, TypeVar
 
+from ray.experimental.channel.accelerator_context import AcceleratorContext
+from ray.util.annotations import DeveloperAPI
 
 T = TypeVar("T")
 
@@ -31,7 +31,7 @@ class ResolvedFuture(DAGOperationFuture):
     immediately return the result without blocking.
     """
 
-    def __init__(self, result):
+    def __init__(self, result: Any):
         """
         Initialize a resolved future.
 

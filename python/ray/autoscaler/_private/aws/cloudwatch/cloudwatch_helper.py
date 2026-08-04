@@ -100,8 +100,8 @@ class CloudwatchHelper:
                 cw_config_ssm = self._set_cloudwatch_ssm_config_param(
                     param_name, config_type
                 )
-                cur_cw_config_hash = self._sha1_hash_file(config_type)
-                ssm_cw_config_hash = self._sha1_hash_json(cw_config_ssm)
+                cur_cw_config_hash = self._sha256_hash_file(config_type)
+                ssm_cw_config_hash = self._sha256_hash_json(cw_config_ssm)
                 # check if user updated cloudwatch related config files.
                 # if so, perform corresponding actions.
                 if cur_cw_config_hash != ssm_cw_config_hash:
@@ -381,7 +381,7 @@ class CloudwatchHelper:
 
     def _get_default_empty_config_file_hash(self):
         default_cw_config = "{}"
-        parameter_value = self._sha1_hash_json(default_cw_config)
+        parameter_value = self._sha256_hash_json(default_cw_config)
         return parameter_value
 
     def _get_ssm_param(self, parameter_name: str) -> str:
@@ -394,31 +394,31 @@ class CloudwatchHelper:
         cwa_parameter = res.get("Value", {})
         return cwa_parameter
 
-    def _sha1_hash_json(self, value: str) -> str:
-        """calculate the json string sha1 hash"""
-        sha1_hash = hashlib.new("sha1")
-        binary_value = value.encode("ascii")
-        sha1_hash.update(binary_value)
-        sha1_res = sha1_hash.hexdigest()
-        return sha1_res
+    def _sha256_hash_json(self, value: str) -> str:
+        """calculate the json string sha256 hash"""
+        sha256_hash = hashlib.new("sha256")
+        binary_value = value.encode("utf-8")
+        sha256_hash.update(binary_value)
+        sha256_res = sha256_hash.hexdigest()
+        return sha256_res
 
-    def _sha1_hash_file(self, config_type: str) -> str:
-        """calculate the config file sha1 hash"""
+    def _sha256_hash_file(self, config_type: str) -> str:
+        """calculate the config file sha256 hash"""
         config = self.CLOUDWATCH_CONFIG_TYPE_TO_CONFIG_VARIABLE_REPLACE_FUNC.get(
             config_type
         )(config_type)
         value = json.dumps(config)
-        sha1_res = self._sha1_hash_json(value)
-        return sha1_res
+        sha256_res = self._sha256_hash_json(value)
+        return sha256_res
 
     def _upload_config_to_ssm_and_set_hash_tag(self, config_type: str):
         data = self.CLOUDWATCH_CONFIG_TYPE_TO_CONFIG_VARIABLE_REPLACE_FUNC.get(
             config_type
         )(config_type)
-        sha1_hash_value = self._sha1_hash_file(config_type)
+        sha256_hash_value = self._sha256_hash_file(config_type)
         self._upload_config_to_ssm(data, config_type)
         self._update_cloudwatch_hash_tag_value(
-            self.node_id, sha1_hash_value, config_type
+            self.node_id, sha256_hash_value, config_type
         )
 
     def _add_cwa_installed_tag(self, node_id: str) -> None:
@@ -432,12 +432,12 @@ class CloudwatchHelper:
         )
 
     def _update_cloudwatch_hash_tag_value(
-        self, node_id: str, sha1_hash_value: str, config_type: str
+        self, node_id: str, sha256_hash_value: str, config_type: str
     ):
         hash_key_value = "-".join([CLOUDWATCH_CONFIG_HASH_TAG_BASE, config_type])
         self.ec2_client.create_tags(
             Resources=[node_id],
-            Tags=[{"Key": hash_key_value, "Value": sha1_hash_value}],
+            Tags=[{"Key": hash_key_value, "Value": sha256_hash_value}],
         )
         logger.info(
             "Successfully update cloudwatch {} hash tag on {}".format(

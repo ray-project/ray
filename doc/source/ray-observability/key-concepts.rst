@@ -1,3 +1,6 @@
+.. meta::
+   :description: Key Ray observability concepts: the Dashboard, the States API for querying actors/tasks/objects, Prometheus metrics, and the distributed debugger.
+
 .. _observability-key-concepts:
 
 Key Concepts
@@ -73,7 +76,7 @@ View :ref:`Ray Debugger <ray-debugger>` for more details.
 
 Profiling
 ---------
-Profiling is way of analyzing the performance of an application by sampling the resource usage of it. Ray supports various profiling tools:
+Profiling is a way of analyzing the performance of an application by sampling the resource usage of it. Ray supports various profiling tools:
 
 - CPU profiling for Driver and Worker processes, including integration with :ref:`py-spy <profiling-pyspy>` and :ref:`cProfile <profiling-cprofile>`
 - Memory profiling for Driver and Worker processes with :ref:`memray <profiling-memray>`

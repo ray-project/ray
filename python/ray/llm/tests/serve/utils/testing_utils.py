@@ -7,11 +7,14 @@ import json
 import re
 from typing import List, Optional, Union
 
-from ray.llm._internal.serve.configs.openai_api_models import (
+from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionResponse,
+    DetokenizeResponse,
     EmbeddingResponse,
     ScoreResponse,
+    TokenizeResponse,
+    TranscriptionResponse,
 )
 
 
@@ -108,3 +111,122 @@ class LLMResponseValidator:
             assert score_data.object == "score"
             assert isinstance(score_data.score, float)
             assert score_data.index == i  # Index should match position in list
+
+    @staticmethod
+    def validate_tokenize_response(
+        response: TokenizeResponse,
+        expected_prompt: str,
+        return_token_strs: bool = False,
+    ):
+        """Validate tokenize responses."""
+        assert isinstance(response, TokenizeResponse)
+        assert response.count == len(expected_prompt)
+        assert response.max_model_len > 0
+        assert isinstance(response.tokens, list)
+        assert len(response.tokens) == len(expected_prompt)
+
+        # Validate tokens are the character codes of the prompt
+        expected_tokens = [ord(c) for c in expected_prompt]
+        assert response.tokens == expected_tokens
+
+        # Validate token strings if requested
+        if return_token_strs:
+            assert response.token_strs is not None
+            assert len(response.token_strs) == len(expected_prompt)
+            assert response.token_strs == list(expected_prompt)
+        else:
+            assert response.token_strs is None
+
+    @staticmethod
+    def validate_detokenize_response(
+        response: DetokenizeResponse,
+        expected_text: str,
+    ):
+        """Validate detokenize responses."""
+        assert isinstance(response, DetokenizeResponse)
+        assert response.prompt == expected_text
+
+    @staticmethod
+    def validate_transcription_response(
+        response: Union[TranscriptionResponse, List[str]],
+        temperature: float,
+        language: Optional[str] = None,
+        lora_model_id: str = "",
+    ):
+        """Validate transcription responses for both streaming and non-streaming."""
+        if isinstance(response, list):
+            # Streaming response - validate chunks
+            LLMResponseValidator.validate_transcription_streaming_chunks(
+                response, temperature, language, lora_model_id
+            )
+        else:
+            # Non-streaming response
+            assert isinstance(response, TranscriptionResponse)
+            assert hasattr(response, "text")
+            assert isinstance(response.text, str)
+            assert len(response.text) > 0
+
+            # Check that the response contains expected language and temperature info
+            expected_text = f"Mock transcription in {language} language with temperature {temperature}"
+            if lora_model_id:
+                expected_text = f"[lora_model] {lora_model_id}: {expected_text}"
+            assert response.text == expected_text
+
+            # Validate usage information
+            if hasattr(response, "usage"):
+                assert hasattr(response.usage, "seconds")
+                assert hasattr(response.usage, "type")
+                assert response.usage.seconds > 0
+                assert response.usage.type == "duration"
+
+    @staticmethod
+    def validate_transcription_streaming_chunks(
+        chunks: List[str],
+        temperature: float,
+        language: Optional[str] = None,
+        lora_model_id: str = "",
+    ):
+        """Validate streaming transcription response chunks."""
+        # Should have at least one chunk (transcription text) + final chunk + [DONE]
+        assert len(chunks) >= 3
+
+        # Validate each chunk except the last [DONE] chunk
+        transcription_chunks = []
+        for chunk in chunks[:-1]:  # Exclude the final [DONE] chunk
+            pattern = r"data: (.*)\n\n"
+            match = re.match(pattern, chunk)
+            assert match is not None
+            chunk_data = json.loads(match.group(1))
+
+            # Validate chunk structure
+            assert "id" in chunk_data
+            assert "object" in chunk_data
+            assert chunk_data["object"] == "transcription.chunk"
+            assert "delta" in chunk_data
+            assert chunk_data["delta"] is None
+            assert "type" in chunk_data
+            assert chunk_data["type"] is None
+            assert "logprobs" in chunk_data
+            assert chunk_data["logprobs"] is None
+            assert "choices" in chunk_data
+            assert len(chunk_data["choices"]) == 1
+
+            choice = chunk_data["choices"][0]
+            assert "delta" in choice
+            assert "content" in choice["delta"]
+
+            # Collect text for final validation
+            if choice["delta"]["content"]:
+                transcription_chunks.append(choice["delta"]["content"])
+
+        # Validate final transcription text
+        full_transcription = "".join(transcription_chunks)
+        expected_text = (
+            f"Mock transcription in {language} language with temperature {temperature}"
+        )
+        if lora_model_id:
+            expected_text = f"[lora_model] {lora_model_id}: {expected_text}"
+        assert full_transcription.strip() == expected_text.strip()
+
+        # Validate final [DONE] chunk
+        assert chunks[-1] == "data: [DONE]\n\n"

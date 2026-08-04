@@ -3,38 +3,38 @@ import logging
 import os
 import socket
 import sys
+import time
 from typing import List, Optional, Tuple
 
 import pytest
+import torch
+
 import ray
 import ray.cluster_utils
 import ray.experimental.collective as collective
-import torch
-import time
-from ray.dag import InputNode
-from ray.exceptions import RayChannelError, RayTaskError
-from ray.dag.output_node import MultiOutputNode
-from ray.experimental.channel.communicator import (
-    Communicator,
-    TorchTensorAllocator,
-)
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.channel.nccl_group import _NcclGroup
 from ray._private.test_utils import (
     get_log_message,
     init_log_pubsub,
 )
-
-from ray.tests.conftest import *  # noqa
-from ray.experimental.util.types import ReduceOp
+from ray.dag import InputNode
+from ray.dag.output_node import MultiOutputNode
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.accelerator_context import AcceleratorContext
+from ray.experimental.channel.communicator import (
+    Communicator,
+    TorchTensorAllocator,
+)
+from ray.experimental.channel.nccl_group import _NcclGroup
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.util.types import ReduceOp
+from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
-USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
+USE_GPU = os.environ.get("RAY_PYTEST_USE_GPU") == "1"
 
 
 @ray.remote
@@ -77,12 +77,16 @@ class TorchTensorWorker:
         assert tensor.device.type == "cuda"
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
-    def recv_and_matmul(self, two_d_tensor):
+    def recv_and_matmul(self, two_d_tensor: "torch.Tensor"):
         """
         Receive the tensor and do some expensive computation (matmul).
 
         Args:
             two_d_tensor: a 2D tensor that has the same size for its dimensions
+
+        Returns:
+            A tuple of (first element value, tensor shape, tensor dtype) for
+            verification by the caller.
         """
         # Check that tensor got loaded to the correct device.
         assert two_d_tensor.dim() == 2
@@ -268,6 +272,10 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
+@pytest.mark.skipif(
+    torch.version.cuda is not None and torch.version.cuda >= "13.0",
+    reason="Flaky: worker hangs on shared memory channel read on cu130",
+)
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_shm(ray_start_regular):
@@ -314,6 +322,10 @@ def test_torch_tensor_shm(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.skipif(
+    torch.version.cuda is not None and torch.version.cuda >= "13.0",
+    reason="Flaky: worker hangs on shared memory channel read on cu130",
+)
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])

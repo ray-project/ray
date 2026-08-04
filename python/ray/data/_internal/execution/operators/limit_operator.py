@@ -1,9 +1,13 @@
-import copy
 from collections import deque
+from dataclasses import replace
 from typing import Deque, List, Optional, Tuple
 
 import ray
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
@@ -29,7 +33,7 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_blocks_stats: List[BlockStats] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op, data_context, target_max_block_size=None)
+        super().__init__(self._name, input_op, data_context)
         if self._limit <= 0:
             self.mark_execution_finished()
 
@@ -37,13 +41,15 @@ class LimitOperator(OneToOneOperator):
         return self._consumed_rows >= self._limit
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert not self.completed()
+        assert not self.has_completed()
         assert input_index == 0, input_index
         if self._limit_reached():
             return
         out_blocks: List[ObjectRef[Block]] = []
         out_metadata: List[BlockMetadata] = []
-        for block, metadata in refs.blocks:
+        for entry in refs.blocks:
+            block = entry.ref
+            metadata = entry.metadata
             num_rows = metadata.num_rows
             assert num_rows is not None
             if self._consumed_rows + num_rows <= self._limit:
@@ -54,28 +60,38 @@ class LimitOperator(OneToOneOperator):
             else:
                 # Slice the last block.
                 def slice_fn(block, metadata, num_rows) -> Tuple[Block, BlockMetadata]:
-                    block = BlockAccessor.for_block(block).slice(0, num_rows, copy=True)
-                    metadata = copy.deepcopy(metadata)
-                    metadata.num_rows = num_rows
-                    metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
+                    block = BlockAccessor.for_block(block).slice(
+                        0, num_rows, copy=False
+                    )
+                    metadata = replace(
+                        metadata,
+                        num_rows=num_rows,
+                        size_bytes=BlockAccessor.for_block(block).size_bytes(),
+                    )
                     return block, metadata
 
-                block, metadata_ref = cached_remote_fn(
-                    slice_fn, num_cpus=0, num_returns=2
-                ).remote(
+                slice_task = cached_remote_fn(slice_fn, num_cpus=0, num_returns=2)
+                label_selector = self.data_context.execution_options.label_selector
+                if label_selector:
+                    slice_task = slice_task.options(label_selector=label_selector)
+                block, metadata_ref = slice_task.remote(
                     block,
                     metadata,
                     self._limit - self._consumed_rows,
                 )
                 out_blocks.append(block)
                 metadata = ray.get(metadata_ref)
+                # Slicing creates a new block; register it for memory tracking.
+                self._block_ref_counter.on_block_produced(
+                    block, metadata.size_bytes or 0, self.id
+                )
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
                 self._consumed_rows = self._limit
                 break
         self._cur_output_bundles += 1
         out_refs = RefBundle(
-            list(zip(out_blocks, out_metadata)),
+            [BlockEntry(b, m) for b, m in zip(out_blocks, out_metadata)],
             owns_blocks=refs.owns_blocks,
             schema=refs.schema,
         )
@@ -115,7 +131,7 @@ class LimitOperator(OneToOneOperator):
     def num_outputs_total(self) -> Optional[int]:
         # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
-        if self._execution_finished:
+        if self.has_execution_finished():
             return self._cur_output_bundles
         return self._estimated_num_output_bundles
 
@@ -128,7 +144,4 @@ class LimitOperator(OneToOneOperator):
         return min(self._limit, input_num_rows)
 
     def throttling_disabled(self) -> bool:
-        return True
-
-    def implements_accurate_memory_accounting(self) -> bool:
         return True

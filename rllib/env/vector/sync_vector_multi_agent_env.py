@@ -1,9 +1,9 @@
+from copy import deepcopy
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
+
 import gymnasium as gym
 import numpy as np
-
-from copy import deepcopy
 from gymnasium.core import ActType, RenderFrame
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.vector.vector_multi_agent_env import ArrayType, VectorMultiAgentEnv

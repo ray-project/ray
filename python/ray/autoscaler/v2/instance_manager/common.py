@@ -33,6 +33,9 @@ class InstanceUtil:
             instance_type: The instance type.
             status: The status of the new instance.
             details: The details of the status transition.
+
+        Returns:
+            The newly-created instance.
         """
         instance = Instance()
         instance.version = 0  # it will be populated by the underlying storage.
@@ -66,6 +69,7 @@ class InstanceUtil:
             Instance.TERMINATING,
             Instance.RAY_INSTALL_FAILED,
             Instance.TERMINATION_FAILED,
+            Instance.ALLOCATION_TIMEOUT,
         }
 
     @staticmethod
@@ -137,6 +141,7 @@ class InstanceUtil:
             not in InstanceUtil.get_valid_transitions()[instance.status]
         ):
             return False
+
         instance.status = new_instance_status
         InstanceUtil._record_status_transition(instance, new_instance_status, details)
         return True
@@ -150,6 +155,7 @@ class InstanceUtil:
         Args:
             instance: The instance to update.
             status: The new status to transition to.
+            details: The details of the status transition.
         """
         now_ns = time.time_ns()
         instance.status_history.append(
@@ -164,11 +170,11 @@ class InstanceUtil:
     def has_timeout(instance: Instance, timeout_s: int) -> bool:
         """
         Returns True if the instance has been in the current status for more
-        than the timeout_seconds.
+        than the given timeout.
 
         Args:
             instance: The instance to check.
-            timeout_seconds: The timeout in seconds.
+            timeout_s: The timeout in seconds.
 
         Returns:
             True if the instance has been in the current status for more than
@@ -199,6 +205,10 @@ class InstanceUtil:
                 # Cloud provider requested to launch a node for the instance.
                 # This happens when the a launch request is made to the node provider.
                 Instance.REQUESTED,
+                # Allocation request canceled before being requested.
+                # This happens when max_workers config is reduced or other termination
+                # triggers occur while the instance is still queued.
+                Instance.TERMINATED,
             },
             # When in this status, a launch request to the node provider is made.
             Instance.REQUESTED: {
@@ -225,6 +235,10 @@ class InstanceUtil:
                 # Ray is already installed on the provisioned cloud
                 # instance. It could be any valid ray status.
                 Instance.RAY_RUNNING,
+                # The cloud provider timed out for allocating running cloud instance.
+                # The CloudResourceMonitor subscriber will lower this node-type's priority
+                # in feature schedules.
+                Instance.ALLOCATION_TIMEOUT,
                 Instance.RAY_STOPPING,
                 Instance.RAY_STOPPED,
                 # Instance is requested to be stopped, e.g. instance leaked: no matching
@@ -284,6 +298,20 @@ class InstanceUtil:
                 # cloud instance somehow failed.
                 Instance.TERMINATED,
             },
+            # An instance has been allocated to a cloud instance, but the cloud
+            # provider timed out for allocating running cloud instance, e.g. the
+            # a kubernetes pod remains pending due to insufficient resources.
+            Instance.ALLOCATION_TIMEOUT: {
+                # Instance is requested to be stopped
+                Instance.TERMINATING,
+                # Cloud instance already disappeared; skip termination request.
+                # This transition is allowed to avoid unnecessary termination attempts
+                # when the cloud instance has already disappeared (e.g., manually deleted
+                # or terminated by another process). While this helps avoid unnecessary
+                # retries, it's important to monitor this transition as it may indicate
+                # underlying issues with the allocation or termination process itself.
+                Instance.TERMINATED,
+            },
             # When in this status, the ray process is requested to be stopped to the
             # ray cluster, but not yet present in the dead ray node list reported by
             # the ray cluster.
@@ -320,11 +348,15 @@ class InstanceUtil:
             Instance.TERMINATION_FAILED: {
                 # Retry the termination, become terminating again.
                 Instance.TERMINATING,
+                # Cloud instance already disappeared; skip termination request.
+                Instance.TERMINATED,
             },
-            # Whenever a cloud instance disappears from the list of running cloud
-            # instances from the node provider, the instance is marked as stopped. Since
-            # we guarantee 1:1 mapping of a Instance to a cloud instance, this is a
-            # terminal state.
+            # An instance is marked as terminated when:
+            # 1. A cloud instance disappears from the list of running cloud instances
+            #    from the node provider (follows from TERMINATING or other running states).
+            # 2. An allocation request is canceled before cloud resources are allocated
+            #    (follows from QUEUED).
+            # This is a terminal state.
             Instance.TERMINATED: set(),  # Terminal state.
             # When in this status, the cloud instance failed to be allocated by the
             # node provider.
@@ -352,6 +384,10 @@ class InstanceUtil:
             select_instance_status: The go-to status to search for, i.e. select
                 only status history when the instance transitions into the status.
                 If None, returns all status updates.
+
+        Returns:
+            The list of status updates matching ``select_instance_status``,
+            or all status updates when ``select_instance_status`` is None.
         """
         history = []
         for status_update in instance.status_history:
@@ -373,8 +409,11 @@ class InstanceUtil:
 
         Args:
             instance: The instance.
-            instance_status: The status to search for. If None, returns the last
-                status update.
+            select_instance_status: The status to search for. If None, returns
+                the last status update.
+
+        Returns:
+            The last matching status update, or None if no status updates match.
         """
         history = InstanceUtil.get_status_transitions(instance, select_instance_status)
         history.sort(key=lambda x: x.timestamp_ns)
@@ -392,8 +431,8 @@ class InstanceUtil:
 
         Args:
             instance: The instance.
-            instance_status: The status to search for. If None, returns all
-                status updates timestamps.
+            select_instance_status: The status to search for. If None, returns
+                all status update timestamps.
 
         Returns:
             The list of timestamps of the instance status updates.

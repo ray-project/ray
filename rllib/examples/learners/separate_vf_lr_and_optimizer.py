@@ -69,11 +69,11 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.learners.classes.separate_vf_lr_and_optimizer_learner import (
     PPOTorchLearnerWithSeparateVfOptimizer,
 )
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
 

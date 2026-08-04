@@ -25,6 +25,8 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/common/status.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/common.h"
 #include "ray/util/network_util.h"
 #include "ray/util/thread_utils.h"
@@ -62,8 +64,8 @@ void GrpcServer::Shutdown() {
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address =
-      BuildAddress((listen_to_localhost_only_ ? "127.0.0.1" : "0.0.0.0"), port_);
+  std::string server_address = BuildAddress(
+      (listen_to_localhost_only_ ? GetLocalhostIP() : GetAllInterfacesIP()), port_);
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and
@@ -80,16 +82,17 @@ void GrpcServer::Run() {
   builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
   builder.AddChannelArgument(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
                              RayConfig::instance().grpc_stream_buffer_size());
-  // NOTE(rickyyx): This argument changes how frequent the gRPC server expects a keepalive
-  // ping from the client. See https://github.com/grpc/grpc/blob/HEAD/doc/keepalive.md#faq
-  // We set this to 1min because GCS gRPC client currently sends keepalive every 1min:
-  // https://github.com/ray-project/ray/blob/releases/2.0.0/python/ray/_private/gcs_utils.py#L72
-  // Setting this value larger will trigger GOAWAY from the gRPC server to be sent to the
-  // client to back-off keepalive pings. (https://github.com/ray-project/ray/issues/25367)
+  // NOTE: This sets how frequently the gRPC server tolerates keepalive pings from a
+  // client when there is no data in flight. It is derived from
+  // grpc_client_keepalive_time_ms, capped at 60s: clients must not ping more often
+  // than this. Because the same config also sets the clients' ping interval, it must
+  // be set consistently across the head and all nodes.
+  // See https://github.com/grpc/grpc/blob/HEAD/doc/keepalive.md#faq
+  // and https://github.com/ray-project/ray/issues/25367.
   builder.AddChannelArgument(
       GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
-      // If the `client_keepalive_time` is  smaller than this, the client will receive
-      // "too many pings" error and crash.
+      // If a client's keepalive interval is smaller than this, the server sends a
+      // "too_many_pings" GOAWAY; the client then throttles its keepalive and reconnects.
       std::min(static_cast<int64_t>(60000),
                RayConfig::instance().grpc_client_keepalive_time_ms()));
   if (RayConfig::instance().USE_TLS()) {
@@ -177,12 +180,12 @@ void GrpcServer::RegisterService(std::unique_ptr<grpc::Service> &&grpc_service) 
 }
 
 void GrpcServer::RegisterService(std::unique_ptr<GrpcService> &&service,
-                                 bool token_auth) {
+                                 bool cluster_id_auth_enabled) {
+  RAY_CHECK(!cluster_id_auth_enabled || !cluster_id_.IsNil())
+      << "Expected cluster ID for cluster ID authentication!";
   for (int i = 0; i < num_threads_; i++) {
-    if (token_auth && cluster_id_.IsNil()) {
-      RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
-    }
-    service->InitServerCallFactories(cqs_[i], &server_call_factories_, cluster_id_);
+    service->InitServerCallFactories(
+        cqs_[i], &server_call_factories_, cluster_id_, auth_token_, server_metrics_);
   }
   services_.push_back(std::move(service));
 }

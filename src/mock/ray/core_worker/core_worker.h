@@ -13,7 +13,7 @@
 // limitations under the License.
 #pragma once
 #include "gmock/gmock.h"
-#include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
 
 namespace ray::core {
 
@@ -89,9 +89,9 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleRemoteCancelTask,
-              (rpc::RemoteCancelTaskRequest request,
-               rpc::RemoteCancelTaskReply *reply,
+              HandleRequestOwnerToCancelTask,
+              (rpc::RequestOwnerToCancelTaskRequest request,
+               rpc::RequestOwnerToCancelTaskReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
@@ -146,12 +146,6 @@ class MockCoreWorker : public CoreWorker {
               HandleExit,
               (rpc::ExitRequest request,
                rpc::ExitReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
-              HandleAssignObjectOwner,
-              (rpc::AssignObjectOwnerRequest request,
-               rpc::AssignObjectOwnerReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,

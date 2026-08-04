@@ -4,14 +4,14 @@ from getpass import getuser
 
 import pytest
 
-from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.command_runner import (
-    SSHCommandRunner,
     DockerCommandRunner,
+    SSHCommandRunner,
     _with_environment_variables,
 )
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.sdk import get_docker_host_mount_location
+from ray.tests.test_autoscaler import MockProcessRunner, MockProvider
 
 auth_config = {
     "ssh_user": "ray",
@@ -62,8 +62,8 @@ def test_ssh_command_runner():
     provider = MockProvider()
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha256(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha256(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )
@@ -129,8 +129,8 @@ def test_docker_command_runner():
     provider = MockProvider()
     provider.create_node({}, {}, 1)
     cluster_name = "cluster"
-    ssh_control_hash = hashlib.sha1(cluster_name.encode()).hexdigest()
-    ssh_user_hash = hashlib.sha1(getuser().encode()).hexdigest()
+    ssh_control_hash = hashlib.sha256(cluster_name.encode()).hexdigest()
+    ssh_user_hash = hashlib.sha256(getuser().encode()).hexdigest()
     ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
         ssh_user_hash[:10], ssh_control_hash[:10]
     )

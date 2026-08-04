@@ -44,6 +44,7 @@ def run_test():
     if failed_workloads:
         for workload, e in failed_workloads:
             logger.error(f"Workload {workload} failed with {e}")
+        raise RuntimeError(f"{len(failed_workloads)} workloads failed.")
     else:
         logger.info("All workloads passed!")
 
@@ -60,18 +61,15 @@ def run(local):
             cluster.shutdown()
         else:
             run_test()
-
-        success = "1"
     except Exception as e:
         logger.error(f"Test failed with {e}")
-        success = "0"
+        raise e
     finally:
         if cluster:
             cluster.shutdown()
 
     results = {
         "time": time.time() - start_time,
-        "success": success,
     }
     if "TEST_OUTPUT_JSON" in os.environ:
         with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:

@@ -16,18 +16,19 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/store_client/redis_async_context.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/tag_defs.h"
+#include "ray/util/clock.h"
 #include "ray/util/exponential_backoff.h"
-#include "src/ray/protobuf/gcs.pb.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
@@ -63,7 +64,7 @@ class CallbackReply {
   const std::string &ReadAsString() const;
 
   /// Read this reply data as a string array.
-  [[nodiscard]] const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
+  const std::vector<std::optional<std::string>> &ReadAsStringArray() const;
 
   /// Read this reply data as a scan array.
   ///
@@ -110,7 +111,8 @@ struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
                       RedisAsyncContext *context,
-                      std::vector<std::string> args);
+                      std::vector<std::string> args,
+                      ClockInterface &clock);
 
   static void RedisResponseFn(redisAsyncContext *async_context,
                               void *raw_reply,
@@ -129,6 +131,7 @@ struct RedisRequestContext {
   std::vector<std::string> redis_cmds_;
   std::vector<const char *> argv_;
   std::vector<size_t> argc_;
+  ClockInterface &clock_;
 
   // Ray metrics
   ray::stats::Histogram ray_metric_gcs_latency_{
@@ -136,12 +139,12 @@ struct RedisRequestContext {
       "The latency of a GCS (by default Redis) operation.",
       "us",
       {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-      {stats::kCustomKey}};
+      {"CustomKey"}};
 };
 
 class RedisContext {
  public:
-  explicit RedisContext(instrumented_io_context &io_service);
+  explicit RedisContext(instrumented_io_context &io_service, ClockInterface &clock);
 
   ~RedisContext();
 
@@ -190,10 +193,12 @@ class RedisContext {
                              const std::string &redis_address);
 
   instrumented_io_context &io_service_;
+  ClockInterface &clock_;
 
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
+  int64_t redis_db_probe_timeout_milliseconds_;
 };
 
 }  // namespace ray::gcs

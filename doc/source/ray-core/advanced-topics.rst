@@ -17,3 +17,4 @@ This section covers extended topics on how to use Ray.
     miscellaneous
     runtime_env_auth
     user-spawn-processes
+    head-node-memory-management

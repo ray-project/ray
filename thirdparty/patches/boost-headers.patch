@@ -1,7 +1,16 @@
 diff --git BUILD.boost BUILD.boost
 --- a/BUILD.boost
 +++ b/BUILD.boost
-@@ -2736,3 +2736,38 @@
+@@ -457,7 +457,7 @@ cc_library(
+     visibility = ["//visibility:public"],
+     deps = [
+         ":asio",
+-        "@openssl//:ssl",
++        "@boringssl//:ssl",
+     ],
+ )
+
+@@ -2736,3 +2736,38 @@ boost_library(
          ":variant2",
      ],
  )

@@ -27,10 +27,10 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/buffer.h"
-#include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
@@ -41,32 +41,20 @@
 #include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profile_event.h"
-#include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/shutdown_coordinator.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/ipc/raylet_ipc_client_interface.h"
-#include "ray/pubsub/publisher.h"
-#include "ray/pubsub/subscriber.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/rpc/worker/core_worker_server.h"
-#include "ray/util/process.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
-
-/// The set of gRPC handlers and their associated level of concurrency. If you want to
-/// add a new call to the worker gRPC server, do the following:
-/// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
-/// 2) Add a new macro to RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
-///    in core_worker_server.h,
-//     e.g. "DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExampleCall)"
-/// 3) Add a new macro to RAY_CORE_WORKER_RPC_HANDLERS in core_worker_server.h, e.g.
-///    "RPC_SERVICE_HANDLER(CoreWorkerService, ExampleCall, 1)"
-/// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray::core {
 
@@ -80,7 +68,8 @@ class TaskCounter {
   enum class TaskStatusType { kPending, kRunning, kFinished };
 
  public:
-  TaskCounter();
+  explicit TaskCounter(ray::observability::MetricInterface &task_by_state_gauge,
+                       ray::observability::MetricInterface &actor_by_state_gauge);
 
   void BecomeActor(const std::string &actor_name) {
     absl::MutexLock l(&mu_);
@@ -125,6 +114,20 @@ class TaskCounter {
                          bool is_retry);
 
  private:
+  /// Records the per-state gauge breakdown for a single RUNNING-state key: the
+  /// RUNNING count (minus its sub-states), the SUBMITTED_TO_WORKER negation that
+  /// cancels the owner's positive count, and the three RUNNING_IN_* sub-states.
+  /// Shared by the on-change callback and the per-tick re-emit in RecordMetrics so
+  /// both go through one implementation.
+  ///
+  /// \param key The (function name, task status type, is_retry) key. Only keys whose
+  /// status is kRunning are recorded; all others are ignored.
+  /// \param running_total The current count for `key`, passed in by the caller
+  /// (which already has it) to avoid a redundant counter lookup.
+  void RecordRunningTaskBreakdown(
+      const std::tuple<std::string, TaskStatusType, bool> &key, int64_t running_total)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_);
+
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
   CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_ ABSL_GUARDED_BY(mu_);
@@ -133,11 +136,22 @@ class TaskCounter {
   // overlap with those of counter_.
   CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(mu_);
   CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(mu_);
+  CounterMap<std::pair<std::string, bool>> pending_getting_and_pinning_args_fetch_counter_
+      ABSL_GUARDED_BY(mu_);
 
   std::string job_id_ ABSL_GUARDED_BY(mu_);
   // Used for actor state tracking.
   std::string actor_name_ ABSL_GUARDED_BY(mu_);
   int64_t num_tasks_running_ ABSL_GUARDED_BY(mu_) = 0;
+
+  // Metric to track the number of tasks by state.
+  // Expected tags:
+  // - State: the task state, as described by rpc::TaskState proto in common.proto
+  // - Name: the name of the function called
+  // - IsRetry: whether the task is a retry
+  // - Source: component reporting, e.g., "core_worker", "executor", or "pull_manager"
+  ray::observability::MetricInterface &task_by_state_gauge_;
+  ray::observability::MetricInterface &actor_by_state_gauge_;
 };
 
 struct TaskToRetry {
@@ -165,7 +179,7 @@ class TaskToRetryDescComparator {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker {
+class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
  public:
   /// Construct a CoreWorker instance.
   ///
@@ -174,7 +188,7 @@ class CoreWorker {
   CoreWorker(CoreWorkerOptions options,
              std::unique_ptr<WorkerContext> worker_context,
              instrumented_io_context &io_service,
-             std::unique_ptr<rpc::ClientCallManager> client_call_manager,
+             instrumented_io_context &object_freed_callback_service,
              std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
              std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
              std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -184,7 +198,8 @@ class CoreWorker {
              std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
              std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
              boost::thread &io_thread,
-             std::shared_ptr<ReferenceCounter> reference_counter,
+             boost::thread &object_freed_callback_thread,
+             std::shared_ptr<ReferenceCounterInterface> reference_counter,
              std::shared_ptr<CoreWorkerMemoryStore> memory_store,
              std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
              std::shared_ptr<experimental::MutableObjectProviderInterface>
@@ -201,7 +216,10 @@ class CoreWorker {
              std::unique_ptr<ActorManager> actor_manager,
              instrumented_io_context &task_execution_service,
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
-             uint32_t pid);
+             uint32_t pid,
+             ray::observability::MetricInterface &task_by_state_counter,
+             ray::observability::MetricInterface &actor_by_state_counter,
+             ClockInterface &clock);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -240,12 +258,21 @@ class CoreWorker {
                   const std::shared_ptr<LocalMemoryBuffer>
                       &creation_task_exception_pb_bytes = nullptr);
 
+  /// Initialize the shutdown executor after construction is complete.
+  void InitializeShutdownExecutor();
+
   /// Shut down the worker completely.
   ///
   /// This must be called before deallocating a worker / driver's core worker for memory
   /// safety.
   ///
   void Shutdown();
+
+  /// Wait for shutdown to complete before destruction.
+  /// Delegates to shutdown executor's completion tracking with timeout.
+  /// \param timeout_ms Maximum time to wait (default: 30 seconds)
+  void WaitForShutdownComplete(
+      std::chrono::milliseconds timeout_ms = std::chrono::milliseconds(30000));
 
   /// Start receiving and executing tasks.
   void RunTaskExecutionLoop();
@@ -255,6 +282,20 @@ class CoreWorker {
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
+
+  std::function<void()> GetActorShutdownCallback() {
+    absl::MutexLock lock(&mutex_);
+    if (options_.worker_type == WorkerType::WORKER &&
+        !worker_context_->GetCurrentActorID().IsNil()) {
+      return actor_shutdown_callback_;
+    }
+    return {};
+  }
+
+  void SetExitingDetail(std::string_view detail) {
+    absl::MutexLock lock(&mutex_);
+    exiting_detail_ = std::string(detail);
+  }
 
   WorkerContext &GetWorkerContext() { return *worker_context_; }
 
@@ -306,6 +347,20 @@ class CoreWorker {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  /**
+   * Advance multiple indexes of an ObjectRefStream.
+   *
+   * This is intended for bulk consumers that have already waited on
+   * deterministic ObjectRefs and only need to mark them as consumed.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to advance past, starting from
+   * the current head of the stream.
+   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
+   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   */
+  Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
+
   /// Return True if there's no more object to read. False otherwise.
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const;
 
@@ -317,6 +372,27 @@ class CoreWorker {
   /// (meaning if the object's value if retrievable).
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
+
+  /**
+   * Read multiple next indexes of an ObjectRefStream of generator_id without
+   * consuming them.
+   *
+   * \param[in] generator_id The object ref id of the streaming generator task.
+   * \param[in] num_items The number of indexes to peek at, starting from the
+   * current head of the stream.
+   * \return A list of num_items object references for the next indexes, each
+   * paired with whether the object is already ready (i.e. its value is
+   * retrievable). None of the references should be nil.
+   */
+  std::vector<std::pair<rpc::ObjectReference, bool>> PeekObjectRefStreamN(
+      const ObjectID &generator_id, int64_t num_items);
+
+  /// Read the next index of an ObjectRefStream of generator_id without
+  /// consuming an index, and return just the ObjectID of that index.
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return The ObjectID of the next index. It should not be nil.
+  ObjectID PeekObjectIdStream(const ObjectID &generator_id);
 
   /// Asynchronously delete the ObjectRefStream that was created upon the
   /// initial task submission. This method triggers a timer. On each interval,
@@ -343,23 +419,8 @@ class CoreWorker {
   }
 
   bool GetCurrentTaskRetryExceptions() const {
-    if (options_.is_local_mode) {
-      return false;
-    }
     return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
-
-  void SetWebuiDisplay(const std::string &key, const std::string &message);
-
-  /// Sets the actor's repr name.
-  ///
-  /// This is set explicitly rather than included as part of actor creation task spec
-  /// because it's only available after running the creation task as it might depend on
-  /// fields to be be initialized during actor creation task. The repr name will be
-  /// included as part of actor creation task reply (PushTaskReply) to GCS.
-  ///
-  /// \param repr_name Actor repr name.
-  void SetActorReprName(const std::string &repr_name);
 
   void SetCallerCreationTimestamp();
 
@@ -379,13 +440,46 @@ class CoreWorker {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TODO(ilr): better way of keeping an object from being deleted
     // TODO(sang): This seems bad... We should delete the memory store
     // properly from reference counter.
-    if (!options_.is_local_mode) {
-      memory_store_->Delete(deleted);
-    }
+    memory_store_->Delete(deleted);
   }
+
+  /// Register a callback to fire when an object goes out of scope or is freed.
+  /// Can only be called for objects owned by this worker. The callback is posted
+  /// to the dedicated object_freed_callback_service_ thread so it never blocks
+  /// the main IO thread.
+  ///
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Invoked with the object_id when the object goes out of scope.
+  /// \return true if registered; false if the object is already out of scope or freed
+  ///         (callback will never fire).
+  bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback);
+
+  /// C function-pointer overload of AddObjectOutOfScopeOrFreedCallback for use
+  /// from Cython. Can only be called for objects owned by this worker.
+  ///
+  /// \param[in] object_id The owned object to watch.
+  /// \param[in] callback Function to invoke when the object goes out of scope. Called
+  ///            with (object_id, callback_context).
+  /// \param[in] callback_context Opaque pointer forwarded unchanged to `callback`.
+  /// \return true if registered; false if the object is already out of scope or freed
+  ///         (callback will never fire).
+  bool AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
+                                          void (*callback)(const ObjectID &, void *),
+                                          void *callback_context);
+
+  /// Validate that the given object is owned by this worker. Used to gate
+  /// owner-only operations (e.g. registering an out-of-scope/freed callback)
+  /// so the error is constructed in C++ and propagated through the standard
+  /// Status path rather than re-implemented at each binding.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Status::OK if this worker is the owner of the object;
+  ///         Status::InvalidArgument otherwise (the rejected case in practice is
+  ///         a borrowed object owned by another worker).
+  Status CheckObjectOwnedByUs(const ObjectID &object_id) const;
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }
 
@@ -514,10 +608,9 @@ class CoreWorker {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
-  /// \param[in] owner_address The address of object's owner. If not provided,
-  /// defaults to this worker.
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
+  /// \param[in] tensor_transport The tensor transport to use for the object.
   /// \return Status.
   Status CreateOwnedAndIncrementLocalRef(
       bool is_experimental_mutable_object,
@@ -526,8 +619,8 @@ class CoreWorker {
       const std::vector<ObjectID> &contained_object_ids,
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
-      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-      bool inline_small_object = true);
+      bool inline_small_object = true,
+      const std::optional<std::string> &tensor_transport = std::nullopt);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -557,12 +650,8 @@ class CoreWorker {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
-  /// \param[in] The address of object's owner. If not provided,
-  /// defaults to this worker.
   /// \return Status.
-  Status SealOwned(const ObjectID &object_id,
-                   bool pin_object,
-                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+  Status SealOwned(const ObjectID &object_id, bool pin_object);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -756,9 +845,8 @@ class CoreWorker {
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
 
-  /// Report the task caller at caller_address that the intermediate
-  /// task return. It means if this API is used, the caller will be notified
-  /// the task return before the current task is terminated. The caller must
+  /// Report the intermediate task return to the owner. The owner will be notified
+  /// of the task return before the current task is terminated. The owner must
   /// implement HandleReportGeneratorItemReturns API endpoint
   /// to handle the intermediate result report.
   /// This API makes sense only for a generator task
@@ -766,31 +854,112 @@ class CoreWorker {
   /// result before the task terminates).
   ///
   /// NOTE: The API doesn't guarantee the ordering of the report. The
-  /// caller is supposed to reorder the report based on the item_index.
+  /// owner is supposed to reorder the report based on the item_index.
   ///
-  /// \param[in] dynamic_return_object A intermediate ray object to report
-  /// to the caller before the task terminates. This object must have been
+  /// \param[in] returned_objects Intermediate ray objects to report
+  /// to the owner before the task terminates. These objects must have been
   /// created dynamically from this worker via AllocateReturnObject.
-  /// If the Object ID is nil, it means it is the end of the task return.
-  /// In this case, the caller is responsible for setting finished = true,
-  /// otherwise it will panic.
   /// \param[in] generator_id The return object ref ID from a current generator
   /// task.
-  /// \param[in] caller_address The address of the caller of the current task
-  /// that created a generator_id.
+  /// \param[in] owner_address The address of the owner of the current task.
   /// \param[in] item_index The index of the task return. It is used to reorder the
-  /// report from the caller side.
+  /// reports on the owner.
   /// \param[in] attempt_number The number of time the current task is retried.
   /// 0 means it is the first attempt.
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
   /// is reached.
+  /// \param[in] actor_metadata Actor-task bookkeeping for the actor-wide
+  /// streaming-generator cap (`_actor_generator_backpressure_num_objects`).
+  /// nullptr when the actor option is disabled or this is not an actor
+  /// task.
   Status ReportGeneratorItemReturns(
-      const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+      const std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+          &returned_objects,
       const ObjectID &generator_id,
-      const rpc::Address &caller_address,
+      const rpc::Address &owner_address,
       int64_t item_index,
       uint64_t attempt_number,
-      const std::shared_ptr<GeneratorBackpressureWaiter> &waiter);
+      const std::shared_ptr<TaskGeneratorBackpressureWaiter> &waiter,
+      const std::shared_ptr<ActorTaskBackpressureMetadata> &actor_metadata);
+
+  void MarkGeneratorBackpressureTaskFinished(const ObjectID &generator_id);
+  bool TeardownGeneratorBackpressureTask(const ObjectID &generator_id);
+
+  /**
+   * @brief Register the async-streaming-generator unblock notification for a
+   * generator.
+   *
+   * `fn(ctx)` is invoked (from any thread, e.g. the RPC handler that processes
+   * consumption updates) when the task may have become unblocked, so it can set
+   * the generator's asyncio.Event instead of blocking a thread on the
+   * backpressure wait. Use ClearAsyncGeneratorBackpressureUnblockNotify to remove
+   * the entry before the context is destroyed.
+   *
+   * The notification registry is guarded by its own mutex and never by the GIL:
+   * callers MUST invoke this with the GIL released so the lock is always acquired
+   * without holding the GIL (the callback acquires the GIL only after this
+   * lock), keeping a consistent lock order.
+   *
+   * @param[in] generator_id The generator whose async executor should be woken.
+   * @param[in] fn Non-null callback invoked as `fn(ctx)` when the task may have
+   * become unblocked.
+   * @param[in] ctx Borrowed context passed back to `fn`; it must outlive the
+   * registration (cleared via ClearAsyncGeneratorBackpressureUnblockNotify).
+   */
+  void SetAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id,
+                                                  void (*fn)(void *),
+                                                  void *ctx);
+
+  /**
+   * @brief Clear a notification registered with
+   * SetAsyncGeneratorBackpressureUnblockNotify.
+   *
+   * MUST be called (with the GIL released) before the registered context is
+   * destroyed so a late notification never dereferences a freed context.
+   *
+   * @param[in] generator_id The generator whose notification to remove.
+   */
+  void ClearAsyncGeneratorBackpressureUnblockNotify(const ObjectID &generator_id);
+
+  /**
+   * @brief Fire the registered unblock notification(s) for async streaming
+   * generators, waking any parked on the asyncio.Event.
+   *
+   * Called from every path that can unblock a parked async generator: the
+   * consumption RPC handler, owner-death cleanup, the report-RPC-failure
+   * callback, and the executor when it releases an actor-wide slot. This is what
+   * lets the async waits use a plain `await event.wait()` with no polling
+   * fallback.
+   *
+   * MUST be called WITHOUT holding `mutex_`, and (from the executor) with the
+   * GIL released so the notification guard is always taken without the GIL (the
+   * callback re-acquires the GIL); see the guard's declaration.
+   *
+   * @param[in] generator_id The generator to wake when `notify_all` is false.
+   * @param[in] notify_all Wake every registered async generator (used whenever
+   * actor-wide budget may have changed, since it is shared across tasks).
+   */
+  void NotifyAsyncGeneratorBackpressureUnblock(const ObjectID &generator_id,
+                                               bool notify_all);
+
+  /// Register a generator-backpressure entry up-front so that owner-failure
+  /// sweeps (``HandleOwnerDied``) can find tasks that are still blocked in
+  /// ``ReserveActorWideSlot`` before they have a chance to send their first
+  /// ``ReportGeneratorItemReturns`` (which is where the state is otherwise
+  /// inserted). Inserts only if no entry exists for ``generator_id``; existing
+  /// entries are left untouched so an in-progress report path does not race
+  /// with this call. Safe to invoke from any thread.
+  void RegisterGeneratorBackpressureState(
+      const ObjectID &generator_id,
+      std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter,
+      std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata,
+      const rpc::Address &owner_address);
+
+  /// Tear down any generator_backpressure_states_ entries owned by ``dead_owner``
+  /// so the actor-wide BP budget gets reclaimed when an owner worker dies without
+  /// running TryDelObjectRefStream (the path that normally sends the teardown
+  /// sentinel via UpdateGeneratorBackpressureConsumed).
+  void HandleOwnerDied(const WorkerID &dead_owner);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -798,6 +967,11 @@ class CoreWorker {
   void HandleReportGeneratorItemReturns(rpc::ReportGeneratorItemReturnsRequest request,
                                         rpc::ReportGeneratorItemReturnsReply *reply,
                                         rpc::SendReplyCallback send_reply_callback);
+
+  void HandleUpdateGeneratorBackpressureConsumed(
+      rpc::UpdateGeneratorBackpressureConsumedRequest request,
+      rpc::UpdateGeneratorBackpressureConsumedReply *reply,
+      rpc::SendReplyCallback send_reply_callback);
 
   ///
   /// Public methods related to task submission.
@@ -863,7 +1037,9 @@ class CoreWorker {
 
   /// Create an actor.
   ///
-  /// \param[in] caller_id ID of the task submitter.
+  /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been
+  /// added, or if the scheduling strategy for actor creation is not set.
+  ///
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
   /// \param[in] actor_creation_options Options for this actor creation task.
@@ -911,14 +1087,25 @@ class CoreWorker {
   Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                  int64_t timeout_seconds);
 
+  /// Asynchronously wait for a placement group to be ready.
+  /// Returns an ObjectRef that can be used with ray.get()/ray.wait()/await.
+  ///
+  /// \param placement_group_id The id of a placement group to wait for.
+  /// \param serialized_object_data The serialized object data to put when ready.
+  /// \param serialized_object_metadata The serialized object metadata.
+  /// \return ObjectID that becomes ready when the placement group is ready.
+  ObjectID AsyncWaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                        const std::string &serialized_object_data,
+                                        const std::string &serialized_object_metadata);
+
   /// Submit an actor task.
   ///
-  /// \param[in] caller_id ID of the task submitter.
-  /// \param[in] actor_handle Handle to the actor.
+  /// \param[in] actor_id ID of the actor.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[in] max_retries max number of retry when the task fails.
+  /// \param[bool] retry_exceptions If exceptions should be retried.
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Empty string means an allow-all in the language worker.
@@ -958,6 +1145,16 @@ class CoreWorker {
   /// \param[in] recursive Whether to cancel tasks submitted by the task to cancel.
   /// \param[out] Status
   Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
+
+  /// Check if a task has been canceled.
+  ///
+  /// \param[in] task_id The task ID to check.
+  /// \return Whether the task has been canceled.
+  bool IsTaskCanceled(const TaskID &task_id) const;
+
+  /// True when this thread is running a task that was marked canceled (ray.cancel on
+  /// sync actor workers). Safe from periodic / io threads: no-op without job + task.
+  bool ShouldInterruptTaskForCancellation() const;
 
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
@@ -1012,6 +1209,16 @@ class CoreWorker {
     return actor_id_;
   }
 
+  /// Returns the actor-wide streaming-generator backpressure waiter, or
+  /// nullptr if the option was disabled / this worker is not an actor.
+  /// Each streaming-generator task on the actor shares this waiter via an
+  /// ActorTaskBackpressureMetadata to enforce a single cap across all
+  /// concurrent generator tasks. Thread-safe; the waiter is set once
+  /// during actor creation and never reassigned.
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> GetActorGeneratorWaiter() const {
+    return actor_generator_waiter_;
+  }
+
   std::string GetActorName() const;
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
@@ -1030,7 +1237,8 @@ class CoreWorker {
   /// \param[in] object_id Object ID of the return value.
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
-  /// \param[in] caller_address The address of the caller of the method.
+  /// \param[in] owner_address The address of the owner of the return object (i.e., the
+  /// worker that submitted the task).
   /// \param[in] contained_object_id ID serialized within each return object.
   /// \param[in][out] task_output_inlined_bytes Store the total size of all inlined
   /// objects of a task. It is used to decide if the current object should be inlined. If
@@ -1041,7 +1249,7 @@ class CoreWorker {
                               const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
-                              const rpc::Address &caller_address,
+                              const rpc::Address &owner_address,
                               int64_t *task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
@@ -1058,7 +1266,7 @@ class CoreWorker {
   Status SealReturnObject(const ObjectID &return_id,
                           const std::shared_ptr<RayObject> &return_object,
                           const ObjectID &generator_id,
-                          const rpc::Address &caller_address);
+                          const rpc::Address &owner_address);
 
   /// Pin the local copy of the return object, if one exists.
   ///
@@ -1070,18 +1278,18 @@ class CoreWorker {
   /// of the object that wraps the dynamically created ObjectRefs in a
   /// generator. We use this to notify the owner of the dynamically created
   /// objects.
-  /// \param[in] caller_address The address of the caller who is also the owner
+  /// \param[in] owner_address The address of the owner of the return object (i.e.,
+  /// the worker that submitted the task).
   bool PinExistingReturnObject(const ObjectID &return_id,
                                std::shared_ptr<RayObject> *return_object,
                                const ObjectID &generator_id,
-                               const rpc::Address &caller_address);
+                               const rpc::Address &owner_address);
 
   /// Dynamically allocate an object.
   ///
   /// This should be used during task execution, if the task wants to return an
-  /// object to the task caller and have the resulting ObjectRef be owned by
-  /// the caller. This is in contrast to static allocation, where the caller
-  /// decides at task invocation time how many returns the task should have.
+  /// object to the task owner. This is in contrast to static allocation, where the
+  /// owner knows at task invocation time how many returns the task will have.
   ///
   /// NOTE: Normally task_id and put_index it not necessary to be specified
   /// because we can obtain them from the global worker context. However,
@@ -1178,6 +1386,9 @@ class CoreWorker {
                                rpc::SendReplyCallback send_reply_callback);
 
   // Implements gRPC server handler.
+  // A single endpoint to process different types of pubsub commands.
+  // Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
+  // messages.
   void HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback);
@@ -1203,9 +1414,9 @@ class CoreWorker {
                         rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
-  void HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
-                              rpc::RemoteCancelTaskReply *reply,
-                              rpc::SendReplyCallback send_reply_callback);
+  void HandleRequestOwnerToCancelTask(rpc::RequestOwnerToCancelTaskRequest request,
+                                      rpc::RequestOwnerToCancelTaskReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
@@ -1254,19 +1465,9 @@ class CoreWorker {
                   rpc::SendReplyCallback send_reply_callback);
 
   // Set local worker as the owner of object.
-  // Request by borrower's worker, execute by owner's worker.
-  void HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
-                               rpc::AssignObjectOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback);
-
   // Get the number of pending tasks.
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
-                             rpc::SendReplyCallback send_reply_callback);
-
-  // Free GPU objects from the in-actor GPU object store.
-  void HandleFreeActorObject(rpc::FreeActorObjectRequest request,
-                             rpc::FreeActorObjectReply *reply,
                              rpc::SendReplyCallback send_reply_callback);
 
   ///
@@ -1342,11 +1543,26 @@ class CoreWorker {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
-  void TaskManagerRetryTask(TaskSpecification &spec,
-                            bool object_recovery,
-                            uint32_t delay_ms);
+  void AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms);
+
+  /// Send a FreeLocalObjects RPC to every raylet holding a copy of the object.
+  ///
+  /// \param object_id The object whose copies should be freed.
+  /// \param locations All nodes that hold a copy of the object, including primary
+  /// and secondary copies.
+  void FreeObjectOnNodesAsync(const ObjectID &object_id,
+                              const absl::flat_hash_set<NodeID> &locations);
 
  private:
+  /// Resolve a raylet RPC client by node id. Should be used to only get a temporary RPC
+  /// client, since the retryable GRPC client relies on clients going out of scope to
+  /// determine when to fail any pending RPCs
+  ///
+  /// \param node_id The node to resolve.
+  /// \return The local client for the current node, the pooled client for any
+  /// other live node, or nullptr if the node is dead or unknown to GCS.
+  std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
+
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
 
@@ -1361,6 +1577,15 @@ class CoreWorker {
 
   /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
   void SubscribeToNodeChanges();
+
+  /**
+   * Subscribe to GCS worker failures so ``HandleOwnerDied`` can clean up
+   * generator backpressure state when an owner dies. Covers both per-task BP
+   * (unblock ``WaitUntilObjectConsumed``) and actor-wide BP (reclaim shared
+   * budget held by finished tasks). Called from
+   * ``RegisterGeneratorBackpressureState``; idempotent via ``std::call_once``.
+   */
+  void SubscribeToOwnerWorkerFailures();
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
@@ -1394,8 +1619,10 @@ class CoreWorker {
       int64_t generator_backpressure_num_objects = -1,
       bool enable_task_events = true,
       const std::unordered_map<std::string, std::string> &labels = {},
-      const std::unordered_map<std::string, std::string> &label_selector = {},
-      const rpc::TensorTransport &tensor_transport = rpc::TensorTransport::OBJECT_STORE);
+      const LabelSelector &label_selector = {},
+      const std::vector<FallbackOption> &fallback_strategy = {},
+      int64_t num_objects_per_yield = 1);
+
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1460,26 +1687,22 @@ class CoreWorker {
 
   /// Execute a task.
   ///
-  /// \param spec[in] task_spec Task specification.
-  /// \param spec[in] resource_ids Resource IDs of resources assigned to this
-  ///                 worker. If nullopt, reuse the previously assigned
-  ///                 resources.
-  /// \param results[out] return_objects Result objects that should be returned
+  /// \param task_spec[in] Task specification.
+  /// \param resource_ids[in] Resource IDs of resources assigned to this
+  /// worker. If nullopt, reuse the previously assigned resources.
+  /// \param return_objects[out] Result objects that should be returned
   /// to the caller.
-  /// \param results[out] dynamic_return_objects Result objects whose
-  /// ObjectRefs were dynamically allocated during task execution by using a
-  /// generator. The language-level ObjectRefs should be returned inside the
-  /// statically allocated return_objects.
-  /// \param results[out] borrowed_refs Refs that this task (or a nested task)
-  ///                     was or is still borrowing. This includes all
-  ///                     objects whose IDs we passed to the task in its
-  ///                     arguments and recursively, any object IDs that were
-  ///                     contained in those objects.
-  /// \param results[out] is_retryable_error Whether the task failed with a retryable
-  ///                     error.
-  /// \param results[out] application_error The error message if the
-  ///                     task failed during execution or cancelled.
-  /// \return Status.
+  /// \param dynamic_return_objects[out]  Result objects whose ObjectRefs were dynamically
+  /// allocated during task execution by using a generator. The language-level ObjectRefs
+  /// should be returned inside the statically allocated return_objects.
+  /// \param borrowed_refs[out]  Refs that this task (or a nested task) was or is still
+  /// borrowing. This includes all objects whose IDs we passed to the task in its
+  /// arguments and recursively, any object IDs that were contained in those objects.
+  /// \param is_retryable_error[out] Whether the task failed with a retryable
+  /// error.
+  /// \param actor_repr_name[out] The user-specified repr name for the actor in this
+  /// process if one has been set. \param application_error[out] The error message if the
+  /// task failed during execution or cancelled. \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
@@ -1487,8 +1710,9 @@ class CoreWorker {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
-      ReferenceCounter::ReferenceTableProto *borrowed_refs,
+      ReferenceCounterInterface::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error);
 
   /// Put an object in the local plasma store.
@@ -1508,23 +1732,6 @@ class CoreWorker {
   Status PutInLocalPlasmaStore(const RayObject &object,
                                const ObjectID &object_id,
                                bool pin_object);
-
-  /// Execute a local mode task (runs normal ExecuteTask)
-  ///
-  /// \param spec[in] task_spec Task specification.
-  std::vector<rpc::ObjectReference> ExecuteTaskLocalMode(
-      const TaskSpecification &task_spec, const ActorID &actor_id = ActorID::Nil());
-
-  /// KillActor API for a local mode.
-  Status KillActorLocalMode(const ActorID &actor_id);
-
-  /// Get a handle to a named actor for local mode.
-  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
-      const std::string &name);
-
-  /// Get all named actors in local mode.
-  std::pair<std::vector<std::pair<std::string, std::string>>, Status>
-  ListNamedActorsLocalMode();
 
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from
@@ -1558,12 +1765,6 @@ class CoreWorker {
                                   std::vector<rpc::ObjectReference> *arg_refs,
                                   std::vector<ObjectID> *pinned_ids);
 
-  /// Process a subscribe message for wait for object eviction.
-  /// The object eviction message will be published once the object
-  /// needs to be evicted.
-  void ProcessSubscribeForObjectEviction(
-      const rpc::WorkerObjectEvictionSubMessage &message);
-
   /// Process a subscribe message for wait for ref removed.
   /// It is used for the ref counting protocol. When the borrower
   /// stops using the reference, the message will be published to the owner.
@@ -1578,15 +1779,14 @@ class CoreWorker {
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
   /// Process the subscribe message received from the subscriber.
-  void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                               rpc::ChannelType channel_type,
-                               const std::string &key_id,
-                               const NodeID &subscriber_id);
-
-  /// A single endpoint to process different types of pubsub commands.
-  /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
-  /// messages.
-  void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+  ///
+  /// \return StatusT::OK() if successful.
+  /// \return StatusT::InvalidArgument() if the channel or command type is invalid.
+  StatusSet<StatusT::InvalidArgument> ProcessSubscribeMessage(
+      const rpc::SubMessage &sub_message,
+      rpc::ChannelType channel_type,
+      const std::string &key_id,
+      const NodeID &subscriber_id);
 
   void AddSpilledObjectLocationOwner(const ObjectID &object_id,
                                      const std::string &spilled_url,
@@ -1738,8 +1938,8 @@ class CoreWorker {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;
 
-  /// Shared client call manager.
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  /// Dedicated event loop for object-freed callbacks, keeping them off io_service_.
+  instrumented_io_context &object_freed_callback_service_;
 
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
@@ -1747,7 +1947,6 @@ class CoreWorker {
   // Shared raylet client pool.
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
 
-  /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
@@ -1755,9 +1954,6 @@ class CoreWorker {
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
-
-  /// Whether or not this worker is connected to the raylet and GCS.
-  bool connected_ = false;
 
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
@@ -1771,8 +1967,11 @@ class CoreWorker {
   // Thread that runs a boost::asio service to process IO events.
   boost::thread &io_thread_;
 
+  /// Dedicated thread for user-registered object-freed callbacks.
+  boost::thread &object_freed_callback_thread_;
+
   // Keeps track of object ID reference counts.
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
   ///
   /// Fields related to storing and retrieving objects.
@@ -1844,11 +2043,47 @@ class CoreWorker {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
-  /// Key value pairs to be displayed on Web UI.
-  std::unordered_map<std::string, std::string> webui_display_ ABSL_GUARDED_BY(mutex_);
+  /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
+  /// actors this will contain at most one task ID.
+  ///
+  /// We have to track this separately because cancellation requests come from submitter
+  /// thread than the thread executing the task, so we cannot get the cancellation status
+  /// from the thread-local WorkerThreadContext.
+  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
+
+  /// Actor-wide streaming-generator backpressure waiter. Shared across all
+  /// generator tasks running on this actor. nullptr when the actor was
+  /// created without `_actor_generator_backpressure_num_objects` (or with
+  /// -1, meaning disabled). Constructed lazily when the actor creation
+  /// task spec is executed.
+  std::shared_ptr<ActorWideGeneratorBackpressureWaiter> actor_generator_waiter_;
+
+  struct GeneratorBackpressureState {
+    std::shared_ptr<TaskGeneratorBackpressureWaiter> waiter;
+    std::shared_ptr<ActorTaskBackpressureMetadata> actor_metadata;
+    bool task_finished = false;
+    // Owner that submitted the streaming generator task. When this worker dies
+    // we tear down the entry so the actor-wide BP budget gets reclaimed even
+    // when the task has already finished (and so the owner can no longer drive
+    // consumption updates).
+    WorkerID owner_worker_id;
+  };
+
+  absl::flat_hash_map<ObjectID, GeneratorBackpressureState> generator_backpressure_states_
+      ABSL_GUARDED_BY(mutex_);
+
+  /// Registry of async-streaming-generator unblock notifications, keyed by
+  /// generator id. Deliberately guarded by its own mutex (not `mutex_`) so the
+  /// notify path (which calls into Python via the callback) never contends
+  /// with the hot `mutex_`. Always acquired with the GIL released; see
+  /// SetAsyncGeneratorBackpressureUnblockNotify.
+  mutable absl::Mutex generator_backpressure_notification_guard_;
+  absl::flat_hash_map<ObjectID, std::pair<void (*)(void *), void *>>
+      generator_unblock_notifies_
+          ABSL_GUARDED_BY(generator_backpressure_notification_guard_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
@@ -1856,14 +2091,19 @@ class CoreWorker {
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
 
+  // Number of in flight argument pinning requests used for metric reporting only
+  std::atomic<int64_t> num_get_pin_args_in_flight_;
+
+  // Number of failed argument pinning requests used for metric reporting only
+  std::atomic<int64_t> num_failed_get_pin_args_;
+
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
   ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
-  /// Used to notify the task receiver when the arguments of a queued
-  /// actor task are ready.
-  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  /// Used to wait for actor task arguments to be ready before executing the task.
+  std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;
@@ -1876,10 +2116,6 @@ class CoreWorker {
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
       to_resubmit_ ABSL_GUARDED_BY(mutex_);
-
-  /// Map of named actor registry. It doesn't need to hold a lock because
-  /// local mode is single-threaded.
-  absl::flat_hash_map<std::string, ActorID> local_mode_named_actor_registry_;
 
   // Guard for `async_plasma_callbacks_` map.
   mutable absl::Mutex plasma_mutex_;
@@ -1898,8 +2134,6 @@ class CoreWorker {
   std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
 
   int64_t max_direct_call_object_size_;
-
-  friend class CoreWorkerTest;
 
   TaskCounter task_counter_;
 
@@ -1942,13 +2176,26 @@ class CoreWorker {
   /// Used to ensure we only subscribe to node changes once.
   std::once_flag subscribe_to_node_changes_flag_;
 
+  /** Used to ensure we only subscribe to owner-worker failures once. */
+  std::once_flag subscribe_to_owner_worker_failures_flag_;
+
   // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
   // the shutdown procedure without exposing additional public APIs.
   friend class CoreWorkerShutdownExecutor;
 
-  /// Used to block in certain spots if the GCS node cache is needed.
+  /// Used to block in certain spots if the GCS node address and liveness cache is needed.
   std::mutex gcs_client_node_cache_populated_mutex_;
   std::condition_variable gcs_client_node_cache_populated_cv_;
   bool gcs_client_node_cache_populated_ = false;
+
+  /// Callback to free an RDT object when it is out of scope.
+  std::function<void(const ObjectID &)> free_actor_object_callback_;
+
+  // Shutdown synchronization primitives
+  std::atomic<bool> connected_{true};
+  std::atomic<bool> event_loops_running_{false};
+
+  /// Clock used for timestamping events, retries, and timeouts.
+  ClockInterface &clock_;
 };
 }  // namespace ray::core

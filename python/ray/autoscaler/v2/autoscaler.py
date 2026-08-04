@@ -1,6 +1,7 @@
 import logging
 from queue import Queue
 from typing import List, Optional
+from urllib.parse import urlsplit
 
 from ray._raylet import GcsClient
 from ray.autoscaler._private.providers import _get_node_provider
@@ -31,6 +32,9 @@ from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
     CloudInstanceUpdater,
 )
+from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
+    CloudResourceMonitor,
+)
 from ray.autoscaler.v2.instance_manager.subscribers.ray_stopper import RayStopper
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     ThreadedRayInstaller,
@@ -39,7 +43,7 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
-from urllib.parse import urlsplit
+from ray.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +57,8 @@ class Autoscaler:
         event_logger: Optional[AutoscalerEventLogger] = None,
         metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ) -> None:
-        """
+        """Initialize the autoscaler.
+
         Args:
             session_name: The current Ray session name.
             config_reader: The config reader.
@@ -76,6 +81,7 @@ class Autoscaler:
         self._metrics_reporter = metrics_reporter
 
         self._init_cloud_instance_provider(config, config_reader)
+        self._cloud_resource_monitor = None
         self._init_instance_manager(
             session_name=session_name,
             config=config,
@@ -101,6 +107,7 @@ class Autoscaler:
             self._cloud_instance_provider = KubeRayProvider(
                 config.get_config("cluster_name"),
                 provider_config,
+                gcs_client=self._gcs_client,
             )
         elif config.provider == Provider.READ_ONLY:
             provider_config["gcs_address"] = self._gcs_client.address
@@ -134,7 +141,12 @@ class Autoscaler:
             storage=InMemoryStorage(),
         )
         subscribers: List[InstanceUpdatedSubscriber] = []
-        subscribers.append(CloudInstanceUpdater(cloud_provider=cloud_provider))
+        subscribers.append(
+            CloudInstanceUpdater(
+                cloud_provider=cloud_provider,
+                metrics_reporter=self._metrics_reporter,
+            )
+        )
         subscribers.append(
             RayStopper(gcs_client=gcs_client, error_queue=self._ray_stop_errors_queue)
         )
@@ -160,6 +172,8 @@ class Autoscaler:
                     max_concurrent_installs=config.get_max_num_worker_nodes() or 50,
                 )
             )
+        self._cloud_resource_monitor = CloudResourceMonitor()
+        subscribers.append(self._cloud_resource_monitor)
 
         self._instance_manager = InstanceManager(
             instance_storage=instance_storage,
@@ -201,6 +215,7 @@ class Autoscaler:
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
                 cloud_provider=self._cloud_instance_provider,
+                cloud_resource_monitor=self._cloud_resource_monitor,
                 ray_cluster_resource_state=ray_cluster_resource_state,
                 non_terminated_cloud_instances=(
                     self._cloud_instance_provider.get_non_terminated()
@@ -211,6 +226,9 @@ class Autoscaler:
                 autoscaling_config=autoscaling_config,
                 metrics_reporter=self._metrics_reporter,
             )
+        except AuthenticationError as e:
+            logger.warning(f"AuthenticationError detected, restarting autoscaler: {e}")
+            raise
         except Exception as e:
             logger.exception(e)
             return None

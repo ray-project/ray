@@ -4,7 +4,9 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-ARG PIP_REQUIREMENTS
+ARG PYTHON_VERSION=3.10
+ARG IMAGE_TYPE="ray"
+ARG PIP_REQUIREMENTS="python/deplocks/base_extra_testdeps/${IMAGE_TYPE}-base_extra_testdeps_py${PYTHON_VERSION}.lock"
 
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 
@@ -22,6 +24,7 @@ APT_PKGS=(
     libglfw3
     libjemalloc-dev
     libosmesa6-dev
+    lsb-release
     patchelf
 )
 
@@ -29,6 +32,23 @@ sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 sudo apt-get autoclean
 sudo rm -rf /etc/apt/sources.list.d/*
+
+sudo mkdir -p /etc/apt/keyrings
+curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+  gpg --dearmor | sudo tee /etc/apt/keyrings/microsoft.gpg > /dev/null
+sudo chmod go+r /etc/apt/keyrings/microsoft.gpg
+
+AZ_VER=2.72.0
+AZ_DIST="$(lsb_release -cs)"
+echo "Types: deb
+URIs: https://packages.microsoft.com/repos/azure-cli/
+Suites: ${AZ_DIST}
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources
+
+sudo apt-get update -y
+sudo apt-get install -y azure-cli="${AZ_VER}"-1~"${AZ_DIST}"
 
 git clone --branch=4.2.0 --depth=1 https://github.com/wg/wrk.git /tmp/wrk
 make -C /tmp/wrk -j
@@ -38,3 +58,17 @@ rm -rf /tmp/wrk
 "$HOME/anaconda3/bin/pip" install --no-cache-dir -r extra-test-requirements.txt
 
 EOF
+
+# RAY_BACKEND_LOG_JSON=1
+#   Uses JSON structured logging.
+#
+# RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT=1
+#   Logs the full stack trace from Ray Data in case of exception,
+#   which is useful for debugging failures.
+#
+# RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1
+#   To make ray data compatible across multiple pyarrow versions.
+ENV \
+  RAY_BACKEND_LOG_JSON=1 \
+  RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT=1 \
+  RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1

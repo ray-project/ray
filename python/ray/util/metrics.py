@@ -1,15 +1,14 @@
 import logging
 import re
 import warnings
-import os
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from typing import Dict, Any, List, Optional, Tuple, Union
-
+from ray._private.ray_constants import env_bool
 from ray._raylet import (
     Count as CythonCount,
-    Sum as CythonSum,
-    Histogram as CythonHistogram,
     Gauge as CythonGauge,
+    Histogram as CythonHistogram,
+    Sum as CythonSum,
 )  # noqa: E402
 
 # Sum is used for CythonCount because it allows incrementing by positive
@@ -74,6 +73,14 @@ class Metric:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
 
+        if ":" in self._name:
+            warnings.warn(
+                f"Metric name {self._name} contains a : character, which is no longer allowed. "
+                f"Please migrate to the new metric name format. "
+                f"This will be an error in the future.",
+                FutureWarning,
+            )
+
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
 
@@ -113,6 +120,8 @@ class Metric:
 
         Args:
             value: The value to be recorded as a metric point.
+            tags: Tags to set or override for this record. Merged on top of
+                the metric's default tags.
         """
         if self._discard_metric:
             return
@@ -191,7 +200,7 @@ class Counter(Metric):
         if self._discard_metric:
             self._metric = None
         else:
-            if os.environ.get("RAY_enable_open_telemetry") == "1":
+            if env_bool("RAY_enable_open_telemetry", True):
                 """
                 For the new opentelemetry implementation, we'll correctly use Counter
                 rather than Sum.
@@ -218,8 +227,8 @@ class Counter(Metric):
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to increment the counter by (default=1).
-            tags(Dict[str, str]): Tags to set or override for this counter.
+            value: Value to increment the counter by (default=1).
+            tags: Tags to set or override for this counter.
         """
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
@@ -281,8 +290,8 @@ class Histogram(Metric):
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to set the gauge to.
-            tags(Dict[str, str]): Tags to set or override for this gauge.
+            value: Value to set the gauge to.
+            tags: Tags to set or override for this gauge.
         """
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
@@ -340,9 +349,12 @@ class Gauge(Metric):
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to set the gauge to. If `None`, this method is a
+            value: Value to set the gauge to. If `None`, this method is a
                 no-op.
-            tags(Dict[str, str]): Tags to set or override for this gauge.
+            tags: Tags to set or override for this gauge.
+
+        Returns:
+            None. The gauge is updated in place.
         """
         if value is None:
             return

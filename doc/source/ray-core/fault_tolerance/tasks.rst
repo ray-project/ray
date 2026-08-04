@@ -150,4 +150,4 @@ repeated task executions, e.g., due to bugs in third-party libraries.
 To make progress in these cases, you can set the ``max_calls`` option in a
 task's ``@ray.remote`` decorator. Once a worker has executed this many
 invocations of the given remote function, it will automatically exit. By
-default, ``max_calls`` is set to infinity.
+default, ``max_calls`` is set to infinite for CPU tasks and 1 for GPU.

@@ -1,8 +1,9 @@
 """Test the collective allreduice API."""
 import numpy as np
 import pytest
-import ray
 import torch
+
+import ray
 from ray.util.collective.tests.cpu_util import create_collective_workers
 from ray.util.collective.types import Backend, ReduceOp
 
@@ -158,7 +159,8 @@ def test_allreduce_torch_numpy(ray_start_single_node, backend):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

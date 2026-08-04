@@ -24,8 +24,8 @@
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/io_service_pool.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/observability/open_telemetry_metric_recorder.h"
@@ -46,6 +46,11 @@ using OpenTelemetryMetricRecorder = ray::observability::OpenTelemetryMetricRecor
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
 static absl::Mutex stats_mutex;
 
+inline OpenCensusProtoExporter *&GetOpenCensusExporter() {
+  static OpenCensusProtoExporter *exporter = nullptr;
+  return exporter;
+}
+
 // Returns true if OpenCensus should be enabled.
 static inline bool should_enable_open_census() {
   return !RayConfig::instance().enable_open_telemetry() ||
@@ -61,12 +66,10 @@ static inline bool should_enable_open_census() {
 /// We recommend you to use this only once inside a main script and add Shutdown() method
 /// to any signal handler.
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
-/// \param metrics_agent_port[in] The port to export metrics at each node.
 /// \param worker_id[in] The worker ID of the current component.
 static inline void Init(
     const TagsType &global_tags,
-    const int metrics_agent_port,
-    const WorkerID &worker_id,
+    const WorkerID &worker_id = WorkerID::Nil(),
     int64_t metrics_report_batch_size = RayConfig::instance().metrics_report_batch_size(),
     int64_t max_grpc_payload_size = RayConfig::instance().agent_max_grpc_message_size()) {
   absl::MutexLock lock(&stats_mutex);
@@ -83,7 +86,20 @@ static inline void Init(
   }
   RAY_LOG(DEBUG) << "Initialized stats";
 
+  // Force-initialize OtlpGrpcMetricExporterOptions in the OpenTelemetryMetricRecorder
+  // early to avoid setenv/getenv races from lazy GetInstance().
+  if (RayConfig::instance().enable_open_telemetry()) {
+    OpenTelemetryMetricRecorder::GetInstance();
+  }
+
   // Set interval.
+  // NOTE: this floored value (max(metrics_report_interval_ms, 1000)) is the effective
+  // report/export cadence returned by GetReportInterval() and used to drive the OTLP
+  // export in InitOpenTelemetryExporter. The dashboard agent derives its gauge-metric
+  // TTL as 2x this effective interval, including the same 1000ms floor (see
+  // `_resolve_gauge_ttl_seconds` in
+  // python/ray/_private/telemetry/open_telemetry_metric_recorder.py). If this floor or
+  // interval changes, update that derivation accordingly.
   StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
       RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));
   StatsConfig::instance().SetHarvestInterval(
@@ -99,12 +115,9 @@ static inline void Init(
         StatsConfig::instance().GetReportInterval());
     opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
         StatsConfig::instance().GetHarvestInterval());
-    OpenCensusProtoExporter::Register(metrics_agent_port,
-                                      (*metrics_io_service),
-                                      "127.0.0.1",
-                                      worker_id,
-                                      metrics_report_batch_size,
-                                      max_grpc_payload_size);
+
+    GetOpenCensusExporter() = OpenCensusProtoExporter::Register(
+        *metrics_io_service, worker_id, metrics_report_batch_size, max_grpc_payload_size);
   }
 
   StatsConfig::instance().SetGlobalTags(global_tags);
@@ -114,25 +127,31 @@ static inline void Init(
   StatsConfig::instance().SetIsInitialized(true);
 }
 
-static inline void InitOpenTelemetryExporter(const int metrics_agent_port,
-                                             const Status &metrics_agent_server_status) {
+static inline void InitOpenTelemetryExporter(const int metrics_agent_port) {
   if (!RayConfig::instance().enable_open_telemetry()) {
     return;
   }
-  if (!metrics_agent_server_status.ok()) {
-    RAY_LOG(ERROR) << "Failed to initialize OpenTelemetry exporter. Data will not be "
-                      "exported to the "
-                   << "metrics agent. Server status: " << metrics_agent_server_status;
-    return;
-  }
-  OpenTelemetryMetricRecorder::GetInstance().RegisterGrpcExporter(
-      /*endpoint=*/std::string("127.0.0.1:") + std::to_string(metrics_agent_port),
+  // NOTE: GetReportInterval() below (the floored report interval set in Init above) is
+  // the cadence at which live gauge values reach the dashboard agent. The agent derives
+  // its gauge-metric TTL as 2x this interval (see `_resolve_gauge_ttl_seconds` in
+  // python/ray/_private/telemetry/open_telemetry_metric_recorder.py). If this export
+  // cadence changes, update that derivation accordingly.
+  OpenTelemetryMetricRecorder::GetInstance().Start(
+      /*endpoint=*/BuildAddress(GetLocalhostIP(), metrics_agent_port),
       /*interval=*/
       std::chrono::milliseconds(
           absl::ToInt64Milliseconds(StatsConfig::instance().GetReportInterval())),
-      /*timeout=*/
+      /*timeout=, set the timeout to be half of the interval to avoid potential request
+         queueing.*/
       std::chrono::milliseconds(
-          absl::ToInt64Milliseconds(StatsConfig::instance().GetHarvestInterval())));
+          absl::ToInt64Milliseconds(0.5 * StatsConfig::instance().GetReportInterval())));
+}
+
+static inline void ConnectOpenCensusExporter(const int metrics_agent_port) {
+  absl::MutexLock lock(&stats_mutex);
+  if (GetOpenCensusExporter() != nullptr) {
+    GetOpenCensusExporter()->Connect(metrics_agent_port);
+  }
 }
 
 /// Shutdown the initialized stats library.
@@ -151,6 +170,7 @@ static inline void Shutdown() {
     opencensus::stats::DeltaProducer::Get()->Shutdown();
     opencensus::stats::StatsExporter::Shutdown();
     metrics_io_service_pool = nullptr;
+    GetOpenCensusExporter() = nullptr;
   }
   StatsConfig::instance().SetIsInitialized(false);
   RAY_LOG(INFO) << "Stats module has shutdown.";

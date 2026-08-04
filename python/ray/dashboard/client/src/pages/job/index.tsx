@@ -26,6 +26,14 @@ import { JobRow } from "./JobRow";
 
 const columns = [
   { label: "Job ID" },
+  {
+    label: "Name",
+    helpInfo: (
+      <Typography>
+        The job name from the <code>job_name</code> key in the job's metadata.
+      </Typography>
+    ),
+  },
   { label: "Submission ID" },
   { label: "Entrypoint" },
   { label: "Status" },
@@ -97,6 +105,10 @@ const JobList = () => {
               onChange={(value) => changeFilter("job_id", value)}
             />
             <SearchInput
+              label="Name"
+              onChange={(value) => changeFilter("name", value)}
+            />
+            <SearchInput
               label="Submission ID"
               onChange={(value) => changeFilter("submission_id", value)}
             />
@@ -115,7 +127,13 @@ const JobList = () => {
               }}
             />
             <Autocomplete
-              sx={{ height: 35, width: 150 }}
+              sx={{
+                height: 35,
+                width: 150,
+                "& .MuiSvgIcon-root": {
+                  color: "text.secondary",
+                },
+              }}
               options={["PENDING", "RUNNING", "SUCCEEDED", "STOPPED", "FAILED"]}
               onInputChange={(event, value) =>
                 changeFilter("status", value.trim())

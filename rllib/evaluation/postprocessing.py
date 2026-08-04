@@ -1,13 +1,12 @@
-import numpy as np
-import scipy.signal
 from typing import Dict, Optional
+
+import numpy as np
 
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import AgentID
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import AgentID, TensorType
 
 
 @DeveloperAPI
@@ -325,4 +324,7 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
                2.0 + 0.9*3.0,
                3.0])
     """
+    # Import scipy here to avoid import error when framework is tensorflow.
+    import scipy
+
     return scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]

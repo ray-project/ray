@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Core internals for advanced users: task lifecycle, streaming generators, autoscaler v2, RPC fault tolerance, object spilling, and metrics.
+
 .. _ray-core-internals:
 
 Internals
@@ -10,3 +13,11 @@ For the high level architecture overview, please refer to the `whitepaper <https
     :maxdepth: 1
 
     internals/task-lifecycle.rst
+    internals/streaming-generator.md
+    internals/autoscaler-v2.rst
+    internals/rpc-fault-tolerance.rst
+    internals/token-authentication.rst
+    internals/metric-exporter.rst
+    internals/ray-event-exporter.rst
+    internals/port-service-discovery.rst
+    internals/object-spilling.rst

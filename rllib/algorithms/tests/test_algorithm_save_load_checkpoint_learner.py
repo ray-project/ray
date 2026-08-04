@@ -7,7 +7,6 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 
-
 algorithms_and_configs = {
     "PPO": (PPOConfig().training(train_batch_size=2, minibatch_size=2))
 }
@@ -95,7 +94,7 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
         ray.init()
 
     @classmethod
-    def tearDowClass(cls) -> None:
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_save_and_restore(self):
@@ -126,6 +125,7 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

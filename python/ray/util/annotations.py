@@ -1,9 +1,14 @@
-from enum import Enum
-from typing import Optional
 import inspect
 import sys
 import warnings
+from enum import Enum
 from functools import wraps
+from typing import Any, Callable, Optional, TypeVar, cast, overload
+
+# TypeVar for preserving function/class signatures through decorators.
+# Note: These decorators also accept properties, but we use Callable for the
+# common case. Properties work at runtime but won't get full type inference.
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class AnnotationType(Enum):
@@ -13,7 +18,19 @@ class AnnotationType(Enum):
     UNKNOWN = "Unknown"
 
 
-def PublicAPI(*args, **kwargs):
+@overload
+def PublicAPI(obj: F) -> F:
+    ...
+
+
+@overload
+def PublicAPI(
+    *, stability: str = "stable", api_group: str = "Others"
+) -> Callable[[F], F]:
+    ...
+
+
+def PublicAPI(*args: Any, **kwargs: Any):
     """Annotation for documenting public APIs.
 
     Public APIs are classes and methods exposed to end users of Ray.
@@ -31,9 +48,17 @@ def PublicAPI(*args, **kwargs):
     :ref:`Ray API Stability definitions <api-stability>`.
 
     Args:
-        stability: One of {"stable", "beta", "alpha"}.
-        api_group: Optional. Used only for doc rendering purpose. APIs in the same group
-                   will be grouped together in the API doc pages.
+        *args: When used as a bare ``@PublicAPI`` decorator, contains the
+            wrapped function or class as the single positional argument.
+        **kwargs: Supported keyword arguments are ``stability`` (one of
+            ``"stable"``, ``"beta"``, ``"alpha"``) and ``api_group`` (used
+            only for doc rendering; APIs in the same group are grouped
+            together in the API doc pages).
+
+    Returns:
+        Either the annotated object (when used as ``@PublicAPI``) or a
+        decorator that annotates an object (when used as
+        ``@PublicAPI(...)``).
 
     Examples:
         >>> from ray.util.annotations import PublicAPI
@@ -55,7 +80,7 @@ def PublicAPI(*args, **kwargs):
         stability = "stable"
     api_group = kwargs.get("api_group", "Others")
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         if stability in ["alpha", "beta"]:
             message = (
                 f"**PublicAPI ({stability}):** This API is in {stability} "
@@ -69,12 +94,33 @@ def PublicAPI(*args, **kwargs):
     return wrap
 
 
-def DeveloperAPI(*args, **kwargs):
+@overload
+def DeveloperAPI(obj: F) -> F:
+    ...
+
+
+@overload
+def DeveloperAPI() -> Callable[[F], F]:
+    ...
+
+
+def DeveloperAPI(*args: Any, **kwargs: Any):
     """Annotation for documenting developer APIs.
 
     Developer APIs are lower-level methods explicitly exposed to advanced Ray
     users and library developers. Their interfaces may change across minor
     Ray releases.
+
+    Args:
+        *args: When used as a bare ``@DeveloperAPI`` decorator, contains the
+            wrapped function or class as the single positional argument.
+        **kwargs: Reserved for future use; no keyword arguments are currently
+            supported.
+
+    Returns:
+        Either the annotated object (when used as ``@DeveloperAPI``) or a
+        decorator that annotates an object (when used as
+        ``@DeveloperAPI()``).
 
     Examples:
         >>> from ray.util.annotations import DeveloperAPI
@@ -85,7 +131,7 @@ def DeveloperAPI(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return DeveloperAPI()(args[0])
 
-    def wrap(obj):
+    def wrap(obj: F) -> F:
         _append_doc(
             obj,
             message="**DeveloperAPI:** This API may change across minor Ray releases.",
@@ -108,14 +154,33 @@ if not sys.warnoptions:
     warnings.filterwarnings("module", category=RayDeprecationWarning)
 
 
-def Deprecated(*args, **kwargs):
+@overload
+def Deprecated(obj: F) -> F:
+    ...
+
+
+@overload
+def Deprecated(*, message: str = ..., warning: bool = False) -> Callable[[F], F]:
+    ...
+
+
+def Deprecated(*args: Any, **kwargs: Any):
     """Annotation for documenting a deprecated API.
 
     Deprecated APIs may be removed in future releases of Ray.
 
     Args:
-        message: a message to help users understand the reason for the
-            deprecation, and provide a migration path.
+        *args: When used as a bare ``@Deprecated`` decorator, contains the
+            wrapped function or class as the single positional argument.
+        **kwargs: Supported keyword arguments are ``message`` (a string to
+            help users understand the reason for the deprecation and provide
+            a migration path) and ``warning`` (whether to also emit a
+            ``RayDeprecationWarning`` at runtime; defaults to ``False``).
+
+    Returns:
+        Either the annotated object (when used as ``@Deprecated``) or a
+        decorator that annotates an object (when used as
+        ``@Deprecated(...)``).
 
     Examples:
         >>> from ray.util.annotations import Deprecated
@@ -151,7 +216,7 @@ def Deprecated(*args, **kwargs):
     if kwargs:
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
 
-    def inner(obj):
+    def inner(obj: F) -> F:
         _append_doc(obj, message=doc_message, directive="warning")
         _mark_annotated(obj, type=AnnotationType.DEPRECATED)
 
@@ -169,17 +234,22 @@ def Deprecated(*args, **kwargs):
             return obj
         else:
             # class method or function.
-            @wraps(obj)
             def wrapper(*args, **kwargs):
                 warnings.warn(warning_message, RayDeprecationWarning, stacklevel=2)
                 return obj(*args, **kwargs)
 
-            return wrapper
+            # Only apply @wraps for actual callables, not properties/descriptors.
+            # Setting __wrapped__ on a property causes inspect.unwrap() to return
+            # the property, which breaks inspect.signature() in the tracing helper.
+            if callable(obj):
+                wrapper = wraps(obj)(wrapper)
+
+            return cast(F, wrapper)
 
     return inner
 
 
-def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> str:
+def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> None:
     if not obj.__doc__:
         obj.__doc__ = ""
 
@@ -200,7 +270,15 @@ def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> str:
 
 
 def _get_indent(docstring: str) -> int:
-    """
+    """Return the indentation level (in spaces) of the docstring body.
+
+    Args:
+        docstring: The docstring whose body indentation should be measured.
+
+    Returns:
+        The number of leading whitespace characters on the second non-empty
+        line of the docstring (i.e. the indentation of the body), or 0 if
+        the docstring is empty or contains only a summary line.
 
     Example:
         >>> def f():
@@ -236,7 +314,7 @@ def _get_indent(docstring: str) -> int:
     if not docstring:
         return 0
 
-    non_empty_lines = list(filter(bool, docstring.splitlines()))
+    non_empty_lines = [line for line in docstring.splitlines() if line]
     if len(non_empty_lines) == 1:
         # Docstring contains summary only.
         return 0

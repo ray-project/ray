@@ -15,15 +15,23 @@
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/actor_creator.h"
-#include "mock/ray/core_worker/reference_count.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
-#include "ray/common/test_util.h"
-#include "ray/rpc/worker/core_worker_client.h"
+#include "mock/ray/gcs_client/gcs_client.h"
+#include "ray/common/test_utils.h"
+#include "ray/core_worker/actor_management/fake_actor_creator.h"
+#include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/reference_counter_interface.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/observability/fake_metric.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/fake_subscriber.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 
 namespace ray::core {
 
@@ -48,12 +56,14 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
   task.GetMutableMessage().mutable_caller_address()->set_worker_id(
       caller_worker_id.Binary());
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
-  task.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(counter);
+  task.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(counter);
   task.GetMutableMessage().set_num_returns(0);
   return task;
 }
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
@@ -85,40 +95,64 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
  public:
   ActorTaskSubmitterTest()
-      : client_pool_(
-            std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
-              num_clients_connected_++;
-              return worker_client_;
+      : io_work(io_context.get_executor()),
+        client_pool_(std::make_shared<rpc::CoreWorkerClientPool>(
+            [&](const rpc::Address &addr) { return worker_client_; })),
+        raylet_client_pool_(std::make_shared<rpc::RayletClientPool>(
+            [](const rpc::Address &) -> std::shared_ptr<RayletClientInterface> {
+              return nullptr;
             })),
         worker_client_(std::make_shared<MockWorkerClient>()),
-        store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
+        store_(std::make_shared<CoreWorkerMemoryStore>(io_context, clock_)),
         task_manager_(std::make_shared<MockTaskManagerInterface>()),
-        io_work(io_context.get_executor()),
-        reference_counter_(std::make_shared<MockReferenceCounter>()),
+        mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
+        publisher_(std::make_unique<pubsub::FakePublisher>()),
+        subscriber_(std::make_unique<pubsub::FakeSubscriber>()),
+        fake_owned_object_count_gauge_(),
+        fake_owned_object_size_gauge_(),
+        reference_counter_(std::make_shared<ReferenceCounter>(
+            rpc::Address(),
+            publisher_.get(),
+            subscriber_.get(),
+            /*is_node_dead=*/[](const NodeID &) { return false; },
+            /*free_object_on_nodes_async=*/
+            [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
+            fake_owned_object_count_gauge_,
+            fake_owned_object_size_gauge_,
+            /*lineage_pinning_enabled=*/false)),
         submitter_(
             *client_pool_,
+            *raylet_client_pool_,
+            mock_gcs_client_,
             *store_,
             *task_manager_,
             actor_creator_,
-            [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
-            [this](const ActorID &actor_id, int64_t num_queued) {
+            [](const ObjectID &object_id) { return std::nullopt; },
+            [this](const ActorID &actor_id, const std::string &, int64_t num_queued) {
               last_queue_warning_ = num_queued;
             },
             io_context,
-            reference_counter_) {}
+            reference_counter_,
+            clock_) {}
 
   void TearDown() override { io_context.stop(); }
 
-  int num_clients_connected_ = 0;
   int64_t last_queue_warning_ = 0;
-  MockActorCreatorInterface actor_creator_;
+  FakeActorCreator actor_creator_;
+  Clock clock_;
+  instrumented_io_context io_context;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
+  std::shared_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskManagerInterface> task_manager_;
-  instrumented_io_context io_context;
-  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
-  std::shared_ptr<MockReferenceCounter> reference_counter_;
+  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
+  std::unique_ptr<pubsub::FakePublisher> publisher_;
+  std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
+  ray::observability::FakeGauge fake_owned_object_count_gauge_;
+  ray::observability::FakeGauge fake_owned_object_size_gauge_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   ActorTaskSubmitter submitter_;
 };
 
@@ -135,7 +169,7 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
                                       /*owned*/ false);
 
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -143,7 +177,7 @@ TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
@@ -176,7 +210,7 @@ TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
 
   for (int i = 0; i < 7500; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    submitter_.SubmitTask(task);
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_TRUE(worker_client_->ReplyPushTask(task.GetTaskAttempt(), Status::OK()));
   }
@@ -184,7 +218,7 @@ TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
 
   for (int i = 7500; i < 15000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    submitter_.SubmitTask(task);
     ASSERT_EQ(io_context.poll_one(), 1);
     /* no ack */
   }
@@ -192,7 +226,7 @@ TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
 
   for (int i = 15000; i < 35000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    submitter_.SubmitTask(task);
     ASSERT_EQ(io_context.poll_one(), 1);
     /* no ack */
   }
@@ -222,12 +256,16 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       obj2.Binary());
+  reference_counter_->AddOwnedObject(
+      obj1, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(
+      obj2, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -235,11 +273,11 @@ TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto data = GenerateRandomObject();
 
   // Each Put schedules a callback onto io_context, and let's run it.
-  store_->Put(*data, obj1);
+  store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
-  store_->Put(*data, obj2);
+  store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
@@ -269,12 +307,16 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       obj2.Binary());
+  reference_counter_->AddOwnedObject(
+      obj1, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
+  reference_counter_->AddOwnedObject(
+      obj2, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
@@ -283,12 +325,12 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     // submission.
     auto data = GenerateRandomObject();
     // task2 is submitted first as we allow out of order execution.
-    store_->Put(*data, obj2);
+    store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 1);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
     // then task1 is submitted
-    store_->Put(*data, obj1);
+    store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1, 0));
@@ -296,10 +338,10 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
     // Put the dependencies in the store in the opposite order of task
     // submission.
     auto data = GenerateRandomObject();
-    store_->Put(*data, obj2);
+    store_->Put(*data, obj2, reference_counter_->HasReference(obj2));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 0);
-    store_->Put(*data, obj1);
+    store_->Put(*data, obj1, reference_counter_->HasReference(obj1));
     ASSERT_EQ(io_context.poll_one(), 1);
     ASSERT_EQ(worker_client_->callbacks.size(), 2);
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
@@ -325,9 +367,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorDead) {
   ObjectID obj = ObjectID::FromRandom();
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
@@ -369,11 +411,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
 
   EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
@@ -397,7 +439,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   // Actor gets restarted.
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  submitter_.SubmitTask(task4);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task4.GetTaskAttempt(), Status::OK()));
   ASSERT_TRUE(worker_client_->callbacks.empty());
@@ -426,11 +468,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
 
   // All tasks will eventually finish.
@@ -457,17 +499,21 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
   // A new task is submitted.
-  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  submitter_.SubmitTask(task4);
   ASSERT_EQ(io_context.poll_one(), 1);
   // Tasks 2 and 3 get retried. In the real world, the seq_no of these two tasks should be
   // updated to 4 and 5 by `CoreWorker::InternalHeartbeat`.
   task2.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
-  task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(4);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  task2.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(4);
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   task3.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
-  task3.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(5);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  task3.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(5);
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task4.GetTaskAttempt(), Status::OK()));
   ASSERT_TRUE(worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK()));
@@ -496,11 +542,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   // Submit three tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
   // All tasks will eventually finish.
   EXPECT_CALL(*task_manager_, CompletePendingTask(_, _, _, _)).Times(3);
@@ -525,8 +571,10 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   // Upon re-connect, task 2 (failed) should be retried.
   // Retry task 2 manually (simulating task_manager and SendPendingTask's behavior)
   task2.GetMutableMessage().set_attempt_number(task2.AttemptNumber() + 1);
-  task2.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(3);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  task2.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(3);
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
 
   // Only task2 should be submitted. task 3 (completed) should not be retried.
@@ -548,12 +596,11 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
-  ASSERT_EQ(num_clients_connected_, 1);
 
   // Create four tasks for the actor.
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK()));
@@ -561,10 +608,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Actor restarts, but we don't receive the disconnect message until later.
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
-  ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task2.GetTaskAttempt(), Status::OK()));
@@ -573,10 +619,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(
       actor_id, 1, /*dead=*/false, death_cause, /*is_restartable=*/true);
-  ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
-  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  submitter_.SubmitTask(task3);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task3.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task3.GetTaskAttempt(), Status::OK()));
@@ -584,10 +629,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // The actor dies twice. We receive the last RESTART message first.
   submitter_.DisconnectActor(
       actor_id, 3, /*dead=*/false, death_cause, /*is_restartable=*/true);
-  ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
-  ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
+  submitter_.SubmitTask(task4);
   ASSERT_EQ(io_context.poll_one(), 1);
   // Tasks submitted when the actor is in RESTARTING state will fail immediately.
   // This happens in an io_service.post. Search `SendPendingTasks_ForceFail` to locate
@@ -601,24 +645,21 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   submitter_.ConnectActor(actor_id, addr, 2);
   submitter_.DisconnectActor(
       actor_id, 2, /*dead=*/false, death_cause, /*is_restartable=*/true);
-  ASSERT_EQ(num_clients_connected_, 2);
 
   // The actor dies permanently.
   submitter_.DisconnectActor(
       actor_id, 3, /*dead=*/true, death_cause, /*is_restartable=*/false);
-  ASSERT_EQ(num_clients_connected_, 2);
 
   // We receive more late messages. Nothing happens because the actor is dead.
   submitter_.DisconnectActor(
       actor_id, 4, /*dead=*/false, death_cause, /*is_restartable=*/true);
   addr.set_port(3);
   submitter_.ConnectActor(actor_id, addr, 4);
-  ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   auto task5 = CreateActorTaskHelper(actor_id, worker_id, 4);
   EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task5.TaskId(), _, _, _, _, _))
       .Times(1);
-  ASSERT_TRUE(submitter_.SubmitTask(task5).ok());
+  submitter_.SubmitTask(task5);
   ASSERT_EQ(io_context.poll_one(), 0);
 }
 
@@ -635,14 +676,13 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
                                       /*owned*/ false);
   submitter_.ConnectActor(actor_id, actor_addr1, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
-  ASSERT_EQ(num_clients_connected_, 1);
 
   // Create 3 tasks for the actor.
   auto task1_first_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 0);
   auto task2_first_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 1);
   auto task3_first_attempt = CreateActorTaskHelper(actor_id, caller_worker_id, 2);
   // Submit a task.
-  ASSERT_TRUE(submitter_.SubmitTask(task1_first_attempt).ok());
+  submitter_.SubmitTask(task1_first_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task1_first_attempt.TaskId(), _, _, _))
       .Times(1);
@@ -651,9 +691,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Submit 2 tasks.
-  ASSERT_TRUE(submitter_.SubmitTask(task2_first_attempt).ok());
+  submitter_.SubmitTask(task2_first_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3_first_attempt).ok());
+  submitter_.SubmitTask(task3_first_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
   // Actor failed, but the task replies are delayed (or in some scenarios, lost).
   // We should still be able to fail the inflight tasks.
@@ -681,9 +721,9 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
       task3_first_attempt.TaskIdBinary());
   task3_second_attempt.GetMutableMessage().set_attempt_number(
       task3_first_attempt.AttemptNumber() + 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2_second_attempt).ok());
+  submitter_.SubmitTask(task2_second_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task3_second_attempt).ok());
+  submitter_.SubmitTask(task3_second_attempt);
   ASSERT_EQ(io_context.poll_one(), 1);
 
   // Restart the actor.
@@ -748,11 +788,10 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
-  ASSERT_EQ(num_clients_connected_, 1);
 
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task1.TaskId(), _, _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK()));
@@ -764,7 +803,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
 
   // Submit a new task. This task should fail immediately because "max_task_retries" is 0.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  submitter_.SubmitTask(task2);
   ASSERT_EQ(io_context.poll_one(), 1);
   EXPECT_CALL(*task_manager_, CompletePendingTask(task2.TaskId(), _, _, _)).Times(0);
   EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _, _))
@@ -792,7 +831,7 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
     ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     tasks.push_back(task);
-    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    submitter_.SubmitTask(task);
     ASSERT_EQ(io_context.poll_one(), 1);
   }
 
@@ -811,7 +850,7 @@ TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
   // We can submit task 10, but after that the queue is full.
   auto task = CreateActorTaskHelper(actor_id, worker_id, 10);
   tasks.push_back(task);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  submitter_.SubmitTask(task);
   ASSERT_EQ(io_context.poll_one(), 1);
   ASSERT_TRUE(submitter_.PendingTasksFull(actor_id));
 
@@ -837,13 +876,139 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartResubmit) {
   // Generator is pushed to worker -> generator queued for resubmit -> comes back from
   // worker -> resubmit happens.
   auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  submitter_.SubmitTask(task1);
   io_context.run_one();
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
   ASSERT_TRUE(submitter_.QueueGeneratorForResubmit(task1));
   EXPECT_CALL(*task_manager_, MarkGeneratorFailedAndResubmit(task1.TaskId())).Times(1);
   worker_client_->ReplyPushTask(task1.GetTaskAttempt(), Status::OK());
+}
+
+// Test that when the head task of an actor's queue is cancelled,
+// subsequent tasks with resolved dependencies can proceed.
+//
+// Scenario:
+// - task_a has an unresolved dependency
+// - task_b has no dependencies (resolved immediately)
+// - In sequential mode, task_b is queued behind task_a
+// - Cancel task_a
+// - task_b should now execute
+TEST_P(ActorTaskSubmitterTest, TestCancelHeadUnblocksQueue) {
+  auto allow_out_of_order_execution = GetParam();
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id,
+                                      -1,
+                                      allow_out_of_order_execution,
+                                      /*fail_if_actor_unreachable*/ true,
+                                      /*owned*/ false);
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 0);
+
+  ObjectID obj1 = ObjectID::FromRandom();
+  auto task_a = CreateActorTaskHelper(actor_id, worker_id, 0);
+  task_a.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      obj1.Binary());
+  auto task_b = CreateActorTaskHelper(actor_id, worker_id, 1);
+
+  reference_counter_->AddOwnedObject(
+      obj1, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
+
+  submitter_.SubmitTask(task_a);
+  ASSERT_EQ(io_context.poll_one(), 1);
+  submitter_.SubmitTask(task_b);
+  ASSERT_EQ(io_context.poll_one(), 1);
+
+  if (allow_out_of_order_execution) {
+    // In out-of-order mode, task_b is sent immediately after its dependencies
+    // resolve, regardless of task_a's state.
+    ASSERT_EQ(worker_client_->callbacks.size(), 1);
+    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
+
+    EXPECT_CALL(*task_manager_, IsTaskPending(task_a.TaskId())).WillOnce(Return(true));
+    submitter_.CancelTask(task_a, /*recursive=*/false);
+    ASSERT_EQ(worker_client_->callbacks.size(), 1);
+  } else {
+    // In sequential mode, task_b is blocked by task_a even though task_b's
+    // dependencies are already resolved.
+    ASSERT_EQ(worker_client_->callbacks.size(), 0);
+
+    // At this point, task_b has already resolved its dependencies and will not
+    // trigger SendPendingTasks again. If CancelTask does not call SendPendingTasks
+    // and handle correctly, task_b will be stuck forever.
+    EXPECT_CALL(*task_manager_, IsTaskPending(task_a.TaskId())).WillOnce(Return(true));
+    submitter_.CancelTask(task_a, /*recursive=*/false);
+
+    ASSERT_EQ(worker_client_->callbacks.size(), 1);
+    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
+  }
+}
+
+TEST_P(ActorTaskSubmitterTest, TestPerConcurrencyGroupSequencing) {
+  // Test that tasks in different concurrency groups have independent sequencing
+  // and do not block each other. When group_a's first task is blocked on a dependency,
+  // group_b's tasks should still be sent.
+  auto allow_out_of_order_execution = GetParam();
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id,
+                                      -1,
+                                      allow_out_of_order_execution,
+                                      /*fail_if_actor_unreachable*/ true,
+                                      /*owned*/ false);
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 0);
+
+  auto make_task = [actor_id, worker_id](int seq_no, const std::string &group_name) {
+    auto task = CreateActorTaskHelper(actor_id, worker_id, seq_no);
+    task.GetMutableMessage().set_concurrency_group_name(group_name);
+    return task;
+  };
+
+  // group_a task 0 has an unresolved dependency, the rest have no deps.
+  ObjectID obj_a = ObjectID::FromRandom();
+  auto task_a0 = make_task(0, "group_a");
+  task_a0.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      obj_a.Binary());
+  reference_counter_->AddOwnedObject(
+      obj_a, {}, addr, "", 0, LineageReconstructionEligibility::INELIGIBLE_PUT, true);
+  auto task_a1 = make_task(1, "group_a");
+  auto task_b0 = make_task(0, "group_b");
+  auto task_b1 = make_task(1, "group_b");
+
+  submitter_.SubmitTask(task_a0);
+  io_context.run_one();
+  submitter_.SubmitTask(task_b0);
+  submitter_.SubmitTask(task_b1);
+  io_context.run_one();
+  io_context.run_one();
+  ASSERT_EQ(worker_client_->callbacks.size(), 2);
+
+  submitter_.SubmitTask(task_a1);
+  io_context.run_one();
+  if (allow_out_of_order_execution) {
+    ASSERT_EQ(worker_client_->callbacks.size(), 3);
+  } else {
+    ASSERT_EQ(worker_client_->callbacks.size(), 2);
+  }
+
+  auto data = GenerateRandomObject();
+  store_->Put(*data, obj_a, true);
+  io_context.run_one();
+  ASSERT_EQ(worker_client_->callbacks.size(), 4);
+
+  EXPECT_CALL(*task_manager_, CompletePendingTask(_, _, _, _)).Times(4);
+  while (!worker_client_->callbacks.empty()) {
+    auto it = worker_client_->callbacks.begin();
+    worker_client_->ReplyPushTask(it->first, Status::OK());
+  }
+
+  ASSERT_EQ(worker_client_->received_seq_nos.size(), 4);
 }
 
 INSTANTIATE_TEST_SUITE_P(AllowOutOfOrderExecution,

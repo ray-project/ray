@@ -1,24 +1,23 @@
 import abc
-from typing import List
 from datetime import datetime, timedelta
+from typing import List
 
-import github
-from github import Github
 from pybuildkite.buildkite import Buildkite
 
+from ray_release.aws import get_secret_token
+from ray_release.configs.global_config import get_global_config
+from ray_release.github_client import GitHubClient, GitHubIssue
+from ray_release.logger import logger
 from ray_release.test import (
     Test,
     TestState,
 )
-from ray_release.aws import get_secret_token
-from ray_release.logger import logger
 
-RAY_REPO = "ray-project/ray"
-BUILDKITE_ORGANIZATION = "ray-project"
-BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
-AWS_SECRET_GITHUB = "ray_ci_github_token"
-AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
+# We track test issues on a GitHub repo configured per pipeline.
+AWS_SECRET_GITHUB = "ray_ci_github_bot_token"
 WEEKLY_RELEASE_BLOCKER_TAG = "weekly-release-blocker"
+
+BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 NO_TEAM = "none"
 TEAM = [
     "core",
@@ -26,6 +25,7 @@ TEAM = [
     "kuberay",
     "ml",
     "rllib",
+    "llm",
     "serve",
 ]
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
@@ -56,11 +56,13 @@ class TestStateMachine(abc.ABC):
     @classmethod
     def _init_ray_repo(cls):
         if not cls.ray_repo:
-            cls.ray_repo = cls.get_github().get_repo(RAY_REPO)
+            cls.ray_repo = cls.get_github().get_repo(
+                get_global_config()["state_machine_github_repo"]
+            )
 
     @classmethod
     def get_github(cls):
-        return Github(get_secret_token(AWS_SECRET_GITHUB))
+        return GitHubClient(get_secret_token(AWS_SECRET_GITHUB))
 
     @classmethod
     def get_ray_repo(cls):
@@ -70,18 +72,20 @@ class TestStateMachine(abc.ABC):
     @classmethod
     def _init_ray_buildkite(cls):
         if not cls.ray_buildkite:
-            buildkite_token = get_secret_token(AWS_SECRET_BUILDKITE)
+            buildkite_token = get_secret_token(
+                get_global_config()["ci_pipeline_buildkite_secret"]
+            )
             cls.ray_buildkite = Buildkite()
             cls.ray_buildkite.set_access_token(buildkite_token)
 
     @classmethod
-    def get_release_blockers(cls) -> List[github.Issue.Issue]:
+    def get_release_blockers(cls) -> List[GitHubIssue]:
         repo = cls.get_ray_repo()
         blocker_label = repo.get_label(WEEKLY_RELEASE_BLOCKER_TAG)
         return list(repo.get_issues(state="open", labels=[blocker_label]))
 
     @classmethod
-    def get_issue_owner(cls, issue: github.Issue.Issue) -> str:
+    def get_issue_owner(cls, issue: GitHubIssue) -> str:
         labels = issue.get_labels()
         for label in labels:
             if label.name in TEAM:
@@ -273,18 +277,23 @@ class TestStateMachine(abc.ABC):
         issue = self.ray_repo.get_issue(issue_number)
         issue.create_comment(
             f"Blamed commit: {blamed_commit} "
-            f"found by bisect job https://buildkite.com/{BUILDKITE_ORGANIZATION}/"
+            f"found by bisect job https://buildkite.com/"
+            f"{get_global_config()['buildkite_org']}/"
             f"{BUILDKITE_BISECT_PIPELINE}/builds/{bisect_build_number}"
         )
         return True
 
     def _trigger_bisect(self) -> None:
+        if get_global_config()["state_machine_bisect_disabled"]:
+            logger.info(f"Skip bisect {self.test.get_name()}; bisect is disabled")
+            return
         if self._bisect_rate_limit_exceeded():
             logger.info(f"Skip bisect {self.test.get_name()} due to rate limit")
             return
+        buildkite_org = get_global_config()["buildkite_org"]
         test_type = self.test.get_test_type().value
         build = self.ray_buildkite.builds().create_build(
-            BUILDKITE_ORGANIZATION,
+            buildkite_org,
             BUILDKITE_BISECT_PIPELINE,
             "HEAD",
             "master",
@@ -301,7 +310,7 @@ class TestStateMachine(abc.ABC):
             return
         passing_commit = passing_commits[0]
         self.ray_buildkite.jobs().unblock_job(
-            BUILDKITE_ORGANIZATION,
+            buildkite_org,
             BUILDKITE_BISECT_PIPELINE,
             build["number"],
             build["jobs"][0]["id"],  # first job is the blocked job
@@ -321,7 +330,7 @@ class TestStateMachine(abc.ABC):
         Check if we have exceeded the rate limit of bisects per day.
         """
         builds = self.ray_buildkite.builds().list_all_for_pipeline(
-            BUILDKITE_ORGANIZATION,
+            get_global_config()["buildkite_org"],
             BUILDKITE_BISECT_PIPELINE,
             created_from=datetime.now() - timedelta(days=1),
             branch="master",

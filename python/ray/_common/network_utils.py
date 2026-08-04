@@ -1,56 +1,27 @@
-from typing import Optional, Tuple, Union
+import socket
+from contextlib import closing
+
+from ray._raylet import (  # noqa: F401
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_ipv6,
+    is_localhost,
+    node_ip_address_from_perspective,
+    parse_address,
+)
 
 
-def parse_address(address: str) -> Optional[Tuple[str, str]]:
-    """Parse a network address string into host and port.
-
-    Args:
-        address: The address string to parse (e.g., "localhost:8000", "[::1]:8000").
-
-    Returns:
-        Tuple with (host, port) if port found, None if no colon separator.
-    """
-    pos = address.rfind(":")
-    if pos == -1:
-        return None
-
-    host = address[:pos]
-    port = address[pos + 1 :]
-
-    if ":" in host:
-        if host.startswith("[") and host.endswith("]"):
-            host = host[1:-1]
-        else:
-            # Invalid IPv6 (missing brackets) or colon is part of the address, not a host:port split.
-            return None
-
-    return (host, port)
-
-
-def build_address(host: str, port: Union[int, str]) -> str:
-    """Build a network address string from host and port.
+def find_free_port(family: socket.AddressFamily = socket.AF_INET) -> int:
+    """Find a free port on the local machine.
 
     Args:
-        host: The hostname or IP address.
-        port: The port number (int or string).
+        family: The socket address family (AF_INET for IPv4, AF_INET6 for IPv6).
+            Defaults to AF_INET.
 
     Returns:
-        Formatted address string (e.g., "localhost:8000" or "[::1]:8000").
+        An available port number.
     """
-    if host is not None and ":" in host:
-        # IPv6 address
-        return f"[{host}]:{port}"
-    # IPv4 address or hostname
-    return f"{host}:{port}"
-
-
-def is_localhost(host: str) -> bool:
-    """Check if the given host string represents a localhost address.
-
-    Args:
-        host: The hostname or IP address to check.
-
-    Returns:
-        True if the host is a localhost address, False otherwise.
-    """
-    return host in ("localhost", "127.0.0.1", "::1")
+    with closing(socket.socket(family, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]

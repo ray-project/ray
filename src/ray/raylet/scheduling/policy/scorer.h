@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#include <optional>
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 
@@ -45,7 +44,8 @@ class LeastResourceScorer : public NodeScorer {
 
  private:
   /// \brief Calculate one of the resource scores.
-  ///
+  /// This function assumes the resource request has already passed the availability
+  /// check.
   /// \param requested Quantity of one of the required resources.
   /// \param available Quantity of one of the available resources.
   /// \return Score of the node.

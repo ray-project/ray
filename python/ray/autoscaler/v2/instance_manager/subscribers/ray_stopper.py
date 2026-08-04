@@ -100,7 +100,9 @@ class RayStopper(InstanceUpdatedSubscriber):
 
         Args:
             gcs_client: The gcs client to use.
+            error_queue: Queue to put errors on when draining fails.
             ray_node_id: The ray node id to drain.
+            instance_id: The instance id corresponding to the ray node.
             reason: The reason to drain the node.
             reason_str: The reason message to drain the node.
         """
@@ -135,7 +137,9 @@ class RayStopper(InstanceUpdatedSubscriber):
 
         Args:
             gcs_client: The gcs client to use.
+            error_queue: Queue to put errors on when stopping fails.
             ray_node_id: The ray node id to stop.
+            instance_id: The instance id corresponding to the ray node.
         """
         try:
             drained = gcs_client.drain_nodes(node_ids=[hex_to_binary(ray_node_id)])

@@ -55,6 +55,7 @@ Compiled Graph is a new feature and has some limitations:
   - For GPU to GPU communication, Compiled Graph only supports peer-to-peer transfers. Collective communication operations are coming soon.
   
 Keep an eye out for additional features in future Ray releases:
+
 - Support better queuing of DAG inputs, to enable more concurrent executions of the same DAG.
 - Support for more collective operations with NCCL.
 - Support for multiple DAGs executing on the same actor.

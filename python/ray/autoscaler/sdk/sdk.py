@@ -6,10 +6,13 @@ import tempfile
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
+from ray._private.label_utils import validate_label_selector
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.autoscaler._private.event_system import CreateClusterEvent  # noqa: F401
-from ray.autoscaler._private.event_system import global_event_system  # noqa: F401
+from ray.autoscaler._private.event_system import (
+    CreateClusterEvent,  # noqa: F401
+    global_event_system,  # noqa: F401
+)
 from ray.util.annotations import DeveloperAPI
 
 
@@ -19,13 +22,13 @@ def create_or_update_cluster(
     *,
     no_restart: bool = False,
     restart_only: bool = False,
-    no_config_cache: bool = False
+    no_config_cache: bool = False,
 ) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
         no_restart: Whether to skip restarting Ray services during the
             update. This avoids interrupting running jobs and can be used to
             dynamically adjust autoscaler configuration.
@@ -33,6 +36,9 @@ def create_or_update_cluster(
             restart Ray. This cannot be used with 'no-restart'.
         no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
+
+    Returns:
+        The cluster config dict applied after bootstrapping.
     """
     with _as_config_file(cluster_config) as config_file:
         return commands.create_or_update_cluster(
@@ -58,8 +64,8 @@ def teardown_cluster(
     """Destroys all nodes of a Ray cluster described by a config json.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
         workers_only: Whether to keep the head node running and only
             teardown worker nodes.
         keep_min_workers: Whether to keep min_workers (as specified
@@ -85,13 +91,13 @@ def run_on_cluster(
     stop: bool = False,
     no_config_cache: bool = False,
     port_forward: Optional[commands.Port_forward] = None,
-    with_output: bool = False
+    with_output: bool = False,
 ) -> Optional[str]:
     """Runs a command on the specified cluster.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
         cmd: the command to run, or None for a no-op command.
         run_env: whether to run the command on the host or in a
             container. Select between "auto", "host" and "docker".
@@ -99,7 +105,7 @@ def run_on_cluster(
         stop: whether to stop the cluster after command run
         no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
-        port_forward ( (int,int) or list[(int,int)]): port(s) to forward.
+        port_forward: port(s) to forward.
         with_output: Whether to capture command output.
 
     Returns:
@@ -131,13 +137,13 @@ def rsync(
     ip_address: Optional[str] = None,
     use_internal_ip: bool = False,
     no_config_cache: bool = False,
-    should_bootstrap: bool = True
+    should_bootstrap: bool = True,
 ):
     """Rsyncs files to or from the cluster.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
         source: rsync source argument.
         target: rsync target argument.
         down: whether we're syncing remote -> local.
@@ -147,6 +153,9 @@ def rsync(
         no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         should_bootstrap: whether to bootstrap cluster config before syncing
+
+    Returns:
+        The result of the underlying rsync command.
 
     Raises:
         RuntimeError: If the cluster head node is not found.
@@ -171,8 +180,8 @@ def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
     """Returns head node IP for given configuration file if exists.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
 
     Returns:
         The ip address of the cluster head node.
@@ -189,8 +198,8 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
     """Returns worker node IPs for given configuration file.
 
     Args:
-        cluster_config (Union[str, dict]): Either the config dict of the
-            cluster, or a path pointing to a file containing the config.
+        cluster_config: Either the config dict of the cluster, or a path
+            pointing to a file containing the config.
 
     Returns:
         List of worker node ip addresses.
@@ -204,7 +213,9 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
 
 @DeveloperAPI
 def request_resources(
-    num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
+    num_cpus: Optional[int] = None,
+    bundles: Optional[List[dict]] = None,
+    bundle_label_selectors: Optional[List[dict]] = None,
 ) -> None:
     """Command the autoscaler to scale to accommodate the specified requests.
 
@@ -225,9 +236,14 @@ def request_resources(
         num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made to override.
-        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
-            resource shapes can fit. This request is persistent until another
-            call to request_resources() is made to override.
+        bundles: Scale the cluster to ensure this set of resource shapes can
+            fit. This request is persistent until another call to
+            request_resources() is made to override.
+        bundle_label_selectors: A list of label selectors, applied per-bundle to the same
+            index in the `bundles` list. For bundles without a label requirement, the
+            corresponding item in the list is an empty dictionary. For each bundle.
+            Label selectors consist of zero or more key-value pairs where the key is
+            a label and the value is a operator (in, !in, etc.) and label value.
 
     Examples:
         >>> from ray.autoscaler.sdk import request_resources
@@ -239,6 +255,13 @@ def request_resources(
         >>> # Same as requesting num_cpus=3.
         >>> request_resources( # doctest: +SKIP
         ...     bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
+        >>> # Requests 2 num_cpus=1 bundles, the first with
+        >>> # label_selector={"accelerator-type": "in(A100)"} and second with
+        >>> # label_selector={"market-type": "spot"}.
+        >>> request_resources( # doctest: +SKIP
+        ...     bundles=[{"CPU": 1}, {"CPU": 1}]),
+        ...     bundle_label_selectors=[{"accelerator-type": "in(A100)"},
+        ...                            {"market-type": "spot"}])
     """
     if num_cpus is not None and not isinstance(num_cpus, int):
         raise TypeError("num_cpus should be of type int.")
@@ -246,17 +269,49 @@ def request_resources(
         if isinstance(bundles, List):
             for bundle in bundles:
                 if isinstance(bundle, Dict):
-                    for key in bundle.keys():
-                        if not (isinstance(key, str) and isinstance(bundle[key], int)):
+                    for key, value in bundle.items():
+                        if not isinstance(key, str):
+                            raise TypeError("each bundle key should be str.")
+                        # bool is a subclass of int; reject it explicitly so
+                        # `{"CPU": True}` doesn't silently mean `{"CPU": 1}`.
+                        if isinstance(value, bool) or not isinstance(
+                            value, (int, float)
+                        ):
                             raise TypeError(
-                                "each bundle key should be str and value as int."
+                                "each bundle value should be a number (int or float)."
                             )
                 else:
                     raise TypeError("each bundle should be a Dict.")
         else:
             raise TypeError("bundles should be of type List")
+    if bundle_label_selectors is not None:
+        if bundles is None:
+            raise ValueError(
+                "`bundles` must be provided when `bundle_label_selectors` is specified."
+            )
+        if len(bundle_label_selectors) != len(bundles):
+            raise ValueError(
+                "`bundle_label_selector` must be a list with length equal to the number of bundles."
+            )
+        for label_selector in bundle_label_selectors:
+            if (
+                not isinstance(label_selector, dict)
+                or not all(isinstance(k, str) for k in label_selector.keys())
+                or not all(isinstance(v, str) for v in label_selector.values())
+            ):
+                raise ValueError(
+                    "Bundle label selector must be a list of string dictionary"
+                    " label selectors. For example: "
+                    '`[{ray.io/market_type": "spot"}, {"ray.io/accelerator-type": "A100"}]`.'
+                )
+            error_message = validate_label_selector(label_selector)
+            if error_message:
+                raise ValueError(
+                    f"Invalid label selector provided in bundle_label_selectors list."
+                    f" Detailed error: '{error_message}'"
+                )
 
-    return commands.request_resources(num_cpus, bundles)
+    return commands.request_resources(num_cpus, bundles, bundle_label_selectors)
 
 
 @DeveloperAPI
@@ -272,13 +327,13 @@ def configure_logging(
             If 'record', outputs record-style without formatting.
             'auto' defaults to 'pretty', and disables pretty logging
             if stdin is *not* a TTY. Defaults to "auto".
-        color_mode (str):
+        color_mode:
             Can be "true", "false", or "auto".
 
             Enables or disables `colorful`.
 
             If `color_mode` is "auto", is set to `not stdout.isatty()`
-        vebosity (int):
+        verbosity:
             Output verbosity (0, 1, 2, 3).
 
             Low verbosity will disable `verbose` and `very_verbose` messages.

@@ -1,25 +1,28 @@
 import os
-import psutil
 import subprocess
 import sys
 
 import pytest
 
 import ray
-import ray.util.state
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import (
-    external_redis_test_enabled,
-    client_test_enabled,
+from ray._common.network_utils import parse_address
+from ray._common.test_utils import (
+    Semaphore,
     run_string_as_driver,
+    wait_for_condition,
+)
+from ray._private.test_utils import (
+    client_test_enabled,
+    external_redis_test_enabled,
     get_gcs_memory_used,
     run_string_as_driver_nonblocking,
 )
-from ray._common.network_utils import parse_address
-from ray._common.test_utils import Semaphore, wait_for_condition
+from ray._raylet import GCS_PID_KEY, GcsClient
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
-from ray._raylet import GcsClient, GCS_PID_KEY
+
+import psutil
 
 
 @pytest.fixture
@@ -62,32 +65,6 @@ def test_back_pressure(shutdown_only_with_initialization_check):
         assert False
 
     ray.shutdown()
-
-
-def test_local_mode_deadlock(shutdown_only_with_initialization_check):
-    ray.init(local_mode=True)
-
-    @ray.remote
-    class Foo:
-        def __init__(self):
-            pass
-
-        def ping_actor(self, actor):
-            actor.ping.remote()
-            return 3
-
-    @ray.remote
-    class Bar:
-        def __init__(self):
-            pass
-
-        def ping(self):
-            return 1
-
-    foo = Foo.remote()
-    bar = Bar.remote()
-    # Expect ping_actor call returns normally without deadlock.
-    assert ray.get(foo.ping_actor.remote(bar)) == 3
 
 
 def function_entry_num(job_id):

@@ -69,11 +69,13 @@ def list_ec2_instances(
     region: str, aws_credentials: Dict[str, Any] = None
 ) -> List[Dict[str, Any]]:
     """Get all instance-types/resources available in the user's AWS region.
+
     Args:
         region: the region of the AWS provider. e.g., "us-west-2".
+        aws_credentials: AWS credentials to use for the boto3 client.
+
     Returns:
-        final_instance_types: a list of instances. An example of one element in
-        the list:
+        A list of instances. An example of one element in the list:
             {'InstanceType': 'm5a.xlarge', 'ProcessorInfo':
             {'SupportedArchitectures': ['x86_64'], 'SustainedClockSpeedInGhz':
             2.5},'VCpuInfo': {'DefaultVCpus': 4, 'DefaultCores': 2,
@@ -127,6 +129,8 @@ class AWSNodeProvider(NodeProvider):
         self.ready_for_new_batch.set()
         self.tag_cache_lock = threading.Lock()
         self.count_lock = threading.Lock()
+        # Prevent concurrent create_node calls to get the same stopped/stopping node to reuse.
+        self._reuse_node_lock = threading.Lock()
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -290,32 +294,35 @@ class AWSNodeProvider(NodeProvider):
                     }
                 )
 
-            reuse_nodes = list(self.ec2.instances.filter(Filters=filters))[:count]
-            reuse_node_ids = [n.id for n in reuse_nodes]
-            reused_nodes_dict = {n.id: n for n in reuse_nodes}
-            if reuse_nodes:
-                cli_logger.print(
-                    # todo: handle plural vs singular?
-                    "Reusing nodes {}. "
-                    "To disable reuse, set `cache_stopped_nodes: False` "
-                    "under `provider` in the cluster configuration.",
-                    cli_logger.render_list(reuse_node_ids),
-                )
+            with self._reuse_node_lock:
+                reuse_nodes = list(self.ec2.instances.filter(Filters=filters))[:count]
+                reuse_node_ids = [n.id for n in reuse_nodes]
+                reused_nodes_dict = {n.id: n for n in reuse_nodes}
+                if reuse_nodes:
+                    cli_logger.print(
+                        # todo: handle plural vs singular?
+                        "Reusing nodes {}. "
+                        "To disable reuse, set `cache_stopped_nodes: False` "
+                        "under `provider` in the cluster configuration.",
+                        cli_logger.render_list(reuse_node_ids),
+                    )
 
-                # todo: timed?
-                with cli_logger.group("Stopping instances to reuse"):
-                    for node in reuse_nodes:
-                        self.tag_cache[node.id] = from_aws_format(
-                            {x["Key"]: x["Value"] for x in node.tags}
-                        )
-                        if node.state["Name"] == "stopping":
-                            cli_logger.print("Waiting for instance {} to stop", node.id)
-                            node.wait_until_stopped()
+                    # todo: timed?
+                    with cli_logger.group("Stopping instances to reuse"):
+                        for node in reuse_nodes:
+                            self.tag_cache[node.id] = from_aws_format(
+                                {x["Key"]: x["Value"] for x in node.tags}
+                            )
+                            if node.state["Name"] == "stopping":
+                                cli_logger.print(
+                                    "Waiting for instance {} to stop", node.id
+                                )
+                                node.wait_until_stopped()
 
-                self.ec2.meta.client.start_instances(InstanceIds=reuse_node_ids)
-                for node_id in reuse_node_ids:
-                    self.set_node_tags(node_id, tags)
-                count -= len(reuse_node_ids)
+                    self.ec2.meta.client.start_instances(InstanceIds=reuse_node_ids)
+                    for node_id in reuse_node_ids:
+                        self.set_node_tags(node_id, tags)
+                    count -= len(reuse_node_ids)
 
         created_nodes_dict = {}
         if count:
@@ -340,8 +347,8 @@ class AWSNodeProvider(NodeProvider):
         tag specs.
 
         Args:
-            tag_specs (List[Dict[str, Any]]): base node provider tag specs
-            user_tag_specs (List[Dict[str, Any]]): user's node config tag specs
+            tag_specs: base node provider tag specs
+            user_tag_specs: user's node config tag specs
         """
 
         for user_tag_spec in user_tag_specs:

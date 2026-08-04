@@ -1,6 +1,7 @@
 import os
 
 import pytest
+
 from ray_release.config import DEFAULT_ANYSCALE_PROJECT
 from ray_release.env import load_environment, populate_os_env
 from ray_release.exception import ReleaseTestConfigError

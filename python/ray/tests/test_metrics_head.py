@@ -2,20 +2,21 @@
 import json
 import logging
 import os
-import pytest
 import sys
 import tempfile
 
+import pytest
+
+from ray._common.utils import get_default_ray_temp_dir
+from ray._private.ray_constants import SESSION_LATEST
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
+    MAX_PERCENTAGE_EXPRESSION,
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
 )
 from ray.tests.conftest import _ray_start
-from ray._private.ray_constants import SESSION_LATEST
-from ray._common.utils import get_ray_temp_dir
-
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
         include_dashboard=True, _temp_dir=temp_dir_val if is_temp_dir_set else None
     ) as context:
         session_dir = context["session_dir"]
-        temp_dir = temp_dir_val if is_temp_dir_set else get_ray_temp_dir()
+        temp_dir = temp_dir_val if is_temp_dir_set else get_default_ray_temp_dir()
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
@@ -71,7 +72,9 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
 
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
         with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
-            target_path = os.path.join(temp_dir, "prom_metrics_service_discovery.json")
+            target_path = os.path.join(
+                session_dir, "prom_metrics_service_discovery.json"
+            )
             assert f"- '{target_path}'" in f.read()
 
 
@@ -136,6 +139,9 @@ def test_metrics_folder_with_dashboard_override(
                     # Row panels don't have targets
                     continue
                 for target in panel["targets"]:
+                    if target["expr"] == MAX_PERCENTAGE_EXPRESSION:
+                        # We skip expressions that are constant value targets
+                        continue
                     # Check for standard_global_filters
                     assert 'SessionName=~"$SessionName"' in target["expr"]
                     # Check for custom global_filters
@@ -177,8 +183,14 @@ def test_metrics_folder_with_dashboard_override(
             contents = json.loads(f.read())
             assert contents["uid"] == serve_uid
             for panel in contents["panels"]:
-                for target in panel["targets"]:
-                    assert serve_global_filters in target["expr"]
+                if panel["type"] == "row":
+                    # Row panels contain nested panels, not targets directly
+                    for nested_panel in panel.get("panels", []):
+                        for target in nested_panel["targets"]:
+                            assert serve_global_filters in target["expr"]
+                else:
+                    for target in panel["targets"]:
+                        assert serve_global_filters in target["expr"]
             for variable in contents["templating"]["list"]:
                 if variable["name"] == "datasource":
                     continue
@@ -219,12 +231,18 @@ def test_default_dashboard_utilizes_global_filters():
     for row in DEFAULT_GRAFANA_ROWS:
         for panel in row.panels:
             for target in panel.targets:
+                if target.legend == "MAX" and target.expr == MAX_PERCENTAGE_EXPRESSION:
+                    # We skip expressions that are constant value targets serving as visual aids
+                    continue
                 assert "{global_filters}" in target.expr
 
 
 def test_serve_dashboard_utilizes_global_filters():
     for panel in SERVE_GRAFANA_PANELS:
         for target in panel.targets:
+            if target.legend == "MAX" and target.expr == MAX_PERCENTAGE_EXPRESSION:
+                # We skip expressions that are constant value targets serving as visual aids
+                continue
             assert "{global_filters}" in target.expr
 
 

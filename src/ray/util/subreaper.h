@@ -105,10 +105,13 @@ class KnownChildrenTracker {
   std::vector<pid_t> ListUnknownChildren(
       std::function<std::vector<pid_t>()> list_pids_fn);
 
+  KnownChildrenTracker(const KnownChildrenTracker &) = delete;
+  KnownChildrenTracker &operator=(const KnownChildrenTracker &) = delete;
+
+  ~KnownChildrenTracker() = default;
+
  private:
   KnownChildrenTracker() = default;
-  ~KnownChildrenTracker() = default;
-  RAY_DISALLOW_COPY_AND_ASSIGN(KnownChildrenTracker);
 
   bool enabled_ = false;
   absl::Mutex m_;

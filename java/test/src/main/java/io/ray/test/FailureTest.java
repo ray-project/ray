@@ -13,18 +13,12 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(groups = {"cluster"})
 public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
-
-  @BeforeClass
-  public void setUp() {
-    System.setProperty("ray.raylet.startup-token", "0");
-  }
 
   public static int badFunc() {
     throw new RuntimeException(EXCEPTION_MESSAGE);

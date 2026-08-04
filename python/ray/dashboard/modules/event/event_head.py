@@ -13,9 +13,9 @@ import aiohttp.web
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
-from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
@@ -43,10 +43,17 @@ RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
 
 
 async def _list_cluster_events_impl(
-    *, all_events, executor: ThreadPoolExecutor, option: ListApiOptions
+    *,
+    all_events: Dict[str, JobEvents],
+    executor: ThreadPoolExecutor,
+    option: ListApiOptions,
 ) -> ListApiResponse:
-    """
-    List all cluster events from the cluster. Made a free function to allow unit tests.
+    """List all cluster events from the cluster. Made a free function to allow unit tests.
+
+    Args:
+        all_events: Mapping of ``job_id`` to per-job event dictionaries.
+        executor: Executor used to run the (CPU-bound) transform off the event loop.
+        option: Query options (filters, limit, detail flag).
 
     Returns:
         A list of cluster events in the cluster.

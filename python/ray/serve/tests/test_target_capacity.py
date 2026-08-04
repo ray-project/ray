@@ -4,15 +4,16 @@ from copy import deepcopy
 from typing import Dict, Optional
 
 import pytest
+from pydantic import BaseModel
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import BaseModel
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
@@ -43,11 +44,14 @@ START_AT_10_DEPLOYMENT_MAX_REPLICAS = 20
 def shutdown_ray_and_serve():
     serve.shutdown()
     if ray.is_initialized():
-        ray.shutdown()
+        # wait_for_processes=True blocks until the raylet/GCS/etc. subprocesses
+        # have fully exited, so the next test's serve.start() (which calls
+        # ray.init()) doesn't race a still-terminating raylet.
+        ray.shutdown(wait_for_processes=True)
     yield
     serve.shutdown()
     if ray.is_initialized():
-        ray.shutdown()
+        ray.shutdown(wait_for_processes=True)
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})
@@ -118,6 +122,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: 0,
             DOWNSTREAM_DEPLOYMENT_NAME: 0,
         },
+        timeout=30,
     )
 
     # Initially deploy at target_capacity 1, should have 1 replica of each.
@@ -130,6 +135,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: 1,
             DOWNSTREAM_DEPLOYMENT_NAME: 1,
         },
+        timeout=30,
     )
 
     # Increase target_capacity to 50, ingress deployment should scale up.
@@ -142,6 +148,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+        timeout=30,
     )
 
     # Increase target_capacity to 100, both should fully scale up.
@@ -154,6 +161,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
+        timeout=30,
     )
 
     # Finish rollout (remove target_capacity), should have no effect.
@@ -166,6 +174,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
+        timeout=30,
     )
 
 
@@ -187,6 +196,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
+        timeout=30,
     )
 
     # Decrease target_capacity to 50, both deployments should scale down.
@@ -199,6 +209,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+        timeout=30,
     )
 
     # Decrease target_capacity to 1, both should fully scale down.
@@ -211,6 +222,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
             INGRESS_DEPLOYMENT_NAME: 1,
             DOWNSTREAM_DEPLOYMENT_NAME: 1,
         },
+        timeout=30,
     )
 
     # Decrease target_capacity to 0, both should fully scale down to zero.
@@ -223,6 +235,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
             INGRESS_DEPLOYMENT_NAME: 0,
             DOWNSTREAM_DEPLOYMENT_NAME: 0,
         },
+        timeout=30,
     )
 
 
@@ -255,6 +268,7 @@ def test_controller_recover_target_capacity(
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+        timeout=30,
     )
     assert (
         ray.get(client._controller._get_target_capacity_direction.remote())
@@ -271,6 +285,7 @@ def test_controller_recover_target_capacity(
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+        timeout=30,
     )
     assert (
         ray.get(client._controller._get_target_capacity_direction.remote())
@@ -289,6 +304,10 @@ def test_controller_recover_target_capacity(
         "upscaling_factor": 4,
         "downscaling_factor": 4,
         "metrics_interval_s": 1,
+        # The default look_back_period_s is 30, which means the test assertions will be
+        # slow to respond to changes in metrics. Setting it to 2 makes the test assertions
+        # more responsive to changes in metrics, hence reducing flakiness.
+        "look_back_period_s": 2,
     },
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=0,
@@ -347,6 +366,7 @@ def test_autoscaling_scale_to_zero(
         deployment_to_num_replicas={
             SCALE_TO_ZERO_DEPLOYMENT_NAME: 1,
         },
+        timeout=30,
     )
 
     # Increase to target_capacity 100, should scale all the way up.
@@ -358,6 +378,7 @@ def test_autoscaling_scale_to_zero(
         deployment_to_num_replicas={
             SCALE_TO_ZERO_DEPLOYMENT_NAME: SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS,
         },
+        timeout=30,
     )
 
     # Decrease to target_capacity 50, should scale down.
@@ -369,6 +390,7 @@ def test_autoscaling_scale_to_zero(
         deployment_to_num_replicas={
             SCALE_TO_ZERO_DEPLOYMENT_NAME: SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS / 2,
         },
+        timeout=30,
     )
 
     # Cancel all of the requests, should scale down to zero.
@@ -378,6 +400,7 @@ def test_autoscaling_scale_to_zero(
         deployment_to_num_replicas={
             SCALE_TO_ZERO_DEPLOYMENT_NAME: 0,
         },
+        timeout=30,
     )
 
 
@@ -428,7 +451,7 @@ def create_controlled_app(config: ControllerAppConfig) -> Application:
 
 class AutoscalingControllerAppConfig(BaseModel):
     min_replicas: int
-    initial_replicas: Optional[int]
+    initial_replicas: Optional[int] = None
     max_replicas: int
 
 
@@ -461,7 +484,7 @@ class TestTargetCapacityUpdateAndServeStatus:
         app_name: str,
         deployment_name: str,
         replica_state: ReplicaState = ReplicaState.RUNNING,
-        controller_handle=None,
+        controller_handle: Optional[ray.actor.ActorHandle] = None,
     ) -> bool:
         """Checks that the number of replicas are as expected.
 
@@ -473,14 +496,20 @@ class TestTargetCapacityUpdateAndServeStatus:
             controller_handle: this is an optional argument. If provided, the
                 controller handle is used to get the current autoscaling
                 metrics and print them if the assertion fails.
+
+        Returns:
+            True when the replica count matches (raises ``AssertionError`` otherwise).
         """
         deployment = serve.status().applications[app_name].deployments[deployment_name]
         num_running_replicas = deployment.replica_states.get(replica_state, 0)
         if controller_handle is None:
             assert num_running_replicas == expected_num_replicas, f"{deployment}"
         else:
+            deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
             autoscaling_metrics = ray.get(
-                controller_handle._dump_autoscaling_metrics_for_testing.remote()
+                controller_handle._get_metrics_for_deployment_for_testing.remote(
+                    deployment_id
+                )
             )
             assert num_running_replicas == expected_num_replicas, (
                 f"Status: {deployment}" f"\nAutoscaling metrics: {autoscaling_metrics}"
@@ -538,7 +567,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             return True
 
         ray.get(lifecycle_signal.send.remote())
-        wait_for_condition(check_running, timeout=20, retry_interval_ms=500)
+        wait_for_condition(check_running, timeout=30, retry_interval_ms=500)
         ray.get(lifecycle_signal.send.remote(clear=True))
 
     def test_static_num_replicas_target_capacity_update(
@@ -647,8 +676,8 @@ class TestTargetCapacityUpdateAndServeStatus:
         app_name = "controlled_app"
         deployment_name = "controlled"
         min_replicas = 10
-        initial_replicas = 30
-        max_replicas = 70
+        initial_replicas = 12
+        max_replicas = 20
 
         lifecycle_signal = SignalActor.options(
             name="lifecycle_signal", namespace=SERVE_NAMESPACE
@@ -718,7 +747,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_replicas=int(0.5 * max_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=20,
+            timeout=30,
         )
 
         # Clear requests and check that application scales down.
@@ -919,6 +948,19 @@ class TestInitialReplicasHandling:
         wait_for_condition(lambda: len(serve.status().applications) == 1)
         assert serve.status().target_capacity is None
 
+        # Wait for initial deployment to reach RUNNING before starting the
+        # target_capacity loop. Without this, the first loop iteration must
+        # handle both initial replica startup AND target_capacity convergence
+        # within its timeout, which is marginal under CI resource contention.
+        wait_for_condition(
+            lambda: (
+                SERVE_DEFAULT_APP_NAME in serve.status().applications
+                and serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+                == ApplicationStatus.RUNNING
+            ),
+            timeout=30,
+        )
+
         # Kick off downscaling pattern.
         test_target_capacities = [100, 60, 40, 0]
         expected_num_replicas = [
@@ -937,6 +979,7 @@ class TestInitialReplicasHandling:
             wait_for_condition(
                 check_expected_num_replicas,
                 deployment_to_num_replicas={deployment_name: num_replicas},
+                timeout=30,
             )
 
     def test_initial_replicas_scales_up_and_down(
@@ -945,9 +988,9 @@ class TestInitialReplicasHandling:
         # TODO(landscapepainter): This test fails locally due to the stall for replica initialization
         # during upscaling and delayed response from serve.status(). It does not fail from
         # buildkite, but need to investigate why it fails locally.
-        deployment_name = "start_at_ten"
+        deployment_name = "start_at_five"
         min_replicas = 0
-        initial_replicas = 10
+        initial_replicas = 5
 
         config = ServeDeploySchema(
             target_capacity=0,
@@ -968,8 +1011,8 @@ class TestInitialReplicasHandling:
         expected_num_replicas = [
             0,
             1,
-            2,
-            6,
+            1,
+            3,
             min_replicas,
             min_replicas,
             initial_replicas,
@@ -988,6 +1031,7 @@ class TestInitialReplicasHandling:
             wait_for_condition(
                 check_expected_num_replicas,
                 deployment_to_num_replicas={deployment_name: num_replicas},
+                timeout=30,
             )
 
     def test_initial_replicas_zero(
@@ -1036,7 +1080,7 @@ class TestInitialReplicasHandling:
         # buildkite, but need to investigate why it fails locally.
         deployment_name = "start_at_ten"
         min_replicas = 0
-        initial_replicas = 20
+        initial_replicas = 10
         config_target_capacity = 40
 
         config = ServeDeploySchema(
@@ -1067,6 +1111,7 @@ class TestInitialReplicasHandling:
                 deployment_name: int(initial_replicas * config_target_capacity / 100)
             },
             app_name="app1",
+            timeout=30,
         )
 
         # When deploying a new config, initial_replicas * target_capacity
@@ -1102,6 +1147,7 @@ class TestInitialReplicasHandling:
                 )
             },
             app_name="app1",
+            timeout=30,
         )
         wait_for_condition(
             check_expected_num_replicas,
@@ -1111,6 +1157,7 @@ class TestInitialReplicasHandling:
                 )
             },
             app_name="app2",
+            timeout=30,
         )
 
 

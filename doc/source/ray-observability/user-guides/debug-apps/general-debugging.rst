@@ -83,7 +83,7 @@ Placement Groups aren't composable
 
   import ray
   from ray import tune
-  from ray.util.placement_group import PlacementGroupSchedulingStrategy
+  from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
   def create_task_that_uses_resources():
       @ray.remote(num_cpus=10)

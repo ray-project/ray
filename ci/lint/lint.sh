@@ -24,6 +24,7 @@ pre_commit() {
     black
     prettier
     mypy
+    pyrefly-serve
     rst-directive-colons
     rst-inline-touching-normal
     python-check-mock-methods
@@ -38,6 +39,7 @@ pre_commit() {
     cpplint
     buildifier
     buildifier-lint
+    eslint
   )
 
   for HOOK in "${HOOKS[@]}"; do
@@ -56,18 +58,19 @@ code_format() {
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
 }
 
-untested_code_snippet() {
-  pip install -c python/requirements_compiled.txt semgrep
-  semgrep ci --config semgrep.yml
+semgrep_lint() {
+  pip install -c python/requirements_compiled.txt semgrep pre-commit
+  pre-commit run semgrep --all-files --show-diff-on-failure
 }
 
 banned_words() {
   ./ci/lint/check-banned-words.sh
 }
 
+# Use system python to avoid conflicts with uv python in forge image
 doc_readme() {
-  pip install -c python/requirements_compiled.txt docutils
-  cd python && python setup.py check --restructuredtext --strict --metadata
+  /usr/bin/python -m pip install -c python/requirements_compiled.txt docutils
+  cd python && /usr/bin/python setup.py check --restructuredtext --strict --metadata
 }
 
 dashboard_format() {
@@ -98,22 +101,51 @@ test_coverage() {
   python ci/pipeline/check-test-run.py
 }
 
+_install_ray_no_deps() {
+  if [[ -d /opt/ray-build ]]; then
+    unzip -o -q /opt/ray-build/ray_pkg.zip -d python
+    unzip -o -q /opt/ray-build/ray_py_proto.zip -d python
+    mkdir -p python/ray/dashboard/client/build
+    tar -xzf /opt/ray-build/dashboard.tar.gz -C python/ray/dashboard/client/build
+    SKIP_BAZEL_BUILD=1 pip install -e "python[all]" --no-deps
+  else
+    RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]" --no-deps
+  fi
+}
+
 api_annotations() {
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  echo "--- Install Ray"
+  _install_ray_no_deps
+
+  echo "--- Check API annotations"
   ./ci/lint/check_api_annotations.py
 }
 
 api_policy_check() {
-  # install ray and compile doc to generate API files
-  make -C doc/ html
-  RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
+  echo "--- Install Ray"
+  _install_ray_no_deps
 
-  # validate the API files
-  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
+  echo "--- Generate API doc stubs"
+  # The consistency check reads autosummary stub .rst files. Generate only those
+  # stubs instead of a full `make -C doc/ html` (which built the entire site just
+  # to produce them). This exits nonzero if generation produces nothing, so a
+  # broken autogen step fails here instead of silently. Stubs are generated after
+  # installing Ray so they reflect the checkout's source.
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python doc/source/api_autogen.py
+
+  echo "--- Check API/doc consistency"
+  # Run via the image interpreter, not `bazel run`: the bazel target's @py_deps_py310
+  # (cp310) wheels can't import under the py3.11 docbuild image (e.g. rpds).
+  # TODO(elliot-barn): #64070 switch back to bazel once hermetic python 3.11 is setup
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_discrepancy.py /ray "$@"
 }
 
 documentation_style() {
   ./ci/lint/check-documentation-style.sh
+}
+
+doc_no_new_rst() {
+  python doc/test_no_new_rst.py
 }
 
 "$@"

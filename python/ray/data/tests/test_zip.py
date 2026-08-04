@@ -11,18 +11,29 @@ from ray.data.tests.util import column_udf, named_values
 from ray.tests.conftest import *  # noqa
 
 
-def test_zip(ray_start_regular_shared):
-    ds1 = ray.data.range(5, override_num_blocks=5)
-    ds2 = ray.data.range(5, override_num_blocks=5).map(
-        column_udf("id", lambda x: x + 1)
-    )
-    ds = ds1.zip(ds2)
-    assert ds.schema().names == ["id", "id_1"]
-    assert ds.take() == named_values(
-        ["id", "id_1"], [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
-    )
-    with pytest.raises(ValueError):
-        ds.zip(ray.data.range(3)).materialize()
+@pytest.mark.parametrize("num_datasets", [2, 3, 4, 5, 10])
+def test_zip_multiple_datasets(ray_start_regular_shared, num_datasets):
+    # Create multiple datasets with different transformations
+    datasets = []
+    for i in range(num_datasets):
+        ds = ray.data.range(5, override_num_blocks=5)
+        if i > 0:  # Apply transformation to all but the first dataset
+            ds = ds.map(column_udf("id", lambda x, offset=i: x + offset))
+        datasets.append(ds)
+
+    ds = datasets[0].zip(*datasets[1:])
+
+    # Verify schema names
+    expected_names = ["id"] + [f"id_{i}" for i in range(1, num_datasets)]
+    assert ds.schema().names == expected_names
+
+    # Verify data
+    expected_data = []
+    for row_idx in range(5):
+        row_data = tuple(row_idx + i for i in range(num_datasets))
+        expected_data.append(row_data)
+
+    assert ds.take() == named_values(expected_names, expected_data)
 
 
 @pytest.mark.parametrize(
@@ -140,6 +151,49 @@ def test_zip_preserve_order(ray_start_regular_shared):
     assert result == named_values(
         ["item", "item_1"], list(zip(range(num_items), range(num_items)))
     ), result
+
+
+def test_zip_does_not_free_shared_materialized_blocks(ray_start_regular_shared):
+    """Regression test: ZipOperator should not free blocks from a materialized
+    dataset that is shared with another consumer.
+
+    Previously, ZipOperator._zip() called _split_at_indices() without specifying
+    owned_by_consumer, which defaulted to True. This caused ray.internal.free()
+    to be called on blocks that were shared with other operators in the DAG,
+    leading to ObjectFreedError.
+    """
+    # Create a dataset with 3 blocks (rows [7, 7, 6]) and materialize it.
+    # The materialized blocks have owns_blocks=False.
+    ds = ray.data.range(20, override_num_blocks=3).materialize()
+    assert not ds._execute().owns_blocks
+
+    # Consumer 1: a map_batches that uses the same materialized dataset.
+    mapped_ds = ds.map_batches(lambda batch: batch, batch_format="pandas")
+
+    # Consumer 2: zip the same materialized dataset with another dataset.
+    # This triggers _split_at_indices inside ZipOperator._zip().
+    # Use 2 blocks (rows [10, 10]) so that block boundaries are NOT aligned
+    # with ds's blocks (rows [7, 7, 6]). This forces actual block splitting
+    # (e.g., the first 10-row block gets split at row 7), which exercises
+    # the owned_by_consumer code path in _split_all_blocks.
+    other_ds = ray.data.range(20, override_num_blocks=2)
+    zipped = other_ds.zip(ds)
+
+    # Consuming the zipped result should not raise ObjectFreedError.
+    result = zipped.take_all()
+    assert len(result) == 20
+
+    # The mapped_ds should also work fine (blocks not freed by the zip).
+    result2 = mapped_ds.take_all()
+    assert len(result2) == 20
+
+
+def test_zip_emits_deprecation_warning(ray_start_regular_shared):
+    ds1 = ray.data.range(1)
+    ds2 = ray.data.range(1)
+
+    with pytest.warns(DeprecationWarning, match="`Dataset.zip` is deprecated"):
+        ds1.zip(ds2)
 
 
 if __name__ == "__main__":

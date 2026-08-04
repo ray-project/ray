@@ -11,7 +11,10 @@ from fastapi import FastAPI
 
 import ray
 from ray import serve
-from ray.serve._private.constants import SERVE_HTTP_REQUEST_ID_HEADER
+from ray.serve._private.constants import (
+    SERVE_HTTP_REQUEST_ID_HEADER,
+    SERVE_SESSION_ID,
+)
 from ray.serve._private.test_utils import get_application_url
 from ray.serve._private.utils import generate_request_id
 
@@ -167,6 +170,73 @@ def test_reuse_request_id(serve_instance):
             await asyncio.gather(*tasks)
 
     asyncio.run(main())
+
+
+class TestSessionIdHeader:
+    @pytest.fixture
+    def session_id_app(self, serve_instance):
+        @serve.deployment
+        class Model:
+            def __call__(self) -> str:
+                return ray.serve.context._get_serve_request_context().session_id
+
+        handle = serve.run(Model.bind())
+        return handle
+
+    @pytest.mark.parametrize(
+        "header_key",
+        [
+            SERVE_SESSION_ID,  # underscore form
+            "x-session-id",  # hyphenated form
+            "X-Session-Id",  # title-cased hyphenated form
+        ],
+    )
+    def test_header_forms(self, session_id_app, header_key):
+        session_id = "sess_user_42"
+        resp = httpx.get(get_application_url(), headers={header_key: session_id})
+        assert resp.status_code == 200
+        assert resp.text == session_id
+
+    def test_handle_option(self, session_id_app):
+        handle = session_id_app
+        assert handle.options(session_id="from-handle").remote().result() == (
+            "from-handle"
+        )
+
+
+class TestMatchesSessionIdHeader:
+    """Unit tests for the case/separator-tolerant comparison used by the
+    proxy + Lua forwarder. Without this helper, an intermediate proxy that
+    rewrites ``_``↔``-`` (nginx, AWS API Gateway, ...) would silently drop
+    session affinity for half of all clients.
+    """
+
+    @pytest.mark.parametrize(
+        "stored,incoming,expected",
+        [
+            # Default hyphenated form.
+            ("x-session-id", "x-session-id", True),
+            ("x-session-id", "X-Session-Id", True),
+            ("x-session-id", "x_session_id", True),
+            ("x-session-id", "x-Other-Id", False),
+            # Operator stored the underscored form (e.g. legacy).
+            ("x_session_id", "x-session-id", True),
+            ("x_session_id", "x_session_id", True),
+            # Custom configured value via env var (e.g. aiperf's correlation id).
+            ("x-correlation-id", "x-correlation-id", True),
+            ("x-correlation-id", "x_correlation_id", True),
+            ("x-correlation-id", "X-Correlation-Id", True),
+            ("x-correlation-id", "x-session-id", False),
+        ],
+    )
+    def test_match(self, monkeypatch, stored, incoming, expected):
+        # SERVE_SESSION_ID is module-level constant; monkey-patch it on the
+        # two modules that import it for the duration of this test.
+        from ray.serve._private import constants, http_util
+
+        monkeypatch.setattr(constants, "SERVE_SESSION_ID", stored)
+        monkeypatch.setattr(http_util, "SERVE_SESSION_ID", stored)
+        assert http_util._matches_session_id_header(incoming) is expected
 
 
 if __name__ == "__main__":

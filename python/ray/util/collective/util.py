@@ -1,6 +1,8 @@
 """Some utility class for Collectives."""
-import ray
+import asyncio
 import logging
+
+import ray
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +19,12 @@ class NCCLUniqueIDStore:
         nccl_id: the NCCLUniqueID held in this store.
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         self.name = name
         self.nccl_id = None
+        self.event = asyncio.Event()
 
-    def set_id(self, uid):
+    async def set_id(self, uid: bytes):
         """
         Initialize the NCCL unique ID for this store.
 
@@ -29,9 +32,15 @@ class NCCLUniqueIDStore:
             uid: the unique ID generated via the NCCL generate_communicator_id API.
 
         Returns:
-            None
+            The NCCL unique ID set.
         """
         self.nccl_id = uid
+        self.event.set()
+        return uid
+
+    async def wait_and_get_id(self):
+        """Wait for the NCCL unique ID to be set and return it."""
+        await self.event.wait()
         return self.nccl_id
 
     def get_id(self):

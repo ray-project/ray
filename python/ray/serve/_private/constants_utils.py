@@ -1,6 +1,6 @@
 import os
 import warnings
-from typing import Callable, List, Optional, Type, TypeVar
+from typing import Callable, List, Optional, Type, TypeVar, Union, overload
 
 
 def str_to_list(s: str) -> List[str]:
@@ -47,13 +47,35 @@ def parse_latency_buckets(bucket_str: str, default_buckets: List[float]) -> List
 
 T = TypeVar("T")
 
+# todo: remove for the '3.0.0' release.
+_wrong_names_white_list = {
+    "REQUEST_LATENCY_BUCKETS_MS",
+    "MODEL_LOAD_LATENCY_BUCKETS_MS",
+    "MAX_CACHED_HANDLES",
+    "SERVE_REQUEST_PROCESSING_TIMEOUT_S",
+}
+
+
+def _validate_name(name: str) -> None:
+    """Validate Ray Serve environment variable name."""
+    required_prefix = "RAY_SERVE_"
+
+    if not name.startswith(required_prefix):
+        if name in _wrong_names_white_list:
+            return
+
+        raise ValueError(
+            f"Got unexpected environment variable name `{name}`! "
+            f"Ray Serve environment variables require prefix `{required_prefix}`. "
+        )
+
 
 def _get_env_value(
     name: str,
     default: Optional[T],
     value_type: Type[T],
     validation_func: Optional[Callable[[T], bool]] = None,
-    expected_value_description: str = None,
+    expected_value_description: Optional[str] = None,
 ) -> Optional[T]:
     """Get environment variable with type conversion and validation.
 
@@ -63,12 +85,13 @@ def _get_env_value(
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
-               If None, the function will return None without validation.
+            If None, the function will return None without validation.
         value_type: Type to convert the environment variable value to (e.g., int, float, str).
         validation_func: Optional function that takes the converted value and returns
-                       a boolean indicating whether the value is valid.
+            a boolean indicating whether the value is valid.
         expected_value_description: Description of the expected value characteristics
-                                 (e.g., "positive", "non negative") used in error messages.
+            (e.g., "positive", "non-negative") used in error messages.
+            Optional, expected only if validation_func is provided.
 
     Returns:
         The environment variable value converted to the specified type and validated,
@@ -76,14 +99,23 @@ def _get_env_value(
 
     Raises:
         ValueError: If the environment variable value cannot be converted to the specified
-            type, or if it fails the optional validation check.
+            type, or if it fails the optional validation check. Also, if name validation fails.
     """
-    raw = os.environ.get(name, default)
-    if raw is None:
-        return None
+    _validate_name(name)
+
+    raw: Union[str, T]
+    explicitly_defined_value = os.environ.get(name)
+    if explicitly_defined_value is None:
+        if default is None:
+            return None
+        else:
+            raw = default
+    else:
+        _deprecation_warning(name)
+        raw = explicitly_defined_value
 
     try:
-        value = value_type(raw)
+        value = value_type(raw)  # type: ignore[call-arg]
     except ValueError as e:
         raise ValueError(
             f"Environment variable `{name}` value `{raw}` cannot be converted to `{value_type.__name__}`!"
@@ -96,6 +128,16 @@ def _get_env_value(
         )
 
     return value
+
+
+@overload
+def get_env_int(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int(name: str, default: None) -> Optional[int]:
+    ...
 
 
 def get_env_int(name: str, default: Optional[int]) -> Optional[int]:
@@ -114,6 +156,16 @@ def get_env_int(name: str, default: Optional[int]) -> Optional[int]:
     return _get_env_value(name, default, int)
 
 
+@overload
+def get_env_int_positive(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int_positive(name: str, default: None) -> Optional[int]:
+    ...
+
+
 def get_env_int_positive(name: str, default: Optional[int]) -> Optional[int]:
     """Get environment variable as a positive integer.
 
@@ -127,7 +179,24 @@ def get_env_int_positive(name: str, default: Optional[int]) -> Optional[int]:
     Raises:
         ValueError: If the value cannot be converted to an integer or is not positive.
     """
-    return _get_env_value(name, default, int, lambda x: x > 0, "positive")
+    return _get_env_value(
+        name,
+        default,
+        int,
+        # Only called on converted values, never the `None` default.
+        lambda x: x > 0,  # pyrefly: ignore[unsupported-operation]
+        "positive",
+    )
+
+
+@overload
+def get_env_int_non_negative(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int_non_negative(name: str, default: None) -> Optional[int]:
+    ...
 
 
 def get_env_int_non_negative(name: str, default: Optional[int]) -> Optional[int]:
@@ -143,7 +212,24 @@ def get_env_int_non_negative(name: str, default: Optional[int]) -> Optional[int]
     Raises:
         ValueError: If the value cannot be converted to an integer or is negative.
     """
-    return _get_env_value(name, default, int, lambda x: x >= 0, "non negative")
+    return _get_env_value(
+        name,
+        default,
+        int,
+        # Only called on converted values, never the `None` default.
+        lambda x: x >= 0,  # pyrefly: ignore[unsupported-operation]
+        "non negative",
+    )
+
+
+@overload
+def get_env_float(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float(name: str, default: None) -> Optional[float]:
+    ...
 
 
 def get_env_float(name: str, default: Optional[float]) -> Optional[float]:
@@ -162,6 +248,16 @@ def get_env_float(name: str, default: Optional[float]) -> Optional[float]:
     return _get_env_value(name, default, float)
 
 
+@overload
+def get_env_float_positive(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float_positive(name: str, default: None) -> Optional[float]:
+    ...
+
+
 def get_env_float_positive(name: str, default: Optional[float]) -> Optional[float]:
     """Get environment variable as a positive float.
 
@@ -175,7 +271,24 @@ def get_env_float_positive(name: str, default: Optional[float]) -> Optional[floa
     Raises:
         ValueError: If the value cannot be converted to a float or is not positive.
     """
-    return _get_env_value(name, default, float, lambda x: x > 0, "positive")
+    return _get_env_value(
+        name,
+        default,
+        float,
+        # Only called on converted values, never the `None` default.
+        lambda x: x > 0,  # pyrefly: ignore[unsupported-operation]
+        "positive",
+    )
+
+
+@overload
+def get_env_float_non_negative(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float_non_negative(name: str, default: None) -> Optional[float]:
+    ...
 
 
 def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[float]:
@@ -191,10 +304,27 @@ def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[
     Raises:
         ValueError: If the value cannot be converted to a float or is negative.
     """
-    return _get_env_value(name, default, float, lambda x: x >= 0, "non negative")
+    return _get_env_value(
+        name,
+        default,
+        float,
+        # Only called on converted values, never the `None` default.
+        lambda x: x >= 0,  # pyrefly: ignore[unsupported-operation]
+        "non negative",
+    )
 
 
-def get_env_str(name: str, default: Optional[str]) -> str:
+@overload
+def get_env_str(name: str, default: str) -> str:
+    ...
+
+
+@overload
+def get_env_str(name: str, default: None) -> Optional[str]:
+    ...
+
+
+def get_env_str(name: str, default: Optional[str]) -> Optional[str]:
     """Get environment variable as a string.
 
     Args:
@@ -203,11 +333,12 @@ def get_env_str(name: str, default: Optional[str]) -> str:
 
     Returns:
         The environment variable value as a string.
+        Returns `None` if default is `None` and value not found.
     """
-    return os.environ.get(name, default)
+    return _get_env_value(name, default, str)
 
 
-def get_env_bool(name: str, default: Optional[str]) -> bool:
+def get_env_bool(name: str, default: str) -> bool:
     """Get environment variable as a boolean.
 
     Environment variable values of "1" are interpreted as True, all others as False.
@@ -215,38 +346,68 @@ def get_env_bool(name: str, default: Optional[str]) -> bool:
     Args:
         name: The name of the environment variable.
         default: Default value to use if the environment variable is not set.
+            Expects "0" or "1".
 
     Returns:
         True if the environment variable value is "1", False otherwise.
     """
-    return os.environ.get(name, default) == "1"
+    env_value_str = _get_env_value(name, default, str)
+    return env_value_str == "1"
 
 
-def get_env_float_non_zero_with_warning(
-    name: str, default: Optional[float]
-) -> Optional[float]:
-    """Introduced for backward compatibility for constants:
+# Environment variables that are fully deprecated and will be ignored.
+_fully_deprecated_env_vars = {
+    "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "http_options.keep_alive_timeout_s",
+    "RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S": "request_router_config.initial_backoff_s",
+    "RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER": "request_router_config.backoff_multiplier",
+    "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S": "request_router_config.max_backoff_s",
+}
 
-    PROXY_HEALTH_CHECK_TIMEOUT_S
-    PROXY_HEALTH_CHECK_PERIOD_S
-    PROXY_READY_CHECK_TIMEOUT_S
-    PROXY_MIN_DRAINING_PERIOD_S
-    RAY_SERVE_KV_TIMEOUT_S
 
-    todo: replace this function with 'get_env_float_positive' for the '2.50.0' release.
+def _deprecation_warning(name: str) -> None:
+    """Log replacement warning for wrong or legacy environment variables.
+
+    TODO: remove this function for the '3.0.0' release.
+
+    Args:
+        name: Environment variable name.
     """
-    removal_version = "2.50.0"
 
-    env_value = get_env_float(name, default)
-    backward_compatible_result = env_value or default
+    def get_new_name(name: str) -> str:
+        if name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S":
+            return "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S"
+        elif name == "SERVE_REQUEST_PROCESSING_TIMEOUT_S":
+            return "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S"
+        else:
+            return f"{required_prefix}{name}"
 
-    if env_value is not None and env_value <= 0:
-        # warning message if unexpected value
+    change_version = "3.0.0"
+    required_prefix = "RAY_SERVE_"
+
+    if (
+        name in _wrong_names_white_list
+        or name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S"
+    ):
+        new_name = get_new_name(name)
         warnings.warn(
-            f"Got unexpected value `{env_value}` for `{name}` environment variable! "
-            f"Starting from version `{removal_version}`, the environment variable will require a positive value. "
-            f"Setting `{name}` to `{backward_compatible_result}`. ",
+            f"Starting from version `{change_version}` environment variable "
+            f"`{name}` will be deprecated. Please use `{new_name}` instead.",
             FutureWarning,
+            stacklevel=4,
+        )
+
+
+def warn_if_deprecated_env_var_set(name: str) -> None:
+    """Warn if a fully deprecated environment variable is set.
+
+    Args:
+        name: Environment variable name.
+    """
+    if name in _fully_deprecated_env_vars and os.environ.get(name):
+        config_option = _fully_deprecated_env_vars[name]
+        warnings.warn(
+            f"`{name}` environment variable will be deprecated in the future. "
+            f"Use `{config_option}` in the Serve config instead.",
+            DeprecationWarning,
             stacklevel=2,
         )
-    return backward_compatible_result

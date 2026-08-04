@@ -1,13 +1,13 @@
-import pytest
 import sys
 import threading
+
+import pytest
 
 import ray
 from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.util.state import list_workers
-
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
@@ -30,7 +30,9 @@ def test_worker_paused(shutdown_only):
 
     def verify(num_paused):
         workers = list_workers(
-            filters=[("num_paused_threads", "=", num_paused)], detail=True
+            filters=[("num_paused_threads", "=", num_paused)],
+            detail=True,
+            raise_on_missing_output=False,
         )
         if len(workers) == 0:
             return False
@@ -69,7 +71,9 @@ def test_worker_paused_actor(shutdown_only, actor_concurrency):
 
     def verify(num_paused):
         workers = list_workers(
-            filters=[("num_paused_threads", "=", num_paused)], detail=True
+            filters=[("num_paused_threads", "=", num_paused)],
+            detail=True,
+            raise_on_missing_output=False,
         )
         if len(workers) == 0:
             return False
@@ -112,7 +116,9 @@ def test_worker_paused_threaded_actor(shutdown_only, actor_concurrency):
 
     def verify(num_paused):
         workers = list_workers(
-            filters=[("num_paused_threads", "=", num_paused)], detail=True
+            filters=[("num_paused_threads", "=", num_paused)],
+            detail=True,
+            raise_on_missing_output=False,
         )
         if len(workers) == 0:
             return False
@@ -143,7 +149,9 @@ def test_worker_paused_async_actor(shutdown_only, actor_concurrency):
 
     def verify(num_paused):
         workers = list_workers(
-            filters=[("num_paused_threads", "=", num_paused)], detail=True
+            filters=[("num_paused_threads", "=", num_paused)],
+            detail=True,
+            raise_on_missing_output=False,
         )
         if len(workers) == 0:
             return False

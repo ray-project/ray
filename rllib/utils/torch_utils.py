@@ -1,16 +1,16 @@
 import logging
 import os
 import warnings
-from typing import Dict, List, Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import gymnasium as gym
-from gymnasium.spaces import Discrete, MultiDiscrete
 import numpy as np
-from packaging import version
 import tree  # pip install dm_tree
+from gymnasium.spaces import Discrete, MultiDiscrete
+from packaging import version
 
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI, OldAPIStack
+from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
@@ -646,7 +646,7 @@ def sequence_mask(
     if maxlen is None:
         maxlen = lengths.max()
 
-    mask = torch.ones(tuple(lengths.shape) + (int(maxlen),))
+    mask = torch.ones(tuple(lengths.shape) + (maxlen,))
 
     mask = ~(mask.to(lengths.device).cumsum(dim=1).t() > lengths)
     # Time major transformation.

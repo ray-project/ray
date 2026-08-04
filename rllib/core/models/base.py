@@ -1,7 +1,6 @@
 import abc
 from typing import List, Optional, Tuple, Union
 
-
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.specs_base import Spec
@@ -41,6 +40,12 @@ class Model(abc.ABC):
 
             def _forward(self, input_dict):
                 return input_dict["obs"] * self.my_param
+
+            def get_num_parameters(self):
+                return (0, 0)
+
+            def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
+                pass
 
 
         @dataclass
@@ -238,12 +243,18 @@ class Encoder(Model, abc.ABC):
             def _forward(self, input_dict, **kwargs):
                 obs = input_dict[Columns.OBS]
                 return {
-                    ENCODER_OUT: np.array(obs) * self.factor,
-                    Columns.STATE_OUT: (
+                    ENCODER_OUT: int(np.array(obs) * self.factor),
+                    Columns.STATE_OUT: int(
                         np.array(input_dict[Columns.STATE_IN])
                         * self.factor
                     ),
                 }
+
+            def get_num_parameters(self):
+                return (0, 0)
+
+            def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
+                pass
 
         @dataclass
         class NumpyEncoderConfig(ModelConfig):

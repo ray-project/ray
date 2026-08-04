@@ -1,9 +1,11 @@
+import base64
 import collections
 import copy
 import hashlib
 import json
 import logging
 import os
+import sys
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,8 +14,8 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 import ray._private.services as services
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
 from ray._private.utils import (
     PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
     PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN,
@@ -76,6 +78,15 @@ NodeStatus = str
 Usage = Dict[str, Tuple[Number, Number]]
 
 logger = logging.getLogger(__name__)
+
+
+def base32hex(data: bytes) -> str:
+    """Encode bytes using base32hex, without padding and in lower case.
+
+    This is used to create a shorter hash string that is compatible with
+    GCP label value constraints (<= 63 chars, lowercase, no padding).
+    """
+    return base64.b32hexencode(data).decode("ascii").lower().rstrip("=")
 
 
 def is_placement_group_resource(resource_name: str) -> bool:
@@ -193,6 +204,12 @@ def validate_config(config: Dict[str, Any]) -> None:
                 "sum of `min_workers` of all the available node types."
             )
 
+    if sys.platform == "win32" and config.get("file_mounts_sync_continuously", False):
+        raise ValueError(
+            "`file_mounts_sync_continuously` is not supported on Windows. "
+            "Please set this to False when running on Windows."
+        )
+
 
 def check_legacy_fields(config: Dict[str, Any]) -> None:
     """For use in providers that have completed the migration to
@@ -233,7 +250,10 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     is_local = config.get("provider", {}).get("type") == "local"
     is_kuberay = config.get("provider", {}).get("type") == "kuberay"
     if is_local:
-        config = prepare_local(config)
+        config, modified = prepare_local(config)
+        # If the config is already prepared via ray up, return it as is.
+        if not modified:
+            return config
     elif is_kuberay:
         # With KubeRay, we don't need to do anything here since KubeRay
         # generate the autoscaler config from the RayCluster CR instead
@@ -395,11 +415,11 @@ def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
     Returns a list of commands with the given environment variables set.
 
     Args:
-        cmds (List[str]): List of commands to set environment variables for.
-        kv (Dict[str, str]): Dictionary of environment variables to set.
+        cmds: List of commands to set environment variables for.
+        kv: Dictionary of environment variables to set.
 
     Returns:
-        List[str]: List of commands with the given environment variables set.
+        List of commands with the given environment variables set.
 
     Example:
         with_envs(["echo $FOO"], {"FOO": "BAR"})
@@ -424,7 +444,7 @@ def with_head_node_ip(cmds, head_ip=None):
 
 
 def hash_launch_conf(node_conf, auth):
-    hasher = hashlib.sha1()
+    hasher = hashlib.sha256()
     # For hashing, we replace the path to the key with the
     # key itself. This is to make sure the hashes are the
     # same even if keys live at different locations on different
@@ -435,7 +455,7 @@ def hash_launch_conf(node_conf, auth):
             with open(os.path.expanduser(auth[key_type])) as key:
                 full_auth[key_type] = key.read()
     hasher.update(json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
-    return hasher.hexdigest()
+    return base32hex(hasher.digest())
 
 
 # Cache the file hashes to avoid rescanning it each time. Also, this avoids
@@ -460,8 +480,8 @@ def hash_runtime_conf(
     cluster_synced_files contents have changed. It is used at monitor time to
     determine if additional file syncing is needed.
     """
-    runtime_hasher = hashlib.sha1()
-    contents_hasher = hashlib.sha1()
+    runtime_hasher = hashlib.sha256()
+    contents_hasher = hashlib.sha256()
 
     def add_content_hashes(path, allow_non_existing_paths: bool = False):
         def add_hash_of_file(fpath):
@@ -494,7 +514,7 @@ def hash_runtime_conf(
     if conf_str not in _hash_cache or generate_file_mounts_contents_hash:
         for local_path in sorted(file_mounts.values()):
             add_content_hashes(local_path)
-        head_node_contents_hash = contents_hasher.hexdigest()
+        head_node_contents_hash = base32hex(contents_hasher.digest())
 
         # Generate a new runtime_hash if its not cached
         # The runtime hash does not depend on the cluster_synced_files hash
@@ -503,7 +523,7 @@ def hash_runtime_conf(
         if conf_str not in _hash_cache:
             runtime_hasher.update(conf_str)
             runtime_hasher.update(head_node_contents_hash.encode("utf-8"))
-            _hash_cache[conf_str] = runtime_hasher.hexdigest()
+            _hash_cache[conf_str] = base32hex(runtime_hasher.digest())
 
         # Add cluster_synced_files to the file_mounts_content hash
         if cluster_synced_files is not None:
@@ -513,7 +533,7 @@ def hash_runtime_conf(
                 # anytime over the life of the head node.
                 add_content_hashes(local_path, allow_non_existing_paths=True)
 
-        file_mounts_contents_hash = contents_hasher.hexdigest()
+        file_mounts_contents_hash = base32hex(contents_hasher.digest())
 
     else:
         file_mounts_contents_hash = None
@@ -550,6 +570,9 @@ def parse_placement_group_resource_str(
     -> This case is ignored as it is duplicated to the case below.
     {resource_name}_group_{group_name};
     {resource_name}
+
+    Args:
+        placement_group_resource_str: The raw placement group resource string.
 
     Returns:
         Tuple of (resource_name, placement_group_name, is_countable_resource).
@@ -749,7 +772,7 @@ def get_constraint_report(request_demand: List[DictCount]):
     if len(constraint_lines) > 0:
         constraints_report = "\n".join(constraint_lines)
     else:
-        constraints_report = " (no request_resources() constraints)"
+        constraints_report = " (none)"
     return constraints_report
 
 
@@ -941,9 +964,9 @@ Resources
 {separator}
 Total Usage:
 {usage_report}
-Total Constraints:
+From request_resources:
 {constraints_report}
-Total Demands:
+Pending Demands:
 {demand_report}"""
 
     if verbose:
@@ -1020,7 +1043,7 @@ def generate_rsa_key_pair():
 
 def generate_ssh_key_paths(key_name):
     public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
-    private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
+    private_key_path = os.path.expanduser("~/.ssh/{}".format(key_name))
     return public_key_path, private_key_path
 
 

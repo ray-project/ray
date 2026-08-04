@@ -1,3 +1,6 @@
+.. meta::
+   :description: Debug distributed Ray apps with the Ray Distributed Debugger: set breakpoints in remote tasks, attach VS Code, and do post-mortem debugging.
+
 .. _ray-distributed-debugger:
 
 Ray Distributed Debugger
@@ -30,7 +33,7 @@ Create a new virtual environment and install dependencies.
 .. testcode::
     :skipif: True
 
-    conda create -n myenv python=3.9
+    conda create -n myenv python=3.10
     conda activate myenv
     pip install "ray[default]" debugpy
 
@@ -64,7 +67,7 @@ Start a Ray cluster
 
         .. code-block:: bash
 
-            sudo apt-get install openssh-server
+            sudo apt-get update && sudo apt-get install -y openssh-server
             sudo mkdir -p /run/sshd
             sudo /usr/sbin/sshd -D
 
@@ -199,7 +202,7 @@ When the app throws an exception:
 - The paused task is listed in the Ray Debugger extension.
 - Click the play icon next to the name of the paused task to attach the debugger and start debugging.
 
-.. image:: ./images/post-moretem.gif
+.. image:: ./images/post-mortem.gif
     :align: center
 
 

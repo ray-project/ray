@@ -1,60 +1,83 @@
+import logging
 import os
+import pickle
+import random
+import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from typing import List, Literal, Optional, Union
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
     ResourceBudgetBackpressurePolicy,
 )
-from ray.data._internal.execution.execution_callback import (
-    EXECUTION_CALLBACKS_ENV_VAR,
-    ExecutionCallback,
-    add_execution_callback,
-    get_execution_callbacks,
-    remove_execution_callback,
-)
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
 )
-from ray.data._internal.execution.interfaces.physical_operator import MetadataOpTask
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+)
+from ray.data._internal.execution.metadata_fetcher import (
+    InlineMetadataFetcher,
+    MetadataFetcher,
+    ThreadedMetadataFetcher,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
-    create_map_transformer_from_block_fn,
+    BlockMapTransformFn,
+    MapTransformer,
 )
+from ray.data._internal.execution.ranker import DefaultRanker
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
-    _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
-    _rank_operators,
+    OutputBackpressureGuard,
     build_streaming_topology,
+    format_op_state_summary,
     get_eligible_operators,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators.map_operator import MapRows
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.write_operator import Write
-from ray.data.context import DataContext
+from ray.data._internal.logical.operators import (
+    ListFiles,
+    MapRows,
+    Read,
+    ReadFiles,
+    Write,
+)
+from ray.data._internal.util import MiB
+from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
+from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.data.tests.conftest import noop_counter
+from ray.data.tests.util import fetcher_has_pending_work
+from ray.exceptions import GetTimeoutError
 
 
 def mock_resource_manager(
@@ -85,7 +108,7 @@ def make_map_transformer(block_fn):
         for block in block_iter:
             yield block_fn(block)
 
-    return create_map_transformer_from_block_fn(map_fn)
+    return MapTransformer([BlockMapTransformFn(map_fn)])
 
 
 def make_ref_bundle(x):
@@ -96,7 +119,7 @@ def make_ref_bundle(x):
     "verbose_progress",
     [True, False],
 )
-def test_build_streaming_topology(verbose_progress):
+def test_build_streaming_topology(verbose_progress, ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -109,14 +132,10 @@ def test_build_streaming_topology(verbose_progress):
         o2,
         DataContext.get_current(),
     )
-    topo, num_progress_bars = build_streaming_topology(
-        o3, ExecutionOptions(verbose_progress=verbose_progress)
+    topo = build_streaming_topology(
+        o3, ExecutionOptions(verbose_progress=verbose_progress), noop_counter()
     )
     assert len(topo) == 3, topo
-    if verbose_progress:
-        assert num_progress_bars == 3, num_progress_bars
-    else:
-        assert num_progress_bars == 1, num_progress_bars
     assert o1 in topo, topo
     assert not topo[o1].input_queues, topo
     assert topo[o1].output_queue == topo[o2].input_queues[0], topo
@@ -124,7 +143,7 @@ def test_build_streaming_topology(verbose_progress):
     assert list(topo) == [o1, o2, o3]
 
 
-def test_disallow_non_unique_operators():
+def test_disallow_non_unique_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -142,10 +161,119 @@ def test_disallow_non_unique_operators():
         "test_combine",
         [o2, o3],
         DataContext.get_current(),
-        target_max_block_size=None,
     )
     with pytest.raises(ValueError):
-        build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
+        build_streaming_topology(
+            o4, ExecutionOptions(verbose_progress=True), noop_counter()
+        )
+
+
+def _make_disabled_guard() -> MagicMock:
+    """Return a stub guard whose escape hatch never fires."""
+    guard = MagicMock(spec=OutputBackpressureGuard)
+    guard.should_unblock.return_value = False
+    return guard
+
+
+def _process_completed_tasks_sync(
+    topo, backpressure_policies, max_errored_blocks, output_backpressure_guard
+):
+    """Run ``process_completed_tasks`` in the synchronous inline mode, so all
+    output is fetched and emitted before the call returns (test post-conditions
+    hold immediately). The default executor uses the threaded fetcher, which
+    lets emits land across iterations."""
+    return process_completed_tasks(
+        topo,
+        backpressure_policies,
+        max_errored_blocks,
+        output_backpressure_guard,
+        metadata_fetcher=InlineMetadataFetcher(),
+    )
+
+
+def _process_completed_tasks_threaded(
+    topo, backpressure_policies, max_errored_blocks, output_backpressure_guard
+):
+    """Run ``process_completed_tasks`` in the threaded mode (the executor
+    default) and pump the fetcher until every background metadata fetch has
+    emitted, so test post-conditions hold once it returns — the threaded
+    counterpart of ``_process_completed_tasks_sync``.
+
+    Most executor-level tests drive the threaded mode through this helper;
+    ``_process_completed_tasks_sync`` is kept for the few inline-mode tests.
+    """
+    fetcher = ThreadedMetadataFetcher()
+    fetcher.start()
+    try:
+        result = process_completed_tasks(
+            topo,
+            backpressure_policies,
+            max_errored_blocks,
+            output_backpressure_guard,
+            metadata_fetcher=fetcher,
+        )
+        deadline = time.time() + 30
+        while fetcher_has_pending_work(fetcher):
+            if time.time() >= deadline:
+                raise TimeoutError("threaded metadata fetch did not finish within 30s")
+            fetcher.emit_ready_and_fire_done_callbacks()
+            time.sleep(0.005)
+        return result
+    finally:
+        fetcher.stop()
+
+
+def test_process_completed_tasks_threaded(ray_start_regular_shared):
+    """End-to-end check of the threaded mode through ``process_completed_tasks``:
+    pulled pairs are deferred, fetched on the background thread, and emitted
+    (per-op order) by ``emit_ready_and_fire_done_callbacks`` — yielding the same outputs as the
+    inline mode."""
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(
+        o2, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
+
+    assert len(topo[o1].output_queue) == 0, topo
+    _process_completed_tasks_threaded(topo, [], 0, _make_disabled_guard())
+    update_operator_states(topo)
+    assert len(topo[o1].output_queue) == 20, topo
+
+
+def test_process_completed_tasks_threaded_multi_step(ray_start_regular_shared):
+    """Threaded mode driven the way the executor does it: one long-lived
+    fetcher, ``process_completed_tasks`` called once per scheduling iteration.
+    Deferred pairs are emitted across successive calls, ending with the same
+    outputs as the single inline call in ``test_process_completed_tasks_inline``."""
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(
+        o2, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
+
+    assert len(topo[o1].output_queue) == 0, topo
+    fetcher = ThreadedMetadataFetcher()
+    fetcher.start()
+    try:
+        guard = _make_disabled_guard()
+        deadline = time.time() + 30
+        while len(topo[o1].output_queue) < 20 and time.time() < deadline:
+            process_completed_tasks(topo, [], 0, guard, metadata_fetcher=fetcher)
+            update_operator_states(topo)
+            time.sleep(0.005)
+    finally:
+        fetcher.stop()
+    assert len(topo[o1].output_queue) == 20, topo
 
 
 @pytest.fixture
@@ -155,7 +283,7 @@ def sleep_task_ref():
     ray.cancel(sleep_task_ref, force=True)
 
 
-def test_process_completed_tasks(sleep_task_ref):
+def test_process_completed_tasks_inline(sleep_task_ref, ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
@@ -163,11 +291,13 @@ def test_process_completed_tasks(sleep_task_ref):
         o1,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(
+        o2, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
 
     # Test processing output bundles.
     assert len(topo[o1].output_queue) == 0, topo
-    process_completed_tasks(topo, [], 0)
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     assert len(topo[o1].output_queue) == 20, topo
 
@@ -179,7 +309,7 @@ def test_process_completed_tasks(sleep_task_ref):
     o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     sleep_task_callback.assert_not_called()
     done_task_callback.assert_called_once()
@@ -192,9 +322,9 @@ def test_process_completed_tasks(sleep_task_ref):
     o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
     o1.mark_execution_finished = MagicMock()
-    o1.completed = MagicMock(return_value=True)
+    o1.has_completed = MagicMock(return_value=True)
     topo[o1].output_queue.clear()
-    process_completed_tasks(topo, [], 0)
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
@@ -212,16 +342,65 @@ def test_process_completed_tasks(sleep_task_ref):
         o2,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
+    topo = build_streaming_topology(
+        o3, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
 
     o3.mark_execution_finished()
     o2.mark_execution_finished = MagicMock()
-    process_completed_tasks(topo, [], 0)
+    _process_completed_tasks_sync(topo, [], 0, _make_disabled_guard())
     update_operator_states(topo)
     o2.mark_execution_finished.assert_called_once()
 
 
-def test_get_eligible_operators_to_run():
+def test_update_operator_states_drains_upstream(ray_start_regular_shared):
+    """Test that update_operator_states drains upstream output queues when
+    execution_finished() is called on a downstream operator.
+    """
+    inputs = make_ref_bundles([[x] for x in range(10)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(
+        o3, ExecutionOptions(verbose_progress=True), noop_counter()
+    )
+
+    # First, populate the upstream output queues by processing some tasks
+    _process_completed_tasks_threaded(topo, [], 0, _make_disabled_guard())
+    update_operator_states(topo)
+
+    # Verify that o1 (upstream) has output in its queue
+    assert (
+        len(topo[o1].output_queue) > 0
+    ), "Upstream operator should have output in queue"
+
+    # Store initial queue size for verification
+    initial_o1_queue_size = len(topo[o1].output_queue)
+
+    # Manually mark o2 as execution finished (simulating limit operator behavior)
+    o2.mark_execution_finished()
+    assert o2.has_execution_finished(), "o2 should be execution finished"
+
+    # Call update_operator_states - this should drain o1's output queue
+    update_operator_states(topo)
+
+    # Verify that o1's output queue was drained due to o2 being execution finished
+    assert len(topo[o1].output_queue) == 0, (
+        f"Upstream operator o1 output queue should be drained when downstream o2 is execution finished. "
+        f"Expected 0, got {len(topo[o1].output_queue)}. "
+        f"Initial size was {initial_o1_queue_size}"
+    )
+
+
+def test_get_eligible_operators_to_run(ray_start_regular_shared):
     opts = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(1)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -237,7 +416,7 @@ def test_get_eligible_operators_to_run():
         DataContext.get_current(),
         name="O3",
     )
-    topo, _ = build_streaming_topology(o3, opts)
+    topo = build_streaming_topology(o3, opts, noop_counter())
 
     resource_manager = mock_resource_manager(
         global_limits=ExecutionResources.for_limits(1, 1, 1),
@@ -245,9 +424,6 @@ def test_get_eligible_operators_to_run():
     memory_usage = {o1: 0, o2: 0, o3: 0}
     resource_manager.get_op_usage = MagicMock(
         side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
-    )
-    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
-        return_value=True
     )
 
     def _get_eligible_ops_to_run(ensure_liveness: bool):
@@ -268,12 +444,12 @@ def test_get_eligible_operators_to_run():
     assert _get_eligible_ops_to_run(ensure_liveness=False) == [o2, o3]
 
     # `o2`s queue is not empty, but it can't accept new inputs anymore
-    with patch.object(o2, "should_add_input") as _mock:
+    with patch.object(o2, "can_add_input") as _mock:
         _mock.return_value = False
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o3]
 
     # Completed ops are not eligible
-    with patch.object(o3, "completed") as _mock:
+    with patch.object(o3, "has_completed") as _mock:
         _mock.return_value = True
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o2]
 
@@ -295,7 +471,7 @@ def test_get_eligible_operators_to_run():
         assert _get_eligible_ops_to_run_with_policy(ensure_liveness=False) == [o3]
 
         # Complete `o3`
-        with patch.object(o3, "completed") as _mock:
+        with patch.object(o3, "has_completed") as _mock:
             _mock.return_value = True
             # Clear up input queue
             topo[o3].input_queues[0].clear()
@@ -304,7 +480,237 @@ def test_get_eligible_operators_to_run():
             assert _get_eligible_ops_to_run_with_policy(ensure_liveness=True) == [o2]
 
 
-def test_rank_operators():
+def test_backpressure_policy_tracking(ray_start_regular_shared):
+    """Test that backpressure policies that triggered are tracked correctly."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts, noop_counter())
+
+    # Add input to o2's input queue so it becomes eligible
+    topo[o1].output_queue.append(make_ref_bundle("dummy1"))
+
+    # Create mock backpressure policies with name property
+    class MockPolicy1:
+        @property
+        def name(self):
+            return "MockPolicy1"
+
+        def can_add_input(self, op):
+            return op is not o2  # Block o2
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    class MockPolicy2:
+        @property
+        def name(self):
+            return "MockPolicy2"
+
+        def can_add_input(self, op):
+            return True  # Allow all
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    class MockPolicy3:
+        @property
+        def name(self):
+            return "MockPolicy3"
+
+        def can_add_input(self, op):
+            return op is not o2  # Block o2
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    policies = [MockPolicy1(), MockPolicy2(), MockPolicy3()]
+
+    # Call get_eligible_operators which should track triggered policies
+    get_eligible_operators(topo, policies, ensure_liveness=False)
+
+    # Check that o2 has the first triggered policy tracked
+    assert o2._in_task_submission_backpressure is True
+    assert o2._task_submission_backpressure_policy == "MockPolicy1"
+
+    # Now test with no backpressure
+    class AllowAllPolicy:
+        @property
+        def name(self):
+            return "AllowAll"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return None
+
+    get_eligible_operators(topo, [AllowAllPolicy()], ensure_liveness=False)
+
+    # Check that o2 is no longer in backpressure
+    assert o2._in_task_submission_backpressure is False
+    assert o2._task_submission_backpressure_policy is None
+
+
+def test_output_backpressure_policy_tracking(ray_start_regular_shared):
+    """Test that output backpressure policies are tracked correctly."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts, noop_counter())
+
+    # Create mock backpressure policies for output limiting with name property
+    class LimitingPolicy:
+        @property
+        def name(self):
+            return "Limiting"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 0 if op is o2 else None  # Block o2 output
+
+    class NonLimitingPolicy:
+        @property
+        def name(self):
+            return "NonLimiting"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 1000  # Allow some output
+
+    class NoLimitPolicy:
+        @property
+        def name(self):
+            return "NoLimit"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return None  # No limit
+
+    policies = [LimitingPolicy(), NonLimitingPolicy(), NoLimitPolicy()]
+
+    # Call process_completed_tasks which tracks output policies
+    _process_completed_tasks_threaded(topo, policies, 0, _make_disabled_guard())
+
+    # Check that o2 has the first limiting policy tracked
+    assert o2._in_task_output_backpressure is True
+    assert o2._task_output_backpressure_policy == "Limiting"
+
+    # Now test with no output backpressure
+    _process_completed_tasks_threaded(
+        topo, [NonLimitingPolicy()], 0, _make_disabled_guard()
+    )
+
+    # Check that o2 is no longer in output backpressure
+    assert o2._in_task_output_backpressure is False
+    assert o2._task_output_backpressure_policy is None
+
+
+def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_limit(
+    ray_start_regular_shared,
+):
+    """Test that the escape hatch fires when a non-resource-budget policy drives the aggregated output limit to 0."""
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
+
+    resource_manager = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(),
+        DataContext.get_current(),
+        BlockRefCounter(),
+    )
+    guard = OutputBackpressureGuard(topo, resource_manager)
+
+    # Fake policy that returns 0 for o2
+    class ZeroLimitPolicy:
+        @property
+        def name(self):
+            return "ZeroLimit"
+
+        def can_add_input(self, op):
+            return True
+
+        def max_task_output_bytes_to_read(self, op):
+            return 0 if op is o2 else None
+
+    _process_completed_tasks_threaded(topo, [ZeroLimitPolicy()], 0, guard)
+
+    # o2 is terminal with no downstream eligible ops and no external
+    # consumer — the guard's terminal-op branch should unblock, bumping
+    # the limit from 0 to 1, so o2 is NOT flagged as in output backpressure
+    # and the policy attribution should be cleared.
+    assert o2._in_task_output_backpressure is False
+    assert o2._task_output_backpressure_policy is None
+
+
+def test_summary_str_backpressure_policies(ray_start_regular_shared):
+    """Test that summary_str correctly displays backpressure policy names."""
+    opts = ExecutionOptions()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, opts, noop_counter())
+
+    resource_manager = mock_resource_manager()
+
+    # Test with no backpressure
+    summary = format_op_state_summary(topo[o2], resource_manager)
+    assert "backpressured" not in summary
+
+    # Set task submission backpressure with policy (using UX name)
+    o2._in_task_submission_backpressure = True
+    o2._task_submission_backpressure_policy = "ConcurrencyCap"
+    summary = format_op_state_summary(topo[o2], resource_manager)
+    assert "tasks(ConcurrencyCap)" in summary
+
+    # Set output backpressure with policy (using UX name)
+    o2._in_task_output_backpressure = True
+    o2._task_output_backpressure_policy = "ResourceBudget"
+    summary = format_op_state_summary(topo[o2], resource_manager)
+    assert "tasks(ConcurrencyCap)" in summary
+    assert "outputs(ResourceBudget)" in summary
+
+    # Clear backpressure
+    o2._in_task_submission_backpressure = False
+    o2._task_submission_backpressure_policy = None
+    o2._in_task_output_backpressure = False
+    o2._task_output_backpressure_policy = None
+    summary = format_op_state_summary(topo[o2], resource_manager)
+    assert "backpressured" not in summary
+
+
+def test_rank_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(1)])
 
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -333,12 +739,13 @@ def test_rank_operators():
 
     resource_manager.get_op_usage.side_effect = _get_op_usage_mocked
 
-    ranks = _rank_operators([o1, o2, o3, o4], resource_manager)
+    ranker = DefaultRanker()
+    ranks = ranker.rank_operators([o1, o2, o3, o4], {}, resource_manager)
 
-    assert [(True, 1024), (True, 2048), (True, 4096), (False, 8092)] == ranks
+    assert [(1, 1024), (1, 2048), (1, 4096), (0, 8092)] == ranks
 
 
-def test_select_ops_to_run():
+def test_select_ops_to_run(ray_start_regular_shared):
     opts = ExecutionOptions()
 
     inputs = make_ref_bundles([[x] for x in range(1)])
@@ -378,10 +785,14 @@ def test_select_ops_to_run():
         # Case 1: Should pick the `o4` since it has throttling disabled
         _mock.return_value = [o1, o2, o3, o4]
 
-        topo, _ = build_streaming_topology(o4, opts)
+        topo = build_streaming_topology(o4, opts, noop_counter())
 
         selected = select_operator_to_run(
-            topo, resource_manager, [], ensure_liveness=ensure_liveness
+            topo,
+            resource_manager,
+            [],
+            ensure_liveness=ensure_liveness,
+            ranker=DefaultRanker(),
         )
 
         assert selected is o4
@@ -389,16 +800,20 @@ def test_select_ops_to_run():
         # Case 2: Should pick the `o1` since it has lowest object store usage
         _mock.return_value = [o1, o2, o3]
 
-        topo, _ = build_streaming_topology(o3, opts)
+        topo = build_streaming_topology(o3, opts, noop_counter())
 
         selected = select_operator_to_run(
-            topo, resource_manager, [], ensure_liveness=ensure_liveness
+            topo,
+            resource_manager,
+            [],
+            ensure_liveness=ensure_liveness,
+            ranker=DefaultRanker(),
         )
 
         assert selected is o1
 
 
-def test_dispatch_next_task():
+def test_dispatch_next_task(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o1_state = OpState(o1, [])
@@ -424,7 +839,7 @@ def test_dispatch_next_task():
     o2.add_input.assert_called_once_with(ref2, input_index=0)
 
 
-def test_debug_dump_topology():
+def test_debug_dump_topology(ray_start_regular_shared):
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
@@ -438,120 +853,187 @@ def test_debug_dump_topology():
         o2,
         DataContext.get_current(),
     )
-    topo, _ = build_streaming_topology(o3, opt)
+    topo = build_streaming_topology(o3, opt, noop_counter())
     resource_manager = ResourceManager(
         topo,
         ExecutionOptions(),
         MagicMock(return_value=ExecutionResources.zero()),
         DataContext.get_current(),
+        BlockRefCounter(),
     )
     resource_manager.update_usages()
     # Just a sanity check to ensure it doesn't crash.
     _debug_dump_topology(topo, resource_manager)
 
 
-def test_validate_dag():
-    inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(DataContext.get_current(), inputs)
-    o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
-        compute_strategy=ray.data.ActorPoolStrategy(size=8),
-    )
-    o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
-        compute_strategy=ray.data.ActorPoolStrategy(size=4),
-    )
-    _validate_dag(o3, ExecutionResources.for_limits())
-    _validate_dag(o3, ExecutionResources.for_limits(cpu=20))
-    _validate_dag(o3, ExecutionResources.for_limits(gpu=0))
-    with pytest.raises(ValueError):
-        _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
+def test_configure_output_locality_is_deprecated_noop(restore_data_context):
+    data_context = ray.data.DataContext.get_current()
 
-
-# Mock the `scale_up` method to avoid creating and leaking resources.
-@patch(
-    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale",
-    return_value=1,
-)
-def test_configure_output_locality(mock_scale_up):
-    inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(DataContext.get_current(), inputs)
-    o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
-    )
-    o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
-        compute_strategy=ray.data.ActorPoolStrategy(size=1),
-    )
-    # No locality.
-    build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
-    assert o2._ray_remote_args.get("scheduling_strategy") is None
-    assert o3._ray_remote_args.get("scheduling_strategy") == "SPREAD"
-
-    # Current node locality.
-    build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
-    s1 = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert isinstance(s1, NodeAffinitySchedulingStrategy)
-    assert s1.node_id == ray.get_runtime_context().get_node_id()
-    s2 = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert isinstance(s2, NodeAffinitySchedulingStrategy)
-    assert s2.node_id == ray.get_runtime_context().get_node_id()
-
-    # Multi node locality.
-    build_streaming_topology(
-        o3, ExecutionOptions(locality_with_output=["node1", "node2"])
-    )
-    s1a = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s1b = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s1c = o2._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert s1a.node_id == "node1"
-    assert s1b.node_id == "node2"
-    assert s1c.node_id == "node1"
-    s2a = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s2b = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    s2c = o3._get_runtime_ray_remote_args()["scheduling_strategy"]
-    assert s2a.node_id == "node1"
-    assert s2b.node_id == "node2"
-    assert s2c.node_id == "node1"
+    with pytest.warns(DeprecationWarning, match="no-op"):
+        data_context.execution_options.locality_with_output = True
+    assert data_context.execution_options.locality_with_output is False
 
 
 class OpBufferQueueTest(unittest.TestCase):
-    def test_multi_threading(self):
+    def test_invalid_split_index(self):
+        """Test that out-of-range split index raises AssertionError."""
+        queue = OpBufferQueue(num_splits=2)
+        with pytest.raises(AssertionError):
+            queue.has_next(2)
+        with pytest.raises(AssertionError):
+            queue.pop(2)
+
+    def test_e2e_multi_threading(self):
         num_blocks = 5_000
-        num_splits = 8
+        num_splits = 20
         num_per_split = num_blocks // num_splits
         ref_bundles = make_ref_bundles([[[i]] for i in range(num_blocks)])
 
-        queue = OpBufferQueue()
-        for i, ref_bundle in enumerate(ref_bundles):
-            ref_bundle.output_split_idx = i % num_splits
-            queue.append(ref_bundle)
+        q = OpBufferQueue(num_splits=num_splits)
 
-        def consume(output_split_idx):
-            nonlocal queue
+        start = threading.Event()
+        done = threading.Event()
 
-            count = 0
-            while queue.has_next(output_split_idx):
-                ref_bundle = queue.pop(output_split_idx)
-                count += 1
-                assert ref_bundle is not None
-                assert ref_bundle.output_split_idx == output_split_idx
-            assert count == num_per_split
+        def produce():
+            # Sync producers and consumers
+            start.wait()
+
+            try:
+                for i, ref_bundle in enumerate(ref_bundles):
+                    if i % 10 == 1:
+                        print(f">>> Queue size {len(q)}")
+                        # Introduce jitter
+                        time.sleep(random.random() * 1e-4)
+
+                    ref_bundle = replace(ref_bundle, output_split_idx=i % num_splits)
+                    q.append(ref_bundle)
+            except Exception as e:
+                print(f">>> Caught exception: {e}")
+                raise
+
+            done.set()
             return True
 
-        with ThreadPoolExecutor(max_workers=num_splits) as executor:
-            futures = [executor.submit(consume, i) for i in range(num_splits)]
+        consumed_splits = [[] for _ in range(num_splits)]
+
+        def consume(output_split_idx):
+            # Sync producers and consumers
+            start.wait()
+
+            try:
+                # Iterate until both are true:
+                #   - Producer is done
+                #   - Queue is empty
+                while not done.is_set() or q.has_next(output_split_idx):
+                    # We add tiny sleep of 1us to avoid thrashing GIL with
+                    # tight loops
+                    time.sleep(1e-6)
+
+                    b = q.pop(output_split_idx)
+                    if b is not None:
+                        assert b.output_split_idx == output_split_idx
+                        consumed_splits[output_split_idx].append(b)
+            except Exception as e:
+                print(f">>> Caught exception: {e}")
+                raise
+
+            return True
+
+        with ThreadPoolExecutor(max_workers=num_splits + 1) as executor:
+            futures = [executor.submit(produce)] + [
+                executor.submit(consume, i) for i in range(num_splits)
+            ]
+
+            # Start the test
+            start.set()
+
+            print(">>> Test started")
 
         for f in futures:
             assert f.result() is True, f.result()
+
+        # Verify count, FIFO order per split
+        for split_idx in range(num_splits):
+            consumed = consumed_splits[split_idx]
+            expected = [
+                replace(b, output_split_idx=split_idx)
+                for b in ref_bundles[split_idx::num_splits]
+            ]
+            assert len(consumed) == num_per_split
+            assert consumed == expected, f"Split {split_idx}: FIFO order violated"
+
+        # Verify queue is fully drained
+        assert len(q) == 0
+        assert q.num_blocks == 0
+        assert q.memory_usage == 0
+
+
+class GetOutputBlockingTest(unittest.TestCase):
+    def test_num_waiting_consumers_tracking(self):
+        """num_waiting_consumers is incremented/decremented by get_output_blocking."""
+        o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
+        o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
+        topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
+        state = topo[o2]
+
+        assert state.num_waiting_consumers == 0
+
+        # Consumer blocks — counter should be 1.
+        t = threading.Thread(target=state.get_output_blocking, args=(None,))
+        t.start()
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        # Unblock by adding a bundle — counter should go back to 0.
+        bundle = make_ref_bundles([[0]])[0]
+        state.output_queue.append(bundle)
+        t.join()
+        assert state.num_waiting_consumers == 0
+
+        # Counter is decremented after StopIteration.
+        def get_until_stop():
+            with pytest.raises(StopIteration):
+                state.get_output_blocking(None)
+
+        t2 = threading.Thread(target=get_until_stop)
+        t2.start()
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        state.mark_finished()
+        t2.join()
+        assert state.num_waiting_consumers == 0
+
+    def test_num_waiting_consumers_concurrent(self):
+        """num_waiting_consumers reflects multiple blocked consumers.
+        For example, this happens for multiple streaming_split iterators."""
+        o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
+        o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
+        topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
+        state = topo[o2]
+
+        def blocking_consumer():
+            try:
+                state.get_output_blocking(None)
+            except StopIteration:
+                pass
+
+        t1 = threading.Thread(target=blocking_consumer)
+        t2 = threading.Thread(target=blocking_consumer)
+        t1.start()
+        t2.start()
+
+        wait_for_condition(lambda: state.num_waiting_consumers == 2)
+
+        # Unblock one consumer.
+        state.output_queue.append(make_ref_bundles([[0]])[0])
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        # Unblock the other consumer.
+        state.mark_finished()
+        wait_for_condition(lambda: state.num_waiting_consumers == 0)
+
+        t1.join()
+        t2.join()
+        assert state.num_waiting_consumers == 0
 
 
 def test_exception_concise_stacktrace():
@@ -573,78 +1055,98 @@ ray.data.range(1).map(map).take_all()
     ), out_str
 
 
-def test_streaming_exec_schedule_s():
+def test_streaming_exec_schedule_s(ray_start_regular_shared):
     ds = ray.data.range(1)
     for _ in ds.iter_batches():
         continue
 
-    ds_stats = ds._plan.stats()
+    ds_stats = ds._raw_stats()
     assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
-def test_execution_callbacks():
-    """Test ExecutionCallback."""
+def test_execution_callbacks_on_success(ray_start_regular_shared):
+    before_execution_starts_called = False
+    after_execution_succeeds_called = False
+    on_execution_step_called = False
+    execution_error = None
 
     class CustomExecutionCallback(ExecutionCallback):
-        def __init__(self):
-            self._before_execution_starts_called = False
-            self._after_execution_succeeds_called = False
-            self._execution_error = None
-            self._on_execution_step_called = False
-
         def before_execution_starts(self, executor: StreamingExecutor):
-            self._before_execution_starts_called = True
+            nonlocal before_execution_starts_called
+            before_execution_starts_called = True
 
         def on_execution_step(self, executor: "StreamingExecutor"):
-            self._on_execution_step_called = True
+            nonlocal on_execution_step_called
+            on_execution_step_called = True
 
         def after_execution_succeeds(self, executor: StreamingExecutor):
-            self._after_execution_succeeds_called = True
+            nonlocal after_execution_succeeds_called
+            after_execution_succeeds_called = True
 
         def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
-            self._execution_error = error
+            nonlocal execution_error
+            execution_error = error
 
-    # Test the success case.
-    ds = ray.data.range(10)
-    ctx = ds.context
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
-    assert callback in get_execution_callbacks(ctx)
+    ctx = DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
-    ds.take_all()
+    ray.data.range(1).take_all()
 
-    assert callback._before_execution_starts_called
-    assert callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    assert callback._execution_error is None
+    assert before_execution_starts_called
+    assert after_execution_succeeds_called
+    assert on_execution_step_called
+    assert execution_error is None
 
-    remove_execution_callback(callback, ctx)
-    assert callback not in get_execution_callbacks(ctx)
 
-    # Test the case where the dataset fails due to an error in the UDF.
-    ds = ray.data.range(10)
-    ctx = ds.context
+def test_execution_callbacks_on_error(ray_start_regular_shared):
+    before_execution_starts_called = False
+    after_execution_succeeds_called = False
+    on_execution_step_called = False
+    execution_error = None
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def before_execution_starts(self, executor: StreamingExecutor):
+            nonlocal before_execution_starts_called
+            before_execution_starts_called = True
+
+        def on_execution_step(self, executor: "StreamingExecutor"):
+            nonlocal on_execution_step_called
+            on_execution_step_called = True
+
+        def after_execution_succeeds(self, executor: StreamingExecutor):
+            nonlocal after_execution_succeeds_called
+            after_execution_succeeds_called = True
+
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
+            nonlocal execution_error
+            execution_error = error
+
+    ctx = DataContext.get_current()
     ctx.raise_original_map_exception = True
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
     def map_fn(_):
         raise ValueError("")
 
     with pytest.raises(ValueError):
-        ds.map(map_fn).take_all()
+        ray.data.range(1).map(map_fn).take_all()
 
-    assert callback._before_execution_starts_called
-    assert not callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    error = callback._execution_error
-    assert isinstance(error, ValueError), error
+    assert before_execution_starts_called
+    assert not after_execution_succeeds_called
+    assert on_execution_step_called
+    assert isinstance(execution_error, ValueError), execution_error
 
-    # Test the case the dataset is canceled by "ctrl-c".
-    ds = ray.data.range(10)
-    ctx = ds.context
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+
+def test_execution_callbacks_on_cancel(ray_start_regular_shared):
+    execution_error = None
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
+            nonlocal execution_error
+            execution_error = error
+
+    ctx = DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
     def patched_get_outupt_blocking(*args, **kwargs):
         raise KeyboardInterrupt()
@@ -654,36 +1156,28 @@ def test_execution_callbacks():
         new=patched_get_outupt_blocking,
     ):
         with pytest.raises(KeyboardInterrupt):
-            ds.take_all()
+            ray.data.range(1).take_all()
 
-    assert callback._before_execution_starts_called
-    assert not callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    error = callback._execution_error
-    assert isinstance(error, KeyboardInterrupt), error
+    assert isinstance(execution_error, KeyboardInterrupt), execution_error
 
 
 @patch("importlib.import_module")
 @patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "my.module.TestCallback"})
 def test_env_callbacks_loaded(mock_import):
     """Test loading execution callbacks from environment variable."""
-    # Setup mock for importing the module
+
+    class TestCallback(ExecutionCallback):
+        pass
+
     mock_module = MagicMock()
-    mock_callback_cls = MagicMock()
-    mock_callback = MagicMock()
-    mock_callback_cls.return_value = mock_callback
-    mock_module.TestCallback = mock_callback_cls
+    mock_module.TestCallback = TestCallback
     mock_import.return_value = mock_module
 
-    # Get callbacks should initialize from env
     ctx = DataContext.get_current()
-    callbacks = get_execution_callbacks(ctx)
+    callback_classes = ctx.execution_callback_classes
 
-    # Verify the callback was imported and initialized
-    mock_import.assert_called_once_with("my.module")
-    mock_callback_cls.assert_called_once()
-
-    assert len([c for c in callbacks if c is mock_callback]) == 1
+    mock_import.assert_called_with("my.module")
+    assert TestCallback in callback_classes
 
 
 @patch("importlib.import_module")
@@ -692,15 +1186,18 @@ def test_env_callbacks_loaded(mock_import):
 )
 def test_multiple_env_callbacks(mock_import):
     """Test loading multiple callbacks from environment variable."""
-    # Setup mock for importing multiple modules
+
+    class Callback1(ExecutionCallback):
+        pass
+
+    class Callback2(ExecutionCallback):
+        pass
+
     mock_module1 = MagicMock()
     mock_module2 = MagicMock()
-    mock_callback1 = MagicMock()
-    mock_callback2 = MagicMock()
-    mock_module1.Callback1.return_value = mock_callback1
-    mock_module2.Callback2.return_value = mock_callback2
+    mock_module1.Callback1 = Callback1
+    mock_module2.Callback2 = Callback2
 
-    # Return different mock modules depending on the import path
     def side_effect(name):
         if name == "module1":
             return mock_module1
@@ -710,21 +1207,18 @@ def test_multiple_env_callbacks(mock_import):
 
     mock_import.side_effect = side_effect
 
-    # Get callbacks should initialize from env
     ctx = DataContext.get_current()
-    callbacks = get_execution_callbacks(ctx)
+    callback_classes = ctx.execution_callback_classes
 
-    # Verify both callbacks were imported and initialized
-    assert len([c for c in callbacks if c is mock_callback1]) == 1
-    assert len([c for c in callbacks if c is mock_callback2]) == 1
+    assert Callback1 in callback_classes
+    assert Callback2 in callback_classes
 
 
 @patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "invalid_module"})
 def test_invalid_callback_path():
     """Test handling of invalid callback paths in environment variable."""
-    # Should raise ValueError due to missing class name
     with pytest.raises(ValueError):
-        get_execution_callbacks(DataContext.get_current())
+        _ = DataContext.get_current().execution_callback_classes
 
 
 @patch("importlib.import_module")
@@ -733,30 +1227,10 @@ def test_invalid_callback_path():
 )
 def test_import_error_handling(mock_import):
     """Test handling of import errors when loading callbacks."""
-    # Make import fail
     mock_import.side_effect = ImportError("No module named 'nonexistent'")
 
-    # Should re-raise as ValueError with context
     with pytest.raises(ValueError):
-        get_execution_callbacks(DataContext.get_current())
-
-
-def test_callbacks_initialized_once():
-    """Test that environment callbacks are only initialized once per context."""
-    with patch(
-        "ray.data._internal.execution.execution_callback._initialize_env_callbacks"
-    ) as mock_init:
-        # First call should initialize
-        ctx = DataContext.get_current()
-        get_execution_callbacks(ctx)
-        mock_init.assert_called_once_with(ctx)
-
-        # Reset the mock to check if called again
-        mock_init.reset_mock()
-
-        # Second call should not initialize again
-        get_execution_callbacks(ctx)
-        mock_init.assert_not_called()
+        _ = DataContext.get_current().execution_callback_classes
 
 
 def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
@@ -771,11 +1245,11 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     input_path = tmp_path / "input"
     os.makedirs(input_path)
+    pq.write_table(pa.table({"value": [1]}), input_path / "data.parquet")
     output_path = tmp_path / "output"
 
     ctx = DataContext.get_current()
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
     ds = ray.data.read_parquet(input_path)
 
     def udf(row):
@@ -788,25 +1262,54 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     # Test inspecting the metadata of each operator.
     # E.g., the original input and output paths and the UDF.
     assert _executor is not None
-    assert len(_executor._topology) == 2
     physical_ops = list(_executor._topology.keys())
     assert isinstance(physical_ops[0], InputDataBuffer)
-    assert isinstance(physical_ops[1], MapOperator)
-    logical_ops = physical_ops[1]._logical_operators
+    if ctx.use_datasource_v2:
+        # V2 splits read into a ``ListFiles`` source op and a fused
+        # ``ReadFiles->Map(udf)->Write`` op.
+        assert len(_executor._topology) == 3
+        assert isinstance(physical_ops[1], MapOperator)
+        assert isinstance(physical_ops[2], MapOperator)
+        list_files_logical_ops = physical_ops[1]._logical_operators
+        assert len(list_files_logical_ops) == 1
+        assert isinstance(list_files_logical_ops[0], ListFiles)
 
-    assert len(logical_ops) == 3
-    assert isinstance(logical_ops[0], Read)
-    datasource = logical_ops[0]._datasource
-    assert isinstance(datasource, ParquetDatasource)
-    assert datasource._unresolved_paths == input_path
+        read_logical_ops = physical_ops[2]._logical_operators
+        assert len(read_logical_ops) == 3
+        assert isinstance(read_logical_ops[0], ReadFiles)
+        assert read_logical_ops[0].datasource_name == "ParquetV2"
 
-    assert isinstance(logical_ops[1], MapRows)
-    assert logical_ops[1]._fn == udf
+        assert isinstance(read_logical_ops[1], MapRows)
+        assert read_logical_ops[1].fn == udf
 
-    assert isinstance(logical_ops[2], Write)
-    datasink = logical_ops[2]._datasink_or_legacy_datasource
-    assert isinstance(datasink, ParquetDatasink)
-    assert datasink.unresolved_path == output_path
+        assert isinstance(read_logical_ops[2], Write)
+        datasink = read_logical_ops[2].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
+    else:
+        # V1 inserts a ``SplitBlocks`` after the read to hit the target
+        # number of output blocks, which prevents the read from fusing
+        # with the downstream ``Map(udf)->Write`` op.
+        assert len(_executor._topology) == 3
+        assert isinstance(physical_ops[1], MapOperator)
+        assert isinstance(physical_ops[2], MapOperator)
+
+        read_logical_ops = physical_ops[1]._logical_operators
+        assert len(read_logical_ops) == 1
+        assert isinstance(read_logical_ops[0], Read)
+        datasource = read_logical_ops[0].datasource
+        assert isinstance(datasource, ParquetDatasource)
+        assert datasource._source_paths == input_path
+
+        map_write_logical_ops = physical_ops[2]._logical_operators
+        assert len(map_write_logical_ops) == 2
+        assert isinstance(map_write_logical_ops[0], MapRows)
+        assert map_write_logical_ops[0].fn == udf
+
+        assert isinstance(map_write_logical_ops[1], Write)
+        datasink = map_write_logical_ops[1].datasink_or_legacy_datasource
+        assert isinstance(datasink, ParquetDatasink)
+        assert datasink.unresolved_path == output_path
 
 
 def test_create_topology_metadata():
@@ -831,7 +1334,9 @@ def test_create_topology_metadata():
     executor = StreamingExecutor(DataContext.get_current())
 
     # Initialize the topology on the executor
-    executor._topology, _ = build_streaming_topology(o3, ExecutionOptions())
+    executor._topology = build_streaming_topology(
+        o3, ExecutionOptions(), noop_counter()
+    )
 
     # Call the _dump_dag_structure method
     op_to_id = {
@@ -894,7 +1399,9 @@ def test_create_topology_metadata_with_sub_stages():
 
     # Create the executor and set up topology
     executor = StreamingExecutor(DataContext.get_current())
-    executor._topology, _ = build_streaming_topology(o2, ExecutionOptions())
+    executor._topology = build_streaming_topology(
+        o2, ExecutionOptions(), noop_counter()
+    )
 
     # Get the DAG structure
     op_to_id = {
@@ -919,6 +1426,763 @@ def test_create_topology_metadata_with_sub_stages():
     assert sub_stage1.id.endswith("_sub_0")
     assert sub_stage2.name == "SubStage2"
     assert sub_stage2.id.endswith("_sub_1")
+
+
+def create_stub_streaming_gen(
+    block_nbytes: List[int], raise_exception: Optional[Exception] = None
+) -> ray.ObjectRefGenerator:
+    """Creating a streaming generator for testing.
+
+    The streaming generator passed to the ``DataOpTask`` constructor must yield blocks
+    then block metadata, and buffer the number of blocks specified by
+    ``_max_num_blocks_in_streaming_gen_buffer``. This function is a utility to create
+    streaming generators that satisfy these requirements.
+
+    Args:
+        block_nbytes: A list of the sizes of blocks yielded by the returned streaming
+            generator.
+        raise_exception: An exception that the streaming generator immediately raises.
+
+    Returns:
+        A streaming generator that you can pass to ``DataOpTask``.
+    """
+
+    @ray.remote
+    def stub_map_task():
+        import time as _time
+
+        if raise_exception is not None:
+            raise raise_exception
+
+        task_start_s = _time.perf_counter()
+
+        for nbytes in block_nbytes:
+            # Create a block with a single row of the specified size.
+            builder = DelegatingBlockBuilder()
+            builder.add_batch({"data": np.zeros((1, nbytes), dtype=np.uint8)})
+            block = builder.build()
+            yield block
+
+            block_accessor = BlockAccessor.for_block(block)
+            block_metadata = block_accessor.get_metadata(
+                task_exec_stats=TaskExecWorkerStats(
+                    task_wall_time_s=_time.perf_counter() - task_start_s,
+                )
+            )
+            yield pickle.dumps(
+                BlockMetadataWithSchema.from_metadata(
+                    block_metadata, schema=block_accessor.schema()
+                )
+            )
+
+    generator_backpressure_num_objects = (
+        ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer
+        * 2  # Multiply by two because we yield a metadata object for each block.
+    )
+    streaming_gen = stub_map_task.options(
+        _generator_backpressure_num_objects=generator_backpressure_num_objects
+    ).remote()
+
+    return streaming_gen
+
+
+@pytest.fixture
+def ensure_block_metadata_stored_in_plasma(monkeypatch):
+    # Ray inlines small objects (including metadata) by storing them directly with
+    # the object reference itself rather than in the remote node's object store.
+    # Consequently, when the streaming executor calls `ray.get` on metadata from a
+    # node that has died, the call succeeds because the inlined metadata is not
+    # stored in the failed node's object store. To explicitly test the case where
+    # metadata resides in the object store (and becomes unavailable when the node
+    # dies), we disable inlining by setting the maximum inline size to 0. This
+    # simulates scenarios where metadata is too large to inline, which can occur in
+    # practice when schemas contain many fields.
+    #
+    # For context, see https://github.com/ray-project/ray/pull/56451.
+    monkeypatch.setenv("RAY_max_direct_call_object_size", 0)
+
+
+class TestDataOpTask:
+    def test_on_data_ready_single_output(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+
+        def verify_output(bundle):
+            assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=verify_output,
+        )
+
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            nbytes_read = data_op_task.on_data_ready(None, InlineMetadataFetcher())
+            bytes_read += nbytes_read
+
+        assert bytes_read == pytest.approx(128 * MiB)
+
+    def test_on_data_ready_multiple_outputs(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB, 128 * MiB])
+
+        def verify_output(bundle):
+            assert bundle.size_bytes() == pytest.approx(128 * MiB), bundle.size_bytes()
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=verify_output,
+        )
+
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            nbytes_read = data_op_task.on_data_ready(None, InlineMetadataFetcher())
+            bytes_read += nbytes_read
+
+        assert bytes_read == pytest.approx(256 * MiB)
+
+    def test_on_data_ready_exception(self, ray_start_regular_shared):
+        # In the inline (default) mode a task failure fires the done-callback
+        # with the exception and re-raises it from ``on_data_ready``, exactly as
+        # before the threaded-fetch refactor.
+        streaming_gen = create_stub_streaming_gen(
+            block_nbytes=[128 * MiB],
+            raise_exception=AssertionError("Block generation failed"),
+        )
+
+        def verify_exception(exc, task_exec_stats, task_exec_driver_stats):
+            assert isinstance(exc, AssertionError)
+            assert task_exec_stats is None
+            assert task_exec_driver_stats is None
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            task_done_callback=verify_exception,
+        )
+
+        with pytest.raises(AssertionError, match="Block generation failed"):
+            while not data_op_task.has_finished:
+                ray.wait([streaming_gen], fetch_local=False)
+                data_op_task.on_data_ready(None, InlineMetadataFetcher())
+
+    def test_operator_name_parameter(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
+        task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            operator_name="MapBatches(fn)",
+        )
+        assert task._operator_name == "MapBatches(fn)"
+
+        streaming_gen2 = create_stub_streaming_gen(block_nbytes=[1])
+        task_default = DataOpTask(1, streaming_gen2, BlockRefCounter(), "test_op")
+        assert task_default._operator_name == "Unknown"
+
+    def test_on_data_ready_deferred_threading(self, ray_start_regular_shared):
+        """In the threaded mode, on_data_ready appends to the deferred list
+        without emitting RefBundles or updating ``_last_block_meta``. Emission
+        happens later, when the fetcher delivers the fetched metadata."""
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1024])
+        outputs = []
+        task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=outputs.append,
+        )
+
+        ray.wait([streaming_gen], fetch_local=False)
+        fetcher = ThreadedMetadataFetcher()
+        task.on_data_ready(None, fetcher)
+
+        # The pair was deferred: no emit yet, _last_block_meta still None.
+        assert outputs == []
+        assert task._last_block_meta is None
+        deferred = list(fetcher._pending_deferred)
+        assert len(deferred) >= 1
+
+        fetcher.submit("op", [task])
+        with fetcher._results_lock:
+            for d, meta_bytes in zip(deferred, ray.get([d.meta_ref for d in deferred])):
+                fetcher._results[d.meta_ref] = meta_bytes
+        fetcher.emit_ready_and_fire_done_callbacks()
+        assert len(outputs) == len(deferred)
+        assert task._last_block_meta is not None
+
+    def test_threaded_emits_in_per_op_order(self, ray_start_regular_shared):
+        """The threaded fetcher fetches ``meta_ref``s on a
+        background thread and emits each op's RefBundles in append order
+        (same sequence the synchronous replay would produce), and fires the
+        postponed done callback only after all of a task's pairs are emitted."""
+        gen_a = create_stub_streaming_gen(block_nbytes=[100, 200])
+        gen_b = create_stub_streaming_gen(block_nbytes=[300, 400])
+
+        outputs: list[tuple[int, int]] = []  # (task_idx, bytes)
+        done: list[int] = []
+        task_a = DataOpTask(
+            0,
+            gen_a,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=lambda b: outputs.append((0, b.size_bytes())),
+            task_done_callback=lambda *a: done.append(0),
+        )
+        task_b = DataOpTask(
+            1,
+            gen_b,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=lambda b: outputs.append((1, b.size_bytes())),
+            task_done_callback=lambda *a: done.append(1),
+        )
+
+        ray.wait([gen_a, gen_b], fetch_local=False)
+
+        fetcher = ThreadedMetadataFetcher()
+        fetcher.start()
+        try:
+            # Drain each task to end-of-stream, then submit it under its own op
+            # key (the real per-op flow: the fetcher accumulates the task's
+            # deferred pairs and ``submit`` hands them to the fetch thread). Loop
+            # because on a small cluster the second generator may not have
+            # started when the first is ready.
+            deadline = time.time() + 30
+            for op_key, task in (("a", task_a), ("b", task_b)):
+                while not task.is_drained() and time.time() < deadline:
+                    task.on_data_ready(None, fetcher)
+                    time.sleep(0.01)
+                fetcher.submit(op_key, [task])
+            assert task_a.is_drained() and task_b.is_drained()
+
+            deadline = time.time() + 30
+            while len(outputs) < 4 and time.time() < deadline:
+                fetcher.emit_ready_and_fire_done_callbacks()
+                time.sleep(0.01)
+        finally:
+            fetcher.stop()
+
+        # Per-op append order is preserved. Cross-op interleaving is NOT
+        # asserted: each op emits into its own downstream queue, so the order
+        # ops emit relative to each other doesn't matter (and depends on which
+        # op's metadata lands first). Sizes are the payload plus a constant
+        # 8-byte block-format overhead.
+        op0 = [b for t, b in outputs if t == 0]
+        op1 = [b for t, b in outputs if t == 1]
+        assert op0 == [108, 208]
+        assert op1 == [308, 408]
+        # Done callbacks fire only after each task's pairs are fully emitted.
+        assert sorted(done) == [0, 1]
+
+    def test_prefetcher_holds_later_ready_outputs_for_order(
+        self, ray_start_regular_shared
+    ):
+        """Within a task, a later pair whose metadata is fetched FIRST must
+        be held until the earlier pair's metadata arrives, so the task's
+        outputs are emitted in yield order."""
+        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
+        outputs: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=lambda b: outputs.append(b),
+        )
+
+        ray.wait([gen], fetch_local=False)
+        # Don't start the fetch thread: publish fetch results by hand to
+        # control which pair's metadata is "fetched" first.
+        fetcher = ThreadedMetadataFetcher()
+        deadline = time.time() + 30
+        while not task.is_drained() and time.time() < deadline:
+            task.on_data_ready(None, fetcher)
+            time.sleep(0.01)
+        deferred = list(fetcher._pending_deferred)
+        assert len(deferred) == 2
+        first, second = deferred
+        fetcher.submit("op", [task])
+        meta_bytes_first, meta_bytes_second = ray.get([first.meta_ref, second.meta_ref])
+
+        # Only the LATER pair's metadata is available: it must be held.
+        with fetcher._results_lock:
+            fetcher._results[second.meta_ref] = meta_bytes_second
+        fetcher.emit_ready_and_fire_done_callbacks()
+        assert outputs == []
+        assert not task.has_finished
+
+        # Once the EARLIER pair's metadata arrives, both emit, in yield order.
+        with fetcher._results_lock:
+            fetcher._results[first.meta_ref] = meta_bytes_first
+        fetcher.emit_ready_and_fire_done_callbacks()
+        assert [b.size_bytes() for b in outputs] == [108, 208]
+        assert task.has_finished
+
+    def test_prefetcher_fetch_failure_is_returned_not_raised(
+        self, ray_start_regular_shared
+    ):
+        """A metadata-fetch error is returned from emit_ready() (so the caller
+        can apply max_errored_blocks) rather than raised; the bad block is
+        dropped, the other pair still emits, and the task still completes."""
+        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
+        outputs: list = []
+        done: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=lambda b: outputs.append(b),
+            task_done_callback=lambda *a: done.append(1),
+            operator_name="Map(fn)",
+        )
+
+        ray.wait([gen], fetch_local=False)
+        fetcher = ThreadedMetadataFetcher()
+        deadline = time.time() + 30
+        while not task.is_drained() and time.time() < deadline:
+            task.on_data_ready(None, fetcher)
+            time.sleep(0.01)
+        deferred = list(fetcher._pending_deferred)
+        assert len(deferred) == 2
+        first, second = deferred
+        fetcher.submit("op", [task])
+        good_bytes = ray.get(first.meta_ref)
+        boom = ValueError("metadata fetch boom")
+        # First pair fetches fine; the second resolves to an exception.
+        with fetcher._results_lock:
+            fetcher._results[first.meta_ref] = good_bytes
+            fetcher._results[second.meta_ref] = boom
+
+        failures = fetcher.emit_ready_and_fire_done_callbacks()
+
+        # The error is surfaced (not raised), tagged with the operator name.
+        assert failures == [("Map(fn)", boom)]
+        # The good block still emitted; the failed one was dropped.
+        assert len(outputs) == 1
+        assert outputs[0].size_bytes() == 108
+        # The task completed despite the dropped block (done callback fired).
+        assert done == [1]
+        assert task.has_finished
+        assert not fetcher_has_pending_work(fetcher)
+
+    def test_threaded_marks_drained_task_finished(self, ray_start_regular_shared):
+        """A drained task registered via ``submit`` is NOT finished until
+        ``emit_ready_and_fire_done_callbacks`` has emitted all of its pairs;
+        then the done-callback fires exactly once and the task is FINISHED."""
+        gen = create_stub_streaming_gen(block_nbytes=[100])
+        done: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            BlockRefCounter(),
+            "test_op",
+            task_done_callback=lambda *a: done.append(a),
+        )
+
+        ray.wait([gen], fetch_local=False)
+        fetcher = ThreadedMetadataFetcher()
+        fetcher.start()
+        try:
+            deadline = time.time() + 30
+            while not task.is_drained() and time.time() < deadline:
+                task.on_data_ready(None, fetcher)
+                time.sleep(0.01)
+            assert task.is_drained()
+
+            fetcher.submit("op", [task])
+            # Completion is postponed: the done-callback only fires from
+            # emit_ready_and_fire_done_callbacks on this thread, so the task
+            # can't be finished yet.
+            assert not task.has_finished
+            assert done == []
+
+            deadline = time.time() + 30
+            while fetcher_has_pending_work(fetcher) and time.time() < deadline:
+                fetcher.emit_ready_and_fire_done_callbacks()
+                time.sleep(0.01)
+        finally:
+            fetcher.stop()
+
+        assert task.has_finished
+        assert len(done) == 1
+        # The task was deregistered; a later call must not re-fire.
+        fetcher.emit_ready_and_fire_done_callbacks()
+        assert len(done) == 1
+
+    def test_threaded_fetch_falls_back_to_per_ref_get(self):
+        """When the batched ``ray.get`` in ``_fetch`` raises, the fetcher
+        retries per-ref: refs that fetch fine are published, a ref that raced
+        out of the local store (GetTimeoutError) is returned for retry."""
+        ref_ok, ref_gone = object(), object()
+
+        def fake_get(arg, timeout=None):
+            if isinstance(arg, list):
+                # The batched get hides which ref failed.
+                raise ValueError("batched get fails")
+            if arg is ref_gone:
+                raise GetTimeoutError("reported ready but no longer local")
+            return b"meta-bytes"
+
+        # Inject the ray primitives instead of patching the module.
+        fetcher = ThreadedMetadataFetcher(
+            get_objects=fake_get,
+            wait_for_objects=lambda pending, **kwargs: ([ref_ok, ref_gone], []),
+        )
+        retry = fetcher._fetch([ref_ok, ref_gone])
+
+        # The good ref's bytes were published; the raced ref is re-queued
+        # (not published, not treated as a block error).
+        with fetcher._results_lock:
+            assert fetcher._results == {ref_ok: b"meta-bytes"}
+        assert retry == [ref_gone]
+
+    def test_threaded_object_size_not_ready(self, ray_start_regular_shared):
+        """If the block's local ``object_size`` is unavailable, the threaded
+        fetcher falls back to a short metadata ``ray.get`` for the size; if the
+        metadata isn't local yet either, the pair stays pending (nothing
+        deferred, refs retained) and is retried on a later call."""
+        gen = create_stub_streaming_gen(block_nbytes=[100])
+        task = DataOpTask(0, gen, BlockRefCounter(), "test_op")
+
+        ray.wait([gen], fetch_local=False)
+
+        # Force the local-size lookup to miss (empty locations) so we always
+        # take the metadata fallback. The injected get controls that fallback:
+        # stage 1 times out (metadata not local), stage 2 delegates to the real
+        # ray.get so the size comes from the actual metadata.
+        stage = {"n": 1}
+
+        def fake_get(ref, timeout=None):
+            if stage["n"] == 1:
+                raise GetTimeoutError("metadata not local yet")
+            return ray.get(ref, timeout=timeout)
+
+        fetcher = ThreadedMetadataFetcher(
+            get_object_locations=lambda refs: {},
+            get_objects=fake_get,
+        )
+
+        # Stage 1: no local size AND metadata not local -> the pair is held
+        # (refs stay set), nothing is deferred, nothing is charged.
+        deadline = time.time() + 30
+        bytes_read = 0
+        while task.pending_meta_ref.is_nil() and time.time() < deadline:
+            bytes_read += task.on_data_ready(None, fetcher)
+            time.sleep(0.01)
+        assert not task.pending_block_ref.is_nil()
+        assert bytes_read == 0
+        assert fetcher._pending_deferred == []
+
+        # Stage 2: still no local size, but the metadata fetch now succeeds ->
+        # the size comes from meta.size_bytes and the held pair is deferred
+        # (the retry path works).
+        stage["n"] = 2
+        deadline = time.time() + 30
+        while not task.is_drained() and time.time() < deadline:
+            bytes_read += task.on_data_ready(None, fetcher)
+            time.sleep(0.01)
+        assert bytes_read == 108
+        assert len(fetcher._pending_deferred) == 1
+
+    def test_threaded_size_bytes_none_still_consumes_pair(
+        self, ray_start_regular_shared
+    ):
+        """The threaded metadata-fallback path must not return None when the
+        fetched metadata's ``size_bytes`` is unset: the pair was already
+        deferred, and a None return would make ``on_data_ready`` hand the same
+        pair back on the next call, deferring (and eventually emitting) it
+        twice."""
+        gen = create_stub_streaming_gen(block_nbytes=[100])
+        task = DataOpTask(0, gen, BlockRefCounter(), "test_op")
+        ray.wait([gen], fetch_local=False)
+
+        meta_bytes = pickle.dumps(
+            BlockMetadataWithSchema(
+                num_rows=1,
+                size_bytes=None,
+                exec_stats=None,
+                task_exec_stats=None,
+                input_files=None,
+                schema=None,
+            )
+        )
+        # Force the fallback (no local size) and make it resolve to metadata
+        # with size_bytes=None.
+        fetcher = ThreadedMetadataFetcher(
+            get_object_locations=lambda refs: {},
+            get_objects=lambda ref, timeout=None: meta_bytes,
+        )
+
+        deadline = time.time() + 30
+        while not task.is_drained() and time.time() < deadline:
+            task.on_data_ready(None, fetcher)
+            time.sleep(0.01)
+
+        # The size-less pair was consumed (size 0, not None) and deferred
+        # exactly once. With the bug it returns None, so on_data_ready keeps
+        # handing the same pair back — the task never drains and the pair is
+        # deferred repeatedly.
+        assert task.is_drained()
+        assert len(fetcher._pending_deferred) == 1
+
+    def test_on_data_ready_branches_with_fake_fetcher(self, ray_start_regular_shared):
+        """Mock the fetcher interface to drive ``on_data_ready``'s per-pair
+        outcomes deterministically — no cluster timing or polling.
+
+        Covers: a pair not-ready (``in_data_ready_get_object_size`` returns None -> the loop
+        stops, refs stay set), then the same pair becoming ready (size returned
+        -> charged + refs advanced), then end-of-stream completion (inline
+        fetcher -> done-callback fires)."""
+
+        class FakeFetcher(MetadataFetcher):
+            def __init__(self):
+                self.calls = []
+                # Per call, the size to return (None = not ready yet).
+                self.script = [None, 4096]
+
+            def in_data_ready_get_object_size(self, task):
+                self.calls.append((task.pending_block_ref, task.pending_meta_ref))
+                size = self.script.pop(0) if self.script else 0
+                if size is not None:
+                    # Emulate the inline fetcher emitting the pair.
+                    task._output_ready_callback(object())
+                return size
+
+            def in_data_ready_done(self, task):
+                # Emulate the inline fetcher: fire the done-callback at drain.
+                task.mark_done()
+
+        gen = create_stub_streaming_gen(block_nbytes=[1024])
+        emits: list = []
+        done: list = []
+        task = DataOpTask(
+            0,
+            gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=emits.append,
+            task_done_callback=lambda *a: done.append(a),
+        )
+        ray.wait([gen], fetch_local=False)
+        fake = FakeFetcher()
+
+        # 1st call: fetcher reports not-ready -> nothing charged, not finished,
+        # the pair's refs are retained for a retry.
+        assert task.on_data_ready(None, fake) == 0
+        assert emits == [] and done == [] and not task.has_finished
+        assert not task._pending_block_ref.is_nil()
+
+        # 2nd call: same pair now ready (4096) -> charged + emitted, then the
+        # generator drains and the inline done-callback fires.
+        bytes_read = 0
+        deadline = time.time() + 30
+        while not task.has_finished and time.time() < deadline:
+            ray.wait([gen], fetch_local=False)
+            bytes_read += task.on_data_ready(None, fake)
+        assert bytes_read == 4096
+        assert len(emits) == 1
+        assert len(done) == 1
+
+    def test_make_metadata_fetcher_mode_selection(self, monkeypatch):
+        """The env var selects the fetcher implementation."""
+        import ray.data._internal.execution.metadata_fetcher as mf
+
+        monkeypatch.setattr(mf, "_PREFETCH_ON_THREAD", True)
+        assert isinstance(mf.make_metadata_fetcher(), ThreadedMetadataFetcher)
+
+        monkeypatch.setattr(mf, "_PREFETCH_ON_THREAD", False)
+        assert isinstance(mf.make_metadata_fetcher(), InlineMetadataFetcher)
+
+    @pytest.mark.parametrize(
+        "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
+    )
+    def test_on_data_ready_with_preemption_during_call(
+        self,
+        preempt_on: Union[
+            Literal["block_ready_callback"], Literal["metadata_ready_callback"]
+        ],
+        ray_start_cluster_enabled,
+        ensure_block_metadata_stored_in_plasma,
+    ):
+        """Test that ``on_data_ready`` works when a node dies during its execution."""
+        # Shutdown Ray incase it's already initialized.
+        ray.shutdown()
+
+        # Create a single-worker-node cluster with 1 logical CPU.
+        cluster = ray_start_cluster_enabled
+        head_node = cluster.add_node(num_cpus=0)  # noqa: F841
+        cluster.wait_for_nodes()
+        ray.init()
+
+        worker_node = cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+
+        # Create a streaming generator that produces a single 128 MiB output block, and
+        # configure it so that it preempts the worker node in the specified callback.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+
+        def remove_and_add_back_worker_node(_):
+            cluster.remove_node(worker_node)
+
+            new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
+            cluster.wait_for_nodes()
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            **{preempt_on: remove_and_add_back_worker_node},
+        )
+
+        # Run the task to completion.
+        bytes_read = 0
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(None, InlineMetadataFetcher())
+
+        # Ensure that we read the expected amount of data. Since the streaming generator
+        # yields a single 128 MiB block, we should read 128 MiB.
+        assert bytes_read == pytest.approx(128 * MiB)
+
+    def test_on_data_ready_with_preemption_after_wait(
+        self, ray_start_cluster_enabled, ensure_block_metadata_stored_in_plasma
+    ):
+        # Shutdown Ray incase it's already initialized.
+        ray.shutdown()
+
+        # Create a single-worker-node cluster with 1 logical CPU.
+        cluster = ray_start_cluster_enabled
+        head_node = cluster.add_node(num_cpus=0)  # noqa: F841
+        cluster.wait_for_nodes()
+        ray.init()
+
+        worker_node = cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+
+        # Create a streaming generator that produces a single 128 MiB output block.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+        data_op_task = DataOpTask(0, streaming_gen, BlockRefCounter(), "test_op")
+
+        # Wait for the block to be ready, then remove the worker node.
+        ray.wait([streaming_gen], fetch_local=False)
+        cluster.remove_node(worker_node)
+
+        # The block shouldn't be available anymore, so we shouldn't read any data.
+        bytes_read = data_op_task.on_data_ready(None, InlineMetadataFetcher())
+        assert bytes_read == 0
+
+        # Re-add the worker node, and run the task to completion.
+        new_worker_node = cluster.add_node(num_cpus=1)  # noqa: F841
+        cluster.wait_for_nodes()
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            bytes_read += data_op_task.on_data_ready(None, InlineMetadataFetcher())
+
+        # We should now be able to read the 128 MiB block.
+        assert bytes_read == pytest.approx(128 * MiB)
+
+    @patch("time.perf_counter")
+    def test_on_data_ready_output_backpressure_tracking(
+        self, mock_perf_counter, ray_start_regular_shared
+    ):
+        """Test that DataOpTask tracks output backpressure time correctly.
+
+        Output backpressure occurs when max_bytes_to_read=0, meaning the
+        downstream can't consume more data. The task should track the total
+        time spent in this state and report it via TaskExecDriverStats.
+        """
+        # Use 2 blocks so the task stays alive across both BP periods.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB, 128 * MiB])
+
+        captured_stats = {}
+
+        def capture_done(exc, task_exec_stats, task_exec_driver_stats):
+            captured_stats["exc"] = exc
+            captured_stats["task_exec_stats"] = task_exec_stats
+            captured_stats["task_exec_driver_stats"] = task_exec_driver_stats
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            BlockRefCounter(),
+            "test_op",
+            task_done_callback=capture_done,
+        )
+
+        clock = 0.0
+        mock_perf_counter.return_value = clock
+
+        # Wait for data to become available
+        ray.wait([streaming_gen], fetch_local=False)
+
+        # 1st backpressure period: 2.5s
+        clock = 1.0
+        mock_perf_counter.return_value = clock
+        assert data_op_task.on_data_ready(0, InlineMetadataFetcher()) == 0
+
+        clock = 3.5
+        mock_perf_counter.return_value = clock
+
+        # Resume: ends 1st BP period (2.5s), reads block 1 (limited to 1 byte
+        # so it reads exactly one block and stops)
+        data_op_task.on_data_ready(None, InlineMetadataFetcher())
+        assert not data_op_task.has_finished
+
+        # 2nd backpressure period: 1.5s
+        clock = 5.0
+        mock_perf_counter.return_value = clock
+        data_op_task.on_data_ready(0, InlineMetadataFetcher())
+
+        clock = 6.5
+        mock_perf_counter.return_value = clock
+
+        # Drain to completion
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            data_op_task.on_data_ready(None, InlineMetadataFetcher())
+
+        # Verify stats were captured
+        assert captured_stats["exc"] is None
+        assert captured_stats["task_exec_stats"] is not None
+        assert captured_stats["task_exec_driver_stats"] is not None
+
+        # Total backpressure = 2.5s + 1.5s = 4.0s
+        bp_time = captured_stats["task_exec_driver_stats"].task_output_backpressure_s
+        assert bp_time == pytest.approx(4.0)
+
+
+def test_streaming_executor_logs_relevant_env_vars(
+    monkeypatch, caplog, propagate_logs, ray_start_regular_shared
+):
+    monkeypatch.setenv("RAY_DATA_TEST_FOO", "bar")
+    monkeypatch.setenv("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.3")
+
+    ctx = DataContext.get_current()
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    dag = InputDataBuffer(ctx, inputs)
+
+    executor = StreamingExecutor(ctx)
+    with caplog.at_level(
+        logging.DEBUG,
+        logger="ray.data._internal.execution.streaming_executor",
+    ):
+        executor.execute(dag)
+
+    assert "RAY_DATA_TEST_FOO=bar" in caplog.text
+    assert "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.3" in caplog.text
 
 
 if __name__ == "__main__":

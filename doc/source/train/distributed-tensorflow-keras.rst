@@ -78,7 +78,7 @@ Create a TensorflowTrainer
 --------------------------
 
 ``Trainer``\s are the primary Ray Train classes for managing state and
-execute training. For distributed Tensorflow,
+execute training. For distributed TensorFlow,
 use a :class:`~ray.train.tensorflow.TensorflowTrainer`
 that you can setup like this:
 
@@ -143,7 +143,7 @@ The main difference is that you may want to convert your Ray Data dataset shard 
 a TensorFlow dataset in your training function so that you can use the Keras
 API for model training.
 
-`See this example <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tune_tensorflow_autoencoder_example.py>`__
+`See this example <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tensorflow_autoencoder_example.py>`__
 for distributed data loading. The relevant parts are:
 
 .. testcode::
@@ -244,6 +244,7 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
     import numpy as np
 
     def train_func(config):
+        os.environ["TF_USE_LEGACY_KERAS"] = "1"
         import tensorflow as tf
         n = 100
         # create a toy dataset
@@ -252,14 +253,16 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
         X = np.random.normal(0, 1, size=(n, 4))
         Y = np.random.uniform(0, 1, size=(n, 1))
 
-        strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+        strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
             model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
+        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
+
         for epoch in range(config["num_epochs"]):
-            history = model.fit(X, Y, batch_size=20)
+            history = model.fit(dataset)
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 model.save(os.path.join(temp_checkpoint_dir, "model.keras"))
@@ -296,6 +299,7 @@ Load checkpoints
     import numpy as np
 
     def train_func(config):
+        os.environ["TF_USE_LEGACY_KERAS"] = "1"
         import tensorflow as tf
         n = 100
         # create a toy dataset
@@ -304,7 +308,7 @@ Load checkpoints
         X = np.random.normal(0, 1, size=(n, 4))
         Y = np.random.uniform(0, 1, size=(n, 1))
 
-        strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+        strategy = tf.distribute.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
             checkpoint = train.get_checkpoint()
@@ -319,8 +323,10 @@ Load checkpoints
                 )
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
+        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
+
         for epoch in range(config["num_epochs"]):
-            history = model.fit(X, Y, batch_size=20)
+            history = model.fit(dataset)
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 model.save(os.path.join(temp_checkpoint_dir, "model.keras"))
@@ -338,15 +344,6 @@ Load checkpoints
     )
     result = trainer.fit()
     print(result.checkpoint)
-
-    # Start a new run from a loaded checkpoint
-    trainer = TensorflowTrainer(
-        train_func,
-        train_loop_config={"num_epochs": 5},
-        scaling_config=ScalingConfig(num_workers=2),
-        resume_from_checkpoint=result.checkpoint,
-    )
-    result = trainer.fit()
 
 
 Further reading

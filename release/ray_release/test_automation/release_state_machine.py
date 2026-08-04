@@ -1,12 +1,10 @@
-from ray_release.test_automation.state_machine import (
-    TestStateMachine,
-    WEEKLY_RELEASE_BLOCKER_TAG,
-)
 from ray_release.test import Test, TestState
-
+from ray_release.test_automation.state_machine import (
+    WEEKLY_RELEASE_BLOCKER_TAG,
+    TestStateMachine,
+)
 
 CONTINUOUS_FAILURE_TO_JAIL = 3  # Number of continuous failures before jailing
-UNSTABLE_RELEASE_TEST_TAG = "unstable-release-test"
 
 
 class ReleaseTestStateMachine(TestStateMachine):
@@ -59,6 +57,7 @@ class ReleaseTestStateMachine(TestStateMachine):
     """
 
     def _create_github_issue(self) -> None:
+        repo_name = self.ray_repo.full_name
         labels = [
             "P0",
             "bug",
@@ -67,11 +66,9 @@ class ReleaseTestStateMachine(TestStateMachine):
             "stability",
             "triage",
             self.test.get_oncall(),
+            repo_name,
         ]
-        if not self.test.is_stable():
-            labels.append(UNSTABLE_RELEASE_TEST_TAG)
-        else:
-            labels.append(WEEKLY_RELEASE_BLOCKER_TAG)
+        labels.append(WEEKLY_RELEASE_BLOCKER_TAG)
         issue_number = self.ray_repo.create_issue(
             title=f"Release test {self.test.get_name()} failed",
             body=(

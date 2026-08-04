@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Set, Tuple
 
+import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
@@ -18,7 +19,6 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
 from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
-from ray._private.runtime_env.mpi import MPIPlugin
 from ray._private.runtime_env.nsight import NsightPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.plugin import (
@@ -171,13 +171,25 @@ class RuntimeEnvAgent:
 
     def __init__(
         self,
-        runtime_env_dir,
-        logging_params,
+        runtime_env_dir: str,
+        logging_params: dict,
         gcs_client: GcsClient,
-        temp_dir,
-        address,
-        runtime_env_agent_port,
+        temp_dir: str,
+        address: str,
+        runtime_env_agent_port: int,
     ):
+        """Initialize the runtime env agent.
+
+        Args:
+            runtime_env_dir: Directory used to store runtime env resources.
+            logging_params: Keyword arguments forwarded to
+                :func:`setup_component_logger` to configure the agent logger.
+            gcs_client: GCS client used to fetch package data.
+            temp_dir: Temporary directory used by plugins (e.g. container plugin).
+            address: IP address that the agent is listening on, used for logging.
+            runtime_env_agent_port: Port that the agent is listening on, used for
+                logging.
+        """
         super().__init__()
 
         self._logger = default_logger
@@ -219,7 +231,6 @@ class RuntimeEnvAgent:
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir)
-        self._mpi_plugin = MPIPlugin()
         self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
@@ -236,7 +247,6 @@ class RuntimeEnvAgent:
             self._container_plugin,
             self._nsight_plugin,
             self._rocprof_sys_plugin,
-            self._mpi_plugin,
             self._image_uri_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
@@ -252,6 +262,13 @@ class RuntimeEnvAgent:
         self._logger.info(
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )
+
+        try:
+            self._node_ip = ray.util.get_node_ip_address()
+            self._node_prefix = f"[Node {self._node_ip}] "
+        except Exception as e:
+            self._logger.warning(f"Failed to get node IP address, using fallback: {e}")
+            self._node_prefix = "[Node unknown] "
 
     def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
@@ -352,8 +369,8 @@ class RuntimeEnvAgent:
             return context
 
         async def _create_runtime_env_with_retry(
-            runtime_env,
-            setup_timeout_seconds,
+            runtime_env: RuntimeEnv,
+            setup_timeout_seconds: int,
             runtime_env_config: RuntimeEnvConfig,
         ) -> Tuple[bool, str, str]:
             """Create runtime env with retry times. This function won't raise exceptions.
@@ -434,11 +451,14 @@ class RuntimeEnvAgent:
             self._logger.exception(
                 "[Increase] Failed to parse runtime env: " f"{serialized_env}"
             )
+
+            error_message = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
+
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="".join(
-                    traceback.format_exception(type(e), e, e.__traceback__)
-                ),
+                error_message=f"{self._node_prefix}{error_message}",
             )
 
         # Increase reference
@@ -478,7 +498,7 @@ class RuntimeEnvAgent:
                     )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                        error_message=error_message,
+                        error_message=f"{self._node_prefix}{error_message}",
                     )
 
             if SLEEP_FOR_TESTING_S:
@@ -523,7 +543,9 @@ class RuntimeEnvAgent:
                 if successful
                 else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 serialized_runtime_env_context=serialized_context,
-                error_message=error_message,
+                error_message=f"{self._node_prefix}{error_message}"
+                if not successful
+                else "",
             )
 
     async def DeleteRuntimeEnvIfPossible(self, request):
@@ -540,11 +562,14 @@ class RuntimeEnvAgent:
                 "[Decrease] Failed to parse runtime env: "
                 f"{request.serialized_runtime_env}"
             )
+
+            error_message = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
+
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message="".join(
-                    traceback.format_exception(type(e), e, e.__traceback__)
-                ),
+                error_message=f"{self._node_prefix}{error_message}",
             )
 
         try:
@@ -554,7 +579,7 @@ class RuntimeEnvAgent:
         except Exception as e:
             return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message=f"Fails to decrement reference for runtime env for {str(e)}",
+                error_message=f"{self._node_prefix}Failed to decrement reference for runtime env for {str(e)}",
             )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(

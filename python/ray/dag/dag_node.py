@@ -1,31 +1,30 @@
+import asyncio
 import copy
-from ray.experimental.channel.auto_transport_type import AutoTransportType
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
+import uuid
+import warnings
+from itertools import chain
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
 import ray
 from ray.dag.base import DAGNodeBase
-from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.util.annotations import DeveloperAPI
-
-from itertools import chain
-
-from typing import (
-    Optional,
-    Union,
-    List,
-    Tuple,
-    Dict,
-    Any,
-    TypeVar,
-    Callable,
-    Literal,
-)
-import uuid
-import asyncio
-
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.experimental.channel import ChannelOutputType
+from ray.experimental.channel.auto_transport_type import AutoTransportType
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.util.types import Device
+from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
 
 T = TypeVar("T")
 
@@ -175,6 +174,9 @@ class DAGNode(DAGNodeBase):
                 other data. If a "nccl" transport is used, this allows the
                 sender and receiver to eliminate performance overhead from
                 an additional data transfer.
+
+        Returns:
+            This DAG node with the configured tensor transport.
         """
         try:
             device = Device(device)
@@ -198,7 +200,7 @@ class DAGNode(DAGNodeBase):
             )
         elif transport == "accelerator":
             self._type_hint = TorchTensorType(
-                transport == "accelerator",
+                transport="accelerator",
                 device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
@@ -212,8 +214,9 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl', 'shm', 'accelerator' or "
-                    "a Communicator type"
+                    f"Invalid transport type: {transport}. "
+                    "Transport must be one of 'auto', 'nccl', 'shm', 'accelerator' or "
+                    "an instance of Communicator type."
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
@@ -364,17 +367,28 @@ class DAGNode(DAGNodeBase):
         )
 
     def execute(
-        self, *args, _ray_cache_refs: bool = False, **kwargs
+        self, *args: Any, _ray_cache_refs: bool = False, **kwargs: Any
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
         Args:
+            *args: Positional arguments forwarded to ``_execute_impl`` on each node.
             _ray_cache_refs: If true, stores the default executor's return values
                 on each node in this DAG in a cache. These should be a mix of:
                 - ray.ObjectRefs pointing to the outputs of method and function nodes
                 - Serve handles for class nodes
                 - resolved values representing user input at runtime
+            **kwargs: Keyword arguments forwarded to ``_execute_impl`` on each node.
+
+        Returns:
+            The result of executing the DAG (an ``ObjectRef`` or an
+            ``ActorHandle`` depending on the root node type).
         """
+        warnings.warn(
+            "DAGNode.execute() is deprecated and will be removed in a future release.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
 
         def executor(node):
             return node._execute_impl(*args, **kwargs)
@@ -420,6 +434,10 @@ class DAGNode(DAGNodeBase):
         Examples:
             f.remote(a, [b]) -> [a, b]
             f.remote(a, [b], key={"nested": [c]}) -> [a, b, c]
+
+        Returns:
+            All child DAGNodes referenced (transitively) by this node's
+            args, kwargs, and other_args_to_resolve.
         """
 
         scanner = _PyObjScanner()
@@ -574,7 +592,7 @@ class DAGNode(DAGNodeBase):
                     if neighbor not in visited:
                         queue.append(neighbor)
 
-    def _raise_nested_dag_node_error(self, args):
+    def _raise_nested_dag_node_error(self, args: Tuple[Any, ...]) -> None:
         """
         Raise an error for nested DAGNodes in Ray Compiled Graphs.
 

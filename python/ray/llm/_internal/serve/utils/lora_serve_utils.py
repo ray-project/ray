@@ -28,7 +28,10 @@ from ray.llm._internal.common.utils.lora_utils import (
     retry_with_exponential_backoff,
     sync_files_with_lock,
 )
-from ray.llm._internal.serve.configs.server_models import DiskMultiplexConfig, LLMConfig
+from ray.llm._internal.serve.core.configs.llm_config import (
+    DiskMultiplexConfig,
+    LLMConfig,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__name__)
@@ -80,18 +83,20 @@ async def download_multiplex_config_info(
     return bucket_uri, ft_context_length
 
 
-async def get_lora_model_metadata(
-    model_id: str, llm_config: LLMConfig
-) -> Dict[str, Any]:
-    """Get the lora model metadata for a given model id and llm config.
+async def get_lora_model_metadata(model_id: str, base_path: str) -> Dict[str, Any]:
+    """Get the lora model metadata for a given model id and base path.
 
-    This is used to get the metadata for the model with the given model id.
+    Args:
+        model_id: A lora model id of the form ``base_model_id:suffix:id``.
+        base_path: The cloud storage path under which LoRA adapters are stored
+            (typically ``llm_config.lora_config.dynamic_lora_loading_path``).
+
+    Returns:
+        A dict with keys ``model_id``, ``base_model_id``,
+        ``max_request_context_length``, and ``bucket_uri``.
     """
-    # Note (genesu): `model_id` passed is a lora model id where it's in a form of
-    #     base_model_id:suffix:id
     base_model_id = get_base_model_id(model_id)
     lora_id = get_lora_id(model_id)
-    base_path = llm_config.lora_config.dynamic_lora_loading_path
 
     # Examples of the variables:
     #   model_id: "meta-llama/Meta-Llama-3.1-8B-Instruct:my_suffix:aBc1234"
@@ -117,7 +122,9 @@ async def get_lora_mirror_config(
     llm_config: LLMConfig,
 ) -> LoraMirrorConfig:
     """Get LoRA mirror configuration for serve-specific LLM config."""
-    metadata = await get_lora_model_metadata(model_id, llm_config)
+    metadata = await get_lora_model_metadata(
+        model_id, llm_config.lora_config.dynamic_lora_loading_path
+    )
 
     return LoraMirrorConfig(
         lora_model_id=model_id,

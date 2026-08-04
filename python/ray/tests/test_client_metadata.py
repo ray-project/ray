@@ -2,10 +2,9 @@ import sys
 
 import pytest
 
-from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._raylet import NodeID
-
 from ray.runtime_context import RuntimeContext
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_get_ray_metadata(ray_start_regular_shared):
@@ -38,6 +37,10 @@ def test_get_runtime_context(ray_start_regular_shared):
         assert isinstance(rtc.node_id, NodeID)
         assert len(rtc.node_id.hex()) == 56
         assert isinstance(rtc.namespace, str)
+
+        wid = ray.get_runtime_context().get_worker_id()
+        assert isinstance(wid, str)
+        assert len(wid) == 56
 
         # Ensure this doesn't throw
         ray.get_runtime_context().get()

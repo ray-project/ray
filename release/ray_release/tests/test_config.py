@@ -1,9 +1,13 @@
-import sys
 import copy
+import sys
+
 import pytest
 import yaml
+
 from ray_release.config import (
+    CLOUD_ID_TO_NAME,
     _substitute_variable,
+    get_test_cloud_name,
     load_schema_file,
     parse_test_definition,
     read_and_validate_release_test_collection,
@@ -16,6 +20,7 @@ from ray_release.test import Test
 _TEST_COLLECTION_FILES = [
     "release/release_tests.yaml",
     "release/release_data_tests.yaml",
+    "release/release_multimodal_inference_benchmarks_tests.yaml",
     "release/ray_release/tests/test_collection_data.yaml",
 ]
 
@@ -23,7 +28,7 @@ VALID_TEST = {
     "name": "validation_test",
     "group": "validation_group",
     "working_dir": "validation_dir",
-    "python": "3.9",
+    "python": "3.10",
     "frequency": "nightly",
     "team": "release",
     "cluster": {
@@ -54,6 +59,57 @@ def test_parse_test_definition():
           working_dir: sample_dir
           frequency: nightly
           team: sample
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: compute.yaml
+          run:
+            timeout: 100
+            script: python script.py
+          variations:
+            - __suffix__: aws
+            - __suffix__: gce
+              cluster:
+                cluster_compute: compute_gce.yaml
+    """
+    )
+    # Check that parsing returns two tests, one for each variation (aws and gce). Check
+    # that both tests are valid, and their fields are populated correctly
+    tests = parse_test_definition(test_definitions)
+    aws_test = tests[0]
+    gce_test = tests[1]
+    schema = load_schema_file()
+    assert not validate_test(aws_test, schema)
+    assert not validate_test(gce_test, schema)
+    assert aws_test["name"] == "sample_test.aws"
+    assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
+    assert gce_test["cluster"]["byod"]["type"] == "gpu"
+    invalid_test_definition = test_definitions[0]
+    # Intentionally make the test definition invalid by create an empty 'variations'
+    # field. Check that the parser throws exception at runtime
+    invalid_test_definition["variations"] = []
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
+    # Intentionally make the test definition invalid by making one 'variation' entry
+    # missing the __suffix__ entry. Check that the parser throws exception at runtime
+    invalid_test_definition["variations"] = [{"__suffix__": "aws"}, {}]
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
+
+
+def test_parse_test_definition_with_python_version():
+    """
+    Unit test for the ray_release.config.parse_test_definition function. In particular,
+    we check that the code correctly parse a test definition that have the 'variations' & 'python'
+    field.
+    """
+    test_definitions = yaml.safe_load(
+        """
+        - name: sample_test
+          working_dir: sample_dir
+          frequency: nightly
+          team: sample
+          python: "3.10"
           cluster:
             byod:
               type: gpu
@@ -368,6 +424,159 @@ def test_compute_config_invalid_ebs():
     ][0]["Ebs"]["DeleteOnTermination"] = True
 
     assert not validate_cluster_compute(compute_config)
+
+
+def test_validate_cluster_compute_new_schema_valid():
+    """New schema: empty config is valid (all fields optional)."""
+    assert not validate_cluster_compute({}, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_valid_with_fields():
+    """New schema: config with new-schema keys is valid."""
+    compute_config = {
+        "cloud": "my_cloud",
+        "head_node": {"instance_type": "m5.4xlarge"},
+        "worker_nodes": [{"instance_type": "m5.xlarge", "min_nodes": 1}],
+    }
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_rejects_legacy_keys():
+    """New schema: config with legacy keys is rejected."""
+    compute_config = {
+        "cloud_id": "cld_123",
+        "head_node_type": {"instance_type": "m5.4xlarge"},
+    }
+    error = validate_cluster_compute(compute_config, is_new_schema=True)
+    assert error is not None
+    assert "legacy schema keys" in error
+    assert "anyscale_sdk_2026=true" in error
+
+
+def test_validate_cluster_compute_legacy_rejects_new_keys():
+    """Legacy schema: config with new-schema keys is rejected."""
+    compute_config = {
+        "cloud_id": "cld_123",
+        "head_node": {"instance_type": "m5.4xlarge"},
+    }
+    error = validate_cluster_compute(compute_config, is_new_schema=False)
+    assert error is not None
+    assert "new schema keys" in error
+    assert "anyscale_sdk_2026=false" in error
+
+
+def test_validate_cluster_compute_legacy_rejects_empty():
+    """Legacy schema: empty config is rejected (no legacy keys)."""
+    error = validate_cluster_compute({}, is_new_schema=False)
+    assert error is not None
+    assert "does not have legacy schema keys" in error
+
+
+def test_validate_cluster_compute_new_schema_ebs_top_level():
+    """New schema: EBS DeleteOnTermination is checked in top-level advanced_instance_config."""
+    compute_config = {
+        "advanced_instance_config": {
+            "BlockDeviceMappings": [
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"VolumeSize": 1000},
+                }
+            ]
+        },
+    }
+    # Missing DeleteOnTermination should fail
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    # Set DeleteOnTermination to True should pass
+    compute_config["advanced_instance_config"]["BlockDeviceMappings"][0]["Ebs"][
+        "DeleteOnTermination"
+    ] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_ebs_head_node():
+    """New schema: EBS DeleteOnTermination is checked in head_node.advanced_instance_config."""
+    compute_config = {
+        "head_node": {
+            "instance_type": "m5.4xlarge",
+            "advanced_instance_config": {
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/sda1",
+                        "Ebs": {"VolumeSize": 1000},
+                    }
+                ]
+            },
+        },
+    }
+    # Missing DeleteOnTermination should fail
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    # Set DeleteOnTermination to True should pass
+    compute_config["head_node"]["advanced_instance_config"]["BlockDeviceMappings"][0][
+        "Ebs"
+    ]["DeleteOnTermination"] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_ebs_worker_nodes():
+    """New schema: EBS checks in worker_nodes[*].advanced_instance_config."""
+    compute_config = {
+        "worker_nodes": [
+            {
+                "instance_type": "m5.xlarge",
+                "advanced_instance_config": {
+                    "BlockDeviceMappings": [
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"VolumeSize": 500},
+                        }
+                    ]
+                },
+            }
+        ],
+    }
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    compute_config["worker_nodes"][0]["advanced_instance_config"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_get_test_cloud_name_from_cluster_cloud():
+    """get_test_cloud_name() returns cluster.cloud when set."""
+    test = Test(
+        {
+            "name": "test",
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud": "my_cloud"},
+        }
+    )
+    assert get_test_cloud_name(test) == "my_cloud"
+
+
+def test_get_test_cloud_name_from_cloud_id_mapping():
+    """get_test_cloud_name() falls back to CLOUD_ID_TO_NAME mapping."""
+    for cloud_id, expected_name in CLOUD_ID_TO_NAME.items():
+        test = Test(
+            {
+                "name": "test",
+                "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": cloud_id},
+            }
+        )
+        assert get_test_cloud_name(test) == expected_name
+
+
+def test_get_test_cloud_name_unknown_cloud_id():
+    """get_test_cloud_name() raises ReleaseTestConfigError for unknown cloud_id."""
+    test = Test(
+        {
+            "name": "test",
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": "cld_unknown"},
+        }
+    )
+    with pytest.raises(ReleaseTestConfigError):
+        get_test_cloud_name(test)
 
 
 def test_load_and_validate_test_collection_file():

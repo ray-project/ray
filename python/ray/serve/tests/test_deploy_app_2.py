@@ -15,11 +15,16 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import (
+    RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
+    check_num_replicas_gte,
+    check_running,
+    check_target_groups_ready,
     get_application_url,
 )
 from ray.serve.schema import (
@@ -28,7 +33,6 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
 )
-from ray.serve.tests.test_deploy_app import check_running
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
@@ -77,7 +81,7 @@ class TestDeploywithLoggingConfig:
         config_dict["applications"][0]["logging_config"] = {
             "encoding": encoding_type,
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -108,7 +112,7 @@ class TestDeploywithLoggingConfig:
                 },
             },
         ]
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -127,7 +131,7 @@ class TestDeploywithLoggingConfig:
         """Deploy application with deployment logging config inside the code"""
         client = serve_instance
         config_dict = self.get_deploy_config(model_within_logging_config=True)
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -139,7 +143,7 @@ class TestDeploywithLoggingConfig:
         """Overwrite the default logging config with application logging config"""
         client = serve_instance
         config_dict = self.get_deploy_config()
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
 
         wait_for_condition(
@@ -171,7 +175,7 @@ class TestDeploywithLoggingConfig:
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "DEBUG",
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
 
         wait_for_condition(
@@ -211,7 +215,7 @@ class TestDeploywithLoggingConfig:
             "log_level": "INFO",
         }
 
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -229,7 +233,7 @@ class TestDeploywithLoggingConfig:
             "log_level": "INFO",
         }
 
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -243,7 +247,7 @@ class TestDeploywithLoggingConfig:
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "DEBUG",
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -260,7 +264,7 @@ class TestDeploywithLoggingConfig:
             "log_level": "DEBUG",
             "logs_dir": new_log_dir,
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -277,7 +281,7 @@ class TestDeploywithLoggingConfig:
         config_dict["applications"][0]["logging_config"] = {
             "enable_access_log": enable_access_log,
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -295,11 +299,11 @@ class TestDeploywithLoggingConfig:
 def test_deploy_with_no_applications(serve_instance):
     """Deploy an empty list of applications, serve should just be started."""
     client = serve_instance
-    config = ServeDeploySchema.parse_obj({"applications": []})
+    config = ServeDeploySchema.model_validate({"applications": []})
     client.deploy_apps(config)
 
     def serve_running():
-        ServeInstanceDetails.parse_obj(
+        ServeInstanceDetails.model_validate(
             ray.get(client._controller.get_serve_instance_details.remote())
         )
         actors = list_actors(
@@ -309,7 +313,8 @@ def test_deploy_with_no_applications(serve_instance):
             ]
         )
         actor_names = [actor["class_name"] for actor in actors]
-        return "ServeController" in actor_names and "ProxyActor" in actor_names
+        has_proxy = any("Proxy" in name for name in actor_names)
+        return "ServeController" in actor_names and has_proxy
 
     wait_for_condition(serve_running)
 
@@ -322,8 +327,8 @@ def test_deployments_not_listed_in_config(serve_instance):
     config = {
         "applications": [{"import_path": "ray.serve.tests.test_config_files.pid.node"}]
     }
-    client.deploy_apps(ServeDeploySchema(**config))
-    wait_for_condition(check_running, timeout=15)
+    client.deploy_apps(ServeDeploySchema(**config), _blocking=True)
+    check_running()
     pid1, _ = httpx.get("http://localhost:8000/").json()
 
     # Redeploy the same config (with no deployments listed)
@@ -407,19 +412,10 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             ),
         ],
     )
-    client.deploy_apps(config)
-
-    def check_application_running(
-        name: str, route_prefix: str, *, msg: str = "wonderful world"
-    ):
-        status = serve.status().applications[name]
-        assert status.status == "RUNNING"
-        assert httpx.post(f"http://localhost:8000{route_prefix}/").text == msg
-        return True
-
-    wait_for_condition(
-        check_application_running, name="declarative-app-1", route_prefix="/app-1"
-    )
+    client.deploy_apps(config, _blocking=True)
+    check_running(app_name="declarative-app-1")
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
 
     # Now `serve.run` a dynamic app.
     @serve.deployment
@@ -428,12 +424,9 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             return "Hello!"
 
     serve.run(D.bind(), name="dynamic-app", route_prefix="/dynamic")
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="dynamic-app")
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     # Add a new app via declarative API.
     # Existing declarative app and dynamic app should not be affected.
@@ -444,47 +437,36 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             import_path="ray.serve.tests.test_config_files.world.DagNode",
         ),
     )
-    client.deploy_apps(config)
+    client.deploy_apps(config, _blocking=True)
+    check_running(app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running, name="declarative-app-2", route_prefix="/app-2"
-    )
-    wait_for_condition(
-        check_application_running, name="declarative-app-1", route_prefix="/app-1"
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
+
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     # Delete one of the apps via declarative API.
     # Other declarative app and dynamic app should not be affected.
     config.applications.pop(0)
     client.deploy_apps(config)
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running, name="declarative-app-2", route_prefix="/app-2"
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
 
     wait_for_condition(lambda: "declarative-app-1" not in serve.status().applications)
 
     # Now overwrite the declarative app with a dynamic app with the same name.
     # On subsequent declarative apply, that app should not be affected.
     serve.run(D.bind(), name="declarative-app-2", route_prefix="/app-2")
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     config.applications = [
         ServeApplicationSchema(
@@ -493,40 +475,42 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             import_path="ray.serve.tests.test_config_files.world.DagNode",
         ),
     ]
-    client.deploy_apps(config)
+    client.deploy_apps(config, _blocking=True)
+    check_running(app_name="declarative-app-1")
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
 
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-1",
-        route_prefix="/app-1",
-    )
-    wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
-    )
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
-    )
+    wait_for_condition(check_running, app_name="dynamic-app")
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
+
+    wait_for_condition(check_running, app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     # Verify that the controller does not delete the dynamic apps on recovery.
     ray.kill(client._controller, no_restart=False)
+
+    wait_for_condition(check_running, app_name="declarative-app-1")
+    # It takes some time for the target groups to be ready after controller recovery.
+    # So we make sure the target groups are ready before obtaining the URL.
     wait_for_condition(
-        check_application_running,
-        name="dynamic-app",
-        route_prefix="/dynamic",
-        msg="Hello!",
+        check_target_groups_ready, client=client, app_name="declarative-app-1"
     )
+    url = get_application_url(app_name="declarative-app-1")
+    assert httpx.post(url).text == "wonderful world"
+
+    wait_for_condition(check_running, app_name="dynamic-app")
+    wait_for_condition(check_target_groups_ready, client=client, app_name="dynamic-app")
+    url = get_application_url(app_name="dynamic-app")
+    assert httpx.post(url).text == "Hello!"
+
+    wait_for_condition(check_running, app_name="declarative-app-2")
     wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-        msg="Hello!",
+        check_target_groups_ready, client=client, app_name="declarative-app-2"
     )
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "Hello!"
 
     # Now overwrite the dynamic app with a declarative one and check that it gets
     # deleted upon another apply that doesn't include it.
@@ -537,12 +521,10 @@ def test_deploy_does_not_affect_dynamic_apps(serve_instance):
             import_path="ray.serve.tests.test_config_files.world.DagNode",
         ),
     ]
-    client.deploy_apps(config)
-    wait_for_condition(
-        check_application_running,
-        name="declarative-app-2",
-        route_prefix="/app-2",
-    )
+    client.deploy_apps(config, _blocking=True)
+    check_running(app_name="declarative-app-2")
+    url = get_application_url(app_name="declarative-app-2")
+    assert httpx.post(url).text == "wonderful world"
 
     config.applications = []
     client.deploy_apps(config)
@@ -558,8 +540,10 @@ def test_change_route_prefix(serve_instance):
         "route_prefix": "/old",
         "import_path": "ray.serve.tests.test_config_files.pid.node",
     }
-    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(check_running)
+    client.deploy_apps(
+        ServeDeploySchema(**{"applications": [app_config]}), _blocking=True
+    )
+    check_running()
     url = get_application_url()
     pid1 = httpx.get(url).json()[0]
     # Redeploy application with route prefix /new.
@@ -591,7 +575,9 @@ def test_num_replicas_auto_api(serve_instance):
         "deployments": [{"name": "f", "num_replicas": "auto"}],
     }
 
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
     print("Application is RUNNING.")
     check_num_replicas_eq("f", 1)
@@ -610,12 +596,18 @@ def test_num_replicas_auto_api(serve_instance):
         "metrics_interval_s": 10.0,
         "upscale_delay_s": 30.0,
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
+        },
     }
 
 
@@ -641,7 +633,9 @@ def test_num_replicas_auto_basic(serve_instance):
     }
 
     print(time.ctime(), "Deploying pid application.")
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
     print(time.ctime(), "Application is RUNNING.")
     check_num_replicas_eq("A", 1)
@@ -662,12 +656,18 @@ def test_num_replicas_auto_basic(serve_instance):
         "upscale_delay_s": 1.0,
         # Untouched defaults
         "downscale_delay_s": 600.0,
+        "downscale_to_zero_delay_s": None,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
         "upscaling_factor": None,
         "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
+        "aggregation_function": "mean",
+        "policy": {
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
+        },
     }
 
     h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
@@ -678,12 +678,26 @@ def test_num_replicas_auto_basic(serve_instance):
             assert ray.get(signal.cur_num_waiters.remote()) == target
             return True
 
-        wait_for_condition(check_num_waiters, target=2 * (i + 1))
+        wait_for_condition(check_num_waiters, target=2 * (i + 1), timeout=30)
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
-        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        if (
+            RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE is False
+            and RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER is True
+        ):
+            # When merging timeseries from replicas and handles with LOCF, the same request can appear in
+            # both because they report at different times (e.g. replica: 4 running, handle: 2 queued).
+            # That double-counts requests and inflates the total, biasing aggregations
+            # (especially mean) upward and causing over-scaling.
+            wait_for_condition(
+                check_num_replicas_gte, name="A", target=i + 1, timeout=30
+            )
+        else:
+            wait_for_condition(
+                check_num_replicas_eq, name="A", target=i + 1, timeout=30
+            )
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
-    signal.send.remote()
+    ray.get(signal.send.remote())
 
 
 def test_deploy_one_app_failed(serve_instance):
@@ -722,7 +736,7 @@ def test_deploy_one_app_failed(serve_instance):
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
     r = httpx.post("http://localhost:8000/app2", timeout=10)
-    assert r.status_code == 503 and "unavailable" in r.text
+    assert r.status_code == 503 and "unavailable" in r.text.lower()
 
 
 def test_deploy_with_route_prefix_conflict(serve_instance):
@@ -801,7 +815,9 @@ def test_update_config_graceful_shutdown_timeout(serve_instance):
     }
 
     # Deploy first time
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
@@ -812,7 +828,9 @@ def test_update_config_graceful_shutdown_timeout(serve_instance):
 
     # Redeploy with shutdown timeout set to 5 seconds
     config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
 
     pid2 = handle.remote().result()[0]

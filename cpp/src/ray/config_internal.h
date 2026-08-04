@@ -21,7 +21,7 @@
 #include <unordered_map>
 
 #include "ray/core_worker/common.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 namespace internal {
@@ -60,7 +60,8 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
-  StartupToken startup_token;
+  // Worker ID assigned by raylet when starting the worker process (hex string).
+  std::string worker_id = "";
 
   std::vector<std::string> head_args = {};
 

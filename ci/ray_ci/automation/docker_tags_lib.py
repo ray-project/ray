@@ -1,27 +1,35 @@
 import os
-import platform
 import re
 import subprocess
 import sys
 from datetime import datetime
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 import requests
-import runfiles
 from dateutil import parser
 
 import docker
-from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
+from ci.ray_ci.automation.crane_lib import (
+    CraneError,
+    call_crane_copy,
+    call_crane_index,
+    call_crane_manifest,
+)
+from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
+    ARCHITECTURES_RAY_LLM,
     ARCHITECTURES_RAY_ML,
     GPU_PLATFORM,
     PLATFORMS_RAY,
+    PLATFORMS_RAY_LLM,
     PLATFORMS_RAY_ML,
     PYTHON_VERSIONS_RAY,
+    PYTHON_VERSIONS_RAY_LLM,
     PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
+from ci.ray_ci.supported_images import get_exceptions
 from ci.ray_ci.utils import logger
 
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -37,6 +45,10 @@ def _check_python_version(python_version: str, ray_type: str) -> None:
         raise ValueError(
             f"Python version {python_version} not supported for ray-ml image."
         )
+    if ray_type == RayType.RAY_LLM and python_version not in PYTHON_VERSIONS_RAY_LLM:
+        raise ValueError(
+            f"Python version {python_version} not supported for ray-llm image."
+        )
 
 
 def _check_platform(platform: str, ray_type: str) -> None:
@@ -44,6 +56,8 @@ def _check_platform(platform: str, ray_type: str) -> None:
         raise ValueError(f"Platform {platform} not supported for ray image.")
     if ray_type == RayType.RAY_ML and platform not in PLATFORMS_RAY_ML:
         raise ValueError(f"Platform {platform} not supported for ray-ml image.")
+    if ray_type == RayType.RAY_LLM and platform not in PLATFORMS_RAY_LLM:
+        raise ValueError(f"Platform {platform} not supported for ray-llm image.")
 
 
 def _check_architecture(architecture: str, ray_type: str) -> None:
@@ -51,6 +65,10 @@ def _check_architecture(architecture: str, ray_type: str) -> None:
         raise ValueError(f"Architecture {architecture} not supported for ray image.")
     if ray_type == RayType.RAY_ML and architecture not in ARCHITECTURES_RAY_ML:
         raise ValueError(f"Architecture {architecture} not supported for ray-ml image.")
+    if ray_type == RayType.RAY_LLM and architecture not in ARCHITECTURES_RAY_LLM:
+        raise ValueError(
+            f"Architecture {architecture} not supported for ray-llm image."
+        )
 
 
 def _get_python_version_tag(python_version: str) -> str:
@@ -60,6 +78,8 @@ def _get_python_version_tag(python_version: str) -> str:
 def _get_platform_tag(platform: str) -> str:
     if platform == "cpu":
         return "-cpu"
+    if platform == "tpu":
+        return "-tpu"
     versions = platform.split(".")
     return f"-{versions[0]}{versions[1]}"  # cu11.8.0-cudnn8 -> cu118
 
@@ -82,7 +102,7 @@ def list_image_tag_suffixes(
     platform_tags = [_get_platform_tag(platform)]
     architecture_tags = [_get_architecture_tag(architecture)]
 
-    if python_version == DEFAULT_PYTHON_VERSION:
+    if python_version == DEFAULT_PYTHON_TAG_VERSION:
         python_version_tags.append("")
     if platform == "cpu" and ray_type == RayType.RAY:
         platform_tags.append("")  # no tag is alias to cpu for ray image
@@ -149,6 +169,14 @@ def check_image_ray_commit(prefix: str, ray_type: str, expected_commit: str) -> 
             PLATFORMS_RAY_ML,
             ARCHITECTURES_RAY_ML,
         )
+    elif ray_type == RayType.RAY_LLM:
+        tags = list_image_tags(
+            prefix,
+            ray_type,
+            PYTHON_VERSIONS_RAY_LLM,
+            PLATFORMS_RAY_LLM,
+            ARCHITECTURES_RAY_LLM,
+        )
     tags = [f"rayproject/{ray_type}:{tag}" for tag in tags]
 
     for i, tag in enumerate(tags):
@@ -190,10 +218,18 @@ def list_image_tags(
     if ray_type not in RayType.__members__.values():
         raise ValueError(f"Ray type {ray_type} not supported.")
 
+    exceptions = get_exceptions(ray_type)
     tag_suffixes = []
     for python_version in python_versions:
         for platf in platforms:
             for architecture in architectures:
+                if any(
+                    ("architectures" not in e or architecture in e["architectures"])
+                    and ("platforms" not in e or platf in e["platforms"])
+                    and ("python" not in e or python_version in e["python"])
+                    for e in exceptions
+                ):
+                    continue
                 tag_suffixes += list_image_tag_suffixes(
                     ray_type, python_version, platf, architecture
                 )
@@ -461,114 +497,6 @@ def _is_release_tag(
     return True
 
 
-def _crane_binary():
-    r = runfiles.Create()
-    system = platform.system()
-    if system != "Linux" or platform.processor() != "x86_64":
-        raise ValueError(f"Unsupported platform: {system}")
-    return r.Rlocation("crane_linux_x86_64/crane")
-
-
-def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "copy",
-                source,
-                destination,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
-
-
-def _call_crane_cp(tag: str, source: str, aws_ecr_repo: str) -> Tuple[int, str]:
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "cp",
-                source,
-                f"{aws_ecr_repo}:{tag}",
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
-
-
-def _call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "index",
-                "append",
-                "-m",
-                tags[0],
-                "-m",
-                tags[1],
-                "-t",
-                index_name,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
-
-
-def _call_crane_manifest(tag: str) -> Tuple[int, str]:
-    try:
-        with subprocess.Popen(
-            [
-                _crane_binary(),
-                "manifest",
-                tag,
-            ],
-            stdout=subprocess.PIPE,
-            text=True,
-        ) as proc:
-            output = ""
-            for line in proc.stdout:
-                logger.info(line + "\n")
-                output += line
-            return_code = proc.wait()
-            if return_code:
-                raise subprocess.CalledProcessError(return_code, proc.args)
-            return return_code, output
-    except subprocess.CalledProcessError as e:
-        return e.returncode, e.output
-
-
 def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     """
     Copy tag from Docker Hub to AWS ECR.
@@ -580,16 +508,17 @@ def copy_tag_to_aws_ecr(tag: str, aws_ecr_repo: str) -> bool:
     _, repo_tag = tag.split("/")
     tag_name = repo_tag.split(":")[1]
     logger.info(f"Copying from {tag} to {aws_ecr_repo}:{tag_name}......")
-    return_code, output = call_crane_copy(
-        source=tag,
-        destination=f"{aws_ecr_repo}:{tag_name}",
-    )
-    if return_code:
+    try:
+        call_crane_copy(
+            source=tag,
+            destination=f"{aws_ecr_repo}:{tag_name}",
+        )
+        logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name} successfully")
+        return True
+    except CraneError as e:
         logger.info(f"Failed to copy {tag} to {aws_ecr_repo}:{tag_name}......")
-        logger.info(f"Error: {output}")
+        logger.info(f"Error: {e}")
         return False
-    logger.info(f"Copied {tag} to {aws_ecr_repo}:{tag_name} successfully")
-    return True
 
 
 def backup_release_tags(
@@ -629,19 +558,21 @@ def generate_index(index_name: str, tags: List[str]) -> bool:
     print(f"Generating index {index_name} with tags {tags}")
     # Make sure tag is an image and not an index
     for tag in tags:
-        return_code, output = _call_crane_manifest(tag)
-        if return_code:
+        try:
+            output = call_crane_manifest(tag)
+        except CraneError as e:
             logger.info(f"Failed to get manifest for {tag}")
-            logger.info(f"Error: {output}")
+            logger.info(f"Error: {e}")
             return False
         if "application/vnd.docker.distribution.manifest.list.v2+json" in output:
             logger.info(f"Tag {tag} is an index, not an image")
             return False
 
-    return_code, output = _call_crane_index(index_name=index_name, tags=tags)
-    if return_code:
+    try:
+        call_crane_index(index_name=index_name, tags=tags)
+        logger.info(f"Generated index {index_name} successfully")
+        return True
+    except (CraneError, ValueError) as e:
         logger.info(f"Failed to generate index {index_name}......")
-        logger.info(f"Error: {output}")
+        logger.info(f"Error: {e}")
         return False
-    logger.info(f"Generated index {index_name} successfully")
-    return True

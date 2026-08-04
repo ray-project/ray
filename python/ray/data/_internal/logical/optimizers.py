@@ -1,4 +1,9 @@
-from typing import List
+from typing import TYPE_CHECKING, List, Tuple
+
+from ray.data._internal.planner import create_planner
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
 
 from .ruleset import Ruleset
 from ray.data._internal.logical.interfaces import (
@@ -7,35 +12,35 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
     Rule,
 )
-from ray.data._internal.logical.rules.configure_map_task_memory import (
+from ray.data._internal.logical.rules import (
+    CombineShuffles,
+    CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
-)
-from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule
-from ray.data._internal.logical.rules.inherit_target_max_block_size import (
+    FuseOperators,
     InheritTargetMaxBlockSizeRule,
-)
-from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
-from ray.data._internal.logical.rules.operator_fusion import FuseOperators
-from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
-from ray.data._internal.logical.rules.zero_copy_map_fusion import (
-    EliminateBuildOutputBlocks,
+    LimitPushdownRule,
+    PredicatePushdown,
+    ProjectionPushdown,
+    PushdownCountFiles,
+    SetReadParallelismRule,
 )
 from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
     [
-        InheritBatchFormatRule,
         LimitPushdownRule,
+        ProjectionPushdown,
+        PredicatePushdown,
+        CombineShuffles,
+        PushdownCountFiles,
     ]
 )
-
 
 _PHYSICAL_RULESET = Ruleset(
     [
         InheritTargetMaxBlockSizeRule,
         SetReadParallelismRule,
         FuseOperators,
-        EliminateBuildOutputBlocks,
         ConfigureMapTaskMemoryUsingOutputSize,
     ]
 )
@@ -58,6 +63,12 @@ class LogicalOptimizer(Optimizer):
     def rules(self) -> List[Rule]:
         return [rule_cls() for rule_cls in get_logical_ruleset()]
 
+    def _post_optimize(self, plan: LogicalPlan) -> LogicalPlan:
+        # CommonSubExprElimination is only supposed to run once
+        # isolated from the optimizer rule loop as it applies to
+        # a single Projection operator not a chain of operators.
+        return CommonSubExprElimination().apply(plan)
+
 
 class PhysicalOptimizer(Optimizer):
     """The optimizer for physical operators."""
@@ -67,7 +78,9 @@ class PhysicalOptimizer(Optimizer):
         return [rule_cls() for rule_cls in get_physical_ruleset()]
 
 
-def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
+def get_execution_plan(
+    logical_plan: LogicalPlan,
+) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
     """Get the physical execution plan for the provided logical plan.
 
     This process has 3 steps:
@@ -75,9 +88,14 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
-    from ray.data._internal.planner import create_planner
-
+    # 1. Logical -> Logical (Optimized)
     optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+
+    # 2. Rewire Logical -> Logical (Optimized)
     logical_plan._dag = optimized_logical_plan.dag
-    physical_plan = create_planner().plan(optimized_logical_plan)
-    return PhysicalOptimizer().optimize(physical_plan)
+
+    # 3. Logical (Optimized) -> Physical
+    physical_plan, callbacks = create_planner().plan(optimized_logical_plan)
+
+    # 4. Physical (Optimized) -> Physical
+    return PhysicalOptimizer().optimize(physical_plan), callbacks

@@ -1,10 +1,11 @@
 import copy
 import dataclasses
-from enum import Enum
 import logging
 import math
 import sys
+from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -13,15 +14,20 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
 import gymnasium as gym
 import tree
 from packaging import version
+from typing_extensions import Self
 
 import ray
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
@@ -33,7 +39,7 @@ from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES, INPUT_ENV_SINGLE_SPACES
+from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -48,13 +54,10 @@ from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    Deprecated,
-    deprecation_warning,
-)
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
+from ray.rllib.utils.metrics.metrics_logger import DEFAULT_STATS_CLS_LOOKUP
+from ray.rllib.utils.metrics.stats import StatsBase
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     NOT_SERIALIZABLE,
@@ -76,13 +79,11 @@ from ray.rllib.utils.typing import (
     RLModuleSpecType,
     SampleBatchType,
 )
-from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 from ray.util import log_once
 from ray.util.placement_group import PlacementGroup
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -111,7 +112,7 @@ class AlgorithmConfig(_Config):
     .. testcode::
 
         from ray.rllib.algorithms.ppo import PPOConfig
-        from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
+        from ray.rllib.callbacks.callbacks import MemoryTrackingCallbacks
         # Construct a generic config object, specifying values within different
         # sub-categories, e.g. "training".
         config = (
@@ -143,6 +144,7 @@ class AlgorithmConfig(_Config):
         # Map any agent ID to "default_policy".
         return DEFAULT_MODULE_ID
 
+    # @OldAPIStack
     # TODO (sven): Deprecate in new API stack.
     @staticmethod
     def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
@@ -151,7 +153,7 @@ class AlgorithmConfig(_Config):
         return DEFAULT_POLICY_ID
 
     @classmethod
-    def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
+    def from_dict(cls, config_dict: dict) -> Self:
         """Creates an AlgorithmConfig from a legacy python config dict.
 
         .. testcode::
@@ -261,6 +263,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus = 0  # @OldAPIStack
         self._fake_gpus = False  # @OldAPIStack
         self.num_cpus_for_main_process = 1
+        self.custom_resources_for_main_process = {}
 
         # `self.framework()`
         self.framework_str = "torch"
@@ -326,7 +329,7 @@ class AlgorithmConfig(_Config):
         self.num_envs_per_env_runner = 1
         # TODO (sven): Once new ormsgpack system in place, replace the string
         #  with proper `gym.envs.registration.VectorizeMode.SYNC`.
-        self.gym_env_vectorize_mode = "SYNC"
+        self.gym_env_vectorize_mode = "sync"
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
@@ -341,6 +344,8 @@ class AlgorithmConfig(_Config):
         self.add_default_connectors_to_module_to_env_pipeline = True
         self.merge_env_runner_states = "training_only"
         self.broadcast_env_runner_states = True
+        self.use_env_runner_state_server = False
+        self.env_runner_state_server_max_concurrency = 16
         self.episode_lookback_horizon = 1
         # TODO (sven): Rename into `sample_timesteps` (or `sample_duration`
         #  and `sample_duration_unit` (replacing batch_mode), like we do it
@@ -365,6 +370,7 @@ class AlgorithmConfig(_Config):
         self.num_learners = 0
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = "auto"
+        self.custom_resources_per_learner = {}
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
         self.local_gpu_idx = 0
@@ -393,7 +399,7 @@ class AlgorithmConfig(_Config):
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
         #  dict. We should generally move to a world, in which there exists an
-        #  AlgorithmConfig that a) has-a user provided model config object and b)
+        #  AlgorithmConfig that a) has a user provided model config object and b)
         #  is given a chance to compile a final model config (dict or object) that is
         #  then passed into the RLModule/Catalog. This design would then match our
         #  "compilation" pattern, where we compile automatically those settings that
@@ -469,7 +475,6 @@ class AlgorithmConfig(_Config):
         # `self.offline_data()`
         self.input_ = "sampler"
         self.offline_data_class = None
-        self.offline_data_class = None
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
@@ -491,6 +496,7 @@ class AlgorithmConfig(_Config):
         self.prelearner_buffer_class = None
         self.prelearner_buffer_kwargs = {}
         self.prelearner_module_synch_period = 10
+        self.prelearner_use_recorded_module_states = False
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
         self.actions_in_input_normalized = False
@@ -517,6 +523,20 @@ class AlgorithmConfig(_Config):
         self.evaluation_auto_duration_min_env_steps_per_sample = 100
         self.evaluation_auto_duration_max_env_steps_per_sample = 2000
         self.evaluation_parallel_to_training = False
+        # How long to wait for at least one remote eval EnvRunner to recover
+        # when all *configured* remote eval EnvRunners are unhealthy at the
+        # start of an evaluation step. Default 0: don't wait.
+        self.evaluation_unhealthy_workers_timeout_s = 0.0
+        # Raise `RuntimeError` from `evaluate()` once this many consecutive
+        # evaluation iterations have been skipped because all configured
+        # remote eval EnvRunners are unhealthy. The N-th consecutive skip
+        # raises (so `1` raises on the first skip; `5` raises on the fifth,
+        # tolerating 4 prior skips). Tune escalates the error per the
+        # trial's `max_failures` setting. The counter resets to 0 whenever
+        # an evaluation step actually runs on the remote workers. `None`
+        # (default) tolerates an unbounded number of consecutive skips.
+        # Applies regardless of `evaluation_parallel_to_training`.
+        self.evaluation_error_after_n_consecutive_skips = None
         self.evaluation_force_reset_envs_before_iteration = True
         self.evaluation_config = None
         self.off_policy_estimation_methods = {}
@@ -533,7 +553,7 @@ class AlgorithmConfig(_Config):
         # Offline evaluation.
         self.offline_evaluation_interval = None
         self.num_offline_eval_runners = 0
-        self.offline_evaluation_type: str = None
+        self.offline_evaluation_type: str = "eval_loss"
         self.offline_eval_runner_class = None
         # TODO (simon): Only `_offline_evaluate_with_fixed_duration` works. Also,
         # decide, if we use `offline_evaluation_duration` or
@@ -566,14 +586,13 @@ class AlgorithmConfig(_Config):
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
         self.log_gradients = False
+        self.stats_cls_lookup = DEFAULT_STATS_CLS_LOOKUP
 
         # `self.checkpointing()`
         self.export_native_model_files = False
         self.checkpoint_trainable_policies_only = False
 
         # `self.debugging()`
-        self.logger_creator = None
-        self.logger_config = None
         self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
@@ -656,13 +675,15 @@ class AlgorithmConfig(_Config):
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
-        self.min_time_s_per_reporting = DEPRECATED_VALUE
-        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
-        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self._disable_execution_plan_api = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
+
+        Note: On the new API stack (enable_rl_module_and_learner=True), the effective
+        batch size is derived from `train_batch_size_per_learner` and `num_learners`;
+        read the `total_train_batch_size` property for it. The legacy `train_batch_size`
+        key in the returned dict is not authoritative on the new stack.
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
@@ -731,7 +752,7 @@ class AlgorithmConfig(_Config):
     def update_from_dict(
         self,
         config_dict: PartialAlgorithmConfigDict,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Modifies this AlgorithmConfig via the provided python config dict.
 
         Warns if `config_dict` contains deprecated keys.
@@ -866,18 +887,19 @@ class AlgorithmConfig(_Config):
         return state
 
     @classmethod
-    def from_state(cls, state: Dict[str, Any]) -> "AlgorithmConfig":
+    def from_state(cls, state: Dict[str, Any]) -> Union[Self, Any]:
         """Returns an instance constructed from the state.
 
         Args:
-            cls: An `AlgorithmConfig` class.
             state: A dictionary containing the state of an `AlgorithmConfig`.
                 See `AlgorithmConfig.get_state` for creating a state.
+                The constructed class will be of  ``state["class"]``.
 
         Returns:
             An `AlgorithmConfig` instance with attributes from the `state`.
         """
 
+        # As ctor could be any other class add Any to the return type to indicate this.
         ctor = state["class"]
         config = ctor()
 
@@ -907,7 +929,7 @@ class AlgorithmConfig(_Config):
         config = self.to_dict()
         return self._serialize_dict(config)
 
-    def copy(self, copy_frozen: Optional[bool] = None) -> "AlgorithmConfig":
+    def copy(self, copy_frozen: Optional[bool] = None) -> Self:
         """Creates a deep copy of this config and (un)freezes if necessary.
 
         Args:
@@ -966,7 +988,6 @@ class AlgorithmConfig(_Config):
     def build_algo(
         self,
         env: Optional[Union[str, EnvType]] = None,
-        logger_creator: Optional[Callable[[], Logger]] = None,
         use_copy: bool = True,
     ) -> "Algorithm":
         """Builds an Algorithm from this AlgorithmConfig (or a copy thereof).
@@ -977,8 +998,6 @@ class AlgorithmConfig(_Config):
                 "ray.rllib.examples.envs.classes.random_env.RandomEnv"), or an Env
                 class directly. Note that this arg can also be specified via
                 the "env" key in `config`.
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
             use_copy: Whether to deepcopy `self` and pass the copy to the Algorithm
                 (instead of `self`) as config. This is useful in case you would like to
                 recycle the same AlgorithmConfig over and over, e.g. in a test case, in
@@ -991,8 +1010,6 @@ class AlgorithmConfig(_Config):
             self.env = env
             if self.evaluation_config is not None:
                 self.evaluation_config["env"] = env
-        if logger_creator is not None:
-            self.logger_creator = logger_creator
 
         algo_class = self.algo_class
         if isinstance(self.algo_class, str):
@@ -1000,7 +1017,6 @@ class AlgorithmConfig(_Config):
 
         return algo_class(
             config=self if not use_copy else copy.deepcopy(self),
-            logger_creator=self.logger_creator,
         )
 
     def build_env_to_module_connector(
@@ -1041,6 +1057,8 @@ class AlgorithmConfig(_Config):
                             "`device` is a (torch) device.\n"
                         )
                     val_ = self._env_to_module_connector(env)
+                else:
+                    raise e
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1147,6 +1165,8 @@ class AlgorithmConfig(_Config):
                             "'__env_single__': ([env obs. space, env act. space])}`.\n"
                         )
                     val_ = self._module_to_env_connector(env)
+                else:
+                    raise e
 
             # ConnectorV2 (piece or pipeline).
             if isinstance(val_, ConnectorV2):
@@ -1296,6 +1316,7 @@ class AlgorithmConfig(_Config):
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
+                        as_learner_connector=True,
                     )
                 )
             # Batch all data.
@@ -1370,7 +1391,7 @@ class AlgorithmConfig(_Config):
             spaces: An optional dict mapping ModuleIDs to
                 (observation-space, action-space)-tuples for the to-be-constructed
                 RLModule inside the Learner. Note that if RLlib cannot infer any
-                space information either from this `spces` arg, from the optional
+                space information either from this `spaces` arg, from the optional
                 `env` arg or from `self`, the Learner cannot be created.
 
         Returns:
@@ -1388,7 +1409,7 @@ class AlgorithmConfig(_Config):
 
         return learner
 
-    def get_config_for_module(self, module_id: ModuleID) -> "AlgorithmConfig":
+    def get_config_for_module(self, module_id: ModuleID) -> Self:
         """Returns an AlgorithmConfig object, specific to the given module ID.
 
         In a multi-agent setup, individual modules might override one or more
@@ -1427,7 +1448,7 @@ class AlgorithmConfig(_Config):
         *,
         extra_python_environs_for_driver: Optional[dict] = NotProvided,
         extra_python_environs_for_worker: Optional[dict] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's python environment settings.
 
         Args:
@@ -1449,6 +1470,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         num_cpus_for_main_process: Optional[int] = NotProvided,
+        custom_resources_for_main_process: Optional[dict] = NotProvided,
         num_gpus: Optional[Union[float, int]] = NotProvided,  # @OldAPIStack
         _fake_gpus: Optional[bool] = NotProvided,  # @OldAPIStack
         placement_strategy: Optional[str] = NotProvided,
@@ -1461,7 +1483,7 @@ class AlgorithmConfig(_Config):
         num_gpus_per_learner_worker=DEPRECATED_VALUE,  # moved to `learners`
         local_gpu_idx=DEPRECATED_VALUE,  # moved to `learners`
         num_cpus_for_local_worker=DEPRECATED_VALUE,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Specifies resources allocated for an Algorithm and its ray actors/workers.
 
         Args:
@@ -1469,6 +1491,8 @@ class AlgorithmConfig(_Config):
                 process that runs `Algorithm.training_step()`.
                 Note: This is only relevant when running RLlib through Tune. Otherwise,
                 `Algorithm.training_step()` runs in the main program (driver).
+            custom_resources_for_main_process: Any custom Ray resources to allocate for the
+                main `Algorithm` process.
             num_gpus: Number of GPUs to allocate to the algorithm process.
                 Note that not all algorithms can take advantage of GPUs.
                 Support for multi-GPU is currently only available for
@@ -1562,6 +1586,8 @@ class AlgorithmConfig(_Config):
 
         if num_cpus_for_main_process is not NotProvided:
             self.num_cpus_for_main_process = num_cpus_for_main_process
+        if custom_resources_for_main_process is not NotProvided:
+            self.custom_resources_for_main_process = custom_resources_for_main_process
         if num_gpus is not NotProvided:
             self.num_gpus = num_gpus
         if _fake_gpus is not NotProvided:
@@ -1588,7 +1614,7 @@ class AlgorithmConfig(_Config):
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
         torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
         torch_skip_nan_gradients: Optional[bool] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's DL framework settings.
 
         Args:
@@ -1698,7 +1724,7 @@ class AlgorithmConfig(_Config):
         self,
         enable_rl_module_and_learner: Optional[bool] = NotProvided,
         enable_env_runner_and_connector_v2: Optional[bool] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's API stack settings.
 
         Args:
@@ -1753,7 +1779,7 @@ class AlgorithmConfig(_Config):
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
         env_task_fn=DEPRECATED_VALUE,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's RL-environment settings.
 
         Args:
@@ -1841,7 +1867,7 @@ class AlgorithmConfig(_Config):
         create_local_env_runner: Optional[bool] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
-        gym_env_vectorize_mode: Optional[str] = NotProvided,
+        gym_env_vectorize_mode: Optional[Union[str, gym.VectorizeMode]] = NotProvided,
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
@@ -1859,6 +1885,8 @@ class AlgorithmConfig(_Config):
         episode_lookback_horizon: Optional[int] = NotProvided,
         merge_env_runner_states: Optional[Union[str, bool]] = NotProvided,
         broadcast_env_runner_states: Optional[bool] = NotProvided,
+        use_env_runner_state_server: Optional[bool] = NotProvided,
+        env_runner_state_server_max_concurrency: Optional[int] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
@@ -1887,7 +1915,7 @@ class AlgorithmConfig(_Config):
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
         enable_connectors=DEPRECATED_VALUE,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the rollout worker configuration.
 
         Args:
@@ -1901,10 +1929,13 @@ class AlgorithmConfig(_Config):
                 actions through RLModule inference, which can improve performance
                 for inference-bottlenecked workloads.
             gym_env_vectorize_mode: The gymnasium vectorization mode for vector envs.
-                Must be a `gymnasium.envs.registration.VectorizeMode` (enum) value.
+                Must be a `gymnasium.VectorizeMode` (enum) value.
                 Default is SYNC. Set this to ASYNC to parallelize the individual sub
                 environments within the vector. This can speed up your EnvRunners
-                significantly when using heavier environments.
+                significantly when using heavier environments. Set this to
+                VECTOR_ENTRY_POINT in case your env creator, also known as
+                "gym entry point", already returns a gym.vector.VectorEnv and you
+                don't need RLlib to vectorize the environments for the runners.
             num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
             num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
                 be fractional. This is usually needed only if your env itself requires a
@@ -1981,6 +2012,14 @@ class AlgorithmConfig(_Config):
             broadcast_env_runner_states: True, if merged EnvRunner states (from the
                 central connector pipelines) should be broadcast back to all remote
                 EnvRunner actors.
+            use_env_runner_state_server: If True (new API stack, async algorithms like
+                IMPALA/APPO), EnvRunners pull the latest weights and merged connector
+                states from a single global `EnvRunnerStateServer` actor at the top of
+                each `sample()` call, instead of the Algorithm broadcasting state to
+                every EnvRunner.
+            env_runner_state_server_max_concurrency: `max_concurrency` of the
+                `EnvRunnerStateServer` actor, i.e. how many EnvRunner `pull` requests it
+                serves concurrently. Only used when `use_env_runner_state_server=True`.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
                 from the workers aren't used and are discarded.
@@ -2139,6 +2178,12 @@ class AlgorithmConfig(_Config):
             self.merge_env_runner_states = merge_env_runner_states
         if broadcast_env_runner_states is not NotProvided:
             self.broadcast_env_runner_states = broadcast_env_runner_states
+        if use_env_runner_state_server is not NotProvided:
+            self.use_env_runner_state_server = use_env_runner_state_server
+        if env_runner_state_server_max_concurrency is not NotProvided:
+            self.env_runner_state_server_max_concurrency = (
+                env_runner_state_server_max_concurrency
+            )
         if use_worker_filter_stats is not NotProvided:
             self.use_worker_filter_stats = use_worker_filter_stats
         if update_worker_filter_stats is not NotProvided:
@@ -2213,40 +2258,37 @@ class AlgorithmConfig(_Config):
         if recreate_failed_workers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(recreate_failed_workers=..)",
-                new="AlgorithmConfig.fault_tolerance(recreate_failed_workers=..)",
+                new="AlgorithmConfig.fault_tolerance(restart_failed_env_runners=..)",
                 error=True,
             )
         if restart_failed_sub_environments != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(restart_failed_sub_environments=..)",
                 new=(
-                    "AlgorithmConfig.fault_tolerance("
-                    "restart_failed_sub_environments=..)"
+                    "AlgorithmConfig.fault_tolerance(restart_failed_sub_environments=..)"
                 ),
                 error=True,
             )
         if num_consecutive_worker_failures_tolerance != DEPRECATED_VALUE:
             deprecation_warning(
                 old=(
-                    "AlgorithmConfig.env_runners("
-                    "num_consecutive_worker_failures_tolerance=..)"
+                    "AlgorithmConfig.env_runners(num_consecutive_worker_failures_tolerance=..)"
                 ),
                 new=(
-                    "AlgorithmConfig.fault_tolerance("
-                    "num_consecutive_worker_failures_tolerance=..)"
+                    "AlgorithmConfig.fault_tolerance(num_consecutive_env_runner_failures_tolerance=..)"
                 ),
                 error=True,
             )
         if worker_health_probe_timeout_s != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(worker_health_probe_timeout_s=..)",
-                new="AlgorithmConfig.fault_tolerance(worker_health_probe_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(env_runner_health_probe_timeout_s=..)",
                 error=True,
             )
         if worker_restore_timeout_s != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(worker_restore_timeout_s=..)",
-                new="AlgorithmConfig.fault_tolerance(worker_restore_timeout_s=..)",
+                new="AlgorithmConfig.fault_tolerance(env_runner_restore_timeout_s=..)",
                 error=True,
             )
 
@@ -2258,11 +2300,21 @@ class AlgorithmConfig(_Config):
         num_learners: Optional[int] = NotProvided,
         num_cpus_per_learner: Optional[Union[str, float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        custom_resources_per_learner: Optional[Dict[str, float]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
-    ):
+        learner_class: Optional[Type["Learner"]] = NotProvided,
+        learner_connector: Optional[
+            Callable[
+                [gym.spaces.Space, gym.spaces.Space],
+                Union["ConnectorV2", List["ConnectorV2"]],
+            ]
+        ] = NotProvided,
+        add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
+        learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
+    ) -> Self:
         """Sets LearnerGroup and Learner worker related configurations.
 
         Args:
@@ -2284,6 +2336,11 @@ class AlgorithmConfig(_Config):
                 `num_learners=0`, any value greater than 0 runs the
                 training on a single GPU on the main process, while a value of 0 runs
                 the training on main process CPUs.
+            custom_resources_per_learner: Any custom Ray resources to allocate
+                per Learner worker. Useful for pinning Learners to specific
+                nodes via custom resource labels. Note: do NOT put ``"CPU"``
+                or ``"GPU"`` in here -- use ``num_cpus_per_learner`` and
+                ``num_gpus_per_learner`` instead.
             num_aggregator_actors_per_learner: The number of aggregator actors per
                 Learner (if num_learners=0, one local learner is created). Must be at
                 least 1. Aggregator actors perform the task of a) converting episodes
@@ -2306,6 +2363,29 @@ class AlgorithmConfig(_Config):
                 updates a policy has undergone on the Learner vs the EnvRunners.
                 See the `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class
                 for more details.
+            learner_class: The `Learner` class to use for (distributed) updating of the
+                RLModule.
+            learner_connector: A callable taking an env observation space and an env
+                action space as inputs and returning a learner ConnectorV2 or
+                list of ConnectorV2's as part of pipeline object.
+            add_default_connectors_to_learner_pipeline: If True (default), RLlib's
+                Learners automatically add the default Learner ConnectorV2
+                pieces to the LearnerPipeline. These automatically perform:
+                a) adding observations from episodes to the train batch, if this has not
+                already been done by a user-provided connector piece
+                b) if RLModule is stateful, add a time rank to the train batch, zero-pad
+                the data, and add the correct state inputs, if this has not already been
+                done by a user-provided connector piece.
+                c) add all other information (actions, rewards, terminateds, etc..) to
+                the train batch, if this has not already been done by a user-provided
+                connector piece.
+                Only if you know exactly what you are doing, you
+                should set this setting to False.
+            learner_config_dict: A dict to insert any settings accessible from within
+                the Learner instance. This should only be used in connection with custom
+                Learner subclasses and in case the user doesn't want to write an extra
+                `AlgorithmConfig` subclass just to add a few settings to the base Algo's
+                own config class.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2316,6 +2396,18 @@ class AlgorithmConfig(_Config):
             self.num_cpus_per_learner = num_cpus_per_learner
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
+        if custom_resources_per_learner is not NotProvided:
+            if (
+                "CPU" in custom_resources_per_learner
+                or "GPU" in custom_resources_per_learner
+            ):
+                raise ValueError(
+                    "Do not include 'CPU' or 'GPU' in "
+                    "`custom_resources_per_learner`. Use `num_cpus_per_learner` "
+                    "and `num_gpus_per_learner` instead. Got: "
+                    f"{custom_resources_per_learner}"
+                )
+            self.custom_resources_per_learner = custom_resources_per_learner
         if num_aggregator_actors_per_learner is not NotProvided:
             self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
         if max_requests_in_flight_per_aggregator_actor is not NotProvided:
@@ -2326,6 +2418,16 @@ class AlgorithmConfig(_Config):
             self.local_gpu_idx = local_gpu_idx
         if max_requests_in_flight_per_learner is not NotProvided:
             self.max_requests_in_flight_per_learner = max_requests_in_flight_per_learner
+        if learner_class is not NotProvided:
+            self._learner_class = learner_class
+        if learner_connector is not NotProvided:
+            self._learner_connector = learner_connector
+        if add_default_connectors_to_learner_pipeline is not NotProvided:
+            self.add_default_connectors_to_learner_pipeline = (
+                add_default_connectors_to_learner_pipeline
+            )
+        if learner_config_dict is not NotProvided:
+            self.learner_config_dict.update(learner_config_dict)
 
         return self
 
@@ -2351,11 +2453,14 @@ class AlgorithmConfig(_Config):
         # Moved to `learners()` method.
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
-            Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
+            Callable[
+                [gym.spaces.Space, gym.spaces.Space],
+                Union["ConnectorV2", List["ConnectorV2"]],
+            ]
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -2564,7 +2669,7 @@ class AlgorithmConfig(_Config):
         on_episode_step: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_episode_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
         on_sample_end: Optional[Union[Callable, List[Callable]]] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the callbacks configuration.
 
         Args:
@@ -2696,6 +2801,8 @@ class AlgorithmConfig(_Config):
         evaluation_auto_duration_max_env_steps_per_sample: Optional[int] = NotProvided,
         evaluation_sample_timeout_s: Optional[float] = NotProvided,
         evaluation_parallel_to_training: Optional[bool] = NotProvided,
+        evaluation_unhealthy_workers_timeout_s: Optional[float] = NotProvided,
+        evaluation_error_after_n_consecutive_skips: Optional[int] = NotProvided,
         evaluation_force_reset_envs_before_iteration: Optional[bool] = NotProvided,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
@@ -2730,7 +2837,7 @@ class AlgorithmConfig(_Config):
         # Deprecated args.
         always_attach_evaluation_results=DEPRECATED_VALUE,
         evaluation_num_workers=DEPRECATED_VALUE,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's evaluation settings.
 
         Args:
@@ -2779,6 +2886,26 @@ class AlgorithmConfig(_Config):
                 reports a good evaluation `episode_return_mean`, be aware that these
                 results were achieved on the weights trained in iteration 41, so you
                 should probably pick the iteration 41 checkpoint instead.
+            evaluation_unhealthy_workers_timeout_s: How long (in seconds) to
+                wait for at least one remote eval EnvRunner to recover when
+                all *configured* remote eval EnvRunners are unhealthy at the
+                start of an evaluation step. Default 0: don't wait. Pair
+                with `evaluation_error_after_n_consecutive_skips` to escalate
+                if recovery never arrives. Applies regardless of
+                `evaluation_parallel_to_training`.
+            evaluation_error_after_n_consecutive_skips: Raise
+                `RuntimeError` from `evaluate()` once this many consecutive
+                evaluation iterations have been skipped because all
+                configured remote eval EnvRunners are unhealthy. The N-th
+                consecutive skip raises: `1` raises on the first skip
+                (strict); `5` raises on the fifth, tolerating 4 prior
+                skips. Tune escalates the error per the trial's
+                `max_failures` setting. The counter resets to 0 whenever
+                an evaluation step actually runs on the remote workers.
+                `None` (default) tolerates an unbounded number of
+                consecutive skips. Has no effect if
+                `evaluation_num_env_runners=0` (in which case local eval is
+                the user's intentional choice).
             evaluation_force_reset_envs_before_iteration: Whether all environments
                 should be force-reset (even if they are not done yet) right before
                 the evaluation step of the iteration begins. Setting this to True
@@ -2952,6 +3079,14 @@ class AlgorithmConfig(_Config):
             self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not NotProvided:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
+        if evaluation_unhealthy_workers_timeout_s is not NotProvided:
+            self.evaluation_unhealthy_workers_timeout_s = (
+                evaluation_unhealthy_workers_timeout_s
+            )
+        if evaluation_error_after_n_consecutive_skips is not NotProvided:
+            self.evaluation_error_after_n_consecutive_skips = (
+                evaluation_error_after_n_consecutive_skips
+            )
         if evaluation_force_reset_envs_before_iteration is not NotProvided:
             self.evaluation_force_reset_envs_before_iteration = (
                 evaluation_force_reset_envs_before_iteration
@@ -3070,6 +3205,7 @@ class AlgorithmConfig(_Config):
         prelearner_buffer_class: Optional[Type] = NotProvided,
         prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
         prelearner_module_synch_period: Optional[int] = NotProvided,
+        prelearner_use_recorded_module_states: Optional[bool] = NotProvided,
         dataset_num_iters_per_learner: Optional[int] = NotProvided,
         input_config: Optional[Dict] = NotProvided,
         actions_in_input_normalized: Optional[bool] = NotProvided,
@@ -3087,7 +3223,7 @@ class AlgorithmConfig(_Config):
         output_filesystem_kwargs: Optional[Dict] = NotProvided,
         output_write_episodes: Optional[bool] = NotProvided,
         offline_sampling: Optional[str] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's offline data settings.
 
         Args:
@@ -3242,6 +3378,12 @@ class AlgorithmConfig(_Config):
                 Values too small force the `PreLearner` to sync more frequently
                 and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
+            prelearner_use_recorded_module_states: Whether the `PreLearner` should
+                keep recorded module states from the offline data and use these states
+                as initial module states when training on sequences. This could be
+                useful when the offline data was recorded with a policy that uses
+                stateful modules (e.g., RNNs or Transformers) and the recorded module
+                states are accurate. The default is `False`.
             dataset_num_iters_per_learner: Number of updates to run in each learner
                 during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
@@ -3354,6 +3496,10 @@ class AlgorithmConfig(_Config):
             self.prelearner_buffer_kwargs = prelearner_buffer_kwargs
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
+        if prelearner_use_recorded_module_states is not NotProvided:
+            self.prelearner_use_recorded_module_states = (
+                prelearner_use_recorded_module_states
+            )
         if dataset_num_iters_per_learner is not NotProvided:
             self.dataset_num_iters_per_learner = dataset_num_iters_per_learner
         if input_config is not NotProvided:
@@ -3443,7 +3589,7 @@ class AlgorithmConfig(_Config):
         # Now done via Ray object store, which has its own cloud-supported
         # spillover mechanism.
         policy_map_cache=DEPRECATED_VALUE,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's multi-agent settings.
 
         Validates the new multi-agent settings and translates everything into
@@ -3458,7 +3604,7 @@ class AlgorithmConfig(_Config):
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
-                is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
+                is: `(agent_id, episode, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
                 - None, for training all policies.
@@ -3611,7 +3757,8 @@ class AlgorithmConfig(_Config):
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
         log_gradients: Optional[bool] = NotProvided,
-    ) -> "AlgorithmConfig":
+        custom_stats_cls_lookup: Optional[Dict[str, Type[StatsBase]]] = NotProvided,
+    ) -> Self:
         """Sets the config's reporting settings.
 
         Args:
@@ -3652,8 +3799,15 @@ class AlgorithmConfig(_Config):
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
             log_gradients: Log gradients to results. If this is `True` the global norm
-                of the gradients dictionariy for each optimizer is logged to results.
+                of the gradients dictionary for each optimizer is logged to results.
                 The default is `False`.
+            custom_stats_cls_lookup: A dictionary mapping stat names to their corresponding Stats classes.
+                The Stats classes should be subclasses of :py:class:`~ray.rllib.utils.metrics.stats.StatsBase`.
+                The keys of the dictionary are the stat names, and the values are the corresponding Stats classes.
+                This allows you to use your own Stats classes for logging metrics.
+                You can replace existing values to override some behaviour of RLlib.
+                You can add key-value-pairs to the dictionary to add new stats classes that will be available
+                when logging values with the MetricsLogger throughout RLlib.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -3674,6 +3828,8 @@ class AlgorithmConfig(_Config):
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
         if log_gradients is not NotProvided:
             self.log_gradients = log_gradients
+        if custom_stats_cls_lookup is not NotProvided:
+            self.stats_cls_lookup = custom_stats_cls_lookup
 
         return self
 
@@ -3681,7 +3837,7 @@ class AlgorithmConfig(_Config):
         self,
         export_native_model_files: Optional[bool] = NotProvided,
         checkpoint_trainable_policies_only: Optional[bool] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's checkpointing settings.
 
         Args:
@@ -3709,20 +3865,14 @@ class AlgorithmConfig(_Config):
     def debugging(
         self,
         *,
-        logger_creator: Optional[Callable[[], Logger]] = NotProvided,
-        logger_config: Optional[dict] = NotProvided,
         log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's debugging settings.
 
         Args:
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
-            logger_config: Define logger-specific configuration to be used inside Logger
-                Default value None allows overwriting with nested dicts.
             log_level: Set the ray.rllib.* log level for the agent process and its
                 workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
                 also periodically prints out summaries of relevant internal dataflow
@@ -3737,10 +3887,6 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if logger_creator is not NotProvided:
-            self.logger_creator = logger_creator
-        if logger_config is not NotProvided:
-            self.logger_config = logger_config
         if log_level is not NotProvided:
             self.log_level = log_level
         if log_sys_usage is not NotProvided:
@@ -3772,7 +3918,7 @@ class AlgorithmConfig(_Config):
         num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
-    ):
+    ) -> Self:
         """Sets the config's fault tolerance settings.
 
         Args:
@@ -3905,7 +4051,7 @@ class AlgorithmConfig(_Config):
         # Deprecated arg.
         model_config_dict=DEPRECATED_VALUE,
         _enable_rl_module_api=DEPRECATED_VALUE,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's RLModule settings.
 
         Args:
@@ -3977,7 +4123,7 @@ class AlgorithmConfig(_Config):
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
         _disable_initialize_loss_from_dummy_batch: Optional[bool] = NotProvided,
-    ) -> "AlgorithmConfig":
+    ) -> Self:
         """Sets the config's experimental settings.
 
         Args:
@@ -4145,6 +4291,11 @@ class AlgorithmConfig(_Config):
     def train_batch_size_per_learner(self) -> int:
         # If not set explicitly, try to infer the value.
         if self._train_batch_size_per_learner is None:
+            if self.train_batch_size is None:
+                raise ValueError(
+                    "Both `train_batch_size` and `train_batch_size_per_learner` "
+                    "are None! You must specify at least one of them in your config."
+                )
             return self.train_batch_size // (self.num_learners or 1)
         return self._train_batch_size_per_learner
 
@@ -4175,6 +4326,7 @@ class AlgorithmConfig(_Config):
         If result is a fraction AND `worker_index` is provided, makes
         those workers add additional timesteps, such that the overall batch size (across
         the workers) adds up to exactly the `total_train_batch_size`.
+        Fractions < 1 calculated this way are rounded up to a rollout_fragment_length of 1.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
@@ -4199,10 +4351,10 @@ class AlgorithmConfig(_Config):
                     rollout_fragment_length
                 ) * self.num_envs_per_env_runner * (self.num_env_runners or 1)
                 if ((worker_index - 1) * self.num_envs_per_env_runner) >= diff:
-                    return int(rollout_fragment_length)
+                    return int(rollout_fragment_length) or 1
                 else:
                     return int(rollout_fragment_length) + 1
-            return int(rollout_fragment_length)
+            return int(rollout_fragment_length) or 1
         else:
             return self.rollout_fragment_length
 
@@ -4442,6 +4594,12 @@ class AlgorithmConfig(_Config):
         # If module_config_dict is not defined, set to our generic one.
         if rl_module_spec.model_config is None:
             rl_module_spec.model_config = self.model_config
+        # Otherwise we combine the two dictionaries where settings from the
+        # `RLModuleSpec` have higher priority.
+        else:
+            rl_module_spec.model_config = (
+                self.model_config | rl_module_spec._get_model_config()
+            )
 
         if inference_only is not None:
             rl_module_spec.inference_only = inference_only
@@ -4525,37 +4683,21 @@ class AlgorithmConfig(_Config):
             # Default is single-agent but the user has provided a multi-agent spec
             # so the use-case is multi-agent.
             if isinstance(default_rl_module_spec, RLModuleSpec):
-                # The individual (single-agent) module specs are defined by the user
-                # in the currently setup MultiRLModuleSpec -> Use that
-                # RLModuleSpec.
-                if isinstance(current_rl_module_spec.rl_module_specs, RLModuleSpec):
-                    single_agent_spec = single_agent_rl_module_spec or (
-                        current_rl_module_spec.rl_module_specs
+                # Use the individual module specs defined by the user in the
+                # currently set up MultiRLModuleSpec, falling back to the provided
+                # or default RLModuleSpec for any ModuleID missing from it.
+                single_agent_spec = (
+                    single_agent_rl_module_spec or default_rl_module_spec
+                )
+                single_agent_spec.inference_only = inference_only
+                module_specs = {
+                    k: copy.deepcopy(
+                        current_rl_module_spec.rl_module_specs.get(k, single_agent_spec)
                     )
-                    single_agent_spec.inference_only = inference_only
-                    module_specs = {
-                        k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
-                    }
-
-                # The individual (single-agent) module specs have not been configured
-                # via this AlgorithmConfig object -> Use provided single-agent spec or
-                # the default spec (which is also a RLModuleSpec in this
-                # case).
-                else:
-                    single_agent_spec = (
-                        single_agent_rl_module_spec or default_rl_module_spec
-                    )
-                    single_agent_spec.inference_only = inference_only
-                    module_specs = {
-                        k: copy.deepcopy(
-                            current_rl_module_spec.rl_module_specs.get(
-                                k, single_agent_spec
-                            )
-                        )
-                        for k in (
-                            policy_dict | current_rl_module_spec.rl_module_specs
-                        ).keys()
-                    }
+                    for k in (
+                        policy_dict | current_rl_module_spec.rl_module_specs
+                    ).keys()
+                }
 
                 # Now construct the proper MultiRLModuleSpec.
                 # We need to infer the multi-agent class from `current_rl_module_spec`
@@ -4565,38 +4707,23 @@ class AlgorithmConfig(_Config):
                     rl_module_specs=module_specs,
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
+                    model_config=current_rl_module_spec.model_config,
                 )
 
             # Default is multi-agent and user wants to override it -> Don't use the
             # default.
             else:
-                # User provided an override RLModuleSpec -> Use this to
-                # construct the individual RLModules within the MultiRLModuleSpec.
-                if single_agent_rl_module_spec is not None:
-                    pass
-                # User has NOT provided an override RLModuleSpec.
-                else:
-                    # But the currently setup multi-agent spec has a SingleAgentRLModule
-                    # spec defined -> Use that to construct the individual RLModules
-                    # within the MultiRLModuleSpec.
-                    if isinstance(current_rl_module_spec.rl_module_specs, RLModuleSpec):
-                        # The individual module specs are not given, it is given as one
-                        # RLModuleSpec to be re-used for all
-                        single_agent_rl_module_spec = (
-                            current_rl_module_spec.rl_module_specs
-                        )
-                    # The currently set up multi-agent spec has NO
-                    # RLModuleSpec in it -> Error (there is no way we can
-                    # infer this information from anywhere at this point).
-                    else:
-                        raise ValueError(
-                            "We have a MultiRLModuleSpec "
-                            f"({current_rl_module_spec}), but no "
-                            "`RLModuleSpec`s to compile the individual "
-                            "RLModules' specs! Use "
-                            "`AlgorithmConfig.get_multi_rl_module_spec("
-                            "policy_dict=.., rl_module_spec=..)`."
-                        )
+                # Without an override RLModuleSpec, there is no single RLModuleSpec
+                # to reuse for all modules in this multi-agent default setup.
+                if single_agent_rl_module_spec is None:
+                    raise ValueError(
+                        "We have a MultiRLModuleSpec "
+                        f"({current_rl_module_spec}), but no "
+                        "`RLModuleSpec`s to compile the individual "
+                        "RLModules' specs! Use "
+                        "`AlgorithmConfig.get_multi_rl_module_spec("
+                        "policy_dict=.., rl_module_spec=..)`."
+                    )
 
                 single_agent_rl_module_spec.inference_only = inference_only
 
@@ -4609,12 +4736,12 @@ class AlgorithmConfig(_Config):
                     },
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
+                    model_config=current_rl_module_spec.model_config,
                 )
 
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
         for module_id in policy_dict | multi_rl_module_spec.rl_module_specs:
-
             # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
             module_spec = multi_rl_module_spec.rl_module_specs[module_id]
             if inference_only and module_spec.learner_only:
@@ -4624,16 +4751,6 @@ class AlgorithmConfig(_Config):
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
-                elif isinstance(default_rl_module_spec.rl_module_specs, RLModuleSpec):
-                    module_class = default_rl_module_spec.rl_module_specs.module_class
-                    # This should be already checked in validate() but we check it
-                    # again here just in case
-                    if module_class is None:
-                        raise ValueError(
-                            "The default rl_module spec cannot have an empty "
-                            "module_class under its RLModuleSpec."
-                        )
-                    module_spec.module_class = module_class
                 elif module_id in default_rl_module_spec.rl_module_specs:
                     module_spec.module_class = default_rl_module_spec.rl_module_specs[
                         module_id
@@ -4648,9 +4765,6 @@ class AlgorithmConfig(_Config):
             if module_spec.catalog_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.catalog_class = default_rl_module_spec.catalog_class
-                elif isinstance(default_rl_module_spec.rl_module_specs, RLModuleSpec):
-                    catalog_class = default_rl_module_spec.rl_module_specs.catalog_class
-                    module_spec.catalog_class = catalog_class
                 elif module_id in default_rl_module_spec.rl_module_specs:
                     module_spec.catalog_class = default_rl_module_spec.rl_module_specs[
                         module_id
@@ -4812,14 +4926,13 @@ class AlgorithmConfig(_Config):
 
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(
-            list(gym.envs.registration.VectorizeMode.__members__.keys())
-            + list(gym.envs.registration.VectorizeMode.__members__.values())
+            list(gym.VectorizeMode) + [mode.value for mode in gym.VectorizeMode]
         )
         if self.gym_env_vectorize_mode not in allowed_vectorize_modes:
             self._value_error(
-                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) must be a "
-                "member of `gym.envs.registration.VectorizeMode`! Allowed values "
-                f"are {allowed_vectorize_modes}."
+                f"`gym_env_vectorize_mode` ({self.gym_env_vectorize_mode}) "
+                "must be a member of `gymnasium.VectorizeMode`! "
+                f"Allowed values are {allowed_vectorize_modes}."
             )
 
     def _validate_callbacks_settings(self) -> None:
@@ -5312,31 +5425,45 @@ class AlgorithmConfig(_Config):
             )
 
         # Offline evaluation.
-        from ray.rllib.offline.offline_policy_evaluation_runner import (
-            OfflinePolicyEvaluationTypes,
-        )
+        if self.offline_evaluation_interval:
+            if self.offline_evaluation_interval <= 0:
+                self._value_error(
+                    "`offline_evaluation_interval` must be > 0 "
+                    "if offline evaluation should be performed!"
+                )
 
-        offline_eval_types = list(OfflinePolicyEvaluationTypes)
-        if (
-            self.offline_evaluation_type
-            and self.offline_evaluation_type != "eval_loss"
-            and self.offline_evaluation_type not in OfflinePolicyEvaluationTypes
-        ):
-            self._value_error(
-                f"Unknown offline evaluation type: {self.offline_evaluation_type}."
-                "Available types of offline evaluation are either `'eval_loss' to evaluate "
-                f"the training loss on a validation dataset or {offline_eval_types}."
+            if self.offline_evaluation_type is None:
+                self._value_error(
+                    "If `offline_evaluation_interval > 0`, `offline_evaluation_type` must be set to "
+                    "specify the type of offline evaluation to be performed."
+                )
+
+            from ray.rllib.offline.offline_policy_evaluation_runner import (
+                OfflinePolicyEvaluationTypes,
             )
 
-        from ray.rllib.offline.offline_evaluation_runner import OfflineEvaluationRunner
+            if (
+                self.offline_evaluation_type
+                and self.offline_evaluation_type
+                not in OfflinePolicyEvaluationTypes._value2member_map_
+            ):
+                offline_eval_types = list(OfflinePolicyEvaluationTypes)
+                self._value_error(
+                    f"Unknown offline evaluation type: {self.offline_evaluation_type}."
+                    f"Available types of offline evaluation are {offline_eval_types}."
+                )
 
-        if self.offline_eval_runner_class and not issubclass(
-            self.offline_eval_runner_class, OfflineEvaluationRunner
-        ):
-            self._value_error(
-                "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
-                "from `OfflineEvaluationRunner` class."
+            from ray.rllib.offline.offline_evaluation_runner import (
+                OfflineEvaluationRunner,
             )
+
+            if self.offline_eval_runner_class and not issubclass(
+                self.offline_eval_runner_class, OfflineEvaluationRunner
+            ):
+                self._value_error(
+                    "Unknown `offline_eval_runner_class`. OfflineEvaluationRunner class needs to inherit "
+                    "from `OfflineEvaluationRunner` class."
+                )
 
     @property
     def is_online(self) -> bool:
@@ -6117,7 +6244,13 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
 
     .. testcode::
 
-        from ray.rllib.algorithm.algorithm_config import DifferentiableAlgorithmConfig
+        from ray.rllib.algorithms.algorithm_config import DifferentiableAlgorithmConfig
+        from ray.rllib.core.learner.differentiable_learner_config import (
+            DifferentiableLearnerConfig,
+        )
+        from ray.rllib.core.learner.torch.torch_differentiable_learner import (
+            TorchDifferentiableLearner,
+        )
         # Construct a generic config for an algorithm that needs differentiable Learners.
         config = (
             DifferentiableAlgorithmConfig()
@@ -6126,15 +6259,14 @@ class DifferentiableAlgorithmConfig(AlgorithmConfig):
             .learners(
                 differentiable_learner_configs=[
                     DifferentiableLearnerConfig(
-                        DifferentiableTorchLearner,
+                        TorchDifferentiableLearner,
                         lr=1e-4,
                     )
                 ]
             )
         )
-        # Similar to `AlgorithmConfig` the config using differentiable Learners can be
-        # used to build a respective `Algorithm`.
-        algo = config.build()
+        # The config is then used to configure a MetaLearner, see
+        # `rllib/examples/algorithms/maml_lr_supervised_learning.py` for a full example.
 
 
     """

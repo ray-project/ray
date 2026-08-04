@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <unordered_map>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -40,14 +44,14 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   ///
   /// \param message The protobuf message.
   explicit PlacementGroupSpecification(rpc::PlacementGroupSpec message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ConstructBundles();
   }
   /// Construct from a protobuf message shared_ptr.
   ///
   /// \param message The protobuf message.
   explicit PlacementGroupSpecification(std::shared_ptr<rpc::PlacementGroupSpec> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ConstructBundles();
   }
   /// Return the placement group id.
@@ -87,7 +91,9 @@ class PlacementGroupSpecBuilder {
       const ActorID &creator_actor_id,
       bool is_creator_detached_actor,
       const std::vector<std::unordered_map<std::string, std::string>>
-          &bundle_label_selector = {}) {
+          &bundle_label_selector = {},
+      const std::unordered_map<std::string, rpc::PlacementStrategy> &topology_strategy =
+          {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -128,6 +134,9 @@ class PlacementGroupSpecBuilder {
         }
       }
     }
+
+    message_->mutable_topology_strategy()->insert(topology_strategy.begin(),
+                                                  topology_strategy.end());
     return *this;
   }
 

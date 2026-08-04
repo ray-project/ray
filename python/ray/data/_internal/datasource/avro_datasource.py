@@ -31,15 +31,13 @@ class AvroDatasource(FileBasedDatasource):
         reader = fastavro.reader(f)
 
         ctx = DataContext.get_current()
-        output_block_size_option = OutputBlockSizeOption(
+        output_block_size_option = OutputBlockSizeOption.of(
             target_max_block_size=ctx.target_max_block_size
         )
         output_buffer = BlockOutputBuffer(output_block_size_option)
         for record in reader:
             output_buffer.add(record)
-            while output_buffer.has_next():
-                yield output_buffer.next()
+            yield from output_buffer.iter_ready_blocks()
 
         output_buffer.finalize()
-        while output_buffer.has_next():
-            yield output_buffer.next()
+        yield from output_buffer.iter_ready_blocks()

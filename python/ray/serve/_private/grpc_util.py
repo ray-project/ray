@@ -13,10 +13,18 @@ from ray.serve._private.constants import (
     RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve.config import gRPCOptions
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    gRPCStatusError,
+)
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
+
+# Maximum length for gRPC status details to avoid hitting HTTP/2 trailer limits.
+# gRPC default max metadata size is 8KB, so we use a conservative limit.
+GRPC_MAX_STATUS_DETAILS_LENGTH = 4096
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -42,7 +50,7 @@ class gRPCGenericServer(Server):
             compression=None,
             options=DEFAULT_GRPC_SERVER_OPTIONS + (extra_options or []),
         )
-        self.generic_rpc_handlers = []
+        self.generic_rpc_handlers: List[Sequence[grpc.GenericRpcHandler]] = []
         self.service_handler_factory = service_handler_factory
 
     def add_generic_rpc_handlers(
@@ -57,6 +65,8 @@ class gRPCGenericServer(Server):
             `self.service_handler_factory`
             3. `unary_stream` is always calling the streaming function generated via
             `self.service_handler_factory`
+            4. `stream_unary` for client streaming requests
+            5. `stream_stream` for bidirectional streaming requests
         """
         serve_rpc_handlers = {}
         rpc_handler = generic_rpc_handlers[0]
@@ -65,11 +75,19 @@ class gRPCGenericServer(Server):
                 response_serializer=None,
                 unary_unary=self.service_handler_factory(
                     service_method=service_method,
-                    stream=False,
+                    streaming_type=gRPCStreamingType.UNARY_UNARY,
                 ),
                 unary_stream=self.service_handler_factory(
                     service_method=service_method,
-                    stream=True,
+                    streaming_type=gRPCStreamingType.UNARY_STREAM,
+                ),
+                stream_unary=self.service_handler_factory(
+                    service_method=service_method,
+                    streaming_type=gRPCStreamingType.STREAM_UNARY,
+                ),
+                stream_stream=self.service_handler_factory(
+                    service_method=service_method,
+                    streaming_type=gRPCStreamingType.STREAM_STREAM,
                 ),
             )
             serve_rpc_handlers[service_method] = serve_method_handler
@@ -84,10 +102,11 @@ async def start_grpc_server(
     *,
     event_loop: asyncio.AbstractEventLoop,
     enable_so_reuseport: bool = False,
-) -> asyncio.Task:
+) -> Tuple[asyncio.Task, gRPCGenericServer]:
     """Start a gRPC server that handles requests with the service handler factory.
 
-    Returns a task that blocks until the server exits (e.g., due to error).
+    Returns a task that blocks until the server exits (e.g., due to error) and
+    the server object itself (so callers can shut it down gracefully).
     """
     from ray.serve._private.default_impl import add_grpc_address
 
@@ -107,7 +126,21 @@ async def start_grpc_server(
         servicer_fn(mock_servicer, server)
 
     await server.start()
-    return event_loop.create_task(server.wait_for_termination())
+    return event_loop.create_task(server.wait_for_termination()), server
+
+
+def _truncate_message(
+    message: str, max_length: int = GRPC_MAX_STATUS_DETAILS_LENGTH
+) -> str:
+    """Truncate a message to avoid exceeding HTTP/2 trailer limits.
+
+    gRPC status details are sent as part of HTTP/2 trailers, which have a fixed size limit.
+    If the message (e.g., a stack trace) is too long, it can cause issues on the client side.
+    """
+    if len(message) <= max_length:
+        return message
+    truncation_notice = "... [truncated]"
+    return message[: max_length - len(truncation_notice)] + truncation_notice
 
 
 def get_grpc_response_status(
@@ -141,6 +174,25 @@ def get_grpc_response_status(
             is_error=True,
             message=exc.message,
         )
+    elif isinstance(exc, gRPCStatusError):
+        # User set a gRPC status code before raising the exception.
+        # Respect the user's status code instead of returning INTERNAL.
+        original_exc = exc.original_exception
+        if isinstance(original_exc, (RayActorError, RayTaskError)):
+            logger.warning(
+                f"Request failed: {original_exc}", extra={"log_to_stderr": False}
+            )
+        else:
+            logger.exception(
+                f"Request failed with user-set gRPC status code {exc.grpc_code}."
+            )
+        # Use user-set details if provided, otherwise use the original exception message.
+        message = exc.grpc_details if exc.grpc_details else str(original_exc)
+        return ResponseStatus(
+            code=exc.grpc_code,
+            is_error=True,
+            message=_truncate_message(message),
+        )
     else:
         if isinstance(exc, (RayActorError, RayTaskError)):
             logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
@@ -149,7 +201,7 @@ def get_grpc_response_status(
         return ResponseStatus(
             code=grpc.StatusCode.INTERNAL,
             is_error=True,
-            message=str(exc),
+            message=_truncate_message(str(exc)),
         )
 
 

@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import os
-import platform
 import runpy
 import shutil
 import subprocess
@@ -14,6 +13,7 @@ import yaml
 from filelock import FileLock
 
 import ray
+from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import (
     get_or_create_event_loop,
     try_to_create_directory,
@@ -26,8 +26,8 @@ from ray._private.runtime_env.conda_utils import (
     get_conda_info_json,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.protocol import Protocol
 from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
@@ -111,14 +111,14 @@ def _current_py_version():
     return ".".join(map(str, sys.version_info[:3]))  # like 3.6.10
 
 
-def _is_m1_mac():
-    return sys.platform == "darwin" and platform.machine() == "arm64"
-
-
 def current_ray_pip_specifier(
     logger: Optional[logging.Logger] = default_logger,
 ) -> Optional[str]:
     """The pip requirement specifier for the running version of Ray.
+
+    Args:
+        logger: Logger used to warn when the running Ray version cannot be
+            detected (e.g. when running a source build).
 
     Returns:
         A string which can be passed to `pip install` to install the
@@ -148,17 +148,9 @@ def current_ray_pip_specifier(
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.
-        if _is_m1_mac():
-            raise ValueError("Nightly wheels are not available for M1 Macs.")
         return get_master_wheel_url()
     else:
-        if _is_m1_mac():
-            # M1 Mac release wheels are currently not uploaded to AWS S3; they
-            # are only available on PyPI.  So unfortunately, this codepath is
-            # not end-to-end testable prior to the release going live on PyPI.
-            return f"ray=={ray.__version__}"
-        else:
-            return get_release_wheel_url()
+        return get_release_wheel_url()
 
 
 def inject_dependencies(
@@ -173,7 +165,7 @@ def inject_dependencies(
             environment YAML file.  This dict will be modified and returned.
         py_version: A string representing a Python version to inject
             into the conda dependencies, e.g. "3.7.7"
-        pip_dependencies (List[str]): A list of pip dependencies that
+        pip_dependencies: A list of pip dependencies that
             will be prepended to the list of pip dependencies in
             the conda dict.  If the conda dict does not already have a "pip"
             field, one will be created.

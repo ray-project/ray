@@ -101,6 +101,7 @@
         "useTags": false
       },
       {
+        "allValue": ".*",
         "current": {
           "selected": false
         },
@@ -163,6 +164,7 @@
       }
     ]
   },
+  "rayMeta": ["supportsFullGrafanaView"],
   "time": {
     "from": "now-30m",
     "to": "now"

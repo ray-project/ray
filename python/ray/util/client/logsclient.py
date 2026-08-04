@@ -1,18 +1,17 @@
 """This file implements a threaded stream controller to return logs back from
 the ray clientserver.
 """
-import sys
 import logging
 import queue
+import sys
 import threading
 import time
-import grpc
-
 from typing import TYPE_CHECKING
+
+import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -21,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 # TODO(barakmich): Running a logger in a logger causes loopback.
 # The client logger need its own root -- possibly this one.
-# For the moment, let's just not propogate beyond this point.
+# For the moment, let's just not propagate beyond this point.
 logger.propagate = False
 
 

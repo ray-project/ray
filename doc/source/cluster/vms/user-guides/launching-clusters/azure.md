@@ -7,11 +7,6 @@ There are two ways to start an Azure Ray cluster.
 - Launch through Ray cluster launcher.
 - Deploy a cluster using Azure portal.
 
-```{note}
-The Azure integration is community-maintained. Please reach out to the integration maintainers on Github if
-you run into any problems: gramhagen, eisber, ijrsvt.
-```
-
 ## Using Ray cluster launcher
 
 
@@ -47,7 +42,7 @@ pip install azure-core azure-mgmt-network azure-mgmt-common azure-mgmt-resource 
 
 ### Start Ray with the Ray cluster launcher
 
-The provided [cluster config file](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) will create a small cluster with a Standard DS2v3 on-demand head node that is configured to autoscale to up to two Standard DS2v3 [spot-instance](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms) worker nodes.
+The provided [cluster config file](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) will create a small cluster with a Standard DS2v3 on-demand head node that is configured to autoscale to up to two Standard DS2v3 [spot-instance](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms) worker nodes.
 
 Note that you'll need to fill in your Azure [resource_group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set the subscription to use. You can do this from the command line with `az account set -s <subscription_id>` or by filling in the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config file.
 
@@ -120,13 +115,11 @@ Congratulations, you have started a Ray cluster on Azure!
 
 ## Using Azure portal
 
-Alternatively, you can deploy a cluster using Azure portal directly. Please note that autoscaling is done using Azure VM Scale Sets and not through the Ray autoscaler. This will deploy [Azure Data Science VMs (DSVM)](https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/) for both the head node and the auto-scalable cluster managed by [Azure Virtual Machine Scale Sets](https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/).
-The head node conveniently exposes both SSH as well as JupyterLab.
+Alternatively, you can deploy a cluster using Azure portal directly. Please note that autoscaling is done using Azure VM Scale Sets and not through the Ray autoscaler. This will deploy [Azure Data Science VMs (DSVM)](https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/) for both the head node and the auto-scalable cluster managed by [Azure Virtual Machine Scale Sets](https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/). The head node conveniently exposes both SSH as well as JupyterLab.
 
 
 
-Once the template is successfully deployed the deployment Outputs page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
-Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py38_tensorflow by default) to connect to the Ray cluster.
+Once the template is successfully deployed the deployment Outputs page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input). Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py38_tensorflow by default) to connect to the Ray cluster.
 
 ```python
 import ray; ray.init()

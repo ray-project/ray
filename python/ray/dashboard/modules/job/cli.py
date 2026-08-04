@@ -1,6 +1,7 @@
 import json
 import os
 import pprint
+import shlex
 import sys
 import time
 from subprocess import list2cmdline
@@ -8,10 +9,10 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import click
 
-from ray._common.utils import load_class
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import (
     get_or_create_event_loop,
+    load_class,
 )
 from ray._private.utils import (
     parse_metadata_json,
@@ -131,8 +132,7 @@ def job_cli_group():
     default=None,
     required=False,
     help=(
-        "Submission ID to specify for the job. "
-        "If not provided, one will be generated."
+        "Submission ID to specify for the job. If not provided, one will be generated."
     ),
 )
 @click.option(
@@ -198,6 +198,13 @@ def job_cli_group():
     "separately from any tasks or actors that are launched by it",
 )
 @click.option(
+    "--entrypoint-label-selector",
+    required=False,
+    type=str,
+    help="a JSON-serialized dictionary mapping label keys to selector strings "
+    "describing placement constraints for the entrypoint command",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     type=bool,
@@ -221,6 +228,7 @@ def submit(
     entrypoint_num_gpus: Optional[Union[int, float]],
     entrypoint_memory: Optional[int],
     entrypoint_resources: Optional[str],
+    entrypoint_label_selector: Optional[str],
     no_wait: bool,
     verify: Union[bool, str],
     headers: Optional[str],
@@ -232,6 +240,24 @@ def submit(
 
     Example:
         `ray job submit -- python my_script.py --arg=val`
+
+    Args:
+        address: Job submission server address.
+        job_id: DEPRECATED. Use submission_id instead.
+        submission_id: Submission ID for the job.
+        runtime_env: Path to a runtime_env YAML file.
+        runtime_env_json: JSON-serialized runtime_env dictionary.
+        metadata_json: JSON-serialized metadata dictionary.
+        working_dir: Working directory for the job.
+        entrypoint: Entrypoint command.
+        entrypoint_num_cpus: CPU cores to reserve.
+        entrypoint_num_gpus: GPUs to reserve.
+        entrypoint_memory: Memory to reserve.
+        entrypoint_resources: JSON-serialized custom resources dict.
+        entrypoint_label_selector: JSON-serialized label selector dict.
+        no_wait: Do not wait for job completion.
+        verify: TLS verification flag or path.
+        headers: JSON-serialized headers.
     """
     if job_id:
         cli_logger.warning(
@@ -240,6 +266,13 @@ def submit(
     if entrypoint_resources is not None:
         entrypoint_resources = parse_resources_json(
             entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
+        )
+    if entrypoint_label_selector is not None:
+        entrypoint_label_selector = parse_resources_json(
+            entrypoint_label_selector,
+            cli_logger,
+            cf,
+            command_arg="entrypoint-label-selector",
         )
     if metadata_json is not None:
         metadata_json = parse_metadata_json(
@@ -263,6 +296,7 @@ def submit(
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_memory=entrypoint_memory,
             entrypoint_resources=entrypoint_resources,
+            entrypoint_label_selector=entrypoint_label_selector,
             no_wait=no_wait,
         )
 
@@ -276,7 +310,11 @@ def submit(
         working_dir=working_dir,
     )
     job_id = client.submit_job(
-        entrypoint=list2cmdline(entrypoint),
+        entrypoint=(
+            list2cmdline(entrypoint)
+            if sys.platform == "win32"
+            else shlex.join(entrypoint)
+        ),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
         metadata=metadata_json,
@@ -284,6 +322,7 @@ def submit(
         entrypoint_num_gpus=entrypoint_num_gpus,
         entrypoint_memory=entrypoint_memory,
         entrypoint_resources=entrypoint_resources,
+        entrypoint_label_selector=entrypoint_label_selector,
     )
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")
@@ -350,6 +389,12 @@ def status(
 
     Example:
         `ray job status <my_job_id>`
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        job_id: The submission ID of the job to query.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     _log_job_status(client, job_id)
@@ -388,6 +433,17 @@ def stop(
 
     Example:
         `ray job stop <my_job_id>`
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        no_wait: If True, return immediately instead of waiting for the job to reach a terminal state.
+        job_id: The submission ID of the job to stop.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
+
+    Returns:
+        None. The function returns early when ``no_wait`` is True; otherwise it
+        polls until the job reaches a terminal state.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     cli_logger.print(f"Attempting to stop job '{job_id}'")
@@ -397,7 +453,7 @@ def stop(
         return
     else:
         cli_logger.print(
-            f"Waiting for job '{job_id}' to exit " f"(disable with --no-wait):"
+            f"Waiting for job '{job_id}' to exit (disable with --no-wait):"
         )
 
     while True:
@@ -441,6 +497,12 @@ def delete(
 
     Example:
         ray job delete <my_job_id>
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        job_id: The submission ID of the job to delete.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     client.delete_job(job_id)
@@ -481,6 +543,13 @@ def logs(
 
     Example:
         `ray job logs <my_job_id>`
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        job_id: The submission ID of the job whose logs to fetch.
+        follow: If True, stream the logs (``tail -f`` style) instead of printing them once.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     sdk_version = client.get_version()
@@ -519,6 +588,11 @@ def list(address: Optional[str], headers: Optional[str], verify: Union[bool, str
 
     Example:
         `ray job list`
+
+    Args:
+        address: Address of the Ray cluster to connect to.
+        headers: JSON string of headers to attach to requests.
+        verify: Path to a CA bundle, or boolean toggling TLS verification.
     """
     client = _get_sdk_client(address, headers=headers, verify=verify)
     # Set no_format to True because the logs may have unescaped "{" and "}"

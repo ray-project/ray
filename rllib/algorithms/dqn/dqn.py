@@ -9,11 +9,14 @@ Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
 """  # noqa: E501
 
-from collections import defaultdict
 import logging
+from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
-import numpy as np
 
+import numpy as np
+from typing_extensions import Self
+
+from ray._common.deprecation import DEPRECATED_VALUE
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
@@ -23,21 +26,14 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.execution.train_ops import (
-    train_one_step,
     multi_gpu_train_one_step,
+    train_one_step,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.replay_buffers.utils import (
-    update_priorities_in_episode_replay_buffer,
-    update_priorities_in_replay_buffer,
-    validate_buffer_config,
-)
-from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
@@ -59,10 +55,16 @@ from ray.rllib.utils.metrics import (
     TD_ERROR_KEY,
     TIMERS,
 )
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.replay_buffers.utils import (
+    sample_min_n_steps_from_buffer,
+    update_priorities_in_episode_replay_buffer,
+    update_priorities_in_replay_buffer,
+    validate_buffer_config,
+)
 from ray.rllib.utils.typing import (
     LearningRateOrSchedule,
+    ResultDict,
     RLModuleSpecType,
     SampleBatchType,
 )
@@ -238,7 +240,7 @@ class DQNConfig(AlgorithmConfig):
         categorical_distribution_temperature: Optional[float] = NotProvided,
         burn_in_len: Optional[int] = NotProvided,
         **kwargs,
-    ) -> "DQNConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
@@ -303,7 +305,7 @@ class DQNConfig(AlgorithmConfig):
             sigma0: Control the initial parameter noise for noisy nets.
             dueling: Whether to use dueling DQN.
             hiddens: Dense-layer setup for each the advantage branch and the value
-                branch
+                branch in a dueling architecture.
             double_q: Whether to use double DQN.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
                 postprocessed to become sa[discounted sum of R][s t+n] tuples. An
@@ -593,7 +595,7 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
 class DQN(Algorithm):
     @classmethod
     @override(Algorithm)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> DQNConfig:
         return DQNConfig()
 
     @classmethod

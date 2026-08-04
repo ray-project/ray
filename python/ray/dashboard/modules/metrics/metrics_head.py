@@ -14,10 +14,12 @@ from ray._private.ray_constants import (
 )
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_data_grafana_dashboard,
+    generate_data_llm_grafana_dashboard,
     generate_default_grafana_dashboard,
     generate_serve_deployment_grafana_dashboard,
     generate_serve_grafana_dashboard,
     generate_serve_llm_grafana_dashboard,
+    generate_serve_llm_sglang_grafana_dashboard,
     generate_train_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.templates import (
@@ -46,6 +48,7 @@ DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
 GRAFANA_ORG_ID_ENV_VAR = "RAY_GRAFANA_ORG_ID"
 DEFAULT_GRAFANA_ORG_ID = "1"
+GRAFANA_CLUSTER_FILTER_ENV_VAR = "RAY_GRAFANA_CLUSTER_FILTER"
 GRAFANA_HOST_DISABLED_VALUE = "DISABLED"
 GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
@@ -75,8 +78,7 @@ def parse_prom_headers(prometheus_headers):
 class PrometheusQueryError(Exception):
     def __init__(self, status, message):
         self.message = (
-            "Error fetching data from prometheus. "
-            f"status: {status}, message: {message}"
+            f"Error fetching data from prometheus. status: {status}, message: {message}"
         )
         super().__init__(self.message)
 
@@ -119,6 +121,7 @@ class MetricsHead(SubprocessModule):
         self._grafana_org_id = os.environ.get(
             GRAFANA_ORG_ID_ENV_VAR, DEFAULT_GRAFANA_ORG_ID
         )
+        self._grafana_cluster_filter = os.environ.get(GRAFANA_CLUSTER_FILTER_ENV_VAR)
 
         # To be set later when dashboards gets generated
         self._dashboard_uids = {}
@@ -166,6 +169,7 @@ class MetricsHead(SubprocessModule):
                     session_name=self.session_name,
                     dashboard_uids=self._dashboard_uids,
                     dashboard_datasource=self._prometheus_name,
+                    grafana_cluster_filter=self._grafana_cluster_filter,
                 )
 
         except Exception as e:
@@ -295,11 +299,11 @@ class MetricsHead(SubprocessModule):
                     prometheus_host=prometheus_host,
                     prometheus_name=self._prometheus_name,
                     jsonData={
-                        f"httpHeaderName{i+1}": header
+                        f"httpHeaderName{i + 1}": header
                         for i, (header, _) in enumerate(prometheus_header_pairs)
                     },
                     secureJsonData={
-                        f"httpHeaderValue{i+1}": value
+                        f"httpHeaderValue{i + 1}": value
                         for i, (_, value) in enumerate(prometheus_header_pairs)
                     },
                 )
@@ -352,6 +356,18 @@ class MetricsHead(SubprocessModule):
         with open(
             os.path.join(
                 self._grafana_dashboard_output_dir,
+                "serve_llm_sglang_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["serve_llm_sglang"],
+            ) = generate_serve_llm_sglang_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
                 "data_grafana_dashboard.json",
             ),
             "w",
@@ -360,6 +376,18 @@ class MetricsHead(SubprocessModule):
                 content,
                 self._dashboard_uids["data"],
             ) = generate_data_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "data_llm_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["data_llm"],
+            ) = generate_data_llm_grafana_dashboard()
             f.write(content)
         with open(
             os.path.join(
@@ -394,7 +422,7 @@ class MetricsHead(SubprocessModule):
         # Other than the root path, the config file generated here is identical to that
         # hardcoded config file.
         prom_discovery_file_path = os.path.join(
-            self.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self.session_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
         with open(prometheus_config_output_path, "w") as f:
             f.write(

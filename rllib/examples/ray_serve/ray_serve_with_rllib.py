@@ -67,30 +67,29 @@ Episode R=500.0
 
 import atexit
 import os
-
-import requests
 import subprocess
 import time
-
-import gymnasium as gym
 from pathlib import Path
 
+import gymnasium as gym
+import requests
+
+from ray._common.network_utils import build_address
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import (
-    COMPONENT_LEARNER_GROUP,
     COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
+)
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
 )
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
-)
-from ray._common.network_utils import build_address
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(
@@ -152,8 +151,10 @@ if __name__ == "__main__":
 
     try:
         # Create the environment that we would like to receive
-        # served actions for.
-        env = gym.make("CartPole-v1", render_mode="human")
+        # served actions for. Only request a "human" render window when rendering
+        # is actually enabled; otherwise leave `render_mode=None` so that calling
+        # `env.reset()`/`env.step()` does not try to open a pygame/X11 display.
+        env = gym.make("CartPole-v1", render_mode=None if args.no_render else "human")
         obs, _ = env.reset()
 
         num_episodes = 0

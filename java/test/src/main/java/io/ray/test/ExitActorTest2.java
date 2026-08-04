@@ -7,16 +7,10 @@ import io.ray.api.Ray;
 import io.ray.runtime.util.SystemUtil;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(groups = {"cluster"})
 public class ExitActorTest2 extends BaseTest {
-
-  @BeforeClass
-  public void setUp() {
-    System.setProperty("ray.raylet.startup-token", "0");
-  }
 
   private static class ExitingActor {
     private final Thread thread;

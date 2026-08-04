@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve many model variants from a shared replica pool using the serve.multiplexed decorator and serve_multiplexed_model_id request header for per-model routing."
+---
+
 (serve-model-multiplexing)=
 
 # Model Multiplexing
@@ -6,14 +12,13 @@ This section helps you understand how to write multiplexed deployment by using t
 
 ## Why model multiplexing?
 
-Model multiplexing is a technique used to efficiently serve multiple models with similar input types from a pool of replicas. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas, 
-model multiplexing optimizes cost and load balances the traffic. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
+Model multiplexing is a technique used to efficiently serve multiple models with similar input types from a pool of replicas. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas, model multiplexing optimizes cost and load balances the traffic. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
 
 ## Writing a multiplexed deployment
 
 To write a multiplexed deployment, use the `serve.multiplexed` and `serve.get_multiplexed_model_id` APIs.
 
-Assuming you have multiple Torch models inside an aws s3 bucket with the following structure:
+Assuming you have multiple PyTorch models inside an AWS S3 bucket with the following structure:
 ```
 s3://my_bucket/1/model.pt
 s3://my_bucket/2/model.pt
@@ -34,15 +39,14 @@ The `serve.multiplexed` API also has a `max_num_models_per_replica` parameter. U
 :::
 
 :::{tip}
-This code example uses the Pytorch Model object. You can also define your own model class and use it here. To release resources when the model is evicted, implement the `__del__` method. Ray Serve internally calls the `__del__` method to release resources when the model is evicted.
+This code example uses the PyTorch Model object. You can also define your own model class and use it here. To release resources when the model is evicted, implement the `__del__` method. Ray Serve internally calls the `__del__` method to release resources when the model is evicted.
 :::
 
 
-`serve.get_multiplexed_model_id` is used to retrieve the model id from the request header, and the model_id is then passed into the `get_model` function. If the model id is not found in the replica, Serve will load the model from the s3 bucket and cache it in the replica. If the model id is found in the replica, Serve will return the cached model.
+`serve.get_multiplexed_model_id` retrieves the model ID from the request header. This ID is then passed to the `get_model` function. If the model is not already cached in the replica, Serve loads it from the S3 bucket. Otherwise, the cached model is returned.
 
 :::{note}
-Internally, serve router will route the traffic to the corresponding replica based on the model id in the request header.
-If all replicas holding the model are over-subscribed, ray serve sends the request to a new replica that doesn't have the model loaded. The replica will load the model from the s3 bucket and cache it.
+Internally, the Serve router uses the model ID in the request header to route traffic to a corresponding replica. If all replicas that have the model are over-subscribed, Ray Serve routes the request to a new replica, which then loads and caches the model from the S3 bucket.
 :::
 
 To send a request to a specific model, include the `serve_multiplexed_model_id` field in the request header, and set the value to the model ID to which you want to send the request.
@@ -85,3 +89,33 @@ When using model composition, you can send requests from an upstream deployment 
 :start-after: __serve_model_composition_example_begin__
 :end-before: __serve_model_composition_example_end__
 ```
+
+## Configuring model ID matching timeout
+
+When a request arrives with a `serve_multiplexed_model_id`, the Serve router attempts to match it to a replica that already has the model loaded. If no matching replica becomes available within the timeout, the request falls back to the default routing strategy and is sent to any available replica, which then loads the model on demand.
+
+You can configure this timeout using the `RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S` environment variable:
+
+```bash
+export RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S=2.0
+```
+
+**Default**: `1.0` second. To avoid thundering herd problems when many requests for the same unloaded model arrive concurrently, the actual timeout is randomized between this value and `value * 2` (for example, 1.0–2.0 seconds by default).
+
+Increase this timeout if your models take a long time to load and you prefer to wait for a replica that already has the model loaded. Decrease it if you prefer faster fallback to any available replica.
+
+## Using model multiplexing with batching
+
+You can combine model multiplexing with the `@serve.batch` decorator for efficient batched inference. When you use both features together, Ray Serve automatically splits batches by model ID to ensure each batch contains only requests for the same model. This prevents issues where a single batch would contain requests targeting different models.
+
+The following example shows how to combine multiplexing with batching:
+
+```{literalinclude} doc_code/multiplexed.py
+:language: python
+:start-after: __serve_multiplexed_batching_example_begin__
+:end-before: __serve_multiplexed_batching_example_end__
+```
+
+:::{note}
+`serve.get_multiplexed_model_id()` works correctly inside functions decorated with `@serve.batch`. Ray Serve guarantees that all requests in a batch have the same `multiplexed_model_id`, so you can safely use this value to load and apply the appropriate model for the entire batch.
+:::

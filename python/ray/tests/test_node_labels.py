@@ -1,14 +1,15 @@
 import os
-import sys
-import pytest
 import subprocess
+import sys
 import tempfile
 from unittest.mock import patch
-from ray._private.accelerators.tpu import TPUAcceleratorManager
+
+import pytest
 
 import ray
-from ray.cluster_utils import AutoscalingCluster
 from ray._common.test_utils import wait_for_condition
+from ray._private.accelerators.tpu import TPUAcceleratorManager
+from ray.cluster_utils import AutoscalingCluster
 
 
 def check_cmd_stderr(cmd):
@@ -68,6 +69,24 @@ def test_ray_init_set_node_labels(shutdown_only):
     ray.init(labels={})
     node_info = ray.nodes()[0]
     assert node_info["Labels"] == add_default_labels_for_test(node_info, {})
+
+
+def test_node_labels_connect_only_false(shutdown_only):
+    labels = {"key": "value"}
+    ray.init(labels=labels)
+    node_labels = ray.get_runtime_context().get_node_labels()
+    assert node_labels["key"] == "value"
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ['ray start --head --labels={"key":"value"}'],
+    indirect=True,
+)
+def test_node_labels_connect_only_true(call_ray_start):
+    ray.init(address=call_ray_start)
+    node_labels = ray.get_runtime_context().get_node_labels()
+    assert node_labels["key"] == "value"
 
 
 def test_ray_init_set_node_labels_value_error(ray_start_cluster):

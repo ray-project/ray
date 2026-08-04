@@ -36,14 +36,14 @@ export const LinkWithArrow = ({ text, to }: LinkWithArrowProps) => {
   return (
     <Link
       component={RouterLink}
-      sx={{
-        color: "#036DCF",
+      sx={(theme) => ({
+        color: theme.palette.primary.main,
         textDecoration: "none",
         display: "flex",
         flexDirection: "row",
         flexWrap: "nowrap",
         alignItems: "center",
-      }}
+      })}
       to={to}
     >
       <Typography variant="h4">{text}</Typography>

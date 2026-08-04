@@ -3,17 +3,17 @@ import os
 import sys
 
 import pytest
+import torch
 
 import ray
-from ray.dag import InputNode, MultiOutputNode
 import ray.cluster_utils
+from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
-import torch
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
-USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
+USE_GPU = os.environ.get("RAY_PYTEST_USE_GPU") == "1"
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)

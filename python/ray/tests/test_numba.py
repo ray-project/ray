@@ -1,10 +1,9 @@
-import pytest
 import sys
 import unittest
 
-
-from numba import njit
 import numpy as np
+import pytest
+from numba import njit
 
 import ray
 

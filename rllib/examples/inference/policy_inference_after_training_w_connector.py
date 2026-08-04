@@ -86,16 +86,14 @@ Done performing action inference through 10 Episodes
 """
 import os
 
-import tree  # pip install dm_tree
-
 from ray.rllib.connectors.env_to_module import EnvToModulePipeline
 from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
 from ray.rllib.core import (
     COMPONENT_ENV_RUNNER,
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
-    COMPONENT_MODULE_TO_ENV_CONNECTOR,
-    COMPONENT_LEARNER_GROUP,
     COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -104,18 +102,47 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
 )
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
-)
 from ray.tune.registry import get_trainable_cls, register_env
 
-torch, _ = try_import_torch()
+torch, nn = try_import_torch()
+
+
+class _ONNXWrapper(nn.Module if nn else object):
+    """Thin `nn.Module` wrapper for ONNX export of a recurrent (LSTM) RLModule.
+
+    `torch.onnx.export(..., dynamo=True)` (the default since
+    torch 2.9) traces a module whose `forward` takes and returns flat, named
+    tensors. RLModules instead consume/produce nested dicts (here including the
+    LSTM `STATE_IN`/`STATE_OUT` `{"h", "c"}` sub-dicts), so we wrap the module to
+    expose a tensor-in/tensor-out signature ``(obs, h, c) -> (logits, h, c)`` and
+    call its public `forward_inference` API.
+    """
+
+    def __init__(self, rl_module):
+        super().__init__()
+        self.rl_module = rl_module
+
+    def forward(self, obs, state_in_h, state_in_c):
+        out = self.rl_module.forward_inference(
+            {
+                Columns.OBS: obs,
+                Columns.STATE_IN: {"h": state_in_h, "c": state_in_c},
+            }
+        )
+        return (
+            out[Columns.ACTION_DIST_INPUTS],
+            out[Columns.STATE_OUT]["h"],
+            out[Columns.STATE_OUT]["c"],
+        )
 
 
 def _env_creator(cfg):
@@ -255,37 +282,48 @@ if __name__ == "__main__":
         )
 
         # If ONNX and module has not been exported yet, do this here using
-        # the input_dict as example input.
+        # the input_dict as example input. We give the in- and outputs explicit
+        # names so the ONNX runtime can be fed and read by name (instead of by
+        # positional index). The recurrent module is threaded as
+        # `(obs, h, c) -> (logits, h, c)`.
         if args.use_onnx_for_inference and ort_session is None:
-            tensor_input_dict = tree.map_structure(
-                lambda s: torch.from_numpy(s), input_dict
+            example_obs = torch.from_numpy(input_dict[Columns.OBS])
+            example_h = torch.from_numpy(input_dict[Columns.STATE_IN]["h"])
+            example_c = torch.from_numpy(input_dict[Columns.STATE_IN]["c"])
+            batch = torch.export.Dim("batch")
+            torch.onnx.export(
+                _ONNXWrapper(rl_module),
+                (example_obs, example_h, example_c),
+                f="test.onnx",
+                input_names=["obs", "state_in_h", "state_in_c"],
+                output_names=["action_dist_inputs", "state_out_h", "state_out_c"],
+                dynamic_shapes={
+                    "obs": {0: batch},
+                    "state_in_h": {0: batch},
+                    "state_in_c": {0: batch},
+                },
+                dynamo=True,
             )
-            torch.onnx.export(rl_module, {"batch": tensor_input_dict}, f="test.onnx")
             ort_session = onnxruntime.InferenceSession(
                 "test.onnx", providers=["CPUExecutionProvider"]
             )
 
         # No exploration (using ONNX).
         if ort_session is not None:
-            rl_module_out = ort_session.run(
-                None,
+            action_dist_inputs, state_out_h, state_out_c = ort_session.run(
+                ["action_dist_inputs", "state_out_h", "state_out_c"],
                 {
-                    key.name: val
-                    for key, val in dict(
-                        zip(
-                            tree.flatten(ort_session.get_inputs()),
-                            tree.flatten(input_dict),
-                        )
-                    ).items()
+                    "obs": input_dict[Columns.OBS],
+                    "state_in_h": input_dict[Columns.STATE_IN]["h"],
+                    "state_in_c": input_dict[Columns.STATE_IN]["c"],
                 },
             )
-            # [0] and [1]: LSTM states; [2]=encoder outs; [3]=action logits
             rl_module_out = {
                 Columns.STATE_OUT: {
-                    "h": torch.from_numpy(rl_module_out[0]),
-                    "c": torch.from_numpy(rl_module_out[1]),
+                    "h": torch.from_numpy(state_out_h),
+                    "c": torch.from_numpy(state_out_c),
                 },
-                Columns.ACTION_DIST_INPUTS: torch.from_numpy(rl_module_out[3]),
+                Columns.ACTION_DIST_INPUTS: torch.from_numpy(action_dist_inputs),
             }
         # No exploration (using RLModule).
         elif not args.explore_during_inference:

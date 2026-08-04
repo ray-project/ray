@@ -7,6 +7,7 @@ import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
 import io.ray.api.id.JobId;
+import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorLifetime;
 import io.ray.api.runtimeenv.RuntimeEnvConfig;
 import io.ray.api.runtimeenv.types.RuntimeEnvName;
@@ -52,7 +53,8 @@ public class RayConfig {
   // Listening port for node manager.
   public int nodeManagerPort;
 
-  public int startupToken;
+  // Worker ID assigned by raylet when starting the worker process.
+  public UniqueId workerId;
 
   public int runtimeEnvHash;
 
@@ -192,7 +194,8 @@ public class RayConfig {
     }
     codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
 
-    startupToken = config.getInt("ray.raylet.startup-token");
+    String workerIdHex = config.getString("ray.worker.id");
+    workerId = workerIdHex.isEmpty() ? UniqueId.NIL : UniqueId.fromHexString(workerIdHex);
 
     /// Driver needn't this config item.
     if (workerMode == WorkerType.WORKER && config.hasPath("ray.internal.runtime-env-hash")) {
@@ -289,8 +292,8 @@ public class RayConfig {
     return nodeManagerPort;
   }
 
-  public int getStartupToken() {
-    return startupToken;
+  public UniqueId getWorkerId() {
+    return workerId;
   }
 
   public void setSessionDir(String sessionDir) {
@@ -312,7 +315,7 @@ public class RayConfig {
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
     dynamic.put("ray.address", bootstrapAddress);
-    dynamic.put("ray.raylet.startup-token", startupToken);
+    dynamic.put("ray.worker.id", workerId.isNil() ? "" : workerId.toString());
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }

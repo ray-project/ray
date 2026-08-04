@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import grpc
 import pytest
 
+import ray
 from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadata
 from ray.serve._private.constants import HEALTHY_MESSAGE
 from ray.serve._private.proxy import (
@@ -16,13 +17,18 @@ from ray.serve._private.proxy import (
     ResponseStatus,
     gRPCProxy,
 )
-from ray.serve._private.proxy_request_response import ProxyRequest
+from ray.serve._private.proxy_request_response import (
+    ASGIProxyRequest,
+    ProxyRequest,
+    gRPCStreamingType,
+)
 from ray.serve._private.proxy_router import (
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
     ProxyRouter,
 )
 from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -95,6 +101,8 @@ class FakeProxyRouter(ProxyRouter):
         self.handle = None
         self.app_is_cross_language = None
         self._ready_for_traffic = False
+        self.route_patterns = {}
+        self._route_pattern_apps = {}
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.endpoints = endpoints
@@ -175,6 +183,9 @@ class FakeProxyRequest(ProxyRequest):
     @property
     def is_health_request(self) -> bool:
         return self._is_health_request
+
+    def populate_tracing_context(self):
+        pass
 
 
 class FakeHTTPHandle:
@@ -371,6 +382,61 @@ class TestgRPCProxy:
             assert response.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
 
     @pytest.mark.asyncio
+    async def test_receive_grpc_messages_missing_session_returns_cancelled(self):
+        """Test receive_grpc_messages returns cancelled tuple for missing session.
+
+        When a streaming session is cleaned up (due to timeout, error, or completion),
+        calling receive_grpc_messages again should return (False, None, True) instead
+        of raising KeyError. This provides consistent graceful termination behavior.
+        """
+        grpc_proxy = self.create_grpc_proxy()
+
+        # Call receive_grpc_messages with a non-existent session ID
+        # Before the fix, this would raise KeyError
+        # After the fix, it should return (False, None, True)
+        result = await grpc_proxy.receive_grpc_messages("non-existent-session-id")
+        has_more, message_bytes, is_cancelled = result
+
+        # Should indicate stream is done and was cancelled (graceful termination)
+        assert has_more is False
+        assert message_bytes is None
+        assert is_cancelled is True
+
+    @pytest.mark.asyncio
+    async def test_receive_grpc_messages_after_cleanup_returns_cancelled(self):
+        """Test receive_grpc_messages returns cancelled after session cleanup.
+
+        After _cleanup_streaming_session is called, subsequent calls to
+        receive_grpc_messages should return (False, None, True) instead of KeyError.
+        """
+        grpc_proxy = self.create_grpc_proxy()
+        session_id = "test-session-123"
+
+        # Simulate creating a streaming session
+        cancel_event = asyncio.Event()
+
+        async def mock_iterator():
+            yield "message1"
+            yield "message2"
+
+        grpc_proxy._streaming_sessions[session_id] = (mock_iterator(), cancel_event)
+
+        # Cleanup the session (simulates timeout, error, or completion)
+        grpc_proxy._cleanup_streaming_session(session_id)
+
+        # Verify session was removed
+        assert session_id not in grpc_proxy._streaming_sessions
+
+        # Now calling receive_grpc_messages should return cancelled tuple
+        # instead of raising KeyError
+        result = await grpc_proxy.receive_grpc_messages(session_id)
+        has_more, message_bytes, is_cancelled = result
+
+        assert has_more is False
+        assert message_bytes is None
+        assert is_cancelled is True
+
+    @pytest.mark.asyncio
     async def test_service_handler_factory(self):
         """Test gRPCProxy service_handler_factory returns the correct entrypoints."""
 
@@ -378,7 +444,8 @@ class TestgRPCProxy:
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         unary_entrypoint = grpc_proxy.service_handler_factory(
-            service_method="service_method", stream=False
+            service_method="service_method",
+            streaming_type=gRPCStreamingType.UNARY_UNARY,
         )
         assert unary_entrypoint.__name__ == "unary_unary"
 
@@ -399,7 +466,8 @@ class TestgRPCProxy:
 
         # Ensure gRPC streaming call uses the correct entry point.
         streaming_entrypoint = grpc_proxy.service_handler_factory(
-            service_method="service_method", stream=True
+            service_method="service_method",
+            streaming_type=gRPCStreamingType.UNARY_STREAM,
         )
         assert streaming_entrypoint.__name__ == "unary_stream"
 
@@ -689,6 +757,118 @@ class TestHTTPProxy:
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
 
+    @pytest.mark.parametrize(
+        "header_key",
+        [
+            # Original underscore form (direct connection, no proxy)
+            b"serve_multiplexed_model_id",
+            # Hyphen form produced by proxies (nginx, AWS API Gateway, etc.)
+            # that convert underscores to hyphens in header names.
+            b"serve-multiplexed-model-id",
+            # Title-cased hyphen form produced by some proxies.
+            b"Serve-Multiplexed-Model-Id",
+        ],
+    )
+    def test_setup_request_context_multiplexed_model_id_header_normalization(
+        self, header_key: bytes
+    ):
+        """Test that setup_request_context_and_handle recognises the multiplexed
+        model ID header regardless of whether the key uses underscores or hyphens.
+
+        Proxies such as nginx and AWS API Gateway convert underscores to hyphens
+        (and may also title-case the name), so the header sent by the client as
+        ``serve_multiplexed_model_id`` can arrive at Ray Serve as
+        ``serve-multiplexed-model-id`` or ``Serve-Multiplexed-Model-Id``.
+        All three forms must be treated as equivalent.
+        """
+        import ray
+
+        model_id = "my-model-123"
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "root_path": "",
+            "headers": [
+                (header_key, model_id.encode()),
+                (b"x-request-id", b"test-request-id"),
+            ],
+            "client": ("127.0.0.1", 12345),
+        }
+        proxy_request = ASGIProxyRequest(
+            scope=scope,
+            receive=AsyncMock(),
+            send=AsyncMock(),
+        )
+
+        http_proxy = self.create_http_proxy()
+        http_proxy.setup_request_context_and_handle(
+            app_name="test_app",
+            handle=FakeHTTPHandle(messages=[]),
+            route="/",
+            proxy_request=proxy_request,
+            internal_request_id="fake-internal-id",
+        )
+
+        ctx = ray.serve.context._get_serve_request_context()
+        assert ctx.multiplexed_model_id == model_id, (
+            f"Header key {header_key!r} was not recognised; "
+            f"got multiplexed_model_id={ctx.multiplexed_model_id!r}"
+        )
+
+    @pytest.mark.parametrize(
+        "header_key",
+        [
+            # Underscore form (direct connection, no intermediate proxy)
+            b"x_session_id",
+            # Hyphen form (the canonical form in HTTP; also what nginx /
+            # AWS API Gateway produce)
+            b"x-session-id",
+            # Title-cased hyphen form
+            b"X-Session-Id",
+        ],
+    )
+    def test_setup_request_context_session_id_header_normalization(
+        self, header_key: bytes
+    ):
+        """The session_id header must be extracted regardless of case or
+        hyphen/underscore form.
+
+        Session-aware routers use this value to hash the request onto a replica.
+        """
+        session_id = "sess_user_42"
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "root_path": "",
+            "headers": [
+                (header_key, session_id.encode()),
+                (b"x-request-id", b"test-request-id"),
+            ],
+            "client": ("127.0.0.1", 12345),
+        }
+        proxy_request = ASGIProxyRequest(
+            scope=scope,
+            receive=AsyncMock(),
+            send=AsyncMock(),
+        )
+
+        http_proxy = self.create_http_proxy()
+        http_proxy.setup_request_context_and_handle(
+            app_name="test_app",
+            handle=FakeHTTPHandle(messages=[]),
+            route="/",
+            proxy_request=proxy_request,
+            internal_request_id="fake-internal-id",
+        )
+
+        ctx = ray.serve.context._get_serve_request_context()
+        assert ctx.session_id == session_id, (
+            f"Header key {header_key!r} was not recognized; "
+            f"got session_id={ctx.session_id!r}"
+        )
+
 
 @pytest.mark.asyncio
 async def test_head_http_unhealthy_until_route_table_updated():
@@ -792,6 +972,157 @@ async def test_worker_http_unhealthy_until_replicas_populated():
     assert messages[0]["headers"] is not None
     assert messages[0]["status"] == 200
     assert messages[1]["body"].decode("utf-8") == HEALTHY_MESSAGE
+
+
+class TestProxyRouterMatchRoutePattern:
+    """Test ProxyRouter.match_route_pattern functionality."""
+
+    @pytest.fixture
+    def mock_get_handle(self):
+        def _get_handle(endpoint: DeploymentID, info: EndpointInfo):
+            return MockDeploymentHandle(deployment_name=endpoint.name)
+
+        return _get_handle
+
+    def test_match_route_pattern_no_patterns(self, mock_get_handle):
+        """Test that match_route_pattern returns route_prefix when no patterns exist."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api", route_patterns=None
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api"
+
+    def test_match_route_pattern_with_patterns(self, mock_get_handle):
+        """Test that match_route_pattern matches specific route patterns."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/"),
+                        RoutePattern(methods=None, path="/api/users/{user_id}"),
+                        RoutePattern(methods=None, path="/api/items/{item_id}/details"),
+                    ],
+                )
+            }
+        )
+
+        # Test matching parameterized route
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/users/{user_id}"
+
+        # Test matching nested parameterized route
+        scope = {"type": "http", "path": "/api/items/abc/details", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/items/{item_id}/details"
+
+        # Test matching root
+        scope = {"type": "http", "path": "/api/", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/"
+
+    def test_match_route_pattern_caching(self, mock_get_handle):
+        """Test that mock Starlette apps are cached for performance."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+
+        # First call should create and cache the mock app
+        assert "/api" not in router._route_pattern_apps
+        result1 = router.match_route_pattern("/api", scope)
+        assert result1 == "/api/users/{user_id}"
+        assert "/api" in router._route_pattern_apps
+
+        # Second call should use cached app
+        cached_app = router._route_pattern_apps["/api"]
+        result2 = router.match_route_pattern("/api", scope)
+        assert result2 == "/api/users/{user_id}"
+        assert router._route_pattern_apps["/api"] is cached_app
+
+    def test_match_route_pattern_cache_invalidation(self, mock_get_handle):
+        """Test that cache is cleared when routes are updated."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        router.match_route_pattern("/api", scope)
+        assert "/api" in router._route_pattern_apps
+
+        # Update routes should clear cache
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/items/{item_id}")
+                    ],
+                )
+            }
+        )
+        assert len(router._route_pattern_apps) == 0
+
+    def test_match_route_pattern_empty_patterns(self, mock_get_handle):
+        """Test that empty pattern list returns route_prefix."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api", route_patterns=[]
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api"
+
+    def test_match_route_pattern_no_match_fallback(self, mock_get_handle):
+        """Test that unmatched requests fall back to route_prefix."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
+                )
+            }
+        )
+
+        # Request to path not in patterns
+        scope = {"type": "http", "path": "/api/admin/settings", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        # Should fall back to prefix since no pattern matches
+        assert result == "/api"
 
 
 if __name__ == "__main__":

@@ -1,11 +1,14 @@
-import pytest
 import os
 import sys
 import time
 
+import pytest
+
 import ray
-from ray._common.test_utils import wait_for_condition
 import ray.cluster_utils
+from ray._common.test_utils import wait_for_condition
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     get_other_nodes,
     is_placement_group_removed,
@@ -14,8 +17,6 @@ from ray._private.test_utils import (
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = (
     "ray.tests.test_placement_group_4.MockWorkerStartupSlowlyPlugin"  # noqa
@@ -180,9 +181,13 @@ def test_remove_pending_placement_group(ray_start_cluster):
 
     # Create a placement group that cannot be scheduled now.
     placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
+    wait_for_condition(
+        lambda: (ray.util.placement_group_table(placement_group) or {}).get("state")
+        == "PENDING"
+    )
     ray.util.remove_placement_group(placement_group)
+    wait_for_condition(lambda: is_placement_group_removed(placement_group))
 
-    # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
     def f():
         return 3

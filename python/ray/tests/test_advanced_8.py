@@ -9,10 +9,8 @@ import time
 from unittest import mock
 
 import numpy as np
-import psutil
 import pytest
 
-from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
@@ -20,8 +18,12 @@ import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
+from ray._private.test_utils import rocksdb_gcs_test_enabled
 from ray.dashboard import k8s_utils
 from ray.runtime_env import RuntimeEnv
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,15 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     assert ray._private.services.remaining_processes_alive()
 
 
+@pytest.mark.skipif(
+    rocksdb_gcs_test_enabled(),
+    reason=(
+        "Starts a second local Ray cluster while the fixture's head is alive; "
+        "both inherit RAY_gcs_storage_path and collide on the same RocksDB "
+        "directory (single-writer LOCK). Redis tolerates this via server-side "
+        "multiplexing; RocksDB cannot."
+    ),
+)
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [

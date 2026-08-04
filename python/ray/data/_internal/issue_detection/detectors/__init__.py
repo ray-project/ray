@@ -4,6 +4,7 @@ from ray.data._internal.issue_detection.detectors.hanging_detector import (
 )
 from ray.data._internal.issue_detection.detectors.hash_shuffle_detector import (
     HashShuffleAggregatorIssueDetector,
+    HashShuffleAggregatorIssueDetectorConfig,
 )
 from ray.data._internal.issue_detection.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
@@ -13,7 +14,8 @@ from ray.data._internal.issue_detection.detectors.high_memory_detector import (
 __all__ = [
     "HangingExecutionIssueDetector",
     "HangingExecutionIssueDetectorConfig",
+    "HashShuffleAggregatorIssueDetector",
+    "HashShuffleAggregatorIssueDetectorConfig",
     "HighMemoryIssueDetector",
     "HighMemoryIssueDetectorConfig",
-    "HashShuffleAggregatorIssueDetector",
 ]

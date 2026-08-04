@@ -10,9 +10,11 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.utils import run_background_task
+from ray._common.utils import Timer, run_background_task
+from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
+from ray._private.label_utils import validate_label_selector
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
@@ -30,15 +32,10 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
-from ray.dashboard.modules.job.utils import get_head_node_id
-from ray.dashboard.utils import close_logger_file_descriptor
-from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
-from ray.job_submission import JobStatus, JobErrorType
+from ray.dashboard.utils import close_logger_file_descriptor, get_head_node_id
+from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
+from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-    SchedulingStrategyT,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +67,9 @@ class JobManager:
     JOB_MONITOR_LOOP_PERIOD_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
-    def __init__(self, gcs_client: GcsClient, logs_dir: str):
+    def __init__(
+        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+    ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
@@ -78,6 +77,7 @@ class JobManager:
         self._cluster_id_hex = gcs_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self._timeout_check_timer = timeout_check_timer or Timer()
         self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
@@ -145,6 +145,9 @@ class JobManager:
         self.monitored_jobs.add(job_id)
         try:
             await self._monitor_job_internal(job_id, job_supervisor)
+        except Exception as e:
+            logger.error("Unhandled exception in job monitoring!", exc_info=e)
+            raise e
         finally:
             self.monitored_jobs.remove(job_id)
 
@@ -158,18 +161,34 @@ class JobManager:
             )
         )
 
-        is_alive = True
+        job_status = None
+        job_info = None
+        ping_obj_ref = None
 
-        while is_alive:
+        while True:
             try:
-                job_status = await self._job_info_client.get_status(job_id)
+                # NOTE: Job monitoring loop sleeps before proceeding with monitoring
+                #       sequence to consolidate the control-flow of the pacing
+                #       in a single place, rather than having it spread across
+                #       many branches
+                await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
+
+                job_status = await self._job_info_client.get_status(
+                    job_id, timeout=None
+                )
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
                     # If the job is still pending, we will set the status
                     # to FAILED.
-                    job_info = await self._job_info_client.get_info(job_id)
+                    if job_info is None:
+                        job_info = await self._job_info_client.get_info(
+                            job_id, timeout=None
+                        )
 
-                    if time.time() - job_info.start_time / 1000 > timeout:
+                    if (
+                        self._timeout_check_timer.time() - job_info.start_time / 1000
+                        > timeout
+                    ):
                         err_msg = (
                             "Job supervisor actor failed to start within "
                             f"{timeout} seconds. This timeout can be "
@@ -209,10 +228,10 @@ class JobManager:
                             JobStatus.FAILED,
                             message=err_msg,
                             error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
+                            timeout=None,
                         )
-                        is_alive = False
                         logger.error(err_msg)
-                        continue
+                        break
 
                 if job_supervisor is None:
                     job_supervisor = self._get_actor_for_job(job_id)
@@ -236,84 +255,102 @@ class JobManager:
                                 "failed to get job supervisor."
                             ),
                             error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
+                            timeout=None,
                         )
-                        is_alive = False
-                        continue
+                        break
 
-                await job_supervisor.ping.remote()
+                # Check to see if `JobSupervisor` is alive and reachable
+                if ping_obj_ref is None:
+                    ping_obj_ref = job_supervisor.ping.options(
+                        max_task_retries=-1
+                    ).remote()
+                ready, _ = ray.wait([ping_obj_ref], timeout=0)
+                if ready:
+                    ray.get(ping_obj_ref)
+                    ping_obj_ref = None
+                else:
+                    continue
 
-                await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
-                is_alive = False
-                job_status = await self._job_info_client.get_status(job_id)
-                job_error_message = None
-                if job_status == JobStatus.FAILED:
-                    job_error_message = (
-                        "See more details from the dashboard "
-                        "`Job` page or the state API `ray list jobs`."
-                    )
-
-                job_error_message = ""
-                if job_status.is_terminal():
+                job_status = await self._job_info_client.get_status(
+                    job_id, timeout=None
+                )
+                target_job_error_message = ""
+                target_job_error_type: Optional[JobErrorType] = None
+                if job_status is not None and job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
                     pass
-                elif isinstance(e, RuntimeEnvSetupError):
-                    logger.info(f"Failed to set up runtime_env for job {job_id}.")
-                    job_error_message = f"runtime_env setup failed: {e}"
-                    job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
-                        job_id,
-                        job_status,
-                        message=job_error_message,
-                        error_type=JobErrorType.RUNTIME_ENV_SETUP_FAILURE,
-                    )
-                elif isinstance(e, ActorUnschedulableError):
-                    logger.info(
-                        f"Failed to schedule job {job_id} because the supervisor actor "
-                        f"could not be scheduled: {e}"
-                    )
-                    job_error_message = (
-                        f"Job supervisor actor could not be scheduled: {e}"
-                    )
-                    await self._job_info_client.put_status(
-                        job_id,
-                        JobStatus.FAILED,
-                        message=job_error_message,
-                        error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE,
-                    )
                 else:
-                    logger.warning(
-                        f"Job supervisor for job {job_id} failed unexpectedly: {e}."
-                    )
-                    job_error_message = f"Unexpected error occurred: {e}"
+                    if isinstance(e, RuntimeEnvSetupError):
+                        logger.error(f"Failed to set up runtime_env for job {job_id}.")
+
+                        target_job_error_message = f"runtime_env setup failed: {e}"
+                        target_job_error_type = JobErrorType.RUNTIME_ENV_SETUP_FAILURE
+
+                    elif isinstance(e, ActorUnschedulableError):
+                        logger.error(
+                            f"Failed to schedule job {job_id} because the supervisor "
+                            f"actor could not be scheduled: {e}"
+                        )
+
+                        target_job_error_message = (
+                            f"Job supervisor actor could not be scheduled: {e}"
+                        )
+                        target_job_error_type = (
+                            JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE
+                        )
+
+                    elif isinstance(e, ActorDiedError):
+                        logger.error(f"Job supervisor actor for {job_id} died: {e}")
+                        target_job_error_message = f"Job supervisor actor died: {e}"
+                        target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
+
+                    else:
+                        logger.error(
+                            f"Job monitoring for job {job_id} failed "
+                            f"unexpectedly: {e}.",
+                            exc_info=e,
+                        )
+
+                        target_job_error_message = f"Unexpected error occurred: {e}"
+                        target_job_error_type = (
+                            JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
+                        )
+
                     job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
                         job_id,
                         job_status,
-                        message=job_error_message,
-                        error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                        message=target_job_error_message,
+                        error_type=target_job_error_type
+                        or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                        timeout=None,
                     )
 
                 # Log error message to the job driver file for easy access.
-                if job_error_message:
+                if target_job_error_message:
                     log_path = self._log_client.get_log_file_path(job_id)
                     os.makedirs(os.path.dirname(log_path), exist_ok=True)
                     with open(log_path, "a") as log_file:
-                        log_file.write(job_error_message)
+                        log_file.write(target_job_error_message)
 
                 # Log events
                 if self.event_logger:
                     event_log = (
                         f"Completed a ray job {job_id} with a status {job_status}."
                     )
-                    if job_error_message:
-                        event_log += f" {job_error_message}"
+                    if target_job_error_message:
+                        event_log += f" {target_job_error_message}"
                         self.event_logger.error(event_log, submission_id=job_id)
                     else:
                         self.event_logger.info(event_log, submission_id=job_id)
 
+                break
+
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
+        if job_supervisor is None:
+            job_supervisor = self._get_actor_for_job(job_id)
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
@@ -339,6 +376,8 @@ class JobManager:
 
         Args:
             user_runtime_env: The runtime_env specified by the user.
+            submission_id: The submission id of the job; used to derive the log
+                file path piped into the runtime env config.
             resources_specified: Whether the user specified resources in the
                 submit_job() call. If so, we will skip the workaround introduced
                 in #24546 for GPU detection and just use the user's resource
@@ -366,6 +405,8 @@ class JobManager:
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+            env_vars[NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
+
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
@@ -377,32 +418,31 @@ class JobManager:
             runtime_env["config"] = config
         return runtime_env
 
-    async def _get_scheduling_strategy(
-        self, resources_specified: bool
-    ) -> SchedulingStrategyT:
-        """Get the scheduling strategy for the job.
+    async def _get_label_selector(self, resources_specified: bool) -> Dict:
+        """Determine the scheduling strategy for the job using a label selector.
 
         If resources_specified is true, or if the environment variable is set to
-        allow the job to run on worker nodes, we will use Ray's default actor
-        placement strategy. Otherwise, we will force the job to use the head node.
+        allow the job to run on worker nodes, we will not use any label constraints.
+        Otherwise, we will force the job to use the head node via a label selector
+        specifying the head node id.
 
         Args:
             resources_specified: Whether the job specified any resources
                 (CPUs, GPUs, or custom resources).
 
         Returns:
-            The scheduling strategy to use for the job.
+            The label selector to use for the job.
         """
         if resources_specified:
-            return "DEFAULT"
+            return {}
 
         if os.environ.get(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0") == "1":
             logger.info(
                 f"{RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR} was set to 1. "
                 "Using Ray's default actor scheduling strategy for the job "
-                "driver instead of running it on the head node."
+                "driver instead of running it on the head node via a label selector."
             )
-            return "DEFAULT"
+            return {}
 
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
@@ -412,18 +452,15 @@ class JobManager:
             logger.info(
                 "Head node ID not found in GCS. Using Ray's default actor "
                 "scheduling strategy for the job driver instead of running "
-                "it on the head node."
+                "it on the head node via a label selector."
             )
-            scheduling_strategy = "DEFAULT"
-        else:
-            logger.info(
-                "Head node ID found in GCS; scheduling job driver on "
-                f"head node {head_node_id}"
-            )
-            scheduling_strategy = NodeAffinitySchedulingStrategy(
-                node_id=head_node_id, soft=False
-            )
-        return scheduling_strategy
+            return {}
+
+        logger.info(
+            "Head node ID found in GCS; scheduling job driver on "
+            f"head node {head_node_id} using a label selector"
+        )
+        return {ray._raylet.RAY_NODE_ID_KEY: head_node_id}
 
     async def submit_job(
         self,
@@ -436,6 +473,7 @@ class JobManager:
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        entrypoint_label_selector: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> str:
         """
@@ -453,6 +491,8 @@ class JobManager:
         Args:
             entrypoint: Driver command to execute in subprocess shell.
                 Represents the entrypoint to start user application.
+            submission_id: Optional caller-provided submission id. When None, a
+                new id is generated via ``generate_job_id()``.
             runtime_env: Runtime environment used to execute driver command,
                 which could contain its own ray.init() to configure runtime
                 env at ray cluster, task and actor level.
@@ -470,6 +510,7 @@ class JobManager:
             entrypoint_resources: The quantity of various custom resources
                 to reserve for the entrypoint command, separately from any tasks or
                 actors launched by it.
+            entrypoint_label_selector: Label selector for the entrypoint command.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
@@ -492,6 +533,10 @@ class JobManager:
         await self._recover_running_jobs_event.wait()
 
         logger.info(f"Starting job with submission_id: {submission_id}")
+        if entrypoint_label_selector:
+            error_message = validate_label_selector(entrypoint_label_selector)
+            if error_message:
+                raise ValueError(error_message)
         job_info = JobInfo(
             entrypoint=entrypoint,
             status=JobStatus.PENDING,
@@ -523,25 +568,27 @@ class JobManager:
                     entrypoint_num_gpus is not None and entrypoint_num_gpus > 0,
                     entrypoint_memory is not None and entrypoint_memory > 0,
                     entrypoint_resources not in [None, {}],
+                    entrypoint_label_selector not in [None, {}],
                 ]
             )
-            scheduling_strategy = await self._get_scheduling_strategy(
-                resources_specified
-            )
+            label_selector = await self._get_label_selector(resources_specified)
+            if entrypoint_label_selector:
+                label_selector = {**label_selector, **entrypoint_label_selector}
+
             if self.event_logger:
                 self.event_logger.info(
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
             driver_logger.info("Runtime env is setting up.")
-            supervisor = self._supervisor_actor_cls.options(
+            supervisor_options = dict(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=entrypoint_num_cpus,
                 num_gpus=entrypoint_num_gpus,
                 memory=entrypoint_memory,
                 resources=entrypoint_resources,
-                scheduling_strategy=scheduling_strategy,
+                label_selector=label_selector,
                 runtime_env=self._get_supervisor_runtime_env(
                     runtime_env, submission_id, resources_specified
                 ),
@@ -549,6 +596,9 @@ class JobManager:
                 # Don't pollute task events with system actor tasks that users don't
                 # know about.
                 enable_task_events=False,
+            )
+            supervisor = self._supervisor_actor_cls.options(
+                **supervisor_options
             ).remote(
                 submission_id,
                 entrypoint,

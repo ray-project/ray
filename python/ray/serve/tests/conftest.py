@@ -1,9 +1,12 @@
+import logging
 import os
 import random
+import socket
 import subprocess
 import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
+from typing import Any, Dict, Generator
 
 import httpx
 import pytest
@@ -17,18 +20,24 @@ from ray._common.utils import reset_ray_address
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
+    TEST_METRICS_EXPORT_PORT,
     check_ray_started,
     check_ray_stopped,
     start_telemetry_app,
 )
-from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.context import _get_global_client
-from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
+from ray.tests.conftest import (  # noqa
+    external_redis,
+    propagate_logs,
+    pytest_runtest_makereport,
+)
+
+logger = logging.getLogger(__name__)
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
-TEST_METRICS_EXPORT_PORT = 9999
 
 TEST_GRPC_SERVICER_FUNCTIONS = [
     "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -37,6 +46,15 @@ TEST_GRPC_SERVICER_FUNCTIONS = [
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
+
+
+@pytest.fixture(autouse=True)
+def _clear_stale_ray_address():
+    # Serve CI runs several test targets per container sharing /tmp/ray; a target
+    # killed mid-run can leave a ray_current_cluster pointing at a dead cluster.
+    # Drop it before each test so an address-less ray.init() starts fresh.
+    reset_ray_address()
+    yield
 
 
 @pytest.fixture
@@ -138,12 +156,14 @@ def _shared_serve_instance():
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
+        address="local",
         num_cpus=36,
         namespace="default_test_namespace",
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(
+        proxy_location=ProxyLocation.HeadOnly,
         http_options={"host": "0.0.0.0"},
         grpc_options={
             "port": 9000,
@@ -151,6 +171,9 @@ def _shared_serve_instance():
         },
     )
     yield _get_global_client()
+    # Shutdown Serve and Ray when the session ends so that proxy actors
+    # (e.g. HAProxyManager) run their shutdown logic and stop subprocesses.
+    serve.shutdown()
 
 
 @pytest_asyncio.fixture
@@ -243,12 +266,17 @@ def ray_start_stop_in_specific_directory(request):
 
 
 @pytest.fixture
-def ray_instance(request):
+def ray_instance(
+    request: pytest.FixtureRequest,
+) -> Generator[Dict[str, Any], None, None]:
     """Starts and stops a Ray instance for this test.
 
     Args:
         request: request.param should contain a dictionary of env vars and
             their values. The Ray instance will be started with these env vars.
+
+    Yields:
+        Dict[str, Any]: The dict returned by ``ray.init`` for the started cluster.
     """
 
     original_env_vars = os.environ.copy()
@@ -260,6 +288,7 @@ def ray_instance(request):
 
     os.environ.update(requested_env_vars)
     yield ray.init(
+        address="local",
         _metrics_export_port=9999,
         _system_config={
             "metrics_report_interval_ms": 1000,
@@ -309,34 +338,133 @@ def manage_ray_with_telemetry(monkeypatch):
         wait_for_condition(check_ray_stopped, timeout=5)
 
 
+def wait_for_metrics_port_free(port=TEST_METRICS_EXPORT_PORT, timeout=30):
+    """
+    Ensures the metrics export port is freed.
+    """
+
+    def port_free():
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("", port))
+            return True
+        except OSError:
+            return False
+        finally:
+            s.close()
+
+    wait_for_condition(port_free, timeout=timeout, retry_interval_ms=200)
+
+
+def wait_for_metrics_endpoint(session_name, port=TEST_METRICS_EXPORT_PORT, timeout=30):
+    """
+    Best-effort wait for the current dashboard agent to serve the metrics
+    endpoint. The test body's own metric assertions are authoritative, so a
+    slow-to-bind agent (e.g. the previous test's agent still tearing down) must
+    not hard-fail setup: on timeout we return instead of raising.
+    """
+
+    def ready():
+        try:
+            resp = httpx.get(f"http://localhost:{port}/metrics", timeout=1.0)
+        except Exception:
+            return False
+        return resp.status_code == 200 and f'SessionName="{session_name}"' in resp.text
+
+    try:
+        wait_for_condition(ready, timeout=timeout, retry_interval_ms=500)
+    except RuntimeError:
+        logger.warning(
+            f"Metrics endpoint on :{port} did not serve session {session_name} "
+            f"within {timeout}s; proceeding (the test's own metric waits are "
+            f"authoritative)."
+        )
+
+
 @pytest.fixture
 def metrics_start_shutdown(request):
     param = request.param if hasattr(request, "param") else None
     request_timeout_s = param if param else None
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    wait_for_metrics_port_free()
     ray.init(
+        address="local",
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
             "metrics_report_interval_ms": 100,
             "task_retry_delay_ms": 50,
         },
     )
-    grpc_port = 9000
-    grpc_servicer_functions = [
-        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
-    ]
-    yield serve.start(
-        grpc_options=gRPCOptions(
-            port=grpc_port,
-            grpc_servicer_functions=grpc_servicer_functions,
-            request_timeout_s=request_timeout_s,
-        ),
-        http_options=HTTPOptions(
-            host="0.0.0.0",
-            request_timeout_s=request_timeout_s,
-        ),
+
+    try:
+        session_name = ray._private.worker._global_node.session_name
+        wait_for_metrics_endpoint(session_name)
+
+        grpc_port = 9000
+        grpc_servicer_functions = [
+            "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+            "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+        ]
+        yield serve.start(
+            grpc_options=gRPCOptions(
+                port=grpc_port,
+                grpc_servicer_functions=grpc_servicer_functions,
+                request_timeout_s=request_timeout_s,
+            ),
+            http_options=HTTPOptions(
+                host="0.0.0.0",
+                request_timeout_s=request_timeout_s,
+            ),
+        )
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+        reset_ray_address()
+
+
+# Helper function to return the node ID of a remote worker.
+@ray.remote(num_cpus=0)
+def _get_node_id():
+    return ray.get_runtime_context().get_node_id()
+
+
+# Test fixture to start a Serve instance in a RayCluster with two labeled nodes
+@pytest.fixture(scope="module")
+def serve_instance_with_labeled_nodes():
+    cluster = Cluster()
+
+    # Unlabeled default node.
+    cluster.add_node(num_cpus=3, resources={"worker0": 1})
+
+    # Node 1 - labeled A100 node in us-west.
+    cluster.add_node(
+        num_cpus=3,
+        resources={"worker1": 1},
+        labels={"region": "us-west", "gpu-type": "A100"},
     )
+
+    # Node 2 - labeled H100 node in us-east.
+    cluster.add_node(
+        num_cpus=3,
+        resources={"worker2": 1},
+        labels={"region": "us-east", "gpu-type": "H100"},
+    )
+
+    cluster.wait_for_nodes()
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    ray.init(address=cluster.address)
+
+    node_1_id = ray.get(_get_node_id.options(resources={"worker1": 1}).remote())
+    node_2_id = ray.get(_get_node_id.options(resources={"worker2": 1}).remote())
+
+    serve.start()
+
+    yield _get_global_client(), node_1_id, node_2_id, cluster
+
     serve.shutdown()
     ray.shutdown()
-    reset_ray_address()
+    cluster.shutdown()

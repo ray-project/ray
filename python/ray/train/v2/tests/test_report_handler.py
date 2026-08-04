@@ -1,12 +1,12 @@
 import random
 import unittest.mock
+from collections import deque
 from unittest.mock import MagicMock
 
 import pytest
 
 from ray.air.config import CheckpointConfig
 from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
@@ -15,6 +15,7 @@ from ray.train.v2._internal.execution.checkpoint.report_handler import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
     WorkerStatus,
@@ -32,11 +33,19 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
     """
 
     assert num_workers == num_ckpt + num_dummy + num_none
-    ckpt_tr = _TrainingResult(metrics={}, checkpoint=Checkpoint("mock://bucket/path"))
-    dummy_tr = _TrainingResult(metrics={}, checkpoint=None)
-    ckpt_ws = WorkerStatus(running=True, error=None, training_result=ckpt_tr)
-    dummy_ws = WorkerStatus(running=True, error=None, training_result=dummy_tr)
-    none_ws = WorkerStatus(running=True, error=None, training_result=None)
+    ckpt_tr = _TrainingReport(
+        metrics={},
+        checkpoint=Checkpoint("mock://bucket/path"),
+        validation=False,
+    )
+    dummy_tr = _TrainingReport(
+        metrics={},
+        checkpoint=None,
+        validation=False,
+    )
+    ckpt_ws = WorkerStatus(running=True, error=None, training_report=ckpt_tr)
+    dummy_ws = WorkerStatus(running=True, error=None, training_report=dummy_tr)
+    none_ws = WorkerStatus(running=True, error=None, training_report=None)
 
     worker_statuses = (
         [ckpt_ws] * num_ckpt + [dummy_ws] * num_dummy + [none_ws] * num_none
@@ -54,7 +63,10 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
         (10, 1, 8, 1, 0),  # one worker with checkpoint, one worker with None
     ],
 )
-def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected):
+@pytest.mark.asyncio
+async def test_report_handler(
+    tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected
+):
     """`expected` is the number of times that the
     CheckpointManager.register_checkpoint is called.
     """
@@ -83,10 +95,15 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
         num_workers, num_ckpt, num_dummy, num_none
     )
     with unittest.mock.patch.object(
-        CheckpointManager, "register_checkpoint"
+        CheckpointManager, "register_checkpoint", autospec=True
     ) as fake_register_checkpoint:
         checkpoint_handler.after_worker_group_poll_status(worker_group_status)
         assert fake_register_checkpoint.call_count == expected
+
+    checkpoint_handler.after_replica_group_start(worker_group.get_replica_groups()[0])
+    assert checkpoint_handler._training_report_queues == [
+        deque() for _ in range(num_workers)
+    ]
 
     checkpoint_handler.before_worker_group_shutdown(worker_group)
     worker_group.shutdown()

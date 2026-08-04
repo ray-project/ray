@@ -3,7 +3,7 @@ import sys
 import pytest
 
 import ray
-from ray.data.llm import SGLangEngineProcessorConfig, build_llm_processor
+from ray.data.llm import SGLangEngineProcessorConfig, build_processor
 
 
 def test_chat_template():
@@ -37,13 +37,12 @@ def test_chat_template():
         ),
         batch_size=16,
         concurrency=1,
-        apply_chat_template=True,
-        chat_template=chat_template,
-        tokenize=True,
-        detokenize=True,
+        chat_template_stage={"enabled": True, "chat_template": chat_template},
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[
@@ -89,13 +88,13 @@ def test_sglang_llama_parallel(tp_size, dp_size, concurrency):
             dtype="half",
         ),
         runtime_env=runtime_env,
-        tokenize=True,
-        detokenize=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
         batch_size=16,
         concurrency=concurrency,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         processor_config,
         preprocess=lambda row: dict(
             messages=[

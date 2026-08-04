@@ -1,17 +1,28 @@
 import json
 from typing import List, Optional, Tuple
+from unittest import mock
 from unittest.mock import patch
 
 import pytest
 
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import Timer
+from ray.exceptions import ActorUnschedulableError, GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import RequestProtocol
-from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
+from ray.serve._private.constants import (
+    PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
+    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
+)
+from ray.serve._private.proxy_state import (
+    ActorProxyWrapper,
+    ProxyState,
+    ProxyStateManager,
+    ProxyWrapper,
+)
 from ray.serve._private.test_utils import MockTimer
-from ray.serve._private.utils import Timer
-from ray.serve.config import DeploymentMode, HTTPOptions
+from ray.serve.config import HTTPOptions, ProxyLocation
 from ray.serve.schema import LoggingConfig, ProxyStatus
 
 HEAD_NODE_ID = "node_id-index-head"
@@ -88,6 +99,8 @@ def _create_proxy_state_manager(
     cluster_node_info_cache=MockClusterNodeInfoCache(),
     actor_proxy_wrapper_class=FakeProxyWrapper,
     timer=Timer(),
+    running_native_proxies: bool = False,
+    proxy_location=None,
 ) -> (ProxyStateManager, ClusterNodeInfoCache):
     return (
         ProxyStateManager(
@@ -97,6 +110,8 @@ def _create_proxy_state_manager(
             logging_config=LoggingConfig(),
             actor_proxy_wrapper_class=actor_proxy_wrapper_class,
             timer=timer,
+            running_native_proxies=running_native_proxies,
+            proxy_location=proxy_location,
         ),
         cluster_node_info_cache,
     )
@@ -157,32 +172,66 @@ def _update_and_check_proxy_state_manager(
     return True
 
 
+def test_node_selection_via_proxy_location(all_nodes):
+    # `proxy_location` is the placement authority (threaded separately from the
+    # deprecated HTTPOptions.location); covers HTTP and gRPC (single ProxyActor).
+    all_node_ids = {node_id for node_id, _, _ in all_nodes}
+
+    def mgr(**kwargs):
+        psm, cache = _create_proxy_state_manager(**kwargs)
+        cache.alive_nodes = all_nodes
+        return psm
+
+    assert (
+        mgr(proxy_location=ProxyLocation.Disabled)._get_target_nodes(all_node_ids) == []
+    )
+    assert (
+        mgr(proxy_location=ProxyLocation.HeadOnly)._get_target_nodes(all_node_ids)
+        == all_nodes[:1]
+    )
+    assert (
+        mgr(proxy_location=ProxyLocation.EveryNode)._get_target_nodes(all_node_ids)
+        == all_nodes
+    )
+
+    # Default (neither location nor proxy_location) resolves to EveryNode.
+    assert mgr()._get_target_nodes(all_node_ids) == all_nodes
+    assert mgr().get_proxy_location() == ProxyLocation.EveryNode
+
+    # Explicit (deprecated) HTTPOptions.location overrides proxy_location.
+    with pytest.warns(DeprecationWarning, match="`location` in HTTPOptions"):
+        override = HTTPOptions(location=ProxyLocation.HeadOnly)
+    psm = mgr(http_options=override, proxy_location=ProxyLocation.EveryNode)
+    assert psm._get_target_nodes(all_node_ids) == all_nodes[:1]
+    assert psm.get_proxy_location() == ProxyLocation.HeadOnly
+
+
 def test_node_selection(all_nodes):
     all_node_ids = {node_id for node_id, _, _ in all_nodes}
     # Test NoServer
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.NoServer)
+        HTTPOptions(location=ProxyLocation.Disabled)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == []
 
     # Test HeadOnly
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.HeadOnly)
+        HTTPOptions(location=ProxyLocation.HeadOnly)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == all_nodes[:1]
 
     # Test EveryNode
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes(all_node_ids) == all_nodes
 
     # Test specific nodes
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
     assert proxy_state_manager._get_target_nodes({HEAD_NODE_ID}) == [
@@ -203,7 +252,7 @@ def test_proxy_state_manager_restarts_unhealthy_proxies(all_nodes):
 
     cluster_node_info_cache.alive_nodes = all_nodes
     # First iteration, refresh state
-    proxy_state_manager.update()
+    proxy_state_manager.update(proxy_nodes={HEAD_NODE_ID})
 
     prev_proxy_state = proxy_state_manager._proxy_states[HEAD_NODE_ID]
     # Mark existing head-node proxy UNHEALTHY
@@ -212,7 +261,7 @@ def test_proxy_state_manager_restarts_unhealthy_proxies(all_nodes):
 
     # Continuously trigger update and wait for status to be changed to HEALTHY.
     for _ in range(1):
-        proxy_state_manager.update(proxy_nodes=set(HEAD_NODE_ID))
+        proxy_state_manager.update(proxy_nodes={HEAD_NODE_ID})
         # Advance timer by 5 (to perform a health-check)
         timer.advance(5)
 
@@ -402,7 +451,7 @@ def test_proxy_manager_update_proxies_states(all_nodes, number_of_worker_nodes):
     be healthy.
     """
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
@@ -415,7 +464,7 @@ def test_proxy_manager_update_proxies_states(all_nodes, number_of_worker_nodes):
     node_ids = [node_id for node_id, _, _ in all_nodes]
 
     # No target proxy nodes
-    proxy_nodes = set()
+    proxy_nodes = {HEAD_NODE_ID}
 
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn DRAINING.
@@ -498,7 +547,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     timer = MockTimer(start_time=0)
 
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode),
+        HTTPOptions(location=ProxyLocation.EveryNode),
         timer=timer,
     )
     cluster_node_info_cache.alive_nodes = all_nodes
@@ -533,7 +582,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     N = 10
     for _ in range(N):
         manager.update(
-            proxy_nodes=set(),
+            proxy_nodes={HEAD_NODE_ID},
         )
         timer.advance(5)
         # Assert that
@@ -550,7 +599,7 @@ def test_proxy_actor_manager_removing_proxies(all_nodes, number_of_worker_nodes)
     # Reconcile proxies with empty set of target nodes (worker node proxy
     # will be shutdown by now)
     manager.update(
-        proxy_nodes=set(),
+        proxy_nodes={HEAD_NODE_ID},
     )
 
     assert len(manager._proxy_states) == 1
@@ -565,7 +614,7 @@ def test_is_ready_for_shutdown(all_nodes):
     should return true.
     """
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
@@ -601,7 +650,7 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
     """
     fake_time = MockTimer()
     proxy_state_manager, cluster_node_info_cache = _create_proxy_state_manager(
-        http_options=HTTPOptions(location=DeploymentMode.EveryNode),
+        http_options=HTTPOptions(location=ProxyLocation.EveryNode),
         timer=fake_time,
     )
     cluster_node_info_cache.alive_nodes = all_nodes
@@ -666,7 +715,7 @@ def test_proxy_state_manager_timing_out_on_start(number_of_worker_nodes, all_nod
 def test_proxy_state_manager_get_targets(all_nodes):
     """Test the get_targets method on ProxyStateManager."""
     manager, cluster_node_info_cache = _create_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
+        HTTPOptions(location=ProxyLocation.EveryNode)
     )
     cluster_node_info_cache.alive_nodes = all_nodes
 
@@ -683,12 +732,286 @@ def test_proxy_state_manager_get_targets(all_nodes):
     assert targets[0].ip == "mock_node_ip"
     assert targets[0].port == 8000
     assert targets[0].instance_id == "mock_instance_id"
+    assert targets[0].name == "alice"
 
     targets = manager.get_targets(RequestProtocol.GRPC)
     assert len(targets) == 0
 
     with pytest.raises(ValueError):
         manager.get_targets("invalid_protocol")
+
+
+class TestFallbackProxy:
+    """Tests for fallback proxy lifecycle management in ProxyStateManager."""
+
+    HEAD_NODE = (HEAD_NODE_ID, "fake-head-ip", "fake-head-instance-id")
+    WORKER_NODE = ("worker-node-id-0", "fake-worker-ip-0", "fake-worker-instance-id-0")
+
+    def _create_manager_with_fallback(self, timer=None):
+        """Helper to create a ProxyStateManager with running_native_proxies=True."""
+        timer = timer or Timer()
+        cache = MockClusterNodeInfoCache()
+        cache.alive_nodes = [self.HEAD_NODE, self.WORKER_NODE]
+        manager, cluster_node_info_cache = _create_proxy_state_manager(
+            http_options=HTTPOptions(location=ProxyLocation.HeadOnly),
+            cluster_node_info_cache=cache,
+            running_native_proxies=True,
+            timer=timer,
+        )
+        return manager, cluster_node_info_cache
+
+    def test_fallback_proxy_starts_on_head_node(self):
+        """When running_native_proxies=True, a fallback proxy should be
+        started on the head node."""
+        manager, _ = self._create_manager_with_fallback()
+
+        assert manager._fallback_proxy_state is None
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        assert manager._fallback_proxy_state is not None
+        assert manager._fallback_proxy_state._node_id == HEAD_NODE_ID
+        assert manager._fallback_proxy_state._status == ProxyStatus.STARTING
+
+    def test_no_fallback_proxy_when_not_native(self):
+        """When running_native_proxies=False, no fallback proxy should be started."""
+        cache = MockClusterNodeInfoCache()
+        cache.alive_nodes = [self.HEAD_NODE]
+        manager, _ = _create_proxy_state_manager(
+            http_options=HTTPOptions(location=ProxyLocation.HeadOnly),
+            cluster_node_info_cache=cache,
+            running_native_proxies=False,
+        )
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        assert manager._fallback_proxy_state is None
+
+    def test_fallback_proxy_uses_correct_ports(self):
+        """The fallback proxy should use the fallback ports (8500/9500),
+        not the default proxy ports (8000/9000)."""
+        cache = MockClusterNodeInfoCache()
+        cache.alive_nodes = [self.HEAD_NODE, self.WORKER_NODE]
+        manager, _ = _create_proxy_state_manager(
+            http_options=HTTPOptions(location=ProxyLocation.HeadOnly),
+            cluster_node_info_cache=cache,
+            running_native_proxies=True,
+        )
+
+        with mock.patch.object(
+            manager, "_start_proxy", wraps=manager._start_proxy
+        ) as mock_start:
+            manager.update(proxy_nodes={HEAD_NODE_ID})
+
+            fallback_calls = [
+                call
+                for call in mock_start.call_args_list
+                if "fallback" in call.kwargs.get("name", "")
+            ]
+            assert len(fallback_calls) == 1
+
+            kwargs = fallback_calls[0].kwargs
+            assert kwargs["http_options"].port == RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
+            assert kwargs["grpc_options"].port == RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
+
+    def test_fallback_proxy_not_started_twice(self):
+        """Calling update multiple times should not create a second fallback proxy."""
+        manager, _ = self._create_manager_with_fallback()
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+        first_fallback = manager._fallback_proxy_state
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+        assert manager._fallback_proxy_state is first_fallback
+
+    @patch("ray.serve._private.proxy_state.PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD", 1)
+    def test_stop_unhealthy_fallback_proxy(self):
+        """When the fallback proxy becomes unhealthy, it should be stopped
+        and the restart count incremented."""
+        manager, _ = self._create_manager_with_fallback()
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+        assert manager._fallback_proxy_state is not None
+        assert manager._fallback_proxy_restart_count == 0
+
+        manager._fallback_proxy_state._set_status(ProxyStatus.UNHEALTHY)
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        # Unhealthy fallback proxy should be stopped and cleared
+        # A new one should be started in the same update cycle
+        assert manager._fallback_proxy_restart_count == 1
+        assert manager._fallback_proxy_state is not None
+        assert manager._fallback_proxy_state.status == ProxyStatus.STARTING
+
+    def test_stop_drained_fallback_proxy(self):
+        """When the fallback proxy enters DRAINED status, it should be removed."""
+        manager, _ = self._create_manager_with_fallback()
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+        assert manager._fallback_proxy_state is not None
+
+        manager._fallback_proxy_state._set_status(ProxyStatus.DRAINED)
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        # Drained fallback proxy is stopped, then a new one is started
+        assert manager._fallback_proxy_restart_count == 1
+        assert manager._fallback_proxy_state is not None
+        assert manager._fallback_proxy_state.status == ProxyStatus.STARTING
+
+    def test_fallback_proxy_included_in_handles(self):
+        """get_proxy_handles() should include the fallback proxy."""
+        manager, _ = self._create_manager_with_fallback()
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        handles = manager.get_proxy_handles()
+        assert f"fallback-{HEAD_NODE_ID}" in handles
+        assert (
+            handles[f"fallback-{HEAD_NODE_ID}"]
+            is manager._fallback_proxy_state.actor_handle
+        )
+
+    def test_fallback_proxy_included_in_names(self):
+        """get_proxy_names() should include the fallback proxy."""
+        manager, _ = self._create_manager_with_fallback()
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        names = manager.get_proxy_names()
+        assert f"fallback-{HEAD_NODE_ID}" in names
+        assert (
+            names[f"fallback-{HEAD_NODE_ID}"]
+            == manager._fallback_proxy_state.actor_name
+        )
+
+    def test_fallback_proxy_included_in_alive_actor_ids(self):
+        """get_alive_proxy_actor_ids() should include the fallback proxy's actor ID."""
+        manager, _ = self._create_manager_with_fallback()
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        actor_ids = manager.get_alive_proxy_actor_ids()
+        assert manager._fallback_proxy_state.actor_id in actor_ids
+
+    def test_fallback_proxy_blocks_shutdown_readiness(self):
+        """is_ready_for_shutdown() should return False until the fallback
+        proxy is also shut down."""
+        manager, _ = self._create_manager_with_fallback()
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        # Shut down regular proxies but not the fallback
+        for proxy_state in manager._proxy_states.values():
+            proxy_state.shutdown()
+            proxy_state._actor_proxy_wrapper.shutdown = True
+
+        # Fallback proxy is still alive, so not ready for shutdown
+        assert not manager.is_ready_for_shutdown()
+
+        # Now shut down the fallback proxy
+        manager._fallback_proxy_state.shutdown()
+        manager._fallback_proxy_state._actor_proxy_wrapper.shutdown = True
+
+        assert manager.is_ready_for_shutdown()
+
+    def test_shutdown_includes_fallback_proxy(self):
+        """shutdown() should also shut down the fallback proxy."""
+        manager, _ = self._create_manager_with_fallback()
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+        assert manager._fallback_proxy_state is not None
+
+        fallback_wrapper = manager._fallback_proxy_state._actor_proxy_wrapper
+
+        manager.shutdown()
+
+        assert manager._fallback_proxy_state._shutting_down
+        assert fallback_wrapper.shutdown is True
+
+    def test_fallback_proxy_reconciled_during_update(self):
+        """The fallback proxy should be reconciled (health checked) during each
+        update cycle."""
+        timer = MockTimer()
+        manager, _ = self._create_manager_with_fallback(timer=timer)
+
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+
+        # Make fallback proxy ready
+        manager._fallback_proxy_state._actor_proxy_wrapper.is_ready_response = True
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+        assert manager._fallback_proxy_state.status == ProxyStatus.HEALTHY
+
+        # Set health check to pass and verify it runs
+        manager._fallback_proxy_state._actor_proxy_wrapper.is_healthy_response = True
+        timer.advance(5)
+        manager.update(proxy_nodes={HEAD_NODE_ID})
+        assert manager._fallback_proxy_state.status == ProxyStatus.HEALTHY
+        assert manager._fallback_proxy_state._actor_proxy_wrapper.num_health_checks > 0
+
+    def test_get_fallback_proxy_targets(self):
+        """get_fallback_proxy_targets() should return the fallback proxy targets
+        when the fallback proxy is set and healthy."""
+        manager, _ = self._create_manager_with_fallback()
+
+        # The fallback proxy is not set.
+        targets = manager.get_fallback_proxy_targets()
+        assert len(targets) == 0
+
+        # The fallback proxy is not healthy.
+        state = _create_proxy_state()
+        manager._fallback_proxy_state = state
+        targets = manager.get_fallback_proxy_targets()
+        assert len(targets) == 0
+
+        # The fallback proxy is healthy.
+        state.try_update_status(ProxyStatus.HEALTHY)
+        targets = manager.get_fallback_proxy_targets()
+        assert len(targets) == 1
+
+        target = targets[RequestProtocol.HTTP]
+        assert target.ip == state.actor_details.node_ip
+        assert target.port == 8500
+        assert target.instance_id == state.actor_details.node_instance_id
+        assert target.name == state.actor_name
+
+
+class TestActorProxyWrapperIsShutdown:
+    """`is_shutdown` must treat a dead or permanently unschedulable proxy actor
+    as ready for shutdown. Otherwise the exception propagates out of
+    `is_shutdown` -> `kill` -> `ProxyState.shutdown` -> the controller's proxy
+    update loop, which then never reaches `_start_proxies_if_needed` and leaves
+    `proxies: {}` (external traffic 503)."""
+
+    def _make_wrapper(self) -> ActorProxyWrapper:
+        return ActorProxyWrapper(
+            logging_config=LoggingConfig(), actor_handle=mock.MagicMock()
+        )
+
+    def test_returns_true_when_actor_unschedulable(self):
+        # Proxy hard-pinned to a node that no longer exists.
+        wrapper = self._make_wrapper()
+        with patch(
+            "ray.get", side_effect=ActorUnschedulableError("node does not exist")
+        ):
+            assert wrapper.is_shutdown() is True
+
+    def test_returns_true_when_actor_dead(self):
+        wrapper = self._make_wrapper()
+        with patch("ray.get", side_effect=RayActorError()):
+            assert wrapper.is_shutdown() is True
+
+    def test_returns_false_when_health_check_pending(self):
+        # Live proxy whose health check has not returned yet (timeout=0).
+        wrapper = self._make_wrapper()
+        with patch("ray.get", side_effect=GetTimeoutError()):
+            assert wrapper.is_shutdown() is False
+
+    def test_returns_false_when_actor_alive(self):
+        wrapper = self._make_wrapper()
+        with patch("ray.get", return_value=None):
+            assert wrapper.is_shutdown() is False
 
 
 if __name__ == "__main__":

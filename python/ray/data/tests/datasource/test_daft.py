@@ -1,0 +1,59 @@
+import numpy as np
+import pandas as pd
+import pytest
+
+
+@pytest.fixture(scope="module")
+def ray_start(request):
+    """Initialize Ray for Daft tests."""
+    import ray
+
+    try:
+        yield ray.init(
+            num_cpus=16,
+        )
+    finally:
+        ray.shutdown()
+
+
+def test_daft_round_trip(ray_start):
+    import daft
+
+    import ray
+
+    data = {
+        "int_col": list(range(128)),
+        "str_col": [str(i) for i in range(128)],
+        "nested_list_col": [[i] * 3 for i in range(128)],
+        "tensor_col": [np.array([[i] * 3] * 3) for i in range(128)],
+    }
+    df = daft.from_pydict(data)
+    ds = ray.data.from_daft(df)
+
+    # Ray stores data in Arrow format, so to_pandas() returns Arrow-backed
+    # dtypes (e.g. int64[pyarrow]) while Daft may return numpy dtypes.
+    # Compare values only, not dtypes.
+    pd.testing.assert_frame_equal(ds.to_pandas(), df.to_pandas(), check_dtype=False)
+
+    df2 = ds.to_daft()
+    df_pandas = df.to_pandas()
+    df2_pandas = df2.to_pandas()
+
+    for c in data.keys():
+        # NOTE: tensor behavior on round-trip is different because Ray Data provides
+        # Daft with more information about a column being a fixed-shape-tensor.
+        #
+        # Hence the Pandas representation of `df1` is "just" an object column, but
+        # `df2` knows that this is actually a numpy fixed shaped tensor column
+        if c == "tensor_col":
+            original = np.array(list(df_pandas[c]))
+            roundtripped = np.array(list(df2_pandas[c]))
+            np.testing.assert_array_equal(original, roundtripped)
+        else:
+            pd.testing.assert_series_equal(df_pandas[c], df2_pandas[c])
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

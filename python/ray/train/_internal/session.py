@@ -20,8 +20,7 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TIMESTAMP,
 )
-from ray.data import Dataset
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import (
@@ -46,7 +45,7 @@ from ray.util.scheduling_strategies import (
 )
 
 if TYPE_CHECKING:
-    from ray.data import DataIterator
+    from ray.data import DataIterator, Dataset
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
@@ -122,7 +121,7 @@ class _TrainSession:
         local_world_size: Optional[int],
         world_size: Optional[int],
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Dict[str, Dataset]] = None,
+        dataset_shard: Optional[Dict[str, "Dataset"]] = None,
         metadata: Dict[str, Any] = None,
         checkpoint: Optional[Checkpoint] = None,
         detailed_autofilled_metrics: bool = False,
@@ -634,6 +633,13 @@ def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     If an accelerator has not been set, then this method will construct an
     accelerator using the provided accelerator class.
 
+    Args:
+        default_accelerator_cls: The accelerator class to instantiate if no
+            accelerator has been set yet for this session.
+
+    Returns:
+        The accelerator associated with this training session.
+
     Raises:
         SessionMisuseError: if the session is uninitialized.
     """
@@ -774,6 +780,9 @@ def report(
     Args:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
+        checkpoint_dir_name: Optional custom name for the checkpoint directory.
+            Only supported in the new Ray Train implementation (Train V2);
+            ignored otherwise.
     """
     if checkpoint_dir_name is not None:
         logger.warning(
@@ -1079,6 +1088,9 @@ def get_local_world_size() -> int:
             :hide:
 
             ...
+
+    Returns:
+        The number of workers running on this node.
     """
     session = get_session()
     if not hasattr(session, "local_world_size"):
@@ -1118,6 +1130,9 @@ def get_node_rank() -> int:
             :hide:
 
             ...
+
+    Returns:
+        The rank of this node within the cluster.
     """
     session = get_session()
     if not hasattr(session, "node_rank"):
@@ -1197,3 +1212,8 @@ def get_storage() -> StorageContext:
     without notice between minor versions.
     """
     return get_session().storage
+
+
+def _in_ray_train_worker() -> bool:
+    """Check if the current process is a Ray Train V1 worker."""
+    return bool(get_session()) and get_session().world_rank is not None

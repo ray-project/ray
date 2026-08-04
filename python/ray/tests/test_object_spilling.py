@@ -1,34 +1,34 @@
 import copy
 import json
+import os
 import platform
 import random
 import sys
 from datetime import datetime, timedelta
-from unittest.mock import patch
 from pathlib import Path
-import os
+from unittest.mock import patch
 
-import psutil
 import numpy as np
 import pytest
 
-
 import ray
+import ray.remote_function
+from ray._common.test_utils import wait_for_condition
 from ray._private.external_storage import (
+    ExternalStorageSmartOpenImpl,
+    FileSystemStorage,
+    _get_unique_spill_filename,
     create_url_with_offset,
     parse_url_with_offset,
-    _get_unique_spill_filename,
-    FileSystemStorage,
-    ExternalStorageSmartOpenImpl,
 )
 from ray._private.internal_api import memory_summary
-from ray._common.test_utils import wait_for_condition
-import ray.remote_function
 from ray.tests.conftest import (
     buffer_object_spilling_config,
     file_system_object_spilling_config,
     mock_distributed_fs_object_spilling_config,
 )
+
+import psutil
 
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.
@@ -157,7 +157,7 @@ def test_default_config(shutdown_only):
     )
     ray.shutdown()
 
-    # Make sure config is not initalized if spilling is not enabled..
+    # Make sure config is not initialized if spilling is not enabled..
     ray.init(
         num_cpus=0,
         object_store_memory=75 * 1024 * 1024,
@@ -222,6 +222,54 @@ def test_default_config_cluster(ray_start_cluster_enabled):
         ray.get(ray.put(arr))
 
     ray.get([task.remote() for _ in range(2)])
+
+
+def test_default_config_cluster_with_different_temp_dir(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    nodes = []
+    nodes.append(
+        cluster.add_node(
+            num_cpus=1,
+            object_store_memory=75 * 1024 * 1024,
+            temp_dir="/tmp/spill_dir_0",
+        )
+    )
+    nodes.append(
+        cluster.add_node(
+            num_cpus=1,
+            object_store_memory=75 * 1024 * 1024,
+            temp_dir="/tmp/spill_dir_1",
+        )
+    )
+    ray.init(cluster.address)
+    cluster.wait_for_nodes()
+
+    # Make sure the spill directory is empty before running `the workload.
+    for node in nodes:
+        assert is_dir_empty(Path(node._session_dir), node.node_id)
+
+    # Run spilling workload on both nodes
+    @ray.remote
+    def task():
+        arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+        refs = []
+        refs.append([ray.put(arr) for _ in range(2)])
+        return refs
+
+    tasks = [
+        task.options(label_selector={"ray.io/node-id": node.node_id}).remote()
+        for node in nodes
+    ]
+    res = ray.get(tasks)
+    # Make sure the spill directory is not empty
+    for node in nodes:
+        wait_for_condition(
+            lambda node=node: not is_dir_empty(Path(node._session_dir), node.node_id)
+        )
+
+    # We hold the object refs until the end to prevent them from being deleted
+    # due to out of scope.
+    del res
 
 
 def test_custom_spill_dir_env_var(shutdown_only):

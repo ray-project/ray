@@ -33,8 +33,7 @@ If you need to inspect logs after the clusters stop, you need to store and persi
 (logging-directory-structure)=
 ## Log files in logging directory
 
-Below are the log files in the logging directory. Broadly speaking, two types of log files exist: system log files and application log files.
-Note that ``.out`` logs are from stdout/stderr and ``.err`` logs are from stderr. Ray doesn't guarantee the backward compatibility of log directories.
+Below are the log files in the logging directory. Broadly speaking, two types of log files exist: system log files and application log files. Note that ``.out`` logs are from stdout/stderr and ``.err`` logs are from stderr. Ray doesn't guarantee the backward compatibility of log directories.
 
 :::{note}
 System logs may include information about your applications. For example, ``runtime_env_setup-[job_id].log`` may include information about your application's environment and dependency.
@@ -46,20 +45,16 @@ System logs may include information about your applications. For example, ``runt
 
 ### System/component logs
 - ``dashboard.[log|out|err]``: A log file of a Ray Dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard respectively. They're usually empty except when the dashboard crashes unexpectedly.
-- ``dashboard_agent.[log|out|err]``: Every Ray node has one dashboard agent. ``.log`` files
-contain logs generated from the dashboard agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard agent respectively. They're usually empty except when the dashboard agent crashes unexpectedly.
+- ``dashboard_agent.[log|out|err]``: Every Ray node has one dashboard agent. ``.log`` files contain logs generated from the dashboard agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the dashboard agent respectively. They're usually empty except when the dashboard agent crashes unexpectedly.
 - ``dashboard_[module_name].[log|out|err]``: The log files for the Ray Dashboard child processes, one per each module. ``.log`` files contain logs generated from the module's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the module respectively. They're usually empty except when the module crashes unexpectedly.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
 - ``log_monitor.[log|out|err]``: The log monitor is in charge of streaming logs to the driver. ``.log`` files contain logs generated from the log monitor's logger. ``.out`` and ``.err`` files contain the stdout and stderr printed from the log monitor respectively. They're usually empty except when the log monitor crashes unexpectedly.
-- ``monitor.[log|out|err]``: Log files of the Autoscaler. ``.log`` files contain logs generated from the autoscaler's logger. ``.out`` and ``.err`` files contain stdout and stderr
-printed from the autoscaler respectively. They're usually empty except when the autoscaler crashes unexpectedly.
+- ``monitor.[log|out|err]``: Log files of the Autoscaler. ``.log`` files contain logs generated from the autoscaler's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the autoscaler respectively. They're usually empty except when the autoscaler crashes unexpectedly.
 - ``python-core-driver-[worker_id]_[pid].log``: Ray drivers consist of C++ core and a Python or Java frontend. C++ code generates this log file.
 - ``python-core-worker-[worker_id]_[pid].log``: Ray workers consist of C++ core and a Python or Java frontend. C++ code generates this log file.
 - ``raylet.[out|err]``: A log file of raylets.
-- ``runtime_env_agent.[log|out|err]``: Every Ray node has one agent that manages {ref}`Runtime Environment <runtime-environments>` creation, deletion, and caching.
-  ``.log`` files contain logs generated from the runtime env agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the runtime env agent respectively. They're usually empty except when the runtime env agent crashes unexpectedly.
- The logs of the actual installations for ``pip install`` logs are in the following ``runtime_env_setup-[job_id].log`` file.
+- ``runtime_env_agent.[log|out|err]``: Every Ray node has one agent that manages {ref}`Runtime Environment <runtime-environments>` creation, deletion, and caching. ``.log`` files contain logs generated from the runtime env agent's logger. ``.out`` and ``.err`` files contain stdout and stderr printed from the runtime env agent respectively. They're usually empty except when the runtime env agent crashes unexpectedly. The logs of the actual installations for ``pip install`` logs are in the following ``runtime_env_setup-[job_id].log`` file.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
 - ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor, or Job. This file is only present if you install a runtime environment.
 
@@ -93,11 +88,8 @@ The resulting output follows:
 ```
 
 ### Coloring Actor log prefixes
-By default, Ray prints Actor log prefixes in light blue.
-Turn color logging off by setting the environment variable ``RAY_COLOR_PREFIX=0``
-- for example, when outputting logs to a file or other location that doesn't support ANSI codes.
-Or activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``;
-this indexes into an array of colors modulo the PID of each process.
+By default, Ray prints Actor log prefixes in light blue. Turn color logging off by setting the environment variable ``RAY_COLOR_PREFIX=0``
+- for example, when outputting logs to a file or other location that doesn't support ANSI codes. Or activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``; this indexes into an array of colors modulo the PID of each process.
 
 ![coloring-actor-log-prefixes](../images/coloring-actor-log-prefixes.png)
 
@@ -207,8 +199,7 @@ Limitations:
 - Ray only supports a subset of tqdm features. Refer to the ray_tqdm [implementation](https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py) for more details.
 - Performance may be poor if there are more than a couple thousand updates per second because Ray doesn't batch updates.
 
-By default, the built-in print is also patched to use `ray.experimental.tqdm_ray.safe_print` when you use `tqdm_ray`.
-This avoids progress bar corruption on driver print statements. To turn off this, set `RAY_TQDM_PATCH_PRINT=0`.
+By default, the built-in print is also patched to use `ray.experimental.tqdm_ray.safe_print` when you use `tqdm_ray`. This avoids progress bar corruption on driver print statements. To turn off this, set `RAY_TQDM_PATCH_PRINT=0`.
 
 
 ## Using Ray's logger
@@ -243,8 +234,7 @@ ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 ```
 
 ### Using Ray logger for application logs
-A Ray app includes both driver and worker processes. For Python apps, use Python loggers to format your logs.
-As a result, you need to set up Python loggers for both driver and worker processes.
+A Ray app includes both driver and worker processes. For Python apps, use Python loggers to format your logs. As a result, you need to set up Python loggers for both driver and worker processes.
 
 ::::{tab-set}
 
@@ -369,18 +359,11 @@ ray.init(
 
 You can configure the following parameters:
 
-* `encoding`: The encoding format for the logs. The default is `TEXT` for plain text logs.
-The other option is `JSON` for structured logs.
-In both `TEXT` and `JSON` encoding formats, the logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, `actor_name`, `task_id`, `task_name` and `task_function_name`, if available.
+* `encoding`: The encoding format for the logs. The default is `TEXT` for plain text logs. The other option is `JSON` for structured logs. In both `TEXT` and `JSON` encoding formats, the logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, `actor_name`, `task_id`, `task_name` and `task_function_name`, if available.
 
-* `log_level`: The log level for the driver process. The default is `INFO`.
-Available log levels are defined in the [Python logging library](https://docs.python.org/3/library/logging.html#logging-levels).
+* `log_level`: The log level for the driver process. The default is `INFO`. Available log levels are defined in the [Python logging library](https://docs.python.org/3/library/logging.html#logging-levels).
 
-* `additional_log_standard_attrs`: Since Ray version 2.43. A list of additional
-standard Python logger attributes to include in the log record. The default is an empty
-list. The list of already included standard attributes are: `asctime`, `levelname`,
-`message`, `filename`, `lineno`, `exc_text`. The list of all valid attributes are
-specified in the [Python logging library](http://docs.python.org/library/logging.html#logrecord-attributes).
+* `additional_log_standard_attrs`: Since Ray version 2.43. A list of additional standard Python logger attributes to include in the log record. The default is an empty list. The list of already included standard attributes are: `asctime`, `levelname`, `message`, `filename`, `lineno`, `exc_text`. The list of all valid attributes are specified in the [Python logging library](http://docs.python.org/library/logging.html#logrecord-attributes).
 
 When you set up `logging_config` in `ray.init`, it configures the root loggers for the driver process, Ray actors, and Ray tasks.
 
@@ -392,8 +375,7 @@ not JSON parsable.
 
 ##### Method 2: Configure structured logging with an environment variable
 
-You can set the `RAY_LOGGING_CONFIG_ENCODING` environment variable to `TEXT` or `JSON` to set the encoding format for the logs.
-Note that you need to set the environment variables before `import ray`.
+You can set the `RAY_LOGGING_CONFIG_ENCODING` environment variable to `TEXT` or `JSON` to set the encoding format for the logs. Note that you need to set the environment variables before `import ray`.
 
 ```python
 import os
@@ -407,9 +389,7 @@ ray.init(log_to_driver=False)
 ```
 #### Example
 
-The following example configures the `LoggingConfig` to output logs in a structured JSON format and sets the log level to `INFO`.
-It then logs messages with the root loggers in the driver process, Ray tasks, and Ray actors.
-The logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, `actor_name`, `task_id`, `task_name` and `task_function_name` when applicable.
+The following example configures the `LoggingConfig` to output logs in a structured JSON format and sets the log level to `INFO`. It then logs messages with the root loggers in the driver process, Ray tasks, and Ray actors. The logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, `actor_name`, `task_id`, `task_name` and `task_function_name` when applicable.
 
 ```python
 import ray
@@ -560,7 +540,7 @@ Example: <br />
 2023-06-01 09:15:34,601	INFO job_manager.py:408 -- Submitting job with RAY_ADDRESS = 10.0.24.73:6379
 ```
 
-Logging format for c++ logs <br />
+Logging format for C++ logs <br />
 
 ```bash
 [year-month-day, time, pid, thread_id] (component) [file]:[line] [message]
@@ -572,6 +552,30 @@ Example: <br />
 [2023-06-01 08:47:47,457 I 31009 225171] (gcs_server) gcs_node_manager.cc:42: Registering node info, node id = 8cc65840f0a332f4f2d59c9814416db9c36f04ac1a29ac816ad8ca1e, address = 127.0.0.1, node name = 127.0.0.1
 ```
 
+#### Enabling JSON format for system logs
+
+To output Ray's backend system logs in JSON format, set the ``RAY_BACKEND_LOG_JSON`` environment variable to ``1`` before starting Ray:
+
+```bash
+RAY_BACKEND_LOG_JSON=1 ray start --head
+```
+
+When enabled, the Job Supervisor Python logs output in the following JSON format:
+
+```json
+{"asctime": "2025-12-15 20:10:32,189", "levelname": "INFO", "message": "Submitting job with RAY_ADDRESS = 10.36.3.9:6379", "filename": "job_supervisor.py", "lineno": 365, "process": 1097, "job_id": "01000000", "worker_id": "f139ea85d60ab346eeb3d6fd4d80b4a39c877b44d035317ad36e558a", "node_id": "dcc7396b4fbd2c10740cbe9fe2c36acb9e560c45d770b2611b365629", "actor_id": "0aeeebe01a4be2a1ede54cb401000000", "task_id": "16310a0f0a45af5c0aeeebe01a4be2a1ede54cb401000000", "task_name": "JobSupervisor.run", "task_func_name": "ray.dashboard.modules.job.job_supervisor.JobSupervisor.run", "actor_name": "_ray_internal_job_actor_raysubmit_RKxecNZCNp4SET5g", "timestamp_ns": 1765858232189259719}
+```
+
+:::{note}
+Currently, only the Job Supervisor supports JSON format for Python system logs when ``RAY_BACKEND_LOG_JSON=1`` is set. Other Python system components such as the Dashboard, Dashboard Agent, Log Monitor, and Autoscaler Monitor do not yet support JSON format and continue to use the standard text format.
+:::
+
+C++ system logs (such as Raylet, GCS) output in the following JSON format:
+
+```json
+{"asctime":"2025-12-15 20:10:32,778","levelname":"I","message":"Initializing worker at address: 10.36.3.9:10006","filename":"core_worker_process.cc","lineno":261,"worker_id":"02000000ffffffffffffffffffffffffffffffffffffffffffffffff","node_id":"dcc7396b4fbd2c10740cbe9fe2c36acb9e560c45d770b2611b365629"}
+```
+
 :::{note}
 Some system component logs aren't structured as suggested preceding as of 2.5. The migration of system logs to structured logs is ongoing.
 :::
@@ -581,8 +585,7 @@ Some system component logs aren't structured as suggested preceding as of 2.5. T
 
 Ray supports log rotation of log files. Note that not all components support log rotation. (Raylet, Python, and Java worker logs don't rotate).
 
-By default, logs rotate when they reach 512 MB (maxBytes), and have a maximum of five backup files (backupCount). Ray appends indexes to all backup files - for example, `raylet.out.1`.
-To change the log rotation configuration, specify environment variables. For example,
+By default, logs rotate when they reach 512 MB (maxBytes), and have a maximum of five backup files (backupCount). Ray appends indexes to all backup files - for example, `raylet.out.1`. To change the log rotation configuration, specify environment variables. For example,
 
 ```bash
 RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
@@ -594,4 +597,4 @@ The max size of a log file, including its backup, is `RAY_ROTATION_MAX_BYTES * R
 
 ## Log persistence
 
-To process and export logs to external storage or management systems, view {ref}`log persistence on Kubernetes <persist-kuberay-custom-resource-logs>` see {ref}`log persistence on VMs <vm-logging>` for more details.
+To process and export logs to external storage or management systems, see {ref}`log persistence on Kubernetes <persist-kuberay-custom-resource-logs>` and {ref}`log persistence on VMs <vm-logging>` for more details.

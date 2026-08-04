@@ -1,25 +1,24 @@
 import copy
-from unittest import mock
 import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import List, Set
+from unittest import mock
 
 import jsonpatch
 import pytest
+import yaml
 
-from collections import defaultdict
-from ray.autoscaler.batching_node_provider import NodeData
 from ray.autoscaler._private.kuberay.node_provider import (
+    KubeRayNodeProvider,
+    ScaleRequest,
     _worker_group_index,
     _worker_group_max_replicas,
     _worker_group_replicas,
-    KubeRayNodeProvider,
-    ScaleRequest,
 )
 from ray.autoscaler._private.util import NodeID
-from pathlib import Path
-import yaml
-
+from ray.autoscaler.batching_node_provider import NodeData
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
-from typing import Set, List
 
 
 def _get_basic_ray_cr_workers_to_delete(
@@ -92,7 +91,7 @@ def test_worker_group_replicas(group_index, expected_max_replicas, expected_repl
     [(200, 200), (250, 250), (300, 300), (400, 300), (1000, 300)],
 )
 def test_create_node_cap_at_max(
-    attempted_target_replica_count, expected_target_replica_count
+    attempted_target_replica_count: int, expected_target_replica_count: int
 ):
     """Validates that KubeRayNodeProvider does not attempt to create more nodes than
     allowed by maxReplicas. For the config in this test, maxReplicas is fixed at 300.

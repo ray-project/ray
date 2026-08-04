@@ -15,10 +15,12 @@
 #include "ray/raylet/worker.h"
 
 #include <boost/bind/bind.hpp>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -31,14 +33,13 @@ namespace raylet {
 Worker::Worker(const JobID &job_id,
                int runtime_env_hash,
                const WorkerID &worker_id,
-               const Language &language,
+               const rpc::Language &language,
                rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager,
-               StartupToken startup_token)
+               ClockInterface &clock)
     : worker_id_(worker_id),
-      startup_token_(startup_token),
       language_(language),
       worker_type_(worker_type),
       ip_address_(ip_address),
@@ -50,7 +51,8 @@ Worker::Worker(const JobID &job_id,
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       killing_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager) {}
+      client_call_manager_(client_call_manager),
+      clock_(clock) {}
 
 rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
@@ -68,14 +70,14 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
   }
   const auto worker = shared_from_this();
   if (force) {
-    worker->GetProcess().Kill();
+    proc_->Kill();
     return;
   }
 #ifdef _WIN32
   // TODO(mehrdadn): implement graceful process termination mechanism
 #else
   // Attempt to gracefully shutdown the worker before force killing it.
-  kill(worker->GetProcess().GetId(), SIGTERM);
+  kill(proc_->GetId(), SIGTERM);
 #endif
 
   auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service);
@@ -86,8 +88,8 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
       [timeout, retry_timer, worker](const boost::system::error_code &error) {
 #ifdef _WIN32
 #else
-        if (worker->GetProcess().IsAlive()) {
-          RAY_LOG(INFO) << "Worker with PID=" << worker->GetProcess().GetId()
+        if (worker->proc_->IsAlive()) {
+          RAY_LOG(INFO) << "Worker with PID=" << worker->proc_->GetId()
                         << " did not exit after " << timeout
                         << "ms, force killing with SIGKILL.";
         } else {
@@ -95,7 +97,7 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
         }
 #endif
         // Force kill worker
-        worker->GetProcess().Kill();
+        worker->proc_->Kill();
       });
 }
 
@@ -107,22 +109,24 @@ bool Worker::IsBlocked() const { return blocked_; }
 
 WorkerID Worker::WorkerId() const { return worker_id_; }
 
-Process Worker::GetProcess() const { return proc_; }
+const ProcessInterface &Worker::GetProcess() const { return *proc_; }
 
-StartupToken Worker::GetStartupToken() const { return startup_token_; }
-
-void Worker::SetProcess(Process proc) {
-  RAY_CHECK(proc_.IsNull());  // this procedure should not be called multiple times
+void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
+  RAY_CHECK(proc != nullptr) << absl::StrFormat(
+      "Failed to set process for worker: %s because the process is null. "
+      "Was the process spawned successfully?",
+      worker_id_.Hex());
+  RAY_CHECK(proc_ == nullptr || proc_->IsNull()) << absl::StrFormat(
+      "Failed to set process: %d on worker: %s because it already has a process: %d",
+      proc->GetId(),
+      worker_id_.Hex(),
+      proc_->GetId());
   proc_ = std::move(proc);
 }
 
-void Worker::SetStartupToken(StartupToken startup_token) {
-  startup_token_ = startup_token;
-}
+rpc::Language Worker::GetLanguage() const { return language_; }
 
-Language Worker::GetLanguage() const { return language_; }
-
-const std::string Worker::IpAddress() const { return ip_address_; }
+std::string Worker::IpAddress() const { return ip_address_; }
 
 int Worker::Port() const {
   // NOTE(kfstorm): Since `RayletClient::AnnounceWorkerPort` is an asynchronous
@@ -173,14 +177,19 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
-void Worker::AssignTaskId(const TaskID &task_id) {
-  assigned_task_id_ = task_id;
-  if (!task_id.IsNil()) {
-    task_assign_time_ = absl::Now();
-  }
-}
+std::optional<pid_t> Worker::GetSavedProcessGroupId() const { return saved_pgid_; }
 
-const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
+void Worker::SetSavedProcessGroupId(pid_t pgid) { saved_pgid_ = pgid; }
+
+void Worker::GrantLeaseId(const LeaseID &lease_id) {
+  lease_id_ = lease_id;
+  if (!lease_id.IsNil()) {
+    RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
+    last_lease_grant_time_ = clock_.Now();
+  }
+};
+
+const LeaseID &Worker::GetGrantedLeaseId() const { return lease_id_; }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
@@ -199,18 +208,18 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
-const std::string Worker::GetTaskOrActorIdAsDebugString() const {
+const std::string Worker::GetLeaseIdAsDebugString() const {
   std::stringstream id_ss;
   if (GetActorId().IsNil()) {
-    id_ss << "task ID: " << GetAssignedTaskId();
-  } else {
     id_ss << "actor ID: " << GetActorId();
   }
+  id_ss << "lease ID: " << GetGrantedLeaseId();
   return id_ss.str();
 }
 
 bool Worker::IsDetachedActor() const {
-  return assigned_task_.GetTaskSpecification().IsDetachedActor();
+  RAY_CHECK(granted_lease_.has_value());
+  return granted_lease_->GetLeaseSpecification().IsDetachedActor();
 }
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }
@@ -218,10 +227,11 @@ const std::shared_ptr<ClientConnection> Worker::Connection() const { return conn
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
 
-void Worker::ActorCallArgWaitComplete(int64_t tag) {
+void Worker::ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) {
   RAY_CHECK(port_ > 0);
   rpc::ActorCallArgWaitCompleteRequest request;
-  request.set_tag(tag);
+  request.set_task_id(task_id.Binary());
+  request.set_attempt_number(attempt_number);
   request.set_intended_worker_id(worker_id_.Binary());
   rpc_client_->ActorCallArgWaitComplete(
       request, [](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {

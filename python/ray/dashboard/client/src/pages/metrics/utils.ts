@@ -17,6 +17,7 @@ type GrafanaHealthcheckRsp = {
   data: {
     grafanaHost: string;
     grafanaOrgId: string;
+    grafanaClusterFilter: string | undefined;
     sessionName: string;
     dashboardUids: DashboardUids;
     dashboardDatasource: string;
@@ -44,6 +45,7 @@ const fetchPrometheusHealthcheck = async () => {
 type MetricsInfo = {
   grafanaHost?: string;
   grafanaOrgId: string;
+  grafanaClusterFilter: string | undefined;
   sessionName?: string;
   prometheusHealth?: boolean;
   dashboardUids?: DashboardUids;
@@ -54,6 +56,7 @@ export const getMetricsInfo = async () => {
   const info: MetricsInfo = {
     grafanaHost: undefined,
     grafanaOrgId: "1",
+    grafanaClusterFilter: undefined,
     sessionName: undefined,
     prometheusHealth: undefined,
     dashboardUids: undefined,
@@ -64,6 +67,7 @@ export const getMetricsInfo = async () => {
     if (resp.data.result) {
       info.grafanaHost = resp.data.data.grafanaHost;
       info.grafanaOrgId = resp.data.data.grafanaOrgId;
+      info.grafanaClusterFilter = resp.data.data.grafanaClusterFilter;
       info.sessionName = resp.data.data.sessionName;
       info.dashboardUids = resp.data.data.dashboardUids;
       info.dashboardDatasource = resp.data.data.dashboardDatasource;
@@ -96,3 +100,21 @@ export const getTimeZoneInfo = async () => {
   } catch (e) {}
   return null;
 };
+
+/**
+ * Query fragment for Grafana's `Cluster` template variable (multi-cluster / Thanos setups).
+ */
+export const grafanaClusterQueryParam = (
+  grafanaClusterFilter: string | undefined,
+): string =>
+  grafanaClusterFilter
+    ? `&var-Cluster=${encodeURIComponent(grafanaClusterFilter)}`
+    : "";
+
+/**
+ * Query fragment for Grafana's `datasource` template variable. Names may include spaces
+ * or parentheses (e.g. `Prometheus (Prod)`), so the value must be URL-encoded.
+ */
+export const grafanaDatasourceQueryParam = (
+  dashboardDatasource: string | undefined,
+): string => `&var-datasource=${encodeURIComponent(dashboardDatasource ?? "")}`;

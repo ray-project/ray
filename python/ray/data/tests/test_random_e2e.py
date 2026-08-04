@@ -130,7 +130,10 @@ def test_random_shuffle(
     assert r1 != r2, (r1, r2)
 
     assert (
-        ray.data.range(100).random_shuffle().repartition(1)._plan.initial_num_blocks()
+        ray.data.range(100)
+        .random_shuffle()
+        .repartition(1)
+        ._logical_plan.initial_num_blocks()
         == 1
     )
     r1 = ray.data.range(100).random_shuffle().repartition(1).take(999)

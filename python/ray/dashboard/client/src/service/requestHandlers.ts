@@ -8,7 +8,9 @@
  * arises.
  */
 
-import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
+import { AxiosRequestConfig, AxiosResponse, create } from "axios";
+import { AUTHENTICATION_ERROR_EVENT } from "../authentication/constants";
+import { DASHBOARD_DATA_LOADED_EVENT } from "../common/constants";
 
 /**
  * This function formats URLs such that the user's browser
@@ -26,9 +28,48 @@ export const formatUrl = (url: string): string => {
   return url;
 };
 
+// Create axios instance with interceptors for authentication
+const axiosInstance = create();
+
+// Export the configured axios instance for direct use when needed
+export { axiosInstance };
+
+// Response interceptor: Handle 401/403 errors
+axiosInstance.interceptors.response.use(
+  (response) => {
+    window.dispatchEvent(new Event(DASHBOARD_DATA_LOADED_EVENT));
+    return response;
+  },
+  (error) => {
+    // If we get 401 (Unauthorized) or 403 (Forbidden), dispatch an event
+    // so the App component can show the authentication dialog
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Dispatch custom event for authentication error
+      // 401 means no token was provided, 403 means the token was invalid.
+      // This distinction is used to show a more specific message in the dialog.
+      const hadToken = error.response.status === 403;
+      window.dispatchEvent(
+        new CustomEvent(AUTHENTICATION_ERROR_EVENT, {
+          detail: { hadToken },
+        }),
+      );
+    }
+
+    // Re-throw the error so the caller can handle it if needed
+    return Promise.reject(error);
+  },
+);
+
 export const get = <T = any, R = AxiosResponse<T>>(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<R> => {
-  return axios.get<T, R>(formatUrl(url), config);
+  return axiosInstance.get<T, R>(formatUrl(url), config);
+};
+
+export const head = <R = AxiosResponse>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<R> => {
+  return axiosInstance.head<unknown, R>(formatUrl(url), config);
 };

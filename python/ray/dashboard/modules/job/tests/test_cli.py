@@ -1,9 +1,12 @@
 import json
 import logging
 import os
+import shlex
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+from subprocess import list2cmdline
 from typing import Optional
 from unittest import mock
 
@@ -85,6 +88,17 @@ def check_exit_code(result, exit_code):
     assert result.exit_code == exit_code, result.output
 
 
+def _expected_entrypoint(*args):
+    """Return the expected entrypoint string for the current platform.
+
+    On Windows, the CLI uses subprocess.list2cmdline (double quotes).
+    On POSIX, it uses shlex.join (single quotes).
+    """
+    if sys.platform == "win32":
+        return list2cmdline(args)
+    return shlex.join(args)
+
+
 def _job_cli_group_test_address(mock_sdk_client, cmd, *args):
     runner = CliRunner()
 
@@ -150,7 +164,7 @@ class TestSubmit:
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -158,6 +172,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
             result = runner.invoke(
@@ -166,7 +181,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env={"working_dir": "blah"},
                 metadata=None,
@@ -174,6 +189,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
             result = runner.invoke(
@@ -181,7 +197,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env={"working_dir": "'.'"},
                 metadata=None,
@@ -189,6 +205,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
     def test_runtime_env(self, mock_sdk_client, runtime_env_formats):
@@ -203,7 +220,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env=env_dict,
                 metadata=None,
@@ -211,6 +228,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
             # Test passing via json.
@@ -220,7 +238,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env=env_dict,
                 metadata=None,
@@ -228,6 +246,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
             # Test passing both throws an error.
@@ -262,7 +281,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env=env_dict,
                 metadata=None,
@@ -270,6 +289,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
             result = runner.invoke(
@@ -286,7 +306,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env=env_dict,
                 metadata=None,
@@ -294,6 +314,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
     def test_job_id(self, mock_sdk_client):
@@ -304,7 +325,7 @@ class TestSubmit:
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -312,6 +333,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
             result = runner.invoke(
@@ -320,7 +342,7 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id="my_job_id",
                 runtime_env={},
                 metadata=None,
@@ -328,6 +350,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
     def test_entrypoint_num_cpus(self, mock_sdk_client):
@@ -341,7 +364,7 @@ class TestSubmit:
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -349,6 +372,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
     def test_entrypoint_num_gpus(self, mock_sdk_client):
@@ -362,7 +386,7 @@ class TestSubmit:
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -370,6 +394,7 @@ class TestSubmit:
                 entrypoint_num_gpus=2,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
     def test_entrypoint_memory(self, mock_sdk_client):
@@ -383,7 +408,7 @@ class TestSubmit:
             )
             assert result.exit_code == 0
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env={},
                 metadata=None,
@@ -391,6 +416,7 @@ class TestSubmit:
                 entrypoint_num_gpus=None,
                 entrypoint_memory=4,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
             )
 
     @pytest.mark.parametrize(
@@ -416,7 +442,7 @@ class TestSubmit:
             print(result.output)
             assert result.exit_code == 0
             expected_kwargs = {
-                "entrypoint": '"echo hello"',
+                "entrypoint": _expected_entrypoint("echo hello"),
                 "submission_id": None,
                 "runtime_env": {},
                 "metadata": None,
@@ -424,6 +450,7 @@ class TestSubmit:
                 "entrypoint_num_gpus": None,
                 "entrypoint_memory": None,
                 "entrypoint_resources": None,
+                "entrypoint_label_selector": None,
             }
             expected_kwargs.update(resources[1])
             mock_client_instance.submit_job.assert_called_with(**expected_kwargs)
@@ -445,6 +472,33 @@ class TestSubmit:
             assert result.exit_code == 1
             assert "not a valid JSON string" in result.output
 
+    def test_entrypoint_label_selector(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    """--entrypoint-label-selector={"fragile_node":"!1"}""",
+                    "--",
+                    "echo hello",
+                ],
+            )
+            assert result.exit_code == 0
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint=_expected_entrypoint("echo hello"),
+                submission_id=None,
+                runtime_env={},
+                metadata=None,
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_memory=None,
+                entrypoint_resources=None,
+                entrypoint_label_selector={"fragile_node": "!1"},
+            )
+
     def test_metadata(self, mock_sdk_client):
         runner = CliRunner()
         mock_client_instance = mock_sdk_client.return_value
@@ -462,13 +516,14 @@ class TestSubmit:
             )
             check_exit_code(result, 0)
             mock_client_instance.submit_job.assert_called_with(
-                entrypoint='"echo hello"',
+                entrypoint=_expected_entrypoint("echo hello"),
                 submission_id=None,
                 runtime_env={},
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_memory=None,
                 entrypoint_resources=None,
+                entrypoint_label_selector=None,
                 metadata={"key": "value"},
             )
 
@@ -542,6 +597,96 @@ class TestStatus:
             result = runner.invoke(job_cli_group, ["status", "job_id"])
             check_exit_code(result, 0)
             mock_client_instance.get_job_info.assert_called_with("job_id")
+
+
+class TestEntrypointShellQuoting:
+    """Regression test for https://github.com/ray-project/ray/issues/56232.
+
+    `ray job submit` previously used `subprocess.list2cmdline` unconditionally
+    to join entrypoint arguments. That function wraps arguments in double
+    quotes, which causes POSIX shells on the server to expand $VAR references.
+
+    The fix uses `shlex.join` on POSIX platforms (which single-quotes
+    arguments to prevent expansion) and `list2cmdline` on Windows (which
+    double-quotes arguments as expected by cmd.exe).
+    """
+
+    def test_entrypoint_preserves_shell_variables(self, mock_sdk_client):
+        """Ensure $VAR in entrypoint is single-quoted on POSIX, not double-quoted."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            with mock.patch("ray.dashboard.modules.job.cli.sys") as mock_sys:
+                mock_sys.platform = "linux"
+                result = runner.invoke(
+                    job_cli_group,
+                    [
+                        "submit",
+                        "--",
+                        "python",
+                        "-m",
+                        "launcher",
+                        "--config",
+                        "$CONFIG_PATH",
+                    ],
+                )
+                check_exit_code(result, 0)
+                call_kwargs = mock_client_instance.submit_job.call_args
+                entrypoint = call_kwargs.kwargs["entrypoint"]
+
+                # shlex.join must single-quote the $VAR argument so that
+                # the server-side POSIX shell does NOT expand it.
+                assert "'$CONFIG_PATH'" in entrypoint, (
+                    f"Expected single-quoted $CONFIG_PATH in entrypoint, "
+                    f"got: {entrypoint!r}"
+                )
+                # Double quotes around $CONFIG_PATH would cause expansion.
+                assert '"$CONFIG_PATH"' not in entrypoint, (
+                    f"Double-quoted $CONFIG_PATH would be expanded by the "
+                    f"server shell, got: {entrypoint!r}"
+                )
+
+    def test_entrypoint_uses_list2cmdline_on_windows(self, mock_sdk_client):
+        """On Windows, entrypoint should use list2cmdline (double quotes)."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            with mock.patch("ray.dashboard.modules.job.cli.sys") as mock_sys:
+                mock_sys.platform = "win32"
+                result = runner.invoke(
+                    job_cli_group,
+                    [
+                        "submit",
+                        "--",
+                        "echo",
+                        "hello world",
+                    ],
+                )
+                check_exit_code(result, 0)
+                call_kwargs = mock_client_instance.submit_job.call_args
+                entrypoint = call_kwargs.kwargs["entrypoint"]
+
+                # list2cmdline wraps args with spaces in double quotes
+                assert (
+                    entrypoint == 'echo "hello world"'
+                ), f"Expected list2cmdline output on Windows, got: {entrypoint!r}"
+
+    def test_entrypoint_simple_args_not_over_quoted(self, mock_sdk_client):
+        """Simple arguments without special chars should not be quoted."""
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", "--", "echo", "hello"],
+            )
+            check_exit_code(result, 0)
+            call_kwargs = mock_client_instance.submit_job.call_args
+            entrypoint = call_kwargs.kwargs["entrypoint"]
+            assert entrypoint == "echo hello"
 
 
 if __name__ == "__main__":

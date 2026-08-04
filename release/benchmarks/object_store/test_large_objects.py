@@ -1,12 +1,11 @@
-import numpy as np
-
-import ray
-
 import json
 import os
 from time import perf_counter
+
+import numpy as np
 from tqdm import tqdm
 
+import ray
 
 NUM_NODES = 9
 OBJECT_SIZE = 2**32
@@ -85,7 +84,6 @@ if "TEST_OUTPUT_JSON" in os.environ:
             "one_to_many_time": one_to_many_duration,
             "object_size": OBJECT_SIZE,
             "num_nodes": NUM_NODES,
-            "success": "1",
         }
         results["perf_metrics"] = [
             {

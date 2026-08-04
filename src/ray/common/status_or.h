@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <new>
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
@@ -93,8 +94,14 @@ class StatusOr {
       return *this;
     }
     if (rhs.ok()) {
-      status_ = Status::OK();
-      AssignValue(rhs.value());
+      // Reuse the existing value if we already hold one; otherwise construct it
+      // and set status_ only after the construction succeeds.
+      if (ok()) {
+        get() = rhs.value();
+      } else {
+        MakeValue(rhs.value());
+        status_ = Status::OK();
+      }
       return *this;
     }
     AssignStatus(rhs.status());
@@ -114,8 +121,13 @@ class StatusOr {
       return *this;
     }
     if (rhs.ok()) {
-      status_ = Status::OK();
-      AssignValue(std::move(rhs).value());
+      // See the copy-assignment operator.
+      if (ok()) {
+        get() = std::move(rhs).value();
+      } else {
+        MakeValue(std::move(rhs).value());
+        status_ = Status::OK();
+      }
       return *this;
     }
     AssignStatus(rhs.status());
@@ -155,6 +167,7 @@ class StatusOr {
 
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsInvalidArgument() const { return code() == StatusCode::InvalidArgument; }
+  bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsPermissionDenied() const { return code() == StatusCode::PermissionDenied; }
 
   // Returns a reference to the current `ray::Status` contained within the
@@ -200,8 +213,8 @@ class StatusOr {
   // REQUIRES: `this->ok() == true`, otherwise the behavior is undefined.
   //
   // Use `this->ok()` to verify that there is a current value.
-  T *operator->() & { return &data_; }
-  T *operator->() const & { return &data_; }
+  T *operator->() & { return std::launder(&data_); }
+  const T *operator->() const & { return std::launder(&data_); }
 
   // Returns a reference to the held value if `this->ok()`. Otherwise, throws
   // `std::runtime_error`.
@@ -235,13 +248,11 @@ class StatusOr {
   // Copy current value out if OK status, otherwise construct default value.
   T value_or_default() const & {
     static_assert(std::is_copy_constructible_v<T>, "T must by copy constructable");
-    if (ok()) return get();
-    return T{};
+    return ok() ? get() : T{};
   }
   T value_or_default() && {
     static_assert(std::is_copy_constructible_v<T>, "T must by copy constructable");
-    if (ok()) return std::move(get());
-    return T{};
+    return ok() ? std::move(get()) : T{};
   }
 
   static_assert(std::is_default_constructible_v<T>,
@@ -252,21 +263,12 @@ class StatusOr {
   std::string ToString() const { return status_.ToString(); }
 
  private:
-  T &get() { return data_; }
-  const T &get() const { return data_; }
+  T &get() { return *std::launder(&data_); }
+  const T &get() const { return *std::launder(&data_); }
 
   template <typename... Args>
   void MakeValue(Args &&...arg) {
     new (&data_) T(std::forward<Args>(arg)...);
-  }
-
-  // Assign value to current status or.
-  template <typename U>
-  void AssignValue(U &&value) {
-    if (ok()) {
-      ClearValue();
-    }
-    MakeValue(std::forward<U>(value));
   }
 
   // Assign status to current status or.
@@ -348,9 +350,30 @@ T &&StatusOr<T>::value() && {
 
 template <typename T>
 void StatusOr<T>::swap(StatusOr &rhs) {
-  using std::swap;
-  swap(status_, rhs.status_);
-  swap(data_, rhs.data_);
+  // data_ is only a live T when ok(), so handle each state combination: swap the
+  // values (or statuses) when both sides match, and move the lone value across
+  // when only one side holds it, constructing into the other's raw storage.
+  if (ok()) {
+    if (rhs.ok()) {
+      using std::swap;
+      swap(get(), rhs.get());
+    } else {
+      new (&rhs.data_) T(std::move(get()));
+      get().~T();
+      status_ = std::move(rhs.status_);
+      rhs.status_ = Status::OK();
+    }
+  } else {
+    if (rhs.ok()) {
+      new (&data_) T(std::move(rhs.get()));
+      rhs.get().~T();
+      rhs.status_ = std::move(status_);
+      status_ = Status::OK();
+    } else {
+      using std::swap;
+      swap(status_, rhs.status_);
+    }
+  }
 }
 
 template <typename T>

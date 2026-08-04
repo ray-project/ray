@@ -1,22 +1,22 @@
-from typing import Any, Collection, Dict, Optional, Union, Type
+from typing import Any, Collection, Dict, Optional, Type, Union
 
 import gymnasium as gym
 from packaging import version
 
-from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
-from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchDistribution,
 )
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
+from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
-    convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
+    convert_to_torch_tensor,
 )
 from ray.rllib.utils.typing import StateDict
 
@@ -81,6 +81,31 @@ class TorchRLModule(nn.Module, RLModule):
         """
         return compile_wrapper(self, compile_config)
 
+    @override(RLModule)
+    def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        was_training = self.training
+        self.eval()
+        try:
+            return self._forward_inference(batch, **kwargs)
+        finally:
+            if was_training:
+                self.train()
+
+    @override(RLModule)
+    def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        was_training = self.training
+        self.eval()
+        try:
+            return self._forward_exploration(batch, **kwargs)
+        finally:
+            if was_training:
+                self.train()
+
+    @override(RLModule)
+    def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        self.train()
+        return super().forward_train(batch, **kwargs)
+
     @OverrideToImplementCustomLogic
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         # By default, calls the generic `_forward()` method, but with a no-grad context
@@ -130,7 +155,19 @@ class TorchRLModule(nn.Module, RLModule):
         # these keys (strict=False). This is most likely due to `state` coming from
         # an `inference_only=False` RLModule, while `self` is an `inference_only=True`
         # RLModule.
-        self.load_state_dict(convert_to_torch_tensor(state), strict=False)
+        missing_keys, unexpected_keys = self.load_state_dict(
+            convert_to_torch_tensor(state), strict=False
+        )
+
+        # For inference_only modules, missing_keys should always be empty.
+        # If there are missing keys, it means the target module expects parameters
+        # that don't exist in the source, indicating an architecture mismatch.
+        if self.inference_only and missing_keys:
+            raise ValueError(
+                f"Updating the module's state is missing keys: {list(missing_keys)} "
+                "This is most likely because the state has different layer names (or are missing layers). "
+                f"Complete list of state keys is {list(state.keys())}"
+            )
 
     @OverrideToImplementCustomLogic
     @override(RLModule)

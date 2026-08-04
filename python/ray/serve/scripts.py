@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 import os
 import pathlib
 import re
@@ -6,6 +7,7 @@ import sys
 import time
 import traceback
 from dataclasses import asdict
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
@@ -14,6 +16,7 @@ import yaml
 
 import ray
 from ray import serve
+from ray._common.network_utils import get_all_interfaces_ip, get_localhost_ip
 from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
@@ -27,8 +30,13 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
+from ray.serve.config import (
+    ProxyLocation,
+    gRPCOptions,
+)
+from ray.serve.context import _get_global_client
 from ray.serve.deployment import Application, deployment_to_schema
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     LoggingConfig,
     ServeApplicationSchema,
@@ -151,10 +159,10 @@ def cli():
 )
 @click.option(
     "--http-host",
-    default=DEFAULT_HTTP_HOST,
+    default=DEFAULT_HTTP_HOST or get_localhost_ip(),
     required=False,
     type=str,
-    help="Host for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
+    help="Host for HTTP proxies to listen on. Defaults to localhost.",
 )
 @click.option(
     "--http-port",
@@ -162,13 +170,6 @@ def cli():
     required=False,
     type=int,
     help="Port for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
-)
-@click.option(
-    "--http-location",
-    default=DeploymentMode.HeadOnly,
-    required=False,
-    type=click.Choice(list(DeploymentMode)),
-    help="DEPRECATED: Use `--proxy-location` instead.",
 )
 @click.option(
     "--proxy-location",
@@ -196,19 +197,10 @@ def start(
     address,
     http_host,
     http_port,
-    http_location,
     proxy_location,
     grpc_port,
     grpc_servicer_functions,
 ):
-    if http_location != DeploymentMode.HeadOnly:
-        cli_logger.warning(
-            "The `--http-location` flag to `serve start` is deprecated, "
-            "use `--proxy-location` instead."
-        )
-
-        proxy_location = http_location
-
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -251,7 +243,7 @@ def _generate_config_from_file_or_import_path(
             if name is not None:
                 cli_logger.warning("Passed in name is ignored when using config file")
             config_dict = yaml.safe_load(config_file)
-            config = ServeDeploySchema.parse_obj(config_dict)
+            config = ServeDeploySchema.model_validate(config_dict)
     else:
         # TODO(edoakes): should we default to --working-dir="." for this?
         import_path = config_or_import_path
@@ -354,7 +346,7 @@ def deploy(
     )
 
     ServeSubmissionClient(address).deploy_applications(
-        config.dict(exclude_unset=True),
+        config.model_dump(exclude_unset=True),
     )
     cli_logger.success(
         "\nSent deploy request successfully.\n "
@@ -499,7 +491,7 @@ def run(
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
 
-            config = ServeDeploySchema.parse_obj(config_dict)
+            config = ServeDeploySchema.model_validate(config_dict)
 
     else:
         is_config = False
@@ -529,17 +521,23 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    http_options = {"location": "EveryNode"}
+    http_options = {}
+    proxy_location = ProxyLocation.EveryNode
     grpc_options = gRPCOptions()
-    # Merge http_options and grpc_options with the ones on ServeDeploySchema.
+    controller_options = None
+    # Merge http_options, grpc_options, and controller_options with the ones on
+    # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
-        config_http_options = config.http_options.dict()
-        http_options = {**config_http_options, **http_options}
-        grpc_options = gRPCOptions(**config.grpc_options.dict())
+        proxy_location = config.proxy_location
+        http_options = config.http_options.model_dump()
+        grpc_options = gRPCOptions(**config.grpc_options.model_dump())
+        controller_options = config.controller_options
 
     client = _private_api.serve_start(
         http_options=http_options,
+        proxy_location=proxy_location,
         grpc_options=grpc_options,
+        controller_options=controller_options,
     )
 
     try:
@@ -634,8 +632,9 @@ def config(address: str, name: Optional[str]):
     # Fetch app configs for all live applications on the cluster
     if name is None:
         configs = [
-            yaml.safe_dump(
-                app.deployed_app_config.dict(exclude_unset=True),
+            yaml.dump(
+                app.deployed_app_config.model_dump(exclude_unset=True),
+                Dumper=ServeDeploySchemaDumper,
                 sort_keys=False,
             )
             for app in applications.values()
@@ -651,8 +650,11 @@ def config(address: str, name: Optional[str]):
         if app is None or app.deployed_app_config is None:
             print(f'No config has been deployed for application "{name}".')
         else:
-            config = app.deployed_app_config.dict(exclude_unset=True)
-            print(yaml.safe_dump(config, sort_keys=False), end="")
+            config = app.deployed_app_config.model_dump(exclude_unset=True)
+            print(
+                yaml.dump(config, Dumper=ServeDeploySchemaDumper, sort_keys=False),
+                end="",
+            )
 
 
 @cli.command(
@@ -702,13 +704,12 @@ def status(address: str, name: Optional[str]):
     status = asdict(serve_details._get_status())
 
     # Ensure multi-line strings in app_status is dumped/printed correctly
-    yaml.SafeDumper.add_representer(str, str_presenter)
-
     if name is None:
         print(
-            yaml.safe_dump(
+            yaml.dump(
                 # Ensure exception traceback in app_status are printed correctly
                 process_dict_for_yaml_dump(status),
+                Dumper=ServeDeploySchemaDumper,
                 default_flow_style=False,
                 sort_keys=False,
             ),
@@ -719,9 +720,10 @@ def status(address: str, name: Optional[str]):
             cli_logger.error(f'Application "{name}" does not exist.')
         else:
             print(
-                yaml.safe_dump(
+                yaml.dump(
                     # Ensure exception tracebacks in app_status are printed correctly
                     process_dict_for_yaml_dump(status["applications"][name]),
+                    Dumper=ServeDeploySchemaDumper,
                     default_flow_style=False,
                     sort_keys=False,
                 ),
@@ -774,6 +776,75 @@ def shutdown(address: str, yes: bool):
     cli_logger.success(
         "Sent shutdown request; applications will be deleted asynchronously."
     )
+
+
+@cli.command(
+    name="controller-health",
+    short_help="Display health metrics for the Serve controller.",
+    help=(
+        "Display health metrics for the Ray Serve controller.\n\n"
+        "Shows performance indicators that help diagnose controller issues, "
+        "especially as cluster size increases. Metrics include control loop "
+        "duration statistics, event loop health, component update times, and "
+        "autoscaling metrics latency."
+    ),
+)
+@click.option(
+    "--address",
+    "-a",
+    default=os.environ.get("RAY_ADDRESS", "auto"),
+    required=False,
+    type=str,
+    help=RAY_INIT_ADDRESS_HELP_STR,
+)
+@click.option(
+    "--json",
+    "output_json",
+    is_flag=True,
+    help="Output metrics as JSON instead of formatted YAML.",
+)
+def controller_health(address: str, output_json: bool):
+    if not ray.is_initialized():
+        # Connect to existing cluster only, don't start a new one
+        try:
+            ray.init(
+                address=address,
+                namespace=SERVE_NAMESPACE,
+            )
+        except ConnectionError:
+            cli_logger.error(
+                f"Could not connect to Ray cluster at address '{address}'. "
+                "Make sure a Ray cluster is running."
+            )
+            sys.exit(1)
+
+    try:
+        # Get the controller handle
+        controller = _get_global_client()._controller
+
+        # Fetch health metrics
+        metrics = ray.get(controller.get_health_metrics.remote())
+
+        if output_json:
+            print(json.dumps(metrics, indent=2))
+        else:
+            print(
+                yaml.dump(
+                    metrics,
+                    default_flow_style=False,
+                    sort_keys=False,
+                ),
+                end="",
+            )
+    except RayServeException as e:
+        cli_logger.error(str(e))
+        sys.exit(1)
+    except Exception:
+        cli_logger.error(
+            "Failed to get controller health metrics, "
+            "see the controller logs for more details."
+        )
+        sys.exit(1)
 
 
 @cli.command(
@@ -835,7 +906,7 @@ def build(
             deployments=[deployment_to_schema(d) for d in built_app.deployments],
         )
 
-        return schema.dict(exclude_unset=True)
+        return schema.model_dump(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
@@ -849,25 +920,27 @@ def build(
     deploy_config = {
         "proxy_location": "EveryNode",
         "http_options": {
-            "host": "0.0.0.0",
+            "host": get_all_interfaces_ip(),
             "port": 8000,
         },
         "grpc_options": {
             "port": DEFAULT_GRPC_PORT,
             "grpc_servicer_functions": grpc_servicer_functions,
         },
-        "logging_config": LoggingConfig().dict(),
+        "logging_config": LoggingConfig().model_dump(),
         "applications": app_configs,
     }
 
     # Parse + validate the set of application configs
-    ServeDeploySchema.parse_obj(deploy_config)
+    ServeDeploySchema.model_validate(deploy_config)
 
     config_str += yaml.dump(
         deploy_config,
         Dumper=ServeDeploySchemaDumper,
         default_flow_style=False,
         sort_keys=False,
+        width=80,  # Set width to avoid folding long lines
+        indent=2,  # Use 2-space indentation for more compact configuration
     )
     cli_logger.info(
         "The auto-generated application names default to `app1`, `app2`, ... etc. "
@@ -884,35 +957,49 @@ def build(
 class ServeDeploySchemaDumper(yaml.SafeDumper):
     """YAML dumper object with custom formatting for ServeDeploySchema.
 
-    Reformat config to follow this spacing:
-    ---------------------------------------
+    Reformat config to follow this spacing with appropriate line breaks:
+    ---------------------------------------------------------------
+    proxy_location: EveryNode
 
-    host: 0.0.0.0
+    http_options:
+      host: 0.0.0.0
+      port: 8000
 
-    port: 8000
+    grpc_options:
+      port: 9000
+      grpc_servicer_functions: []
+
+    logging_config:
+      # ...
 
     applications:
-
-    - name: app1
-
-      import_path: app1.path
-
-      runtime_env: {}
-
-      deployments:
-
-      - name: deployment1
-        ...
-
-      - name: deployment2
-        ...
+      - name: app1
+        import_path: app1.path
+        # ...
     """
 
     def write_line_break(self, data=None):
         # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
         super().write_line_break(data)
 
-        # Indents must be at most 4 to ensure that only the top 4 levels of
-        # the config file have line breaks between them.
-        if len(self.indents) <= 4:
+        # Only add extra line breaks between top-level keys
+        if len(self.indents) == 1:
             super().write_line_break()
+
+
+def enum_representer(dumper: yaml.Dumper, data: Enum):
+    """Custom representer for Enum objects to serialize as their string values.
+    This tells PyYAML when it encounters an Enum object, serialize it as
+    a string scalar using its .value attribute."""
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data.value))
+
+
+# Register Enum representer with SafeDumper to handle enum serialization
+# in all YAML dumps (config, status, build commands).
+# Since ServeDeploySchemaDumper extends SafeDumper, this also covers build command.
+ServeDeploySchemaDumper.add_multi_representer(Enum, enum_representer)
+ServeDeploySchemaDumper.add_representer(str, str_presenter)
+
+
+if __name__ == "__main__":
+    cli()

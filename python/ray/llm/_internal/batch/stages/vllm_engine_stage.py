@@ -1,26 +1,44 @@
 """The stage that runs vLLM engine."""
 
 import asyncio
+import copy
 import dataclasses
 import logging
 import math
+import os
 import time
 import uuid
-from enum import Enum
+from collections import Counter
 from functools import partial
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 import numpy as np
+import torch
 from pydantic import BaseModel, Field, root_validator
 
+if TYPE_CHECKING:
+    try:
+        # vLLM >= 0.19: MultiModalDataDict moved to vllm.inputs.llm
+        from vllm.inputs.llm import MultiModalDataDict
+    except ImportError:
+        from vllm.inputs import MultiModalDataDict
+else:
+    MultiModalDataDict = Any
+
 import ray
+from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
+from ray.llm._internal.batch.stages.common import (
+    maybe_convert_ndarray_to_list,
+    truncate_str,
+)
+from ray.llm._internal.common.errors import VLLM_FATAL_ERRORS as _VLLM_FATAL_ERRORS
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
+    STREAMING_LOAD_FORMATS,
     NodeModelDownloadable,
     download_model_files,
 )
@@ -29,15 +47,36 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+# Length of prompt snippet to surface in case of recoverable error
+_MAX_PROMPT_LENGTH_IN_ERROR = 500
 
-class vLLMTaskType(str, Enum):
-    """The type of task to run on the vLLM engine."""
 
-    """Generate text."""
-    GENERATE = "generate"
+# Module-level cache for vLLM prompt classes. Populated on first call to
+# _get_vllm_prompt_classes() so that import resolution (and the try/except)
+# only happens once rather than on every inference request.
+_VLLM_PROMPT_CLASSES = None
 
-    """Generate embeddings."""
-    EMBED = "embed"
+
+def _get_vllm_prompt_classes():
+    """Return (TokensPrompt, TextPrompt) compatible with both old and new vLLM.
+
+    Starting from vLLM >= 0.19, the ``data.py`` submodule was removed and
+    ``TokensPrompt`` / ``TextPrompt`` were moved to ``vllm.inputs.llm``.
+    They are no longer re-exported from ``vllm.inputs`` directly.
+    This helper abstracts that difference so the rest of the code works
+    with any supported vLLM version.
+    """
+    global _VLLM_PROMPT_CLASSES
+    if _VLLM_PROMPT_CLASSES is None:
+        try:
+            # vLLM >= 0.19: classes live in vllm.inputs.llm and are NOT
+            # re-exported from vllm.inputs.__init__.
+            from vllm.inputs.llm import TextPrompt, TokensPrompt
+        except ImportError:
+            # vLLM < 0.19: classes were re-exported from vllm.inputs directly.
+            from vllm.inputs import TextPrompt, TokensPrompt  # type: ignore[no-redef]
+        _VLLM_PROMPT_CLASSES = (TokensPrompt, TextPrompt)
+    return _VLLM_PROMPT_CLASSES
 
 
 class vLLMEngineRequest(BaseModel):
@@ -48,27 +87,72 @@ class vLLMEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The full prompt string (with chat template applied if any).
-    prompt: str
-    # The images inputs for the multimodal model. Use Any to avoid importing PIL.
-    images: List[Any]
+    # Either prompt or prompt_token_ids must be provided.
+    prompt: Optional[str] = None
+    # The multimodal data for the multimodal model.
+    multimodal_data: Optional[MultiModalDataDict] = None
+    # The kwargs for the multimodal processor.
+    mm_processor_kwargs: Optional[Dict[str, Any]] = None
+    # The uuids for the multimodal data.
+    multimodal_uuids: Optional[Dict[str, Any]] = None
     # The tokenized prompt IDs. If None, then the string prompt will be
     # tokenized by the LLM engine. This is not recommended for performance reasons.
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     # The sampling or pooling parameters. Use Any to avoid importing vLLM.
     params: Any
+    # The kwargs for tokenization.
+    tokenization_kwargs: Optional[Dict[str, Any]] = None
     # LoRA request.
     lora_request: Optional[Any] = None
+
+    @root_validator(pre=True)
+    def validate_prompt_or_prompt_token_ids(cls, values):
+        if not values.get("prompt") and not values.get("prompt_token_ids"):
+            raise ValueError("Either 'prompt' or 'prompt_token_ids' must be provided.")
+        return values
 
     class Config:
         validate_assignment = True
         arbitrary_types_allowed = True
 
 
+def _convert_logprob_dict(logprob_dict: Dict[int, Any]) -> Dict[int, Dict[str, Any]]:
+    """Convert a dict of token_id -> Logprob to token_id -> dict.
+
+    Handles conversion of vLLM's Logprob objects (currently dataclass) to
+    serializable dicts. This supports both dataclass (current vLLM format)
+    and Pydantic models (for future compatibility).
+
+    Args:
+        logprob_dict: Dict mapping token_id to Logprob instance.
+
+    Returns:
+        Dict mapping token_id to serializable dict with logprob fields.
+    """
+    result = {}
+    for token_id, logprob in logprob_dict.items():
+        # Handle Pydantic models (model_dump method)
+        if hasattr(logprob, "model_dump"):
+            result[token_id] = logprob.model_dump()
+        # Handle dataclasses (current vLLM format)
+        elif dataclasses.is_dataclass(logprob):
+            result[token_id] = dataclasses.asdict(logprob)
+        # Already a dict
+        elif isinstance(logprob, dict):
+            result[token_id] = logprob
+        else:
+            raise TypeError(
+                f"Unsupported logprob type: {type(logprob)}. "
+                "Expected dataclass, Pydantic model, or dict."
+            )
+    return result
+
+
 class vLLMOutputData(BaseModel):
     """The output of the vLLM engine."""
 
     prompt: str
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     num_input_tokens: int
 
     # Generate fields.
@@ -82,6 +166,14 @@ class vLLMOutputData(BaseModel):
 
     # Metrics fields.
     metrics: Optional[Dict[str, Any]] = None
+
+    # Logprobs fields.
+    # logprobs: List[Dict[int, Dict[str, Any]]] where each dict maps token_id to
+    # logprob info (logprob, rank, decoded_token) for each generated token.
+    logprobs: Optional[List[Dict[int, Dict[str, Any]]]] = None
+    # prompt_logprobs: List[Optional[Dict[int, Dict[str, Any]]]] where each dict
+    # (or None) maps token_id to logprob info for each prompt token.
+    prompt_logprobs: Optional[List[Optional[Dict[int, Dict[str, Any]]]]] = None
 
     @classmethod
     def from_vllm_engine_output(cls, output: Any) -> "vLLMOutputData":
@@ -107,8 +199,30 @@ class vLLMOutputData(BaseModel):
             data.generated_tokens = output.outputs[0].token_ids
             data.generated_text = output.outputs[0].text
             data.num_generated_tokens = len(output.outputs[0].token_ids)
+
+            # Extract logprobs
+            if output.outputs[0].logprobs is not None:
+                data.logprobs = [
+                    _convert_logprob_dict(logprob_dict)
+                    for logprob_dict in output.outputs[0].logprobs
+                ]
+
+            # Extract prompt_logprobs
+            if output.prompt_logprobs is not None:
+                data.prompt_logprobs = [
+                    _convert_logprob_dict(logprob_dict)
+                    if logprob_dict is not None
+                    else None
+                    for logprob_dict in output.prompt_logprobs
+                ]
         elif isinstance(output, vllm.outputs.PoolingRequestOutput):
             data.embeddings = output.outputs.data.cpu()
+            if (
+                isinstance(data.embeddings, torch.Tensor)
+                and data.embeddings.dtype == torch.bfloat16
+            ):
+                data.embeddings = data.embeddings.to(torch.float32)
+            data.embeddings = data.embeddings.numpy()
         else:
             raise ValueError(f"Unknown output type: {type(output)}")
 
@@ -123,22 +237,30 @@ class vLLMEngineWrapper:
     """Wrapper around the vLLM engine to handle async requests.
 
     Args:
-        *args: The positional arguments for the engine.
+        idx_in_batch_column: The column name for the index of the row in the batch.
         max_pending_requests: The maximum number of pending requests in the queue.
+            If None, it will be auto-resolved to
+            ``ceil(1.1 * max_num_seqs * pipeline_parallel_size)`` using values
+            from vLLM's resolved engine config (so the default tracks vLLM's
+            GPU-dependent ``max_num_seqs``). Pass a non-positive value (e.g.
+            ``-1``) to disable the semaphore entirely.
         dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
+        log_engine_metrics: Whether to export vLLM metrics to Ray's Prometheus endpoint.
         **kwargs: The keyword arguments for the engine.
     """
 
     def __init__(
         self,
         idx_in_batch_column: str,
-        max_pending_requests: int = -1,
+        max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
+        log_engine_metrics: bool = True,
         **kwargs,
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
-        self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
+        self._image_row_column_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -152,8 +274,18 @@ class vLLMEngineWrapper:
         self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
 
-        # Convert the task type back to a string to pass to the engine.
-        kwargs["task"] = self.task_type.value
+        # Set runner and convert based on task type.
+        if self.task_type == vLLMTaskType.GENERATE:
+            kwargs["runner"] = "generate"
+        elif self.task_type == vLLMTaskType.EMBED:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "embed"
+        elif self.task_type == vLLMTaskType.CLASSIFY:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "classify"
+        elif self.task_type == vLLMTaskType.SCORE:
+            kwargs["runner"] = "pooling"
+            kwargs["convert"] = "reward"
 
         try:
             import vllm
@@ -164,7 +296,11 @@ class vLLMEngineWrapper:
             ) from e
 
         # Construct PoolerConfig if override_pooler_config is specified.
-        if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
+        if (
+            self.task_type
+            in {vLLMTaskType.EMBED, vLLMTaskType.CLASSIFY, vLLMTaskType.SCORE}
+            and "override_pooler_config" in kwargs
+        ):
             kwargs["override_pooler_config"] = vllm.config.PoolerConfig(
                 **kwargs["override_pooler_config"]
             )
@@ -175,19 +311,46 @@ class vLLMEngineWrapper:
         )
         # create_engine_config will set default values including `max_num_seqs`.
         self._vllm_config = engine_args.create_engine_config()
-        self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
-        # Determine the generate function based on vLLM v0 or v1.
-        self.vllm_use_v1 = vllm.envs.VLLM_USE_V1
-        if self.vllm_use_v1:
-            self._generate_async = self.generate_async_v1
-        else:
-            self._generate_async = self.generate_async_v0
+        stat_loggers = None
+        if log_engine_metrics:
+            from vllm.v1.metrics.ray_wrappers import RayPrometheusStatLogger
+
+            stat_loggers = [RayPrometheusStatLogger]
+            logger.info(
+                "Enabling Ray metrics export for vLLM engine. "
+                "Metrics will be available at Ray's Prometheus endpoint."
+            )
+
+        self.engine = vllm.AsyncLLMEngine.from_engine_args(
+            engine_args, stat_loggers=stat_loggers
+        )
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
+        # When the caller did not specify a limit, derive it from the resolved
+        # vLLM config rather than from raw engine_kwargs. vLLM's default
+        # `max_num_seqs` is GPU-dependent (e.g. 256 on A10G/A100, 1024 on H100),
+        # so reading from `scheduler_config` avoids silently capping the
+        # semaphore below vLLM's actual capacity.
+        scheduler_config = self._vllm_config.scheduler_config
+        parallel_config = self._vllm_config.parallel_config
+        engine_capacity = (
+            scheduler_config.max_num_seqs * parallel_config.pipeline_parallel_size
+        )
+        if max_pending_requests is None:
+            max_pending_requests = math.ceil(engine_capacity * 1.1)
+        elif 0 < max_pending_requests < engine_capacity:
+            logger.warning(
+                "max_pending_requests (%d) < max_num_seqs * pipeline_parallel_size "
+                "(%d); may underutilize vLLM. Consider >=%d, or <=0 to disable.",
+                max_pending_requests,
+                engine_capacity,
+                math.ceil(engine_capacity * 1.1),
+            )
         self.max_pending_requests = max_pending_requests
         if self.max_pending_requests > 0:
+            logger.info("Max pending requests is set to %d", self.max_pending_requests)
             self.semaphore = asyncio.Semaphore(self.max_pending_requests)
         else:
             self.semaphore = asyncio.NullContext()
@@ -250,7 +413,7 @@ class vLLMEngineWrapper:
         Returns:
             A single vLLMEngineRequest.
         """
-        prompt = row.pop("prompt")
+        prompt = row.pop("prompt", None)
 
         if "tokenized_prompt" in row:
             tokenized_prompt = maybe_convert_ndarray_to_list(
@@ -259,10 +422,38 @@ class vLLMEngineWrapper:
         else:
             tokenized_prompt = None
 
+        multimodal_data = row.pop("multimodal_data", None)
+
+        # TODO (jeffreywang): Remove the legacy `image` row column path in Ray 2.58.0.
         if "image" in row:
-            image = row.pop("image")
-        else:
-            image = []
+            legacy_image = row.pop("image")
+            if not self._image_row_column_warning_logged:
+                logger.warning(
+                    "The 'image' input column is deprecated. Provide images via "
+                    "the 'multimodal_data' column (e.g. multimodal_data="
+                    "{'image': [...]}), or enable `prepare_multimodal_stage` to "
+                    "populate it automatically from chat messages."
+                )
+                self._image_row_column_warning_logged = True
+            if legacy_image is not None and len(legacy_image) > 0:
+                if multimodal_data is None:
+                    multimodal_data = {"image": legacy_image}
+                elif "image" in multimodal_data:
+                    raise ValueError(
+                        "Both the deprecated 'image' column and "
+                        "multimodal_data['image'] are set on the same row. "
+                        "Remove the 'image' column and pass images only via "
+                        "multimodal_data['image']."
+                    )
+                else:
+                    multimodal_data = {**multimodal_data, "image": legacy_image}
+
+        # TODO (jeffreywang): Remove in Ray 2.58.0 as we decouple the multimodal
+        # processor from the vLLM engine; these kwargs become unneeded here.
+        mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
+        multimodal_uuids = row.pop("multimodal_uuids", None)
+
+        tokenization_kwargs = row.pop("tokenization_kwargs", None)
 
         lora_request = await self._maybe_get_lora_request(row)
 
@@ -271,20 +462,35 @@ class vLLMEngineWrapper:
 
         if self.task_type == vLLMTaskType.GENERATE:
             sampling_params = row.pop("sampling_params")
-            if "guided_decoding" in sampling_params:
-                guided_decoding = vllm.sampling_params.GuidedDecodingParams(
-                    **maybe_convert_ndarray_to_list(
-                        sampling_params.pop("guided_decoding")
-                    )
+            structured_outputs_config = None
+            if "structured_outputs" in sampling_params:
+                structured_outputs_config = maybe_convert_ndarray_to_list(
+                    sampling_params.pop("structured_outputs")
+                )
+
+            if structured_outputs_config:
+                structured_outputs = vllm.sampling_params.StructuredOutputsParams(
+                    **structured_outputs_config
                 )
             else:
-                guided_decoding = None
+                structured_outputs = None
             params = vllm.SamplingParams(
                 **maybe_convert_ndarray_to_list(sampling_params),
-                guided_decoding=guided_decoding,
+                structured_outputs=structured_outputs,
             )
-        elif self.task_type == vLLMTaskType.EMBED:
-            params = vllm.PoolingParams(task=self.task_type.value)
+        elif self.task_type in (
+            vLLMTaskType.EMBED,
+            vLLMTaskType.CLASSIFY,
+            vLLMTaskType.SCORE,
+        ):
+            pooling_params = maybe_convert_ndarray_to_list(
+                row.pop("pooling_params", {})
+            )
+
+            params = vllm.PoolingParams(
+                **pooling_params,
+                task=self.task_type,
+            )
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
@@ -293,8 +499,11 @@ class vLLMEngineWrapper:
             idx_in_batch=row[self.idx_in_batch_column],
             prompt=prompt,
             prompt_token_ids=tokenized_prompt,
-            images=image,
+            multimodal_data=multimodal_data,
+            mm_processor_kwargs=mm_processor_kwargs,
+            multimodal_uuids=multimodal_uuids,
             params=params,
+            tokenization_kwargs=tokenization_kwargs,
             lora_request=lora_request,
         )
         self.request_id += 1
@@ -306,7 +515,7 @@ class vLLMEngineWrapper:
         """Process a single request.
 
         Args:
-            request: The request.
+            row: The input row.
 
         Returns:
             A tuple of index in batch, request output and bypassed custom fields, and time taken.
@@ -322,7 +531,7 @@ class vLLMEngineWrapper:
         output_data = vLLMOutputData.from_vllm_engine_output(output)
         return request, output_data.model_dump(), time_taken
 
-    async def generate_async_v0(self, request: vLLMEngineRequest) -> Any:
+    async def _generate_async(self, request: vLLMEngineRequest) -> Any:
         """Process a single request.
 
         Args:
@@ -332,77 +541,58 @@ class vLLMEngineWrapper:
             The output of the request.
         """
 
-        import vllm
+        import vllm  # noqa: F401  (needed for vllm.outputs, vllm.SamplingParams, etc.)
 
-        if request.images:
-            # FIXME: The latest vLLM does not support multi-modal inputs
-            # with tokenized prompt.
-            assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
-                prompt=request.prompt, multi_modal_data={"image": request.images}
+        # Use the compatibility helper to support both vLLM < 0.19 (where
+        # TokensPrompt/TextPrompt were exported from vllm.inputs) and
+        # vLLM >= 0.19 (where they live in vllm.inputs.llm and are NOT
+        # re-exported). See: https://github.com/ray-project/ray/issues/64275
+        TokensPrompt, TextPrompt = _get_vllm_prompt_classes()
+
+        if request.prompt_token_ids is not None:
+            llm_prompt = TokensPrompt(
+                prompt_token_ids=request.prompt_token_ids,
+                multi_modal_data=request.multimodal_data,
+                mm_processor_kwargs=request.mm_processor_kwargs,
+                multi_modal_uuids=request.multimodal_uuids,
             )
         else:
-            if request.prompt_token_ids is not None:
-                llm_prompt = vllm.inputs.data.TokensPrompt(
-                    prompt_token_ids=request.prompt_token_ids
+            assert request.prompt
+            llm_prompt = TextPrompt(
+                prompt=request.prompt,
+                multi_modal_data=request.multimodal_data,
+                mm_processor_kwargs=request.mm_processor_kwargs,
+                multi_modal_uuids=request.multimodal_uuids,
+            )
+
+        # Send the request to the LLM engine.
+        if self.task_type in (
+            vLLMTaskType.EMBED,
+            vLLMTaskType.CLASSIFY,
+            vLLMTaskType.SCORE,
+        ):
+            stream = self.engine.encode(
+                request_id=str(request.request_id),
+                prompt=llm_prompt,
+                pooling_params=request.params,
+                tokenization_kwargs=request.tokenization_kwargs,
+                lora_request=request.lora_request,
+            )
+        else:
+            stream = self.engine.generate(
+                request_id=str(request.request_id),
+                prompt=llm_prompt,
+                sampling_params=request.params,
+                lora_request=request.lora_request,
+            )
+
+        # Consume the stream until the request is finished.
+        async for request_output in stream:
+            if request_output.finished:
+                # Bypass the original full prompt.
+                request_output.prompt = (
+                    request.prompt if request.prompt is not None else ""
                 )
-            else:
-                assert request.prompt
-                llm_prompt = vllm.inputs.data.TextPrompt(prompt=request.prompt)
-
-        # Send the request to the LLM engine.
-        stream = await self.engine.add_request(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            params=request.params,
-            lora_request=request.lora_request,
-        )
-        # Consume the stream until the request is finished.
-        async for request_output in stream:
-            if request_output.finished:
-                # Bypass the original full prompt.
-                request_output.prompt = request.prompt
-                return request_output
-
-        raise RuntimeError(
-            "[vLLM] The request is not finished. This should not happen. Please report this issue to the Ray team."
-        )
-
-    async def generate_async_v1(self, request: vLLMEngineRequest) -> Any:
-        """Process a single request.
-
-        Args:
-            request: The request.
-
-        Returns:
-            The output of the request.
-        """
-
-        # NOTE: vLLM v1 tighly couples tokenizer and detokenizer to the engine.
-        # We should investigate whether decoupling them could lead to better
-        # performance. Given that v1 tokenizer and detokenizer are already
-        # in a separate process, the benefit of decoupling them in the Processor
-        # may be limited.
-        assert request.prompt
-        import vllm
-
-        multi_modal_data = {"image": request.images} if request.images else None
-        llm_prompt = vllm.inputs.data.TextPrompt(
-            prompt=request.prompt, multi_modal_data=multi_modal_data
-        )
-
-        # Send the request to the LLM engine.
-        stream = self.engine.generate(
-            request_id=str(request.request_id),
-            prompt=llm_prompt,
-            sampling_params=request.params,
-        )
-
-        # Consume the stream until the request is finished.
-        async for request_output in stream:
-            if request_output.finished:
-                # Bypass the original full prompt.
-                request_output.prompt = request.prompt
                 return request_output
 
         raise RuntimeError(
@@ -432,9 +622,11 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         max_concurrent_batches: int,
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
+        task_type: TypeVLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
         dynamic_lora_loading_path: Optional[str] = None,
+        should_continue_on_error: bool = False,
+        log_engine_metrics: bool = True,
     ):
         """
         Initialize the vLLMEngineStageUDF.
@@ -442,36 +634,40 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         Args:
             data_column: The data column name.
             expected_input_keys: The expected input keys of the stage.
+            batch_size: The batch size for the stage.
+            max_concurrent_batches: The maximum number of concurrent batches.
             model: The model to use for the vLLM engine.
             engine_kwargs: The kwargs to pass to the vLLM engine.
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             max_pending_requests: The maximum number of pending requests. If None,
-                it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
+                it will be set to ``ceil(1.1 * max_num_seqs * pipeline_parallel_size)``,
+                where ``max_num_seqs`` and ``pipeline_parallel_size`` are read from
+                vLLM's resolved engine config (so the default tracks vLLM's
+                GPU-dependent ``max_num_seqs``, not a hardcoded value).
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
+            should_continue_on_error: If True, continue processing when inference fails for
+                a row instead of raising. Failed rows will have '__inference_error__'
+                set to the error message.
+            log_engine_metrics: If True, export vLLM engine metrics (prefix cache hit rate,
+                TTFT, TPOT, KV cache utilization, etc.) to Ray's Prometheus endpoint.
         """
         super().__init__(data_column, expected_input_keys)
         self.model = model
+        self.should_continue_on_error = should_continue_on_error
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
-        self.engine_kwargs = self.normalize_engine_kwargs(task_type, engine_kwargs)
+        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
 
-        # Set up the max pending requests.
-        pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
-        self.max_pending_requests = max_pending_requests or math.ceil(
-            self.engine_kwargs.get("max_num_seqs", 128) * pp_size * 1.1
+        exclude_safetensors = (
+            self.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS
         )
-        if self.max_pending_requests > 0:
-            logger.info("Max pending requests is set to %d", self.max_pending_requests)
-
-        exclude_safetensors = self.engine_kwargs.get("load_format") in [
-            "runai_streamer",
-            "tensorizer",
-        ]
         if exclude_safetensors:
+            logger.info("Excluding safetensors files when downloading the model.")
             download_model = NodeModelDownloadable.EXCLUDE_SAFETENSORS
         else:
+            logger.info("Downloading model and tokenizer.")
             download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
 
         # Download the model if needed.
@@ -482,16 +678,21 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             download_extra_files=False,
         )
 
-        # Create an LLM engine.
+        # If we are using streaming load formats, we need to pass in self.model which is a remote cloud storage path.
+        source = model_source if not exclude_safetensors else self.model
         self.llm = vLLMEngineWrapper(
             model=self.model,
-            model_source=model_source,
+            model_source=source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
-            disable_log_requests=True,
-            max_pending_requests=self.max_pending_requests,
+            enable_log_requests=False,
+            max_pending_requests=max_pending_requests,
             dynamic_lora_loading_path=dynamic_lora_loading_path,
+            log_engine_metrics=log_engine_metrics,
             **self.engine_kwargs,
         )
+        # The wrapper resolves a None into a concrete value using vLLM's
+        # resolved engine config; surface that back on the UDF.
+        self.max_pending_requests = self.llm.max_pending_requests
 
         max_num_seqs = self.llm.get_scheduler_config().max_num_seqs
         if batch_size * max_concurrent_batches < max_num_seqs:
@@ -505,19 +706,21 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
-        task_type: vLLMTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Normalize the engine kwargs.
 
         Args:
-            task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             engine_kwargs: The kwargs to normalize.
 
         Returns:
             The normalized kwargs.
         """
+        # Copy to avoid mutating fn_constructor_kwargs. Ray Data generates UDF
+        # instance keys before __init__, so in-place changes cause KeyError.
+        engine_kwargs = engine_kwargs.copy()
+
         # Remove model from engine kwargs if set.
         model = engine_kwargs.pop("model", None)
         if model is not None and model != self.model:
@@ -528,18 +731,84 @@ class vLLMEngineStageUDF(StatefulStageUDF):
                 self.model,
             )
 
-        # Override the task if it is different from the stage.
-        task = vLLMTaskType(engine_kwargs.get("task", task_type))
-        if task != task_type:
-            logger.warning(
-                "The task set in engine kwargs (%s) is different from the "
-                "stage (%s). Overriding the task in engine kwargs to %s.",
-                task,
-                task_type,
-                task_type,
-            )
-        engine_kwargs["task"] = task_type
         return engine_kwargs
+
+    async def _generate_with_error_handling(
+        self,
+        row: Dict[str, Any],
+        batch_uuid: uuid.UUID,
+    ) -> Dict[str, Any]:
+        """Generate output for a single row, catching errors if should_continue_on_error is set.
+
+        Args:
+            row: The input row.
+            batch_uuid: The batch UUID for logging.
+
+        Returns:
+            The output dict, with __inference_error__ set if an error occurred.
+        """
+        idx_in_batch = row[self.IDX_IN_BATCH_COLUMN]
+        try:
+            request, output, time_taken_llm = await self.llm.generate_async(row)
+            return {
+                **output,
+                "request_id": request.request_id,
+                self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
+                "batch_uuid": batch_uuid.hex,
+                "time_taken_llm": time_taken_llm,
+                "params": str(request.params),
+                "__inference_error__": "",
+            }
+        except _VLLM_FATAL_ERRORS as e:
+            # Fatal engine errors (e.g., EngineDeadError) indicate the vLLM
+            # engine subprocess is dead, but the Ray actor is still alive.
+            #
+            # Simply re-raising would cause task retries to go to the SAME
+            # actor (actor methods are bound to specific instances), creating
+            # an infinite retry loop on the broken actor.
+            #
+            # The fix: exit the actor so Ray can restart it with a fresh
+            # engine. Ray Data's max_restarts=-1 (default) will create a
+            # replacement actor, and task retries will go to healthy actors.
+            #
+            # NOTE: We use os._exit(1) instead of ray.actor.exit_actor() because:
+            # - os._exit(1) -> SYSTEM_ERROR -> raises RaySystemError -> task IS retried
+            # - ray.actor.exit_actor() -> INTENDED_USER_EXIT -> raises ActorDiedError
+            #   -> task is NOT retried (ActorDiedError is not a RaySystemError)
+            #
+            # See: https://github.com/ray-project/ray/issues/59522
+            logger.error(
+                f"[vLLM] Fatal engine error, exiting actor to trigger restart: {e}"
+            )
+            os._exit(1)
+        except Exception as e:
+            if not self.should_continue_on_error:
+                raise
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            logger.warning(
+                "[vLLM] Inference failed for row %d in batch %s: %s",
+                idx_in_batch,
+                batch_uuid.hex,
+                error_msg,
+            )
+            # Include snippet of failed prompt for debuggability
+            prompt = truncate_str(row.get("prompt", ""), _MAX_PROMPT_LENGTH_IN_ERROR)
+
+            # Construct default vLLMOutputData for schema consistency with success rows
+            default_output = vLLMOutputData(
+                prompt=prompt,
+                prompt_token_ids=None,
+                num_input_tokens=0,
+            )
+            return {
+                **default_output.model_dump(),
+                "request_id": -1,
+                self.IDX_IN_BATCH_COLUMN: idx_in_batch,
+                "batch_uuid": batch_uuid.hex,
+                "time_taken_llm": -1,
+                "params": "",
+                "__inference_error__": error_msg,
+            }
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """Run the vLLM engine.
@@ -547,25 +816,19 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         Args:
             batch: A list of rows to run the vLLM engine on.
 
-        Returns:
-            The response of the vLLM engine.
+        Yields:
+            Dict[str, Any]: The response of the vLLM engine.
         """
         batch_uuid = uuid.uuid4()
         batch_start_time = time.perf_counter()
 
-        tasks = [asyncio.create_task(self.llm.generate_async(row)) for row in batch]
+        tasks = [
+            asyncio.create_task(self._generate_with_error_handling(row, batch_uuid))
+            for row in batch
+        ]
 
         for resp in asyncio.as_completed(tasks):
-            request, output, time_taken_llm = await resp
-
-            yield {
-                **output,
-                "request_id": request.request_id,
-                self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
-                "batch_uuid": batch_uuid.hex,
-                "time_taken_llm": time_taken_llm,
-                "params": str(request.params),
-            }
+            yield await resp
 
         batch_time_taken = time.perf_counter() - batch_start_time
         # TODO: Add metrics to the UDf wrapper so that we don't need
@@ -591,7 +854,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 def _ray_scheduling_strategy_fn(
     num_bundles_per_replica: int,
     accelerator_type: Optional[str] = None,
-    resources_per_bundle: Optional[Dict[str, float]] = None,
+    placement_group_config: Optional[Dict[str, Any]] = None,
 ):
     """Create a Ray scheduling strategy for the engine.
 
@@ -600,31 +863,35 @@ def _ray_scheduling_strategy_fn(
             engine replica.
         accelerator_type: The accelerator type. If None, the
             accelerator_type label will not be set.
-        resources_per_bundle: The custom resources per bundle.
-            If None, we default to 1xGPU + 1xCPU bundle.
+        placement_group_config: The custom placement group configuration.
+            If None, we use the default placement group configuration.
 
     Returns:
         The Ray scheduling strategy.
     """
 
     def _get_bundle() -> Dict[str, float]:
-        bundle = {}
-        # Custom resources
-        if resources_per_bundle:
-            bundle = resources_per_bundle
-        else:
-            # GPU bundles
-            bundle = {"GPU": 1, "CPU": 1}
+        # GPU bundles
+        bundle = {"GPU": 1, "CPU": 1}
 
         # Accelerator type
         if accelerator_type:
             bundle[f"accelerator_type:{accelerator_type}"] = 0.001
         return bundle
 
-    pg = ray.util.placement_group(
-        [_get_bundle()] * num_bundles_per_replica,
-        strategy="STRICT_PACK",
-    )
+    if placement_group_config:
+        placement_group_config = copy.deepcopy(placement_group_config)
+
+        if accelerator_type:
+            for bundle in placement_group_config["bundles"]:
+                bundle[f"accelerator_type:{accelerator_type}"] = 0.001
+
+        pg = ray.util.placement_group(**placement_group_config)
+    else:
+        pg = ray.util.placement_group(
+            [_get_bundle()] * num_bundles_per_replica,
+            strategy="PACK",
+        )
     return dict(
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             pg, placement_group_capture_child_tasks=True
@@ -640,7 +907,7 @@ class vLLMEngineStage(StatefulStage):
     fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
 
     @root_validator(pre=True)
-    def post_init(cls, values):
+    def post_init(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Post-initialize the stage. Specifically,
         this function determines the num_gpus and Ray remote args
         for the .map_batches() call in this stage.
@@ -664,55 +931,109 @@ class vLLMEngineStage(StatefulStage):
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
         num_bundles_per_replica = tp_size * pp_size
 
-        # Use the MP backend by default.
-        engine_kwargs.setdefault("distributed_executor_backend", "mp")
+        # Select distributed executor backend:
+        # - "uni": Single-process executor for single-GPU inference. Avoids unnecessary
+        #   process spawning and IPC overhead which is noticeable for small models
+        #   or short decode lengths.
+        # - "ray": Ray-based executor for multi-GPU (TP/PP > 1) with better resource
+        #   cleanup, unification with multi-node pipeline parallelism, and advanced control
+        #   over the placement group.
+        engine_kwargs.setdefault(
+            "distributed_executor_backend",
+            "uni" if num_bundles_per_replica == 1 else "ray",
+        )
         executor_backend = engine_kwargs.get("distributed_executor_backend")
 
         # When Ray is used in the vLLM engine, we set num_devices to 0 so that
         # Ray Data won't reserve GPUs in advance. Instead, we specify scheduling
         # strategy in .map_batches() arguments and let vLLM Ray executor to
         # create placement groups for each TP/PP worker.
-        resources_per_bundle = map_batches_kwargs.pop("resources", None)
-        if executor_backend == "ray" and num_bundles_per_replica > 1:
+        placement_group_config = fn_constructor_kwargs.pop(
+            "placement_group_config", None
+        )
+
+        # If bundle_per_worker is specified inside placement_group_config,
+        # expand it into full bundles list
+        if placement_group_config is not None:
+            bundle_per_worker = placement_group_config.pop("bundle_per_worker", None)
+            if bundle_per_worker is not None:
+                placement_group_config["bundles"] = [
+                    bundle_per_worker.copy() for _ in range(num_bundles_per_replica)
+                ]
+        if executor_backend == "ray":
             # Note that we have to use partial() to pass a function
             # instead of an object.
             map_batches_kwargs["ray_remote_args_fn"] = partial(
                 _ray_scheduling_strategy_fn,
                 num_bundles_per_replica,
                 accelerator_type,
-                resources_per_bundle,
+                placement_group_config,
             )
             ray_remote_args["num_gpus"] = 0
         else:
-            if not resources_per_bundle:
-                # Default to GPUs per bundle if custom resources are not specified.
+            if not placement_group_config:
+                # Default to GPUs per bundle if placement group is not specified.
                 ray_remote_args["num_gpus"] = num_bundles_per_replica
             else:
-                ray_remote_args["resources"] = {
-                    resource_key: resource_count * num_bundles_per_replica
-                    for resource_key, resource_count in resources_per_bundle.items()
-                }
+                bundles = placement_group_config["bundles"]
+                resource_counter = Counter()
+                for bundle in bundles:
+                    resource_counter.update(bundle)
+
+                total_cpus = resource_counter.pop("CPU", 0)
+                total_gpus = resource_counter.pop("GPU", 0)
+
+                # Ray Data expects CPU/GPU to be specified via num_cpus/num_gpus,
+                # not inside the resources dict.
+                if total_cpus:
+                    ray_remote_args["num_cpus"] = total_cpus
+                if total_gpus:
+                    ray_remote_args["num_gpus"] = total_gpus
+
+                # Keep only non-CPU/GPU custom resources, if any.
+                if resource_counter:
+                    ray_remote_args["resources"] = dict(resource_counter)
 
         map_batches_kwargs.update(ray_remote_args)
         return values
 
+    def _get_task_type(self) -> TypeVLLMTaskType:
+        return self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
+
     def get_required_input_keys(self) -> Dict[str, str]:
         """The required input keys of the stage and their descriptions."""
-        ret = {"prompt": "The text prompt (str)."}
-        task_type = self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
-        if task_type == vLLMTaskType.GENERATE:
+        ret = {}
+        if self._get_task_type() == vLLMTaskType.GENERATE:
             ret["sampling_params"] = (
                 "The sampling parameters. See "
-                "https://docs.vllm.ai/en/latest/api/inference_params.html#sampling-parameters "
+                "https://docs.vllm.ai/en/latest/api/vllm/#vllm.SamplingParams "
                 "for details."
             )
         return ret
 
     def get_optional_input_keys(self) -> Dict[str, str]:
         """The optional input keys of the stage and their descriptions."""
-        return {
-            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be tokenized by the vLLM engine.",
-            "images": "The images to generate text from. If provided, the prompt will be a multimodal prompt.",
+        ret = {
+            "prompt": "The text prompt (str). Required if tokenized_prompt is not provided. Either prompt or tokenized_prompt must be provided.",
+            "tokenized_prompt": "The tokenized prompt. Required if prompt is not provided. Either prompt or tokenized_prompt must be provided.",
+            "image": "[DEPRECATED] The image(s) for multimodal input. Prefer `multimodal_data={'image': [...]}` or enable `prepare_multimodal_stage`.",
             "model": "The model to use for this request. If the model is different from the "
             "model set in the stage, then this is a LoRA request.",
+            "multimodal_data": "The multimodal data to pass to the model, if the model supports it.",
+            "mm_processor_kwargs": "The kwargs for the engine's multimodal processor.",
+            "multimodal_uuids": "User-specified UUIDs for multimodal items, mapped by modality.",
         }
+        if self._get_task_type() == vLLMTaskType.EMBED:
+            ret["pooling_params"] = (
+                "The pooling parameters. See "
+                "https://docs.vllm.ai/en/latest/api/vllm/#vllm.PoolingParams "
+                "for details. If not provided, default pooling parameters will be used."
+            )
+            ret["tokenization_kwargs"] = (
+                "Tokenization keyword arguments passed to the vLLM engine. "
+                "Use this to control prompt truncation, e.g. "
+                '{"truncation": true, "max_length": 512}. '
+                "See https://docs.vllm.ai/en/latest/features/input_processing.html "
+                "for details."
+            )
+        return ret

@@ -1,17 +1,19 @@
-import gymnasium as gym
-from typing import Type
 import unittest
+from typing import Type
+
+import gymnasium as gym
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec, RLModule
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import check
 
 
@@ -36,6 +38,29 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(algo.config.train_batch_size == 3000)
         algo.train()
         algo.stop()
+
+    def test_multi_agent_shared_module(self):
+        """Multiple agents sharing a single RLModule via a one-entry spec dict."""
+        config = (
+            PPOConfig()
+            .environment(MultiAgentCartPole, env_config={"num_agents": 2})
+            .env_runners(num_env_runners=0)
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda agent_id, *args, **kwargs: "p0",
+            )
+            .rl_module(
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={"p0": RLModuleSpec()},
+                ),
+            )
+        )
+        algo = config.build_algo()
+        try:
+            self.assertEqual(set(algo.env_runner.module.keys()), {"p0"})
+            algo.train()
+        finally:
+            algo.stop()
 
     def test_freezing_of_algo_config(self):
         """Tests, whether freezing an AlgorithmConfig actually works as expected."""
@@ -426,13 +451,99 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         self.assertRaisesRegex(
             ValueError,
-            "Module_specs cannot be None",
+            "must be a dict",
             lambda: config.rl_module_spec,
+        )
+
+    def test_rollout_fragment_length_with_small_batch_and_multiple_learners(self):
+        """Test that get_rollout_fragment_length doesn't return 0 when train_batch_size=1 and num_learners > 1."""
+        for num_env_runners in [1, 2, 3, 4]:
+            config = (
+                AlgorithmConfig()
+                .env_runners(
+                    rollout_fragment_length="auto",
+                    num_env_runners=num_env_runners,
+                )
+                .learners(
+                    num_learners=2
+                )  # Multiple learners with train_batch_size=1 causes the issue
+                .training(
+                    train_batch_size=1
+                )  # Small batch size with multiple learners causes integer division to 0
+            )
+
+            # This should not return 0
+            rollout_fragment_length = config.get_rollout_fragment_length(0)
+            self.assertEqual(
+                rollout_fragment_length,
+                1,
+            )
+
+    def test_to_dict_roundtrip_new_api_stack(self):
+        """Tests that to_dict() round-trips New API stack batch sizes.
+
+        `to_dict()` does NOT eagerly resolve the effective batch size (that stays
+        lazy via the `total_train_batch_size` property). It only serializes the raw
+        fields, which is what makes it safe to call on an as-yet-unresolved config
+        (e.g. one carrying Tune search spaces).
+        """
+        from ray.rllib.algorithms.ppo import PPOConfig
+
+        # 1. Create a config on the New API Stack
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .training(train_batch_size_per_learner=123)
+        )
+
+        # 2. Export to dictionary
+        config_dict = config.to_dict()
+
+        # to_dict() does not inject computed properties (would break round-trip).
+        self.assertNotIn("total_train_batch_size", config_dict)
+        self.assertNotIn("train_batch_size_per_learner", config_dict)
+
+        # 3. Roundtrip: Create a new config and update from the dictionary, and
+        # verify the per-learner batch size (and the total derived from it) survives.
+        new_config = PPOConfig().update_from_dict(config_dict)
+        self.assertEqual(new_config.train_batch_size_per_learner, 123)
+        self.assertEqual(new_config.total_train_batch_size, 123)
+
+    def test_to_dict_with_tune_search_space(self):
+        """to_dict() must not eagerly resolve batch size when it's a Tune search space.
+
+        Regression test: passing an AlgorithmConfig with a search-space
+        `train_batch_size_per_learner` as Tune's `param_space` calls `to_dict()` on
+        an unresolved config. Computing `total_train_batch_size` (`Domain * int`)
+        would raise TypeError, so `to_dict()` must not attempt it.
+        """
+        from ray import tune
+        from ray.rllib.algorithms.ppo import PPOConfig
+
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .training(train_batch_size_per_learner=tune.qrandint(256, 2048, 64))
+        )
+
+        # Must not raise (this is the bug: TypeError from `Domain * int`).
+        config_dict = config.to_dict()
+
+        # The unresolved search space survives serialization so Tune can sample it.
+        self.assertIsInstance(
+            config_dict["_train_batch_size_per_learner"], tune.search.sample.Domain
         )
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

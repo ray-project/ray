@@ -3,7 +3,17 @@ import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -12,9 +22,9 @@ from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_integer
-from ray.data import Dataset
 from ray.exceptions import RayActorError
-from ray.train import Checkpoint, DataConfig
+from ray.train._checkpoint import Checkpoint
+from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import (
     TrialInfo,
     _TrainingResult,
@@ -37,6 +47,9 @@ from ray.train.constants import (
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 T = TypeVar("T")
 
@@ -80,9 +93,9 @@ class BackendExecutor:
     Args:
         backend_config: The configurations for this
             specific backend.
+        trial_info: Information about the current Tune trial, if running under Tune.
         num_workers: Number of workers to use for training.
-        resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the resources that will be
+        resources_per_worker: Dictionary specifying the resources that will be
             requested for each worker. Defaults to {"CPU": 1}.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
@@ -369,14 +382,20 @@ class BackendExecutor:
             resource_name: The name of the resource/accelerator.
             enable_sharing_env: The name of the environment variable
                 to check.
+
+        Returns:
+            True if resource sharing is enabled, False otherwise.
         """
         has_resource_requested = self._resources_per_worker.get(resource_name, 0) > 0
         return has_resource_requested and ray_constants.env_bool(
             enable_sharing_env, True
         )
 
-    def _create_rank_world_size_mappings(self) -> List[Dict]:
+    def _create_rank_world_size_mappings(
+        self,
+    ) -> Tuple[Dict[int, int], Dict[int, int], Dict[int, int]]:
         """Create rank and world size mappings for workers.
+
         There are three maps returned:
             - local_rank_map, which maps from worker world_rank to local_rank.
             - local_world_size_map, which maps from world_rank to local_world_size
@@ -419,6 +438,8 @@ class BackendExecutor:
                 4 -> 1
             }
 
+        Returns:
+            A tuple of (local_rank_map, local_world_size_map, node_rank_map).
         """
         local_rank_map = {}  # map from world rank to local rank
         local_world_size_map = {}  # map from world rank to local world size
@@ -460,7 +481,7 @@ class BackendExecutor:
     def start_training(
         self,
         train_func: Callable[[], T],
-        datasets: Dict[str, Dataset],
+        datasets: Dict[str, "Dataset"],
         metadata: Dict[str, Any],
         data_config: DataConfig,
         storage: StorageContext,
@@ -473,7 +494,11 @@ class BackendExecutor:
         Args:
             train_func: The training function to run on each worker.
             datasets: The base datasets.
+            metadata: User-supplied metadata dict propagated to checkpoints
+                created during training.
             data_config: The config object for creating dataset shards for workers.
+            storage: The storage context, providing access to the experiment
+                directory and other persistent storage state.
             checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``session.get_checkpoint()``. If this
@@ -705,7 +730,7 @@ class BackendExecutor:
                 end_time_ms=int(time.time() * 1000),
             )
 
-    def get_with_failure_handling(self, remote_values):
+    def get_with_failure_handling(self, remote_values: List[ray.ObjectRef]):
         """Gets the remote values while handling for worker failures.
 
         This method should be called instead of ``ray.get()`` directly in
@@ -742,20 +767,21 @@ class BackendExecutor:
                 before terminating the Ray actors.
 
         """
-        if graceful_termination:
-            try:
-                self._backend.on_shutdown(self.worker_group, self._backend_config)
-            except RayActorError:
-                logger.warning(
-                    "Graceful shutdown of backend failed. This is "
-                    "expected if one of the workers has crashed."
-                )
+        if self.is_started():
+            if graceful_termination:
+                try:
+                    self._backend.on_shutdown(self.worker_group, self._backend_config)
+                except RayActorError:
+                    logger.warning(
+                        "Graceful shutdown of backend failed. This is "
+                        "expected if one of the workers has crashed."
+                    )
 
-        if graceful_termination:
-            self.worker_group.shutdown()
-        else:
-            self.worker_group.shutdown(patience_s=0)
-        self.worker_group = InactiveWorkerGroup()
+            if graceful_termination:
+                self.worker_group.shutdown()
+            else:
+                self.worker_group.shutdown(patience_s=0)
+            self.worker_group = InactiveWorkerGroup()
 
         if self._placement_group:
             remove_placement_group(self._placement_group)

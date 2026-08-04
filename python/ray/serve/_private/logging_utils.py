@@ -6,13 +6,13 @@ import traceback
 from typing import Any, Optional
 
 import ray
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter, TextFormatter
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
+    RAY_SERVE_LOG_CLIENT_ADDRESS,
     RAY_SERVE_LOG_TO_STDERR,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
@@ -40,6 +40,9 @@ def should_skip_context_filter(record: logging.LogRecord) -> bool:
 
 
 class ServeCoreContextFilter(CoreContextFilter):
+    # The parent `filter` is unannotated; this matches the `logging.Filter`
+    # contract.
+    # pyrefly: ignore[bad-override]
     def filter(self, record: logging.LogRecord) -> bool:
         if should_skip_context_filter(record):
             return True
@@ -93,6 +96,7 @@ class ServeContextFilter(logging.Filter):
     def filter(self, record):
         if should_skip_context_filter(record):
             return True
+
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.route:
             setattr(record, SERVE_LOG_ROUTE, request_context.route)
@@ -169,8 +173,9 @@ class ServeFormatter(TextFormatter):
 
         Args:
             record: The log record to be formatted.
-            Returns:
-                The formatted log record in string format.
+
+        Returns:
+            The formatted log record in string format.
         """
         # Use pre-computed formatters for better performance
         if SERVE_LOG_REQUEST_ID in record.__dict__:
@@ -179,8 +184,42 @@ class ServeFormatter(TextFormatter):
             return self.base_formatter.format(record)
 
 
-def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
+def format_grpc_peer_address(peer: str) -> str:
+    """Extract the client address from a gRPC peer() string.
+
+    gRPC peer() returns "ipv4:host:port" or "ipv6:%5Bhost%5D:port".
+    Strips the protocol prefix and URL-decodes IPv6 brackets.
+    """
+    if not peer:
+        return ""
+    for prefix in ("ipv4:", "ipv6:"):
+        if peer.startswith(prefix):
+            addr = peer[len(prefix) :]
+            return addr.replace("%5B", "[").replace("%5D", "]")
+    return peer
+
+
+def format_client_address(client) -> str:
+    """Format a raw ASGI scope client value into a string."""
+    if isinstance(client, (tuple, list)):
+        if len(client) != 2:
+            return ":".join(str(x) for x in client)
+        host, port = str(client[0]), str(client[1])
+        # Wrap IPv6 addresses in brackets to avoid ambiguity (e.g. [::1]:54321).
+        if ":" in host:
+            return f"[{host}]:{port}"
+        return f"{host}:{port}"
+    elif isinstance(client, str):
+        return client
+    return str(client) if client else ""
+
+
+def access_log_msg(
+    *, method: str, route: str, status: str, latency_ms: float, client: str = ""
+):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
+    if client and RAY_SERVE_LOG_CLIENT_ADDRESS:
+        return f"{client} {method} {route} {status} {latency_ms:.1f}ms"
     return f"{method} {route} {status} {latency_ms:.1f}ms"
 
 
@@ -200,7 +239,7 @@ def log_access_log_filter(record: logging.LogRecord) -> bool:
     return not record.serve_access_log
 
 
-def get_component_logger_file_path() -> Optional[str]:
+def get_component_logger_file_path() -> Optional[str]:  # type: ignore[return]
     """Returns the relative file path for the Serve logger, if it exists.
 
     If a logger was configured through configure_component_logger() for the Serve
@@ -210,8 +249,8 @@ def get_component_logger_file_path() -> Optional[str]:
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     for handler in logger.handlers:
         if isinstance(handler, logging.handlers.MemoryHandler):
-            absolute_path = handler.target.baseFilename
-            ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
+            absolute_path = handler.target.baseFilename  # type: ignore[union-attr]
+            ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()  # type: ignore[attr-defined]
             if absolute_path.startswith(ray_logs_dir):
                 return absolute_path[len(ray_logs_dir) :]
 
@@ -337,6 +376,8 @@ def configure_component_logger(
         stream_handler.setFormatter(serve_formatter)
         stream_handler.addFilter(log_to_stderr_filter)
         stream_handler.addFilter(ServeContextFilter())
+        if logging_config.enable_access_log is False:
+            stream_handler.addFilter(log_access_log_filter)
         logger.addHandler(stream_handler)
 
     # Skip setting up file handler and stdout/stderr redirect if `stream_handler_only`
@@ -353,9 +394,9 @@ def configure_component_logger(
     os.makedirs(logs_dir, exist_ok=True)
 
     if max_bytes is None:
-        max_bytes = ray._private.worker._global_node.max_bytes
+        max_bytes = ray._private.worker._global_node.max_bytes  # type: ignore[attr-defined]
     if backup_count is None:
-        backup_count = ray._private.worker._global_node.backup_count
+        backup_count = ray._private.worker._global_node.backup_count  # type: ignore[attr-defined]
 
     log_file_name = get_component_file_name(
         component_name=component_name,
@@ -369,35 +410,6 @@ def configure_component_logger(
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
-    if RAY_SERVE_ENABLE_JSON_LOGGING:
-        logger.warning(
-            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
-            "'LoggingConfig' to enable json format."
-        )
-    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        file_handler.addFilter(ServeCoreContextFilter())
-        file_handler.addFilter(ServeContextFilter())
-        file_handler.addFilter(
-            ServeComponentFilter(component_name, component_id, component_type)
-        )
-        file_handler.setFormatter(json_formatter)
-    else:
-        file_handler.setFormatter(serve_formatter)
-
-    if logging_config.enable_access_log is False:
-        file_handler.addFilter(log_access_log_filter)
-    else:
-        file_handler.addFilter(ServeContextFilter())
-
-    # Remove unwanted attributes from the log record.
-    file_handler.addFilter(ServeLogAttributeRemovalFilter())
-
-    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
-    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
-        builtins.print = redirected_print
-        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
-        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
-
     # Create a memory handler that buffers log records and flushes to file handler
     # Buffer capacity: buffer_size records
     # Flush triggers: buffer full, ERROR messages, or explicit flush
@@ -406,6 +418,30 @@ def configure_component_logger(
         target=file_handler,
         flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
     )
+    # Add filters directly to the memory handler effective for both buffered and non buffered cases
+    if logging_config.encoding == EncodingType.JSON:
+        memory_handler.addFilter(ServeCoreContextFilter())
+        memory_handler.addFilter(ServeContextFilter())
+        memory_handler.addFilter(
+            ServeComponentFilter(component_name, component_id, component_type)
+        )
+        file_handler.setFormatter(json_formatter)
+    else:
+        file_handler.setFormatter(serve_formatter)
+
+    if logging_config.enable_access_log is False:
+        memory_handler.addFilter(log_access_log_filter)
+    else:
+        memory_handler.addFilter(ServeContextFilter())
+
+    # Remove unwanted attributes from the log record.
+    memory_handler.addFilter(ServeLogAttributeRemovalFilter())
+
+    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
+    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
+        builtins.print = redirected_print
+        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)  # type: ignore[assignment]
+        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)  # type: ignore[assignment]
 
     # Add the memory handler instead of the file handler directly
     logger.addHandler(memory_handler)

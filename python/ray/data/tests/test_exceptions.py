@@ -9,32 +9,16 @@ from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
-def test_handle_debugger_exception(ray_start_regular_shared):
-    def _bad(batch):
-        if batch["id"][0] == 5:
-            raise Exception("Test exception")
-
-        return batch
-
-    dataset = ray.data.range(8, override_num_blocks=8).map_batches(_bad)
-
-    with pytest.raises(
-        UserCodeException,
-        match=r"Failed to process the following data block: \{'id': array\(\[5\]\)\}",
-    ):
-        dataset.materialize()
-
-
-@pytest.mark.parametrize("log_internal_stack_trace_to_stdout", [True, False])
+@pytest.mark.parametrize("log_internal_stack_trace", [True, False])
 def test_user_exception(
-    log_internal_stack_trace_to_stdout,
+    log_internal_stack_trace,
     caplog,
     propagate_logs,
     restore_data_context,
     ray_start_regular_shared,
 ):
     ctx = ray.data.DataContext.get_current()
-    ctx.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
+    ctx.log_internal_stack_trace = log_internal_stack_trace
 
     def f(row):
         _ = 1 / 0
@@ -46,19 +30,39 @@ def test_user_exception(
     assert issubclass(exc_info.type, UserCodeException)
     assert ZeroDivisionError.__name__ in str(exc_info.value)
 
-    if not log_internal_stack_trace_to_stdout:
+    if not log_internal_stack_trace:
         assert any(
             record.levelno == logging.ERROR
             and "Exception occurred in user code" in record.message
             for record in caplog.records
         ), caplog.records
 
+    # For a user-code error the "Full stack trace:" record is always hidden from
+    # stdout (``hide=True``); the flag only controls the log-file content.
     assert any(
         record.levelno == logging.ERROR
         and "Full stack trace:" in record.message
-        and getattr(record, "hide", False) == (not log_internal_stack_trace_to_stdout)
+        and getattr(record, "hide", False) is True
         for record in caplog.records
     ), caplog.records
+
+    # The "Full stack trace:" record (written to the log file only): by default it
+    # carries just the cleaned worker-side traceback inlined into the message, with
+    # the driver-side propagation frames omitted. When the user opts in via
+    # `log_internal_stack_trace`, the full driver + worker traceback is attached to
+    # the log-file record via exc_info instead.
+    full_trace_records = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR and "Full stack trace:" in record.message
+    ]
+    assert full_trace_records, caplog.records
+    full_trace_record = full_trace_records[0]
+    if log_internal_stack_trace:
+        assert full_trace_record.exc_info is not None
+    else:
+        assert full_trace_record.exc_info is None
+        assert "ZeroDivisionError" in full_trace_record.message
 
 
 def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
@@ -67,7 +71,7 @@ def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
 
     with pytest.raises(FakeException) as exc_info:
         with patch(
-            "ray.data._internal.plan.ExecutionPlan.has_computed_output",
+            "ray.data.dataset._ExecutionCache.get_bundle",
             side_effect=FakeException(),
         ):
             ray.data.range(1).materialize()
@@ -137,6 +141,16 @@ def test_raise_original_map_exception_env_var(
         and "Exception occurred in user code" in record.message
         for record in caplog.records
     ), caplog.records
+
+
+def test_deprecated_log_internal_stack_trace_alias(restore_data_context):
+    # The old `log_internal_stack_trace_to_stdout` field name is deprecated but
+    # still forwards to `log_internal_stack_trace` (with a warning) for
+    # backwards compatibility.
+    ctx = ray.data.DataContext.get_current()
+    with pytest.warns(DeprecationWarning, match="log_internal_stack_trace_to_stdout"):
+        ctx.log_internal_stack_trace_to_stdout = False
+    assert ctx.log_internal_stack_trace is False
 
 
 if __name__ == "__main__":

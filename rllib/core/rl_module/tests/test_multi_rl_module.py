@@ -1,11 +1,17 @@
 import tempfile
 import unittest
 
+import gymnasium as gym
+
+from ray.rllib.algorithms import DQNConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
-from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
+from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.env.multi_agent_env import make_multi_agent
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.examples.multi_agent.multi_agent_cartpole import MultiAgentCartPole
+from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 from ray.rllib.utils.test_utils import check
 
 
@@ -201,9 +207,43 @@ class TestMultiRLModule(unittest.TestCase):
             self.assertEqual(module.keys(), {"test2", "test3", DEFAULT_MODULE_ID})
             self.assertNotEqual(id(module), id(module2))
 
+    def test_model_config_propagation(self):
+        """Test that model_config is correctly added to a MultiRLModule"""
+
+        class CustomMultiRLModule(MultiRLModule):
+            def setup(self):
+                super().setup()
+                assert self.model_config is not None
+
+        spec = MultiRLModuleSpec(
+            multi_rl_module_class=CustomMultiRLModule,
+            rl_module_specs={
+                "agent_1": RLModuleSpec(
+                    TorchRLModule,
+                    observation_space=gym.spaces.Box(0, 1),
+                    action_space=gym.spaces.Box(0, 1),
+                )
+            },
+            model_config={"some_config": 1},
+        )
+        # Verify that model_config propagates when instantiated using MultiRLModuleSpec.build()
+        spec.build()
+        # Verify that model_config propagates when instantiated using an AlgorithmConfig
+        algo_config = (
+            DQNConfig()
+            .environment(MultiAgentCartPole)
+            .rl_module(rl_module_spec=spec)
+            .multi_agent(
+                policies={"agent_1"},
+                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: agent_id,
+            )
+        )
+        MultiAgentEnvRunner(algo_config)
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

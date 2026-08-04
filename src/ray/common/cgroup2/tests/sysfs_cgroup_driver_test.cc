@@ -20,7 +20,7 @@
 #include <utility>
 
 #include "gtest/gtest.h"
-#include "ray/common/cgroup2/tests/cgroup_test_utils.h"
+#include "ray/common/cgroup2/cgroup_test_utils.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 
@@ -35,8 +35,8 @@ TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledFailsIfEmptyMountFile) {
 
 TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledFailsIfMalformedMountFile) {
   TempFile temp_mount_file;
-  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0\n");
-  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup/unified/ rw 0 0\n");
+  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0");
+  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup/unified/ rw 0 0");
   temp_mount_file.AppendLine("oopsie");
   SysFsCgroupDriver driver(temp_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
@@ -46,7 +46,7 @@ TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledFailsIfMalformedMountFile) {
 TEST(SysFsCgroupDriverTest,
      CheckCgroupv2EnabledFailsIfCgroupv1MountedAndCgroupv2NotMounted) {
   TempFile temp_mount_file;
-  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0\n");
+  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0");
   SysFsCgroupDriver driver(temp_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
   ASSERT_TRUE(s.IsInvalid()) << s.ToString();
@@ -55,16 +55,25 @@ TEST(SysFsCgroupDriverTest,
 TEST(SysFsCgroupDriverTest,
      CheckCgroupv2EnabledFailsIfCgroupv1MountedAndCgroupv2Mounted) {
   TempFile temp_mount_file;
-  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0\n");
-  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup/unified/ rw 0 0\n");
+  temp_mount_file.AppendLine("cgroup /sys/fs/cgroup rw 0 0");
+  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup/unified/ rw 0 0");
   SysFsCgroupDriver driver(temp_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
   ASSERT_TRUE(s.IsInvalid()) << s.ToString();
 }
 
+TEST(SysFsCgroupDriverTest,
+     CheckCgroupv2EnabledSucceedsIfMountFileNotFoundButFallbackFileIsCorrect) {
+  TempFile temp_fallback_mount_file;
+  temp_fallback_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0");
+  SysFsCgroupDriver driver("/does/not/exist", temp_fallback_mount_file.GetPath());
+  Status s = driver.CheckCgroupv2Enabled();
+  EXPECT_TRUE(s.ok()) << s.ToString();
+}
+
 TEST(SysFsCgroupDriverTest, CheckCgroupv2EnabledSucceedsIfOnlyCgroupv2Mounted) {
   TempFile temp_mount_file;
-  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup rw 0 0\n");
+  temp_mount_file.AppendLine("cgroup2 /sys/fs/cgroup cgroup2 rw 0 0");
   SysFsCgroupDriver driver(temp_mount_file.GetPath());
   Status s = driver.CheckCgroupv2Enabled();
   EXPECT_TRUE(s.ok()) << s.ToString();
@@ -84,6 +93,23 @@ TEST(SysFsCgroupDriver, CheckCgroupFailsIfCgroupDoesNotExist) {
   // This is not a directory on the cgroupv2 vfs.
   SysFsCgroupDriver driver;
   Status s = driver.CheckCgroup("/some/path/that/doesnt/exist");
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
+TEST(SysFsCgroupDriver, DeleteCgroupFailsIfNotCgroup2Path) {
+  // This is not a directory on the cgroupv2 vfs.
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup(temp_dir->GetPath());
+  EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
+TEST(SysFsCgroupDriver, DeleteCgroupFailsIfCgroupDoesNotExist) {
+  // This is not a directory on the cgroupv2 vfs.
+  SysFsCgroupDriver driver;
+  Status s = driver.DeleteCgroup("/some/path/that/doesnt/exist");
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
@@ -127,6 +153,33 @@ TEST(SysFsCgroupDriver, AddConstraintFailsIfNotCgroupv2Path) {
   SysFsCgroupDriver driver;
   Status s = driver.AddConstraint(temp_dir->GetPath(), "memory.min", "1");
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
+TEST(SysFsCgroupDriver, GetConstraintValueFailsIfConstraintDoesNotExist) {
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+  SysFsCgroupDriver driver;
+  StatusOr<std::string> result =
+      driver.GetConstraintValue(temp_dir->GetPath(), "cpu.weight");
+  ASSERT_TRUE(result.IsInvalidArgument()) << result.ToString();
+}
+
+TEST(SysFsCgroupDriver, GetConstraintValueSucceedsIfConstraintExists) {
+  auto temp_dir_or_status = TempDirectory::Create();
+  ASSERT_TRUE(temp_dir_or_status.ok()) << temp_dir_or_status.ToString();
+  std::unique_ptr<TempDirectory> temp_dir = std::move(temp_dir_or_status.value());
+
+  std::filesystem::path constraint_file_path =
+      std::filesystem::path(temp_dir->GetPath()) / "cpu.weight";
+  TempFile constraint_file(constraint_file_path);
+  constraint_file.AppendLine("100");
+
+  SysFsCgroupDriver driver;
+  StatusOr<std::string> result =
+      driver.GetConstraintValue(temp_dir->GetPath(), "cpu.weight");
+  ASSERT_TRUE(result.ok()) << result.ToString();
+  EXPECT_EQ(result.value(), "100");
 }
 
 };  // namespace ray

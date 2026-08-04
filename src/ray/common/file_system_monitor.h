@@ -22,8 +22,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/util/event.h"
 
 namespace ray {
@@ -67,7 +67,7 @@ class FileSystemMonitor {
   const std::vector<std::string> paths_;
   const double capacity_threshold_;
   std::atomic<bool> over_capacity_;
-  instrumented_io_context io_context_{/*enable_lag_probe=*/false,
+  instrumented_io_context io_context_{/*enable_metrics=*/false,
                                       /*running_on_single_thread=*/true};
   std::thread monitor_thread_;
   std::shared_ptr<PeriodicalRunner> runner_;

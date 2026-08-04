@@ -1,28 +1,26 @@
-from concurrent.futures import ThreadPoolExecutor
 import json
 import os
-import sys
-import unittest.mock
 import signal
 import subprocess
+import sys
 import tempfile
+import unittest.mock
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from ray._common.network_utils import parse_address, build_address
 
 import grpc
 import pytest
 
 import ray
-import ray._private.services
-import ray._private.utils as utils
+from ray._common.network_utils import build_address, parse_address
+from ray._private import ray_constants
+from ray._private.test_utils import persistent_gcs_test_enabled
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
+from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-from ray._private.test_utils import external_redis_test_enabled
-from ray._private import ray_constants
-from ray.runtime_env.runtime_env import RuntimeEnv
 
 
 @pytest.mark.skipif(
@@ -98,6 +96,7 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
     """Run a blocked ray start command and check that ray.init() connects to it."""
     blocked_start_cmd = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--num-cpus", "1999"],
+        env={**os.environ, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S": "0"},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -255,7 +254,7 @@ def test_new_ray_instance_new_session_dir(shutdown_only):
     session_dir = ray._private.worker._global_node.get_session_dir_path()
     ray.shutdown()
     ray.init()
-    if external_redis_test_enabled():
+    if persistent_gcs_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
@@ -270,7 +269,7 @@ def test_new_cluster_new_session_dir(ray_start_cluster):
     cluster.shutdown()
     cluster.add_node()
     ray.init(address=cluster.address)
-    if external_redis_test_enabled():
+    if persistent_gcs_test_enabled():
         assert ray._private.worker._global_node.get_session_dir_path() == session_dir
     else:
         assert ray._private.worker._global_node.get_session_dir_path() != session_dir
@@ -308,57 +307,6 @@ os.kill(os.getpid(), signal.SIGTERM)
 
 
 @pytest.fixture
-def ray_shutdown():
-    yield
-    ray.shutdown()
-
-
-def test_ray_init_resource_isolation_disabled_by_default(ray_shutdown):
-    ray.init(address="local")
-    node = ray._private.worker._global_node
-    assert node is not None
-    assert not node.resource_isolation_config.is_enabled()
-
-
-def test_ray_init_with_resource_isolation_default_values(monkeypatch, ray_shutdown):
-    total_system_cpu = 10
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
-    ray.init(address="local", enable_resource_isolation=True)
-    node = ray._private.worker._global_node
-    assert node is not None
-    assert node.resource_isolation_config.is_enabled()
-
-
-def test_ray_init_with_resource_isolation_override_defaults(monkeypatch, ray_shutdown):
-    cgroup_path = "/sys/fs/cgroup/subcgroup"
-    system_reserved_cpu = 1
-    system_reserved_memory = 1 * 10**9
-    total_system_cpu = 10
-    total_system_memory = 25 * 10**9
-    object_store_memory = 1 * 10**9
-    monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: total_system_cpu)
-    monkeypatch.setattr(
-        utils, "get_system_memory", lambda *args, **kwargs: total_system_memory
-    )
-    ray.init(
-        address="local",
-        enable_resource_isolation=True,
-        _cgroup_path=cgroup_path,
-        system_reserved_cpu=system_reserved_cpu,
-        system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
-    )
-    node = ray._private.worker._global_node
-    assert node is not None
-    assert node.resource_isolation_config.is_enabled()
-    assert node.resource_isolation_config.system_reserved_cpu_weight == 1000
-    assert (
-        node.resource_isolation_config.system_reserved_memory
-        == system_reserved_memory + object_store_memory
-    )
-
-
-@pytest.fixture
 def runtime_env_working_dir():
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
@@ -373,6 +321,12 @@ def py_module_whl():
     f.close()
     yield f.name
     os.unlink(f.name)
+
+
+@pytest.fixture
+def ray_shutdown():
+    yield
+    ray.shutdown()
 
 
 def test_ray_init_with_runtime_env_as_dict(
@@ -403,6 +357,21 @@ def test_ray_init_with_runtime_env_as_object(
     assert "gcs://" in parsed_runtime_env["working_dir"]
     assert len(parsed_runtime_env["py_modules"]) == 1
     assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+def test_shutdown_wait_for_processes(shutdown_only):
+    ray.init()
+    node = ray._private.worker._global_node
+    procs = [proc for _, proc in node.live_processes()]
+    assert procs, "ray.init() should have started subprocesses"
+
+    with unittest.mock.patch.object(
+        node, "kill_all_processes", wraps=node.kill_all_processes
+    ) as mock_kill:
+        ray.shutdown(wait_for_processes=True)
+
+    assert mock_kill.call_args.kwargs.get("wait") is True
+    assert all(proc.poll() is not None for proc in procs)
 
 
 if __name__ == "__main__":

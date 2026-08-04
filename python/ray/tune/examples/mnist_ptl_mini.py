@@ -1,7 +1,7 @@
 import math
 import os
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
 from datasets import load_dataset
 from filelock import FileLock

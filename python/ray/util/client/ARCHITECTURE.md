@@ -62,7 +62,7 @@ The more interesting one is Schedule, which implies a Put before it (the functio
 
 Which brings us to the data channel.
 The data channel is a bidirectional streaming connection for the client.
-It wraps all the same Request/Reponse patterns as the Unary RPCs.
+It wraps all the same Request/Response patterns as the Unary RPCs.
 At the start, the client associates itself with the server with a UUID-generated ClientID.
 As long as the channel is open, the client is connected.
 Tracking the ClientID then allows us to track all the resources we're holding for a particular client, and we know if the client has disconnected (the channel drops).

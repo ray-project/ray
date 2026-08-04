@@ -10,6 +10,11 @@ You can post questions or issues or feedback through the following channels:
 2. `GitHub Issues`_: For bug reports and feature requests.
 3. `StackOverflow`_
 
+Finding issues to work on
+-------------------------
+
+We use GitHub labels to categorize issues and help contributors find work that matches their interests. See `What can I work on?`_ for a list of labels by component and type.
+
 To contribute a patch:
 ----------------------
 
@@ -22,6 +27,7 @@ the `Setting up your development environment`_ section.
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Getting Involved`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html
 .. _`Setting up your development environment`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#setting-up-your-development-environment
+.. _`What can I work on?`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#what-can-i-work-on
 
 PR Review Process
 -----------------

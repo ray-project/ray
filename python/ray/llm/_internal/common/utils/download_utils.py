@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from filelock import FileLock
 
+from ray.llm._internal.common.callbacks.base import CallbackBase
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
@@ -17,6 +18,8 @@ from ray.llm._internal.common.utils.import_utils import try_import
 torch = try_import("torch")
 
 logger = get_logger(__name__)
+
+STREAMING_LOAD_FORMATS = ["runai_streamer", "runai_streamer_sharded", "tensorizer"]
 
 
 class NodeModelDownloadable(enum.Enum):
@@ -54,7 +57,7 @@ class NodeModelDownloadable(enum.Enum):
 def get_model_entrypoint(model_id: str) -> str:
     """Get the path to entrypoint of the model on disk if it exists, otherwise return the model id as is.
 
-    Entrypoint is typically <TRANSFORMERS_CACHE>/models--<model_id>/
+    Entrypoint is typically <HF_HUB_CACHE>/models--<model_id>/
 
     Args:
         model_id: Hugging Face model ID.
@@ -62,10 +65,10 @@ def get_model_entrypoint(model_id: str) -> str:
     Returns:
         The path to the entrypoint of the model on disk if it exists, otherwise the model id as is.
     """
-    from transformers.utils.hub import TRANSFORMERS_CACHE
+    from huggingface_hub.constants import HF_HUB_CACHE
 
     model_dir = Path(
-        TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}"
+        HF_HUB_CACHE, f"models--{model_id.replace('/', '--')}"
     ).expanduser()
     if not model_dir.exists():
         return model_id
@@ -77,6 +80,9 @@ def get_model_location_on_disk(model_id: str) -> str:
 
     Args:
         model_id: Hugging Face model ID.
+
+    Returns:
+        The path to the model on disk if it exists, otherwise the model id as is.
     """
     model_dir = Path(get_model_entrypoint(model_id))
     model_id_or_path = model_id
@@ -124,14 +130,24 @@ class CloudModelDownloader(CloudModelAccessor):
             tokenizer_only: whether to download only the tokenizer files.
             exclude_safetensors: whether to download safetensors files to disk.
 
-        Returns: file path of model if downloaded, else the model id.
+        Returns:
+            File path of model if downloaded, else the model id.
         """
         bucket_uri = self.mirror_config.bucket_uri
 
         if bucket_uri is None:
             return self.model_id
 
-        lock_path = self._get_lock_path()
+        # Use different lock paths for different download types to avoid race conditions
+        # where a tokenizer-only download completes and subsequent full model downloads
+        # incorrectly assume the model weights are already cached.
+        if tokenizer_only:
+            lock_suffix = "-tokenizer"
+        elif exclude_safetensors:
+            lock_suffix = "-exclude-safetensors"
+        else:
+            lock_suffix = "-full"
+        lock_path = self._get_lock_path(suffix=lock_suffix)
         path = self._get_model_path()
         storage_type = self.mirror_config.storage_type
 
@@ -232,6 +248,7 @@ def download_model_files(
     mirror_config: Optional[CloudMirrorConfig] = None,
     download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
     download_extra_files: bool = True,
+    callback: Optional[CallbackBase] = None,
 ) -> Optional[str]:
     """
     Download the model files from the cloud storage. We support two ways to specify
@@ -251,6 +268,7 @@ def download_model_files(
         mirror_config: Config for downloading model from cloud storage.
         download_model: What parts of the model to download.
         download_extra_files: Whether to download extra files specified in the mirror config.
+        callback: Callback to run before downloading model files.
 
     Returns:
         The local path to the downloaded model, or the original model ID
@@ -262,7 +280,10 @@ def download_model_files(
     # cannot be created by torch if the parent directory doesn't exist.
     torch_cache_home = torch.hub._get_torch_home()
     os.makedirs(os.path.join(torch_cache_home, "kernels"), exist_ok=True)
-    model_path_or_id = None
+    model_path_or_id = model_id
+
+    if callback is not None:
+        callback.run_callback_sync("on_before_download_model_files_distributed")
 
     if model_id is None:
         return None

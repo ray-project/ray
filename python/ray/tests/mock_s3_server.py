@@ -1,11 +1,12 @@
 # extracted from aioboto3
 #    https://github.com/terrycain/aioboto3/blob/16a1a1085191ebe6d40ee45d9588b2173738af0c/tests/mock_server.py
-import pytest
-import requests
 import shutil
 import signal
 import subprocess as sp
 import time
+
+import pytest
+import requests
 
 from ray._common.network_utils import build_address
 
@@ -17,7 +18,9 @@ _proxy_bypass = {
 
 def start_service(service_name, host, port):
     moto_svr_path = shutil.which("moto_server")
-    args = [moto_svr_path, service_name, "-H", host, "-p", str(port)]
+    # moto 5.x no longer accepts a service name argument - all services
+    # are served on a single endpoint
+    args = [moto_svr_path, "-H", host, "-p", str(port)]
     process = sp.Popen(
         args, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL
     )  # shell=True

@@ -1,6 +1,8 @@
-import click
-import ray
 import sys
+
+import click
+
+import ray
 
 
 @click.command()

@@ -1,7 +1,8 @@
-import numpy as np
 import os
 import shutil
 import unittest
+
+import numpy as np
 
 import ray
 import ray._common
@@ -52,7 +53,8 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
-        ray._common.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
+        ray._common.utils.get_default_ray_temp_dir(),
+        "export_dir_%s" % alg_name,
     )
 
     algo.train()
@@ -96,7 +98,8 @@ class TestAlgorithmSave(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

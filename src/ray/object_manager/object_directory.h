@@ -21,10 +21,10 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/common.h"
 
 namespace ray {
@@ -40,6 +40,13 @@ using OnLocationsFound = std::function<void(const ray::ObjectID &object_id,
 class IObjectDirectory {
  public:
   virtual ~IObjectDirectory() {}
+
+  /// Signal that the owning node is shutting down. After this call,
+  /// object-location subscription failures caused by local client
+  /// teardown are no longer surfaced as fatal remote-owner failures
+  /// to dependent tasks. Genuine owner deaths are still detected via
+  /// the GCS worker/node-death path.
+  virtual void MarkShuttingDown() {}
 
   /// Handle the removal of an object manager node. This updates the
   /// locations of all subscribed objects that have the removed node as a
@@ -59,12 +66,12 @@ class IObjectDirectory {
   /// \param callback_id The id associated with the specified callback. This is
   /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
-  /// \param success_cb Invoked with non-empty list of node ids and object_id.
-  /// \return Status of whether subscription succeeded.
-  virtual ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                               const ObjectID &object_id,
-                                               const rpc::Address &owner_address,
-                                               const OnLocationsFound &callback) = 0;
+  /// \param owner_address Address of the object owner.
+  /// \param callback Invoked with non-empty set of node ids and object_id.
+  virtual void SubscribeObjectLocations(const UniqueID &callback_id,
+                                        const ObjectID &object_id,
+                                        const rpc::Address &owner_address,
+                                        const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.
   ///
@@ -72,9 +79,8 @@ class IObjectDirectory {
   /// at subscription time, and unsubscribes the corresponding callback from
   /// further notifications about the given object's location.
   /// \param object_id The object id invoked with Subscribe.
-  /// \return Status of unsubscribing from object location notifications.
-  virtual ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                                 const ObjectID &object_id) = 0;
+  virtual void UnsubscribeObjectLocations(const UniqueID &callback_id,
+                                          const ObjectID &object_id) = 0;
 
   /// Report objects added to this node's store to the object directory.
   ///

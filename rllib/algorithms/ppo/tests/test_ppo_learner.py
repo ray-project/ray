@@ -1,5 +1,5 @@
-import unittest
 import tempfile
+import unittest
 
 import gymnasium as gym
 import numpy as np
@@ -12,7 +12,6 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
-
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
@@ -136,7 +135,8 @@ class TestPPO(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

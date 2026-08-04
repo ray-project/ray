@@ -5,22 +5,23 @@ import tempfile
 
 import numpy as np
 import pytest
-import psutil
 
 import ray
 from ray import cloudpickle as pickle
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.utils import hex_to_binary
 from ray._private import ray_constants
+from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_pid_to_exit,
 )
 from ray.actor import ActorClassInheritanceException
-from ray.tests.client_test_utils import create_remote_signal_actor
-from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.core.generated import gcs_pb2
-from ray._common.utils import hex_to_binary
-from ray._private.state_api_test_utils import invoke_state_api, invoke_state_api_n
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.state import list_actors
+
+import psutil
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True, False], indirect=True)
@@ -753,6 +754,66 @@ def test_decorator_label_selector_args(
                 pass
 
 
+@pytest.mark.parametrize(
+    "fallback_strategy, expected_error",
+    [
+        (  # Valid: single selector in the list
+            [{"label_selector": {"ray.io/accelerator-type": "H100"}}],
+            None,
+        ),
+        (  # Valid: multiple selectors in the list
+            [
+                {"label_selector": {"market-type": "spot"}},
+                {"label_selector": {"region": "in(us-west-1, us-east-1)"}},
+            ],
+            None,
+        ),
+        (  # Invalid: unsupported `fallback_strategy` option.
+            [
+                {"memory": "1Gi"},
+            ],
+            ValueError,
+        ),
+        (  # Invalid: not a list
+            {"label_selector": {"market-type": "spot"}},
+            TypeError,
+        ),
+        (  # Invalid: `fallback_strategy`` contains a non-dict element
+            ["not-a-dict"],
+            ValueError,
+        ),
+        (  # Invalid: `label_selector` contains a dict with a bad key
+            [{"label_selector": {"-bad-key-": "value"}}],
+            ValueError,
+        ),
+        (  # Invalid: `label_selector` contains a dict with a bad value
+            [{"label_selector": {"key": "-bad-value-"}}],
+            ValueError,
+        ),
+    ],
+)
+def test_decorator_fallback_strategy_args(
+    ray_start_regular_shared, fallback_strategy, expected_error
+):
+    """
+    Tests that the fallback_strategy actor option is validated correctly.
+    """
+    if expected_error:
+        with pytest.raises(expected_error):
+
+            @ray.remote(fallback_strategy=fallback_strategy)
+            class Actor:
+                def __init__(self):
+                    pass
+
+    else:
+
+        @ray.remote(fallback_strategy=fallback_strategy)
+        class Actor:
+            def __init__(self):
+                pass
+
+
 def test_random_id_generation(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -844,6 +905,33 @@ def test_options_num_returns(ray_start_regular_shared):
 
     obj1, obj2 = f.method.options(num_returns=2).remote()
     assert ray.get([obj1, obj2]) == [1, 2]
+
+
+def test_options_no_ref_cycle(ray_start_regular_shared):
+    """ActorMethod.options() must not prevent the ActorHandle from being freed
+    by reference counting alone. Regression test for #61922."""
+    import gc
+    import weakref
+
+    @ray.remote
+    class MyActor:
+        def task(self, x):
+            return x
+
+    actor = MyActor.remote()
+    weak = weakref.ref(actor)
+
+    ref = actor.task.options(num_returns=1).remote(42)
+    assert ray.get(ref) == 42
+    del ref
+
+    # With gc disabled, only reference counting can free the handle.
+    gc.disable()
+    try:
+        del actor
+        assert weak() is None, "ActorHandle leaked via reference cycle"
+    finally:
+        gc.enable()
 
 
 @pytest.mark.skipif(
@@ -1227,6 +1315,58 @@ def test_actor_generic_call(ray_start_regular_shared):
     assert ray.get(actor.__ray_call__.remote(lambda self, x: x * 2, x=2)) == 4
 
 
+def test_ray_call_with_state_access(ray_start_regular_shared):
+    """Test that __ray_call__ can read and mutate actor state via closure."""
+
+    @ray.remote
+    class Store:
+        def __init__(self):
+            self.data = {}
+            self.counter = 0
+
+        def increment(self):
+            self.counter += 1
+
+    actor = Store.remote()
+    ray.get(actor.increment.remote())
+    ray.get(actor.increment.remote())
+
+    # Read state via closure
+    count = ray.get(actor.__ray_call__.remote(lambda self: self.counter))
+    assert count == 2
+
+    # Mutate state via closure
+    ray.get(actor.__ray_call__.remote(lambda self: self.data.update({"key": "value"})))
+    result = ray.get(actor.__ray_call__.remote(lambda self: self.data))
+    assert result == {"key": "value"}
+
+
+def test_ray_call_with_extra_args(ray_start_regular_shared):
+    """Test that __ray_call__ correctly forwards *args and **kwargs to fn."""
+
+    @ray.remote
+    class Calculator:
+        def __init__(self):
+            self.base = 10
+
+    actor = Calculator.remote()
+
+    # Test *args forwarding
+    result = ray.get(
+        actor.__ray_call__.remote(lambda self, x, y: self.base + x + y, 1, 2)
+    )
+    assert result == 13  # 10 + 1 + 2
+
+    # Test **kwargs forwarding
+    result = ray.get(
+        actor.__ray_call__.remote(
+            lambda self, multiplier=1: self.base * multiplier,
+            multiplier=3,
+        )
+    )
+    assert result == 30  # 10 * 3
+
+
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
     @ray.remote
     class Inner:
@@ -1484,6 +1624,27 @@ def test_actor_equal(ray_start_regular_shared):
     assert origin == remote
 
 
+@pytest.mark.parametrize("cross_language", [False, True], ids=["python", "cross_lang"])
+def test_actor_handle_hash_eq(ray_start_regular_shared, cross_language):
+    """hash()/eq/set/dict ops must work for both Python and cross-language handles."""
+
+    @ray.remote
+    class Actor:
+        pass
+
+    handle = Actor.remote()
+    if cross_language:
+        handle._ray_is_cross_language = True
+
+    h = hash(handle)
+    assert isinstance(h, int)
+    assert hash(handle) == h
+
+    assert handle == handle
+    assert handle in {handle}
+    assert {handle: "v"}[handle] == "v"
+
+
 def test_actor_handle_weak_ref_counting(ray_start_regular_shared):
     """
     Actors can get handles to themselves or to named actors but these count
@@ -1674,6 +1835,72 @@ def test_one_liner_actor_method_invocation(shutdown_only):
     # See https://github.com/ray-project/ray/pull/53178
     result = ray.get(Foo.remote().method.remote())
     assert result == "ok"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Out of scope actor cleanup doesn't work with Ray client.",
+)
+def test_get_actor_after_same_name_actor_dead(shutdown_only):
+    ACTOR_NAME = "test_actor"
+    NAMESPACE_NAME = "test_namespace"
+
+    ray.init(namespace=NAMESPACE_NAME)
+
+    @ray.remote
+    class Actor:
+        def get_pid(self):
+            return os.getpid()
+
+    a = Actor.options(name=ACTOR_NAME, max_restarts=0, max_task_retries=-1).remote()
+
+    pid = ray.get(a.get_pid.remote())
+    psutil.Process(pid).kill()
+    a_actor_id = a._actor_id.hex()
+
+    wait_for_condition(lambda: ray.util.state.get_actor(id=a_actor_id).state == "DEAD")
+
+    # When a reference is held, the name cannot be reused.
+    with pytest.raises(ValueError):
+        Actor.options(name=ACTOR_NAME).remote()
+
+    # Deleting the remaining reference so the name can be reused
+    del a
+
+    b = None
+
+    def wait_new_actor_ready():
+        nonlocal b
+        b = Actor.options(name=ACTOR_NAME).remote()
+        return True
+
+    wait_for_condition(wait_new_actor_ready)
+
+    ray.get(b.__ray_ready__.remote())
+    _ = ray.get_actor(ACTOR_NAME, namespace=NAMESPACE_NAME)
+
+    # ray.kill can proactively release the name.
+    ray.kill(b)
+    wait_for_condition(
+        lambda: ray.util.state.get_actor(id=b._actor_id.hex()).state == "DEAD"
+    )
+
+    c = Actor.options(name=ACTOR_NAME, lifetime="detached").remote()
+    ray.get(c.__ray_ready__.remote())
+    _ = ray.get_actor(ACTOR_NAME, namespace=NAMESPACE_NAME)
+
+    pid = ray.get(c.get_pid.remote())
+    psutil.Process(pid).kill()
+
+    wait_for_condition(
+        lambda: ray.util.state.get_actor(id=c._actor_id.hex()).state == "DEAD"
+    )
+
+    # Detached actors do not subscribe to reference counting, so
+    # they release the actor name when the actor is dead, without waiting for the reference count
+    # to be released or the execution of ray.kill.
+    d = Actor.options(name=ACTOR_NAME).remote()
+    ray.get(d.__ray_ready__.remote())
 
 
 if __name__ == "__main__":

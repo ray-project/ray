@@ -1,11 +1,11 @@
 from typing import List
 
+from ray_release.logger import logger
+from ray_release.test import Test, TestResult, TestState
 from ray_release.test_automation.state_machine import (
-    TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
+    TestStateMachine,
 )
-from ray_release.test import Test, TestState, TestResult
-
 
 CONTINUOUS_FAILURE_TO_FLAKY = 3  # Number of continuous failures before flaky
 CONTINUOUS_PASSING_TO_PASSING = 10  # Number of continuous passing before passing
@@ -32,10 +32,10 @@ class CITestStateMachine(TestStateMachine):
         change = (from_state, to_state)
         if change == (TestState.PASSING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
-            self._trigger_bisect()
+            self._safe_trigger_bisect()
         elif change == (TestState.FAILING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
-            self._trigger_bisect()
+            self._safe_trigger_bisect()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.FLAKY):
@@ -49,6 +49,12 @@ class CITestStateMachine(TestStateMachine):
 
     def _state_hook(self, _: TestState) -> None:
         pass
+
+    def _safe_trigger_bisect(self) -> None:
+        try:
+            self._trigger_bisect()
+        except Exception:
+            logger.exception(f"Failed to trigger bisect for {self.test.get_name()}")
 
     def _comment_github_issue(self, comment: str) -> bool:
         github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)

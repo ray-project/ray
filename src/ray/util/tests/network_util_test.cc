@@ -113,4 +113,20 @@ TEST(NetworkUtilTest, ParseURLTest) {
   ASSERT_EQ(parsed_url["size"], "8388878");
 }
 
+TEST(NetworkUtilTest, TestIsIPv6) {
+  // IPv4 addresses should return false
+  EXPECT_FALSE(IsIPv6("127.0.0.1"));
+  EXPECT_FALSE(IsIPv6("192.168.1.1"));
+
+  // IPv6 addresses should return true
+  EXPECT_TRUE(IsIPv6("::1"));
+  EXPECT_TRUE(IsIPv6("2001:db8::1"));
+  EXPECT_TRUE(IsIPv6("::ffff:192.0.2.1"));
+
+  // Invalid input should return false
+  EXPECT_FALSE(IsIPv6(""));
+  EXPECT_FALSE(IsIPv6("not-an-ip"));
+  EXPECT_FALSE(IsIPv6("::1::2"));
+}
+
 }  // namespace ray

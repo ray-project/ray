@@ -20,23 +20,23 @@ from typing import (
 
 import gymnasium as gym
 
+from ray._common.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
-    override,
     OverrideToImplementCustomLogic,
+    override,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.serialization import (
+    deserialize_type,
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
-    deserialize_type,
 )
 from ray.rllib.utils.typing import ModuleID, StateDict, T
 from ray.util.annotations import PublicAPI
@@ -192,7 +192,7 @@ class MultiRLModule(RLModule):
         By default, this calls the generic `self._forward()` method.
         """
         return {
-            mid: self._rl_modules[mid]._forward_inference(batch[mid], **kwargs)
+            mid: self._rl_modules[mid].forward_inference(batch[mid], **kwargs)
             for mid in batch.keys()
             if mid in self
         }
@@ -210,7 +210,7 @@ class MultiRLModule(RLModule):
         By default, this calls the generic `self._forward()` method.
         """
         return {
-            mid: self._rl_modules[mid]._forward_exploration(batch[mid], **kwargs)
+            mid: self._rl_modules[mid].forward_exploration(batch[mid], **kwargs)
             for mid in batch.keys()
             if mid in self
         }
@@ -228,7 +228,7 @@ class MultiRLModule(RLModule):
         By default, this calls the generic `self._forward()` method.
         """
         return {
-            mid: self._rl_modules[mid]._forward_train(batch[mid], **kwargs)
+            mid: self._rl_modules[mid].forward_train(batch[mid], **kwargs)
             for mid in batch.keys()
             if mid in self
         }
@@ -547,10 +547,9 @@ class MultiRLModuleSpec:
     #: network components that only live inside the MultiRLModule and don't have
     #: their own ModuleID and own RLModule within `self._rl_modules`.
     model_config: Optional[dict] = None
-    #: The module specs for each individual module. It can be either
-    #: an RLModuleSpec used for all module_ids or a dictionary mapping from module
-    #: IDs to RLModuleSpecs for each individual module.
-    rl_module_specs: Union[RLModuleSpec, Dict[ModuleID, RLModuleSpec]] = None
+    #: A dictionary mapping ModuleIDs to the RLModuleSpec used for each individual
+    #: module.
+    rl_module_specs: Optional[Dict[ModuleID, RLModuleSpec]] = None
 
     # TODO (sven): Deprecate these in favor of using the pure Checkpointable APIs for
     #  loading and saving state.
@@ -558,7 +557,7 @@ class MultiRLModuleSpec:
     modules_to_load: Optional[Set[ModuleID]] = None
 
     # Deprecated: Do not use anymore.
-    module_specs: Optional[Union[RLModuleSpec, Dict[ModuleID, RLModuleSpec]]] = None
+    module_specs: Optional[Dict[ModuleID, RLModuleSpec]] = None
 
     def __post_init__(self):
         if self.module_specs is not None:
@@ -567,11 +566,13 @@ class MultiRLModuleSpec:
                 new="MultiRLModuleSpec(rl_module_specs=..)",
                 error=True,
             )
-        if self.rl_module_specs is None:
+        if not isinstance(self.rl_module_specs, dict):
             raise ValueError(
-                "Module_specs cannot be None. It should be either a "
-                "RLModuleSpec or a dictionary mapping from module IDs to "
-                "RLModuleSpecs for each individual module."
+                "`MultiRLModuleSpec.rl_module_specs` must be a dict mapping ModuleIDs "
+                "to RLModuleSpecs. To use one RLModule for all agents, pass your "
+                "`RLModuleSpec` directly to `config.rl_module(rl_module_spec=..)`, "
+                "which RLlib replicates across your policies; to configure modules "
+                'individually, pass a dict, e.g. `{"my_module": RLModuleSpec(..)}`.'
             )
         self.module_specs = self.rl_module_specs
         # Figure out global inference_only setting.

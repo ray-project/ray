@@ -42,12 +42,12 @@ You should see the following output (during the experiment) in your console:
 
 """
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

@@ -4,10 +4,11 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
 
+from ray._common.network_utils import build_address
 from ray.autoscaler._private.constants import WORKER_LIVENESS_CHECK_KEY
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeStatus, NodeType
 from ray.autoscaler.batching_node_provider import (
@@ -22,7 +23,6 @@ from ray.autoscaler.tags import (
     STATUS_UPDATE_FAILED,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray._common.network_utils import build_address
 
 # Key for KubeRay label that identifies a Ray pod as head or worker.
 KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
@@ -207,6 +207,9 @@ def url_from_resource(
             scheme is added here.
 
             Defaults to "https://kubernetes.default:443".
+
+    Returns:
+        The REST URL for the resource.
     """
     if kubernetes_host.startswith("http://"):
         raise ValueError("Kubernetes host must be accessed over HTTPS.")
@@ -246,6 +249,11 @@ def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
 
 
+def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
+    # 1 is the default numOfHosts value used by the KubeRay operator
+    return raycluster["spec"]["workerGroupSpecs"][group_index].get("numOfHosts", 1)
+
+
 class IKubernetesHttpApiClient(ABC):
     """
     An interface for a Kubernetes HTTP API client.
@@ -259,7 +267,12 @@ class IKubernetesHttpApiClient(ABC):
         pass
 
     @abstractmethod
-    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def patch(
+        self,
+        path: str,
+        payload: Union[List[Dict[str, Any]], Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         pass
 
@@ -311,12 +324,19 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             result.raise_for_status()
         return result.json()
 
-    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def patch(
+        self,
+        path: str,
+        payload: Union[List[Dict[str, Any]], Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers
 
         Args:
             path: The part of the resource path that starts with the resource type.
-            payload: The JSON patch payload.
+            payload: The patch payload, either a JSON Patch list or a
+                strategic-merge patch object.
+            content_type: The content type of the merge strategy.
 
         Returns:
             The JSON response of the PATCH request.
@@ -333,7 +353,8 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         result = requests.patch(
             url,
             json.dumps(payload),
-            headers={**headers, "Content-type": "application/json-patch+json"},
+            headers={**headers, "Content-type": content_type},
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
         )
         if not result.status_code == 200:

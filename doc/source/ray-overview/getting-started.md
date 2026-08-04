@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Quickstart paths for Ray: scale ML workloads with the AI libraries, parallelize Python with Ray Core, or deploy to the cloud with Ray Clusters."
+---
+
 (gentle-intro)=
 
 # Getting Started
@@ -29,12 +35,12 @@ Select the guide that matches your needs:
 
 Use individual libraries for ML workloads. Each library specializes in a specific part of the ML workflow, from data processing to model serving. Click on the dropdowns for your workload below.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Data Processing for AI Workloads
 :animate: fade-in-slide-down
 
-[Ray Data](data_quickstart) provides distributed data processing optimized for machine learning and AI workloads. It efficiently streams data through data pipelines.
+[Ray Data](data_quickstart) provides distributed data processing capabilities for AI workloads. It efficiently streams data through data pipelines.
 
-Here's an example on how to scale offline inference and training ingest with Ray Data.
+Here's an example of how to scale offline inference and training ingest with Ray Data.
 
 ````{note}
 To run this example, install Ray Data:
@@ -59,7 +65,7 @@ def compute_area(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     batch["petal area (cm^2)"] = length * width
     return batch
 
-transformed_ds = ds.map_batches(compute_area)
+transformed_ds = ds.map_batches(compute_area, batch_size="auto")
 
 # Iterate over batches of data.
 for batch in transformed_ds.iter_batches(batch_size=4):
@@ -776,7 +782,7 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 - [Ray Distributed AI Framework Curriculum](https://rise.cs.berkeley.edu/blog/ray-intel-curriculum/)
 - [RayOnSpark: Running Emerging AI Applications on Big Data Clusters with Ray and Analytics Zoo](https://medium.com/riselab/rayonspark-running-emerging-ai-applications-on-big-data-clusters-with-ray-and-analytics-zoo-923e0136ed6a)
 - [First user tips for Ray](https://rise.cs.berkeley.edu/blog/ray-tips-for-first-time-users/)
-- [Tune: a Python library for fast hyperparameter tuning at any scale](https://towardsdatascience.com/fast-hyperparameter-tuning-at-scale-d428223b081c)
+- [Tune: a Python library for fast hyperparameter tuning at any scale](https://medium.com/data-science/fast-hyperparameter-tuning-at-scale-d428223b081c)
 - [Cutting edge hyperparameter tuning with Ray Tune](https://medium.com/riselab/cutting-edge-hyperparameter-tuning-with-ray-tune-be6c0447afdf)
 - [New Library Targets High Speed Reinforcement Learning](https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/)
 - [Scaling Multi Agent Reinforcement Learning](http://bair.berkeley.edu/blog/2018/12/12/rllib/)
@@ -787,7 +793,7 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 
 ### Videos
 
-- [Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Data \| PyData 2021](https://zoom.us/rec/share/0cjbk_YdCTbiTm7gNhzSeNxxTCCEy1pCDUkkjfBjtvOsKGA8XmDOx82jflHdQCUP.fsjQkj5PWSYplOTz?startTime=1635456658000) [(slides)](https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing)
+- [Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Data \| PyData 2021](https://www.youtube.com/watch?v=wl4tvru9_Cg) [(slides)](https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing)
 - [Programming at any Scale with Ray \| SF Python Meetup Sept 2019](https://www.youtube.com/watch?v=LfpHyIXBhlE)
 - [Ray for Reinforcement Learning \| Data Council 2019](https://www.youtube.com/watch?v=Ayc0ca150HI)
 - [Scaling Interactive Pandas Workflows with Modin](https://www.youtube.com/watch?v=-HjLd_3ahCw)

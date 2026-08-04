@@ -3,9 +3,14 @@ import time
 from unittest import mock
 
 import pytest
-from ray_release.test import Test
 
 from ci.ray_ci.bisect.generic_validator import WAIT, GenericValidator
+
+from ray_release.bazel import bazel_runfile
+from ray_release.configs.global_config import init_global_config
+from ray_release.test import Test
+
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 START = time.time()
 

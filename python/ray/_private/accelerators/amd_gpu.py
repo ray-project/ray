@@ -3,7 +3,7 @@ import os
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
-from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
+from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +47,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
                 f"Please use {HIP_VISIBLE_DEVICES_ENV_VAR} instead of ROCR_VISIBLE_DEVICES"
             )
 
-        env_var = HIP_VISIBLE_DEVICES_ENV_VAR
-        if (cuda_val := os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None)) is not None:
-            if (hip_val := os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None)) is None:
-                env_var = CUDA_VISIBLE_DEVICES_ENV_VAR
-            elif hip_val != cuda_val:
-                raise ValueError(
-                    f"Inconsistant values found. Please use either {HIP_VISIBLE_DEVICES_ENV_VAR} or {CUDA_VISIBLE_DEVICES_ENV_VAR}."
-                )
-
-        return env_var
+        return HIP_VISIBLE_DEVICES_ENV_VAR
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
@@ -124,7 +115,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_amd_devices: List[str],
     ) -> None:
-        if os.environ.get(NOSET_HIP_VISIBLE_DEVICES_ENV_VAR):
+        if env_bool(NOSET_HIP_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
         os.environ[

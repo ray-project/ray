@@ -53,8 +53,15 @@ def main(args):
         DataContext.get_current().shuffle_strategy = ShuffleStrategy(
             args.shuffle_strategy
         )
-
-        grouped_ds = ray.data.read_parquet(path).groupby(args.group_by)
+        # TODO: Don't override once we fix range-based shuffle
+        override_num_blocks = (
+            100
+            if args.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED.value
+            else None
+        )
+        grouped_ds = ray.data.read_parquet(
+            path, override_num_blocks=override_num_blocks
+        ).groupby(args.group_by)
         consume_fn(grouped_ds)
 
         # Report arguments for the benchmark.

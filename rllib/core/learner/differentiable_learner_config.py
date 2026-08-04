@@ -1,12 +1,12 @@
-import gymnasium as gym
 from dataclasses import dataclass, fields
-
 from typing import Callable, List, Optional, Union
+
+import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.learner.differentiable_learner import DifferentiableLearner
-from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.typing import DeviceType, ModuleID
 
 
@@ -131,6 +131,7 @@ class DifferentiableLearnerConfig:
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
+                        as_learner_connector=True,
                     )
                 )
             # Batch all data.

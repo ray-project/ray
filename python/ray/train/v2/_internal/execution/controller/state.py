@@ -1,9 +1,13 @@
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ScalingDecision,
 )
 from ray.train.v2.api.exceptions import TrainingFailedError
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.preemption import PreemptionInfo
 
 
 class TrainControllerStateType(Enum):
@@ -12,14 +16,19 @@ class TrainControllerStateType(Enum):
     States:
        INITIALIZING: The train controller is starting up. This is always the initial
            state of the controller.
-       SCHEDULING: The training controller is in the process of scheduling a new worker
+       SCHEDULING: The train controller is in the process of scheduling a new worker
            group.
        RESCHEDULING: The train controller is in the process of rescheduling the worker
            group.
        RUNNING: The train controller is actively running training tasks.
+       PREEMPTING: A preemption was detected; the controller is waiting for the
+           worker group to drain (workers exit or the deadline elapses) before
+           restarting.
        RESTARTING: The train controller is in the process of recovering from an error.
        RESIZING: The train controller is in the process of resizing a running worker
            group.
+       SHUTTING_DOWN: The train controller has already shut down the worker group and
+           and is in the process of shutting itself down.
        ERRORED: A terminal state indicating that training has encountered an error and
            cannot continue.
        FINISHED: A terminal state indicating that training has completed.
@@ -37,13 +46,20 @@ class TrainControllerStateType(Enum):
     SCHEDULING = ("SCHEDULING", False, False)
     RESCHEDULING = ("RESCHEDULING", False, False)
     RUNNING = ("RUNNING", False, False)
+    PREEMPTING = ("PREEMPTING", False, False)
     RESTARTING = ("RESTARTING", False, True)
     RESIZING = ("RESIZING", False, True)
+    SHUTTING_DOWN = ("SHUTTING_DOWN", False, False)
     ERRORED = ("ERRORED", True, False)
     FINISHED = ("FINISHED", True, False)
     ABORTED = ("ABORTED", True, False)
 
-    def __init__(self, state_name: str, is_terminal: bool, needs_new_run_attempt: bool):
+    def __init__(
+        self,
+        state_name: str,
+        is_terminal: bool,
+        needs_new_run_attempt: bool,
+    ):
         self.state_name = state_name
         self.is_terminal = is_terminal
         self.needs_new_run_attempt = needs_new_run_attempt
@@ -105,6 +121,17 @@ class RunningState(TrainControllerState):
         super().__init__(state_type=TrainControllerStateType.RUNNING)
 
 
+class PreemptingState(TrainControllerState):
+    def __init__(
+        self,
+        preemption_info: "PreemptionInfo",
+        detected_at_s: float,
+    ):
+        super().__init__(state_type=TrainControllerStateType.PREEMPTING)
+        self.preemption_info = preemption_info
+        self.detected_at_s = detected_at_s
+
+
 class RestartingState(TrainControllerState):
     def __init__(
         self,
@@ -121,6 +148,12 @@ class ResizingState(TrainControllerState):
     ):
         super().__init__(state_type=TrainControllerStateType.RESIZING)
         self.scaling_decision = scaling_decision
+
+
+class ShuttingDownState(TrainControllerState):
+    def __init__(self, next_state: "TrainControllerState"):
+        super().__init__(state_type=TrainControllerStateType.SHUTTING_DOWN)
+        self.next_state = next_state
 
 
 class ErroredState(TrainControllerState):

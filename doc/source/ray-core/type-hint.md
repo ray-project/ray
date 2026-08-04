@@ -1,3 +1,5 @@
+(core-type-hint)=
+
 # Type hints in Ray
 
 As of Ray 2.48, Ray provides comprehensive support for Python type hints with both remote functions and actors. This enables better IDE support, static type checking, and improved code maintainability in distributed Ray applications.

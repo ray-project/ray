@@ -25,7 +25,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 
 namespace ray {
 
@@ -34,7 +34,7 @@ namespace ray {
 class MockWorkerClient : public pubsub::SubscriberClientInterface {
  public:
   void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
+      rpc::PubsubLongPollingRequest &&request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) override {
     max_processed_sequence_id_ = request.max_processed_sequence_id();
     publisher_id_ = request.publisher_id();
@@ -42,7 +42,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
   }
 
   void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
+      rpc::PubsubCommandBatchRequest &&request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) override {
     requests_.push(request);
     command_batch_callbacks.push_back(callback);
@@ -142,7 +142,7 @@ class SubscriberTest : public ::testing::Test {
           std::shared_ptr<SubscriberClientInterface> t = owner_client;
           return owner_client;
         }),
-        channel(rpc::ChannelType::WORKER_OBJECT_EVICTION) {}
+        channel(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {}
   ~SubscriberTest() {}
 
   void SetUp() {
@@ -151,8 +151,7 @@ class SubscriberTest : public ::testing::Test {
     subscriber_ = std::make_shared<Subscriber>(
         self_node_id_,
         /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+        std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                       rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
         /*max_command_batch_size*/ 3,
         client_pool,
@@ -174,8 +173,8 @@ class SubscriberTest : public ::testing::Test {
 
   std::unique_ptr<rpc::SubMessage> GenerateSubMessage(const ObjectID &object_id) {
     auto sub_message = std::make_unique<rpc::SubMessage>();
-    auto *object_eviction_msg = sub_message->mutable_worker_object_eviction_message();
-    object_eviction_msg->set_object_id(object_id.Binary());
+    auto *object_locations_msg = sub_message->mutable_worker_object_locations_message();
+    object_locations_msg->set_object_id(object_id.Binary());
     return sub_message;
   }
 
@@ -228,7 +227,8 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  ASSERT_FALSE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   subscriber_->Subscribe(GenerateSubMessage(object_id),
                          channel,
@@ -254,7 +254,8 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
     ASSERT_EQ(object_subscribed_[oid], 2);
   }
 
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 
@@ -504,7 +505,8 @@ TEST_F(SubscriberTest, TestSubscribeAllEntities) {
   }
 
   // Unsubscribe from the channel.
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt));
+  subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt);
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, /*key_id=*/""));
 }
 
 TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
@@ -527,7 +529,8 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
                          subscription_callback,
                          failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
@@ -560,7 +563,8 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscribeFromAll) {
                          subscription_callback,
                          failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt));
+  subscriber_->Unsubscribe(channel, owner_addr, /*key_id=*/std::nullopt);
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, /*key_id=*/""));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
 
   const auto object_id = ObjectID::FromRandom();
@@ -614,6 +618,7 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
   auto subscription_callback = [this, owner_addr](const rpc::PubMessage &msg) {
     const auto object_id = ObjectID::FromBinary(msg.key_id());
     subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+    ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
     ASSERT_TRUE(owner_client->ReplyCommandBatch());
     object_subscribed_[object_id]++;
   };
@@ -669,7 +674,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchSingleEntry) {
   for (const auto &command : commands) {
     ASSERT_EQ(command.channel_type(), channel);
     ASSERT_EQ(command.key_id(), object_id.Binary());
-    ASSERT_EQ(command.subscribe_message().worker_object_eviction_message().object_id(),
+    ASSERT_EQ(command.subscribe_message().worker_object_locations_message().object_id(),
               object_id.Binary());
   }
   // No more request.
@@ -705,6 +710,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiEntries) {
 
   // Test multiple entries in the batch before new reply is coming.
   subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+  ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
   subscriber_->Subscribe(GenerateSubMessage(object_id),
                          channel,
                          owner_addr,
@@ -744,14 +750,14 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiEntries) {
   ASSERT_EQ(commands[1].channel_type(), channel);
   ASSERT_EQ(commands[1].key_id(), object_id.Binary());
   ASSERT_TRUE(commands[1].has_subscribe_message());
-  ASSERT_EQ(commands[1].subscribe_message().worker_object_eviction_message().object_id(),
+  ASSERT_EQ(commands[1].subscribe_message().worker_object_locations_message().object_id(),
             object_id.Binary());
 
   // Third entry subscribe object 2.
   ASSERT_EQ(commands[2].channel_type(), channel);
   ASSERT_EQ(commands[2].key_id(), object_id_2.Binary());
   ASSERT_TRUE(commands[2].has_subscribe_message());
-  ASSERT_EQ(commands[2].subscribe_message().worker_object_eviction_message().object_id(),
+  ASSERT_EQ(commands[2].subscribe_message().worker_object_locations_message().object_id(),
             object_id_2.Binary());
 
   // No more request after that.
@@ -811,7 +817,7 @@ TEST_F(SubscriberTest, TestSubUnsubCommandBatchMultiBatch) {
   ASSERT_EQ(commands[0].channel_type(), channel);
   ASSERT_EQ(commands[0].key_id(), object_id_2.Binary());
   ASSERT_TRUE(commands[0].has_subscribe_message());
-  ASSERT_EQ(commands[0].subscribe_message().worker_object_eviction_message().object_id(),
+  ASSERT_EQ(commands[0].subscribe_message().worker_object_locations_message().object_id(),
             object_id_2.Binary());
 
   // No more request after that.
@@ -967,7 +973,7 @@ TEST_F(SubscriberTest, TestIsSubscribed) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
 
-  ASSERT_FALSE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 
   subscriber_->Subscribe(GenerateSubMessage(object_id),
@@ -979,15 +985,30 @@ TEST_F(SubscriberTest, TestIsSubscribed) {
                          failure_callback);
   ASSERT_TRUE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
 
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
+  subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
   ASSERT_FALSE(subscriber_->IsSubscribed(channel, owner_addr, object_id.Binary()));
+}
+
+TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusIsFatal) {
+  auto subscription_callback = [](const rpc::PubMessage &msg) {};
+  auto failure_callback = EMPTY_FAILURE_CALLBACK;
+
+  const auto owner_addr = GenerateOwnerAddress();
+  const auto object_id = ObjectID::FromRandom();
+
+  subscriber_->Subscribe(GenerateSubMessage(object_id),
+                         channel,
+                         owner_addr,
+                         object_id.Binary(),
+                         /*subscribe_done_callback=*/nullptr,
+                         subscription_callback,
+                         failure_callback);
+
+  ASSERT_DEATH(
+      owner_client->ReplyCommandBatch(Status::InvalidArgument("Invalid channel type")),
+      "Invalid channel type");
 }
 
 }  // namespace pubsub
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

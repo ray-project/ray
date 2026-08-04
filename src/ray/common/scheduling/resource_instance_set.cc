@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/bundle_spec.h"
+#include "ray/common/scheduling/placement_group_util.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 
@@ -191,8 +191,7 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
     if (data) {
       // Aggregate based on resource type
       ResourceID original_resource_id{data->original_resource};
-      pg_resource_map[original_resource_id].push_back(
-          std::make_pair(resource_id, data.value()));
+      pg_resource_map[original_resource_id].emplace_back(resource_id, data.value());
     } else {
       // Directly allocate the resources if the resource is not with a placement group
       auto allocation = TryAllocate(resource_id, demand);

@@ -1,21 +1,22 @@
 import asyncio
 import hashlib
 import logging
+import ntpath
 import os
 import shutil
+import sys
+import tarfile
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
-from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
 
-from ray._private.path_utils import is_path
+from ray._common.runtime_env_uri import parse_uri as _parse_uri
 from ray._private.ray_constants import (
     GRPC_CPP_MAX_MESSAGE_SIZE,
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
 )
@@ -39,6 +40,13 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 GCS_STORAGE_MAX_SIZE = int(
     os.environ.get("RAY_max_grpc_message_size", GRPC_CPP_MAX_MESSAGE_SIZE)
 )
+# If the resulting zipped package is at least this large, emit a warning before
+# attempting upload. This catches cases the per-file `FILE_SIZE_WARNING` misses,
+# notably large directories of many small files (e.g. `.git`). See GH #45602.
+# Override at runtime with the `RAY_PACKAGE_SIZE_WARNING_MIB` env var (units of
+# MiB); set the env var to `-1` to disable the warning entirely.
+PACKAGE_SIZE_WARNING = GCS_STORAGE_MAX_SIZE // 2
+PACKAGE_SIZE_WARNING_MIB_ENV_VAR = "RAY_PACKAGE_SIZE_WARNING_MIB"
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR = (
@@ -56,6 +64,45 @@ MAC_OS_ZIP_HIDDEN_DIR_NAME = "__MACOSX"
 def _mib_string(num_bytes: float) -> str:
     size_mib = float(num_bytes / 1024**2)
     return f"{size_mib:.2f}MiB"
+
+
+def _to_extended_length_path(path: str) -> str:
+    r"""Convert paths to extended-length format if needed on Windows
+    if needed. Paths on other platforms are returned unchanged.
+
+    Extended-length paths (\\?\) support paths up to 32,767 characters on Windows
+    instead of 260. Extended-length paths must be normalized (i.e., no "." or ".."
+    components) so this function normalizes the path before applying the prefix.
+
+    Args:
+        path: The path to convert.
+
+    Returns:
+        The path with extended-length prefixed path on Windows, unchanged on other platforms.
+    """
+    # Ensure we always work with strings, not Path objects
+    path = str(path)
+
+    if sys.platform != "win32":
+        return path
+
+    # Convert to absolute path and fully normalize to remove any . or .. components
+    # This is critical because extended-length paths disable Windows path normalization
+    abs_path = os.path.normpath(os.path.abspath(path))
+
+    # Extended-length path prefix
+    extended_prefix = "\\\\?\\"
+
+    # Already in extended format
+    if abs_path.startswith(extended_prefix):
+        return abs_path
+
+    # UNC paths need special handling: \\server\share -> \\?\UNC\server\share
+    if abs_path.startswith("\\\\"):
+        return extended_prefix + "UNC" + abs_path[1:]
+
+    # Local paths: C:\path -> \\?\C:\path
+    return extended_prefix + abs_path
 
 
 class _AsyncFileLock:
@@ -86,16 +133,17 @@ def _dir_travel(
     path: Path,
     excludes: List[Callable],
     handler: Callable,
+    include_gitignore: bool,
     logger: Optional[logging.Logger] = default_logger,
 ):
     """Travels the path recursively, calling the handler on each subpath.
 
     Respects excludes, which will be called to check if this path is skipped.
     """
-    e = _get_gitignore(path)
-
-    if e is not None:
-        excludes.append(e)
+    new_excludes = get_excludes_from_ignore_files(
+        path, include_gitignore=include_gitignore, logger=logger
+    )
+    excludes.extend(new_excludes)
 
     skip = any(e(path) for e in excludes)
     if not skip:
@@ -106,9 +154,15 @@ def _dir_travel(
             raise e
         if path.is_dir():
             for sub_path in path.iterdir():
-                _dir_travel(sub_path, excludes, handler, logger=logger)
+                _dir_travel(
+                    sub_path,
+                    excludes,
+                    handler,
+                    include_gitignore=include_gitignore,
+                    logger=logger,
+                )
 
-    if e is not None:
+    for _ in range(len(new_excludes)):
         excludes.pop()
 
 
@@ -166,6 +220,7 @@ def _hash_directory(
     root: Path,
     relative_path: Path,
     excludes: Optional[Callable],
+    include_gitignore: bool,
     logger: Optional[logging.Logger] = default_logger,
 ) -> bytes:
     """Helper function to create hash of a directory.
@@ -183,7 +238,9 @@ def _hash_directory(
         hash_val = _xor_bytes(hash_val, file_hash)
 
     excludes = [] if excludes is None else [excludes]
-    _dir_travel(root, excludes, handler, logger=logger)
+    _dir_travel(
+        root, excludes, handler, include_gitignore=include_gitignore, logger=logger
+    )
     return hash_val
 
 
@@ -196,55 +253,9 @@ def parse_path(pkg_path: str) -> None:
         raise ValueError(f"{path} is not a valid path.")
 
 
-def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
-    """
-    Parse package uri into protocol and package name based on its format.
-    Note that the output of this function is not for handling actual IO, it's
-    only for setting up local directory folders by using package name as path.
-
-    >>> parse_uri("https://test.com/file.zip")
-    (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
-
-    >>> parse_uri("https://test.com/file.whl")
-    (<Protocol.HTTPS: 'https'>, 'file.whl')
-
-    """
-    if is_path(pkg_uri):
-        raise ValueError(f"Expected URI but received path {pkg_uri}")
-
-    uri = urlparse(pkg_uri)
-    try:
-        protocol = Protocol(uri.scheme)
-    except ValueError as e:
-        raise ValueError(
-            f'Invalid protocol for runtime_env URI "{pkg_uri}". '
-            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
-        )
-
-    if protocol in Protocol.remote_protocols():
-        if uri.path.endswith(".whl"):
-            # Don't modify the .whl filename. See
-            # https://peps.python.org/pep-0427/#file-name-convention
-            # for more information.
-            package_name = uri.path.split("/")[-1]
-        else:
-            package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
-
-            disallowed_chars = ["/", ":", "@", "+", " ", "(", ")"]
-            for disallowed_char in disallowed_chars:
-                package_name = package_name.replace(disallowed_char, "_")
-
-            # Remove all periods except the last, which is part of the
-            # file extension
-            package_name = package_name.replace(".", "_", package_name.count(".") - 1)
-    else:
-        package_name = uri.netloc
-    return (protocol, package_name)
-
-
 def is_zip_uri(uri: str) -> bool:
     try:
-        protocol, path = parse_uri(uri)
+        protocol, path = _parse_uri(uri)
     except ValueError:
         return False
 
@@ -253,7 +264,7 @@ def is_zip_uri(uri: str) -> bool:
 
 def is_whl_uri(uri: str) -> bool:
     try:
-        _, path = parse_uri(uri)
+        _, path = _parse_uri(uri)
     except ValueError:
         return False
 
@@ -262,11 +273,20 @@ def is_whl_uri(uri: str) -> bool:
 
 def is_jar_uri(uri: str) -> bool:
     try:
-        _, path = parse_uri(uri)
+        _, path = _parse_uri(uri)
     except ValueError:
         return False
 
     return Path(path).suffix == ".jar"
+
+
+def is_tar_gz_uri(uri: str) -> bool:
+    try:
+        _, path = _parse_uri(uri)
+    except ValueError:
+        return False
+
+    return path.endswith(".tar.gz") or Path(path).suffix == ".tgz"
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
@@ -280,24 +300,21 @@ def _get_excludes(path: Path, excludes: List[str]) -> Callable:
     return match
 
 
-def _get_gitignore(path: Path) -> Optional[Callable]:
+def _get_ignore_file(path: Path, ignore_file: str) -> Optional[Callable]:
     """Returns a function that returns True if the path should be excluded.
 
-    Returns None if there is no .gitignore file in the path, or if the
-    RAY_RUNTIME_ENV_IGNORE_GITIGNORE environment variable is set to 1.
+    Returns None if there is no ignore_file in the path.
 
     Args:
-        path: The path to the directory to check for a .gitignore file.
+        path: The path to the directory to check for an ignore file.
+        ignore_file: The name of the ignore file.
 
     Returns:
         A function that returns True if the path should be excluded.
     """
-    ignore_gitignore = os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") == "1"
-    if ignore_gitignore:
-        return None
 
     path = path.absolute()
-    ignore_file = path / ".gitignore"
+    ignore_file = path / ignore_file
     if ignore_file.is_file():
         with ignore_file.open("r") as f:
             pathspec = PathSpec.from_lines("gitwildmatch", f.readlines())
@@ -309,6 +326,43 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return match
     else:
         return None
+
+
+def get_excludes_from_ignore_files(
+    path: Path,
+    include_gitignore: bool,
+    logger: Optional[logging.Logger] = default_logger,
+) -> List[Callable]:
+    """Get exclusion functions from .gitignore and .rayignore files in the current path.
+
+    Args:
+        path: The path to check for ignore files.
+        include_gitignore: Whether to respect .gitignore files.
+        logger: Logger to use.
+
+    Returns:
+        List[Callable]: List of exclusion functions. Each function takes a Path
+            and returns True if the path should be excluded based on the ignore
+            patterns in the respective ignore file.
+    """
+    ignore_files = []
+
+    to_ignore: List[Optional[Callable]] = []
+    if include_gitignore:
+        g = _get_ignore_file(path, ignore_file=".gitignore")
+        if g is not None:
+            to_ignore.append(g)
+            ignore_files.append(path / ".gitignore")
+
+    r = _get_ignore_file(path, ignore_file=".rayignore")
+    if r is not None:
+        to_ignore.append(r)
+        ignore_files.append(path / ".rayignore")
+
+    if ignore_files:
+        logger.info(f"Ignoring upload to cluster for these files: {ignore_files}")
+
+    return to_ignore
 
 
 def pin_runtime_env_uri(uri: str, *, expiration_s: Optional[int] = None) -> None:
@@ -355,10 +409,10 @@ def _store_package_in_gcs(
     Args:
         pkg_uri: The GCS key to store the data in.
         data: The serialized package's bytes to store in the GCS.
-        logger (Optional[logging.Logger]): The logger used by this function.
+        logger: The logger used by this function.
 
-    Return:
-        int: Size of data
+    Returns:
+        Size of the stored data, in bytes.
 
     Raises:
         RuntimeError: If the upload to the GCS fails.
@@ -370,10 +424,10 @@ def _store_package_in_gcs(
     if len(data) >= GCS_STORAGE_MAX_SIZE:
         raise ValueError(
             f"Package size ({size_str}) exceeds the maximum size of "
-            f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
-            "files using the 'excludes' option to the runtime_env or provide "
-            "a remote URI of a zip file using protocols such as 's3://', "
-            "'https://' and so on, refer to "
+            f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. To exclude large files, "
+            "add them to '.gitignore' or '.rayignore' files, or "
+            "use the 'excludes' option in the runtime_env, or provide a "
+            "URI of a remote zip file. For more information, refer to "
             "https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#api-reference."  # noqa
         )
 
@@ -395,7 +449,7 @@ def _store_package_in_gcs(
 
 
 def _get_local_path(base_directory: str, pkg_uri: str) -> str:
-    _, pkg_name = parse_uri(pkg_uri)
+    _, pkg_name = _parse_uri(pkg_uri)
     return os.path.join(base_directory, pkg_name)
 
 
@@ -403,6 +457,7 @@ def _zip_files(
     path_str: str,
     excludes: List[str],
     output_path: str,
+    include_gitignore: bool,
     include_parent_dir: bool = False,
     logger: Optional[logging.Logger] = default_logger,
 ) -> None:
@@ -415,7 +470,9 @@ def _zip_files(
         directory inside the zip file.
     """
     pkg_file = Path(output_path).absolute()
-    with ZipFile(pkg_file, "w", strict_timestamps=False) as zip_handler:
+    # Use extended-length paths on Windows to avoid MAX_PATH limitations
+    extended_pkg_file = _to_extended_length_path(str(pkg_file))
+    with ZipFile(extended_pkg_file, "w", strict_timestamps=False) as zip_handler:
         # Put all files in the directory into the zip file.
         file_path = Path(path_str).absolute()
         dir_path = file_path
@@ -440,7 +497,13 @@ def _zip_files(
                 zip_handler.write(path, to_path)
 
         excludes = [_get_excludes(file_path, excludes)]
-        _dir_travel(file_path, excludes, handler, logger=logger)
+        _dir_travel(
+            file_path,
+            excludes,
+            handler,
+            include_gitignore=include_gitignore,
+            logger=logger,
+        )
 
 
 def package_exists(pkg_uri: str) -> bool:
@@ -449,10 +512,10 @@ def package_exists(pkg_uri: str) -> bool:
     Args:
         pkg_uri: The uri of the package
 
-    Return:
+    Returns:
         True for package existing and False for not.
     """
-    protocol, pkg_name = parse_uri(pkg_uri)
+    protocol, pkg_name = _parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         return _internal_kv_exists(pkg_uri)
     else:
@@ -470,8 +533,14 @@ def get_uri_for_package(package: Path) -> str:
         )
     else:
         hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
-        return "{protocol}://{pkg_name}.zip".format(
-            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
+        if package.name.endswith(".tar.gz"):
+            ext = ".tar.gz"
+        elif package.suffix == ".tgz":
+            ext = ".tar.gz"
+        else:
+            ext = ".zip"
+        return "{protocol}://{pkg_name}{ext}".format(
+            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val, ext=ext
         )
 
 
@@ -508,7 +577,11 @@ def get_uri_for_file(file: str) -> str:
     )
 
 
-def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
+def get_uri_for_directory(
+    directory: str,
+    include_gitignore: bool,
+    excludes: Optional[List[str]] = None,
+) -> str:
     """Get a content-addressable URI from a directory's contents.
 
     This function generates the name of the package by the directory.
@@ -524,10 +597,11 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
     Args:
         directory: The directory.
-        excludes (list[str]): The dir or files that should be excluded.
+        include_gitignore: Whether to respect .gitignore files.
+        excludes: The dir or files that should be excluded.
 
     Returns:
-        URI (str)
+        URI for the directory's contents.
 
     Raises:
         ValueError: If the directory doesn't exist.
@@ -539,7 +613,12 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     if not directory.exists() or not directory.is_dir():
         raise ValueError(f"directory {directory} must be an existing directory")
 
-    hash_val = _hash_directory(directory, directory, _get_excludes(directory, excludes))
+    hash_val = _hash_directory(
+        directory,
+        directory,
+        _get_excludes(directory, excludes),
+        include_gitignore=include_gitignore,
+    )
 
     return "{protocol}://{pkg_name}.zip".format(
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
@@ -560,7 +639,7 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
         NotImplementedError: If the protocol of the URI is not supported.
 
     """
-    protocol, pkg_name = parse_uri(pkg_uri)
+    protocol, pkg_name = _parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
@@ -571,9 +650,76 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
+def _resolve_package_size_warning_threshold() -> Optional[int]:
+    """Return the warning threshold in bytes, or None if disabled by the user.
+
+    Reads `RAY_PACKAGE_SIZE_WARNING_MIB` at call time so users can tune or
+    disable the warning without restarting the driver. A negative value
+    disables the warning. A malformed value falls back to the default rather
+    than silently suppressing the warning (a noisy default is safer than a
+    silent miss for an upload-size limit).
+    """
+    env_val = os.environ.get(PACKAGE_SIZE_WARNING_MIB_ENV_VAR)
+    if env_val is None:
+        return PACKAGE_SIZE_WARNING
+    try:
+        mib = int(env_val)
+    except ValueError:
+        return PACKAGE_SIZE_WARNING
+    if mib < 0:
+        return None
+    return mib * 1024 * 1024
+
+
+def _warn_if_package_size_near_limit(
+    package_path: Path,
+    logger: Optional[logging.Logger] = default_logger,
+    module_path: Optional[str] = None,
+) -> None:
+    """Warn if the zipped package is approaching the GCS upload size limit.
+
+    The per-file warning in `_zip_files` does not fire for directories that
+    contain many small files (e.g. `.git`), so the user has no signal that
+    they are about to hit `GCS_STORAGE_MAX_SIZE` until the upload itself
+    fails. This warning closes that gap. The local zip path is included for
+    inspection, and `module_path` (the user-supplied source directory or file)
+    is included when available so the user can immediately identify which
+    runtime_env input is causing the bloat — the temp zip path is short-lived
+    and has an obscure auto-generated name. The threshold is tunable via the
+    `RAY_PACKAGE_SIZE_WARNING_MIB` env var (set to `-1` to disable). See
+    GH #45602.
+    """
+    if logger is None:
+        logger = default_logger
+    threshold = _resolve_package_size_warning_threshold()
+    if threshold is None:
+        return
+    try:
+        package_size = package_path.stat().st_size
+    except OSError:
+        return
+    if package_size < threshold:
+        return
+    source_info = f" for '{module_path}'" if module_path else ""
+    logger.warning(
+        f"The runtime_env package{source_info} at '{package_path}' is "
+        f"{_mib_string(package_size)}, approaching the maximum upload size "
+        f"of {_mib_string(GCS_STORAGE_MAX_SIZE)}. If the upload fails, exclude "
+        "large directories (commonly '.git', '.venv', or build artifacts) via "
+        "the 'excludes' option in runtime_env, or list them in '.gitignore' / "
+        "'.rayignore'. To raise the warning threshold set "
+        f"`{PACKAGE_SIZE_WARNING_MIB_ENV_VAR}=<size_in_MiB>`, or disable the "
+        f"warning entirely with `{PACKAGE_SIZE_WARNING_MIB_ENV_VAR}=-1`. For "
+        "details see "
+        "https://docs.ray.io/en/latest/ray-core/handling-dependencies.html"
+        "#api-reference"
+    )
+
+
 def create_package(
     module_path: str,
     target_path: Path,
+    include_gitignore: bool,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
@@ -590,15 +736,18 @@ def create_package(
             module_path,
             excludes,
             str(target_path),
+            include_gitignore=include_gitignore,
             include_parent_dir=include_parent_dir,
             logger=logger,
         )
+        _warn_if_package_size_near_limit(target_path, logger, module_path=module_path)
 
 
 def upload_package_if_needed(
     pkg_uri: str,
     base_directory: str,
     module_path: str,
+    include_gitignore: bool,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
@@ -614,9 +763,15 @@ def upload_package_if_needed(
         pkg_uri: URI of the package to upload.
         base_directory: Directory where package files are stored.
         module_path: The module to be uploaded, either a single .py file or a directory.
+        include_gitignore: Whether to respect .gitignore files. Default is True.
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
+        logger: Logger used to surface progress and warnings.
+
+    Returns:
+        True if the package was uploaded, False if it already existed in
+        storage.
 
     Raises:
         RuntimeError: If the upload fails.
@@ -646,6 +801,7 @@ def upload_package_if_needed(
     create_package(
         module_path,
         package_file,
+        include_gitignore=include_gitignore,
         include_parent_dir=include_parent_dir,
         excludes=excludes,
     )
@@ -661,7 +817,13 @@ def upload_package_if_needed(
 def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     """Return the local directory corresponding to this URI."""
     pkg_file = Path(_get_local_path(base_directory, uri))
-    local_dir = pkg_file.with_suffix("")
+    pkg_name = pkg_file.name
+    if pkg_name.endswith(".tar.gz"):
+        local_dir = pkg_file.parent / pkg_name[: -len(".tar.gz")]
+    elif pkg_name.endswith(".tar.bz2"):
+        local_dir = pkg_file.parent / pkg_name[: -len(".tar.bz2")]
+    else:
+        local_dir = pkg_file.with_suffix("")
     return local_dir
 
 
@@ -673,8 +835,9 @@ async def download_and_unpack_package(
     logger: Optional[logging.Logger] = default_logger,
     overwrite: bool = False,
 ) -> str:
-    """Download the package corresponding to this URI and unpack it if zipped.
+    """Download the package corresponding to this URI and unpack it.
 
+    Supports .zip, .jar, .tar.gz, and .tgz archives for remote protocols.
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
 
@@ -722,7 +885,7 @@ async def download_and_unpack_package(
             shutil.rmtree(local_dir)
 
         if download_package:
-            protocol, _ = parse_uri(pkg_uri)
+            protocol, _ = _parse_uri(pkg_uri)
             logger.info(
                 f"Downloading package from {pkg_uri} to {pkg_file} "
                 f"with protocol {protocol}"
@@ -764,6 +927,14 @@ async def download_and_unpack_package(
                         unlink_zip=True,
                         logger=logger,
                     )
+                elif is_tar_gz_uri(pkg_uri):
+                    untar_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=False,
+                        unlink_tar=True,
+                        logger=logger,
+                    )
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
@@ -779,6 +950,18 @@ async def download_and_unpack_package(
                     )
                 elif pkg_file.suffix == ".whl":
                     return str(pkg_file)
+                elif (
+                    str(pkg_file).endswith(".tar.gz")
+                    or pkg_file.suffix == ".tgz"
+                    or str(pkg_file).endswith(".tar.bz2")
+                ):
+                    untar_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=True,
+                        unlink_tar=True,
+                        logger=logger,
+                    )
                 else:
                     raise NotImplementedError(
                         f"Package format {pkg_file.suffix} is ",
@@ -802,6 +985,17 @@ def get_top_level_dir_from_compressed_package(package_path: str):
     package_zip = ZipFile(package_path, "r")
     top_level_directory = None
 
+    def is_safe_top_level_dir(dir_name):
+        return (
+            bool(dir_name)
+            and dir_name not in [os.curdir, os.pardir]
+            and "/" not in dir_name
+            and "\\" not in dir_name
+            and not os.path.isabs(dir_name)
+            and not ntpath.isabs(dir_name)
+            and not ntpath.splitdrive(dir_name)[0]
+        )
+
     def is_top_level_file(file_name):
         return "/" not in file_name
 
@@ -819,6 +1013,8 @@ def get_top_level_dir_from_compressed_package(package_path: str):
                 dir_name = base_dir_name(file_name)
                 if dir_name == MAC_OS_ZIP_HIDDEN_DIR_NAME:
                     continue
+                if not is_safe_top_level_dir(dir_name):
+                    return None
                 top_level_directory = dir_name
         else:
             # Confirm that all other files
@@ -833,29 +1029,45 @@ def get_top_level_dir_from_compressed_package(package_path: str):
 
 
 def remove_dir_from_filepaths(base_dir: str, rdir: str):
-    """
-    base_dir: String path of the directory containing rdir
-    rdir: String path of directory relative to base_dir whose contents should
-          be moved to its base_dir, its parent directory
+    """Removes rdir from the filepaths of all files and directories inside it.
 
-    Removes rdir from the filepaths of all files and directories inside it.
     In other words, moves all the files inside rdir to the directory that
     contains rdir. Assumes base_dir's contents and rdir's contents have no
     name conflicts.
+
+    Args:
+        base_dir: String path of the directory containing rdir
+        rdir: String path of directory relative to base_dir whose contents should
+              be moved to its base_dir, its parent directory
     """
+
+    if (
+        not rdir
+        or rdir in [os.curdir, os.pardir]
+        or "/" in rdir
+        or "\\" in rdir
+        or os.path.isabs(rdir)
+        or ntpath.isabs(rdir)
+        or ntpath.splitdrive(rdir)[0]
+    ):
+        raise ValueError(f"Unsafe directory to remove from filepaths: {rdir!r}")
 
     # Move rdir to a temporary directory, so its contents can be moved to
     # base_dir without any name conflicts
     with TemporaryDirectory() as tmp_dir:
+        # Apply extended-length path to temp directory to handle long paths
+        extended_tmp_dir = _to_extended_length_path(tmp_dir)
+
         # shutil.move() is used instead of os.rename() in case rdir and tmp_dir
         # are located on separate file systems
-        shutil.move(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
+        shutil.move(os.path.join(base_dir, rdir), os.path.join(extended_tmp_dir, rdir))
 
         # Shift children out of rdir and into base_dir
-        rdir_children = os.listdir(os.path.join(tmp_dir, rdir))
+        rdir_children = os.listdir(os.path.join(extended_tmp_dir, rdir))
         for child in rdir_children:
             shutil.move(
-                os.path.join(tmp_dir, rdir, child), os.path.join(base_dir, child)
+                os.path.join(extended_tmp_dir, rdir, child),
+                os.path.join(base_dir, child),
             )
 
 
@@ -888,6 +1100,143 @@ def unzip_package(
         logger: Optional logger to use for logging.
 
     """
+    # Use extended-length paths on Windows to avoid MAX_PATH limitations
+    extended_target_dir = _to_extended_length_path(target_dir)
+    target_real = os.path.realpath(extended_target_dir)
+
+    try:
+        os.mkdir(extended_target_dir)
+    except FileExistsError:
+        logger.info(f"Directory at {target_dir} already exists")
+
+    logger.debug(f"Unpacking {package_path} to {extended_target_dir}")
+
+    with ZipFile(str(package_path), "r") as zip_ref:
+        # ZipFile.extractall() doesn't support extended paths
+        # on Windows, which are needed to handle paths longer than 260
+        # characters, so we implement our own extraction logic here.
+        for member in zip_ref.namelist():
+            if (
+                "\\" in member
+                or os.path.isabs(member)
+                or ntpath.isabs(member)
+                or ntpath.splitdrive(member)[0]
+            ):
+                logger.warning(f"Skipping unsafe path in zip: {member}")
+                continue
+
+            # Build the full extraction path with extended-length prefix. Keep
+            # this path for the actual filesystem operations so Windows long
+            # paths remain supported, but use its resolved form for containment
+            # validation below.
+            member_path = os.path.join(extended_target_dir, member)
+            member_path = _to_extended_length_path(member_path)
+            resolved = os.path.realpath(member_path)
+
+            # Ensure the resolved path is within target_dir to prevent
+            # path traversal attacks (e.g., ../../../etc/malicious).
+            try:
+                common = os.path.commonpath([target_real, resolved])
+                if os.path.normcase(common) != os.path.normcase(target_real):
+                    logger.warning(f"Skipping unsafe path in zip: {member}")
+                    continue
+            except ValueError:
+                # Paths on different drives (Windows)
+                logger.warning(f"Skipping path on different drive in zip: {member}")
+                continue
+
+            logger.debug(f"Extracting {member} to {member_path}")
+
+            # Get ZipInfo for this member to access metadata
+            zip_info = zip_ref.getinfo(member)
+
+            # Create directories if this is a directory entry
+            if member.endswith("/"):
+                os.makedirs(member_path, exist_ok=True)
+            else:
+                # Ensure parent directory exists
+                parent_dir = os.path.dirname(member_path)
+                if parent_dir:
+                    os.makedirs(parent_dir, exist_ok=True)
+
+                # Extract the file
+                with zip_ref.open(member) as source, open(member_path, "wb") as target:
+                    shutil.copyfileobj(source, target)
+
+                # Preserve file permissions from the zip archive
+                # ZipInfo.external_attr contains Unix file mode in upper 16 bits
+                if zip_info.external_attr:
+                    # Extract Unix file mode from external_attr
+                    mode = zip_info.external_attr >> 16
+                    if mode:
+                        os.chmod(member_path, mode)
+    if remove_top_level_directory:
+        top_level_directory = get_top_level_dir_from_compressed_package(package_path)
+        if top_level_directory is not None:
+            # Remove __MACOSX directory if it exists
+            # Use extended path to handle long paths on Windows
+            macos_dir = _to_extended_length_path(
+                os.path.join(target_dir, MAC_OS_ZIP_HIDDEN_DIR_NAME)
+            )
+            if os.path.isdir(macos_dir):
+                shutil.rmtree(macos_dir)
+
+            # Use extended path for cleanup operations
+            top_level_path = os.path.join(extended_target_dir, top_level_directory)
+            if os.path.isdir(top_level_path):
+                remove_dir_from_filepaths(extended_target_dir, top_level_directory)
+
+    if unlink_zip:
+        Path(package_path).unlink()
+
+
+def get_top_level_dir_from_tar_package(package_path: str):
+    """
+    If tar package at package_path contains a single top-level
+    directory, returns the name of the top-level directory. Otherwise,
+    returns None.
+    """
+    with tarfile.open(package_path, "r:*") as tar:
+        top_level_directory = None
+        for member in tar.getmembers():
+            # GNU tar commonly prefixes members with "./" — strip it so
+            # we don't treat "." as the top-level directory name.
+            name = member.name
+            while name.startswith("./"):
+                name = name[2:]
+            if not name or name == ".":
+                continue
+            parts = name.split("/")
+            if len(parts) == 1 and not member.isdir():
+                return None
+            dir_name = parts[0]
+            if top_level_directory is None:
+                top_level_directory = dir_name
+            elif dir_name != top_level_directory:
+                return None
+        return top_level_directory
+
+
+def untar_package(
+    package_path: str,
+    target_dir: str,
+    remove_top_level_directory: bool,
+    unlink_tar: bool,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
+    """Extract the tar archive at package_path to target_dir.
+
+    If remove_top_level_directory is True and the archive contains a single
+    top-level directory, the contents are extracted directly into target_dir
+    without the top-level wrapper.
+
+    Args:
+        package_path: String path of the tar archive to extract.
+        target_dir: String path of the directory to store the extracted contents.
+        remove_top_level_directory: Whether to strip the top-level directory.
+        unlink_tar: Whether to delete the tar file after extraction.
+        logger: Optional logger to use for logging.
+    """
     try:
         os.mkdir(target_dir)
     except FileExistsError:
@@ -895,19 +1244,41 @@ def unzip_package(
 
     logger.debug(f"Unpacking {package_path} to {target_dir}")
 
-    with ZipFile(str(package_path), "r") as zip_ref:
-        zip_ref.extractall(target_dir)
-    if remove_top_level_directory:
-        top_level_directory = get_top_level_dir_from_compressed_package(package_path)
-        if top_level_directory is not None:
-            # Remove __MACOSX directory if it exists
-            macos_dir = os.path.join(target_dir, MAC_OS_ZIP_HIDDEN_DIR_NAME)
-            if os.path.isdir(macos_dir):
-                shutil.rmtree(macos_dir)
+    with tarfile.open(package_path, "r:*") as tar:
+        for member in tar.getmembers():
+            member_path = os.path.join(target_dir, member.name)
+            resolved = os.path.realpath(member_path)
+            target_real = os.path.realpath(target_dir)
+            if (
+                not resolved.startswith(target_real + os.sep)
+                and resolved != target_real
+            ):
+                logger.warning(f"Skipping unsafe path in tar: {member.name}")
+                continue
 
+            if member.issym() or member.islnk():
+                logger.warning(f"Skipping link in tar: {member.name}")
+                continue
+
+            if member.isdir():
+                os.makedirs(member_path, exist_ok=True)
+            elif member.isfile():
+                parent_dir = os.path.dirname(member_path)
+                if parent_dir:
+                    os.makedirs(parent_dir, exist_ok=True)
+                with (
+                    tar.extractfile(member) as source,
+                    open(member_path, "wb") as target,
+                ):
+                    shutil.copyfileobj(source, target)
+                os.chmod(member_path, member.mode)
+
+    if remove_top_level_directory:
+        top_level_directory = get_top_level_dir_from_tar_package(package_path)
+        if top_level_directory is not None:
             remove_dir_from_filepaths(target_dir, top_level_directory)
 
-    if unlink_zip:
+    if unlink_tar:
         Path(package_path).unlink()
 
 
@@ -916,20 +1287,21 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
 
     Args:
         pkg_uri: URI to delete.
+        base_directory: Directory where the local copy of the package lives.
 
     Returns:
-        bool: True if the URI was successfully deleted, else False.
+        True if the URI was successfully deleted, else False.
     """
 
     deleted = False
-    path = Path(_get_local_path(base_directory, pkg_uri))
-    with FileLock(str(path) + ".lock"):
-        path = path.with_suffix("")
-        if path.exists():
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(str(path))
+    pkg_path = Path(_get_local_path(base_directory, pkg_uri))
+    with FileLock(str(pkg_path) + ".lock"):
+        local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
+        if local_dir.exists():
+            if local_dir.is_dir() and not local_dir.is_symlink():
+                shutil.rmtree(str(local_dir))
             else:
-                path.unlink()
+                local_dir.unlink()
             deleted = True
 
     return deleted

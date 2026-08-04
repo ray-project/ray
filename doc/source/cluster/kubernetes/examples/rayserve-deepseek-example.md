@@ -5,15 +5,12 @@
 This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `deepseek-ai/DeepSeek-R1` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving-llms) for information on Ray Serve LLM.
 
 ## Prerequisites
-A DeepSeek model requires 2 nodes, each equipped with 8 H100 80 GB GPUs.
-It should be deployable on Kubernetes clusters that meet this requirement.
-This guide provides instructions for setting up a GKE cluster using [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) or [A3 Mega](https://cloud.google.com/compute/docs/gpus#a3-mega) machine types.
+A DeepSeek model requires 2 nodes, each equipped with 8 H100 80 GB GPUs. It should be deployable on Kubernetes clusters that meet this requirement. This guide provides instructions for setting up a GKE cluster using [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) or [A3 Mega](https://cloud.google.com/compute/docs/gpus#a3-mega) machine types.
 
 Before creating the cluster, ensure that your project has sufficient [quota](https://console.cloud.google.com/iam-admin/quotas) for the required accelerators.
 
 ## Step 1: Create a Kubernetes cluster on GKE
-Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). 
-The following command creates a Kubernetes cluster named `kuberay-gpu-cluster` with 1 default CPU node in the `us-east5-a` zone. This example uses the `e2-standard-16` machine type, which has 16 vCPUs and 64 GB memory.
+Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). The following command creates a Kubernetes cluster named `kuberay-gpu-cluster` with 1 default CPU node in the `us-east5-a` zone. This example uses the `e2-standard-16` machine type, which has 16 vCPUs and 64 GB memory.
 
 ```sh
 gcloud container clusters create kuberay-gpu-cluster \
@@ -141,8 +138,7 @@ The model download and deployment will typically take 20-30 minutes. While this 
 kubectl port-forward svc/deepseek-r1-head-svc 8265:8265
 ```
 
-Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features.
-![LLM Serve Application](../images/ray_dashboard_deepseek.png)
+Once forwarded, navigate to the Serve tab on the dashboard to review application status, deployments, routers, logs, and other relevant features. ![LLM Serve Application](../images/ray_dashboard_deepseek.png)
 
 ## Step 5: Send a request
 

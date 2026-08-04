@@ -1,5 +1,5 @@
-
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: End-to-end RLlib tutorial: configure and build an Algorithm, train, checkpoint, evaluate, and deploy a trained policy.
 
 .. _rllib-getting-started:
 
@@ -77,7 +77,7 @@ method:
     )
 
 
-To scale your setup and define, how many :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors you want to leverage,
+To scale your setup and define how many :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors you want to leverage,
 you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method.
 ``EnvRunners`` are used to collect samples for training updates from your :ref:`environment <rllib-key-concepts-environments>`.
 
@@ -210,7 +210,7 @@ one for each of the configured learning rates:
 
 .. testcode::
 
-    from ray import train, tune
+    from ray import tune
     from ray.rllib.algorithms.ppo import PPOConfig
 
     config = (
@@ -230,7 +230,7 @@ one for each of the configured learning rates:
         # pretty printed result metrics from the results returned previously by
         # ``.train()``. Also note that -1100 is not a good episode return for
         # Pendulum-v1, we are using it here to shorten the experiment time.
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop={"env_runners/episode_return_mean": -1100.0},
         ),
     )
@@ -308,7 +308,7 @@ method to compute actions:
     )
 
     # Create the RL environment to test against (same as was used for training earlier).
-    env = gym.make("Pendulum-v1", render_mode="human")
+    env = gym.make("Pendulum-v1")
 
     episode_return = 0.0
     done = False
@@ -344,6 +344,14 @@ method to compute actions:
         done = terminated or truncated
 
     print(f"Reached episode return of {episode_return}.")
+
+
+.. note::
+
+    To watch the agent play the environment in a local pygame window, pass
+    ``render_mode="human"`` to ``gym.make(...)`` and uncomment the ``env.render()``
+    call in the loop above. This requires a local display, so it's omitted here
+    to keep the example runnable in headless environments.
 
 
 Alternatively, if you still have an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance up and running

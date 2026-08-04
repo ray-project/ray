@@ -1,6 +1,6 @@
-from collections import defaultdict, deque
 import logging
 import platform
+from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
 
 import ray

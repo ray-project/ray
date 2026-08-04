@@ -11,7 +11,7 @@ Key advantages include:
 - Automatic and fast failure recovery.
 - Automatic on-the-fly data splitting across distributed training workers.
 
-For more details about Ray Data, check out the :ref:`Ray Data documentation<data>`.`
+For more details about Ray Data, check out the :ref:`Ray Data documentation<data>`.
 
 .. note::
 
@@ -67,7 +67,7 @@ Data ingestion can be set up with four basic steps:
                 batch["y"] = batch["y"] + 1
                 return batch
 
-            train_dataset = train_dataset.map_batches(increment)
+            train_dataset = train_dataset.map_batches(increment, batch_size="auto")
 
 
             def train_func():
@@ -149,16 +149,18 @@ Data ingestion can be set up with four basic steps:
     .. tab-item:: HuggingFace Transformers
 
         .. code-block:: python
-            :emphasize-lines: 7-8,13-14,17-18,24,30-31,41
+            :emphasize-lines: 7-9,14-15,18-19,25,31-32,42
 
             import ray
             import ray.train
+            from huggingface_hub import HfFileSystem
 
             ...
 
-            # Create the train and evaluation datasets.
-            train_data = ray.data.from_huggingface(hf_train_ds)
-            eval_data = ray.data.from_huggingface(hf_eval_ds)
+            # Create the train and evaluation datasets using HfFileSystem.
+            fs = HfFileSystem()
+            train_data = ray.data.read_parquet("hf://datasets/your-dataset/train/", filesystem=fs)
+            eval_data = ray.data.read_parquet("hf://datasets/your-dataset/validation/", filesystem=fs)
 
             def train_func():
                 # Access Ray datsets in your train_func via ``get_dataset_shard``.
@@ -502,6 +504,7 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 
 .. testcode::
 
+    import base64
     import numpy as np
     from tempfile import TemporaryDirectory
 
@@ -542,16 +545,22 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
                 checkpoint=Checkpoint.from_directory(temp_dir),
             )
 
+    # Serialize the preprocessor. Since serialize() returns bytes,
+    # convert to base64 string for JSON compatibility.
+    serialized_preprocessor = base64.b64encode(scaler.serialize()).decode("ascii")
+
     my_trainer = TorchTrainer(
         train_loop_per_worker,
         scaling_config=ScalingConfig(num_workers=2),
         datasets={"train": dataset},
-        metadata={"preprocessor_pkl": scaler.serialize()},
+        metadata={"preprocessor_pkl": serialized_preprocessor},
     )
 
     # Get the fitted preprocessor back from the result metadata.
     metadata = my_trainer.fit().checkpoint.get_metadata()
-    print(StandardScaler.deserialize(metadata["preprocessor_pkl"]))
+    # Decode from base64 before deserializing
+    serialized_data = base64.b64decode(metadata["preprocessor_pkl"])
+    print(StandardScaler.deserialize(serialized_data))
 
 
 This example persists the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that is available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints that the Trainer saves. This design enables the recreation of the fitted preprocessor for inference.
@@ -596,7 +605,7 @@ For example, the following code prefetches 10 batches at a time for each trainin
 Avoid heavy transformation in collate_fn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, :ref:`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer.
+The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, :ref:`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer. When your expensive transformation requires batch_size as input, such as text tokenization, you can :ref:`scale it out to Ray Data <scaling_collation_functions>` for better performance.
 
 
 .. _dataset_cache_performance:
@@ -625,7 +634,7 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
     # Preprocess the data. Transformations that are made before the materialize call
     # below are only run once.
-    train_ds = train_ds.map_batches(normalize_length)
+    train_ds = train_ds.map_batches(normalize_length, batch_size="auto")
 
     # Materialize the dataset in object store memory.
     # Only do this if train_ds is small enough to fit in object store memory.
@@ -637,7 +646,7 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
     # Add per-epoch preprocessing. Transformations that you want to run per-epoch, such
     # as data augmentation or randomization, should go after the materialize call.
-    train_ds = train_ds.map_batches(augment_data)
+    train_ds = train_ds.map_batches(augment_data, batch_size="auto")
 
     # Pass train_ds to the Trainer
 
@@ -649,3 +658,98 @@ If the GPU training is bottlenecked on expensive CPU preprocessing and the prepr
 In general, adding CPU-only nodes can help in two ways:
 * Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
 * Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
+
+Isolating Ray Data worker processes from training nodes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may sometimes want to prevent Ray Data CPU tasks from running on training worker nodes
+when training workers themselves run CPU or RAM-heavy operations
+such as storing large local shuffle buffers or running expensive collate functions.
+Launching more Ray Data processes would oversubscribe the training worker nodes.
+Instead, the Ray Data tasks should run on a separate set of CPU nodes in your heterogeneous
+cluster (for example, 4 GPU training nodes and 4 CPU-only nodes).
+
+One workaround is to force full-node exclusion by reserving all CPUs per training worker via
+``resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}`` in ``ScalingConfig``.
+This method is fragile since it's tied to node shapes, and Ray Data also doesn't exclude other
+resources such as object store memory properly, since the typical configuration is to only take up logical
+CPUs and GPUs.
+
+The recommended approach is to use :ref:`subclusters <data_concurrent_execution>` to pin the
+training Dataset to CPU-only nodes. This correctly scopes the memory budget to only the nodes
+where data tasks can actually run. It requires adding labels to your worker node configurations and setting the
+``label_selector`` in two places:
+
+.. code-block:: python
+
+    import ray
+    from ray.data import ExecutionOptions
+    from ray.train import DataConfig
+    from ray.train.torch import TorchTrainer
+
+    # (1) Pin construction-time tasks (schema inference, file listing).
+    ctx = ray.data.DataContext.get_current().copy()
+    ctx.execution_options.label_selector = {"ray-subcluster": "data"}
+    with ray.data.DataContext.current(ctx):
+        train_dataset = ray.data.read_parquet(...)
+
+    # (2) Pin per-worker ingest — Train replaces ds.context options
+    # wholesale, so the selector must be restated here.
+    trainer = TorchTrainer(
+        ...,
+        datasets={"train": train_dataset},
+        dataset_config=DataConfig(
+            datasets_to_split=["train"],
+            execution_options={
+                "train": ExecutionOptions(
+                    label_selector={"ray-subcluster": "data"}
+                ),
+            },
+        ),
+    )
+
+.. tip::
+
+    Before resorting to isolating Ray Data tasks from training nodes, consider offloading that
+    heavy work from training workers to the data pipeline instead:
+    :ref:`scale out expensive collation <scaling_collation_functions>`
+    and use :ref:`map_batches-based shuffling <map_batches_shuffle>` in place of large local
+    shuffle buffers. These reduce CPU pressure on training workers and often eliminate the
+    need for node isolation entirely.
+
+.. _balancing-data-production-consumption:
+
+Balancing data production and consumption
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ideally, data production (dataset processing) and data consumption (training ingestion) happen at
+the same rate. When production outpaces consumption, excess data is written to the
+:ref:`object store <object-spilling-internals>`, which can spill to disk, which in turn decreases
+Ray Data throughput and leads to out of disk errors. Ray Data's backpressure system automatically
+balances production and consumption, but if you are still running into issues, you can try
+tuning the following:
+
+* **Use fewer CPUs for data production**: If you are using :func:`~ray.data.Dataset.map_batches`,
+  you can set the number of workers with ``compute`` and the number of CPUs per worker with ``num_cpus``.
+* **Limit object store usage per dataset**: Set a per-dataset object store memory limit using
+  each dataset's execution options. Ray Data's backpressure system will slow down production
+  once the object store memory limit is reached.
+
+  .. code-block:: python
+
+      train_ds = ray.data.read_parquet("s3://bucket/train")
+      val_ds = ray.data.read_parquet("s3://bucket/val")
+
+      train_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
+          object_store_memory=50 * 1024**3,
+      )
+      val_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
+          object_store_memory=50 * 1024**3,
+      )
+
+See :ref:`data_performance_tips` for more info on how to tune Ray Data.
+
+More data ingest guides
+-----------------------
+
+- :ref:`Weighted Dataset Mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
+- :ref:`Scaling Collation Functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.

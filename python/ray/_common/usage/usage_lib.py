@@ -57,10 +57,11 @@ import requests
 import yaml
 
 import ray
-import ray._private.ray_constants as ray_constants
 import ray._common.usage.usage_constants as usage_constant
+import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient
-from ray.core.generated import gcs_pb2, usage_pb2
+from ray.core.generated import usage_pb2
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
@@ -565,7 +566,8 @@ def get_total_num_alive_nodes_to_report(gcs_client, timeout=None) -> Optional[in
     """Return the total number of alive nodes in the cluster"""
     try:
         result = gcs_client.get_all_node_info(
-            timeout=timeout, state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE
+            timeout=timeout,
+            state_filter=GcsNodeInfo.GcsNodeState.ALIVE,
         )
         return len(result.items())
     except Exception as e:
@@ -654,8 +656,8 @@ def _get_cluster_status_to_report_v2(gcs_client: GcsClient) -> ClusterStatusToRe
         )
     except Exception as e:
         logger.info(f"Failed to get cluster status to report {e}")
-    finally:
-        return result
+
+    return result
 
 
 def get_cluster_status_to_report(gcs_client: GcsClient) -> ClusterStatusToReport:
@@ -714,9 +716,9 @@ def get_cloud_from_metadata_requests() -> str:
     def cloud_metadata_request(url: str, headers: Optional[Dict[str, str]]) -> bool:
         try:
             res = requests.get(url, headers=headers, timeout=1)
-            # The requests may be rejected based on pod configuration but if
-            # it's a machine on the cloud provider it should at least be reachable.
-            if res.status_code != 404:
+            # Only accept successful responses (200 OK) to avoid false positives like 400 - Bad Request
+            # when multiple cloud providers use the same IP (169.254.169.254)
+            if res.status_code == 200:
                 return True
         # ConnectionError is a superclass of ConnectTimeout
         except requests.exceptions.ConnectionError:
@@ -727,19 +729,21 @@ def get_cloud_from_metadata_requests() -> str:
             )
         return False
 
-    # Make internal metadata requests to all 3 clouds
-    if cloud_metadata_request(
-        "http://metadata.google.internal/computeMetadata/v1",
-        {"Metadata-Flavor": "Google"},
-    ):
-        return "gcp"
-    elif cloud_metadata_request("http://169.254.169.254/latest/meta-data/", None):
-        return "aws"
-    elif cloud_metadata_request(
-        "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
-        {"Metadata": "true"},
-    ):
+    AZURE_METADATA_URL = (
+        "http://169.254.169.254/metadata/instance?api-version=2021-12-13"
+    )
+    AZURE_METADATA_HEADERS = {"Metadata": "true"}
+    GCP_METADATA_URL = "http://metadata.google.internal/computeMetadata/v1"
+    GCP_METADATA_HEADERS = {"Metadata-Flavor": "Google"}
+    AWS_METADATA_URL = "http://169.254.169.254/latest/meta-data/"
+    AWS_METADATA_HEADERS = None
+
+    if cloud_metadata_request(AZURE_METADATA_URL, AZURE_METADATA_HEADERS):
         return "azure"
+    elif cloud_metadata_request(GCP_METADATA_URL, GCP_METADATA_HEADERS):
+        return "gcp"
+    elif cloud_metadata_request(AWS_METADATA_URL, AWS_METADATA_HEADERS):
+        return "aws"
     else:
         return "unknown"
 

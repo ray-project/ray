@@ -24,7 +24,7 @@ class IQLConfig(MARWILConfig):
         # Run this from the ray directory root.
         config = IQLConfig().training(actor_lr=0.00001, gamma=0.99)
         config = config.offline_data(
-            input_="./rllib/tests/data/pendulum/pendulum-v1_enormous")
+            input_="./rllib/offline/tests/data/pendulum/pendulum-v1_enormous")
 
         # Build an Algorithm object from the config and run 1 training iteration.
         algo = config.build()
@@ -45,7 +45,7 @@ class IQLConfig(MARWILConfig):
         # Set the config object's data path.
         # Run this from the ray directory root.
         config.offline_data(
-            input_="./rllib/tests/data/pendulum-v1_enormous"
+            input_="./rllib/offline/tests/data/pendulum/pendulum-v1_enormous"
         )
         # Set the config object's env, used for evaluation.
         config.environment(env="Pendulum-v1")

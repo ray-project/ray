@@ -7,23 +7,11 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.execution_options import (
         ExecutionResources,
     )
-    from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.execution.streaming_executor_state import Topology
 
 
 @DeveloperAPI
 class ClusterAutoscaler(ABC):
     """Abstract interface for Ray Data cluster autoscaler."""
-
-    def __init__(
-        self,
-        topology: "Topology",
-        resource_manager: "ResourceManager",
-        execution_id: str,
-    ):
-        self._topology = topology
-        self._resource_manager = resource_manager
-        self._execution_id = execution_id
 
     @abstractmethod
     def try_trigger_scaling(self):

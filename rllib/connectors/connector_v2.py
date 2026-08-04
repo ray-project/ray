@@ -1,6 +1,6 @@
 import abc
-from collections import defaultdict
 import inspect
+from collections import defaultdict
 from typing import (
     Any,
     Callable,
@@ -14,12 +14,13 @@ from typing import (
 )
 
 import gymnasium as gym
+import numpy as np
 import tree
 
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
@@ -709,15 +710,22 @@ class ConnectorV2(Checkpointable, abc.ABC):
         # and then know that when batching the entire list under the respective
         # (eps_id, agent_id, module_id)-tuple key, we need to concatenate, not stack
         # the items in there.
-        def _tag(s):
-            return BatchedNdArray(s)
+        if isinstance(items_to_add, np.ndarray):
+            # Fast path: skip tree traversal for simple numpy arrays.
+            tagged = items_to_add.view(BatchedNdArray)
+        else:
+
+            def _tag(s):
+                return BatchedNdArray(s)
+
+            tagged = tree.map_structure(_tag, items_to_add)
 
         ConnectorV2.add_batch_item(
             batch=batch,
             column=column,
             # Convert given input into BatchedNdArray(s) such that the `batch` utility
             # knows that it'll have to concat, not stack.
-            item_to_add=tree.map_structure(_tag, items_to_add),
+            item_to_add=tagged,
             single_agent_episode=single_agent_episode,
         )
 

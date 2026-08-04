@@ -1,21 +1,20 @@
 """Abstract class for collective groups."""
-from abc import ABCMeta
-from abc import abstractmethod
+from abc import ABCMeta, abstractmethod
 
 from ray.util.collective.types import (
+    AllGatherOptions,
     AllReduceOptions,
     BarrierOptions,
-    ReduceOptions,
-    AllGatherOptions,
     BroadcastOptions,
+    RecvOptions,
+    ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
 )
 
 
 class BaseGroup(metaclass=ABCMeta):
-    def __init__(self, world_size, rank, group_name):
+    def __init__(self, world_size: int, rank: int, group_name: str):
         """Init the process group with basic information.
 
         Args:
@@ -49,6 +48,12 @@ class BaseGroup(metaclass=ABCMeta):
     @classmethod
     def backend(cls):
         """The backend of this collective group."""
+        raise NotImplementedError()
+
+    @classmethod
+    @abstractmethod
+    def check_backend_availability(cls) -> bool:
+        """Check if the backend is available."""
         raise NotImplementedError()
 
     @abstractmethod

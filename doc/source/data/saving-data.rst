@@ -14,30 +14,33 @@ This guide shows you how to:
 Writing data to files
 =====================
 
-Ray Data writes to local disk and cloud storage.
+Ray Data writes to shared local storage and cloud storage.
 
-Writing data to local disk
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Writing data to shared local storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To save your :class:`~ray.data.dataset.Dataset` to local disk, call a method
-like :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>`  and specify a local
-directory with the `local://` scheme.
+To save your :class:`~ray.data.dataset.Dataset` to a shared local filesystem,
+use storage such as NFS, and mount that storage at the same path on every Ray
+node. Then, call a method like
+:meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify the
+mounted directory.
 
 .. warning::
 
-    If your cluster contains multiple nodes and you don't use `local://`, Ray Data
-    writes different partitions of data to different nodes.
+    Don't use the deprecated ``local://`` scheme. Use cloud storage or a shared
+    filesystem path that's available on every Ray node instead.
 
 .. testcode::
+    :skipif: True
 
     import ray
 
     ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
-    ds.write_parquet("local:///tmp/iris/")
+    ds.write_parquet("/mnt/cluster_storage/iris")
 
-To write data to formats other than Parquet, read the
-:ref:`Input/Output reference <input-output>`.
+To write data to formats other than Parquet, see the
+:ref:`Saving Data API <saving-data-api>`.
 
 Writing data to cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -47,7 +50,7 @@ with your cloud service provider. Then, call a method like
 :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a URI with
 the appropriate scheme. URI can point to buckets or folders.
 
-To write data to formats other than Parquet, read the :ref:`Input/Output reference <input-output>`.
+To write data to formats other than Parquet, see the :ref:`Saving Data API <saving-data-api>`.
 
 .. tab-set::
 
@@ -118,25 +121,6 @@ To write data to formats other than Parquet, read the :ref:`Input/Output referen
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
-Writing data to NFS
-~~~~~~~~~~~~~~~~~~~
-
-To save your :class:`~ray.data.dataset.Dataset` to NFS file systems, call a method
-like :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a
-mounted directory.
-
-.. testcode::
-    :skipif: True
-
-    import ray
-
-    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-
-    ds.write_parquet("/mnt/cluster_storage/iris")
-
-To write data to formats other than Parquet, read the
-:ref:`Input/Output reference <input-output>`.
-
 .. _changing-number-output-files:
 
 Changing the number of output files
@@ -173,7 +157,7 @@ Writing into Partitioned Dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When writing partitioned dataset (using Hive-style, folder-based partitioning) it's recommended to repartition the dataset by the partition columns prior to writing into it. 
-This allows you to *have the control over the file-sizes and their number*. When the dataset is repartitioned by the partition columns every block should contain all of the rows corresponding to particular partition, 
+This allows you to *have control over the file sizes and their number*. When the dataset is repartitioned by the partition columns every block should contain all of the rows corresponding to particular partition, 
 meaning that the number of files created should be controlled based on the configuration provided to, 
 for example, `write_parquet` method (such as `min_rows_per_file`, `max_rows_per_file`). 
 Since every block is written out independently, when writing the dataset without prior 
@@ -283,7 +267,7 @@ on the head node.
 Converting Datasets to distributed DataFrames
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.getdaft.io>`_,
+Ray Data interoperates with distributed data processing frameworks like `Daft <https://www.daft.ai>`_,
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
@@ -291,7 +275,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
     .. tab-item:: Daft
 
-        To convert a :class:`~ray.data.dataset.Dataset` to a `Daft Dataframe <https://docs.getdaft.io/en/stable/api/dataframe/>`_, call
+        To convert a :class:`~ray.data.dataset.Dataset` to a `Daft Dataframe <https://docs.daft.ai/en/stable/api/dataframe/>`_, call
         :meth:`Dataset.to_daft() <ray.data.Dataset.to_daft>`.
 
         .. testcode::

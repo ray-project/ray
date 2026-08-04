@@ -1,27 +1,31 @@
 # coding: utf-8
+import importlib
 import logging
 import os
 import pickle
 import socket
 import sys
 import time
-import importlib
 
 import numpy as np
 import pytest
-import psutil
 
 import ray
 import ray._private.ray_constants
 import ray._private.utils
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
+from ray.util.state import list_actors
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
 
 def test_global_state_api(shutdown_only):
 
-    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+    ray.init(
+        num_cpus=5, num_gpus=3, resources={"CustomResource": 1}, include_dashboard=True
+    )
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
@@ -46,15 +50,12 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray._private.state.actors()
+    actor_table = list_actors()  # should be using this API now for fetching actors
     assert len(actor_table) == 1
 
-    (actor_info,) = actor_table.values()
-    assert actor_info["JobID"] == job_id.hex()
-    assert actor_info["Name"] == "test_actor"
-    assert "IPAddress" in actor_info["Address"]
-    assert "IPAddress" in actor_info["OwnerAddress"]
-    assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
+    actor_info = actor_table[0]
+    assert actor_info.job_id == job_id.hex()
+    assert actor_info.name == "test_actor"
 
     job_table = ray._private.state.jobs()
 
@@ -249,6 +250,83 @@ def test_ray_task_generator_setproctitle(ray_start_2_cpus):
     generator = actor.f.remote()
     for _ in range(4):
         ray.get(next(generator))
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason=(
+        "Test specifically targets the Linux /proc/self/stat fallback in "
+        "src/ray/thirdparty/setproctitle/spt_setup.c."
+    ),
+)
+def test_setproctitle_falls_back_to_proc_stat_when_environ_broken(tmp_path):
+    """Regression test for the vendored-setproctitle deflake.
+
+    spt_setup() in src/ray/thirdparty/setproctitle/spt_setup.c originally
+    relied on find_argv_from_env(), which walks backward from environ[0] to
+    locate the original argv memory region. That walk silently fails once
+    libc setenv()/putenv() has moved environ, leaving every subsequent
+    setproctitle() call as a no-op. We added find_argv_from_proc_stat() as
+    a fallback that reads the kernel-recorded arg_start/arg_end from
+    /proc/self/stat (set at execve() time, immune to env mutation).
+
+    This test deliberately clears os.environ in a subprocess BEFORE the
+    first setproctitle() call. Without the fallback, env[0] is NULL,
+    find_argv_from_env() fails, and the title write is silently dropped.
+    With the fallback in place, the kernel-recorded bounds are used and
+    /proc/self/cmdline reflects the new title.
+    """
+    import subprocess
+    import textwrap
+
+    marker = "ray::PROC_STAT_FALLBACK_OK"
+    script = textwrap.dedent(
+        f"""
+        import os, sys
+        # Import _raylet BEFORE wiping environ — the .so load itself may
+        # need a sane environment, and spt_setup() is lazy (only fires on
+        # the first setproctitle() call), so we can safely break environ
+        # afterwards.
+        import ray._raylet
+
+        # Break find_argv_from_env(): environ[0] becomes NULL once cleared,
+        # so the backward walk bails out immediately.
+        os.environ.clear()
+
+        ray._raylet.setproctitle({marker!r})
+
+        with open("/proc/self/cmdline", "rb") as f:
+            cmdline = f.read()
+        # /proc/self/cmdline is NUL-separated; the title is written into
+        # argv[0]'s buffer and padded with NULs.
+        first_arg = cmdline.split(b"\\x00", 1)[0].decode("utf-8", "replace")
+        print("FIRST_ARG=" + first_arg)
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert (
+        result.returncode == 0
+    ), f"subprocess failed: stdout={result.stdout!r} stderr={result.stderr!r}"
+    # Locate our marker line in stdout (other Ray imports may emit chatter).
+    first_arg_lines = [
+        line for line in result.stdout.splitlines() if line.startswith("FIRST_ARG=")
+    ]
+    assert first_arg_lines, (
+        f"FIRST_ARG line missing from subprocess output. "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    first_arg = first_arg_lines[-1][len("FIRST_ARG=") :]
+    assert first_arg == marker, (
+        f"setproctitle did not take effect after os.environ.clear(): "
+        f"expected {marker!r}, got {first_arg!r}. "
+        f"This typically means the /proc/self/stat fallback in "
+        f"src/ray/thirdparty/setproctitle/spt_setup.c regressed."
+    )
 
 
 @pytest.mark.skipif(

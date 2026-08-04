@@ -1,25 +1,25 @@
+import _thread
 import random
 import signal
 import sys
 import threading
-import _thread
 import time
-import numpy as np
 from typing import List
 
+import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._private.utils import DeferSigint
 from ray.exceptions import (
-    TaskCancelledError,
-    RayTaskError,
     GetTimeoutError,
+    ObjectReconstructionFailedError,
+    RayTaskError,
+    TaskCancelledError,
     WorkerCrashedError,
 )
 from ray.types import ObjectRef
-from ray._private.utils import DeferSigint
-from ray._common.test_utils import SignalActor
-from ray._common.test_utils import wait_for_condition
 from ray.util.state import list_tasks
 
 
@@ -459,29 +459,32 @@ def test_remote_cancel(ray_start_cluster, use_force):
 
 @pytest.mark.parametrize("use_force", [True, False])
 def test_recursive_cancel(shutdown_only, use_force):
-    ray.init(num_cpus=4)
+    ray.init(num_cpus=2)
 
     @ray.remote(num_cpus=1)
-    def inner():
+    def inner(signal_actor):
+        signal_actor.send.remote()
         while True:
             time.sleep(0.1)
 
     @ray.remote(num_cpus=1)
-    def outer():
-        x = [inner.remote()]
-        print(x)
+    def outer(signal_actor):
+        _ = inner.remote(signal_actor)
         while True:
             time.sleep(0.1)
 
-    @ray.remote(num_cpus=4)
+    @ray.remote(num_cpus=2)
     def many_resources():
-        return 300
+        return True
 
-    outer_fut = outer.remote()
+    signal_actor = SignalActor.remote()
+    outer_fut = outer.remote(signal_actor)
+    # Wait until both inner and outer are running
+    ray.get(signal_actor.wait.remote())
     many_fut = many_resources.remote()
     with pytest.raises(GetTimeoutError):
         ray.get(many_fut, timeout=1)
-    ray.cancel(outer_fut)
+    ray.cancel(outer_fut, force=use_force)
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(outer_fut, timeout=10)
 
@@ -615,10 +618,39 @@ def test_ray_task_cancel_and_retry_race_condition(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
-    # Test that the retry task fails with a TaskCancelledError because it was previously
-    # cancelled.
-    with pytest.raises(TaskCancelledError):
+    # Test that the retry task fails with a ObjectReconstructionFailedError because
+    # it was previously cancelled.
+    with pytest.raises(ObjectReconstructionFailedError):
         ray.get(consumer.remote([producer_ref]))
+
+
+def test_is_canceled_with_keyboard_interrupt(ray_start_regular):
+    """Test checking is_canceled() within KeyboardInterrupt in normal tasks.
+
+    is_canceled() will be True in KeyboardInterrupt exception block.
+    """
+    signal_actor = SignalActor.remote()
+
+    @ray.remote
+    def task_handling_keyboard_interrupt() -> bool:
+        try:
+            ray.get(signal_actor.wait.remote())
+        except KeyboardInterrupt:
+            return ray.get_runtime_context().is_canceled()
+
+        return False
+
+    ref = task_handling_keyboard_interrupt.remote()
+
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+
+    ray.cancel(ref)
+
+    # The task should be canceled and unblock without sending the signal.
+    try:
+        assert ray.get(ref) is True
+    finally:
+        ray.get(signal_actor.send.remote())
 
 
 if __name__ == "__main__":

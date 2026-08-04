@@ -249,9 +249,12 @@ async def test_non_existent_model(
     with pytest.raises(error_type) as e:
         await querier.query(bad_model_id, stream, chat, **params)
 
-    assert "Could not find" in str(
-        e.value
-    ), f'Exception {e.value} for missing model must mention "Could not find".'
+    # OpenAiIngress wraps with "Could not find"; vLLM's native ASGI app
+    # (used under RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING) says "does not exist".
+    msg = str(e.value)
+    assert (
+        "Could not find" in msg or "does not exist" in msg
+    ), f'Exception {e.value} for missing model must mention "Could not find" or "does not exist".'
 
 
 @pytest.mark.parametrize("model", model_loader.completions_only_model_ids())
@@ -311,8 +314,12 @@ async def test_logprobs(
             assert len(logprob["top_logprobs"]) == num_logprobs
             assert list(logprob["token"].encode()) == logprob["bytes"]
 
-    # top logprobs have to be positive integer
-    invalid_num_logprobs = [-1]
+    # top logprobs have to be positive integer (and not -1)
+    # https://github.com/vllm-project/vllm/pull/23868
+    # PR in vLLM changed interpretation of num_logprobs = -1
+    # Overrides to model_config.get_vocab_size(), which triggers
+    # openai.APIError instead of openai.badRequestError
+    invalid_num_logprobs = [-2]
     bad_config = configuration.copy()
     for invalid_num_logprob in invalid_num_logprobs:
         bad_config["top_logprobs"] = invalid_num_logprob

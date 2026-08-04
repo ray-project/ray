@@ -29,7 +29,9 @@ class DialogWithTitle extends React.Component<PropsWithChildren<Props>> {
           onClick={handleClose}
           size="large"
         >
-          <CloseIcon />
+          <CloseIcon
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
+          />
         </IconButton>
         <Typography
           sx={(theme) => ({

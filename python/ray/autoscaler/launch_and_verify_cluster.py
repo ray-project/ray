@@ -11,6 +11,7 @@ Usage:
         <cluster_configuration_file_path>
 """
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -84,7 +85,7 @@ def check_arguments():
     )
 
 
-def get_docker_image(docker_override):
+def get_docker_image(docker_override: str):
     """
     Get the docker image to use for the head node and worker nodes.
 
@@ -96,12 +97,12 @@ def get_docker_image(docker_override):
         applicable.
     """
     if docker_override == "latest":
-        return "rayproject/ray:latest-py39"
+        return "rayproject/ray:latest-py310"
     elif docker_override == "nightly":
-        return "rayproject/ray:nightly-py39"
+        return "rayproject/ray:nightly-py310"
     elif docker_override == "commit":
         if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
-            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py39"
+            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py310"
         else:
             print(
                 "Error: docker image is only available for "
@@ -111,7 +112,7 @@ def get_docker_image(docker_override):
     return None
 
 
-def check_file(file_path):
+def check_file(file_path: Path):
     """
     Check if the provided file path is valid and readable.
 
@@ -141,6 +142,51 @@ def override_docker_image(config_yaml, docker_image):
     assert docker_config.get("head_image") is None, "Cannot override head_image"
     assert docker_config.get("worker_image") is None, "Cannot override worker_image"
     config_yaml["docker"] = docker_config
+
+
+def azure_authenticate():
+    """Get Azure service principal credentials from AWS Secrets Manager and authenticate."""
+    print("======================================")
+    print("Getting Azure credentials from AWS Secrets Manager...")
+
+    # Initialize AWS Secrets Manager client
+    secrets_client = boto3.client("secretsmanager", region_name="us-west-2")
+
+    # Get service principal credentials
+    secret_response = secrets_client.get_secret_value(
+        SecretId="azure-service-principal-oss-release"
+    )
+    secret = secret_response["SecretString"]
+
+    client_id = json.loads(secret)["client_id"]
+    tenant_id = json.loads(secret)["tenant_id"]
+
+    # Get certificate
+    cert_response = secrets_client.get_secret_value(
+        SecretId="azure-service-principal-certificate"
+    )
+    cert = cert_response["SecretString"]
+
+    # Write certificate to temp file
+    tmp_dir = tempfile.mkdtemp()
+    cert_path = os.path.join(tmp_dir, "azure_cert.pem")
+    with open(cert_path, "w") as f:
+        f.write(cert)
+
+    # Login to Azure
+    subprocess.check_call(
+        [
+            "az",
+            "login",
+            "--service-principal",
+            "--username",
+            client_id,
+            "--certificate",
+            cert_path,
+            "--tenant",
+            tenant_id,
+        ]
+    )
 
 
 def download_ssh_key_aws():
@@ -190,11 +236,12 @@ def download_ssh_key_gcp():
     os.chmod(local_key_path, 0o400)
 
 
-def cleanup_cluster(config_yaml, cluster_config):
+def cleanup_cluster(config_yaml: dict, cluster_config: Path) -> None:
     """
     Clean up the cluster using the given cluster configuration file.
 
     Args:
+        config_yaml: The parsed cluster configuration.
         cluster_config: The path of the cluster configuration file.
     """
     print("======================================")
@@ -208,10 +255,13 @@ def cleanup_cluster(config_yaml, cluster_config):
     num_tries = 3
     for i in range(num_tries):
         try:
+            env = os.environ.copy()
+            env.pop("PYTHONPATH", None)
             subprocess.run(
                 ["ray", "down", "-v", "-y", str(cluster_config)],
                 check=True,
                 capture_output=True,
+                env=env,
             )
             cleanup_security_groups(config_yaml)
             # Final success
@@ -251,6 +301,50 @@ def cleanup_security_group(ec2_client, id):
                 return
 
 
+def ensure_ssh_keys_azure():
+    """
+    Ensure that the SSH keys for Azure tests exist, and create them if they don't.
+    """
+    print("======================================")
+    print("Ensuring Azure SSH keys exist...")
+    private_key_path = os.path.expanduser("~/.ssh/ray-autoscaler-tests-ssh-key")
+    public_key_path = os.path.expanduser("~/.ssh/ray-autoscaler-tests-ssh-key.pub")
+
+    if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+        print("Azure SSH keys already exist.")
+        return
+
+    print("Azure SSH keys not found. Creating new keys...")
+    ssh_dir = os.path.dirname(private_key_path)
+    if not os.path.exists(ssh_dir):
+        os.makedirs(ssh_dir, exist_ok=True)
+
+    try:
+        subprocess.run(
+            [
+                "ssh-keygen",
+                "-t",
+                "rsa",
+                "-b",
+                "4096",
+                "-f",
+                private_key_path,
+                "-N",
+                "",
+                "-C",
+                "ray-autoscaler-azure",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        print("Successfully created Azure SSH keys.")
+    except subprocess.CalledProcessError as e:
+        print("Error creating SSH keys:")
+        print(f"stdout:\n{e.stdout.decode('utf-8')}")
+        print(f"stderr:\n{e.stderr.decode('utf-8')}")
+        sys.exit(1)
+
+
 def cleanup_security_groups(config):
     provider_type = config.get("provider", {}).get("type")
     if provider_type != "aws":
@@ -277,30 +371,38 @@ def cleanup_security_groups(config):
 
 
 def run_ray_commands(
-    config_yaml, cluster_config, retries, no_config_cache, num_expected_nodes=1
+    config_yaml: dict,
+    cluster_config: Path,
+    retries: int,
+    no_config_cache: bool,
+    num_expected_nodes: int = 1,
 ):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
     up the cluster.
 
     Args:
+        config_yaml: The parsed cluster configuration.
         cluster_config: The path of the cluster configuration file.
         retries: The number of retries for the verification step.
         no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
             commands.
+        num_expected_nodes: The number of nodes that should be running before
+            verification is considered successful.
     """
-
+    provider_type = config_yaml.get("provider", {}).get("type")
+    if provider_type == "azure":
+        azure_authenticate()
     print("======================================")
     print("Starting new cluster...")
     cmd = ["ray", "up", "-v", "-y"]
     if no_config_cache:
         cmd.append("--no-config-cache")
     cmd.append(str(cluster_config))
-
-    print(" ".join(cmd))
-
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        subprocess.run(cmd, check=True, capture_output=True, env=env)
     except subprocess.CalledProcessError as e:
         print(e.output)
         # print stdout and stderr
@@ -327,7 +429,7 @@ def run_ray_commands(
             ]
             if no_config_cache:
                 cmd.append("--no-config-cache")
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, env=env)
             success = True
             break
         except subprocess.CalledProcessError:
@@ -392,8 +494,11 @@ if __name__ == "__main__":
 
     provider_type = config_yaml.get("provider", {}).get("type")
     config_yaml["provider"]["cache_stopped_nodes"] = False
-    if provider_type == "aws":
+    if provider_type == "azure":
+        ensure_ssh_keys_azure()
+    elif provider_type == "aws":
         download_ssh_key_aws()
+        config_yaml["provider"].pop("availability_zone", None)
     elif provider_type == "gcp":
         download_ssh_key_gcp()
         # Get the active account email

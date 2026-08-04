@@ -20,11 +20,9 @@
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/io_service_pool.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/io_service_pool.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/grpc_util.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -67,23 +65,26 @@ class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackServi
     const auto subscriber_id = UniqueID::FromBinary(request->subscriber_id());
     auto *reactor = context->DefaultReactor();
     for (const auto &command : request->commands()) {
+      RAY_CHECK(command.has_unsubscribe_message() || command.has_subscribe_message())
+          << absl::StrFormat(
+                 "Unexpected pubsub command has been received: %s."
+                 "Expected either unsubscribe or subscribe message",
+                 command.DebugString());
       if (command.has_unsubscribe_message()) {
         publisher_->UnregisterSubscription(command.channel_type(),
                                            subscriber_id,
                                            command.key_id().empty()
                                                ? std::nullopt
                                                : std::make_optional(command.key_id()));
-      } else if (command.has_subscribe_message()) {
-        publisher_->RegisterSubscription(command.channel_type(),
-                                         subscriber_id,
-                                         command.key_id().empty()
-                                             ? std::nullopt
-                                             : std::make_optional(command.key_id()));
-      } else {
-        RAY_LOG(FATAL)
-            << "Invalid command has received, "
-            << static_cast<int>(command.command_message_one_of_case())
-            << ". If you see this message, please file an issue to Ray Github.";
+      } else {  // subscribe_message case
+        RAY_CHECK(publisher_
+                      ->RegisterSubscription(command.channel_type(),
+                                             subscriber_id,
+                                             command.key_id().empty()
+                                                 ? std::nullopt
+                                                 : std::make_optional(command.key_id()))
+                      .ok())
+            << "Register subscription for a valid channel type should succeed.";
       }
     }
     reactor->Finish(grpc::Status::OK);
@@ -107,7 +108,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   ~CallbackSubscriberClient() final = default;
 
   void PubsubLongPolling(
-      const rpc::PubsubLongPollingRequest &request,
+      rpc::PubsubLongPollingRequest &&request,
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubLongPollingReply;
@@ -120,7 +121,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   }
 
   void PubsubCommandBatch(
-      const rpc::PubsubCommandBatchRequest &request,
+      rpc::PubsubCommandBatchRequest &&request,
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubCommandBatchReply;
@@ -173,8 +174,8 @@ class IntegrationTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
-        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
+        /*clock=*/clock_,
+        /*subscriber_timeout_ms=*/absl::ToInt64Milliseconds(absl::Seconds(30)),
         /*batch_size=*/100);
     subscriber_service_ = std::make_unique<SubscriberServiceImpl>(std::move(publisher));
 
@@ -207,6 +208,9 @@ class IntegrationTest : public ::testing::Test {
   rpc::Address address_proto_;
   IOServicePool io_service_ = IOServicePool(3);
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  // Declared before subscriber_service_ so it outlives the Publisher it owns, which
+  // holds a ClockInterface& to it.
+  ray::Clock clock_;
   std::unique_ptr<SubscriberServiceImpl> subscriber_service_;
   std::unique_ptr<grpc::Server> server_;
 };
@@ -304,11 +308,15 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   int wait_count = 0;
   while (!(subscriber_1->CheckNoLeaks() && subscriber_2->CheckNoLeaks())) {
     // Flush all the inflight long polling.
-    subscriber_service_->GetPublisher().UnregisterAll();
+    subscriber_service_->GetPublisher().UnregisterSubscriber(
+        subscriber_1->subscriber_id_);
+    subscriber_service_->GetPublisher().UnregisterSubscriber(
+        subscriber_2->subscriber_id_);
     ASSERT_LT(wait_count, 60) << "Subscribers still have inflight operations after 60s";
     ++wait_count;
     absl::SleepFor(absl::Seconds(1));
   }
 }
+
 }  // namespace pubsub
 }  // namespace ray

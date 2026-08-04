@@ -13,6 +13,7 @@ from ray import data
 from ray.train.lightgbm import (
     LightGBMTrainer,
     RayTrainReportCallback as LightGBMReportCallback,
+    normalize_pandas_for_lightgbm,
 )
 from ray.train.xgboost import (
     RayTrainReportCallback as XGBoostReportCallback,
@@ -61,11 +62,10 @@ class XGBoostPredictor(BasePredictor):
 
 class LightGBMPredictor(BasePredictor):
     def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
-        return {"predictions": self.model.predict(data)}
+        return {"predictions": self.model.predict(normalize_pandas_for_lightgbm(data))}
 
 
 def xgboost_train_loop_function(config: Dict):
-    # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
     train_ds_iter = ray.train.get_dataset_shard("train")
     train_df = train_ds_iter.materialize().to_pandas()
 
@@ -74,9 +74,6 @@ def xgboost_train_loop_function(config: Dict):
 
     dtrain = xgb.DMatrix(train_X, label=train_y)
 
-    # 2. Do distributed data-parallel training.
-    # Ray Train sets up the necessary coordinator processes and
-    # environment variables for your workers to communicate with each other.
     report_callback = config["report_callback_cls"]
     xgb.train(
         params,
@@ -87,18 +84,17 @@ def xgboost_train_loop_function(config: Dict):
 
 
 def lightgbm_train_loop_function(config: Dict):
-    # 1. Get the dataset shard for the worker and convert to a DataFrame
     train_ds_iter = ray.train.get_dataset_shard("train")
-    train_df = train_ds_iter.materialize().to_pandas()
+    train_df = normalize_pandas_for_lightgbm(train_ds_iter.materialize().to_pandas())
 
     label_column, params = config["label_column"], config["params"]
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
     train_set = lgb.Dataset(train_X, label=train_y)
 
-    # 2. Do distributed data-parallel training.
-    # Ray Train sets up the necessary coordinator processes and
-    # environment variables for your workers to communicate with each other.
     report_callback = config["report_callback_cls"]
+    network_params = ray.train.lightgbm.get_network_params()
+    params.update(network_params)
+
     lgb.train(
         params,
         train_set=train_set,

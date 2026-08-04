@@ -1,61 +1,64 @@
+---
+myst:
+  html_meta:
+    description: "Deploy LLMs with Ray Serve LLM: OpenAI-compatible API, multi-model serving, tensor/pipeline parallelism, LoRA, and vLLM/SGLang backends."
+---
+
 (serving-llms)=
 
 # Serving LLMs
 
-Ray Serve LLM APIs allow users to deploy multiple LLM models together with a familiar Ray Serve API, while providing compatibility with the OpenAI API.
+Ray Serve LLM deploys large language models in production. It builds on Ray Serve primitives for distributed, multi-node LLM serving and exposes an OpenAI-compatible API.
 
-## Features
+## Key features
 
-- ⚡️ Automatic scaling and load balancing
-- 🌐 Unified multi-node multi-model deployment
-- 🔌 OpenAI compatible
-- 🔄 Multi-LoRA support with shared base models
-- 🚀 Engine agnostic architecture (i.e. vLLM, SGLang, etc)
+- OpenAI-compatible API for chat, completions, and embeddings.
+- Multi-node, multi-model deployment with autoscaling and load balancing.
+- Parallelism strategies: tensor, pipeline, expert, and data parallel attention.
+- Prefill-decode disaggregation to scale the prefill and decode phases independently.
+- Custom request routing, including prefix-aware routing for higher cache hit rates.
+- Multi-LoRA serving on a shared base model.
+- Engine-agnostic backends such as vLLM and SGLang.
+- Built-in metrics and Grafana dashboards.
 
-## Requirements
+## Install
+
+Ray Serve LLM ships with Ray. Install it with the `llm` extra:
 
 ```bash
-pip install ray[serve,llm]>=2.43.0 vllm>=0.7.2
-
-# Suggested dependencies when using vllm 0.7.2:
-pip install xgrammar==0.1.11 pynvml==12.0.0
+pip install "ray[llm]"
 ```
 
-## Key Components
+This pulls in vLLM and the OpenAI-compatible server stack. You need a GPU to run most models. The {doc}`Quickstart <quick-start>` covers prerequisites, supported hardware, and gated-model setup.
 
-The ray.serve.llm module provides two key deployment types for serving LLMs:
+## Deploy your first model
 
-### LLMServer
+Define an {class}`~ray.serve.llm.LLMConfig`, build an OpenAI-compatible app, and run it:
 
-The LLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
+```{literalinclude} ../../llm/doc_code/serve/qwen/qwen_example.py
+:language: python
+:start-after: __qwen_example_start__
+:end-before: __qwen_example_end__
+```
 
-### OpenAiIngress
+Once it is running, query it with any OpenAI client at `http://localhost:8000/v1`. See the {doc}`Quickstart <quick-start>` for client snippets, multi-model apps, and config-driven (YAML) deployments.
 
-This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic to the appropriate model for multi-model services. The following endpoints are supported:
+## Find your path
 
-- `/v1/chat/completions`: Chat interface (ChatGPT-style)
-- `/v1/completions`: Text completion
-- `/v1/embeddings`: Text embeddings
-- `/v1/score`: Text comparison
-- `/v1/models`: List available models
-- `/v1/models/{model}`: Model information
-
-## Configuration
-
-### LLMConfig
-
-The LLMConfig class specifies model details such as:
-
-- Model loading sources (HuggingFace or cloud storage)
-- Hardware requirements (accelerator type)
-- Engine arguments (e.g. vLLM engine kwargs)
-- LoRA multiplexing configuration
-- Serve auto-scaling parameters
+- **New here?** Start with the {doc}`Quickstart <quick-start>` to deploy and query a model.
+- **Configuring a deployment?** The {doc}`Configuration reference <user-guides/configuration>` explains every `LLMConfig` field.
+- **Scaling up?** The {doc}`User guides <user-guides/index>` cover parallelism, routing, caching, LoRA, and observability.
+- **Want the internals?** The {doc}`Architecture <architecture/index>` docs explain components, request flow, and serving patterns.
+- **Deploying a specific model?** The {doc}`Examples <examples>` walk through small, medium, large, vision, and reasoning models end to end.
+- **Hitting an issue?** Check {doc}`Troubleshooting <troubleshooting>` and {doc}`Benchmarks <benchmarks>`.
 
 ```{toctree}
 :hidden:
 
 Quickstart <quick-start>
-Prefill/Decode Disaggregation <pd-dissagregation>
-Cache-aware request routing <prefix-aware-request-router>
+Examples <examples>
+User Guides <user-guides/index>
+Architecture <architecture/index>
+Benchmarks <benchmarks>
+Troubleshooting <troubleshooting>
 ```

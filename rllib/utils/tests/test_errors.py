@@ -1,9 +1,10 @@
 import unittest
 
+import gymnasium as gym
+
 import ray
 import ray.rllib.algorithms.impala as impala
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.utils.error import EnvError
 
 
 class TestErrors(unittest.TestCase):
@@ -48,16 +49,16 @@ class TestErrors(unittest.TestCase):
         )
 
         self.assertRaisesRegex(
-            EnvError,
-            f"The env string you provided \\('{config.env}'\\) is",
+            gym.error.NameNotFound,
+            "doesn't exist",
             lambda: config.build(),
         )
 
         # Malformed gym env string (must have v\d at end).
         config.environment("Alien-Attack-part-42")
         self.assertRaisesRegex(
-            EnvError,
-            f"The env string you provided \\('{config.env}'\\) is",
+            gym.error.NameNotFound,
+            "doesn't exist",
             lambda: config.build(),
         )
 
@@ -66,22 +67,23 @@ class TestErrors(unittest.TestCase):
             "ray.rllib.examples.envs.classes.random_env.RandomEnvThatDoesntExist"
         )
         self.assertRaisesRegex(
-            EnvError,
-            f"The env string you provided \\('{config.env}'\\) is",
+            gym.error.NameNotFound,
+            "doesn't exist",
             lambda: config.build(),
         )
 
         # Non-existing module inside a full-class-path.
         config.environment("ray.rllib.examples.envs.module_that_doesnt_exist.SomeEnv")
         self.assertRaisesRegex(
-            EnvError,
-            f"The env string you provided \\('{config.env}'\\) is",
+            gym.error.NameNotFound,
+            "doesn't exist",
             lambda: config.build(),
         )
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

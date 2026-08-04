@@ -11,7 +11,7 @@ For example, consider the following.
 
 Then calling ``g`` and ``h`` produces the following behavior.
 
-.. code:: python
+.. code-block:: bash
 
     >>> ray.get(g.remote())
     [ObjectRef(b1457ba0911ae84989aae86f89409e953dd9a80e),

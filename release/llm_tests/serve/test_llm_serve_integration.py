@@ -1,4 +1,6 @@
+import os
 import pytest
+import requests
 import sys
 
 from ray import serve
@@ -11,6 +13,17 @@ from vllm.sampling_params import SamplingParams
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
+import time
+
+# Pooling models (classify/reward) are only served through vLLM's native ASGI
+# app, which is used when direct streaming is enabled. The default OpenAiIngress
+# path does not expose /classify or /pooling, so these tests only run when
+# RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1.
+direct_streaming_only = pytest.mark.skipif(
+    os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING", "0") != "1",
+    reason="Pooling/classify endpoints are only served in direct-streaming mode "
+    "(RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1).",
+)
 
 
 @pytest.mark.asyncio(scope="function")
@@ -131,9 +144,7 @@ def test_deepseek_model(model_name):
     llm_config = LLMConfig(
         model_loading_config=dict(
             model_id=model_name,
-            model_source=model_name,
         ),
-        runtime_env=dict(env_vars={"VLLM_USE_V1": "1"}),
         deployment_config=dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
         ),
@@ -153,9 +164,179 @@ def test_deepseek_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
+    serve.shutdown()
+    time.sleep(1)
 
 
-@pytest.mark.asyncio(scope="function")
+@pytest.mark.parametrize("model_name", ["openai/whisper-small"])
+def test_transcription_model(model_name):
+    """
+    Test that the transcription models can be loaded successfully.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+            model_source=model_name,
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=4),
+        ),
+        engine_kwargs=dict(
+            trust_remote_code=True,
+            gpu_memory_utilization=0.9,
+            enable_prefix_caching=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_embedding_model(model_name):
+    """
+    Test that embedding models can be loaded and serve embedding requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/embeddings",
+        json={
+            "model": model_name,
+            "input": "Hello, world!",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "data" in data
+    assert len(data["data"]) > 0
+    embedding = data["data"][0]["embedding"]
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+    assert all(isinstance(x, float) for x in embedding)
+
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_score_model(model_name):
+    """
+    Test that embedding models can serve score requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/score",
+        json={
+            "model": model_name,
+            "text_1": "What is the capital of France?",
+            "text_2": ["Paris is the capital of France.", "Berlin is in Germany."],
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "data" in data
+    assert len(data["data"]) == 2
+    for item in data["data"]:
+        assert "score" in item
+        assert isinstance(item["score"], float)
+
+    serve.shutdown()
+    time.sleep(1)
+
+
+def _validate_classify(item):
+    assert isinstance(item["probs"], list)
+    assert len(item["probs"]) > 0
+    assert item["num_classes"] == len(item["probs"])
+
+
+def _validate_pooling(item):
+    # Reward models emit a per-token pooling vector; ensure it is non-empty.
+    assert len(item["data"]) > 0
+
+
+@direct_streaming_only
+@pytest.mark.parametrize(
+    "model_name,engine_kwargs,endpoint,validate_item",
+    [
+        pytest.param(
+            "Qwen/Qwen3-Reranker-0.6B",
+            dict(
+                hf_overrides={
+                    "architectures": ["Qwen3ForSequenceClassification"],
+                    "classifier_from_token": ["no", "yes"],
+                    "is_original_qwen3_reranker": True,
+                },
+            ),
+            "/classify",
+            _validate_classify,
+            id="classify",
+        ),
+        pytest.param(
+            "internlm/internlm2-1_8b-reward",
+            dict(trust_remote_code=True),
+            "/pooling",
+            _validate_pooling,
+            id="pooling",
+        ),
+    ],
+)
+def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
+    """Pooling models (classify/reward) are served via vLLM's native /classify
+    and /pooling endpoints, which are only mounted in direct-streaming mode."""
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=model_name),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(enforce_eager=True, max_model_len=512, **engine_kwargs),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    response = requests.post(
+        f"http://localhost:8000{endpoint}",
+        json={"model": model_name, "input": "The chef prepared a delicious meal."},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["object"] == "list"
+    assert len(data["data"]) == 1
+    validate_item(data["data"][0])
+
+    serve.shutdown()
+    time.sleep(1)
+
+
 @pytest.fixture
 def remote_model_app(request):
     """
@@ -170,9 +351,7 @@ def remote_model_app(request):
     base_config = {
         "model_loading_config": dict(
             model_id="hmellor/Ilama-3.2-1B",
-            model_source="hmellor/Ilama-3.2-1B",
         ),
-        "runtime_env": dict(env_vars={"VLLM_USE_V1": "1"}),
         "deployment_config": dict(
             autoscaling_config=dict(min_replicas=1, max_replicas=1),
         ),
@@ -188,6 +367,7 @@ def remote_model_app(request):
 
     # Cleanup
     serve.shutdown()
+    time.sleep(1)
 
 
 class TestRemoteCode:
@@ -198,8 +378,7 @@ class TestRemoteCode:
         """
         Tests that a remote code model fails to load when trust_remote_code=False.
 
-        If it loads successfully without remote code, the fixture should be changed to one
-        that does require remote code.
+        If it loads successfully without remote code, the fixture should be changed to one that does require remote code.
         """
         app = remote_model_app
         with pytest.raises(RuntimeError, match="Deploying application default failed"):
@@ -238,6 +417,66 @@ class TestRemoteCode:
 
         # Wait for the application to be running (timeout after 5 minutes)
         wait_for_condition(is_default_app_running, timeout=300)
+
+
+def test_nested_engine_kwargs_structured_outputs():
+    """Regression test for https://github.com/ray-project/ray/pull/60380"""
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id="Qwen/Qwen2.5-0.5B-Instruct",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=1),
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            structured_outputs_config={
+                "backend": "xgrammar",
+            },
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
+
+
+def test_chat_completion_with_default_chat_template_kwargs():
+    """Ensure mapping-valued vLLM frontend arguments remain dictionaries."""
+    model_name = "Qwen/Qwen3-0.6B"
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=model_name),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            default_chat_template_kwargs={
+                "enable_thinking": False,
+            },
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/chat/completions",
+        json={
+            "model": model_name,
+            "messages": [{"role": "user", "content": "Reply with hello."}],
+            "max_tokens": 8,
+            "temperature": 0,
+        },
+        timeout=120,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["choices"][0]["message"]["content"]
+
+    serve.shutdown()
+    time.sleep(1)
 
 
 if __name__ == "__main__":

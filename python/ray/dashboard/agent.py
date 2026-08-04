@@ -6,16 +6,32 @@ import os
 import signal
 import sys
 
+import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_localhost,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private import logging_utils
-from ray._common.network_utils import build_address, is_localhost
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import GcsClient
+from ray._raylet import (
+    DASHBOARD_AGENT_LISTEN_PORT_NAME,
+    METRICS_AGENT_PORT_NAME,
+    METRICS_EXPORT_PORT_NAME,
+    GcsClient,
+    persist_port,
+)
+from ray.dashboard.event_loop_monitor import (
+    EVENT_LOOP_MONITOR_ENABLED,
+    EventLoopMonitor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +49,7 @@ class DashboardAgent:
         events_export_addr=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
+        is_head: bool = False,
         *,  # the following are required kwargs
         object_store_name: str,
         raylet_name: str,
@@ -69,6 +86,8 @@ class DashboardAgent:
         self.server = None
         # http_server is None in minimal.
         self.http_server = None
+        # Event-loop stall monitor, started in run() for non-minimal agents.
+        self._event_loop_monitor = None
 
         # Used by the agent and sub-modules.
         self.gcs_client = GcsClient(
@@ -76,13 +95,37 @@ class DashboardAgent:
             cluster_id=self.cluster_id_hex,
         )
 
+        self.is_head = is_head
+
         if not self.minimal:
             self._init_non_minimal()
+        else:
+            # Write -1 to indicate the service is not in use.
+            persist_port(
+                self.session_dir,
+                self.node_id,
+                METRICS_AGENT_PORT_NAME,
+                -1,
+            )
+            # This metric export port is run by reporter module
+            # which is not included in minimal mode.
+            persist_port(
+                self.session_dir,
+                self.node_id,
+                METRICS_EXPORT_PORT_NAME,
+                -1,
+            )
 
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
 
-        from ray._private.tls_utils import add_port_to_grpc_server
+        from ray._common.tls_utils import add_port_to_grpc_server
+        from ray._private.authentication.authentication_utils import (
+            is_token_auth_enabled,
+        )
+        from ray._private.authentication.grpc_authentication_server_interceptor import (
+            AsyncAuthenticationServerInterceptor,
+        )
         from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
@@ -98,7 +141,13 @@ class DashboardAgent:
         else:
             aiogrpc.init_grpc_aio()
 
+        # Add authentication interceptor if token auth is enabled
+        interceptors = []
+        if is_token_auth_enabled():
+            interceptors.append(AsyncAuthenticationServerInterceptor())
+
         self.server = aiogrpc.server(
+            interceptors=interceptors,
             options=(
                 ("grpc.so_reuseport", 0),
                 (
@@ -109,27 +158,26 @@ class DashboardAgent:
                     "grpc.max_receive_message_length",
                     AGENT_GRPC_MAX_MESSAGE_LENGTH,
                 ),
-            )  # noqa
+            ),  # noqa
         )
-        try:
-            add_port_to_grpc_server(self.server, build_address(self.ip, self.grpc_port))
-            if not is_localhost(self.ip):
-                add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
-        except Exception:
-            # TODO(SongGuyang): Catch the exception here because there is
-            # port conflict issue which brought from static port. We should
-            # remove this after we find better port resolution.
-            logger.exception(
-                "Failed to add port to grpc server. Agent will stay alive but "
-                "disable the grpc service."
-            )
-            self.server = None
-            self.grpc_port = None
-        else:
-            logger.info(
-                "Dashboard agent grpc address: %s",
-                build_address(self.ip, self.grpc_port),
-            )
+
+        grpc_ip = (
+            get_localhost_ip() if is_localhost(self.ip) else get_all_interfaces_ip()
+        )
+        self.grpc_port = add_port_to_grpc_server(
+            self.server, build_address(grpc_ip, self.grpc_port)
+        )
+
+        persist_port(
+            self.session_dir,
+            self.node_id,
+            METRICS_AGENT_PORT_NAME,
+            self.grpc_port,
+        )
+        logger.info(
+            "Dashboard agent grpc address: %s",
+            build_address(self.ip, self.grpc_port),
+        )
 
         # If the agent is not minimal it should start the http server
         # to communicate with the dashboard in a head node.
@@ -174,6 +222,8 @@ class DashboardAgent:
         if self.http_server:
             try:
                 await self.http_server.start(modules)
+                # listen_port can be 0 for dynamic port assignment. get the actual bound port.
+                self.listen_port = self.http_server.http_port
             except Exception as e:
                 # TODO(kevin85421): We should fail the agent if the HTTP server
                 # fails to start to avoid hiding the root cause. However,
@@ -185,6 +235,15 @@ class DashboardAgent:
                     "The agent will stay alive but the HTTP service will be disabled.",
                 )
                 launch_http_server = False
+
+        # If the HTTP server fails to start or is not launched, we should
+        # persist -1 to indicate that the service is not available.
+        persist_port(
+            self.session_dir,
+            self.node_id,
+            DASHBOARD_AGENT_LISTEN_PORT_NAME,
+            self.listen_port if self.http_server and launch_http_server else -1,
+        )
 
         if launch_http_server:
             # Writes agent address to kv.
@@ -232,7 +291,21 @@ class DashboardAgent:
 
             tasks.append(wait_forever())
 
-        await asyncio.gather(*tasks)
+        # Watch the serving event loop for stalls while the module tasks run;
+        # this loop also handles job submission and metric/event export.
+        # Started here (not during startup) so slow module loading isn't misread
+        # as a stall, and kept adjacent to the try/finally so stop() always
+        # runs. Not started for minimal agents; opt in elsewhere with
+        # RAY_DASHBOARD_AGENT_LOOP_MONITOR_ENABLED=1.
+        if not self.minimal and EVENT_LOOP_MONITOR_ENABLED:
+            self._event_loop_monitor = EventLoopMonitor()
+            self._event_loop_monitor.start()
+
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            if self._event_loop_monitor is not None:
+                self._event_loop_monitor.stop()
 
         if self.http_server:
             await self.http_server.cleanup()
@@ -240,6 +313,12 @@ class DashboardAgent:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dashboard agent.")
+    parser.add_argument(
+        "--node-id",
+        required=True,
+        type=str,
+        help="the unique ID of this node.",
+    )
     parser.add_argument(
         "--node-ip-address",
         required=True,
@@ -368,6 +447,11 @@ if __name__ == "__main__":
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
     parser.add_argument(
+        "--head",
+        action="store_true",
+        help="Whether this node is the head node.",
+    )
+    parser.add_argument(
         "--session-name",
         required=False,
         type=str,
@@ -436,8 +520,11 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             disable_metrics_collection=args.disable_metrics_collection,
+            is_head=args.head,
             session_name=args.session_name,
         )
+
+        ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT)
 
         def sigterm_handler():
             logger.warning("Exiting with SIGTERM immediately...")

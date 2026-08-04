@@ -1,11 +1,12 @@
-import sys
-import ray
-import pydot
 import os
+import sys
+
+import pydot
+import pytest
+
+import ray
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
-
-import pytest
 
 
 @pytest.fixture
@@ -244,7 +245,7 @@ class TestVisualizationAscii:
     """Tests for the visualize_ascii method of compiled DAGs."""
 
     @staticmethod
-    def parse_ascii_visualization(ascii_visualization):
+    def parse_ascii_visualization(ascii_visualization: str):
         """
         Parses the ASCII visualization output to extract node names and edge pairs.
 

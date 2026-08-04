@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. _rllib-checkpoints-docs:
 
 Checkpointing
@@ -158,7 +156,7 @@ file inside all checkpoint directories.
 Also starting from `Ray 2.40`, RLlib checkpoints are backward compatible. This means that
 a checkpoint created with Ray `2.x` can be read and handled by `Ray 2.x+n`, as long as `x >= 40`.
 The Ray team ensures backward compatibility with
-`comprehensive CI tests on checkpoints taken with previous Ray versions <https://github.com/ray-project/ray/tree/master/rllib/utils/tests/test_checkpointable.py>`__.
+`comprehensive CI tests on checkpoints taken with previous Ray versions <https://github.com/ray-project/ray/blob/master/rllib/utils/tests/test_checkpointable.py>`__.
 
 
 .. _rllib-checkpoints-structure-of-checkpoint-dir:
@@ -241,7 +239,7 @@ RLlib obtains this state dict, when saving a checkpoint, through calling the obj
     the python version. At the time of loading from checkpoint, the user would have to provide the latter/architecture part
     of the checkpoint.
 
-    `See here for an example that illustrates this in more detail <https://github.com/ray-project/ray/tree/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
+    `See here for an example that illustrates this in more detail <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/change_config_during_training.py>`__.
 
 
 .. _rllib-checkpoints-component-tree:
@@ -415,7 +413,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
             results = tune.Tuner(
                 config.algo_class,
                 param_space=config,
-                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000})
             ).fit()
 
     .. tab-item:: Swap out one RLModule and continue multi-agent training
@@ -455,7 +453,7 @@ for example a particular :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule
             results = tune.Tuner(
                 multi_agent_config.algo_class,
                 param_space=multi_agent_config,
-                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 8000})
+                run_config=tune.RunConfig(stop={"num_env_steps_sampled_lifetime": 4000})
             ).fit()
 
         .. testcode::

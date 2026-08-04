@@ -3,7 +3,6 @@
 # (BSD 2-Clause "Simplified" License)
 
 import errno
-from ray._common.network_utils import build_address
 import inspect
 import json
 import logging
@@ -19,6 +18,12 @@ from pdb import Pdb
 from typing import Callable
 
 import ray
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_ipv6,
+)
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
@@ -103,7 +108,9 @@ class _RemotePdb(Pdb):
         self._breakpoint_uuid = breakpoint_uuid
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
-        self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listen_socket = socket.socket(
+            socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
+        )
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         self._listen_socket.bind((host, port))
         self._ip_address = ip_address
@@ -228,9 +235,9 @@ def _connect_ray_pdb(
     """
     if debugger_external:
         assert not host, "Cannot specify both host and debugger_external"
-        host = "0.0.0.0"
+        host = get_all_interfaces_ip()
     elif host is None:
-        host = os.environ.get("REMOTE_PDB_HOST", "127.0.0.1")
+        host = os.environ.get("REMOTE_PDB_HOST") or get_localhost_ip()
     if port is None:
         port = int(os.environ.get("REMOTE_PDB_PORT", "0"))
     if quiet is None:
@@ -250,8 +257,11 @@ def _connect_ray_pdb(
         quiet=quiet,
     )
     sockname = rdb._listen_socket.getsockname()
-    pdb_address = "{}:{}".format(ip_address, sockname[1])
-    parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
+    pdb_address = build_address(ip_address, sockname[1])
+    frames = inspect.getouterframes(inspect.currentframe())
+    # Use the parent frame if available, otherwise fall back to the current frame
+    # In some call paths (e.g., post-mortem debugging), there may not be enough frames
+    parentframeinfo = frames[2] if len(frames) > 2 else frames[-1]
     data = {
         "proctitle": ray._raylet.getproctitle(),
         "pdb_address": pdb_address,
@@ -345,7 +355,10 @@ def _post_mortem():
 def _connect_pdb_client(host, port):
     if sys.platform == "win32":
         import msvcrt
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    s = socket.socket(
+        socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
+    )
     s.connect((host, port))
 
     while True:

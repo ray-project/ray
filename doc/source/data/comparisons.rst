@@ -1,3 +1,6 @@
+.. meta::
+   :description: How Ray Data compares to batch services, online-inference tools, and distributed frameworks like Spark and Daft for offline inference.
+
 Comparing Ray Data to other systems
 ===================================
 
@@ -8,7 +11,7 @@ How does Ray Data compare to other solutions for offline inference?
 
     Cloud providers such as AWS, GCP, and Azure provide batch services to manage compute infrastructure for you. Each service uses the same process: you provide the code, and the service runs your code on each node in a cluster. However, while infrastructure management is necessary, it is often not enough. These services have limitations, such as a lack of software libraries to address optimized parallelization, efficient data transfer, and easy debugging. These solutions are suitable only for experienced users who can write their own optimized batch inference code.
 
-    Ray Data abstracts away not only the infrastructure management, but also the sharding your dataset, the parallelization of the inference over these shards, and the transfer of data from storage to CPU to GPU.
+    Ray Data abstracts away not only the infrastructure management, but also the sharding of your dataset, the parallelization of the inference over these shards, and the transfer of data from storage to CPU to GPU.
 
 
 .. dropdown:: Online inference solutions: Bento ML, Sagemaker Batch Transform
@@ -21,7 +24,7 @@ How does Ray Data compare to other solutions for offline inference?
 
 .. dropdown:: Distributed Data Processing Frameworks: Apache Spark and Daft
 
-    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_ and `Daft <https://www.getdaft.io>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
+    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_ and `Daft <https://www.daft.ai>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
 
     However, Ray Data doesn't have a SQL interface unlike Spark and Daft.
 

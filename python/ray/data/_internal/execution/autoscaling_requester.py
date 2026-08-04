@@ -4,8 +4,6 @@ import time
 from typing import Dict, List
 
 import ray
-from ray.data.context import DataContext
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # Resource requests are considered stale after this number of seconds, and
 # will be purged.
@@ -56,7 +54,7 @@ class AutoscalingRequester:
         # Purge expired requests before making request to autoscaler.
         self._purge()
         # For the same execution_id, we track the latest resource request and
-        # the its expiration timestamp.
+        # its expiration timestamp.
         self._resource_requests[execution_id] = (
             req,
             time.time() + self._timeout,
@@ -112,20 +110,17 @@ _autoscaling_requester_lock: threading.RLock = threading.RLock()
 
 
 def get_or_create_autoscaling_requester_actor():
-    ctx = DataContext.get_current()
-    scheduling_strategy = ctx.scheduling_strategy
-    # Pin the stats actor to the local node so it fate-shares with the driver.
+    # Pin the autoscaling requester actor to the local node so it fate-shares with the driver.
     # Note: for Ray Client, the ray.get_runtime_context().get_node_id() should
     # point to the head node.
-    scheduling_strategy = NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
-        soft=False,
-    )
+    label_selector = {
+        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+    }
     with _autoscaling_requester_lock:
         return AutoscalingRequester.options(
             name="AutoscalingRequester",
             namespace="AutoscalingRequester",
             get_if_exists=True,
             lifetime="detached",
-            scheduling_strategy=scheduling_strategy,
+            label_selector=label_selector,
         ).remote()
