@@ -168,20 +168,53 @@ class TestAppleGPUAcceleratorManager:
         mock_run.side_effect = Exception("Command failed")
         assert AppleGPUAcceleratorManager._is_metal_gpu_available() is False
 
+    @pytest.mark.parametrize(
+        "chip,expected",
+        [
+            ("Apple M1", "M1"),
+            ("Apple M1 Pro", "M1-Pro"),
+            ("Apple M2 Max", "M2-Max"),
+            ("Apple M1 Ultra", "M1-Ultra"),
+            ("Apple M3", "M3"),
+            ("Apple M4 Pro", "M4-Pro"),
+        ],
+    )
     @patch("subprocess.run")
-    def test_get_apple_chip_type(self, mock_run):
-        """Test Apple chip type detection."""
-        # Test M1 Pro detection
+    def test_get_apple_chip_type_from_system_profiler(self, mock_run, chip, expected):
+        """Chip type is parsed from system_profiler output (M-series + suffix)."""
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "Chip: Apple M1 Pro\n"
+        mock_result.stdout = (
+            f"Hardware:\n\n    Hardware Overview:\n\n      Chip: {chip}\n"
+        )
         mock_run.return_value = mock_result
 
-        assert AppleGPUAcceleratorManager._get_apple_chip_type() == "M1-Pro"
+        assert AppleGPUAcceleratorManager._get_apple_chip_type() == expected
 
-        # Test fallback to generic
+    @patch("subprocess.run")
+    def test_get_apple_chip_type_sysctl_fallback(self, mock_run):
+        """Falls back to sysctl when system_profiler has no Chip line."""
+        no_chip = MagicMock(returncode=0, stdout="Hardware:\n  Hardware Overview:\n")
+        sysctl = MagicMock(returncode=0, stdout="Apple M2\n")
+        mock_run.side_effect = [no_chip, sysctl]
+
+        assert AppleGPUAcceleratorManager._get_apple_chip_type() == "M2"
+
+    @patch("subprocess.run")
+    def test_get_apple_chip_type_unknown_returns_none(self, mock_run):
+        """Returns None (no generic 'Apple-Silicon' fallback) when undeterminable."""
+        no_chip = MagicMock(returncode=0, stdout="Hardware:\n")
+        non_apple = MagicMock(returncode=0, stdout="Intel(R) Core(TM) i9\n")
+        mock_run.side_effect = [no_chip, non_apple]
+
+        assert AppleGPUAcceleratorManager._get_apple_chip_type() is None
+
+    @patch("subprocess.run")
+    def test_get_apple_chip_type_subprocess_error_returns_none(self, mock_run):
+        """Returns None when the subprocess calls raise."""
         mock_run.side_effect = Exception("Command failed")
-        assert AppleGPUAcceleratorManager._get_apple_chip_type() == "Apple-Silicon"
+
+        assert AppleGPUAcceleratorManager._get_apple_chip_type() is None
 
 
 if __name__ == "__main__":

@@ -198,9 +198,9 @@ class AppleGPUAcceleratorManager(AcceleratorManager):
                                 chip_parts.append(parts[i + 1])
                             return "-".join(chip_parts)
 
-            # If we can't determine the specific chip, return generic Apple Silicon
-            return "Apple-Silicon"
+            # Couldn't determine the specific chip.
+            return None
 
         except Exception as e:
             logger.debug(f"Error detecting Apple chip type: {e}")
-            return "Apple-Silicon"
+            return None
