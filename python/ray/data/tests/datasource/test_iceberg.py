@@ -266,6 +266,37 @@ def test_get_read_task_streams_files_and_preserves_limit(monkeypatch):
         next(tables)
 
 
+def test_get_read_tasks_can_disable_bounded_memory(monkeypatch):
+    from pyiceberg.io import pyarrow as pyi_pa_io
+
+    from ray.data.context import DataContext
+
+    scanned_task_counts = []
+
+    class FakeArrowScan:
+        def __init__(self, **kwargs):
+            pass
+
+        def to_table(self, tasks):
+            scanned_task_counts.append(len(tuple(tasks)))
+            return pa.table({"value": [1]})
+
+    monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+
+    data_context = DataContext()
+    data_context.iceberg_config.read_file_tasks_sequentially = False
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    expected_task_count = len(iceberg_ds.plan_files)
+
+    read_task = iceberg_ds.get_read_tasks(1, data_context=data_context)[0]
+
+    assert [table.to_pydict() for table in read_task()] == [{"value": [1]}]
+    assert scanned_task_counts == [expected_task_count]
+
+
 def test_get_read_task_normalizes_batch_schemas(monkeypatch):
     from pyiceberg.io import pyarrow as pyi_pa_io
 
