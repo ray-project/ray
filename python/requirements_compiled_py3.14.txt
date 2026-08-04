@@ -2208,7 +2208,7 @@ sortedcontainers==2.4.0
     #   snowflake-connector-python
 soundfile==0.13.1
     # via -r python/requirements/ml/py313/data-test-requirements.txt
-soupsieve==2.8.3
+soupsieve==2.8.4
     # via beautifulsoup4
 sphinx==6.2.1
     # via
