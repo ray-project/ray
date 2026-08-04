@@ -978,30 +978,6 @@ def test_multiple_workers_return_value_only_worker_zero():
     assert result.return_value == (3, 0)
 
 
-@pytest.mark.parametrize(
-    "make_return_value",
-    [
-        pytest.param(lambda: {"weights": __import__("torch").zeros(3)}, id="tensor"),
-        pytest.param(lambda: __import__("torch").nn.Linear(4, 2), id="module"),
-    ],
-)
-def test_return_value_containing_torch_tensors_dropped(make_return_value):
-    """For invalid return values should log an error and set the value to None"""
-    pytest.importorskip("torch")
-
-    def train_fn():
-        return make_return_value()
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(num_workers=1),
-    )
-    result = trainer.fit()
-    assert result.error is None
-    assert result.return_value is None
-    # We can't capture the log
-
-
 def test_report_checkpoint_upload_fn(tmp_path):
     def checkpoint_upload_fn(checkpoint, checkpoint_dir_name):
         full_checkpoint_path = (

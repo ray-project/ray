@@ -156,7 +156,7 @@ class RayTrainWorker:
                 from ray.air._internal.torch_utils import contains_tensor
 
                 if contains_tensor(result):
-                    logger.error(
+                    raise ValueError(
                         "Returning objects containing Torch tensors from the "
                         "training function is not supported as it will throw an "
                         "exception on deserialization. You can either convert "
@@ -164,21 +164,6 @@ class RayTrainWorker:
                         "`.item()`, etc.) or save tensors as part of the "
                         "checkpoint files instead."
                     )
-                    result = None
-
-            import ray.cloudpickle as ray_pickle
-
-            try:
-                ray_pickle.dumps(result)
-            except Exception as e:
-                logger.error(
-                    "The return value of the training function could not be serialized "
-                    f"and therefore cannot be returned as `Result.return_value`: {e}. "
-                    "Return only objects that can be serialized with `ray.cloudpickle`, "
-                    "or save large / non-serializable objects (e.g. models) as part of "
-                    "the checkpoint files instead."
-                )
-                result = None
 
             return result
 
