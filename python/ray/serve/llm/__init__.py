@@ -9,7 +9,6 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs as _LLMServingArgs,
 )
-
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.util.annotations import PublicAPI
 
