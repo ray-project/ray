@@ -139,9 +139,7 @@ def test_experiment_restore(tmp_path, runner_type):
         while run.poll() is None and run_started_marker.exists():
             time.sleep(poll_interval_s)
 
-        # Only interrupt the run if it's still going. If it already finished on
-        # its own, fall through to the progress check below -- the experiment may
-        # have just been completed by this run.
+        # Only interrupt the run if it's still going.
         interrupted = False
         if run.poll() is None:
             timeout_s = np.random.uniform(6 * time_per_iter_s, 10 * time_per_iter_s)
@@ -177,10 +175,6 @@ def test_experiment_restore(tmp_path, runner_type):
             run.kill()
             return_code = run.wait()
 
-        # Check up on the results. This must happen on every exit path: if the
-        # run that completes the experiment shuts down on its own, breaking out
-        # before this point would leave `progress` at the previous iteration's
-        # (incomplete) value.
         results = ResultGrid(ExperimentAnalysis(str(storage_path / exp_name)))
         iters = [result.metrics.get("training_iteration", 0) for result in results]
         progress = sum(iters) / total_iters
@@ -191,16 +185,9 @@ def test_experiment_restore(tmp_path, runner_type):
             f"Currently at {total_runtime:.2f} seconds"
         )
 
-        # Exit based on measured progress rather than on whether the subprocess
-        # happened to exit within the random sleep window above. Looping past
-        # 100% just burns another full `ray.init()` cycle per iteration, which
-        # is what pushes this test over its pytest timeout.
         if progress >= 1.0:
             break
 
-        # A run that we never interrupted, yet which exited before finishing the
-        # experiment, means the script itself is broken. Stop and let the
-        # assertions below report it instead of relaunching forever.
         if not interrupted:
             _print_message(
                 f"Run #{run_iter} exited on its own without completing the "
