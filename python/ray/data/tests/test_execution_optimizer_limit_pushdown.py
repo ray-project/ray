@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray.data import Dataset
 from ray.data._internal.logical.interfaces import LogicalOperator, Plan
-from ray.data._internal.logical.operators import Download, Limit
+from ray.data._internal.logical.operators import Download, Limit, ListFiles, ReadFiles
 from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
@@ -249,8 +249,8 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     # Test 6: Complex chain with both safe operations (should all get limit pushed)
     ds = (
         ray.data.range(100)
-        .select_columns(["id"])  # Project - could be safe if it was the immediate input
-        .map(lambda x: {"id": x["id"] + 1})  # MapRows - NOT safe, stops pushdown
+        .select_columns(["id"])  # Project - row-preserving, limit pushes through
+        .map(lambda x: {"id": x["id"] + 1})  # MapRows - row-preserving, pushes through
         .limit(3)
     )
     result = ds.take_all()
@@ -263,6 +263,37 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
         "Read[ReadRange] -> Limit[limit=3] -> Project[Project] -> MapRows[Map(<lambda>)]"
         == plan_str
     )
+
+
+def test_limit_pushdown_into_read_files_scanner(
+    tmp_path, ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """A Limit sitting directly on a V2 ``ReadFiles`` still pushes a limit in.
+
+    The pushed limit reaches the scanner and, through
+    ``DeriveListFilesPushdown``, the upstream ``ListFiles``, which is what lets
+    a footer-based indexer stop listing early. None of that shows up in
+    ``dag_str``, so assert on the operators themselves.
+    """
+    ray.data.DataContext.get_current().use_datasource_v2 = True
+
+    for i in range(3):
+        pd.DataFrame({"id": range(i * 10, i * 10 + 10)}).to_parquet(
+            tmp_path / f"part{i}.parquet"
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).limit(5)
+    assert len(ds.take_all()) == 5
+
+    # The Limit stays on top for exact enforcement.
+    limit_op = ds._logical_plan.dag
+    assert isinstance(limit_op, Limit), limit_op.dag_str
+    (read_files,) = limit_op.input_dependencies
+    assert isinstance(read_files, ReadFiles), read_files
+    assert read_files.scanner.pushed_limit() == 5
+    (list_files,) = read_files.input_dependencies
+    assert isinstance(list_files, ListFiles), list_files
+    assert list_files.limit == 5
 
 
 def test_limit_pushdown_scan_efficiency(ray_start_regular_shared_2_cpus):
