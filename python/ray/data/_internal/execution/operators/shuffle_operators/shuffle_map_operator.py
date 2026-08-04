@@ -226,7 +226,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
-            resources["memory"] = estimated_bytes * self._peak_memory_multiplier
+            resources["memory"] = int(estimated_bytes * self._peak_memory_multiplier)
 
         ray_options: Dict[str, Any] = {
             **resources,
