@@ -142,13 +142,21 @@ def _setup_torch_process_group(
     elif backend in ("hccl", "tpu_dist"):
         register_custom_torch_dist_backend(backend)
 
-    dist.init_process_group(
+    init_kwargs = dict(
         backend=backend,
         init_method=init_method,
         rank=world_rank,
         world_size=world_size,
         timeout=timedelta(seconds=timeout_s),
     )
+    if _is_backend_nccl(backend) and torch.cuda.is_available():
+        from ray.train.torch import get_device
+
+        device = get_device()
+        if device.type == "cuda":
+            init_kwargs["device_id"] = device
+
+    dist.init_process_group(**init_kwargs)
 
 
 def _shutdown_torch(destroy_process_group=False):
