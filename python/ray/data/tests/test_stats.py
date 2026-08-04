@@ -421,6 +421,7 @@ def gen_expected_metrics(
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
+            "'memory_usage': Z",
         ]
     else:
         metrics = [
@@ -511,6 +512,7 @@ def gen_expected_metrics(
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
+            "'memory_usage': Z",
         ]
     if extra_metrics:
         metrics.extend(extra_metrics)
@@ -992,6 +994,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
+        "      memory_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
@@ -1157,6 +1160,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
+        "      memory_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
@@ -1275,6 +1279,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_used: A,\n"
         "            cpu_usage: Z,\n"
         "            gpu_usage: Z,\n"
+        "            memory_usage: Z,\n"
         "            ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"  # noqa: E501
         "         },\n"
         "         operators_stats=[\n"
