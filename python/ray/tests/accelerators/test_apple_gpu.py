@@ -111,29 +111,10 @@ class TestAppleGPUAcceleratorManager:
             AppleGPUAcceleratorManager.get_current_node_accelerator_type() == "M2-Pro"
         )
 
-    @patch(
-        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_apple_silicon"
-    )
-    def test_get_current_process_visible_accelerator_ids_apple_silicon(
-        self, mock_is_apple_silicon
-    ):
-        """The only visible id on Apple Silicon is ever "0"."""
-        mock_is_apple_silicon.return_value = True
-
-        assert (
-            AppleGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
-            == ["0"]
-        )
-
-    @patch(
-        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_apple_silicon"
-    )
-    def test_get_current_process_visible_accelerator_ids_not_apple_silicon(
-        self, mock_is_apple_silicon
-    ):
-        """Non-Apple-Silicon hosts report no visible Apple GPU."""
-        mock_is_apple_silicon.return_value = False
-
+    def test_get_current_process_visible_accelerator_ids_is_none(self):
+        """Apple has no visible-devices env var, so there is never a visibility
+        restriction to report. Returning None (not ["0"]) keeps `ray.get_gpu_ids()`
+        returning int ids like NVIDIA, rather than triggering string id remapping."""
         assert (
             AppleGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
             is None
