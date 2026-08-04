@@ -40,15 +40,13 @@ from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseTableSettings,
     SinkMode,
 )
-from ray.data._internal.datasource.kinetica_datasink import (
-    KineticaTableSettings,
-)
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.delta_datasink import DeltaDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
 from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
+from ray.data._internal.datasource.kinetica_datasink import KineticaTableSettings
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink

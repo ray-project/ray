@@ -695,7 +695,7 @@ def convert_arrow_batch_to_records(
                     # Convert to epoch milliseconds using UTC timestamp
                     record[col_name] = int(value.timestamp() * 1000)
                 elif isinstance(value, (int, float)):
-                    # Already numeric - assume it's already epoch ms or can be used as-is
+                    # Already numeric - assume it's epoch ms or usable as-is
                     record[col_name] = int(value)
                 else:
                     # value is not None here (handled by if block at line 604)
