@@ -32,8 +32,12 @@ object_store = { version = "0.13", features = ["aws"] }
 #   cargo test --no-default-features
 # maturin builds with default features on, so the shipped extension is unchanged.
 pyo3 = { version = "0.22", features = ["abi3-py39"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 futures = "0.3"
+# Already in the tree via parquet/object_store; direct dep only so the
+# column-prefetch path can hold/slice fetched buffers (`Bytes` is refcounted,
+# so slices share the underlying allocation — no copies).
+bytes = "1"
 # Predicate IR is passed from Python as a small JSON string (built from the Ray
 # `Expr` AST) and parsed here into a `Pred` tree for row-group stats pruning.
 # JSON keeps the boundary language-agnostic and lets the pruning logic be
