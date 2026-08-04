@@ -11,7 +11,7 @@ from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
-    wait_until_grpc_channel_ready,
+    wait_for_aggregator_agent,
 )
 
 logger = logging.getLogger(__name__)
@@ -194,7 +194,8 @@ def run_driver_script_and_wait_for_events(script, httpserver, cluster, validatio
     # Here we wait for the dashboard agent grpc server to be ready before running the
     # driver script. Ideally, the startup sequence should guarantee that. Created an
     # issue to track this: https://github.com/ray-project/ray/issues/58007
-    assert wait_until_grpc_channel_ready(cluster.gcs_address, node_ids)
+    for node_id in node_ids:
+        wait_for_aggregator_agent(cluster.gcs_address, node_id)
     run_string_as_driver_nonblocking(script)
     wait_for_condition(
         lambda: get_and_validate_events(

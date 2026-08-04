@@ -1537,7 +1537,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    worker->GetProcess().GetId(),
                                    creation_task_exception,
                                    memory_used_bytes_at_death);
-  worker_failure_data_ptr->set_job_id(worker->GetAssignedJobId().Binary());
+  if (!worker->GetAssignedJobId().IsNil()) {
+    worker_failure_data_ptr->set_job_id(worker->GetAssignedJobId().Binary());
+  }
   gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr);
 
   if (is_worker) {
