@@ -210,6 +210,7 @@ def _get_read_task(
     case_sensitive: bool,
     limit: Optional[int],
     schema: "Schema",
+    read_file_tasks_sequentially: bool = True,
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
@@ -228,6 +229,12 @@ def _get_read_task(
                     case_sensitive=case_sensitive,
                     limit=scan_limit,
                 )
+
+            if not read_file_tasks_sequentially:
+                result_table = _create_scanner(limit).to_table(tasks=tasks)
+                for batch in result_table.to_batches():
+                    yield pa.Table.from_batches([batch])
+                return
 
             target_schema = schema_to_pyarrow(schema, include_field_ids=False)
             rows_remaining = limit
@@ -449,6 +456,10 @@ class IcebergDatasource(Datasource):
         from pyiceberg.io import pyarrow as pyi_pa_io
         from pyiceberg.manifest import DataFileContent
 
+        from ray.data.context import DataContext
+
+        data_context = data_context or DataContext.get_current()
+
         # Get the PyIceberg scan
         data_scan = self._get_data_scan()
         # Get the plan files in this query
@@ -488,6 +499,9 @@ class IcebergDatasource(Datasource):
             case_sensitive=case_sensitive,
             limit=limit,
             schema=projected_schema,
+            read_file_tasks_sequentially=(
+                data_context.iceberg_config.read_file_tasks_sequentially
+            ),
         )
 
         read_tasks = []
