@@ -2033,9 +2033,9 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBulkPeekBeforeFailurePropagatesError)
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
 
-  auto value_id = ObjectID::FromIndex(spec.TaskId(), 2);
-  auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
-  auto post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
+  ObjectID value_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  ObjectID eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  ObjectID post_eof_id = ObjectID::FromIndex(spec.TaskId(), 4);
 
   // Peek before anything is produced or EOF is marked. EofIndex() is still -1,
   // so PeekObjectRefStreamN writes nothing yet; it only temporarily owns them.

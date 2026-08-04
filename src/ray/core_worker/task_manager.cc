@@ -963,11 +963,12 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   return it != object_ref_streams_.end();
 }
 
-void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
-                                  int64_t end_of_stream_index,
-                                  rpc::ErrorType error_type,
-                                  const rpc::RayErrorInfo *error_info,
-                                  const rpc::ReturnObject *error_return_object) {
+void TaskManager::MarkEndOfStream(
+    const ObjectID &generator_id,
+    int64_t end_of_stream_index,
+    rpc::ErrorType error_type,
+    const std::optional<rpc::RayErrorInfo> &error_info,
+    const std::optional<rpc::ReturnObject> &error_return_object) {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
   std::vector<ObjectID> object_ids_to_eof;
 
@@ -983,14 +984,15 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   // completion error so eager refs surface the real RayTaskError; otherwise we
   // synthesize the error from its type and info.
   std::optional<RayObject> end_of_stream_error;
-  if (error_return_object != nullptr) {
+  if (error_return_object.has_value()) {
     RAY_CHECK(!error_return_object->in_plasma())
         << "Streaming generator completion errors used for EOF refs must be inlined.";
     end_of_stream_error.emplace(MakeInlinedBuffer(error_return_object->data()),
                                 MakeInlinedBuffer(error_return_object->metadata()),
                                 std::vector<rpc::ObjectReference>{});
   } else {
-    end_of_stream_error.emplace(error_type, error_info);
+    end_of_stream_error.emplace(error_type,
+                                error_info.has_value() ? &error_info.value() : nullptr);
   }
 
   stream_it->second.MarkEndOfStream(
@@ -1430,8 +1432,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         MarkEndOfStream(generator_id,
                         streaming_generator_return_count,
                         rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                        /*error_info=*/nullptr,
-                        &task_error);
+                        /*error_info=*/std::nullopt,
+                        task_error);
       } else {
         MarkEndOfStream(generator_id, streaming_generator_return_count);
       }
@@ -1882,7 +1884,7 @@ void TaskManager::MarkTaskNoRetryInternal(const TaskID &task_id, bool canceled) 
     MarkEndOfStream(generator_id,
                     /*end_of_stream_index=*/-1,
                     rpc::ErrorType::TASK_CANCELLED,
-                    &error_info);
+                    error_info);
   }
 }
 
@@ -1986,7 +1988,12 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // returns above, rather than a generic end-of-stream. If the stream was
     // already ended by cancellation, TASK_CANCELLED is kept.
     const auto generator_id = spec.ReturnId(0);
-    MarkEndOfStream(generator_id, /*item_index*/ -1, error_type, ray_error_info);
+    MarkEndOfStream(generator_id,
+                    /*item_index*/ -1,
+                    error_type,
+                    ray_error_info != nullptr
+                        ? std::optional<rpc::RayErrorInfo>(*ray_error_info)
+                        : std::nullopt);
 
     // If it was a streaming generator, try failing all the return object refs.
     // In a normal time, it is no-op because the object ref values are already

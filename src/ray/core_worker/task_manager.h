@@ -52,6 +52,11 @@ namespace core {
  * OOM errors use exponential backoff with task_oom_retry_delay_base_ms.
  * ACTOR_UNAVAILABLE errors use exponential backoff with a configurable base and cap.
  * All other errors use the flat task_retry_delay_ms.
+ *
+ * \param[in] attempt_number Zero-based retry attempt index used for exponential
+ * backoff.
+ * \param[in] error_type The error that caused the task to fail.
+ * \return Delay in milliseconds before the next retry.
  */
 inline uint32_t GetTaskRetryDelayMs(uint64_t attempt_number, rpc::ErrorType error_type) {
   if (error_type == rpc::ErrorType::OUT_OF_MEMORY) {
@@ -975,8 +980,7 @@ class TaskManager : public TaskManagerInterface {
    * real error (TASK_CANCELLED, ACTOR_DIED, ...) so an eager consumer that waits
    * on a not-yet-produced ref surfaces the real reason. Recorded once
    * (first-writer-wins), so the first path to end the stream determines it.
-   * \param[in] error_info Optional rich error info for error_type. May be
-   * nullptr.
+   * \param[in] error_info Optional rich error info for error_type.
    * \param[in] error_return_object Optional inlined generator completion error
    * to copy to EOF-region refs. Used only when task failure produced no stream
    * item, so eagerly peeked refs retain the task's serialized exception.
@@ -985,8 +989,8 @@ class TaskManager : public TaskManagerInterface {
       const ObjectID &generator_id,
       int64_t end_of_stream_index,
       rpc::ErrorType error_type = rpc::ErrorType::END_OF_STREAMING_GENERATOR,
-      const rpc::RayErrorInfo *error_info = nullptr,
-      const rpc::ReturnObject *error_return_object = nullptr)
+      const std::optional<rpc::RayErrorInfo> &error_info = std::nullopt,
+      const std::optional<rpc::ReturnObject> &error_return_object = std::nullopt)
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /**
