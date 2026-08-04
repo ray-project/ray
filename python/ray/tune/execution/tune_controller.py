@@ -1371,6 +1371,12 @@ class TuneController:
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
+        # A trial being stopped must not retain a stale queued decision (e.g. a
+        # buffered `CONTINUE`). On the failure/recovery path the trial is requeued
+        # with a new actor without going through `pause_trial`, so a leftover
+        # queued decision could later be executed against the wrong actor (#58483).
+        self._queued_trial_decisions.pop(trial.trial_id, None)
+
         if trial.is_saving:
             logger.debug(
                 f"Trial {trial} is currently saving/pausing. Scheduling STOP after "
@@ -1973,6 +1979,12 @@ class TuneController:
         # NOTE: The cached trial decision is not needed since we will overrule this
         # decision with PAUSE.
         self._cached_trial_decisions.pop(trial.trial_id, None)
+        # Also drop any queued decision (e.g. a buffered `CONTINUE` from a result
+        # whose perturbation interval had not yet been reached). The trial is being
+        # paused and its actor torn down, so executing a stale queued decision would
+        # try to train a trial with no actor and raise `KeyError` in
+        # `_schedule_trial_train` (issue #58483).
+        self._queued_trial_decisions.pop(trial.trial_id, None)
         self._schedule_trial_pause(trial, should_checkpoint=should_checkpoint)
 
     def cleanup(self):
