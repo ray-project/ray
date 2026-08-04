@@ -81,8 +81,21 @@ def generate_event_export_env_vars(
     if additional_env_vars is None:
         additional_env_vars = {}
 
+    # TODO(karticam): These tests inject a specific event via stub.AddEvents to the
+    #  aggregator agent and then publish the events to a fake HTTP server.
+    #  We then make some assertions based on the request received on the HTTP server
+    #  assuming that aggregator agent holds only the events that we posted on to it.
+    #  That holds only when enable_ray_event is false; with it true the cluster's own
+    #  components (e.g.the GCS node manager) also emit RayEvents into the aggregator
+    #  and contaminate the batch.
+    #  Pinning it off for now -- make these robust by filtering the batch for the
+    #  injected event (by event_id/event_type) instead of assuming a single/first event.
+    #  These tests only exercise the HTTP publisher, so keep the GCS publisher off (it
+    #  defaults on in this config) to keep the aggregator agent lean during startup.
     event_export_env_vars = {
         "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+        "RAY_enable_ray_event": "0",
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "False",
     } | additional_env_vars
 
     if preserve_proto_field_name is not None:
@@ -149,10 +162,17 @@ def get_event_aggregator_grpc_stub(gcs_address, head_node_id):
     ],
 )
 def test_aggregator_agent_http_target_not_enabled(
+    monkeypatch,
     export_addr,
     expected_http_target_enabled,
     expected_event_processing_enabled,
 ):
+    # This test isolates HTTP-target enablement, so hold GCS publishing off regardless of
+    # its module-level default (which is read at import, not from the test env).
+    monkeypatch.setattr(
+        "ray.dashboard.modules.aggregator.aggregator_agent.PUBLISH_EVENTS_TO_GCS",
+        False,
+    )
     dashboard_agent = MagicMock()
     dashboard_agent.events_export_addr = export_addr
     dashboard_agent.gcs_address = "127.0.0.1:8000"
@@ -1443,6 +1463,9 @@ def test_aggregator_agent_dashboard_head_filtering_driver_job_events(
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS": "True",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "True",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                # TODO(karticam): assumes the aggregator receives only the injected event;
+                #  see generate_event_export_env_vars for why enable_ray_event is pinned off.
+                "RAY_enable_ray_event": "0",
             },
         },
     ],
