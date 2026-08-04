@@ -17,7 +17,7 @@ from ray.data.datasource.datasink import Datasink
 
 if TYPE_CHECKING:
     import pyarrow as pa
-    from gpudb import GPUdb
+    from gpudb import GPUdb, GPUdbRecordType
 
 
 logger = logging.getLogger(__name__)
@@ -383,7 +383,9 @@ class KineticaDatasink(Datasink):
                 f"Failed to drop table '{self._table_name}' in OVERWRITE mode: {e}"
             ) from e
 
-    def _create_table(self, client, columns, *, fail_if_exists: bool = False):
+    def _create_table(
+        self, client: "GPUdb", columns: List, *, fail_if_exists: bool = False
+    ) -> "GPUdbRecordType":
         """Create the target table with the given column definitions.
 
         Args:
@@ -394,6 +396,9 @@ class KineticaDatasink(Datasink):
                 by another process should fail this operation. If False, the
                 operation succeeds even if the table exists (for APPEND/OVERWRITE
                 retry safety).
+
+        Returns:
+            The GPUdbRecordType created for this table.
         """
         from gpudb import GPUdbRecordType
 
