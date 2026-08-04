@@ -51,6 +51,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    SELECTION_DISPATCH_GAP_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
@@ -756,6 +757,34 @@ class AsyncioRouter:
         )
         shared.register(self)
 
+        self._init_decoupled_routing_metrics(deployment_id)
+
+    def _init_decoupled_routing_metrics(self, deployment_id: DeploymentID):
+        """Initialize metrics for tracking replica selection and dispatch."""
+        default_tags = {
+            "deployment": deployment_id.name,
+            "application": deployment_id.app_name,
+        }
+        self._selection_dispatch_gap_ms = metrics.Histogram(
+            "serve_selection_dispatch_gap_ms",
+            description=(
+                "Time in milliseconds between replica selection and request dispatch."
+            ),
+            boundaries=SELECTION_DISPATCH_GAP_LATENCY_BUCKETS_MS,
+            tag_keys=("deployment", "application"),
+        )
+        self._selection_dispatch_gap_ms.set_default_tags(default_tags)
+
+        self._selections_released_without_dispatch = metrics.Counter(
+            "serve_selections_released_without_dispatch",
+            description=(
+                "Number of replica selections that exited without a dispatch() call. "
+                "Each count represents a slot reservation that was released unused."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+        self._selections_released_without_dispatch.set_default_tags(default_tags)
+
     @property
     def request_router(self) -> Optional[RequestRouter]:
         """Get and lazy loading request router.
@@ -1343,9 +1372,27 @@ class AsyncioRouter:
                         replica.replica_id, request_meta.internal_request_id
                     )
             finally:
+                if not selection._dispatched:
+                    self._selections_released_without_dispatch.inc()
                 # Decrement reserved slots metric even if release failed,
                 # otherwise the gauge leaks for the lifetime of the process.
                 self._metrics_manager.dec_reserved_slots()
+
+    def _record_gap_and_mark_dispatched(self, selection: ReplicaSelection) -> None:
+        """Synchronously record the gap metric and mark the selection dispatched.
+
+        Must be called before scheduling _dispatch_to_marked_selection so that
+        selection._dispatched is True before choose_replica's finally block runs.
+
+        Args:
+            selection: The replica selection to mark dispatched.
+
+        Raises:
+            RuntimeError: If the selection has already been dispatched.
+        """
+        gap_ms = (time.monotonic() - selection.selection_start_time) * 1000
+        self._selection_dispatch_gap_ms.observe(gap_ms)
+        selection._mark_dispatched()
 
     async def dispatch(
         self,
@@ -1369,7 +1416,7 @@ class AsyncioRouter:
             RuntimeError: If the selection has already been dispatched.
             ReplicaUnavailableError: If the replica is no longer available.
         """
-        selection._mark_dispatched()
+        self._record_gap_and_mark_dispatched(selection)
         return await self._dispatch_to_marked_selection(
             selection, request_meta, *request_args, **request_kwargs
         )
@@ -1824,7 +1871,7 @@ class SingletonThreadRouter(Router):
     ) -> concurrent.futures.Future[ReplicaResult]:
         """Dispatch request to a previously selected replica."""
         try:
-            selection._mark_dispatched()
+            self._asyncio_router._record_gap_and_mark_dispatched(selection)
         except Exception as exc:
             future = concurrent.futures.Future()
             future.set_exception(exc)
@@ -2057,7 +2104,7 @@ class CurrentLoopRouter(Router):
         Returns an asyncio.Future wrapping the async dispatch call.
         """
         try:
-            selection._mark_dispatched()
+            self._asyncio_router._record_gap_and_mark_dispatched(selection)
         except Exception as exc:
             future = self._asyncio_loop.create_future()
             future.set_exception(exc)
