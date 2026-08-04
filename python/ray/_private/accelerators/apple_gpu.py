@@ -1,5 +1,4 @@
 import logging
-import os
 import platform
 import subprocess
 from typing import Dict, List, Optional, Tuple
@@ -8,22 +7,26 @@ from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
 
-# Environment variable for controlling MPS usage
-MPS_ENABLE_ENV_VAR = "PYTORCH_ENABLE_MPS_FALLBACK"
-NOSET_MPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_MPS_DEVICE"
-
 
 class AppleGPUAcceleratorManager(AcceleratorManager):
-    """Apple Silicon GPU (MPS) accelerators manager."""
+    """Apple Silicon GPU (MPS) accelerator manager.
+
+    Unlike Nvidia GPUs and other devices, Apple GPUs only expose a single MPS device per
+    host and there is no environment variable to toggle its visibility. Therefore the
+    accelerator manager is only used to determine which MPS device is available, and
+    enable scheduling it via the "GPU" resource.
+    """
 
     @staticmethod
     def get_resource_name() -> str:
         return "GPU"
 
     @staticmethod
-    def get_visible_accelerator_ids_env_var() -> str:
-        # For MPS, we use PyTorch's MPS fallback environment variable
-        return MPS_ENABLE_ENV_VAR
+    def get_visible_accelerator_ids_env_var() -> Optional[str]:
+        # Apple Silicon exposes a single unified GPU (id "0") that cannot be
+        # selected or hidden, so there is no visible-devices env var (unlike
+        # CUDA_VISIBLE_DEVICES). Return None so callers skip env var handling.
+        return None
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
@@ -77,13 +80,13 @@ class AppleGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
-        """Get visible MPS device IDs (always ['0'] if MPS is enabled)."""
+        """Get visible MPS device IDs.
+
+        Apple Silicon has a single unified GPU, so the only visible id is ever "0".
+        Returns ["0"] if MPS is available, otherwise None.
+        """
         try:
             if AppleGPUAcceleratorManager._is_mps_available():
-                # Check if MPS is disabled via environment variable
-                mps_fallback = os.environ.get(MPS_ENABLE_ENV_VAR, "1")
-                if mps_fallback == "0":
-                    return []
                 return ["0"]
             return None
         except Exception:
@@ -91,17 +94,13 @@ class AppleGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def set_current_process_visible_accelerator_ids(ids: List[str]) -> None:
-        """Set visible MPS devices by controlling the MPS fallback environment variable."""
-        if os.environ.get(NOSET_MPS_ENV_VAR):
-            return
+        """No-op for Apple Silicon.
 
-        # For MPS, we control visibility through the PyTorch MPS fallback
-        if not ids or ids == []:
-            # Disable MPS
-            os.environ[MPS_ENABLE_ENV_VAR] = "0"
-        else:
-            # Enable MPS (Apple Silicon only has one GPU, so any non-empty list enables it)
-            os.environ[MPS_ENABLE_ENV_VAR] = "1"
+        Apple Silicon exposes a single unified GPU (id "0") that cannot be selected
+        or hidden, so there is no visible-devices env var to set (see
+        get_visible_accelerator_ids_env_var).
+        """
+        return
 
     @staticmethod
     def get_ec2_instance_num_accelerators(

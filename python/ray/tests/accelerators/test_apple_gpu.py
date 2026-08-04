@@ -1,7 +1,8 @@
 import os
 import sys
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from ray._private.accelerators.apple_gpu import AppleGPUAcceleratorManager
 
@@ -14,11 +15,8 @@ class TestAppleGPUAcceleratorManager:
         assert AppleGPUAcceleratorManager.get_resource_name() == "GPU"
 
     def test_get_visible_accelerator_ids_env_var(self):
-        """Test that the correct environment variable is returned."""
-        assert (
-            AppleGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-            == "PYTORCH_ENABLE_MPS_FALLBACK"
-        )
+        """Apple Silicon has no visible-devices env var (single unified GPU)."""
+        assert AppleGPUAcceleratorManager.get_visible_accelerator_ids_env_var() is None
 
     def test_get_current_node_additional_resources(self):
         """Test that no additional resources are required."""
@@ -139,31 +137,13 @@ class TestAppleGPUAcceleratorManager:
     def test_get_current_process_visible_accelerator_ids_mps_available(
         self, mock_is_mps_available
     ):
-        """Test getting visible accelerator IDs when MPS is available."""
+        """The only visible id on Apple Silicon is ever "0" when MPS is available."""
         mock_is_mps_available.return_value = True
 
-        # Test with MPS enabled (default)
-        with patch.dict(os.environ, {}, clear=True):
-            assert (
-                AppleGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
-                == ["0"]
-            )
-
-    @patch(
-        "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_mps_available"
-    )
-    def test_get_current_process_visible_accelerator_ids_mps_disabled(
-        self, mock_is_mps_available
-    ):
-        """Test getting visible accelerator IDs when MPS is disabled."""
-        mock_is_mps_available.return_value = True
-
-        # Test with MPS disabled via environment variable
-        with patch.dict(os.environ, {"PYTORCH_ENABLE_MPS_FALLBACK": "0"}):
-            assert (
-                AppleGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
-                == []
-            )
+        assert (
+            AppleGPUAcceleratorManager.get_current_process_visible_accelerator_ids()
+            == ["0"]
+        )
 
     @patch(
         "ray._private.accelerators.apple_gpu.AppleGPUAcceleratorManager._is_mps_available"
@@ -179,29 +159,13 @@ class TestAppleGPUAcceleratorManager:
             is None
         )
 
-    def test_set_current_process_visible_accelerator_ids_enable(self):
-        """Test setting visible accelerator IDs to enable MPS."""
+    def test_set_current_process_visible_accelerator_ids_is_noop(self):
+        """Apple Silicon has no visible-devices env var, so set is a no-op."""
         with patch.dict(os.environ, {}, clear=True):
             AppleGPUAcceleratorManager.set_current_process_visible_accelerator_ids(
                 ["0"]
             )
-            assert os.environ.get("PYTORCH_ENABLE_MPS_FALLBACK") == "1"
-
-    def test_set_current_process_visible_accelerator_ids_disable(self):
-        """Test setting visible accelerator IDs to disable MPS."""
-        with patch.dict(os.environ, {}, clear=True):
-            AppleGPUAcceleratorManager.set_current_process_visible_accelerator_ids([])
-            assert os.environ.get("PYTORCH_ENABLE_MPS_FALLBACK") == "0"
-
-    def test_set_current_process_visible_accelerator_ids_noset_env(self):
-        """Test that setting is skipped when NOSET environment variable is set."""
-        with patch.dict(
-            os.environ, {"RAY_EXPERIMENTAL_NOSET_MPS_DEVICE": "1"}, clear=True
-        ):
-            AppleGPUAcceleratorManager.set_current_process_visible_accelerator_ids(
-                ["0"]
-            )
-            assert "PYTORCH_ENABLE_MPS_FALLBACK" not in os.environ
+            assert os.environ == {}
 
     def test_is_mps_available(self):
         """Test MPS availability detection."""
