@@ -1405,6 +1405,38 @@ def test_categorizer(predefined_dtypes):
     assert pred_out_df.dtypes["C_categorized"] == expected_dtypes["C"]
 
 
+def test_categorizer_schema_types_preserves_categorical_dtype():
+    """``Schema.types`` should surface ``pd.CategoricalDtype`` columns instead
+    of silently returning ``None``.
+
+    Regression test for https://github.com/ray-project/ray/issues/50285:
+    ``pd.CategoricalDtype`` is not a NumPy dtype, so the internal
+    ``pa.from_numpy_dtype`` call raised and the column type degraded to ``None``.
+    """
+    df = pd.DataFrame(
+        {
+            "plain": [1, 2, 3, 4],
+            "sex": ["male", "female", "male", "female"],
+            "level": ["L4", "L5", "L3", "L4"],
+        }
+    )
+    ds = ray.data.from_pandas(df)
+    categorizer = Categorizer(
+        columns=["sex", "level"],
+        dtypes={"level": pd.CategoricalDtype(["L3", "L4", "L5", "L6"], ordered=True)},
+    )
+
+    types = categorizer.fit_transform(ds).schema().types
+
+    # Non-categorical columns keep their Arrow type; categorical columns keep
+    # their pandas dtype (including category order) instead of becoming ``None``.
+    assert types == [
+        pa.int64(),
+        pd.CategoricalDtype(categories=["female", "male"], ordered=False),
+        pd.CategoricalDtype(categories=["L3", "L4", "L5", "L6"], ordered=True),
+    ], types
+
+
 class TestEncoderSerialization:
     """Test basic serialization/deserialization functionality for all encoder preprocessors."""
 
