@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -22,6 +23,10 @@ from ray._common.test_utils import (
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
@@ -1554,6 +1559,7 @@ def test_downstream_operators_scheduled_on_different_workers_than_read_workers(
     ray.data.read_datasource(SetMarkerDatasource()).map(
         check_marker_not_set
     ).materialize()
+    assert False
 
 
 @pytest.mark.parametrize(
@@ -1594,6 +1600,30 @@ def test_isolate_read_workers_preserves_runtime_env(
     ray.data.read_datasource(
         CheckEnvVarDatasource(), ray_remote_args={"runtime_env": runtime_env}
     ).materialize()
+
+
+@pytest.mark.parametrize("isolate_read_workers", [True, False])
+def test_isolate_read_workers_propagated_for_datasource_v2(
+    tmp_path, ray_start_regular_shared, restore_data_context, isolate_read_workers
+):
+    """DataContext.isolate_read_workers must land on the ReadFiles physical op (DSv2)."""
+    ctx = DataContext.get_current()
+    ctx.use_datasource_v2 = True
+    ctx.isolate_read_workers = isolate_read_workers
+
+    pq.write_table(pa.table({"a": [1]}), str(tmp_path / "data.parquet"))
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    physical_plan, _ = get_execution_plan(ds._logical_plan)
+    op = physical_plan.dag
+    while op is not None:
+        if isinstance(op, TaskPoolMapOperator) and "ReadFiles" in op.name:
+            assert op.isolate_workers is isolate_read_workers
+            return
+        deps = op.input_dependencies
+        op = deps[0] if deps else None
+
+    pytest.fail("Expected a ReadFiles TaskPoolMapOperator in the physical plan")
 
 
 if __name__ == "__main__":
