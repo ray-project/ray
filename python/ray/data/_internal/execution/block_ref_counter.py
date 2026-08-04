@@ -12,6 +12,10 @@ class BlockRefCounter:
     The callback fires when:
     - All Python ObjectRefs wrapping the block's ObjectID are garbage-collected, AND
     - All Ray tasks that received the block as an argument have completed.
+
+    On executor shutdown, pending callbacks are harmless: the callback thread
+    is a daemon thread that exits with the driver process. Any callbacks
+    that fire after shutdown only decrement counters that are no longer read.
     """
 
     def __init__(

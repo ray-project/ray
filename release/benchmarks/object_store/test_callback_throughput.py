@@ -112,11 +112,13 @@ def test_callback_pipeline(num_blocks, timeout_s=300):
     return result
 
 
-def test_registration_cost(num_blocks):
+def test_registration_cost(num_blocks, timeout_s=60):
     """Measures per-callback registration cost via BlockRefCounter.on_block_produced.
 
     Includes BRC bookkeeping and the Core API call to register the callback.
     """
+    core_worker = ray._private.worker.global_worker.core_worker
+    on_freed, fire_times, done = _make_timing_callback(num_blocks)
     counter = BlockRefCounter()
     refs = _produce_blocks(num_blocks)
 
@@ -125,12 +127,21 @@ def test_registration_cost(num_blocks):
         counter.on_block_produced(ref, OBJECT_SIZE, "bench_op")
     elapsed = time.perf_counter() - start
 
+    # Register timing callbacks so we can wait for all frees to complete,
+    # preventing residual callbacks from interfering with subsequent tests.
+    for ref in refs:
+        assert core_worker.add_object_out_of_scope_callback(ref, on_freed)
+
     per_callback_us = (elapsed / num_blocks) * 1e6
     print(
         f"  {num_blocks} registrations: {elapsed:.4f}s total, {per_callback_us:.1f}us each"
     )
 
     del refs, ref
+    if not done.wait(timeout=timeout_s):
+        raise TimeoutError(
+            f"Only {len(fire_times)}/{num_blocks} callbacks fired within {timeout_s}s"
+        )
     return per_callback_us
 
 
@@ -251,9 +262,6 @@ ray.get(
     ]
 )
 
-# Let callback service thread drain between tests to avoid interference.
-DRAIN_DELAY_S = 1.0
-
 # Scales to test. Higher values reveal whether per-callback cost is constant
 # or grows with N (due to GIL contention, queue growth, etc.).
 SCALES = [100, 1000, 5000, 10000]
@@ -264,7 +272,6 @@ def _run_at_scales(name, test_fn, scales):
     results = {}
     for n in scales:
         results[n] = test_fn(n)
-    time.sleep(DRAIN_DELAY_S)
     return results
 
 
