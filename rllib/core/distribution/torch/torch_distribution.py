@@ -4,6 +4,7 @@ the code. This matches the design pattern of torch distribution which developers
 already be familiar with.
 """
 import abc
+import math
 from typing import Dict, Iterable, List, Optional
 
 import gymnasium as gym
@@ -66,6 +67,14 @@ class TorchDistribution(Distribution, abc.ABC):
             sample_shape if sample_shape is not None else torch.Size()
         )
         return rsample
+
+    def sample_and_logp(self, *, sample_shape=None):
+        sample = self.sample(sample_shape=sample_shape)
+        return sample, self.logp(sample)
+
+    def rsample_and_logp(self, *, sample_shape=None):
+        rsample = self.rsample(sample_shape=sample_shape)
+        return rsample, self.logp(rsample)
 
     @classmethod
     @override(Distribution)
@@ -263,35 +272,56 @@ class TorchSquashedGaussian(TorchDistribution):
     def sample(
         self, *, sample_shape=None
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        # Sample from the Normal distribution.
         sample = super().sample(
             sample_shape=sample_shape if sample_shape is not None else torch.Size()
         )
-        # Return the squashed sample.
         return self._squash(sample)
 
     @override(TorchDistribution)
     def rsample(
         self, *, sample_shape=None
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        # Sample from the Normal distribution.
         sample = super().rsample(
             sample_shape=sample_shape if sample_shape is not None else torch.Size()
         )
-        # Return the squashed sample.
         return self._squash(sample)
 
     @override(TorchDistribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        # Unsquash value.
-        value = self._unsquash(value)
-        # Get log-probabilities from Normal distribution.
-        logp = super().logp(value, **kwargs)
-        # Clip the log probabilities as a safeguard and sum.
-        logp = torch.clamp(logp, -100, 100).sum(-1)
-        # Return the log probabilities for squashed Normal.
-        value = torch.tanh(value)
-        return logp - torch.log(1 - value**2 + SMALL_NUMBER).sum(-1)
+        """Returns the log probability of `value` under the squashed Gaussian.
+
+        Exact for interior actions.
+        `rsample_and_logp()` / `sample_and_logp()` are always exact.
+        """
+        return self._squashed_logp(self._unsquash(value))
+
+    def _squashed_logp(self, unsquashed: TensorType) -> TensorType:
+        # Normal log-prob of the pre-squash sample minus the tanh Jacobian
+        # log(1 - tanh(x)^2), via the numerically stable identity
+        #   log(1 - tanh(x)^2) = 2 * (log(2) - x - softplus(-2x)).
+        # This is a known SAC implementation trick.
+        # See Haarnoja et al. 2018 (arXiv:1801.01290), Appendix C
+        # Eq. 21 for the tanh change of variables, and OpenAI Spinning Up's SAC
+        # (spinup/algos/pytorch/sac/core.py) for this numerically stable form.
+        logp = super().logp(unsquashed).sum(-1)
+        jacobian = 2.0 * (
+            math.log(2.0) - unsquashed - nn.functional.softplus(-2.0 * unsquashed)
+        )
+        return logp - jacobian.sum(-1)
+
+    @override(TorchDistribution)
+    def rsample_and_logp(self, *, sample_shape=None):
+        unsquashed = super().rsample(
+            sample_shape=sample_shape if sample_shape is not None else torch.Size()
+        )
+        return self._squash(unsquashed), self._squashed_logp(unsquashed)
+
+    @override(TorchDistribution)
+    def sample_and_logp(self, *, sample_shape=None):
+        unsquashed = super().sample(
+            sample_shape=sample_shape if sample_shape is not None else torch.Size()
+        )
+        return self._squash(unsquashed), self._squashed_logp(unsquashed)
 
     @override(TorchDistribution)
     def entropy(self) -> TensorType:
