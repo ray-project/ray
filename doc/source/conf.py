@@ -6,17 +6,11 @@ import re
 import sys
 from datetime import datetime
 from dataclasses import is_dataclass
-from importlib import import_module
 from typing import Any, Dict
 
 import sphinx
 from docutils import nodes
-from jinja2.filters import FILTERS
-from sphinx.ext.autosummary import generate
-from sphinx.util.inspect import safe_getattr
 from sphinx.util.matching import compile_matchers
-
-DEFAULT_API_GROUP = "Others"
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +24,14 @@ from custom_directives import (  # noqa
     pregenerate_example_rsts,
     generate_versions_json,
     collect_example_orphans,
+)
+
+# Importing api_autogen registers the custom autosummary Jinja filters and
+# exposes the shared stub-generation entry point (see doc/source/api_autogen.py).
+from api_autogen import (  # noqa: E402
+    AUTOGEN_FILES,
+    AUTOSUMMARY_FILENAME_MAP,
+    generate_api_stubs,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -306,9 +308,7 @@ language = "en"
 # autogen files are only used to auto-generate public API documentation.
 # They are not included in the toctree to avoid warnings such as documents not included
 # in any toctree.
-autogen_files = [
-    "data/api/_autogen.rst",
-]
+autogen_files = AUTOGEN_FILES
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -468,6 +468,9 @@ html_sidebars = {
         )
     ],
     "ray-overview/examples": [],
+    # Custom 404 page (DOC-945): drop the section-navigation sidebar so the
+    # standalone error page renders clean and centered, like the examples page.
+    "404": [],
 }
 
 # The name for this set of Sphinx documents.  If None, it defaults to
@@ -531,60 +534,6 @@ autodoc_member_order = "bysource"
 autodoc_typehints = "signature"
 
 
-def filter_out_undoc_class_members(member_name, class_name, module_name):
-    module = import_module(module_name)
-    cls = getattr(module, class_name)
-    if getattr(cls, member_name).__doc__:
-        return f"~{class_name}.{member_name}"
-    else:
-        return ""
-
-
-def has_public_constructor(class_name, module_name):
-    cls = getattr(import_module(module_name), class_name)
-    return _is_public_api(cls)
-
-
-def get_api_groups(method_names, class_name, module_name):
-    api_groups = set()
-    cls = getattr(import_module(module_name), class_name)
-    for method_name in method_names:
-        method = getattr(cls, method_name)
-        if _is_public_api(method):
-            api_groups.add(
-                safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP)
-            )
-
-    return sorted(api_groups)
-
-
-def select_api_group(method_names, class_name, module_name, api_group):
-    cls = getattr(import_module(module_name), class_name)
-    return [
-        method_name
-        for method_name in method_names
-        if _is_public_api(getattr(cls, method_name))
-        and _is_api_group(getattr(cls, method_name), api_group)
-    ]
-
-
-def _is_public_api(obj):
-    api_type = safe_getattr(obj, "_annotated_type", None)
-    if not api_type:
-        return False
-    return api_type.value == "PublicAPI"
-
-
-def _is_api_group(obj, group):
-    return safe_getattr(obj, "_annotated_api_group", DEFAULT_API_GROUP) == group
-
-
-FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
-FILTERS["get_api_groups"] = get_api_groups
-FILTERS["select_api_group"] = select_api_group
-FILTERS["has_public_constructor"] = has_public_constructor
-
-
 def add_custom_assets(
     app: sphinx.application.Sphinx,
     pagename: str,
@@ -601,6 +550,22 @@ def add_custom_assets(
         app.add_css_file("css/index.css")
         app.add_js_file("js/index.js")
         return "index.html"  # Use the special index.html template for this page
+
+    if pagename == "404":
+        # Custom 404 page (DOC-945). Read the Docs serves this page's HTML for
+        # any missing URL under the docs domain while the browser keeps the
+        # originally requested (wrong) path, so the 404 template pins a <base>
+        # to the canonical version root to keep every relative URL working.
+        # Prefer Read the Docs' per-build canonical URL (which is correct on PR
+        # previews and per-version builds); fall back to html_baseurl for local
+        # builds where the env var is unset. Scoped to this page only, so it
+        # cannot re-introduce the sitewide sidebar-href regression from #63343.
+        base_url = os.environ.get("READTHEDOCS_CANONICAL_URL") or app.config.html_baseurl or "/"
+        if not base_url.endswith("/"):
+            base_url += "/"
+        context["notfound_base_url"] = base_url
+        app.add_css_file("css/404.css")
+        return "404.html"  # Use the special 404.html template for this page
 
     if pagename == "ray-overview/examples":
         app.add_css_file("css/examples.css")
@@ -625,15 +590,14 @@ def add_custom_assets(
 def _autogen_apis(app: sphinx.application.Sphinx):
     """
     Auto-generate public API documentation.
+
+    Delegates to the shared generate_api_stubs (see doc/source/api_autogen.py),
+    which raises if generation produces nothing. The failure is intentionally
+    not swallowed: the API-doc consistency check reads these stubs, so a broken
+    autogen step must fail the build instead of silently emitting an empty
+    fixture.
     """
-    try:
-        generate.generate_autosummary_docs(
-            [os.path.join(app.srcdir, file) for file in autogen_files],
-            app=app,
-        )
-    except Exception as e:
-        import warnings
-        warnings.warn(f"Skipping autogen due to: {e}")
+    generate_api_stubs(app.srcdir, app=app)
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -732,14 +696,7 @@ redoc = [
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
 
-# Override the output filenames autosummary generates for these objects.
-# `ray.serve.deployment` (the decorator) and `ray.serve.Deployment` (the class)
-# would otherwise write to filenames that collide on case-insensitive
-# filesystems, so the lowercase decorator is remapped to a distinct name.
-autosummary_filename_map = {
-    "ray.serve.deployment": "ray.serve.deployment_decorator",
-    "ray.serve.Deployment": "ray.serve.Deployment",
-}
+autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
 # Mock out external dependencies here.
 
@@ -750,58 +707,14 @@ autosummary_filename_map = {
 # pyarrow are installed, so they are not mocked. tensorflow is also installed (a
 # direct requirements-doc entry), but importing it for real breaks the autodoc
 # import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
-autodoc_mock_imports = [
-    "aiohttp",
-    "async_timeout",
-    "backoff",
-    "cachetools",
-    "comet_ml",
-    "composer",
-    "cupy",
-    "dask",
-    "datasets",
-    "fastapi",
-    "filelock",
-    "fsspec",
-    "google",
-    "grpc",
-    "gymnasium",
-    "horovod",
-    "huggingface",
-    "httpx",
-    "joblib",
-    "lightgbm",
-    "lightgbm_ray",
-    "mlflow",
-    "nevergrad",
-    "pandas",
-    "pytorch_lightning",
-    "scipy",
-    "setproctitle",
-    "skimage",
-    "sklearn",
-    "starlette",
-    "tensorflow",
-    "torch",
-    "torchvision",
-    "transformers",
-    "tree",
-    "typer",
-    "uvicorn",
-    "wandb",
-    "watchfiles",
-    "openai",
-    "xgboost",
-    "xgboost_ray",
-    "psutil",
-    "colorama",
-    "grpc",
-    "vllm",
-    # Internal compiled modules
-    "ray._raylet",
-    "ray.core.generated",
-    "ray.serve.generated",
-]
+# The mock list is shared with api_autogen.py and the API/doc consistency check
+# (ci/ray_ci/doc) via api_mock_imports.py, so the standalone stub generator and
+# the check see the same API surface this render produces. THIRD_PARTY_MOCK
+# covers uninstalled third-party libraries; BUILD_ONLY_MOCK covers Ray's
+# compiled/generated modules, which are absent only in a source-checkout build.
+from api_mock_imports import BUILD_ONLY_MOCK_MODULES, THIRD_PARTY_MOCK_MODULES
+
+autodoc_mock_imports = THIRD_PARTY_MOCK_MODULES + BUILD_ONLY_MOCK_MODULES
 
 for mock_target in autodoc_mock_imports:
     if mock_target in sys.modules:

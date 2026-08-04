@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Deploy and manage Ray clusters on Kubernetes with the KubeRay operator: RayCluster, RayJob, and RayService CRDs, autoscaling, and GPU support."
+---
+
 # Ray on Kubernetes
 
 ```{toctree}

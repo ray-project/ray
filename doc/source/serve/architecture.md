@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Internals of Ray Serve: Controller, HTTP Proxy, gRPC Proxy, and replica actors; request lifetime from proxy to replica; fault tolerance and recovery mechanisms."
+---
+
 (serve-architecture)=
 
 # Architecture

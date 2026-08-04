@@ -1,6 +1,21 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_test(
+    name = "gcs_resource_load_puller_test",
+    size = "small",
+    srcs = ["gcs_resource_load_puller_test.cc"],
+    tags = ["team:core"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs:gcs_resource_load_puller",
+        "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/raylet_rpc_client:raylet_client_pool",
+    ],
+)
+
+ray_cc_test(
     name = "gcs_function_manager_test",
     srcs = ["gcs_function_manager_test.cc"],
     tags = ["team:core"],
@@ -242,6 +257,7 @@ ray_cc_test(
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:test_utils",
+        "//src/ray/gcs:gcs_init_data",
         "//src/ray/gcs:gcs_store_client_kv",
         "//src/ray/gcs:gcs_worker_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",

@@ -2,8 +2,8 @@ import inspect
 import json
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from google.protobuf.descriptor import FieldDescriptor
-from google.protobuf.message import Message
+from google.protobuf.descriptor import FieldDescriptor  # type: ignore[import-untyped]
+from google.protobuf.message import Message  # type: ignore[import-untyped]
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -89,7 +89,7 @@ def _proto_to_dict(proto: Message) -> Dict:
     `MessageToDict`, this function doesn't add an extra base64
     encoding to bytes when constructing a json response.
     """
-    data = {}
+    data: Dict[str, Any] = {}
     # Fill data with non-empty fields.
     for field, value in proto.ListFields():
         # Handle repeated fields
@@ -339,9 +339,11 @@ class DeploymentConfig(BaseModel):
         if data.get("autoscaling_config"):
             # By setting the serialized policy def, on the protobuf level, AutoscalingConfig constructor will not
             # try to import the policy from the string import path when the protobuf is deserialized on the controller side
-            data["autoscaling_config"]["policy"][
-                "_serialized_policy_def"
-            ] = self.autoscaling_config.policy._serialized_policy_def
+            data["autoscaling_config"]["policy"]["_serialized_policy_def"] = (
+                # Guarded: only reached when autoscaling_config with a policy
+                # is present in `data`.
+                self.autoscaling_config.policy._serialized_policy_def  # pyrefly: ignore[missing-attribute]
+            )
             # Serialize policy_kwargs dict to bytes for the proto
             policy_kwargs = data["autoscaling_config"]["policy"].get("policy_kwargs")
             if policy_kwargs is not None:
@@ -630,7 +632,9 @@ def handle_num_replicas_auto(
         autoscaling_config = (
             autoscaling_config
             if isinstance(autoscaling_config, dict)
-            else autoscaling_config.model_dump(exclude_unset=True)
+            # The `in [DEFAULT.VALUE, None]` check above rules out DEFAULT and
+            # None, but mypy can't narrow membership tests.
+            else autoscaling_config.model_dump(exclude_unset=True)  # type: ignore[union-attr]
         )
         default_config.update(autoscaling_config)
         autoscaling_config = AutoscalingConfig(**default_config)
@@ -667,8 +671,8 @@ class ReplicaConfig:
         self,
         deployment_def_name: str,
         serialized_deployment_def: bytes,
-        serialized_init_args: bytes,
-        serialized_init_kwargs: bytes,
+        serialized_init_args: Optional[bytes],
+        serialized_init_kwargs: Optional[bytes],
         ray_actor_options: Dict,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
@@ -689,9 +693,9 @@ class ReplicaConfig:
         self.serialized_init_kwargs = serialized_init_kwargs
 
         # Deserialize properties when first accessed. See @property methods.
-        self._deployment_def = None
-        self._init_args = None
-        self._init_kwargs = None
+        self._deployment_def: Optional[Union[Callable, str]] = None
+        self._init_args: Optional[Union[Tuple[Any, ...], bytes]] = None
+        self._init_kwargs: Optional[Dict[Any, Any]] = None
 
         # Configure ray_actor_options. These are the Ray options ultimately
         # passed into the replica's actor when it's created.
@@ -773,7 +777,7 @@ class ReplicaConfig:
     def create(
         cls,
         deployment_def: Union[Callable, str],
-        init_args: Optional[Tuple[Any]] = None,
+        init_args: Optional[Tuple[Any, ...]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options: Optional[Dict] = None,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
@@ -800,7 +804,9 @@ class ReplicaConfig:
             elif init_kwargs:
                 raise ValueError("init_kwargs not supported for function deployments.")
 
-        if not isinstance(deployment_def, (Callable, str)):
+        # `typing.Callable` supports isinstance() at runtime but mypy rejects
+        # it as an isinstance() argument.
+        if not isinstance(deployment_def, (Callable, str)):  # type: ignore[arg-type]
             raise TypeError(
                 f'Got invalid type "{type(deployment_def)}" for '
                 "deployment_def. Expected deployment_def to be a "
@@ -935,7 +941,9 @@ class ReplicaConfig:
                 bundles=self.placement_group_bundles,
                 strategy=self.placement_group_strategy or "PACK",
                 lifetime="detached",
-                bundle_label_selector=self.placement_group_bundle_label_selector,
+                # `validate_placement_group` is annotated as requiring a list
+                # but handles None (its own default) fine.
+                bundle_label_selector=self.placement_group_bundle_label_selector,  # type: ignore[arg-type]
             )
 
             resource_error_prefix = (
@@ -1000,10 +1008,11 @@ class ReplicaConfig:
                     encoding="utf-8"
                 )
 
-        return self._deployment_def
+        # Non-None invariant: assigned from `serialized_deployment_def` above.
+        return self._deployment_def  # pyrefly: ignore[bad-return]
 
     @property
-    def init_args(self) -> Optional[Union[Tuple[Any], bytes]]:
+    def init_args(self) -> Optional[Union[Tuple[Any, ...], bytes]]:
         """The init_args for a Python class.
 
         This property is only meaningful if deployment_def is a Python class.
@@ -1011,6 +1020,9 @@ class ReplicaConfig:
         """
         if self._init_args is None:
             if self.needs_pickle:
+                # Non-None invariant: python deployments always carry
+                # pickled init_args.
+                assert self.serialized_init_args is not None
                 self._init_args = cloudpickle.loads(self.serialized_init_args)
             else:
                 self._init_args = self.serialized_init_args
@@ -1018,7 +1030,7 @@ class ReplicaConfig:
         return self._init_args
 
     @property
-    def init_kwargs(self) -> Optional[Tuple[Any]]:
+    def init_kwargs(self) -> Optional[Dict[Any, Any]]:
         """The init_kwargs for a Python class.
 
         This property is only meaningful if deployment_def is a Python class.
@@ -1026,6 +1038,9 @@ class ReplicaConfig:
         """
 
         if self._init_kwargs is None:
+            # Non-None invariant: python deployments always carry
+            # pickled init_kwargs.
+            assert self.serialized_init_kwargs is not None
             self._init_kwargs = cloudpickle.loads(self.serialized_init_kwargs)
 
         return self._init_kwargs

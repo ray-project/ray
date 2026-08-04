@@ -31,12 +31,14 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import extract_values
 from ray.exceptions import RayTaskError
 from ray.runtime_env import RuntimeEnv
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 
 
 def test_specifying_num_cpus_and_num_gpus_logs_warning(
@@ -51,6 +53,22 @@ def test_specifying_num_cpus_and_num_gpus_logs_warning(
             "Specifying both num_cpus and num_gpus for map tasks is experimental"
             in caplog.text
         ), caplog.text
+
+
+def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
+    ds = ray.data.range(1)
+
+    def ray_remote_args_fn():
+        return {}
+
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.map(lambda row: row, ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.map_batches(lambda batch: batch, ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.flat_map(lambda row: [row], ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.filter(expr=col("id") >= 0, ray_remote_args_fn=ray_remote_args_fn)
 
 
 def test_invalid_max_tasks_in_flight_raises_error():

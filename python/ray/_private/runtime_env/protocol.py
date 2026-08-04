@@ -1,6 +1,7 @@
-import enum
 import os
 from urllib.parse import urlparse
+
+from ray._common.runtime_env_uri import Protocol
 
 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
 RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN"
@@ -287,25 +288,6 @@ class ProtocolsProvider:
         with open_file(source_uri, "rb", transport_params=tp) as fin:
             with open(dest_file, "wb") as fout:
                 fout.write(fin.read())
-
-
-Protocol = enum.Enum(
-    "Protocol",
-    {protocol.upper(): protocol for protocol in ProtocolsProvider.get_protocols()},
-)
-
-
-@classmethod
-def _remote_protocols(cls):
-    # Returns a list of protocols that support remote storage
-    # These protocols should only be used with paths that end in
-    # ".zip", ".whl", ".tar.gz", or ".tgz"
-    return [
-        cls[protocol.upper()] for protocol in ProtocolsProvider.get_remote_protocols()
-    ]
-
-
-Protocol.remote_protocols = _remote_protocols
 
 
 def _download_remote_uri(self, source_uri, dest_file):

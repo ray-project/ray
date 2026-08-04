@@ -189,8 +189,13 @@ class GcsServer {
           &placement_group_scheduling_latency_in_ms_histogram,
       ray::observability::MetricInterface &placement_group_count_gauge);
 
-  /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  /**
+   * @brief Initialize the GCS worker manager and rebuild its dead-worker queue from the
+   * startup snapshot.
+   *
+   * @param gcs_init_data Metadata loaded from the store at startup.
+   */
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,
@@ -199,6 +204,9 @@ class GcsServer {
 
   /// Initialize gcs autoscaling manager.
   void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
+
+  /// Start the periodic resource load pull.
+  void InitGcsResourceLoadPuller();
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
@@ -255,11 +263,14 @@ class GcsServer {
   rpc::ClientCallManager client_call_manager_;
   rpc::RayletClientPool raylet_client_pool_;
   rpc::CoreWorkerClientPool worker_client_pool_;
+  rpc::ClientCallManager resource_load_pull_client_call_manager_;
+  rpc::RayletClientPool resource_load_pull_raylet_client_pool_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// gcs_resource_manager_ depends on cluster_lease_manager_.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
+  std::unique_ptr<GcsResourceLoadPuller> resource_load_puller_;
   /// A publisher for publishing gcs messages (control-plane pubsub channels).
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   /// Publisher for observability pubsub (logs, errors, dashboard resource JSON).
@@ -299,6 +310,8 @@ class GcsServer {
   /// gRPC based pubsub's periodical runner.
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
   std::shared_ptr<PeriodicalRunner> observability_pubsub_periodical_runner_;
+  /// The resource load pull's periodical runner.
+  std::shared_ptr<PeriodicalRunner> resource_load_pull_periodical_runner_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// GCS service state flag, which is used for unit tests.

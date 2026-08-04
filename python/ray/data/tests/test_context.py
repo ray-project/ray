@@ -1,12 +1,27 @@
 import pytest
 
 import ray
+from ray.util.annotations import RayDeprecationWarning
 
 
 def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
     ctx = ray.data.DataContext.get_current()
     with pytest.warns(DeprecationWarning):
         ctx.write_file_retry_on_errors = []
+
+
+@pytest.mark.parametrize(
+    ("attr", "value"),
+    [
+        ("scheduling_strategy", "DEFAULT"),
+        ("scheduling_strategy_large_args", "SPREAD"),
+        ("large_args_threshold", 1),
+    ],
+)
+def test_scheduling_config_emits_deprecation_warning(attr, value):
+    ctx = ray.data.DataContext()
+    with pytest.warns(RayDeprecationWarning, match=rf"DataContext\.{attr}"):
+        setattr(ctx, attr, value)
 
 
 def test_data_context_current_context_manager():

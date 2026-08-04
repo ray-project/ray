@@ -352,7 +352,6 @@ py_test_module_list(
         "test_scheduling.py",
         "test_shuffle.py",
         "test_state_api_log.py",
-        "test_streaming_generator.py",
         "test_streaming_generator_2.py",
         "test_streaming_generator_3.py",
         "test_streaming_generator_4.py",
@@ -923,6 +922,9 @@ py_test_module_list(
         "test_serialization.py",
         "test_state_api.py",
         "test_state_api_data_source_client_get.py",
+        # In the large shard for its timeout: passing Windows runs take ~296s,
+        # right at the moderate (300s) limit, so it flake-times-out there.
+        "test_streaming_generator.py",
         "test_streaming_generator_backpressure.py",
         "test_task_events.py",
         "test_task_events_2.py",

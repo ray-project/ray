@@ -6,8 +6,14 @@ from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_ENTROPY_CO
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER, LR_KEY
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import LEARNER_RESULTS
-from ray.rllib.utils.test_utils import check, check_train_results_new_api_stack
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.test_utils import (
+    check,
+    check_train_results,
+    check_train_results_new_api_stack,
+)
 
 
 def get_model_config(lstm=False):
@@ -157,6 +163,42 @@ class TestPPO(unittest.TestCase):
         # Check the variable is updated.
         post_std = get_value()
         assert post_std != 0.0, post_std
+        algo.stop()
+
+    def test_ppo_use_kl_loss_false_zeroes_kl_term(self):
+        """Test that use_kl_loss=False zeroes out the KL term regardless of kl_coeff.
+
+        Previously, the old API stack PPO policy checked kl_coeff > 0.0 instead
+        of use_kl_loss, so the KL term was incorrectly added when use_kl_loss=False
+        but kl_coeff was positive.
+        """
+        config = (
+            ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=1)
+            .training(
+                use_kl_loss=False,
+                kl_coeff=100.0,  # Large value – must not affect loss when flag is False
+                num_epochs=2,
+                train_batch_size=200,
+            )
+        )
+
+        algo = config.build()
+        results = algo.train()
+        check_train_results(results)
+
+        learner_stats = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+            LEARNER_STATS_KEY
+        ]
+        # KL should be 0 when use_kl_loss=False (mean_kl_loss is set to 0).
+        kl = learner_stats.get("kl", 0)
+        self.assertEqual(kl, 0.0, f"kl should be 0 when use_kl_loss=False, got {kl}")
+
         algo.stop()
 
 
