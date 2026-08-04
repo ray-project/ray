@@ -1143,7 +1143,11 @@ def test_get_id_not_found(shutdown_only):
 @patch.object(
     StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_client: None
 )
-async def test_state_data_source_client_get_all_task_info_no_early_return():
+async def test_state_data_source_client_get_all_task_info_no_early_return(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", False
+    )
+
     #  Setup
     mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
 
