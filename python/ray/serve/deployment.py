@@ -181,6 +181,16 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
+    def backpressure_status_code(self) -> int:
+        """HTTP status code returned for requests rejected due to backpressure."""
+        return self._deployment_config.backpressure_status_code
+
+    @property
+    def backpressure_retry_after_s(self) -> Optional[float]:
+        """`Retry-After` header value for requests rejected due to backpressure."""
+        return self._deployment_config.backpressure_retry_after_s
+
+    @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
         return self._replica_config.ray_actor_options
@@ -230,6 +240,8 @@ class Deployment:
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
         max_queued_requests: Default[int] = DEFAULT.VALUE,
+        backpressure_status_code: Default[int] = DEFAULT.VALUE,
+        backpressure_retry_after_s: Default[Optional[float]] = DEFAULT.VALUE,
         autoscaling_config: Default[
             Union[Dict, AutoscalingConfig, None]
         ] = DEFAULT.VALUE,
@@ -321,6 +333,14 @@ class Deployment:
 
         if max_queued_requests is not DEFAULT.VALUE:
             new_deployment_config.max_queued_requests = max_queued_requests
+
+        if backpressure_status_code is not DEFAULT.VALUE:
+            new_deployment_config.backpressure_status_code = backpressure_status_code
+
+        if backpressure_retry_after_s is not DEFAULT.VALUE:
+            new_deployment_config.backpressure_retry_after_s = (
+                backpressure_retry_after_s
+            )
 
         if max_constructor_retry_count is not DEFAULT.VALUE:
             new_deployment_config.max_constructor_retry_count = (
@@ -488,6 +508,8 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         else d.num_replicas,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
+        "backpressure_status_code": d.backpressure_status_code,
+        "backpressure_retry_after_s": d.backpressure_retry_after_s,
         "user_config": d.user_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
         "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
@@ -557,6 +579,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         user_config=s.user_config,
         max_ongoing_requests=s.max_ongoing_requests,
         max_queued_requests=s.max_queued_requests,
+        backpressure_status_code=s.backpressure_status_code,
+        backpressure_retry_after_s=s.backpressure_retry_after_s,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,

@@ -523,6 +523,8 @@ def deployment(
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
+    backpressure_status_code: Default[int] = DEFAULT.VALUE,
+    backpressure_retry_after_s: Default[Optional[float]] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
@@ -592,6 +594,13 @@ def deployment(
             Once this limit is reached, subsequent requests will raise a
             BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
             requests). Defaults to -1 (no limit).
+        backpressure_status_code: HTTP status code returned for requests rejected
+            due to backpressure (`max_queued_requests` exceeded). Must be 503
+            (default) or 429. Requests rejected because the deployment is
+            unavailable (e.g., it failed to deploy) always return 503.
+        backpressure_retry_after_s: If set, HTTP responses rejected due to
+            backpressure include a `Retry-After` header with this value (rounded
+            up to an integer number of seconds). Defaults to None (no header).
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` should be "auto" or not set.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
@@ -691,6 +700,8 @@ def deployment(
         user_config=user_config,
         max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
+        backpressure_status_code=backpressure_status_code,
+        backpressure_retry_after_s=backpressure_retry_after_s,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,

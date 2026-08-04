@@ -123,6 +123,7 @@ from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
     parse_disconnect_disabled_header,
+    retry_after_headers,
     parse_request_timeout_header,
     parse_session_id_header,
     start_asgi_http_server,
@@ -2168,6 +2169,14 @@ class Replica:
     def max_queued_requests(self) -> int:
         return self._deployment_config.max_queued_requests
 
+    @property
+    def backpressure_status_code(self) -> int:
+        return self._deployment_config.backpressure_status_code
+
+    @property
+    def backpressure_retry_after_s(self) -> Optional[float]:
+        return self._deployment_config.backpressure_retry_after_s
+
     async def _maybe_start_direct_ingress_servers(self):
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
@@ -3011,7 +3020,8 @@ class Replica:
             # because between incrementing and decrementing the queued requests, we yield to the event loop.
             for msg in convert_object_to_asgi_messages(
                 "Request dropped due to backpressure",
-                status_code=503,
+                status_code=self.backpressure_status_code,
+                extra_headers=retry_after_headers(self.backpressure_retry_after_s),
             ):
                 await send(msg)
             return
@@ -4364,7 +4374,16 @@ class UserCallableWrapper:
         return result
 
     def handle_exception(self, exc: Exception):
-        if isinstance(exc, self.service_unavailable_exceptions):
+        if isinstance(exc, BackPressureError):
+            headers = retry_after_headers(exc.retry_after_s)
+            return starlette.responses.Response(
+                exc.message,
+                status_code=exc.status_code,
+                headers=(
+                    {k.decode(): v.decode() for k, v in headers} if headers else None
+                ),
+            )
+        elif isinstance(exc, self.service_unavailable_exceptions):
             return starlette.responses.Response(exc.message, status_code=503)
         else:
             return starlette.responses.Response(

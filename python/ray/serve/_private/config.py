@@ -1,6 +1,6 @@
 import inspect
 import json
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 
 from google.protobuf.descriptor import FieldDescriptor  # type: ignore[import-untyped]
 from google.protobuf.message import Message  # type: ignore[import-untyped]
@@ -134,6 +134,13 @@ class DeploymentConfig(BaseModel):
             reached, subsequent requests will raise a BackPressureError (for handles) or
             return an HTTP 503 status code (for HTTP requests). Defaults to -1 (no
             limit).
+        backpressure_status_code: HTTP status code returned when a request is
+            rejected due to backpressure (`max_queued_requests` exceeded). Must
+            be 503 (default) or 429.
+        backpressure_retry_after_s: If set, HTTP responses rejected due to
+            backpressure include a `Retry-After` header with this value
+            (rounded up to an integer number of seconds). Defaults to None (no
+            header).
         user_config: Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
             user_config is not None. Must be JSON-serializable.
@@ -168,6 +175,14 @@ class DeploymentConfig(BaseModel):
     )
     max_queued_requests: int = Field(
         default=-1,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+    backpressure_status_code: Literal[503, 429] = Field(
+        default=503,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+    backpressure_retry_after_s: Optional[NonNegativeFloat] = Field(
+        default=None,
         update_type=DeploymentOptionUpdateType.LightWeight,
     )
     user_config: Any = Field(
@@ -333,6 +348,8 @@ class DeploymentConfig(BaseModel):
 
     def to_proto(self):
         data = self.model_dump()
+        if data.get("backpressure_retry_after_s") is None:
+            data.pop("backpressure_retry_after_s", None)
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])

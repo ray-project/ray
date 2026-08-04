@@ -68,6 +68,30 @@ To test the behavior, send HTTP requests in parallel to emulate multiple clients
 :language: python
 ```
 
+### Customizing the load shedding response
+
+By default, requests rejected due to backpressure return a `503` status code, the same status code returned when a deployment is unavailable (for example, because it failed to deploy). To let clients and infrastructure distinguish deliberate load shedding ("slow down and retry") from a service failure, you can configure the rejection response with two additional deployment options:
+
+- `backpressure_status_code`: The HTTP status code returned for requests rejected due to backpressure. Must be `503` (the default) or `429` (Too Many Requests). Requests rejected because the deployment is unavailable always return `503`. On the gRPC path, backpressure rejections always map to `RESOURCE_EXHAUSTED`, consistent with `429`.
+- `backpressure_retry_after_s`: If set, rejected HTTP responses include a [`Retry-After` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After) with this value, rounded up to an integer number of seconds. Clients and SDKs that honor `Retry-After` use it to pace their retries. The header can be combined with either status code; it's valid on `503` as well as `429`.
+
+```python
+@serve.deployment(
+    max_ongoing_requests=2,
+    max_queued_requests=2,
+    # Return "429 Too Many Requests" instead of "503 Service Unavailable"
+    # when shedding load, with a suggested retry delay of 5 seconds.
+    backpressure_status_code=429,
+    backpressure_retry_after_s=5,
+)
+class SlowDeployment:
+    ...
+```
+
+:::{note}
+If you switch to `429`, dashboards and alerts that track load shedding via `5xx` rates no longer see these rejections. Monitor the `429` rate (for example, using the `status_code` tag on Serve's HTTP request metrics) so that capacity exhaustion stays visible.
+:::
+
 ```bash
 2024-02-28 11:12:22,287 INFO worker.py:1744 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ProxyActor pid=21011) INFO 2024-02-28 11:12:24,088 proxy 127.0.0.1 proxy.py:1140 - Proxy actor 15b7c620e64c8c69fb45559001000000 starting on node ebc04d744a722577f3a049da12c9f83d9ba6a4d100e888e5fcfa19d9.

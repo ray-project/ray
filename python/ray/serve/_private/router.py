@@ -248,6 +248,8 @@ class RouterMetricsManager:
             e = BackPressureError(
                 num_queued_requests=self.num_queued_requests,
                 max_queued_requests=max_queued_requests,
+                status_code=self._deployment_config.backpressure_status_code,
+                retry_after_s=self._deployment_config.backpressure_retry_after_s,
             )
             logger.warning(e.message)
             raise e

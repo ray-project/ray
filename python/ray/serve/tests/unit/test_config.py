@@ -190,6 +190,78 @@ class TestDeploymentConfig:
         # Test default value
         assert DeploymentConfig().max_constructor_retry_count == 20
 
+    def test_backpressure_status_code_validation(self):
+        # Only 503 (the default) and 429 are allowed.
+        assert DeploymentConfig().backpressure_status_code == 503
+        assert (
+            DeploymentConfig(backpressure_status_code=429).backpressure_status_code
+            == 429
+        )
+        assert (
+            DeploymentConfig(backpressure_status_code=503).backpressure_status_code
+            == 503
+        )
+
+        with pytest.raises(ValidationError):
+            DeploymentConfig(backpressure_status_code=404)
+        with pytest.raises(ValidationError):
+            DeploymentConfig(backpressure_status_code=200)
+        with pytest.raises(ValidationError):
+            DeploymentConfig(backpressure_status_code=None)
+
+    def test_backpressure_retry_after_s_validation(self):
+        # None (the default) means no `Retry-After` header.
+        assert DeploymentConfig().backpressure_retry_after_s is None
+        assert (
+            DeploymentConfig(
+                backpressure_retry_after_s=None
+            ).backpressure_retry_after_s
+            is None
+        )
+        # 0 is legal: "retry immediately."
+        assert (
+            DeploymentConfig(backpressure_retry_after_s=0).backpressure_retry_after_s
+            == 0
+        )
+        assert (
+            DeploymentConfig(
+                backpressure_retry_after_s=7.5
+            ).backpressure_retry_after_s
+            == 7.5
+        )
+
+        with pytest.raises(ValidationError):
+            DeploymentConfig(backpressure_retry_after_s=-1)
+        with pytest.raises(ValidationError):
+            DeploymentConfig(backpressure_retry_after_s="hello")
+
+    def test_backpressure_fields_proto_round_trip(self):
+        # Explicit values survive the proto round trip.
+        config = DeploymentConfig(
+            backpressure_status_code=429, backpressure_retry_after_s=7.5
+        )
+        round_tripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert round_tripped.backpressure_status_code == 429
+        assert round_tripped.backpressure_retry_after_s == 7.5
+
+        # Defaults survive the round trip (None must not become 0.0).
+        round_tripped = DeploymentConfig.from_proto_bytes(
+            DeploymentConfig().to_proto_bytes()
+        )
+        assert round_tripped.backpressure_status_code == 503
+        assert round_tripped.backpressure_retry_after_s is None
+
+        # Protos from older versions don't have the fields at all (e.g., sent
+        # by an older controller during a rolling upgrade); simulate by
+        # clearing them so they're absent from the wire format. They must
+        # fall back to the defaults.
+        old_proto = DeploymentConfig().to_proto()
+        old_proto.ClearField("backpressure_status_code")
+        old_proto.ClearField("backpressure_retry_after_s")
+        from_old_proto = DeploymentConfig.from_proto(old_proto)
+        assert from_old_proto.backpressure_status_code == 503
+        assert from_old_proto.backpressure_retry_after_s is None
+
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
 

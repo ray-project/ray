@@ -4,13 +4,14 @@ from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
 from zlib import crc32
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    NonNegativeFloat,
     NonNegativeInt,
     PositiveInt,
     StrictInt,
@@ -345,6 +346,22 @@ class DeploymentSchema(BaseModel):
             "(no limit)."
         ),
     )
+    backpressure_status_code: Literal[503, 429] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "HTTP status code returned when a request to this deployment is "
+            "rejected due to backpressure (`max_queued_requests` exceeded). "
+            "Must be 503 (default) or 429."
+        ),
+    )
+    backpressure_retry_after_s: Optional[NonNegativeFloat] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "If set, HTTP responses rejected due to backpressure include a "
+            "`Retry-After` header with this value (rounded up to an integer "
+            "number of seconds). Defaults to null (no header)."
+        ),
+    )
     user_config: Optional[Dict] = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -666,6 +683,8 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         name=name,
         max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
+        backpressure_status_code=info.deployment_config.backpressure_status_code,
+        backpressure_retry_after_s=info.deployment_config.backpressure_retry_after_s,
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s

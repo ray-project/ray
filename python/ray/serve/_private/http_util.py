@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import json
 import logging
+import math
 import pickle
 import socket
 from collections import deque
@@ -109,7 +110,9 @@ def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
 
 
 def convert_object_to_asgi_messages(
-    obj: Optional[Any] = None, status_code: int = 200
+    obj: Optional[Any] = None,
+    status_code: int = 200,
+    extra_headers: Optional[List[Tuple[bytes, bytes]]] = None,
 ) -> List[Message]:
     """Serializes the provided object and converts it to ASGI messages.
 
@@ -137,11 +140,15 @@ def convert_object_to_asgi_messages(
         ).encode()
         content_type = b"application/json"
 
+    headers = [[b"content-type", content_type]]
+    if extra_headers:
+        headers.extend(list(header) for header in extra_headers)
+
     return [
         {
             "type": "http.response.start",
             "status": status_code,
-            "headers": [[b"content-type", content_type]],
+            "headers": headers,
         },
         {"type": "http.response.body", "body": body},
     ]
@@ -927,7 +934,16 @@ def get_http_response_status(
             is_error=True,
             message=message,
         )
-    elif isinstance(exc, (BackPressureError, DeploymentUnavailableError)):
+    elif isinstance(exc, BackPressureError):
+        if isinstance(exc, RayTaskError):
+            logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
+        return ResponseStatus(
+            code=exc.status_code,
+            is_error=True,
+            message=exc.message,
+            headers=retry_after_headers(exc.retry_after_s),
+        )
+    elif isinstance(exc, DeploymentUnavailableError):
         if isinstance(exc, RayTaskError):
             logger.warning(f"Request failed: {exc}", extra={"log_to_stderr": False})
         return ResponseStatus(
@@ -947,16 +963,31 @@ def get_http_response_status(
         )
 
 
+def retry_after_headers(
+    retry_after_s: Optional[float],
+) -> Optional[List[Tuple[bytes, bytes]]]:
+    """Builds a `Retry-After` header from a delay in seconds.
+
+    The header value must be a non-negative integer number of seconds
+    (RFC 9110 `delay-seconds`), so the value is rounded up to avoid
+    suggesting a retry earlier than configured.
+    """
+    if retry_after_s is None:
+        return None
+    return [(b"retry-after", str(math.ceil(retry_after_s)).encode())]
+
+
 def send_http_response_on_exception(
     status: ResponseStatus, response_started: bool
 ) -> List[Message]:
-    if response_started or status.code not in (408, 503):
+    if response_started or status.code not in (408, 429, 503):
         return []
     return convert_object_to_asgi_messages(
         status.message,
         # `ResponseStatus.code` is a `Union` shared with gRPC, but on the HTTP
         # path it's always an `int` status code.
         status_code=status.code,  # type: ignore[arg-type]
+        extra_headers=status.headers,
     )
 
 
