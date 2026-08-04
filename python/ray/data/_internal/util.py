@@ -1719,6 +1719,10 @@ class MemoryProfiler:
 
         self._process = psutil.Process(os.getpid())
         self._max_uss = None
+        # Peak RSS, sampled by the same poll (memory_info() returns both). RSS
+        # counts shared pages (e.g. mapped plasma blocks) that USS excludes, so
+        # the pair distinguishes private decode memory from OS-visible footprint.
+        self._max_rss = None
         self._max_uss_lock = threading.Lock()
 
         self._uss_poll_thread = None
@@ -1752,17 +1756,31 @@ class MemoryProfiler:
             return None
 
         with self._max_uss_lock:
-            if self._max_uss is None:
-                self._max_uss = self._estimate_uss()
-            else:
-                self._max_uss = max(self._max_uss, self._estimate_uss())
+            self._sample()
 
         assert self._max_uss is not None
         return self._max_uss
 
+    def max_rss(self) -> Optional[int]:
+        """Get the max RSS of the current process observed by the poll.
+
+        Sampled by the same poll as :meth:`estimate_max_uss` (Linux-only, like
+        USS, so the two metrics always appear together). Returns ``None`` when
+        unavailable.
+        """
+        if not self._can_estimate_uss():
+            assert self._max_rss is None
+            return None
+
+        with self._max_uss_lock:
+            self._sample()
+
+        return self._max_rss
+
     def reset(self):
         with self._max_uss_lock:
             self._max_uss = None
+            self._max_rss = None
 
     def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
         assert self._poll_interval_s is not None
@@ -1773,10 +1791,7 @@ class MemoryProfiler:
         def poll_uss():
             while not stop_event.is_set():
                 with self._max_uss_lock:
-                    if self._max_uss is None:
-                        self._max_uss = self._estimate_uss()
-                    else:
-                        self._max_uss = max(self._max_uss, self._estimate_uss())
+                    self._sample()
                 stop_event.wait(self._poll_interval_s)
 
         thread = threading.Thread(target=poll_uss, daemon=True)
@@ -1789,13 +1804,25 @@ class MemoryProfiler:
             self._stop_uss_poll_event.set()
             self._uss_poll_thread.join()
 
-    def _estimate_uss(self) -> int:
+    def _sample(self):
+        """Take one memory sample and fold it into the running maxima.
+
+        Caller must hold ``self._max_uss_lock``.
+        """
         assert self._can_estimate_uss()
         memory_info = self._process.memory_info()
         # Estimate the USS (the amount of memory that'd be free if we killed the
         # process right now) as the difference between the RSS (total physical memory)
         # and amount of shared physical memory.
-        return memory_info.rss - memory_info.shared
+        uss = memory_info.rss - memory_info.shared
+        if self._max_uss is None:
+            self._max_uss = uss
+        else:
+            self._max_uss = max(self._max_uss, uss)
+        if self._max_rss is None:
+            self._max_rss = memory_info.rss
+        else:
+            self._max_rss = max(self._max_rss, memory_info.rss)
 
     @staticmethod
     @functools.cache
