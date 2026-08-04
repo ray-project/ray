@@ -15,13 +15,8 @@ from ray.data._internal.planner._obstore_download import (
     _split_obstore_uri,
 )
 from ray.data._internal.planner.download_partitioner import (  # noqa: F401
-    URI_METADATA_CHUNK_SIZE,
-    URI_PARTITION_NUM_BUCKETS,
-    MetadataPredicate,
-    SizeAnnotator,
     SizesByColumn,
     _ExactDownloadPartitioner,
-    _FileSizeProvider,
 )
 from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.block import BlockAccessor
@@ -48,11 +43,6 @@ def _validate_uri_columns(block: pa.Table, uri_column_names: List[str]) -> None:
                 f"{uri_column_name!r}, but a column with that name doesn't "
                 "exist. Is the specified download column correct?"
             )
-
-
-def _get_target_min_block_size(data_context: DataContext) -> Optional[int]:
-    target_min_block_size = getattr(data_context, "target_min_block_size", None)
-    return target_min_block_size if isinstance(target_min_block_size, int) else None
 
 
 class _PyArrowFileSizeProvider:
@@ -114,7 +104,7 @@ class _PyArrowFileSizeProvider:
         assert all(
             size is not None for size in file_sizes
         ), "File size metadata did not complete for all paths"
-        return [size for size in file_sizes if size is not None]
+        return file_sizes
 
 
 class _ObstoreFileSizeProvider:
@@ -188,7 +178,7 @@ class PartitionActor:
             uri_column_names,
             data_context.target_max_block_size,
             self._size_provider,
-            target_min_nbytes=_get_target_min_block_size(data_context),
+            target_min_nbytes=data_context.target_min_block_size,
         )
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
@@ -231,7 +221,7 @@ class AsyncPartitionActor:
             self._size_provider,
             annotate_sizes=self._annotate_file_size_columns,
             fetch_metadata_without_target=self._should_annotate_file_size_columns,
-            target_min_nbytes=_get_target_min_block_size(data_context),
+            target_min_nbytes=data_context.target_min_block_size,
         )
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:

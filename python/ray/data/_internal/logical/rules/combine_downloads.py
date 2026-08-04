@@ -69,11 +69,6 @@ class CombineDownloads(Rule):
         def _combine_downloads(op: LogicalOperator) -> LogicalOperator:
             if not isinstance(op, Download):
                 return op
-
-            assert len(op.input_dependencies) == 1, (
-                f"Expected `Download` to have exactly one input dependency, but got "
-                f"{len(op.input_dependencies)}"
-            )
             input_op = op.input_dependencies[0]
 
             # Check if the input is also a Download operator
