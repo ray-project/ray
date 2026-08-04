@@ -358,6 +358,7 @@ class TestKineticaDatasink:
 
     def test_string_mode(self):
         """Test datasink accepts string mode values."""
+        schema = pa.schema([pa.field("id", pa.int64())])
         with patch(
             "ray.data._internal.datasource.kinetica_datasink.KineticaDatasink._init_client"
         ):
@@ -365,6 +366,7 @@ class TestKineticaDatasink:
                 url="http://localhost:9191",
                 table_name="test_table",
                 mode="overwrite",
+                schema=schema,
             )
             assert ds._mode == KineticaSinkMode.OVERWRITE
 

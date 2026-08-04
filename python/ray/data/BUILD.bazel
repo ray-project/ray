@@ -2051,6 +2051,21 @@ py_test(
 )
 
 py_test(
+    name = "test_kinetica",
+    size = "small",
+    srcs = ["tests/datasource/test_kinetica.py"],
+    tags = [
+        "data_integration",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_lance",
     size = "small",
     srcs = ["tests/datasource/test_lance.py"],
