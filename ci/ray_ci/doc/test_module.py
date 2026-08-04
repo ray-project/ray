@@ -19,5 +19,13 @@ def test_walk():
     assert module._module not in module._visited
 
 
+def test_walk_ignores_inherited_api_annotations():
+    module = Module("ci.ray_ci.doc.mock.mock_module")
+
+    assert "ci.ray_ci.doc.mock.mock_module.InheritedAnnotation" not in {
+        api.name for api in module.get_apis()
+    }
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
