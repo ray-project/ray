@@ -1,7 +1,6 @@
 import os
 import random
 from typing import Any, Dict, Generator, List, Tuple, Type
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -22,10 +21,7 @@ from pyiceberg.transforms import IdentityTransform
 
 import ray
 from ray.data import read_iceberg
-from ray.data._internal.datasource.iceberg_datasource import (
-    IcebergDatasource,
-    _IcebergReadTaskSharedState,
-)
+from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
@@ -213,31 +209,26 @@ def test_get_read_tasks():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_get_read_tasks_share_scan_state():
+def test_read_task_remains_compact_with_large_table_metadata():
+    shared_metadata = "x" * (1024 * 1024)
+    catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    with table.transaction() as transaction:
+        transaction.set_properties({"ray.test.large_metadata": shared_metadata})
+
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
         catalog_kwargs=_CATALOG_KWARGS.copy(),
     )
-    state_ref = ray.put(None)
+    read_task_ref = ray.put(iceberg_ds.get_read_tasks(1)[0])
 
-    with (
-        patch(
-            "ray.data._internal.datasource.iceberg_datasource.ray.put",
-            return_value=state_ref,
-        ) as put,
-        patch(
-            "ray.data._internal.datasource.iceberg_datasource._get_read_task_from_shared_state",
-            return_value=[],
-        ) as read,
-    ):
-        read_tasks = iceberg_ds.get_read_tasks(5)
-        for read_task in read_tasks:
-            list(read_task())
+    read_task_size = ray.experimental.get_local_object_locations([read_task_ref])[
+        read_task_ref
+    ]["object_size"]
+    assert read_task_size < len(shared_metadata) // 2
 
-    put.assert_called_once()
-    assert isinstance(put.call_args.args[0], _IcebergReadTaskSharedState)
-    assert read.call_count == len(read_tasks)
-    assert all(call.kwargs["state_ref"] == state_ref for call in read.call_args_list)
+    read_task = ray.get(read_task_ref)
+    assert sum(block.num_rows for block in read_task()) == 101
 
 
 @pytest.mark.skipif(
