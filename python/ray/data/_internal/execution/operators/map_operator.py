@@ -886,6 +886,7 @@ def _map_task(
                             task_exec_stats=TaskExecWorkerStats(
                                 task_wall_time_s=task_dur_s,
                                 max_uss_bytes=profiler.estimate_max_uss(),
+                                max_rss_bytes=profiler.max_rss(),
                                 # Reported by producing transforms through the
                                 # per-task reporter; empty if the op reports nothing.
                                 custom_op_stats=op_stats_reporter.get_stats(),
