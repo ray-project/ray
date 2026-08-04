@@ -124,10 +124,10 @@ def test_flight_fetch_wire_format(tmp_path):
 
     fd, sink = _open_sink(tmp_path)
     try:
-        with _running_flight_server(tmp_path, "t") as endpoint:
+        with _running_flight_server(tmp_path, "auth-token") as endpoint:
             _stream_members_flight(
                 endpoint,
-                "t",
+                "auth-token",
                 [_FileRanges(path="s.bin", ranges=[(0, 12), (12, 12)])],
                 max_bytes=1 << 20,
                 sink=sink,
@@ -193,7 +193,7 @@ def test_flight_unreachable_is_connection_error(tmp_path):
             with pytest.raises(ConnectionError):
                 _stream_members_flight(
                     ("127.0.0.1", port, "test-incarnation"),
-                    "t",
+                    "auth-token",
                     [_FileRanges(path="x.bin", ranges=[(0, 4)])],
                     max_bytes=1 << 20,
                     sink=sink,
@@ -212,11 +212,11 @@ def test_flight_short_read_fails(tmp_path):
     (tmp_path / "s.bin").write_bytes(b"only8byt")  # 8 bytes
     fd, sink = _open_sink(tmp_path)
     try:
-        with _running_flight_server(tmp_path, "t") as endpoint:
+        with _running_flight_server(tmp_path, "auth-token") as endpoint:
             with pytest.raises(ConnectionError, match="short read"):
                 _stream_members_flight(
                     endpoint,
-                    "t",
+                    "auth-token",
                     [_FileRanges(path="s.bin", ranges=[(0, 64)])],  # asks for 64
                     max_bytes=1 << 20,
                     sink=sink,
@@ -233,10 +233,10 @@ def test_prefetch_node_into(tmp_path):
     payload = b"SHARD_" * 8  # 48 bytes
     (tmp_path / "s.bin").write_bytes(payload)
     fd, sink = _open_sink(tmp_path)
-    shuffle_id, node_id = "sh", "n1"
+    shuffle_id, node_id = "shuffle-0", "node-1"
     key = _file_server_name(shuffle_id, node_id)
     try:
-        with _running_flight_server(tmp_path, "tok") as (host, port, incarnation):
+        with _running_flight_server(tmp_path, "auth-token") as (host, port, incarnation):
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE[key] = _Endpoint(host, port, incarnation)
             try:
@@ -244,7 +244,7 @@ def test_prefetch_node_into(tmp_path):
                     sink,
                     shuffle_id,
                     node_id,
-                    "tok",
+                    "auth-token",
                     [_FileRanges(path="s.bin", ranges=[(0, 24), (24, 24)])],
                     max_bytes_per_fetch=1 << 20,
                 )
@@ -286,34 +286,34 @@ def test_chunk_members_by_bytes():
 
 def test_group_by_server():
     # Same (shuffle_id, node_id) collapses; distinct pairs stay separate.
-    s0 = _SourceRef("sh", "n1", "tok", _FileRanges("a", [(0, 4)]))
-    s1 = _SourceRef("sh", "n2", "tok", _FileRanges("b", [(0, 8)]))
-    s2 = _SourceRef("sh", "n1", "tok", _FileRanges("c", [(0, 2)]))
+    s0 = _SourceRef("shuffle-0", "node-1", "auth-token", _FileRanges("a", [(0, 4)]))
+    s1 = _SourceRef("shuffle-0", "node-2", "auth-token", _FileRanges("b", [(0, 8)]))
+    s2 = _SourceRef("shuffle-0", "node-1", "auth-token", _FileRanges("c", [(0, 2)]))
 
     groups = _group_by_server([s0, s1, s2])
     by_node = {g.node_id: g for g in groups}
-    assert set(by_node) == {"n1", "n2"}
+    assert set(by_node) == {"node-1", "node-2"}
 
     # Members within a group are in original input order.
-    assert [m.path for m in by_node["n1"].members] == ["a", "c"]
-    assert [m.path for m in by_node["n2"].members] == ["b"]
+    assert [m.path for m in by_node["node-1"].members] == ["a", "c"]
+    assert [m.path for m in by_node["node-2"].members] == ["b"]
 
 
 def test_compute_prefetch_layout():
     # Each range contributes 8 (u64 len prefix) + range_length to the group's
     # size. base_offsets are the running cumulative sum.
     g0 = _NodeGroup(
-        "sh",
-        "n1",
-        "tok",
+        "shuffle-0",
+        "node-1",
+        "auth-token",
         members=[
             _FileRanges(path="a", ranges=[(0, 10), (10, 10)]),  # (8+10)*2 = 36
         ],
     )
     g1 = _NodeGroup(
-        "sh",
-        "n2",
-        "tok",
+        "shuffle-0",
+        "node-2",
+        "auth-token",
         members=[
             _FileRanges(path="b", ranges=[(0, 100)]),  # 8+100 = 108
         ],
