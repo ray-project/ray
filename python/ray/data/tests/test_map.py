@@ -1559,7 +1559,6 @@ def test_downstream_operators_scheduled_on_different_workers_than_read_workers(
     ray.data.read_datasource(SetMarkerDatasource()).map(
         check_marker_not_set
     ).materialize()
-    assert False
 
 
 @pytest.mark.parametrize(
