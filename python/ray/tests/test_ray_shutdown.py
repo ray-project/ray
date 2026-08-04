@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import platform
+import select
 import signal
 import sys
 import time
@@ -9,7 +10,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private import ray_constants
+from ray._private import ray_constants, utils
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
@@ -538,6 +539,102 @@ def test_kill_actor_after_restart(shutdown_only):
 
     ray.shutdown()
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
+@pytest.mark.parametrize("sigterm_handler", [signal.SIG_DFL, signal.SIG_IGN])
+def test_set_sigterm_handler_preserves_non_callable_handlers(
+    monkeypatch, sigterm_handler
+):
+    installed_handlers = []
+    monkeypatch.setattr(
+        signal,
+        "signal",
+        lambda signum, handler: installed_handlers.append((signum, handler)),
+    )
+
+    utils.set_sigterm_handler(sigterm_handler)
+
+    expected_signal = signal.SIGBREAK if sys.platform == "win32" else signal.SIGTERM
+    assert installed_handlers == [(expected_signal, sigterm_handler)]
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="POSIX signals only.")
+def test_set_sigterm_handler_cancels_alarm_before_calling_handler(monkeypatch):
+    installed_handlers = []
+    events = []
+    monkeypatch.setattr(
+        signal,
+        "signal",
+        lambda signum, handler: installed_handlers.append((signum, handler)),
+    )
+    monkeypatch.setattr(
+        signal, "alarm", lambda seconds: events.append(("alarm", seconds))
+    )
+
+    def handler(signum, frame):
+        events.append(("handler", signum, frame))
+
+    utils.set_sigterm_handler(handler)
+    assert len(installed_handlers) == 1
+
+    signum, installed_handler = installed_handlers[0]
+    frame = object()
+    installed_handler(signum, frame)
+
+    assert signum == signal.SIGTERM
+    assert events == [
+        ("alarm", 0),
+        ("handler", signal.SIGTERM, frame),
+    ]
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="POSIX signals only.")
+def test_sigterm_during_slow_graceful_exit_does_not_abort():
+    """Regression test for https://github.com/ray-project/ray/issues/64829.
+
+    Ray registers SIGTERM with abseil's failure signal handler, which arms a
+    3s SIGALRM abort timer before chaining into Ray's graceful SIGTERM
+    handler. If the graceful exit outlives that timer (e.g. a driver-owned
+    local node being torn down after a process-group SIGTERM, as on a Jupyter
+    kernel restart), the driver used to die with SIGABRT and dump core into
+    the working directory instead of exiting cleanly.
+    """
+    driver = """
+import atexit
+import time
+
+import ray
+
+ray.init(num_cpus=1)
+
+# Registered after ray.init() so it runs before Ray's atexit shutdown hook;
+# simulates a graceful exit that outlives abseil's 3s abort timer.
+atexit.register(time.sleep, 5)
+
+print("ready", flush=True)
+time.sleep(60)
+"""
+    p = run_string_as_driver_nonblocking(driver)
+    try:
+        # Bounded wait for readiness: poll stdout with select() so a hung
+        # driver fails the test instead of blocking readline() forever.
+        deadline = time.monotonic() + 60
+        while True:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, "Driver never became ready."
+            if select.select([p.stdout], [], [], remaining)[0]:
+                line = p.stdout.readline()
+                assert line, "Driver exited before becoming ready."
+                if line.strip() == b"ready":
+                    break
+
+        p.send_signal(signal.SIGTERM)
+        # Ray's SIGTERM handler recovers into a graceful exit with code
+        # SIGTERM (15). Before the fix, abseil's abort timer killed the
+        # driver with SIGABRT ~3s after the SIGTERM (negative returncode).
+        assert p.wait(timeout=60) == signal.SIGTERM
+    finally:
+        p.kill()
 
 
 if __name__ == "__main__":

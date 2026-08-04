@@ -897,7 +897,20 @@ def set_sigterm_handler(sigterm_handler):
         # SIGINT is Ctrl+C, SIGBREAK is Ctrl+Break.
         signal.signal(signal.SIGBREAK, sigterm_handler)
     else:
-        signal.signal(signal.SIGTERM, sigterm_handler)
+        if not callable(sigterm_handler):
+            signal.signal(signal.SIGTERM, sigterm_handler)
+            return
+
+        def sigterm_handler_wrapper(signum, frame):
+            # abseil's failure signal handler (Ray registers SIGTERM with it)
+            # has already armed a SIGALRM timer that SIGABRTs the process
+            # after 3s. Cancel it, since handlers installed here recover into
+            # a graceful shutdown that may legitimately take longer.
+            if hasattr(signal, "alarm"):
+                signal.alarm(0)
+            sigterm_handler(signum, frame)
+
+        signal.signal(signal.SIGTERM, sigterm_handler_wrapper)
 
 
 def try_to_symlink(symlink_path: str, target_path: str):
