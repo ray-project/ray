@@ -229,7 +229,7 @@ billiard==4.2.4
     # via celery
 black==22.10.0
     # via -r python/requirements/lint-requirements.txt
-bleach==6.3.0
+bleach==6.4.0
     # via nbconvert
 bokeh==3.1.0
     # via
