@@ -20,11 +20,15 @@ C-stream (consumed zero-copy via ``pa.RecordBatchReader.from_stream``):
 - ``read_row_groups(path, row_groups, columns, batch_size, ...)`` — local files.
 - ``read_row_groups_s3(bucket, key, region, anonymous, ...creds..., row_groups,
   columns, batch_size, decode_budget_bytes, fetch_window_mb, k,
-  split_threshold_bytes, prefetch_windows)`` — S3 via the Rust ``object_store``
-  crate, using a **windowed** fetch (only ``fetch_window_mb`` of compressed bytes
-  in flight per stream) so S3 peak RSS is a knob, not a property of the row-group
-  size. ``prefetch_windows`` pipelines consecutive windows (issue window N+1's GET
-  while window N decodes) to hide S3 latency without staging the whole row group.
+  split_threshold_bytes, prefetch_windows, predicate_json, column_fetch_mb)`` — S3
+  via the Rust ``object_store`` crate, using a **windowed** fetch (only
+  ``fetch_window_mb`` of compressed bytes in flight per stream) so S3 peak RSS is a
+  knob, not a property of the row-group size. ``prefetch_windows`` pipelines
+  consecutive windows (issue window N+1's GET while window N decodes) to hide S3
+  latency without staging the whole row group. ``column_fetch_mb`` is the row axis's
+  dual for **wide** schemas: it reads a wide row group's columns in sequential groups
+  so only ``≈column_fetch_mb`` of compressed column chunks are resident at once,
+  instead of arrow-rs's default whole-row-group column fetch.
 
 All of the crate's performance knobs (decode budget, K-split, fetch window,
 prefetch depth) are settable per read through ``dataset_kwargs`` under an
@@ -244,6 +248,25 @@ _ARROW_RS_FETCH_WINDOW_MB = env_integer("RAY_DATA_ARROW_RS_FETCH_WINDOW_MB", 16)
 # memory at the cost of exposing S3 latency between windows.
 _ARROW_RS_PREFETCH_WINDOWS = env_integer("RAY_DATA_ARROW_RS_PREFETCH_WINDOWS", 2)
 
+# Knob ``arrow_rs_column_fetch_mb`` — crate arg ``column_fetch_mb``.
+# S3 column-fetch budget (MiB of *compressed* bytes per column group). This is the
+# memory knob for WIDE schemas. arrow-rs's async reader fetches every projected
+# column chunk of a row group into memory up front (``InMemoryRowGroup``) and holds
+# them all while decoding — so a 5000-column group's whole compressed footprint is
+# resident, which PyArrow avoids (it releases each column chunk as it decodes). When
+# a single row group's projected columns exceed this budget, the native reader reads
+# them in sequential column groups (each ≲ this many compressed bytes), holding only
+# one group's compressed chunks at a time, so peak ≈ ``column_fetch_mb`` + the fully
+# decoded row group (the output, which PyArrow holds too) — asymptotes to PyArrow
+# parity as the budget shrinks. 0 disables (fetch the whole row group at once, the
+# pre-fix behavior). Only affects the S3 path and only engages for wide groups;
+# narrow/small reads partition to a single group and are untouched. Measured on the
+# Linux/S3 run (Agents.md §7.1); the fetch_window_mb knob is its row-axis dual.
+# Tuning: lower (64–128) to cap per-task RSS on wide-schema reads at the cost of more,
+# smaller GETs (column groups fetch sequentially, so throughput can dip); raise to
+# fetch fewer, larger column groups when memory is plentiful.
+_ARROW_RS_COLUMN_FETCH_MB = env_integer("RAY_DATA_ARROW_RS_COLUMN_FETCH_MB", 256)
+
 # Parquet-format kwargs (``pds.ParquetFileFormat``) that tune PyArrow's I/O
 # strategy only — they cannot change decoded bytes, so the native path (which
 # has its own I/O strategy: byte-budgeted streaming + bounded fetch window) may
@@ -300,6 +323,7 @@ class _ArrowRsTuning(NamedTuple):
     split_threshold_bytes: Optional[int]
     fetch_window_mb: int
     prefetch_windows: int
+    column_fetch_mb: int
 
 
 # There is deliberately NO per-type support gate: every type Parquet can store
@@ -1121,6 +1145,9 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             prefetch_windows=resolve(
                 "arrow_rs_prefetch_windows", _ARROW_RS_PREFETCH_WINDOWS, 1
             ),
+            column_fetch_mb=resolve(
+                "arrow_rs_column_fetch_mb", _ARROW_RS_COLUMN_FETCH_MB, 0
+            ),
         )
 
     @cached_property
@@ -1590,6 +1617,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 split_threshold_bytes=split_threshold,
                 prefetch_windows=tuning.prefetch_windows,
                 predicate_json=predicate_json,
+                column_fetch_mb=tuning.column_fetch_mb,
             )
         else:
             reader = ray_data_arrow_rs.read_row_groups(
