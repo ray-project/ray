@@ -7,9 +7,9 @@ from typing import Dict, List, Set, Tuple
 
 import click
 
-from ci.ray_ci.doc.api import API
+from ci.ray_ci.doc.api import API, _is_directly_annotated
 from ci.ray_ci.doc.autodoc import Autodoc
-from ci.ray_ci.doc.module import Module, _is_directly_annotated
+from ci.ray_ci.doc.module import Module
 
 # Each team config carries two exemption lists. Both feed the "every
 # @PublicAPI symbol must be documented" check identically (they're unioned at
@@ -340,8 +340,9 @@ def _import_status(module: str) -> Tuple[bool, bool]:
     """Return (importable, defines_public_api) for a module name.
 
     defines_public_api mirrors the walk's rule: an attribute is a public API of this
-    module only if it is @PublicAPI-annotated (has `_annotated`) AND is defined within
-    this module's namespace (so re-exports owned by other modules do not count).
+    module only if it is directly @PublicAPI-annotated (owns `_annotated` rather than
+    inheriting it from a base class) AND is defined within this module's namespace
+    (so re-exports owned by other modules do not count).
     """
     try:
         mod = importlib.import_module(module)
