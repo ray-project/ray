@@ -179,21 +179,23 @@ def get_response_for_error(
     _fatal_error_log_handler.log(e, request_id, status_code)
 
     if status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
-        internal_message = message = "Internal Server Error"
+        message = "Internal Server Error"
         exc_type = "InternalServerError"
     else:
-        internal_message, message = _extract_message(e)
+        # Only HTTP-style exceptions reach here, and their message is meant
+        # for the client. _extract_message() drops stack traces, so nothing
+        # internal can leak. New status mappings above must keep this true.
+        _, message = _extract_message(e)
         exc_type = e.__class__.__name__
 
     # TODO make this more robust
     if "(Request ID: " not in message:
         message += f" (Request ID: {request_id})"
 
-    if "(Request ID: " not in internal_message:
-        internal_message += f" (Request ID: {request_id})"
-
+    # str(e) of a replica-raised error is the full remote traceback; it is
+    # logged above and must not be sent to the client.
     error_info = ErrorInfo(
-        message=f"Message: {message}, Internal exception: {internal_message}, original exception: {str(e)}",
+        message=message,
         code=status_code,
         type=exc_type,
     )
