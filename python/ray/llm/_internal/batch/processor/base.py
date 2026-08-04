@@ -386,7 +386,7 @@ class Processor:
                 batch_size=self.config.batch_size,
                 data_column=self.DATA_COLUMN,
             )
-            dataset = dataset.map_batches(stage.fn, **kwargs)
+            dataset = dataset.map_batches_internal(stage.fn, **kwargs)
 
         if self.postprocess is not None:
             dataset = dataset.map(self.postprocess, **self.postprocess_map_kwargs)
