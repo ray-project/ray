@@ -6,6 +6,9 @@ from common import parse_tpch_args, load_table, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        # The original hardcoded counts (16, tuned at sf100) yield ~15GB join
+        # partitions at sf1000 -- reduce tasks too large for a single node.
+        join_num_partitions = 200
         # Q21: Suppliers Who Kept Orders Waiting Query
         # Identify suppliers in a given nation whose shipments were received
         # late, where at least one other supplier also filled the same order
@@ -94,7 +97,7 @@ def main(args):
         saudi_suppliers = supplier.join(
             saudi_nation,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             on=("s_nationkey",),
             right_on=("n_nationkey",),
         ).select_columns(["s_suppkey", "s_name"])
@@ -108,7 +111,7 @@ def main(args):
         ds = late_lineitem.join(
             failed_orders,
             join_type="left_semi",
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             on=("l_orderkey",),
             right_on=("o_orderkey",),
         )
@@ -117,7 +120,7 @@ def main(args):
         ds = ds.join(
             saudi_suppliers,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             on=("l_suppkey",),
             right_on=("s_suppkey",),
         )
@@ -127,7 +130,7 @@ def main(args):
         ds = ds.join(
             suppliers_per_order,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             on=("l_orderkey",),
         )
 
@@ -136,7 +139,7 @@ def main(args):
         ds = ds.join(
             late_suppliers_per_order,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             on=("l_orderkey",),
         )
 

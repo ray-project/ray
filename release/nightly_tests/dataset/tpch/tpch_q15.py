@@ -6,6 +6,9 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        # The original hardcoded counts (16, tuned at sf100) yield ~15GB join
+        # partitions at sf1000 -- reduce tasks too large for a single node.
+        join_num_partitions = 200
         from datetime import datetime
 
         # Q15: Top Supplier Query
@@ -66,7 +69,7 @@ def main(args):
             supplier.join(
                 top,
                 join_type="inner",
-                num_partitions=16,
+                num_partitions=join_num_partitions,
                 on=("s_suppkey",),
                 right_on=("l_suppkey",),
             )
