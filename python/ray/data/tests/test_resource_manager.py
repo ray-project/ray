@@ -2,7 +2,7 @@ import math
 import time
 from collections import defaultdict
 from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -884,6 +884,93 @@ class TestOutputBackpressureGuard:
 
         # "Downstream idle with empty input queue" case should fire and unblock.
         topo[o3].total_enqueued_input_blocks = MagicMock(return_value=0)
+        assert guard.should_unblock(o2) is True
+
+    def _build_terminal_guard(
+        self, release_interval_s: Optional[float] = None
+    ) -> Tuple[OutputBackpressureGuard, PhysicalOperator]:
+        """Build a guard over ``o1 -> o2 -> Limit`` with no external consumer.
+
+        ``o2`` is terminal (the Limit op is ineligible), so the raw liveness
+        evaluation always says unblock and only the release interval gates
+        ``should_unblock``."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+        guard = OutputBackpressureGuard(
+            topo, resource_manager, release_interval_s=release_interval_s
+        )
+        return guard, o2
+
+    def test_release_interval_throttling(self, restore_data_context):
+        """A release that yields output starts the op's interval; releases that
+        yield nothing don't consume the window."""
+        guard, o2 = self._build_terminal_guard(release_interval_s=100)
+
+        with freeze_time() as frozen:
+            # Releases are not throttled until one actually yields output.
+            assert guard.should_unblock(o2) is True
+            assert guard.should_unblock(o2) is True
+            guard.notify_release_emitted(o2)
+
+            # Within the interval the release is withheld.
+            assert guard.should_unblock(o2) is False
+            frozen.tick(timedelta(seconds=99))
+            assert guard.should_unblock(o2) is False
+
+            # Once the interval elapses, the release is granted again.
+            frozen.tick(timedelta(seconds=2))
+            assert guard.should_unblock(o2) is True
+
+    @pytest.mark.parametrize("release_interval_s", [None, 0, -1])
+    def test_release_interval_disabled(self, restore_data_context, release_interval_s):
+        """``None`` and non-positive intervals preserve the legacy behavior of
+        releasing on every evaluation."""
+        guard, o2 = self._build_terminal_guard(release_interval_s=release_interval_s)
+
+        assert guard.should_unblock(o2) is True
+        guard.notify_release_emitted(o2)
+        assert guard.should_unblock(o2) is True
+
+    def test_release_interval_is_per_op(self, restore_data_context):
+        """Throttling one op must not delay releases for another."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+        guard = OutputBackpressureGuard(topo, resource_manager, release_interval_s=100)
+
+        # o3 is terminal with no external consumer; o2 unblocks because its
+        # downstream (o3) has no active tasks and is resource constrained.
+        o3.num_active_tasks = MagicMock(return_value=0)
+        resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+            return_value=False
+        )
+
+        assert guard.should_unblock(o3) is True
+        guard.notify_release_emitted(o3)
+        assert guard.should_unblock(o3) is False
+
+        # o2's window is independent of o3's.
         assert guard.should_unblock(o2) is True
 
 

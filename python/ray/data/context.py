@@ -281,6 +281,13 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
 
+# Per-operator minimum interval (seconds) between successive
+# `OutputBackpressureGuard` releases. See the `DataContext` attribute docstring
+# for details. Defaults to None (no throttling -- preserves legacy behavior).
+DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S = env_float(
+    "RAY_DATA_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S", None
+)
+
 DEFAULT_MAX_ERRORED_BLOCKS = 0
 
 # Use this to prefix important warning messages for the user.
@@ -675,6 +682,15 @@ class DataContext:
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        output_backpressure_guard_release_interval_s: Per-operator minimum interval
+            in seconds between successive ``OutputBackpressureGuard`` releases. The
+            guard exists as a liveness escape hatch: when the resource allocator
+            clamps an op's output budget to 0, it flips the budget to 1 byte so the
+            executor emits one more block. On workloads with very large blocks this
+            per-iteration release can outpace downstream drain, so object store usage
+            grows even under "backpressure". A positive interval throttles releases
+            per op; only releases that actually yield output start the interval.
+            Defaults to None (no throttling, legacy behavior).
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
@@ -943,6 +959,9 @@ class DataContext:
     max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+    output_backpressure_guard_release_interval_s: Optional[
+        float
+    ] = DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
     log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION

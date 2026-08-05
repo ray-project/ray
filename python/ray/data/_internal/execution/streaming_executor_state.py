@@ -9,7 +9,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
@@ -136,14 +136,61 @@ class OutputBackpressureGuard:
     scheduling-loop iterations.
     """
 
-    def __init__(self, topology: Topology, resource_manager: ResourceManager):
+    def __init__(
+        self,
+        topology: Topology,
+        resource_manager: ResourceManager,
+        release_interval_s: Optional[float] = None,
+    ):
         self._topology = topology
         self._resource_manager = resource_manager
         self._idle_detector = IdleDetector()
+        # Per-op minimum interval between releases. ``None`` or non-positive
+        # disables it and preserves the legacy behavior of releasing whenever
+        # the raw evaluation says so. Wall clock (``time.time()``) matches the
+        # idiom already used by ``IdleDetector``.
+        if release_interval_s is None or release_interval_s <= 0:
+            self._release_interval_s = 0.0
+        else:
+            self._release_interval_s = float(release_interval_s)
+        # Per-op timestamp of the last release that actually produced output.
+        # A missing entry reads as 0, which falls outside the interval so the
+        # first release for each op is not throttled.
+        self._last_release_time: Dict[PhysicalOperator, float] = {}
+
+    def _within_release_interval(self, op: PhysicalOperator) -> bool:
+        if self._release_interval_s <= 0:
+            return False
+        last = self._last_release_time.get(op, 0)
+        return time.time() - last < self._release_interval_s
+
+    def notify_release_emitted(self, op: PhysicalOperator) -> None:
+        """Record that a release granted to ``op`` actually yielded output.
+
+        Callers must invoke this only once task output was really read, so the
+        interval throttles the rate at which bytes enter the object store rather
+        than the rate at which releases are merely offered. A release that turns
+        out to be a no-op leaves the interval untouched and stays available for
+        the next iteration."""
+        self._last_release_time[op] = time.time()
 
     def should_unblock(self, op: PhysicalOperator) -> bool:
         """Return True if output backpressure should be relaxed for ``op``
-        to preserve pipeline liveness."""
+        to preserve pipeline liveness.
+
+        With a positive ``release_interval_s``, releases that produced output
+        are rate-limited to at most one per interval per op. This is a pure
+        query: the caller is responsible for calling ``notify_release_emitted``
+        once the granted release actually yields output."""
+        # Evaluate first, unconditionally, so the idle-detection state inside
+        # keeps advancing (and its idle warning keeps firing) even while ``op``
+        # is being throttled. Only the release decision is gated below.
+        if not self._evaluate_unblock_raw(op):
+            return False
+        return not self._within_release_interval(op)
+
+    def _evaluate_unblock_raw(self, op: PhysicalOperator) -> bool:
+        """Underlying liveness check without interval throttling."""
         downstream_eligible_ops = list(
             self._resource_manager.get_downstream_eligible_ops(op)
         )
@@ -622,6 +669,10 @@ def process_completed_tasks(
             active_tasks[task.get_waitable()] = (state, task)
 
     remaining_output_budget: Dict[OpState, int] = {}
+    # Ops the guard unblocked this iteration. The release only counts against
+    # the guard's interval once output is actually read below, so a release that
+    # finds nothing to read doesn't consume the op's window.
+    guard_released_ops: Set[PhysicalOperator] = set()
     for op, state in topology.items():
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
@@ -646,6 +697,8 @@ def process_completed_tasks(
         # fires regardless of which policy drove the limit to 0.
         if max_bytes_to_read == 0 and output_backpressure_guard.should_unblock(op):
             max_bytes_to_read = 1
+            # Confirmed further down, once this op's output is really read.
+            guard_released_ops.add(op)
 
         # When the guard bumped the limit above 0, clear the policy attribution too
         in_backpressure = max_bytes_to_read == 0
@@ -737,6 +790,13 @@ def process_completed_tasks(
                                 metadata_fetcher,
                             )
                             op_data_tasks.append(task)
+                            if bytes_read > 0 and state.op in guard_released_ops:
+                                # The guard's release produced real output, so
+                                # start this op's interval from here.
+                                guard_released_ops.discard(state.op)
+                                output_backpressure_guard.notify_release_emitted(
+                                    state.op
+                                )
                             if state in remaining_output_budget:
                                 # Clamp remaining output budget at 0
                                 remaining_output_budget[state] = max(
