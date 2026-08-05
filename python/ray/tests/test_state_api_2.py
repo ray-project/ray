@@ -426,10 +426,8 @@ def _profile_task_event(component_type, component_id, event_name):
 def test_profile_events_reads_from_dashboard_head(monkeypatch):
     """With the migration flag on, profile_events() fetches task events from the dashboard
     head through a reused client that resolves the address once and reuses its session."""
-    import ray.dashboard.consts as dashboard_consts
-
     monkeypatch.setattr(
-        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", True
+        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
     )
 
     component_id = b"\x01" * 28
@@ -463,10 +461,8 @@ def test_profile_events_reads_from_dashboard_head(monkeypatch):
 def test_profile_events_reads_from_gcs_by_default(monkeypatch):
     """With the migration flag off, profile_events() reads from GCS via the accessor and
     never builds the dashboard-head client."""
-    import ray.dashboard.consts as dashboard_consts
-
     monkeypatch.setattr(
-        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", False
+        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", False
     )
 
     component_id = b"\x02" * 28
@@ -487,10 +483,8 @@ def test_profile_events_reads_from_gcs_by_default(monkeypatch):
 
 def test_timeline_warns_when_reading_from_dashboard_head(monkeypatch):
     """ray.timeline() warns that it needs the API server when the migration flag is on."""
-    import ray.dashboard.consts as dashboard_consts
-
     monkeypatch.setattr(
-        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", True
+        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
     )
     monkeypatch.setattr(ray, "is_initialized", lambda: True)
     monkeypatch.setattr(
@@ -506,10 +500,8 @@ def test_timeline_warns_when_reading_from_dashboard_head(monkeypatch):
 
 def test_timeline_does_not_warn_by_default(monkeypatch):
     """With the flag off, ray.timeline() reads from GCS and emits no such warning."""
-    import ray.dashboard.consts as dashboard_consts
-
     monkeypatch.setattr(
-        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", False
+        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", False
     )
     monkeypatch.setattr(ray, "is_initialized", lambda: True)
     monkeypatch.setattr(
