@@ -2591,6 +2591,7 @@ def test_get_serve_instance_details_json_serializable(
                                     "initial_backoff_s": 0.025,
                                     "backoff_multiplier": 2.0,
                                     "max_backoff_s": 0.5,
+                                    "max_request_retries": -1,
                                 },
                                 "rolling_update_percentage": 0.2,
                             },
