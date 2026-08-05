@@ -1567,6 +1567,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Send a FreeLocalObjects batch to the node using the Nagle algorithm. A null
   /// client or failed reply drops the node's queue so a flaky raylet cannot wedge
   /// it.
+  /// \param node_id The node whose buffered FreeLocalObjects requests to flush.
   void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
 
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
