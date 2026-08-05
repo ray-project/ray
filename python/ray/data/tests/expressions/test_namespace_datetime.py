@@ -74,6 +74,96 @@ class TestDatetimeNamespace:
         with pytest.raises(Exception):
             ds.with_column("year", col("value").dt.year()).to_pandas()
 
+    def test_dt_assume_timezone(self, ray_start_regular_shared):
+        """Test localizing naive timestamps with assume_timezone."""
+        table = pa.table(
+            {
+                "ts": pa.array(
+                    [pd.Timestamp("2024-01-01 00:00:00")], type=pa.timestamp("us")
+                )
+            }
+        )
+        ds = ray.data.from_arrow(table)
+
+        result = ds.with_column(
+            "ts_utc", col("ts").dt.assume_timezone("UTC")
+        ).to_pandas()
+
+        assert str(result["ts_utc"].dt.tz) == "UTC"
+        assert result["ts_utc"].iloc[0] == pd.Timestamp("2024-01-01", tz="UTC")
+
+    def test_dt_assume_timezone_ambiguous(self, ray_start_regular_shared):
+        """Test assume_timezone with an ambiguous DST fall-back timestamp."""
+        # 2024-11-03 01:30 occurs twice in America/New_York (DST fall-back).
+        table = pa.table(
+            {
+                "ts": pa.array(
+                    [pd.Timestamp("2024-11-03 01:30:00")], type=pa.timestamp("us")
+                )
+            }
+        )
+        ds = ray.data.from_arrow(table)
+
+        result = ds.with_column(
+            "ts_ny",
+            col("ts").dt.assume_timezone("America/New_York", ambiguous="earliest"),
+        ).to_pandas()
+
+        assert str(result["ts_ny"].dt.tz) == "America/New_York"
+
+    def test_dt_tz_convert(self, ray_start_regular_shared):
+        """Test converting timezone-aware timestamps to another timezone."""
+        table = pa.table(
+            {
+                "ts": pa.array(
+                    [pd.Timestamp("2024-01-01 00:00:00")],
+                    type=pa.timestamp("us", tz="UTC"),
+                )
+            }
+        )
+        ds = ray.data.from_arrow(table)
+
+        result = ds.with_column(
+            "ts_ny", col("ts").dt.tz_convert("America/New_York")
+        ).to_pandas()
+
+        assert str(result["ts_ny"].dt.tz) == "America/New_York"
+        # The instant is unchanged: UTC midnight is 19:00 the previous day in NY.
+        assert result["ts_ny"].iloc[0].hour == 19
+
+    def test_dt_tz_convert_naive_raises(self, ray_start_regular_shared):
+        """Test that tz_convert on naive timestamps raises a clear error."""
+        table = pa.table(
+            {
+                "ts": pa.array(
+                    [pd.Timestamp("2024-01-01 00:00:00")], type=pa.timestamp("us")
+                )
+            }
+        )
+        ds = ray.data.from_arrow(table)
+
+        with pytest.raises(Exception, match="assume_timezone"):
+            ds.with_column("bad", col("ts").dt.tz_convert("UTC")).to_pandas()
+
+    def test_dt_assume_timezone_then_convert(self, ray_start_regular_shared):
+        """Test chaining assume_timezone and tz_convert."""
+        table = pa.table(
+            {
+                "ts": pa.array(
+                    [pd.Timestamp("2024-01-01 00:00:00")], type=pa.timestamp("us")
+                )
+            }
+        )
+        ds = ray.data.from_arrow(table)
+
+        result = ds.with_column(
+            "ts_sh",
+            col("ts").dt.assume_timezone("UTC").dt.tz_convert("Asia/Shanghai"),
+        ).to_pandas()
+
+        # UTC midnight is 08:00 in Shanghai (UTC+8).
+        assert result["ts_sh"].iloc[0].hour == 8
+
 
 if __name__ == "__main__":
     import sys
