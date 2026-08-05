@@ -468,8 +468,11 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (object_id.IsNil()) {
     return;
   }
-  absl::MutexLock lock(&mutex_);
-  RemoveLocalReferenceInternal(object_id, deleted);
+  {
+    absl::MutexLock lock(&mutex_);
+    RemoveLocalReferenceInternal(object_id, deleted);
+  }
+  DrainDeferredOOSWork();
 }
 
 void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
@@ -843,27 +846,45 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
-  // Only the owner is allowed to broadcast a free for an object. Borrowers
-  // also reach this code path when their local refs drop to zero, but they
-  // must not tell the cluster to evict an object that is still owned
-  // elsewhere.
-  if (it->second.owned_by_us_) {
-    absl::flat_hash_set<NodeID> locations_set = it->second.locations;
-    if (it->second.pinned_at_node_id_.has_value()) {
-      locations_set.insert(*it->second.pinned_at_node_id_);
-    }
-    if (!locations_set.empty()) {
-      free_object_on_nodes_async_(it->first, locations_set);
-    }
-  }
 
-  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
-    callback(it->first);
+  // Collect work that does not need mutex_ (gRPC frees, callbacks) into
+  // deferred_oos_work_. The caller must invoke DrainDeferredOOSWork() after
+  // releasing the lock.
+  DeferredOOSWork work;
+  work.object_id = it->first;
+  if (it->second.owned_by_us_) {
+    work.locations = it->second.locations;
+    if (it->second.pinned_at_node_id_.has_value()) {
+      work.locations.insert(*it->second.pinned_at_node_id_);
+    }
   }
+  work.callbacks = std::move(it->second.on_object_out_of_scope_or_freed_callbacks);
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+  deferred_oos_work_.push_back(std::move(work));
+
+  // Counter updates and primary copy reset still need mutex_ since they
+  // modify shared state.
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
   UnsetObjectPrimaryCopy(it);
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
+}
+
+void ReferenceCounter::DrainDeferredOOSWork() {
+  std::vector<DeferredOOSWork> work;
+  {
+    absl::MutexLock lock(&mutex_);
+    work.swap(deferred_oos_work_);
+  }
+  for (auto &item : work) {
+    // Fire callbacks first so Data-side BlockRefCounter updates before
+    // the slow gRPC free broadcast.
+    for (const auto &callback : item.callbacks) {
+      callback(item.object_id);
+    }
+    if (!item.locations.empty()) {
+      free_object_on_nodes_async_(item.object_id, item.locations);
+    }
+  }
 }
 
 void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
