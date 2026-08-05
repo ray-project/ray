@@ -397,8 +397,8 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }),
-      max_free_local_objects_batch_size_(static_cast<size_t>(
-          std::max<int64_t>(1, RayConfig::instance().max_free_local_objects_batch_size()))),
+      max_free_local_objects_batch_size_(static_cast<size_t>(std::max<int64_t>(
+          1, RayConfig::instance().max_free_local_objects_batch_size()))),
       clock_(clock) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
