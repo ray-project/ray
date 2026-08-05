@@ -1067,7 +1067,7 @@ class Dataset:
                 defines its values, or an
                 :func:`~ray.data.expressions.unnest` expression. Column
                 order follows the mapping's insertion order.
-            more_exprs: Additional mappings or
+            *more_exprs: Additional mappings or
                 :func:`~ray.data.expressions.unnest` expressions, appended
                 in argument order.
             compute: The compute strategy to use for the projection operation.
