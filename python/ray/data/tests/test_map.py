@@ -76,6 +76,40 @@ def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
         ds.filter(expr=col("id") >= 0, ray_remote_args_fn=ray_remote_args_fn)
 
 
+def test_transform_ray_remote_args_deprecation_warning(shutdown_only):
+    ds = ray.data.range(1)
+
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
+        ds.map(lambda row: row, scheduling_strategy="SPREAD")
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
+        ds.map_batches(lambda batch: batch, scheduling_strategy="SPREAD")
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
+        ds.flat_map(lambda row: [row], scheduling_strategy="SPREAD")
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
+        ds.with_column("copy", col("id"), scheduling_strategy="SPREAD")
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
+        ds.filter(expr=col("id") >= 0, scheduling_strategy="SPREAD")
+    with pytest.warns(
+        RayDeprecationWarning, match="ray_remote_args"
+    ) as add_column_warnings:
+        ds.add_column(
+            "copy",
+            lambda batch: batch["id"],
+            batch_format="numpy",
+            scheduling_strategy="SPREAD",
+        )
+    assert len(add_column_warnings) == 1
+    with pytest.warns(
+        RayDeprecationWarning, match="ray_remote_args"
+    ) as drop_columns_warnings:
+        ds.drop_columns(["id"], scheduling_strategy="SPREAD")
+    assert len(drop_columns_warnings) == 1
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
+        ds.select_columns(["id"], scheduling_strategy="SPREAD")
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
+        ds.rename_columns({"id": "renamed"}, scheduling_strategy="SPREAD")
+
+
 def test_invalid_max_tasks_in_flight_raises_error():
     with pytest.raises(ValueError):
         ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=0)
