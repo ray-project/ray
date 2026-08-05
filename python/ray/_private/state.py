@@ -1140,6 +1140,15 @@ def timeline(filename: Optional[str] = None):
         raise RuntimeError(
             "Ray has not been started yet. Timeline requires Ray to be initialized first."
         )
+
+    import ray.dashboard.consts as dashboard_consts
+
+    if dashboard_consts.RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD:
+        logger.warning(
+            "ray.timeline() reads task profiling events from the dashboard (API server) "
+            "because RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD is enabled; it will fail if "
+            "the dashboard is not running. Start Ray with the dashboard to use ray.timeline()."
+        )
     return state.chrome_tracing_dump(filename=filename)
 
 
