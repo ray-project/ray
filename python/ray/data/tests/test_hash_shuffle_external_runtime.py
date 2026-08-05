@@ -39,20 +39,20 @@ from ray.tests.conftest import *  # noqa: F401, F403
 
 
 # ---------------------------------------------------------------------- helpers
-def _make_file_server(tmp_path, token="test-token"):
+def _make_file_server(tmp_path):
     """Create a ShuffleFileServer actor rooted at tmp_path, return (actor, endpoint)."""
     import ray
 
-    actor = ShuffleFileServer.remote(str(tmp_path), token)
+    actor = ShuffleFileServer.remote(str(tmp_path))
     endpoint = ray.get(actor.endpoint.remote())
     return actor, endpoint
 
 
 @contextlib.contextmanager
-def _running_flight_server(base_dir, token):
+def _running_flight_server(base_dir):
     """Start a bare Flight server (no Ray) on loopback; yield its
     (host, port, incarnation) endpoint (incarnation is a fixed test sentinel)."""
-    srv = _make_flight_server("127.0.0.1", str(base_dir), token)
+    srv = _make_flight_server("127.0.0.1", str(base_dir))
     endpoint = ("127.0.0.1", srv.port, "test-incarnation")
     t = threading.Thread(target=srv.serve, daemon=True)
     t.start()
@@ -124,10 +124,9 @@ def test_flight_fetch_wire_format(tmp_path):
 
     fd, sink = _open_sink(tmp_path)
     try:
-        with _running_flight_server(tmp_path, "auth-token") as endpoint:
+        with _running_flight_server(tmp_path) as endpoint:
             _stream_members_flight(
                 endpoint,
-                "auth-token",
                 [_FileRanges(path="s.bin", ranges=[(0, 12), (12, 12)])],
                 max_bytes=1 << 20,
                 sink=sink,
@@ -142,48 +141,9 @@ def test_flight_fetch_wire_format(tmp_path):
         os.close(fd)
 
 
-def test_flight_auth_fail(tmp_path):
-    # A wrong token is rejected at two layers, both asserted here:
-    #   (1) the server raises a typed FlightUnauthenticatedError (crosses the wire
-    #       as that type, not a string-matched ArrowInvalid), and
-    #   (2) the fetch client maps it to a terminal PermissionError.
-    import json
-
-    import pyarrow.flight as flight
-
-    (tmp_path / "s.bin").write_bytes(b"x" * 16)
-    with _running_flight_server(tmp_path, "correct") as endpoint:
-        host, port, _incarnation = endpoint
-
-        # (1) raw Flight client sees the typed error on the wire.
-        client = flight.connect(f"grpc://{host}:{port}")
-        try:
-            body = json.dumps({"t": "wrong", "s": [["s.bin", [[0, 4]]]]}).encode(
-                "utf-8"
-            )
-            with pytest.raises(flight.FlightUnauthenticatedError):
-                list(client.do_action(flight.Action("fetch", body)))
-        finally:
-            client.close()
-
-        # (2) the fetch path maps that typed error to PermissionError.
-        fd, sink = _open_sink(tmp_path)
-        try:
-            with pytest.raises(PermissionError):
-                _stream_members_flight(
-                    endpoint,
-                    "wrong",
-                    [_FileRanges(path="s.bin", ranges=[(0, 4)])],
-                    max_bytes=1 << 20,
-                    sink=sink,
-                )
-        finally:
-            os.close(fd)
-
-
 def test_flight_unreachable_is_connection_error(tmp_path):
     # Bind a port with nothing listening -> connect refused -> ConnectionError
-    # (retryable transport fault, distinct from the terminal auth failure).
+    # (retryable transport fault).
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.bind(("127.0.0.1", 0))
@@ -193,7 +153,6 @@ def test_flight_unreachable_is_connection_error(tmp_path):
             with pytest.raises(ConnectionError):
                 _stream_members_flight(
                     ("127.0.0.1", port, "test-incarnation"),
-                    "auth-token",
                     [_FileRanges(path="x.bin", ranges=[(0, 4)])],
                     max_bytes=1 << 20,
                     sink=sink,
@@ -212,11 +171,10 @@ def test_flight_short_read_fails(tmp_path):
     (tmp_path / "s.bin").write_bytes(b"only8byt")  # 8 bytes
     fd, sink = _open_sink(tmp_path)
     try:
-        with _running_flight_server(tmp_path, "auth-token") as endpoint:
+        with _running_flight_server(tmp_path) as endpoint:
             with pytest.raises(ConnectionError, match="short read"):
                 _stream_members_flight(
                     endpoint,
-                    "auth-token",
                     [_FileRanges(path="s.bin", ranges=[(0, 64)])],  # asks for 64
                     max_bytes=1 << 20,
                     sink=sink,
@@ -236,7 +194,7 @@ def test_prefetch_node_into(tmp_path):
     shuffle_id, node_id = "shuffle-0", "node-1"
     key = _file_server_name(shuffle_id, node_id)
     try:
-        with _running_flight_server(tmp_path, "auth-token") as (host, port, incarnation):
+        with _running_flight_server(tmp_path) as (host, port, incarnation):
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE[key] = _Endpoint(host, port, incarnation)
             try:
@@ -244,7 +202,6 @@ def test_prefetch_node_into(tmp_path):
                     sink,
                     shuffle_id,
                     node_id,
-                    "auth-token",
                     [_FileRanges(path="s.bin", ranges=[(0, 24), (24, 24)])],
                     max_bytes_per_fetch=1 << 20,
                 )
@@ -286,9 +243,9 @@ def test_chunk_members_by_bytes():
 
 def test_group_by_server():
     # Same (shuffle_id, node_id) collapses; distinct pairs stay separate.
-    s0 = _SourceRef("shuffle-0", "node-1", "auth-token", _FileRanges("a", [(0, 4)]))
-    s1 = _SourceRef("shuffle-0", "node-2", "auth-token", _FileRanges("b", [(0, 8)]))
-    s2 = _SourceRef("shuffle-0", "node-1", "auth-token", _FileRanges("c", [(0, 2)]))
+    s0 = _SourceRef("shuffle-0", "node-1", _FileRanges("a", [(0, 4)]))
+    s1 = _SourceRef("shuffle-0", "node-2", _FileRanges("b", [(0, 8)]))
+    s2 = _SourceRef("shuffle-0", "node-1", _FileRanges("c", [(0, 2)]))
 
     groups = _group_by_server([s0, s1, s2])
     by_node = {g.node_id: g for g in groups}
@@ -305,7 +262,6 @@ def test_compute_prefetch_layout():
     g0 = _NodeGroup(
         "shuffle-0",
         "node-1",
-        "auth-token",
         members=[
             _FileRanges(path="a", ranges=[(0, 10), (10, 10)]),  # (8+10)*2 = 36
         ],
@@ -313,7 +269,6 @@ def test_compute_prefetch_layout():
     g1 = _NodeGroup(
         "shuffle-0",
         "node-2",
-        "auth-token",
         members=[
             _FileRanges(path="b", ranges=[(0, 100)]),  # 8+100 = 108
         ],
