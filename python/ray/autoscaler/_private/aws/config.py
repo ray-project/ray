@@ -405,7 +405,21 @@ def _configure_key_pair(config):
             cli_logger.verbose(
                 "Creating new key pair {} for use as the default.", cf.bold(key_name)
             )
-            key = ec2.create_key_pair(KeyName=key_name)
+            try:
+                key = ec2.create_key_pair(KeyName=key_name)
+            except botocore.exceptions.ClientError as exc:
+                error_code = (
+                    exc.response.get("Error", {}).get("Code")
+                    if exc.response
+                    else None
+                )
+                if error_code != "InvalidKeyPair.Duplicate":
+                    raise
+                cli_logger.verbose(
+                    "Key pair {} was created concurrently; trying another name.",
+                    cf.bold(key_name),
+                )
+                continue
 
             # We need to make sure to _create_ the file with the right
             # permissions. In order to do that we need to change the default
