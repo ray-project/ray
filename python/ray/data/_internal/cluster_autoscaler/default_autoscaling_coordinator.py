@@ -10,6 +10,10 @@ import ray
 import ray.exceptions
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
+    LabelKey,
+    LabelSelector,
+    LabelValue,
+    RequesterId,
     ResourceDict,
     ResourceRequestPriority,
 )
@@ -24,10 +28,10 @@ _RESOURCE_LOG_KEYS = ("CPU", "GPU", "memory", "object_store_memory")
 _RESOURCE_LOG_MEMORY_KEYS = {"memory", "object_store_memory"}
 # Label key the cluster autoscaler uses to bucket nodes by subcluster.
 # Hardcoded so all components agree without per-Dataset configuration.
-SUBCLUSTER_LABEL_KEY = "ray-subcluster"
+SUBCLUSTER_LABEL_KEY: LabelKey = "ray-subcluster"
 # Sentinel for "no subcluster" — used as both a node-label fallback and
 # the bucket key for unlabeled nodes in ``_cluster_node_resources``.
-DEFAULT_SUBCLUSTER: Optional[str] = None
+DEFAULT_SUBCLUSTER: Optional[LabelValue] = None
 
 
 RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
@@ -130,7 +134,7 @@ class OngoingRequest:
     # Per-bundle label selectors, parallel to ``requested_resources``.
     # Empty dicts mean no label constraint on that bundle. Required to have
     # the same length as ``requested_resources``.
-    requested_label_selectors: List[Dict[str, str]]
+    requested_label_selectors: List[LabelSelector]
 
     def __lt__(self, other):
         """Used to sort requests when reserving resources.
@@ -154,9 +158,9 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     def __init__(
         self,
-        requester_id: str,
+        requester_id: RequesterId,
         autoscaling_coordinator_actor=None,  # For testing only: injects an actor instead of using the shared named singleton.
-        subcluster_selector: Optional[Dict[str, str]] = None,
+        subcluster_selector: Optional[LabelSelector] = None,
     ):
         self._requester_id = requester_id
         # Label selector keyed by ``SUBCLUSTER_LABEL_KEY`` pinning this
@@ -181,7 +185,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
-        label_selectors: Optional[List[Dict[str, str]]] = None,
+        label_selectors: Optional[List[LabelSelector]] = None,
     ) -> None:
         """Fire-and-forget: submit a resource request to the coordinator actor.
 
@@ -249,7 +253,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
 def _default_send_resources_request(
     bundles: List[ResourceDict],
-    label_selectors: Optional[List[Dict[str, str]]] = None,
+    label_selectors: Optional[List[LabelSelector]] = None,
 ) -> None:
     """Default ``send_resources_request`` implementation for the actor."""
     ray.autoscaler.sdk.request_resources(
@@ -271,7 +275,7 @@ class _AutoscalingCoordinatorActor:
         self,
         get_current_time: Callable[[], float] = time.time,
         send_resources_request: Callable[
-            [List[ResourceDict], Optional[List[Dict[str, str]]]], None
+            [List[ResourceDict], Optional[List[LabelSelector]]], None
         ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
     ):
@@ -279,12 +283,14 @@ class _AutoscalingCoordinatorActor:
         self._send_resources_request = send_resources_request
         self._get_cluster_nodes = get_cluster_nodes
 
-        self._ongoing_reqs: Dict[str, OngoingRequest] = {}
+        self._ongoing_reqs: Dict[RequesterId, OngoingRequest] = {}
         # Map from requester id to its subcluster selector.
-        self._subcluster_selectors: Dict[str, Optional[Dict[str, str]]] = {}
+        self._subcluster_selectors: Dict[RequesterId, Optional[LabelSelector]] = {}
         # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
         # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
-        self._cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = {}
+        self._cluster_node_resources: Dict[
+            Optional[LabelValue], List[ResourceDict]
+        ] = {}
         # Lock for thread-safe access to shared state from the background
         self._lock = threading.Lock()
         self._update_cluster_node_resources()
@@ -311,13 +317,13 @@ class _AutoscalingCoordinatorActor:
 
     def request_resources(
         self,
-        requester_id: str,
+        requester_id: RequesterId,
         resources: List[ResourceDict],
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
-        label_selectors: Optional[List[Dict[str, str]]] = None,
-        subcluster_selector: Optional[Dict[str, str]] = None,
+        label_selectors: Optional[List[LabelSelector]] = None,
+        subcluster_selector: Optional[LabelSelector] = None,
     ) -> None:
         logger.debug(
             "Received request from %s: %s "
@@ -398,7 +404,7 @@ class _AutoscalingCoordinatorActor:
 
     def cancel_request(
         self,
-        requester_id: str,
+        requester_id: RequesterId,
     ):
         logger.debug("Canceling request for %s.", requester_id)
         with self._lock:
@@ -431,7 +437,7 @@ class _AutoscalingCoordinatorActor:
         """
         self._purge_expired_requests()
         merged_req: List[ResourceDict] = []
-        merged_selectors: List[Dict[str, str]] = []
+        merged_selectors: List[LabelSelector] = []
         for requester_id, req in self._ongoing_reqs.items():
             merged_req.extend(req.requested_resources)
             subcluster_selector = self._subcluster_selectors.get(requester_id) or {}
@@ -442,7 +448,7 @@ class _AutoscalingCoordinatorActor:
         else:
             self._send_resources_request(merged_req)
 
-    def get_reserved_resources(self, requester_id: str) -> List[ResourceDict]:
+    def get_reserved_resources(self, requester_id: RequesterId) -> List[ResourceDict]:
         """Get the reserved resources for the requester."""
         with self._lock:
             if requester_id not in self._ongoing_reqs:
@@ -477,7 +483,7 @@ class _AutoscalingCoordinatorActor:
 
         nodes = list(filter(_is_node_eligible, self._get_cluster_nodes()))
         nodes = sorted(nodes, key=lambda node: node.get("NodeID", ""))
-        cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = {}
+        cluster_node_resources: Dict[Optional[LabelValue], List[ResourceDict]] = {}
         for node in nodes:
             # Safeguard against case where the value of Labels is None.
             labels = node.get("Labels") or {}
@@ -496,9 +502,9 @@ class _AutoscalingCoordinatorActor:
         A requester without one is eligible only for the ``None`` bucket.
         """
         now = self._get_current_time()
-        cluster_node_resources: Dict[Optional[str], List[ResourceDict]] = copy.deepcopy(
-            self._cluster_node_resources
-        )
+        cluster_node_resources: Dict[
+            Optional[LabelValue], List[ResourceDict]
+        ] = copy.deepcopy(self._cluster_node_resources)
         live_items = [
             (req_id, req)
             for req_id, req in self._ongoing_reqs.items()
@@ -506,7 +512,7 @@ class _AutoscalingCoordinatorActor:
         ]
         live_items.sort(key=lambda item: item[1])
 
-        def _subcluster_of(requester_id: str) -> Optional[str]:
+        def _subcluster_of(requester_id: RequesterId) -> Optional[LabelValue]:
             selector = self._subcluster_selectors.get(requester_id)
             return (selector or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
 

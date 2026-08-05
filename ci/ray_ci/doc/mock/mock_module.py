@@ -6,7 +6,7 @@ def PublicAPI(*args, **kwargs):
         return PublicAPI()(args[0])
 
     def wrap(obj):
-        obj._annotated = None
+        obj._annotated = obj.__name__
         obj._annotated_type = AnnotationType.PUBLIC_API
         return obj
 
@@ -18,7 +18,7 @@ def Deprecated(*args, **kwargs):
         return Deprecated()(args[0])
 
     def wrap(obj):
-        obj._annotated = None
+        obj._annotated = obj.__name__
         obj._annotated_type = AnnotationType.DEPRECATED
         return obj
 
@@ -64,6 +64,32 @@ class MockClass:
         detection of genuinely private symbols.
         """
         pass
+
+
+class InheritedAnnotation(MockClass):
+    """An undecorated subclass must not inherit MockClass's API annotation."""
+
+    pass
+
+
+@Deprecated
+class MockDeprecatedClass:
+    """
+    A directly-deprecated class. Documenting it is an error the check must catch.
+    """
+
+    pass
+
+
+class MockDeprecatedSubclass(MockDeprecatedClass):
+    """
+    An undecorated subclass of a deprecated class. It inherits ``_annotated_type``
+    as a plain class attribute, so reading that attribute without an ownership
+    check would classify it as deprecated and flag a documented name that nobody
+    deprecated.
+    """
+
+    pass
 
 
 @Deprecated
