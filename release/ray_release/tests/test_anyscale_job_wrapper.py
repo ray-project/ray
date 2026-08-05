@@ -269,7 +269,7 @@ class TestRunObjStoreUtilCheck:
         metrics_path = tmp_path / "metrics.json"
         metrics_path.write_text(
             json.dumps(
-                {"object_store_util_percent": [{"values": [[0, "81"], [1, "10"]]}]}
+                {"object_store_util_percent": [{"values": [[0, "81"], [1, "0"]]}]}
             )
         )
         monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
