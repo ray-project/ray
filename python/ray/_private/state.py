@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 # Timeout for the synchronous task-events query to the dashboard head.
 _DASHBOARD_HEAD_QUERY_TIMEOUT_S = 30
+# Read task events (for ray.timeline / profiling) from the dashboard head instead of GCS.
+_READ_TASK_EVENTS_FROM_DASHBOARD_HEAD = (
+    ray._config.enable_task_events_to_dashboard_head()
+)
 
 
 class TaskEventsHeadClient:
@@ -354,9 +358,7 @@ class GlobalState:
         Reads from the dashboard head when the task-events-to-dashboard-head migration is
         enabled, otherwise from GCS.
         """
-        import ray.dashboard.consts as dashboard_consts
-
-        if dashboard_consts.RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD:
+        if _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD:
             return self._get_task_events_head_client().get_task_events(
                 _DASHBOARD_HEAD_QUERY_TIMEOUT_S
             )
@@ -1141,12 +1143,10 @@ def timeline(filename: Optional[str] = None):
             "Ray has not been started yet. Timeline requires Ray to be initialized first."
         )
 
-    import ray.dashboard.consts as dashboard_consts
-
-    if dashboard_consts.RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD:
+    if _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD:
         logger.warning(
             "ray.timeline() reads task profiling events from the dashboard (API server) "
-            "because RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD is enabled; it will fail if "
+            "because RAY_enable_task_events_to_dashboard_head is enabled; it will fail if "
             "the dashboard is not running. Start Ray with the dashboard to use ray.timeline()."
         )
     return state.chrome_tracing_dump(filename=filename)
