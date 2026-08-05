@@ -4,18 +4,17 @@ from typing import Optional, Set
 
 import aiohttp.web
 
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
 from ray._private.gcs_pubsub import GcsAioJobSubscriber, GcsAioWorkerDeltaSubscriber
-from ray._private.ray_constants import env_bool
 from ray.core.generated import (
     events_event_aggregator_service_pb2,
     gcs_pb2,
     gcs_service_pb2,
     gcs_service_pb2_grpc,
 )
-from ray.dashboard.consts import RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD_ENV_NAME
 from ray.dashboard.modules.task_events import task_event_query
 from ray.dashboard.modules.task_events.ray_event_converter import convert_to_task_events
 from ray.dashboard.modules.task_events.task_event_storage import (
@@ -58,7 +57,7 @@ class TaskEventsHead(SubprocessModule):
     def is_enabled(cls) -> bool:
         """Only load while the "task events out of GCS" migration is enabled; otherwise
         the module (and its GCS pubsub subscriptions) shouldn't run at all."""
-        return env_bool(RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD_ENV_NAME, False)
+        return dashboard_consts.RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD
 
     @property
     def num_task_events_stored(self) -> int:
