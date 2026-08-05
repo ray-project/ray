@@ -397,7 +397,7 @@ Look up the form here rather than deriving it. Generic nouns stay lowercase even
 | GCS fault tolerance | GCS FT | Spell it out, then use the full phrase. |
 | custom resource | Custom Resource | Lowercase as a general concept. Define CustomResourceDefinition on first use, then use CRD. |
 | namespace | Namespace | Lowercase unless you mean the Kubernetes API object specifically. |
-| YuniKorn, Kueue, Volcano, Helm, Prometheus, Grafana | Yunikorn, kueue, volcano, helm | Third-party names take each project's own casing. |
+| YuniKorn, Kueue, Volcano, Helm, Prometheus, Grafana | Yunikorn, kueue, volcano, helm, prometheus, grafana | Third-party names take each project's own casing. |
 | `kubectl` | Kubectl | Always lowercase, always in backticks. |
 
 A lowercase third-party name is correct when it names a Helm release or a Kubernetes object rather than the project, as in "the `grafana` deployment." Put it in backticks in that case.
