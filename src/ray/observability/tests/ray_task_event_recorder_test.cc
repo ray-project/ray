@@ -273,6 +273,35 @@ TEST_F(RayTaskEventRecorderTest, TestAllOrNoneSkipsBufferedEventForDroppedAttemp
   EXPECT_EQ(dropped[0].task_id(), Tid("task1"));
 }
 
+// (claude) An export sends at most task_events_send_batch_size events; what does not fit
+// stays buffered for the next export instead of being dropped.
+TEST_F(RayTaskEventRecorderTest, TestExportSendsAtMostOneBatch) {
+  RayConfig::instance().initialize(
+      R"({"enable_ray_event": true,
+          "enable_ray_task_event_recorder": true,
+          "ray_events_report_interval_ms": 1,
+          "task_events_send_batch_size": 2})");
+  recorder_->StartExportingEvents();
+
+  AddOne(StatusEvent("task1", 0));
+  AddOne(StatusEvent("task2", 0));
+  AddOne(StatusEvent("task3", 0));
+  io_service_.run_one();
+
+  auto recorded = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded.size(), 2);
+  EXPECT_EQ(recorded[0].message(), "task1:0");
+  EXPECT_EQ(recorded[1].message(), "task2:0");
+
+  io_service_.run_one();
+
+  recorded = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded.size(), 3);
+  EXPECT_EQ(recorded[2].message(), "task3:0");
+  EXPECT_TRUE(fake_client_->GetDroppedAttempts().empty());
+  EXPECT_EQ(TotalDropped(), 0);
+}
+
 // A flush with only dropped attempts and no surviving events still sends the metadata
 // (events_size()==0 but dropped_task_attempts>0), exercising the has_aggregator_payload
 // guard's "send anyway" branch.
