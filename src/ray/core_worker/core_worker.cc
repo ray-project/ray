@@ -397,6 +397,8 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }),
+      max_free_local_objects_batch_size_(static_cast<size_t>(
+          std::max<int64_t>(1, RayConfig::instance().max_free_local_objects_batch_size()))),
       clock_(clock) {
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
@@ -4927,9 +4929,7 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
     // ever created together with a push_back under this lock, so it is non-empty.
     std::deque<ObjectID> &queue = it->second;
     RAY_CHECK(!queue.empty());
-    const int64_t max_batch = RayConfig::instance().max_free_local_objects_batch_size();
-    const size_t cap = max_batch <= 0 ? 1 : static_cast<size_t>(max_batch);
-    const size_t n = std::min(cap, queue.size());
+    const size_t n = std::min(max_free_local_objects_batch_size_, queue.size());
     request.mutable_object_ids()->Reserve(static_cast<int>(n));
     for (size_t i = 0; i < n; i++) {
       request.add_object_ids(queue.front().Binary());

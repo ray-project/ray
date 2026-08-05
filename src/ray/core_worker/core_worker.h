@@ -2196,6 +2196,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
 
+  /// Effective max object ids per coalesced FreeLocalObjects RPC, read from
+  /// RayConfig and clamped to >= 1 once at construction (used by
+  /// SendFreeLocalObjectsBatchIfNeeded). Mirrors
+  /// OwnershipBasedObjectDirectory::kMaxObjectReportBatchSize.
+  const size_t max_free_local_objects_batch_size_;
+
   /// Clock used for timestamping events, retries, and timeouts.
   ClockInterface &clock_;
 };
