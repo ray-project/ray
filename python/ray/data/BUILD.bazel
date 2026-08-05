@@ -1215,6 +1215,21 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_inference",
+    size = "medium",
+    srcs = ["tests/test_torch_inference.py"],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_dynamic_block_split",
     size = "large",
     srcs = ["tests/test_dynamic_block_split.py"],
@@ -1614,20 +1629,6 @@ py_test(
     name = "test_randomize_block_order",
     size = "small",
     srcs = ["tests/test_randomize_block_order.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_ranker",
-    size = "small",
-    srcs = ["tests/test_ranker.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2148,6 +2149,20 @@ py_test(
 )
 
 py_test(
+    name = "test_combine_downloads",
+    size = "small",
+    srcs = ["tests/test_combine_downloads.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],
@@ -2249,6 +2264,20 @@ py_test(
     name = "test_write_delta",
     size = "medium",
     srcs = ["tests/datasource/test_write_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_write_delta_catalog_e2e",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta_catalog_e2e.py"],
     tags = [
         "exclusive",
         "team:data",

@@ -23,8 +23,17 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.conftest import noop_counter
 from ray.util.annotations import RayDeprecationWarning
+
+
+class StubBlockRefCounter(BlockRefCounter):
+    """Test double for BlockRefCounter with directly settable per-operator usage."""
+
+    def __init__(self):
+        super().__init__(add_object_out_of_scope_callback=lambda *_: True)
+
+    def set_usage(self, producer_id: str, size_bytes: int) -> None:
+        self._bytes_by_producer[producer_id] = size_bytes
 
 
 def test_execution_options_deprecated_defaults_initialized_without_warning():
@@ -172,7 +181,8 @@ def test_does_not_double_count_usage_from_union():
     input1 = PhysicalOperator("op1", [], DataContext.get_current())
     input2 = PhysicalOperator("op2", [], DataContext.get_current())
     union_op = UnionOperator(DataContext.get_current(), input1, input2)
-    topology = build_streaming_topology(union_op, ExecutionOptions(), noop_counter())
+    counter = StubBlockRefCounter()
+    topology = build_streaming_topology(union_op, ExecutionOptions(), counter)
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=2)
@@ -181,7 +191,7 @@ def test_does_not_double_count_usage_from_union():
         ExecutionOptions(),
         lambda: total_resources,
         DataContext.get_current(),
-        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        counter,
     )
 
     # Create two 1-byte `RefBundle`s.
@@ -200,6 +210,9 @@ def test_does_not_double_count_usage_from_union():
     # Add two 1-byte `RefBundle` to the union operator.
     topology[union_op].add_output(bundle1)
     topology[union_op].add_output(bundle2)
+    # Blocks are attributed to their original producer, not union_op.
+    counter.on_block_produced(block_ref1, 1, input1.id)
+    counter.on_block_produced(block_ref2, 1, input2.id)
     resource_manager.update_usages()
 
     # The total object store memory usage should be 2. If the resource manager double-
@@ -235,7 +248,8 @@ def test_per_input_inqueue_attribution_for_union():
 
     options = ExecutionOptions()
     options.preserve_order = True
-    topology = build_streaming_topology(union_op, options, noop_counter())
+    counter = StubBlockRefCounter()
+    topology = build_streaming_topology(union_op, options, counter)
 
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=200)
@@ -244,7 +258,7 @@ def test_per_input_inqueue_attribution_for_union():
         options,
         lambda: total_resources,
         DataContext.get_current(),
-        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        counter,
     )
 
     # Create two 10-byte RefBundles with distinct block refs (simulates real execution
@@ -265,6 +279,9 @@ def test_per_input_inqueue_attribution_for_union():
     # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
     union_op.add_input(bundle1, input_index=1)
     union_op.add_input(bundle2, input_index=1)
+    # Blocks in union's input buffer are attributed to their producer (input2).
+    counter.on_block_produced(block_ref1, 10, input2.id)
+    counter.on_block_produced(block_ref2, 10, input2.id)
 
     resource_manager.update_usages()
 

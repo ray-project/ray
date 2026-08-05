@@ -92,7 +92,7 @@ class Tokenizer:
 
     def __init__(self, llm_config: LLMConfig):
         engine_config = llm_config.get_engine_config()
-        _, vllm_config = _get_vllm_engine_config(llm_config)
+        _, vllm_config = _get_vllm_engine_config(llm_config, device_type="cpu")
         self._model_config = vllm_config.model_config
 
         frontend_args = FrontendArgs(**engine_config.frontend_kwargs)
