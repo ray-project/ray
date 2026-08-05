@@ -634,7 +634,7 @@ RAY_CONFIG(bool, disable_open_telemetry_sdk_log, true)
 
 /// Whether to enable Ray Event as the event collection backend. The default is
 /// using the Export API.
-RAY_CONFIG(bool, enable_ray_event, false)
+RAY_CONFIG(bool, enable_ray_event, true)
 
 RAY_CONFIG(uint64_t, ray_event_recorder_max_queued_events, 10000)
 
@@ -1116,7 +1116,7 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 // Whether the task events from the core worker are sent to GCS directly.
 // TODO(myan): #54515 Remove this flag after the task events to GCS path is fully
 // migrated to the event aggregator.
-RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
+RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, false)
 
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.
@@ -1127,13 +1127,13 @@ RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
 // Whether core-worker task events are sent to the event aggregator via the
 // RayTaskEventRecorder. When true (and enable_ray_event is also true),
 // the recorder is used.
-RAY_CONFIG(bool, enable_ray_task_event_recorder, false)
+RAY_CONFIG(bool, enable_ray_task_event_recorder, true)
 
 // Flag for the migration of task events from GCS to dashboard head. When true: the
 // aggregator publishes task events to the dashboard head, the TaskEventsHead module is
 // loaded, and the state API (list tasks / ray.timeline) reads task events from the
 // dashboard head instead of GCS.
-RAY_CONFIG(bool, enable_task_events_to_dashboard_head, false)
+RAY_CONFIG(bool, enable_task_events_to_dashboard_head, true)
 
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
