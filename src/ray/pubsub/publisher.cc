@@ -91,10 +91,12 @@ bool EntityState::Publish(const std::shared_ptr<rpc::PubMessage> &msg, size_t ms
   pending_messages_.emplace(msg, msg_size);
   total_size_ += msg_size;
 
-  for (const std::pair<const UniqueID, SubscriberState *> &entry : subscribers_) {
-    if (is_object_locations_message) {
+  if (is_object_locations_message) {
+    for (const std::pair<const UniqueID, SubscriberState *> &entry : subscribers_) {
       entry.second->QueueObjectLocationsMessage(msg);
-    } else {
+    }
+  } else {
+    for (const std::pair<const UniqueID, SubscriberState *> &entry : subscribers_) {
       entry.second->QueueMessage(msg);
     }
   }
