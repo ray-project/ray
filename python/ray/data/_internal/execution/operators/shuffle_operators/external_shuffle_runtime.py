@@ -559,6 +559,8 @@ def _prefetch_node_into(
       * conn dead, incarnation unchanged  -> ``ShuffleFileServerAnomalyError``
                                              (network config problem, terminal)
     """
+    import pyarrow.flight as flight
+
     key = _file_server_name(shuffle_id, node_id)
 
     def _resolve() -> _Endpoint:
@@ -634,13 +636,25 @@ def _prefetch_node_into(
             # (ConnectionError/TimeoutError are OSError subclasses, but Flight raises
             # FlightError not those, so real transport faults skip this clause.)
             raise
-        except Exception as e:
-            # A Flight transport failure (server unavailable / restarting / timeout
-            # / mid-stream server error) — retryable. A changed incarnation means
-            # the server restarted (retry in-place); same incarnation means the
-            # process stayed up but the fetch failed. Compare incarnations, not
-            # (host, port): a restart can rebind the same ephemeral port, so an
-            # address match wouldn't prove it's the same process.
+        except pa.lib.ArrowInvalid as e:
+            # A server-side data error surfaced over Flight: the mapper's do_action
+            # handler raised (today only the short-read guard — a truncated / corrupt
+            # frame). Retrying the same file can't fix it, so this is terminal, not a
+            # transport fault.
+            # https://arrow.apache.org/docs/python/generated/pyarrow.ArrowInvalid.html
+            raise
+        except flight.FlightError as e:
+            # A transport fault. FlightError covers FlightUnavailableError (server
+            # down / unreachable / restarting), FlightTimedOutError (deadline),
+            # FlightCancelledError, FlightInternalError, and FlightServerError — all
+            # map to a gRPC status and are retryable here.
+            # https://arrow.apache.org/docs/python/api/flight.html
+            # https://grpc.io/docs/guides/status-codes/
+            #
+            # A changed incarnation means the server restarted (retry in-place);
+            # same incarnation means the process stayed up but the fetch failed.
+            # Compare incarnations, not (host, port): a restart can rebind the same
+            # ephemeral port, so an address match wouldn't prove it's the same process.
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
@@ -667,6 +681,13 @@ def _prefetch_node_into(
                 f"reachable via Ray — likely a network block on the Flight port "
                 f"(NetworkPolicy/firewall/routing)."
             ) from e
+        except Exception:
+            # Not a known disk / data / transport fault → unexpected (a bug). Don't
+            # retry it (that would mask the bug and spin the loop); log and surface.
+            logger.exception(
+                f"node {node_id}: unexpected error during prefetch fetch"
+            )
+            raise
 
 
 def _chunk_members_by_bytes(
