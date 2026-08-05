@@ -227,6 +227,9 @@ class _IdempotencyVisitor(_ExprVisitor[bool]):
             value.is_idempotent() for value in expr.kwargs.values()
         )
 
+    def visit_unnest(self, expr: "UnnestExpr") -> bool:
+        return expr.inner.is_idempotent()
+
 
 # Stateless singleton: ``Expr.is_idempotent`` reuses this rather than allocating a
 # visitor per node during the initial (uncached) computation.

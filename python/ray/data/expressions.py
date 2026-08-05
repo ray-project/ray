@@ -1870,21 +1870,16 @@ class UnnestExpr(Expr):
     See :func:`unnest` for the public constructor.
     """
 
-    _NAME_SENTINEL: str = field(default="__unnest__", init=False, repr=False)
-
     # The inner expression that evaluates to a StructArray.
     inner: Expr
 
     # UnnestExpr doesn't have a meaningful single data type; use object as placeholder.
     data_type: DataType = field(default_factory=lambda: DataType(object), init=False)
 
-    @property
-    def name(self) -> str:
-        # Returns sentinel so existing code that calls .name on any Expr without
-        # an isinstance check gets a recognisable string instead of AttributeError.
-        # The evaluator and schema-inference code check isinstance(expr, UnnestExpr)
-        # before ever using .name, so the sentinel is never treated as a real column name.
-        return "__unnest__"
+    # UnnestExpr expands to multiple output columns, so it has no single name.
+    # ``.name`` returns ``None`` (inherited from ``Expr``), consistent with
+    # ``StarExpr``. Callers must ``isinstance``-check before relying on ``.name``
+    # for any expression that may be a ``StarExpr`` or ``UnnestExpr``.
 
     def alias(self, name: str) -> "Expr":
         # UnnestExpr expands to N columns whose names come from the struct schema.

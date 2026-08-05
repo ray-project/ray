@@ -64,7 +64,7 @@ def _analyze_upstream_project(
     Example: Upstream exprs [col("x").alias("y")] → removed_by_renames = {"x"} if "x" not in output
     """
     output_column_names = {
-        expr.name for expr in upstream_project.exprs if not isinstance(expr, StarExpr)
+        expr.name for expr in _filter_out_star_and_unnest(upstream_project.exprs)
     }
 
     # Compose column definitions in the form of a mapping of
@@ -167,7 +167,7 @@ def _would_duplicate_nonidempotent_expr(
     # Note: We ignore _common_sub_exprs field as CSE rule is applied post-optimization.
     # If order is to be changed, we also need to invoke the _ColumnReferenceCollector
     # on _common_sub_exprs.
-    for e in _filter_out_star(downstream_project.exprs):
+    for e in _filter_out_star_and_unnest(downstream_project.exprs):
         counter.visit(e)
     ref_counts = counter.get_counts()
 
@@ -351,11 +351,32 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
 def _filter_out_star_and_unnest(exprs: List[Expr]) -> List[Expr]:
     """Filter out StarExpr and UnnestExpr from a projection list.
 
-    UnnestExpr is excluded because its output name (``__unnest__``) is a
-    sentinel, not a real column name. Including it in name-based analysis
-    (e.g. ``_analyze_upstream_project``) would produce incorrect results.
+    UnnestExpr is excluded because it has no single output name (``.name``
+    is ``None``) -- it expands to multiple columns at runtime, so including
+    it in name-based analysis (e.g. ``_analyze_upstream_project``) would
+    produce incorrect results.
     """
     return [e for e in exprs if not isinstance(e, (StarExpr, UnnestExpr))]
+
+
+def _is_pure_prune(project: Project) -> bool:
+    """Return True if ``project`` only prunes columns (no renames, no computed
+    expressions, no unnest) and can be fully subsumed by a projection pushed
+    into a read op.
+
+    ``UnnestExpr`` is checked explicitly rather than relying on
+    ``_filter_out_star_and_unnest`` alone: that helper filters out
+    ``UnnestExpr`` (it has no single name), so a projection containing only
+    an ``UnnestExpr`` would otherwise leave an empty list, and ``all(...)``
+    over an empty iterable is vacuously ``True`` -- silently treating a
+    projection that performs real work (the unnest) as a no-op prune.
+    """
+    has_renames = any(isinstance(e, AliasExpr) for e in project.exprs)
+    has_unnest = any(isinstance(e, UnnestExpr) for e in project.exprs)
+    all_col_refs = all(
+        _is_col_expr(e) for e in _filter_out_star_and_unnest(project.exprs)
+    )
+    return not has_renames and not has_unnest and all_col_refs
 
 
 class ProjectionPushdown(Rule):
@@ -495,21 +516,15 @@ class ProjectionPushdown(Rule):
             )
             projected_input_op = input_op.apply_projection(projection_map)
 
-            # If the ``Project`` is a pure-prune (only ``col()`` refs,
-            # no renames, no computed expressions), the projection
+            # If the ``Project`` is a pure-prune (only ``col()`` refs, no
+            # renames, no computed expressions, no unnest), the projection
             # pushdown into the read op fully subsumes it — discard it.
-            # Otherwise (renames or computed expressions present), keep
-            # the ``Project`` on top so it runs above the (pruned) read.
+            # Otherwise (renames, computed expressions, or an unnest present),
+            # keep the ``Project`` on top so it runs above the (pruned) read.
             # Physical operator fusion later merges the kept ``Project``
             # into the same ``MapOperator`` as the read, so the
             # runtime cost is the same either way.
-            has_renames = any(isinstance(e, AliasExpr) for e in current_project.exprs)
-            all_col_refs = all(
-                _is_col_expr(e)
-                for e in _filter_out_star_and_unnest(current_project.exprs)
-            )
-            is_pure_prune = not has_renames and all_col_refs
-            if is_pure_prune:
+            if _is_pure_prune(current_project):
                 return projected_input_op
 
             return Project(

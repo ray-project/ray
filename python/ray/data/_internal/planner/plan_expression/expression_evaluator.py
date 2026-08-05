@@ -924,10 +924,6 @@ def _eval_projection_without_cse(projection_exprs: List[Expr], block: Block) -> 
                     f"If returning from a UDF, ensure it returns a PyArrow struct array."
                 )
 
-            # ChunkedArray → StructArray: flatten() only works on StructArray.
-            if isinstance(result, pa.ChunkedArray):
-                result = result.combine_chunks()
-
             if not pa.types.is_struct(result.type):
                 raise TypeError(
                     f"unnest() requires a struct-typed expression, "
@@ -936,11 +932,30 @@ def _eval_projection_without_cse(projection_exprs: List[Expr], block: Block) -> 
                     f"@udf(return_dtype=DataType.struct([...]))."
                 )
 
-            # pa.StructArray.flatten() is zero-copy: returns child arrays
-            # in field-index order.
-            child_arrays = result.flatten()
-            for i in range(result.type.num_fields):
-                names.append(result.type.field(i).name)
+            struct_type = result.type
+            if isinstance(result, pa.ChunkedArray):
+                # ChunkedArray.combine_chunks() is NOT zero-copy: it concatenates
+                # every chunk into one contiguous array, which can be extremely
+                # expensive and memory-intensive for large struct columns.
+                # StructArray.flatten() IS zero-copy, so flatten each chunk
+                # individually and reassemble per-field ChunkedArrays instead.
+                per_field_chunks: List[List[pa.Array]] = [
+                    [] for _ in range(struct_type.num_fields)
+                ]
+                for chunk in result.chunks:
+                    for i, field_array in enumerate(chunk.flatten()):
+                        per_field_chunks[i].append(field_array)
+                child_arrays = [
+                    pa.chunked_array(chunks, type=struct_type.field(i).type)
+                    for i, chunks in enumerate(per_field_chunks)
+                ]
+            else:
+                # pa.StructArray.flatten() is zero-copy: returns child arrays
+                # in field-index order.
+                child_arrays = result.flatten()
+
+            for i in range(struct_type.num_fields):
+                names.append(struct_type.field(i).name)
                 output_cols.append(child_arrays[i])
         else:
             names.append(expr.name)

@@ -198,16 +198,43 @@ def test_unnest_structurally_equals():
 
 
 # ---------------------------------------------------------------------------
-# Test 8: UnnestExpr.name returns the sentinel
+# Test 7b (Gap 7): UnnestExpr.is_idempotent() -- proves the _IdempotencyVisitor
+# abstract-method gap is closed
 # ---------------------------------------------------------------------------
 
 
-def test_unnest_name_sentinel():
-    """UnnestExpr.name returns __unnest__ sentinel, never None."""
+def test_unnest_is_idempotent_delegates_to_inner():
+    """
+    UnnestExpr.is_idempotent() must delegate to its inner expression, and
+    calling it must not crash.
+
+    _IdempotencyVisitor subclasses _ExprVisitor directly (not the
+    auto-traversing _ExprVisitorBase), so it needs its own visit_unnest.
+    Without it, _ExprVisitor's abstract method is left unimplemented and
+    the module-level singleton (_IDEMPOTENCY_VISITOR = _IdempotencyVisitor())
+    in expression_visitors.py raises TypeError at import time -- breaking
+    every `import ray.data`, not just unnest-specific code paths.
+    """
+    from ray.data.expressions import RandomExpr, UnnestExpr, col
+
+    idempotent_expr = UnnestExpr(inner=col("a"))
+    assert idempotent_expr.is_idempotent() is True
+
+    non_idempotent_expr = UnnestExpr(inner=RandomExpr())
+    assert non_idempotent_expr.is_idempotent() is False
+
+
+# ---------------------------------------------------------------------------
+# Test 8: UnnestExpr.name returns None
+# ---------------------------------------------------------------------------
+
+
+def test_unnest_name_is_none():
+    """UnnestExpr.name returns None, consistent with StarExpr."""
     from ray.data.expressions import UnnestExpr, col
 
     expr = UnnestExpr(inner=col("a"))
-    assert expr.name == "__unnest__"
+    assert expr.name is None
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +503,90 @@ def test_eval_projection_zero_rows():
     # Original columns also preserved with 0 rows.
     assert "a" in result.schema.names
     assert "b" in result.schema.names
+
+
+# ---------------------------------------------------------------------------
+# Test 15 (Gap 5): Pure-prune pushdown must not silently drop an unnest-only
+# projection
+# ---------------------------------------------------------------------------
+
+
+def test_pure_prune_excludes_unnest_only_projection():
+    """
+    A Project containing only an UnnestExpr must never be treated as a
+    pure-prune (identity, no-op) projection.
+
+    ``_filter_out_star_and_unnest`` strips ``UnnestExpr`` out before checking
+    "are all remaining exprs plain column refs" -- for an unnest-only
+    projection this leaves an empty list, and ``all()`` over an empty
+    iterable is vacuously True. Without the explicit ``has_unnest`` guard in
+    ``_is_pure_prune``, ``ProjectionPushdown`` would discard the whole
+    ``Project`` (and the unnest computation with it) when pushed directly
+    onto a pushdown-capable read.
+    """
+    from ray.data._internal.logical.operators.input_data_operator import InputData
+    from ray.data._internal.logical.operators.map_operator import Project
+    from ray.data._internal.logical.rules.projection_pushdown import _is_pure_prune
+    from ray.data.expressions import UnnestExpr, col
+
+    project = Project(
+        exprs=[UnnestExpr(inner=col("a"))],
+        input_dependencies=[InputData(input_data=[])],
+    )
+
+    assert _is_pure_prune(project) is False
+
+
+def test_pure_prune_true_for_plain_column_refs():
+    """Sanity check: a plain column-selection Project is still a pure prune."""
+    from ray.data._internal.logical.operators.input_data_operator import InputData
+    from ray.data._internal.logical.operators.map_operator import Project
+    from ray.data._internal.logical.rules.projection_pushdown import _is_pure_prune
+    from ray.data.expressions import col
+
+    project = Project(
+        exprs=[col("a"), col("b")],
+        input_dependencies=[InputData(input_data=[])],
+    )
+
+    assert _is_pure_prune(project) is True
+
+
+# ---------------------------------------------------------------------------
+# Test 16 (Gap 6): Multi-chunk ChunkedArray of structs — flatten without
+# combine_chunks
+# ---------------------------------------------------------------------------
+
+
+def test_eval_projection_unnest_multi_chunk_struct_column():
+    """
+    unnest() on a genuinely multi-chunk ChunkedArray of structs must produce
+    correct values without concatenating chunks via combine_chunks().
+
+    Unlike test_eval_projection_chunked_array (which exercises a UDF that
+    combines its own inputs and returns a plain StructArray), this test
+    references a struct-typed column directly, so eval_projection's own
+    ChunkedArray-of-structs branch actually runs.
+    """
+    from ray.data.expressions import UnnestExpr, col
+
+    eval_projection = _get_eval_projection()
+
+    struct_type = pa.struct([("x", pa.int64()), ("y", pa.int64())])
+    chunk_1 = pa.array([{"x": 1, "y": 10}, {"x": 2, "y": 20}], type=struct_type)
+    chunk_2 = pa.array([{"x": 3, "y": 30}], type=struct_type)
+    chunked_struct = pa.chunked_array([chunk_1, chunk_2], type=struct_type)
+    assert chunked_struct.num_chunks == 2  # confirm the multi-chunk path is hit
+
+    block = pa.table({"s": chunked_struct})
+
+    result = eval_projection(
+        [UnnestExpr(inner=col("s"))],
+        block,
+    )
+
+    assert result["x"].to_pylist() == [1, 2, 3]
+    assert result["y"].to_pylist() == [10, 20, 30]
 
 
 if __name__ == "__main__":
