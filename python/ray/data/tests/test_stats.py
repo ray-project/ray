@@ -594,7 +594,9 @@ def canonicalize(
     filter_global_stats: bool = True,
 ) -> str:
     # Dataset UUID expression.
-    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+    canonicalized_stats = re.sub(r"(dataset_uuid=)[^,\n]+", r"\g<1>N", stats)
+    # Other UUID expressions.
+    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", canonicalized_stats)
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
