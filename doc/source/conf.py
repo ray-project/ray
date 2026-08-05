@@ -250,7 +250,7 @@ nb_mime_priority_overrides = [
     ("html", "text/plain", 90),
 ]
 
-html_extra_path = ["robots.txt"]
+html_extra_path = ["robots.txt", ".well-known"]
 
 html_baseurl = "https://docs.ray.io/en/latest/"
 
