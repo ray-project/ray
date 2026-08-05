@@ -209,6 +209,32 @@ def test_get_read_tasks():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+def test_read_task_remains_compact_with_large_table_metadata():
+    shared_metadata = "x" * (1024 * 1024)
+    catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    with table.transaction() as transaction:
+        transaction.set_properties({"ray.test.large_metadata": shared_metadata})
+
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    read_task_ref = ray.put(iceberg_ds.get_read_tasks(1)[0])
+
+    read_task_size = ray.experimental.get_local_object_locations([read_task_ref])[
+        read_task_ref
+    ]["object_size"]
+    assert read_task_size < len(shared_metadata) // 2
+
+    read_task = ray.get(read_task_ref)
+    assert sum(block.num_rows for block in read_task()) == 101
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
 def test_filtered_read():
 
     iceberg_ds = IcebergDatasource(
