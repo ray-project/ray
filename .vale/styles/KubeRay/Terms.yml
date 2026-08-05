@@ -1,0 +1,32 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#writing-ray-on-kubernetes-and-kuberay-docs'
+level: warning
+ignorecase: false
+swap:
+  # Project and product names.
+  'Kuberay': KubeRay
+  'Yunikorn': YuniKorn
+  'Ray serve': Ray Serve
+  # Custom resource versus the concept it creates.
+  'Raycluster': RayCluster
+  'ray cluster': Ray cluster
+  # Generic nouns stay lowercase next to a capitalized product name.
+  'Worker Group': worker group
+  # 'Ray Autoscaler': Ray autoscaler
+  #
+  # Deliberately commented out, because it can't work here. A `Vocab` accept entry
+  # shadows its token for every rule, case-insensitively, and `autoscaler` is accepted
+  # in config/vocabularies/Data/accept.txt. So this swap never fires, and leaving it
+  # uncommented would imply coverage that doesn't exist. Verified against Vale 3.12.0
+  # with a control term on the same line, which did fire.
+  #
+  # "Ray Autoscaler" against "Ray autoscaler" is the highest-volume casing
+  # inconsistency in these docs, so it's the one worth catching. Enabling it means
+  # dropping `autoscaler` from the Data vocabulary, which would raise new spelling
+  # alerts in the Ray Data docs, where Vale does gate CI. That's a separate change.
+  # Kubernetes API object casing.
+  'head pod': head Pod
+  'worker pod': worker Pod
+  # Spell out the acronym, then use the full phrase.
+  'GCS FT': GCS fault tolerance
