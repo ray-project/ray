@@ -1,0 +1,26 @@
+# Image for the async video-indexing service.
+#
+# Base: a CURRENT Ray nightly with CUDA. The async-inference API
+# (ray.serve.task_consumer, AsyncInferenceAutoscalingPolicy) is master-only, so a
+# nightly base is required. Use anyscale/ray:nightly (actively built), NOT
+# anyscale/ray-ml:nightly: the ray-ml line is deprecated and ships stale packages
+# (e.g. torch 2.3.0 from 2024) plus an out-of-date async-inference autoscaling
+# integration. A fresh ray:nightly matches the Ray where the upstream tests pass.
+FROM anyscale/ray:nightly-py311-cu124
+
+# ffmpeg for video chunking.
+RUN sudo apt-get update \
+ && sudo apt-get install -y --no-install-recommends ffmpeg \
+ && sudo rm -rf /var/lib/apt/lists/*
+
+# torch built for the base image's CUDA (cu124), then the rest of the deps.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124
+RUN pip install --no-cache-dir \
+    "transformers>=4.45,<5" \
+    accelerate \
+    sentencepiece \
+    pillow \
+    "celery[redis]" \
+    redis \
+    boto3 \
+    aioboto3

@@ -1,0 +1,9 @@
+ray[serve]
+torch
+transformers>=4.45,<5
+numpy
+pillow
+boto3
+redis
+celery
+aiohttp

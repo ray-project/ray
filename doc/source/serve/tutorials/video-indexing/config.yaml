@@ -1,0 +1,18 @@
+# Optional local `serve run config.yaml` for a fast inner-loop.
+# Requires a reachable Redis, e.g. `docker run -p 6379:6379 redis:7`.
+# The Anyscale deploy uses services.yaml instead.
+
+proxy_location: EveryNode
+
+http_options:
+  host: 0.0.0.0
+  port: 8000
+
+applications:
+  - name: video-indexing
+    route_prefix: /
+    import_path: app:app
+    runtime_env:
+      env_vars:
+        REDIS_BROKER_URL: redis://localhost:6379/0
+        REDIS_BACKEND_URL: redis://localhost:6379/1
