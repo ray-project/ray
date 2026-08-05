@@ -226,7 +226,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void PublishObjectLocationSnapshot(const ObjectID &object_id) override
+  void AddObjectLocationSubscriber(const ObjectID &object_id,
+                                   const NodeID &subscriber_id) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void RemoveObjectLocationSubscriber(const ObjectID &object_id,
+                                      const NodeID &subscriber_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void FillObjectInformation(const ObjectID &object_id,
@@ -433,6 +438,29 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
+    /// Raylets subscribed to this object's location; null until the first
+    /// subscriber. A mirror of the publisher's subscription index, kept here
+    /// so PushToLocationSubscribers and EraseReference can skip audience-less
+    /// publishes under mutex_ without taking the publisher's lock (the
+    /// contention #63983 removed). Maintenance contract on
+    /// Add/RemoveObjectLocationSubscriber in reference_counter_interface.h;
+    /// may only drift stale-high vs the index (dead raylets are erased on
+    /// node removal, ResetObjectsOnRemovedNode).
+    std::unique_ptr<absl::flat_hash_set<NodeID>> location_subscribers;
+
+    bool HasLocationSubscribers() const {
+      return location_subscribers != nullptr && !location_subscribers->empty();
+    }
+
+    void EraseLocationSubscriber(const NodeID &subscriber_id) {
+      if (location_subscribers == nullptr) {
+        return;
+      }
+      location_subscribers->erase(subscriber_id);
+      if (location_subscribers->empty()) {
+        location_subscribers.reset();
+      }
+    }
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -699,7 +727,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                  const Reference &ref,
                                  bool decrement) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Publish object locations to all subscribers.
+  /// Publish object locations to the object's subscribers, if it has any.
   ///
   /// \param[in] it The reference iterator for the object.
   void PushToLocationSubscribers(ReferenceTable::iterator it)

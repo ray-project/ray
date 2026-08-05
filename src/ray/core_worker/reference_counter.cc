@@ -796,8 +796,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
   // It is possible that when ref count reaches zero, there are still subscribers.
   // See https://github.com/ray-project/ray/pull/63560 for details
-  object_info_publisher_->PublishFailure(
-      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
+  if (it->second.HasLocationSubscribers()) {
+    object_info_publisher_->PublishFailure(
+        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
+  }
 
   RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
   auto index_it = reconstructable_owned_objects_index_.find(it->first);
@@ -920,6 +922,9 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
         objects_to_recover_.push_back(object_id);
       }
     }
+    // The dead node's raylet cannot be pulling anymore: drop its subscription
+    // so it does not hold this object's location publishes open.
+    it->second.EraseLocationSubscriber(node_id);
     RemoveObjectLocationInternal(it, node_id);
   }
 }
@@ -1705,6 +1710,10 @@ bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const 
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
+  if (!it->second.HasLocationSubscribers()) {
+    // No subscriber: skip building and posting a message nobody would receive.
+    return;
+  }
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
   auto object_size = it->second.object_size_;
@@ -1757,7 +1766,8 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_did_spill(it->second.did_spill);
 }
 
-void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {
+void ReferenceCounter::AddObjectLocationSubscriber(const ObjectID &object_id,
+                                                   const NodeID &subscriber_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1776,10 +1786,24 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
     return;
   }
 
-  // Always publish the location when subscribed for the first time.
-  // This will ensure that the subscriber will get the first snapshot of the
-  // object location.
+  // Record before publishing so PushToLocationSubscribers does not gate out
+  // this subscriber's first snapshot.
+  auto &subscribers = it->second.location_subscribers;
+  if (subscribers == nullptr) {
+    subscribers = std::make_unique<absl::flat_hash_set<NodeID>>();
+  }
+  subscribers->insert(subscriber_id);
   PushToLocationSubscribers(it);
+}
+
+void ReferenceCounter::RemoveObjectLocationSubscriber(const ObjectID &object_id,
+                                                      const NodeID &subscriber_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return;
+  }
+  it->second.EraseLocationSubscriber(subscriber_id);
 }
 
 std::string ReferenceCounter::DebugString() const {

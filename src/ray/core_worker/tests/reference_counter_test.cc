@@ -838,6 +838,240 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   rc->RemoveLocalReference(obj3, nullptr);
 }
 
+// A location update for an object with no location subscriber must not build or
+// publish any message; once a subscriber is recorded it publishes again.
+TEST_F(ReferenceCountTest, TestSkipsLocationPublishWithoutSubscribers) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  auto raylet = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  // No raylet is subscribed to this object's location yet: updates are skipped.
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(obj, node);
+  rc->RemoveObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // Subscribing records a subscriber and publishes; later updates then publish.
+  EXPECT_CALL(*publisher_, Publish).Times(2);
+  rc->AddObjectLocationSubscriber(obj, raylet);
+  rc->AddObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // After the subscriber goes away, updates are skipped again.
+  rc->RemoveObjectLocationSubscriber(obj, raylet);
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->RemoveObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
+// The skip is per object: an update to an object nobody is subscribed to is
+// skipped even while another owned object has a subscriber.
+TEST_F(ReferenceCountTest, TestLocationPublishSkipIsPerObject) {
+  auto watched = ObjectID::FromRandom();
+  auto ignored = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  auto raylet = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+
+  for (const auto &obj : {watched, ignored}) {
+    rc->AddOwnedObject(obj,
+                       {},
+                       address,
+                       "file.py:42",
+                       100,
+                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                       /*add_local_ref=*/true);
+  }
+
+  // Subscribe to `watched` only, which records the subscriber and publishes.
+  EXPECT_CALL(*publisher_, Publish).Times(2);
+  rc->AddObjectLocationSubscriber(watched, raylet);
+  rc->AddObjectLocation(watched, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // `ignored` has no subscriber, so its update must still be skipped.
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(ignored, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveObjectLocationSubscriber(watched, raylet);
+  rc->RemoveLocalReference(watched, nullptr);
+  rc->RemoveLocalReference(ignored, nullptr);
+}
+
+// The gate tracks the set of subscribed raylets, not a bool: with two raylets
+// subscribed to one object, one unsubscribing must not stop location publishes
+// for the other.
+TEST_F(ReferenceCountTest, TestLocationSubscribersMultipleRaylets) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  auto raylet_a = NodeID::FromRandom();
+  auto raylet_b = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  // Two raylets subscribe.
+  EXPECT_CALL(*publisher_, Publish).Times(2);
+  rc->AddObjectLocationSubscriber(obj, raylet_a);
+  rc->AddObjectLocationSubscriber(obj, raylet_b);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // One unsubscribes, and its unsubscribe is delivered a second time
+  // (at-least-once): the duplicate erases nothing, the other raylet is still
+  // subscribed, and updates still publish.
+  rc->RemoveObjectLocationSubscriber(obj, raylet_a);
+  rc->RemoveObjectLocationSubscriber(obj, raylet_a);
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->AddObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // The last raylet unsubscribes: updates are skipped again.
+  rc->RemoveObjectLocationSubscriber(obj, raylet_b);
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->RemoveObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
+// A retried subscribe records the same raylet once, so a single unsubscribe
+// fully removes it: command redelivery cannot leave a stale entry behind.
+TEST_F(ReferenceCountTest, TestDuplicateSubscribeSingleUnsubscribe) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  auto raylet = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  // The same raylet subscribes twice (each subscribe publishes its snapshot).
+  EXPECT_CALL(*publisher_, Publish).Times(2);
+  rc->AddObjectLocationSubscriber(obj, raylet);
+  rc->AddObjectLocationSubscriber(obj, raylet);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // One unsubscribe is enough: updates are skipped afterwards.
+  rc->RemoveObjectLocationSubscriber(obj, raylet);
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
+// Removing a node erases its raylet from every object's location subscribers:
+// a raylet that died mid-subscription must not hold publishes open for the
+// rest of the row's lifetime.
+TEST_F(ReferenceCountTest, TestNodeRemovalErasesLocationSubscriber) {
+  auto obj = ObjectID::FromRandom();
+  auto node = NodeID::FromRandom();
+  auto raylet = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+  rc->AddOwnedObject(obj,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->AddObjectLocationSubscriber(obj, raylet);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  // The subscriber's node dies without unsubscribing.
+  rc->ResetObjectsOnRemovedNode(raylet);
+
+  EXPECT_CALL(*publisher_, Publish).Times(0);
+  rc->AddObjectLocation(obj, node);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+
+  rc->RemoveLocalReference(obj, nullptr);
+}
+
+// Erasing a reference nobody subscribed to must not publish a terminal failure;
+// erasing one with a live subscriber still must.
+TEST_F(ReferenceCountTest, TestDeathFailurePublishGatedBySubscribers) {
+  auto unwatched = ObjectID::FromRandom();
+  auto watched = ObjectID::FromRandom();
+  auto raylet = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1.2.3.4");
+
+  for (const auto &obj : {unwatched, watched}) {
+    rc->AddOwnedObject(obj,
+                       {},
+                       address,
+                       "file.py:42",
+                       100,
+                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                       /*add_local_ref=*/true);
+  }
+
+  // No subscriber: the reference is erased without a failure publish.
+  EXPECT_CALL(*publisher_, PublishFailure).Times(0);
+  rc->RemoveLocalReference(unwatched, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(unwatched));
+
+  // Live subscriber: erasing the reference still publishes the failure.
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->AddObjectLocationSubscriber(watched, raylet);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  EXPECT_CALL(
+      *publisher_,
+      PublishFailure(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, watched.Binary()))
+      .Times(1);
+  rc->RemoveLocalReference(watched, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(watched));
+
+  // Subscriber gone by death time: the gate observes the empty set and skips.
+  auto unsubscribed = ObjectID::FromRandom();
+  rc->AddOwnedObject(unsubscribed,
+                     {},
+                     address,
+                     "file.py:42",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  EXPECT_CALL(*publisher_, Publish).Times(1);
+  rc->AddObjectLocationSubscriber(unsubscribed, raylet);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  rc->RemoveObjectLocationSubscriber(unsubscribed, raylet);
+  EXPECT_CALL(*publisher_, PublishFailure).Times(0);
+  rc->RemoveLocalReference(unsubscribed, nullptr);
+  ::testing::Mock::VerifyAndClearExpectations(publisher_.get());
+  ASSERT_FALSE(rc->HasReference(unsubscribed));
+}
+
 // Tests that we can get the owner address correctly for objects that we own,
 // objects that we borrowed via a serialized object ID, and objects whose
 // origin we do not know.

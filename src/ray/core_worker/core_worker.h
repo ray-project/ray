@@ -1774,7 +1774,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Since core worker owns the object directory, there are various raylets
   /// that subscribe this object directory.
   void ProcessSubscribeObjectLocations(
-      const rpc::WorkerObjectLocationsSubMessage &message);
+      const rpc::WorkerObjectLocationsSubMessage &message, const NodeID &subscriber_id);
 
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
