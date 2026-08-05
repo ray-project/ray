@@ -386,7 +386,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         A new dictionary containing only the columns allowed by the schema.
     """
     filtered_data = {}
-    columns = state_dataclass.columns() if detail else state_dataclass.base_columns()
+    columns = state_dataclass.list_columns(detail=detail)
     for col in columns:
         if col in data:
             filtered_data[col] = data[col]
@@ -567,7 +567,7 @@ class PlacementGroupState(StateSchema):
     #: The topology strategy for this placement group: a dict mapping each
     #: topology label key (e.g. "ray.io/gpu-domain") to a placement strategy
     #: (e.g. "STRICT_PACK"). Empty dict if the placement group does not use
-    #: topology-aware scheduling.
+    #: a topology strategy.
     #:
     #: NOTE: This field is experimental and may change in the future.
     topology_strategy: Optional[dict] = state_column(filterable=False, detail=True)
