@@ -1,13 +1,17 @@
 import gc
 from typing import List
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution import create_resource_allocator
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
+    ExecutionResources,
     RefBundle,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -15,6 +19,11 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.union_operator import UnionOperator
+from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.streaming_executor_state import (
+    build_streaming_topology,
+)
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.progress.base_progress import NoopSubProgressBar
 from ray.data.block import BlockAccessor
@@ -221,6 +230,42 @@ def test_input_data_buffer_does_not_free_inputs():
     # `InputDataBuffer` should still hold a reference to the input block even after
     # `get_next` is called.
     assert len(gc.get_referrers(block_ref)) > 0
+
+
+def test_union_operator_throttling_disabled(ray_start_regular_shared):
+    """Test that UnionOperator has throttling disabled.
+
+    UnionOperator only manipulates bundle metadata and doesn't launch any tasks,
+    so it should not be allocated resources.
+    """
+    ctx = DataContext.get_current()
+    union_op = UnionOperator(ctx)
+
+    assert union_op.throttling_disabled() is True
+
+
+def test_union_operator_not_allocated_resources(
+    ray_start_regular_shared, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.op_resource_reservation_enabled = True
+    input_op1 = InputDataBuffer(ctx, make_ref_bundles([[1, 2, 3]]))
+    input_op2 = InputDataBuffer(ctx, make_ref_bundles([[4, 5, 6]]))
+    union_op = UnionOperator(ctx, input_op1, input_op2)
+
+    counter = BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True)
+    topo = build_streaming_topology(union_op, ExecutionOptions(), counter)
+    resource_manager = ResourceManager(
+        topo, ExecutionOptions(), MagicMock(), ctx, counter
+    )
+    allocator = create_resource_allocator(resource_manager, ctx)
+    assert allocator is not None
+
+    allocator.update_budgets(
+        limits=ExecutionResources(cpu=1, gpu=0, object_store_memory=1000)
+    )
+    allocation = allocator.get_allocation(union_op)
+    assert allocation is None
 
 
 if __name__ == "__main__":
