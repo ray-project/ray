@@ -68,6 +68,23 @@ steps:
       - corebuild-multipy(python=3.10)
 
   # tests
+
+  # repro-ci: auto flaky repro — 1 step x parallelism 25 (one per spike branch; delete branch to reset)
+
+  - label: ":ray: repro-ci auto: all (x25)"
+    key: repro-ci-auto
+    tags:
+      - core_python
+      - dashboard
+    instance_type: large
+    parallelism: 25
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/_common/tests/... //python/ray/autoscaler/v2/... core
+        --install-mask all-ray-libraries
+        --parallelism-per-worker 3
+        --python-version 3.10 --build-name corebuild-py3.10
+        --except-tags custom_setup
+        --install-mask all-ray-libraries
   - label: ":ray: core: python tests"
     tags:
       - core_python
