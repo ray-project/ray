@@ -107,7 +107,8 @@ def test_num_tpu_chips(mock_glob):
         ("v5p-4096", "16x16x16", True),
         ("v5p-12288", "16x16x24", True),
         ("v5p-4", "24x24x24", False),
-        ("v5litepod-16", "2x8", True),
+        ("v5litepod-16", "4x4", True),
+        ("v5litepod-16", "2x8", False),
         ("v5litepod-256", "16x16", True),
         ("v5litepod-4", "2x2", True),
         ("v6e-8", "2x4", True),
@@ -2709,6 +2710,14 @@ def test_normalize_torchtpu_topology():
     assert get_tpu_resource_per_chip("tpu7x-16") == 2
     assert get_tpu_resource_per_chip("TPU-V7X") == 2
     assert get_tpu_resource_per_chip("v7x-16") == 2
+    from ray._private.accelerators.tpu import normalize_tpu_accelerator_type
+
+    assert normalize_tpu_accelerator_type("TPU-V6E") == "v6e"
+    assert normalize_tpu_accelerator_type("tpu7x-16") == "v7x-16"
+    assert normalize_tpu_accelerator_type("tpu-v7x-16") == "v7x-16"
+    assert normalize_tpu_accelerator_type("tpuv7x-16") == "v7x-16"
+    assert normalize_tpu_accelerator_type("v4-8") == "v4-8"
+    assert normalize_tpu_accelerator_type("tpu7x") == "v7x"
 
 
 def test_get_torchtpu_env_vars():
@@ -2804,6 +2813,24 @@ def test_subslice_placement_group_torchtpu_env():
     runtime_env = ss_pg.get_tpu_runtime_env("10.0.0.1:8431,10.0.0.2:8431")
     assert runtime_env["env_vars"]["TORCH_TPU_TOPOLOGY"] == "2,4,1"
 
+    # Test automatic v7x detection without tpu_resource_per_chip parameter
+    ss_pg_auto_v7x = SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=1,
+        slice_name="slice-0",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources={"TPU": 8},
+        tpu_resource_per_chip=None,
+        accelerator_version="v7x",
+    )
+    assert ss_pg_auto_v7x.accelerator_version == "v7x"
+    assert ss_pg_auto_v7x._tpu_resource_per_chip == 2
+    ss_env_auto_v7x = ss_pg_auto_v7x.get_tpu_env_vars(addrs_32)
+    assert ss_env_auto_v7x["TORCH_TPU_TOPOLOGY"] == "2,4,1,2"
+
 
 def test_slice_placement_group_torchtpu_env():
     """Test SlicePlacementGroup TPU environment variable and runtime_env methods."""
@@ -2820,6 +2847,15 @@ def test_slice_placement_group_torchtpu_env():
     assert slice_runtime_env["env_vars"] == {
         "TORCH_TPU_TOPOLOGY": "4,4,1",
     }
+
+    # Test SlicePlacementGroup automatic 4D topology for v7x
+    slice_pg_v7x = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    slice_pg_v7x._topology = "4x4"
+    slice_pg_v7x._accelerator_version = "v7x"
+    slice_pg_v7x._tpu_resource_per_chip = get_tpu_resource_per_chip("v7x")
+    assert slice_pg_v7x._tpu_resource_per_chip == 2
+    slice_env_v7x = slice_pg_v7x.get_tpu_env_vars(["10.0.0.1:8431", "10.0.0.2:8431"])
+    assert slice_env_v7x["TORCH_TPU_TOPOLOGY"] == "4,4,1,2"
 
 
 if __name__ == "__main__":

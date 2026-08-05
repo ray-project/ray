@@ -78,7 +78,7 @@ TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 # 3) Dual-Device (v7x): 2 discrete chiplets, enumerated as 2 logical XLA devices
 #    per chip (4D topology, e.g. "2,2,1,2"). Listed in DUAL_DEVICE_TPU_TYPES.
 SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
-DUAL_DEVICE_TPU_TYPES = ("v7x", "tpu7x")
+DUAL_DEVICE_TPU_TYPES = ("v7x",)
 
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
@@ -187,6 +187,20 @@ def normalize_torchtpu_topology(topology: str, tpu_resource_per_chip: int = 1) -
     return ",".join(dims)
 
 
+def normalize_tpu_accelerator_type(accelerator_type: str) -> str:
+    """Normalizes a TPU accelerator type string to the standard 'v{gen}' format."""
+    s = str(accelerator_type).strip().lower()
+    if s.startswith("tpu-v"):
+        return s[4:]
+    if s.startswith("tpu-"):
+        return "v" + s[4:]
+    if s.startswith("tpuv"):
+        return s[3:]
+    if s.startswith("tpu"):
+        return "v" + s[3:]
+    return s
+
+
 def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
     """Returns the number of TPU custom resources per chip for a TPU accelerator type."""
     val = os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR)
@@ -194,7 +208,8 @@ def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
         return int(val)
     if not accelerator_type:
         accelerator_type = os.environ.get(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
-    if any(t in str(accelerator_type).lower() for t in DUAL_DEVICE_TPU_TYPES):
+    acc_str = normalize_tpu_accelerator_type(accelerator_type)
+    if any(t in acc_str for t in DUAL_DEVICE_TPU_TYPES):
         return 2
     return 1
 
@@ -260,7 +275,8 @@ def _get_tpu_metadata(key: str) -> Optional[str]:
 
 
 def _accelerator_type_check(accelerator_type: str):
-    if not accelerator_type.startswith(VALID_TPU_TYPES):
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    if not norm_type.startswith(VALID_TPU_TYPES):
         raise ValueError(
             f"Invalid accelerator type: {accelerator_type}. Must start with one of: {VALID_TPU_TYPES}"
         )
@@ -323,7 +339,7 @@ def infer_tpu_pod_type_from_topology(
         return None
     try:
         num_chips = get_num_chips_from_topology(topology)
-        generation = accelerator_type.lower().replace("tpu-", "")
+        generation = normalize_tpu_accelerator_type(accelerator_type)
         num_cores = num_chips * get_tpu_cores_per_chip(generation)
 
         return f"{generation}-{num_cores}"
@@ -848,10 +864,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         if accelerator_type and TPUAcceleratorManager.is_valid_tpu_accelerator_type(
             tpu_accelerator_type=accelerator_type
         ):
-            if accelerator_type.lower().startswith("tpu"):
-                return "v" + accelerator_type.lower()[3:]
-
-            return accelerator_type
+            return normalize_tpu_accelerator_type(accelerator_type)
         logging.debug("Failed to get a valid accelerator type.")
         return None
 

@@ -24,6 +24,7 @@ from ray._private.accelerators.tpu import (
     get_tpu_resource_per_chip,
     infer_tpu_pod_type_from_topology,
     normalize_torchtpu_topology,
+    normalize_tpu_accelerator_type,
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
@@ -52,14 +53,7 @@ def get_tpu_version_from_type(accelerator_type: str) -> str:
     Raises:
         ValueError: If the accelerator type is invalid.
     """
-    accel_type_lower = accelerator_type.lower()
-
-    if accel_type_lower.startswith("tpu-"):
-        version = accel_type_lower.replace("tpu-", "")
-    elif accel_type_lower.startswith("tpu"):
-        version = accel_type_lower.replace("tpu", "v")
-    else:
-        version = accel_type_lower
+    version = normalize_tpu_accelerator_type(accelerator_type)
 
     if version not in VALID_TPU_TYPES:
         raise ValueError(
@@ -617,9 +611,7 @@ class SlicePlacementGroup:
         self._num_slices = num_slices
         self._head_reservation_timeout_s = head_reservation_timeout_s
         if tpu_resource_per_chip is None:
-            tpu_resource_per_chip = int(
-                os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
-            )
+            tpu_resource_per_chip = get_tpu_resource_per_chip(self._accelerator_version)
         self._tpu_resource_per_chip = tpu_resource_per_chip
 
         # Calculate number of bundles and bundle resources for specified TPU topology.
@@ -1483,12 +1475,13 @@ def _discover_and_persist_subslices(
             accelerator_type=accelerator_version,
             chips_per_vm=chips_per_vm,
         )
+        rpc = get_tpu_resource_per_chip(accelerator_version)
         full_slice = SlicePlacementGroup(
             topology=parent_topology,
             accelerator_version=accelerator_version,
             chips_per_vm=chips_per_vm,
-            tpu_resource_per_chip=1,
-            resources_per_bundle={"CPU": 1, "TPU": chips_per_vm},
+            tpu_resource_per_chip=rpc,
+            resources_per_bundle={"CPU": 1, "TPU": chips_per_vm * rpc},
             head_reservation_timeout_s=head_reservation_timeout_s,
             bundle_label_selector=[
                 {ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name}
@@ -1805,11 +1798,6 @@ def _find_available_subslice(
     return None, None
 
 
-def _get_remote_torchtpu_slicebuilder_addresses() -> Optional[str]:
-    """Remote helper task to read TORCH_TPU_SLICEBUILDER_ADDRESSES from a bundle."""
-    return os.environ.get("TORCH_TPU_SLICEBUILDER_ADDRESSES")
-
-
 @PublicAPI(stability="alpha")
 class SubslicePlacementGroup:
     """A handle to a placement group reservation for a TPU subslice.
@@ -1843,6 +1831,7 @@ class SubslicePlacementGroup:
         bundle_label_selectors: Label selectors used per bundle when
             creating the PG.
         tpu_resource_per_chip: Number of TPU custom resources per chip.
+        accelerator_version: The TPU accelerator version (e.g. "v6e" or "v7x").
     """
 
     def __init__(
@@ -1858,6 +1847,7 @@ class SubslicePlacementGroup:
         head_placement_groups: Optional[List[PlacementGroup]] = None,
         bundle_label_selectors: Optional[List[Dict[str, str]]] = None,
         tpu_resource_per_chip: Optional[int] = None,
+        accelerator_version: Optional[str] = None,
     ):
         self._placement_group = placement_group
         self._parent_topology = parent_topology
@@ -1871,9 +1861,15 @@ class SubslicePlacementGroup:
         self._bundle_label_selectors: List[Dict[str, str]] = (
             bundle_label_selectors or []
         )
+        self._accelerator_version = accelerator_version
         if tpu_resource_per_chip is None:
-            tpu_resource_per_chip = get_tpu_resource_per_chip()
+            tpu_resource_per_chip = get_tpu_resource_per_chip(self._accelerator_version)
         self._tpu_resource_per_chip = tpu_resource_per_chip
+
+    @property
+    def accelerator_version(self) -> Optional[str]:
+        """The TPU accelerator version (e.g. 'v6e' or 'v7x')."""
+        return self._accelerator_version
 
     @property
     def placement_group(self) -> PlacementGroup:
@@ -1974,11 +1970,13 @@ class SubslicePlacementGroup:
                 and ray.is_initialized()
             ):
                 try:
-                    remote_task = ray.remote(num_cpus=0)(
-                        _get_remote_torchtpu_slicebuilder_addresses
-                    )
+                    # Query bundle 0 for TORCH_TPU_SLICEBUILDER_ADDRESSES when unset locally.
+                    @ray.remote(num_cpus=0)
+                    def _get_tpu_addr_env():
+                        return os.environ.get("TORCH_TPU_SLICEBUILDER_ADDRESSES")
+
                     slicebuilder_addresses = ray.get(
-                        remote_task.options(
+                        _get_tpu_addr_env.options(
                             scheduling_strategy=PlacementGroupSchedulingStrategy(
                                 placement_group=self._placement_group,
                                 placement_group_bundle_index=0,
@@ -2212,6 +2210,7 @@ def _build_subslice_pg(
     name: str,
     lifetime: Optional[str],
     tpu_resource_per_chip: Optional[int] = None,
+    accelerator_version: Optional[str] = None,
 ) -> SubslicePlacementGroup:
     """Create a Ray placement group for the selected subslice workers and
     return a :class:`SubslicePlacementGroup` handle.
@@ -2248,6 +2247,7 @@ def _build_subslice_pg(
         bundle_resources=resources_per_bundle,
         bundle_label_selectors=bundle_label_selectors,
         tpu_resource_per_chip=tpu_resource_per_chip,
+        accelerator_version=accelerator_version,
     )
 
 
@@ -2459,6 +2459,7 @@ def subslice_placement_group(
                 name,
                 lifetime,
                 tpu_resource_per_chip=get_tpu_resource_per_chip(version),
+                accelerator_version=version,
             )
 
         # No idle cached subslice found — discover the layout of the specific
