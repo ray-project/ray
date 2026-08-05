@@ -1812,6 +1812,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   }
 
   const CoreWorkerOptions options_;
+  // (claude) options_.session_name shared with every task event this worker records,
+  // so the string is not copied per event.
+  const std::shared_ptr<const std::string> session_name_;
 
   /// Callback to get the current language (e.g., Python) call site.
   std::function<void(std::string *)> get_call_site_;

@@ -15,15 +15,16 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 #include <utility>
+
+#include "ray/common/id.h"
 
 namespace ray {
 namespace observability {
 
-// Identifies the task attempt an event belongs to: (task_id binary, attempt_number).
+// Identifies the task attempt an event belongs to: (task_id, attempt_number).
 // Used as the buffer / drop-tracking key in RayTaskEventRecorder.
-using TaskAttemptId = std::pair<std::string, int32_t>;
+using TaskAttemptId = std::pair<TaskID, int32_t>;
 
 // Mix-in implemented by the task-event wrappers (definition / lifecycle / profile) so
 // RayTaskEventRecorder can read the (task_id, attempt) an event belongs to. Kept separate

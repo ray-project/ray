@@ -346,6 +346,7 @@ CoreWorker::CoreWorker(
     ray::observability::MetricInterface &actor_by_state_gauge,
     ClockInterface &clock)
     : options_(std::move(options)),
+      session_name_(std::make_shared<const std::string>(options_.session_name)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
@@ -470,11 +471,11 @@ CoreWorker::CoreWorker(
           rpc::TaskStatus::RUNNING,
           /*timestamp=*/clock_.NowUnixNanos(),
           /*is_actor_task_event=*/false,
-          options_.session_name,
+          session_name_,
           GetCurrentNodeId(),
           std::make_shared<const TaskSpecification>(std::move(spec)));
       if (observability::RayTaskEventRecorder::Enabled()) {
-        ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+        task_event->RecordTo(*ray_task_event_recorder_);
       }
       if (task_event_buffer_->Enabled()) {
         task_event_buffer_->AddTaskEvent(std::move(task_event));
@@ -638,10 +639,10 @@ void CoreWorker::Disconnect(
         rpc::TaskStatus::FINISHED,
         /*timestamp=*/clock_.NowUnixNanos(),
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
-        options_.session_name,
+        session_name_,
         GetCurrentNodeId());
     if (observability::RayTaskEventRecorder::Enabled()) {
-      ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+      task_event->RecordTo(*ray_task_event_recorder_);
     }
     if (task_event_buffer_->Enabled()) {
       task_event_buffer_->AddTaskEvent(std::move(task_event));
@@ -2953,7 +2954,7 @@ Status CoreWorker::ExecuteTask(
                                                   task_spec,
                                                   rpc::TaskStatus::RUNNING,
                                                   clock_.NowUnixNanos(),
-                                                  options_.session_name,
+                                                  session_name_,
                                                   GetCurrentNodeId(),
                                                   /*include_task_info=*/false,
                                                   update);
@@ -4858,7 +4859,7 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
       *current_task,
       rpc::TaskStatus::NIL,
       clock_.NowUnixNanos(),
-      options_.session_name,
+      session_name_,
       GetCurrentNodeId(),
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
@@ -4891,7 +4892,7 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
       *current_task,
       rpc::TaskStatus::NIL,
       clock_.NowUnixNanos(),
-      options_.session_name,
+      session_name_,
       GetCurrentNodeId(),
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
@@ -4921,7 +4922,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       running_task_it->second,
       rpc::TaskStatus::NIL,
       clock_.NowUnixNanos(),
-      options_.session_name,
+      session_name_,
       GetCurrentNodeId(),
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused));

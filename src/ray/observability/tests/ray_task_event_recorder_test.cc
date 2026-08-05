@@ -103,7 +103,9 @@ class FakeTaskRayEvent : public RayEventInterface, public TaskRayEventInterface 
 
   bool SupportsMerge() const override { return true; }
 
-  TaskAttemptId GetTaskAttempt() const override { return {task_id_, attempt_}; }
+  TaskAttemptId GetTaskAttempt() const override {
+    return {TaskID::FromBinary(task_id_), attempt_};
+  }
 
  private:
   std::string task_id_;

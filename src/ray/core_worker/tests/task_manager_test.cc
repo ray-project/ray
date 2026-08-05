@@ -164,10 +164,16 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
        std::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update),
       (override));
 
-  MOCK_METHOD(std::string, GetSessionName, (), (const, override));
+  const std::shared_ptr<const std::string> &GetSessionName() const override {
+    return session_name_;
+  }
 
   MOCK_METHOD(NodeID, GetNodeID, (), (const, override));
   MOCK_METHOD(int64_t, GetCurrentTimestampNanos, (), (const, override));
+
+ private:
+  const std::shared_ptr<const std::string> session_name_ =
+      std::make_shared<const std::string>("test-session-name");
 };
 
 class TaskManagerTest : public ::testing::Test {

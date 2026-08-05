@@ -353,6 +353,9 @@ ray_cc_library(
     hdrs = [
         "task_ray_event_interface.h",
     ],
+    deps = [
+        "//src/ray/common:id",
+    ],
 )
 
 ray_cc_library(

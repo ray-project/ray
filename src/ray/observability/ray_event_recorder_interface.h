@@ -38,6 +38,14 @@ class RayEventRecorderInterface {
   // Add a vector of data to the internal buffer. Data in the buffer will be sent to
   // the event aggregator periodically.
   virtual void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) = 0;
+
+  // (claude) Add a single event to the internal buffer. Recorders on a hot path override
+  // this to skip the vector allocation that AddEvents needs.
+  virtual void AddEvent(std::unique_ptr<RayEventInterface> data) {
+    std::vector<std::unique_ptr<RayEventInterface>> data_list;
+    data_list.push_back(std::move(data));
+    AddEvents(std::move(data_list));
+  }
 };
 
 }  // namespace observability

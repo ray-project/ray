@@ -50,7 +50,7 @@ TaskStatusEvent::TaskStatusEvent(
     const rpc::TaskStatus &task_status,
     int64_t timestamp,
     bool is_actor_task_event,
-    std::string session_name,
+    std::shared_ptr<const std::string> session_name,
     const NodeID &node_id,
     const std::shared_ptr<const TaskSpecification> &task_spec,
     std::optional<const TaskStatusEvent::TaskStateUpdate> state_update)
@@ -58,7 +58,7 @@ TaskStatusEvent::TaskStatusEvent(
       task_status_(task_status),
       timestamp_(timestamp),
       is_actor_task_event_(is_actor_task_event),
-      session_name_(session_name),
+      session_name_(std::move(session_name)),
       task_spec_(task_spec),
       state_update_(std::move(state_update)) {}
 
@@ -70,7 +70,7 @@ TaskProfileEvent::TaskProfileEvent(TaskID task_id,
                                    std::string node_ip_address,
                                    std::string event_name,
                                    int64_t start_time,
-                                   std::string session_name,
+                                   std::shared_ptr<const std::string> session_name,
                                    const NodeID &node_id)
     : TaskEvent(task_id, job_id, attempt_number, node_id),
       component_type_(std::move(component_type)),
@@ -78,7 +78,7 @@ TaskProfileEvent::TaskProfileEvent(TaskID task_id,
       node_ip_address_(std::move(node_ip_address)),
       event_name_(std::move(event_name)),
       start_time_(start_time),
-      session_name_(session_name) {}
+      session_name_(std::move(session_name)) {}
 
 void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   // Base fields
@@ -199,7 +199,7 @@ void TaskStatusEvent::PopulateRpcRayEventBaseFields(
   ray_event.set_source_type(rpc::events::RayEvent::CORE_WORKER);
   ray_event.mutable_timestamp()->CopyFrom(timestamp);
   ray_event.set_severity(rpc::events::RayEvent::INFO);
-  ray_event.set_session_name(session_name_);
+  ray_event.set_session_name(*session_name_);
   ray_event.set_node_id(node_id_.Binary());
 
   if (is_definition_event) {
@@ -250,24 +250,21 @@ void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
                                                 *task_lifecycle_event);
 }
 
-std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
-TaskStatusEvent::ToRayEventInterfaces() {
-  std::vector<std::unique_ptr<ray::observability::RayEventInterface>> events;
-
+void TaskStatusEvent::RecordTo(ray::observability::RayEventRecorderInterface &recorder) {
   // Definition event (static metadata): only when the task spec is attached.
   // The recorder de-dups definition events per attempt via no-op merge.
   if (task_spec_) {
     if (is_actor_task_event_) {
-      events.push_back(std::make_unique<ray::observability::RayActorTaskDefinitionEvent>(
+      recorder.AddEvent(std::make_unique<ray::observability::RayActorTaskDefinitionEvent>(
           task_spec_, task_id_, job_id_, attempt_number_, session_name_, timestamp_));
     } else {
-      events.push_back(std::make_unique<ray::observability::RayTaskDefinitionEvent>(
+      recorder.AddEvent(std::make_unique<ray::observability::RayTaskDefinitionEvent>(
           task_spec_, task_id_, job_id_, attempt_number_, session_name_, timestamp_));
     }
   }
 
   // Lifecycle event (dynamic state transition): always produced.
-  events.push_back(
+  recorder.AddEvent(
       std::make_unique<ray::observability::RayTaskLifecycleEvent>(task_id_,
                                                                   job_id_,
                                                                   attempt_number_,
@@ -275,8 +272,6 @@ TaskStatusEvent::ToRayEventInterfaces() {
                                                                   state_update_,
                                                                   session_name_,
                                                                   timestamp_));
-
-  return events;
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
@@ -323,7 +318,7 @@ void TaskProfileEvent::PopulateRpcRayEventBaseFields(
   ray_event.mutable_timestamp()->CopyFrom(timestamp);
   ray_event.set_severity(rpc::events::RayEvent::INFO);
   ray_event.set_event_type(rpc::events::RayEvent::TASK_PROFILE_EVENT);
-  ray_event.set_session_name(session_name_);
+  ray_event.set_session_name(*session_name_);
   ray_event.set_node_id(node_id_.Binary());
 }
 
@@ -360,8 +355,7 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   event_entry->set_extra_data(std::move(extra_data_));
 }
 
-std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
-TaskProfileEvent::ToRayEventInterfaces() {
+void TaskProfileEvent::RecordTo(ray::observability::RayEventRecorderInterface &recorder) {
   rpc::events::TaskProfileEvents task_profile_events;
   task_profile_events.set_task_id(task_id_.Binary());
   task_profile_events.set_job_id(job_id_.Binary());
@@ -378,10 +372,8 @@ TaskProfileEvent::ToRayEventInterfaces() {
   // buffer after this recorder-path conversion runs.
   event_entry->set_extra_data(extra_data_);
 
-  std::vector<std::unique_ptr<ray::observability::RayEventInterface>> events;
-  events.push_back(std::make_unique<ray::observability::RayTaskProfileEvent>(
+  recorder.AddEvent(std::make_unique<ray::observability::RayTaskProfileEvent>(
       std::move(task_profile_events), session_name_, start_time_));
-  return events;
 }
 
 bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
@@ -423,7 +415,7 @@ void RecordTaskStatusEventToRecorderIfNeeded(
     const TaskSpecification &spec,
     rpc::TaskStatus status,
     int64_t timestamp,
-    const std::string &session_name,
+    const std::shared_ptr<const std::string> &session_name,
     const NodeID &node_id,
     bool include_task_info,
     std::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
@@ -445,7 +437,7 @@ void RecordTaskStatusEventToRecorderIfNeeded(
       node_id,
       include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
       std::move(state_update));
-  ray_task_event_recorder.AddEvents(event.ToRayEventInterfaces());
+  event.RecordTo(ray_task_event_recorder);
 }
 
 TaskEventBufferImpl::TaskEventBufferImpl(
@@ -458,7 +450,7 @@ TaskEventBufferImpl::TaskEventBufferImpl(
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       event_aggregator_client_(std::move(event_aggregator_client)),
-      session_name_(session_name),
+      session_name_(std::make_shared<const std::string>(std::move(session_name))),
       node_id_(node_id),
       clock_(clock) {}
 

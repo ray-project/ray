@@ -131,7 +131,7 @@ class TaskStatusEvent : public TaskEvent {
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       bool is_actor_task_event,
-      std::string session_name,
+      std::shared_ptr<const std::string> session_name,
       const NodeID &node_id,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
       std::optional<const TaskStateUpdate> state_update = std::nullopt);
@@ -153,11 +153,10 @@ class TaskStatusEvent : public TaskEvent {
   /// to be filled.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
-  /// Convert this status event into RayEventInterface objects for recording through
-  /// RayEventRecorder. Produces a TaskLifecycleEvent always, plus a
-  /// (Actor)TaskDefinitionEvent when task_spec_ is set.
-  std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
-  ToRayEventInterfaces();
+  /// Record this status event to the task-event recorder as a TaskLifecycleEvent, plus a
+  /// (Actor)TaskDefinitionEvent when task_spec_ is set. The events are added one at a
+  /// time so no intermediate container is allocated on the task's call path.
+  void RecordTo(ray::observability::RayEventRecorderInterface &recorder);
 
   bool IsProfileEvent() const override { return false; }
 
@@ -174,7 +173,7 @@ class TaskStatusEvent : public TaskEvent {
   /// Whether the task is an actor task.
   bool is_actor_task_event_ = false;
   /// The current Ray session name.
-  std::string session_name_;
+  std::shared_ptr<const std::string> session_name_;
   /// Pointer to the task spec.
   std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
   /// Optional task state update
@@ -192,7 +191,7 @@ class TaskProfileEvent : public TaskEvent {
                    std::string node_ip_address,
                    std::string event_name,
                    int64_t start_time,
-                   std::string session_name,
+                   std::shared_ptr<const std::string> session_name,
                    const NodeID &node_id);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
@@ -203,10 +202,8 @@ class TaskProfileEvent : public TaskEvent {
   /// Note: The extra data will be moved when this is called and will no longer be usable.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
-  /// Convert this profile event into a RayEventInterface for recording through
-  /// RayEventRecorder.
-  std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
-  ToRayEventInterfaces();
+  /// Record this profile event to the task-event recorder as a TaskProfileEvents event.
+  void RecordTo(ray::observability::RayEventRecorderInterface &recorder);
 
   bool IsProfileEvent() const override { return true; }
 
@@ -233,7 +230,7 @@ class TaskProfileEvent : public TaskEvent {
   // the field (e.g. the state API) fail on that event.
   std::string extra_data_ = "{}";
   /// The current Ray session name.
-  std::string session_name_;
+  std::shared_ptr<const std::string> session_name_;
 };
 
 /**
@@ -254,7 +251,7 @@ void RecordTaskStatusEventToRecorderIfNeeded(
     const TaskSpecification &spec,
     rpc::TaskStatus status,
     int64_t timestamp,
-    const std::string &session_name,
+    const std::shared_ptr<const std::string> &session_name,
     const NodeID &node_id,
     bool include_task_info = false,
     std::optional<const TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt);
@@ -373,7 +370,7 @@ class TaskEventBuffer {
   virtual std::string DebugString() = 0;
 
   /// Return the current Ray session name.
-  virtual std::string GetSessionName() const = 0;
+  virtual const std::shared_ptr<const std::string> &GetSessionName() const = 0;
 
   /// Return the node ID.
   virtual NodeID GetNodeID() const = 0;
@@ -428,7 +425,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   std::string DebugString() override;
 
-  std::string GetSessionName() const override { return session_name_; }
+  const std::shared_ptr<const std::string> &GetSessionName() const override {
+    return session_name_;
+  }
 
   NodeID GetNodeID() const override { return node_id_; }
 
@@ -623,7 +622,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   bool task_event_buffer_to_aggregator_enabled_ = false;
 
   /// The current Ray session name. Passed in from the core worker
-  std::string session_name_ = "";
+  std::shared_ptr<const std::string> session_name_;
 
   /// The node id of the worker.
   const NodeID node_id_;

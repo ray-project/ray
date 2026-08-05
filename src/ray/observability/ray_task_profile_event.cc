@@ -14,6 +14,7 @@
 
 #include "ray/observability/ray_task_profile_event.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -21,13 +22,13 @@ namespace ray {
 namespace observability {
 
 RayTaskProfileEvent::RayTaskProfileEvent(rpc::events::TaskProfileEvents data,
-                                         const std::string &session_name,
+                                         std::shared_ptr<const std::string> session_name,
                                          int64_t timestamp)
     : RayEvent<rpc::events::TaskProfileEvents>(rpc::events::RayEvent::CORE_WORKER,
                                                rpc::events::RayEvent::TASK_PROFILE_EVENT,
                                                rpc::events::RayEvent::INFO,
                                                "",
-                                               session_name,
+                                               std::move(session_name),
                                                timestamp) {
   data_ = std::move(data);
 }
@@ -37,7 +38,7 @@ std::string RayTaskProfileEvent::GetEntityId() const {
 }
 
 TaskAttemptId RayTaskProfileEvent::GetTaskAttempt() const {
-  return {data_.task_id(), data_.attempt_number()};
+  return {TaskID::FromBinary(data_.task_id()), data_.attempt_number()};
 }
 
 void RayTaskProfileEvent::MergeData(RayEvent<rpc::events::TaskProfileEvents> &&other) {

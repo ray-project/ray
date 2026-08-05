@@ -119,7 +119,11 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
   std::string DebugString() override { return ""; }
 
-  std::string GetSessionName() const override { return "test-session-name"; }
+  const std::shared_ptr<const std::string> &GetSessionName() const override {
+    return session_name_;
+  }
+  const std::shared_ptr<const std::string> session_name_ =
+      std::make_shared<const std::string>("test-session-name");
 
   NodeID GetNodeID() const override { return NodeID::Nil(); }
   int64_t GetCurrentTimestampNanos() const override { return 0; }

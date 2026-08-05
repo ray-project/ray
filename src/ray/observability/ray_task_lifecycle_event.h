@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -50,7 +51,7 @@ class RayTaskLifecycleEvent : public RayEvent<rpc::events::TaskLifecycleEvent>,
                         int32_t task_attempt,
                         rpc::TaskStatus task_status,
                         const std::optional<const TaskStateUpdate> &state_update,
-                        const std::string &session_name,
+                        std::shared_ptr<const std::string> session_name,
                         int64_t timestamp);
 
   // Entity id is (task_id, task_attempt); shared with the task's definition event so the
