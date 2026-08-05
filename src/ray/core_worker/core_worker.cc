@@ -4947,28 +4947,22 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
     free_pending_.erase(node_id);
     return;
   }
-  // weak_from_this(), not `this`: bail if the CoreWorker is gone. A shared_ptr
-  // would form a cycle (CoreWorker owns the client that owns this callback).
-  client->FreeLocalObjects(request,
-                           [weak_self = weak_from_this(), node_id](
-                               const Status &status, const rpc::FreeLocalObjectsReply &) {
-                             auto self = weak_self.lock();
-                             if (self == nullptr) {
-                               return;
-                             }
-                             {
-                               absl::MutexLock lock(&self->free_batch_mu_);
-                               self->free_in_flight_.erase(node_id);
-                               if (!status.ok()) {
-                                 // The retryable client only surfaces an error once the
-                                 // node is dead; its copies died with it, so drop the
-                                 // queue instead of wedging.
-                                 self->free_pending_.erase(node_id);
-                                 return;
-                               }
-                             }
-                             self->SendFreeLocalObjectsBatchIfNeeded(node_id);
-                           });
+  // Safe to capture `this`: the reply runs on io_service_, which is stopped
+  // before the CoreWorker is destroyed during shutdown.
+  client->FreeLocalObjects(
+      request, [this, node_id](const Status &status, const rpc::FreeLocalObjectsReply &) {
+        {
+          absl::MutexLock lock(&free_batch_mu_);
+          free_in_flight_.erase(node_id);
+          if (!status.ok()) {
+            // The retryable client only surfaces an error once the node is dead;
+            // its copies died with it, so drop the queue instead of wedging.
+            free_pending_.erase(node_id);
+            return;
+          }
+        }
+        SendFreeLocalObjectsBatchIfNeeded(node_id);
+      });
 }
 
 }  // namespace ray::core
