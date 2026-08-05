@@ -57,19 +57,20 @@ For quick iteration on the checker itself, a Python 3.11 virtual environment wit
 
 ```bash
 uv venv --python 3.11 ~/.virtualenvs/ray-apiref
+source ~/.virtualenvs/ray-apiref/bin/activate
+
 # The wheel URL below is macOS arm64 / Python 3.11. Adjust it for your OS, architecture, and Python version.
-uv pip install --python ~/.virtualenvs/ray-apiref/bin/python \
-  sphinx \
+uv pip install sphinx \
   "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-macosx_11_0_arm64.whl"
+
 # Link your checkout's Python files over the wheel so the check walks your local @PublicAPI changes, not the wheel's:
-~/.virtualenvs/ray-apiref/bin/python python/ray/setup-dev.py --yes
+python python/ray/setup-dev.py --yes
 
 # Generate the autosummary stubs the check reads, as CI does in the same step:
-PYTHONPATH="$(pwd)" ~/.virtualenvs/ray-apiref/bin/python doc/source/api_autogen.py
+PYTHONPATH="$(pwd)" python doc/source/api_autogen.py
 
 # Run the check against your checkout (PYTHONPATH so the checker imports from your tree):
-PYTHONPATH="$(pwd)" ~/.virtualenvs/ray-apiref/bin/python \
-  ci/ray_ci/doc/cmd_check_api_discrepancy.py "$(pwd)" serve
+PYTHONPATH="$(pwd)" python ci/ray_ci/doc/cmd_check_api_discrepancy.py "$(pwd)" serve
 ```
 
 Pass a single team (`core`, `data`, `serve`, `train`, `tune`, `rllib`) to check one surface, or pass `ALL` or omit the argument to check every team. Two things only happen on the full pass. Every team after `core` depends on `core` running first, and the cross-team guard that catches annotated public subpackages no team's walk reaches runs at the end. Run without a team argument before you trust a green result.
