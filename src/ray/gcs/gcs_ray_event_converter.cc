@@ -167,19 +167,17 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
     if (src.has_stderr_file()) {
       dst->set_stderr_file(src.stderr_file());
     }
-    // The offsets narrow to int32 because that is the width TaskLogInfo has always
-    // used on this side.
     if (src.has_stdout_start()) {
-      dst->set_stdout_start(static_cast<int32_t>(src.stdout_start()));
+      dst->set_stdout_start(src.stdout_start());
     }
     if (src.has_stdout_end()) {
-      dst->set_stdout_end(static_cast<int32_t>(src.stdout_end()));
+      dst->set_stdout_end(src.stdout_end());
     }
     if (src.has_stderr_start()) {
-      dst->set_stderr_start(static_cast<int32_t>(src.stderr_start()));
+      dst->set_stderr_start(src.stderr_start());
     }
     if (src.has_stderr_end()) {
-      dst->set_stderr_end(static_cast<int32_t>(src.stderr_end()));
+      dst->set_stderr_end(src.stderr_end());
     }
   }
 

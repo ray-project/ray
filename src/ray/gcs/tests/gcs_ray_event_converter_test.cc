@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_ray_event_converter.h"
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
@@ -775,6 +777,27 @@ TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEventTaskLogInfoZeroStart
   const rpc::TaskLogInfo &converted = task_event.state_updates().task_log_info();
   EXPECT_TRUE(converted.has_stdout_start());
   EXPECT_EQ(converted.stdout_start(), 0);
+}
+
+// A worker log can exceed 2 GiB, so offsets past the int32 range must round-trip.
+TEST(GcsRayEventConverterTest, TestConvertTaskLifecycleEventTaskLogInfoLargeOffsets) {
+  const int64_t past_int32_max =
+      static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
+
+  rpc::events::AddEventsRequest request = MakeLifecycleEventRequest(1);
+  rpc::events::TaskLifecycleEvent::TaskLogInfo *log_info =
+      request.mutable_events_data()
+          ->mutable_events(0)
+          ->mutable_task_lifecycle_event()
+          ->mutable_task_log_info();
+  log_info->set_stdout_start(past_int32_max);
+  log_info->set_stdout_end(past_int32_max + 100);
+
+  rpc::TaskEvents task_event = ConvertSingleEvent(std::move(request));
+
+  const rpc::TaskLogInfo &converted = task_event.state_updates().task_log_info();
+  EXPECT_EQ(converted.stdout_start(), past_int32_max);
+  EXPECT_EQ(converted.stdout_end(), past_int32_max + 100);
 }
 
 // The log paths arrive when the task starts and the end offsets when it finishes. GCS
