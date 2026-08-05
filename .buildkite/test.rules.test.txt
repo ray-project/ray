@@ -158,14 +158,16 @@ doc/source/custom_directives.py: doc doc_api
 doc/source/api_autogen.py: doc doc_api
 doc/source/api_mock_imports.py: doc doc_api
 .buildkite/doc.rayci.yml: doc doc_api
+# api_sidebar.py sits under doc/source/_ext/ but carries `tools` on top of the
+# dir rule's tags, because //ci/pipeline:test_doc_api_rules_sync is a ci_unit
+# target and ci_unit is selected by `tools`. This case is what keeps the drift
+# guard executing on an API_PATH_PREFIXES edit.
+doc/source/_ext/api_sidebar.py: doc doc_api tools
 # The autodoc machinery above emits doc_api so the two API-consistency checks
 # run on it: these files decide what the API reference contains. The rendering
 # half of the doc infra must NOT, or every Vale vocabulary tweak pays for a
-# docbuild plus both checks. These four are the guard on that boundary.
-.vale.ini: doc
-doc/rtd_doctor.py: doc
-doc/source/template_collections.py: doc
-.readthedocs.yaml: doc
+# docbuild plus both checks. The cases below, and the doc/*.py ones further
+# down, are the guard on that boundary.
 doc/source/template_collections.py: doc
 doc/source/preprocess_github_markdown.py: doc
 # Gallery configs are build inputs, not example inputs: they sit under the

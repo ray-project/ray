@@ -240,6 +240,20 @@ docker/
 @ doc
 ;
 
+# api_sidebar.py is autodoc machinery like the rest of doc/source/_ext/ below,
+# but it needs `tools` on top. Its `API_PATH_PREFIXES` is one half of the pair
+# that //ci/pipeline:test_doc_api_rules_sync compares; the other half is the
+# doc_api rule block at the top of this file. That test is a ci_unit target, and
+# ci_unit is selected by `tools`, not by `doc` or `doc_api`. Without `tools`
+# here the guard would run on an edit to the rules side (this file emits
+# `tools`) but not on an edit to the prefixes side -- so growing
+# API_PATH_PREFIXES without adding the matching rule, which is exactly the drift
+# the guard exists to catch, would never execute it. First match wins, so this
+# rule has to precede the doc/source/_ext/ directory entry in part 1.
+doc/source/_ext/api_sidebar.py
+@ doc doc_api tools
+;
+
 # Documentation validation infra, part 1 of 2: the autodoc machinery. These
 # files determine what the API reference *contains*, so a change here can alter
 # the documented public API surface just as an API page edit can. They emit
