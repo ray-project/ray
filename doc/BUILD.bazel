@@ -444,12 +444,32 @@ filegroup(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/data/doc_code/working-with-llms/**/*.py"],
-    exclude = [],
+    # vlm_image_example runs full-dataset VLM inference and needs more than the
+    # 900s "large" timeout; it gets its own target below.
+    exclude = ["source/data/doc_code/working-with-llms/vlm_image_example.py"],
     extra_srcs = [],
     # vLLM 0.26.0 defaults to Model Runner V2, which skips multimodal encoder
     # memory profiling and OOMs these GPU tests. Force Model Runner V1 for now.
     # The image ENV can't reach these bazel test actions, so set it here.
     # TODO (jeffreywang): Use the default MRV2 when upgrading to vLLM 0.27.0.
+    env = {"VLLM_USE_V2_MODEL_RUNNER": "0"},
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:llm"
+    ],
+)
+
+# vlm_image_example downloads Qwen2.5-VL-3B and runs the full 500-row
+# coco2017_cap_val split at batch_size=1, which lands right at the 900s
+# "large" timeout (timed out at 902s/911s on premerge). Give it its own
+# target with a longer timeout.
+py_test_run_all_subdirectory(
+    size = "enormous",
+    include = ["source/data/doc_code/working-with-llms/vlm_image_example.py"],
+    exclude = [],
+    extra_srcs = [],
+    # See the Model Runner V1 note on the rule above.
     env = {"VLLM_USE_V2_MODEL_RUNNER": "0"},
     tags = [
         "exclusive",
