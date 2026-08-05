@@ -18,6 +18,7 @@
 
 #include "ray/gcs/gcs_placement_group_manager.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/util/clock.h"
 
 namespace ray {
@@ -39,6 +40,8 @@ class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
                                  placement_group_creation_latency_in_ms_histogram,
                                  placement_group_scheduling_latency_in_ms_histogram,
                                  placement_group_count_gauge,
+                                 fake_ray_event_recorder_,
+                                 /*session_name=*/"",
                                  clock_) {}
   MOCK_METHOD(void,
               HandleCreatePlacementGroup,
@@ -89,6 +92,7 @@ class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
 
   Clock clock_;
   instrumented_io_context context_;
+  observability::FakeRayEventRecorder fake_ray_event_recorder_;
 };
 
 }  // namespace gcs

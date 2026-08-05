@@ -680,6 +680,8 @@ void GcsServer::InitGcsPlacementGroupManager(
       placement_group_creation_latency_in_ms_histogram,
       placement_group_scheduling_latency_in_ms_histogram,
       placement_group_count_gauge,
+      *ray_event_recorder_,
+      config_.session_name,
       clock_);
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);

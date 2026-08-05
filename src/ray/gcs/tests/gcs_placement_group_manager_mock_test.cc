@@ -23,9 +23,11 @@
 #include "mock/ray/gcs/gcs_resource_manager.h"
 #include "mock/ray/gcs/store_client/store_client.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_placement_group_manager.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
@@ -42,6 +44,13 @@ class GcsPlacementGroupManagerMockTest : public Test {
       : cluster_resource_manager_(PeriodicalRunner::Create(io_context_)) {}
 
   void SetUp() override {
+    // Event emission is gated on this config.
+    RayConfig::instance().initialize(
+        R"(
+{
+"enable_ray_event": true
+}
+)");
     store_client_ = std::make_shared<MockStoreClient>();
     gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_);
     gcs_placement_group_scheduler_ =
@@ -60,6 +69,8 @@ class GcsPlacementGroupManagerMockTest : public Test {
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
         fake_placement_group_count_gauge_,
+        fake_ray_event_recorder_,
+        "session_name",
         clock_);
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
@@ -82,6 +93,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
   ray::observability::FakeHistogram
       fake_placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::FakeGauge fake_placement_group_count_gauge_;
+  ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
 };
 
 TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
@@ -194,6 +206,47 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   // PG2 is scheduled for the next, so PG1 is in pending queue
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_EQ(pg1, pending_queue.begin()->second.second);
+}
+
+TEST_F(GcsPlacementGroupManagerMockTest, PreparedCallbackEmitsPreparedEvent) {
+  auto req = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 2);
+  auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_, clock_);
+  auto cb = [](Status s) {};
+  SchedulePgRequest request;
+  std::unique_ptr<Postable<void(bool)>> put_cb;
+  EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
+  EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
+      .WillOnce(DoAll(SaveArg<0>(&request)));
+
+  gcs_placement_group_manager_->RegisterPlacementGroup(pg, cb);
+  std::move(*put_cb).Post("PreparedCallbackEmitsPreparedEvent", true);
+  io_context_.poll();
+
+  ASSERT_TRUE(static_cast<bool>(request.prepared_callback));
+  pg->GetMutableBundle(0)->set_node_id("node_a");
+  pg->GetMutableBundle(1)->set_node_id("node_b");
+  pg->UpdateState(rpc::PlacementGroupTableData::PREPARED);
+  request.prepared_callback(pg);
+
+  auto recorded_events = fake_ray_event_recorder_.FlushBuffer();
+  bool found_prepared_event = false;
+  for (auto &event : recorded_events) {
+    if (event->GetEventType() != rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
+      continue;
+    }
+    auto serialized = std::move(*event).Serialize().value();
+    const auto &lifecycle_event = serialized.placement_group_lifecycle_event();
+    if (lifecycle_event.state_transitions_size() != 1 ||
+        lifecycle_event.state_transitions(0).state() !=
+            rpc::events::PlacementGroupLifecycleEvent::PREPARED) {
+      continue;
+    }
+    found_prepared_event = true;
+    ASSERT_EQ(lifecycle_event.state_transitions(0).bundle_placements_size(), 2);
+    break;
+  }
+  ASSERT_TRUE(found_prepared_event);
 }
 
 }  // namespace gcs
