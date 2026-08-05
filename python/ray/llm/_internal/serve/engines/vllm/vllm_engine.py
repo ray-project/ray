@@ -26,6 +26,9 @@ from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorRe
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.constants import (
+    RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -50,23 +53,28 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
-from ray.llm._internal.serve.engines.vllm.vllm_models import (
-    VLLMEngineConfig,
-)
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware import (
+    token_channel,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
+    enable_native_kv_offload_events,
     get_kv_event_routing_stats,
+    get_prompt_token_routing_stats,
+    get_token_channel_endpoints,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
+    install_prompt_token_forwarding,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
     enable_token_tracking,
 )
-from ray.llm._internal.serve.utils.node_initialization_utils import (
-    initialize_node,
-)
+from ray.llm._internal.serve.utils.node_initialization_utils import initialize_node
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -303,8 +311,20 @@ class VLLMEngine(LLMEngine):
 
         self._running = False
         # Routing stats advertised to Serve's request router; populated in
-        # start() once the engine's KV-events endpoint is bound.
+        # start() once the engine's KV-events and prompt-token endpoints are bound.
         self._routing_stats: Dict[str, Any] = {}
+        self._prompt_token_store = token_channel.TokenStore()
+        prompt_token_endpoints = get_token_channel_endpoints(self.llm_config)
+        if prompt_token_endpoints is None:
+            self._token_receiver = None
+            self._prompt_token_zmq_advertised_endpoint = None
+        else:
+            bind_endpoint, advertised_endpoint = prompt_token_endpoints
+            self._token_receiver = token_channel.TokenReceiver(
+                bind_endpoint=bind_endpoint,
+                store=self._prompt_token_store,
+            )
+            self._prompt_token_zmq_advertised_endpoint = advertised_endpoint
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
@@ -337,6 +357,11 @@ class VLLMEngine(LLMEngine):
             self._vllm_args,
             supported_tasks=supported_tasks,
         )
+        if self._token_receiver is not None:
+            install_prompt_token_forwarding(
+                app.state,
+                self._prompt_token_store,
+            )
         return app
 
     async def start(self) -> None:
@@ -417,18 +442,31 @@ class VLLMEngine(LLMEngine):
         self._validate_openai_serving_models()
         self._validate_engine_client()
 
+        prompt_token_stats: Dict[str, Any] = {}
+        if self._token_receiver is not None:
+            if await self._token_receiver.start():
+                prompt_token_stats = get_prompt_token_routing_stats(
+                    self._prompt_token_zmq_advertised_endpoint
+                )
+
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
             vllm_engine_config.cache_config.block_size,
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
+        self._routing_stats.update(prompt_token_stats)
 
         self._running = True
 
         logger.info("Started vLLM engine.")
 
+    async def shutdown(self) -> None:
+        """Release the prompt-token channel's ZMQ socket and receive task."""
+        if self._token_receiver is not None:
+            await self._token_receiver.close()
+
     def routing_stats(self) -> Dict[str, Any]:
-        """Returns KV event and replay endpoints for KV-aware routing."""
+        """Returns KV event and prompt-token endpoints for KV-aware routing."""
         return self._routing_stats
 
     def _validate_openai_serving_models(self):
@@ -552,6 +590,8 @@ class VLLMEngine(LLMEngine):
         from vllm.v1.executor.abstract import Executor
 
         vllm_engine_config.parallel_config.placement_group = placement_group
+        if is_kv_aware(self.llm_config):
+            enable_native_kv_offload_events(vllm_engine_config)
 
         _clear_current_platform_cache()
 
@@ -571,7 +611,10 @@ class VLLMEngine(LLMEngine):
         # resolving it per request would block the engine's event loop.
         engine_cls = AsyncLLM
         if is_kv_aware(self.llm_config):
-            engine_cls = enable_token_tracking(AsyncLLM)
+            engine_cls = enable_token_tracking(
+                AsyncLLM,
+                report_decode_progress=RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
+            )
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,

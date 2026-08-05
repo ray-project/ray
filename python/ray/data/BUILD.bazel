@@ -1215,6 +1215,21 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_inference",
+    size = "medium",
+    srcs = ["tests/test_torch_inference.py"],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_dynamic_block_split",
     size = "large",
     srcs = ["tests/test_dynamic_block_split.py"],
@@ -2123,6 +2138,20 @@ py_test(
     name = "test_download_expression",
     size = "small",
     srcs = ["tests/test_download_expression.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_combine_downloads",
+    size = "small",
+    srcs = ["tests/test_combine_downloads.py"],
     tags = [
         "exclusive",
         "team:data",

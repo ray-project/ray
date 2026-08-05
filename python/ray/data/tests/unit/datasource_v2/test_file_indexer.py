@@ -27,6 +27,14 @@ def _list_all(indexer, paths, **kwargs):
     return sorted(results)
 
 
+def _list_all_file_infos(indexer, paths, **kwargs):
+    """Run list_file_infos and flatten into sorted (path, size) pairs."""
+    file_infos = indexer.list_file_infos(
+        pa.array(paths), filesystem=LocalFileSystem(), **kwargs
+    )
+    return sorted((fi.path, fi.size) for fi in file_infos)
+
+
 @pytest.fixture(params=[1, 2], ids=["sequential", "threaded"])
 def indexer(request):
     """Yield a NonSamplingFileIndexer using sequential or threaded listing."""
@@ -117,6 +125,67 @@ class TestListFiles:
         os.makedirs(tmp_path / "empty_dir", exist_ok=True)
         results = _list_all(indexer, [str(tmp_path / "empty_dir")])
         assert results == []
+
+
+class TestListFileInfos:
+    """``list_file_infos`` is the pre-chunk file stream ``list_files`` sits on.
+
+    It owns the zero-size skip and pruner filtering for both paths, so those
+    have to hold here directly and not just through ``list_files``.
+    """
+
+    def test_yields_path_and_size(self, tmp_path, indexer):
+        (tmp_path / "a.csv").write_bytes(b"x" * 10)
+        (tmp_path / "b.csv").write_bytes(b"x" * 20)
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "a.csv"), 10),
+            (str(tmp_path / "b.csv"), 20),
+        ]
+
+    def test_skips_zero_size_files(self, tmp_path, indexer):
+        (tmp_path / "empty.csv").write_bytes(b"")
+        (tmp_path / "real.csv").write_bytes(b"x" * 50)
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "real.csv"), 50)
+        ]
+
+    def test_applies_pruners(self, tmp_path, indexer):
+        (tmp_path / "keep.csv").write_bytes(b"x" * 10)
+        (tmp_path / "drop.json").write_bytes(b"x" * 10)
+
+        results = _list_all_file_infos(
+            indexer,
+            [str(tmp_path)],
+            pruners=[FileExtensionPruner(file_extensions=["csv"])],
+        )
+
+        assert results == [(str(tmp_path / "keep.csv"), 10)]
+
+    def test_does_not_chunk(self, tmp_path):
+        """One entry per file even when the chunker would split it."""
+        (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False,
+            num_workers=1,
+            file_chunker=LineDelimitedFileChunker(),
+        )
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "a.jsonl"), 10_000)
+        ]
+
+    def test_is_lazy(self, tmp_path, indexer):
+        """Consumers stop early under a limit, so nothing may be eager."""
+        for i in range(5):
+            (tmp_path / f"f{i}.csv").write_bytes(b"x" * 10)
+
+        stream = indexer.list_file_infos(
+            pa.array([str(tmp_path)]), filesystem=LocalFileSystem()
+        )
+
+        assert isinstance(next(iter(stream)).path, str)
 
 
 class TestPruners:
