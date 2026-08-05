@@ -1,22 +1,24 @@
+from typing import Callable
+
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
 
 import ray
 from ray.data.datatype import DataType
-from ray.data.expressions import AliasExpr, UnnestExpr, col, udf, unnest
+from ray.data.expressions import AliasExpr, UDFExpr, UnnestExpr, col, udf, unnest
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 _FEATURES_DTYPE = DataType.struct(
     [
-        ("sum_ab", DataType.int64()),
-        ("product_ab", DataType.int64()),
+        ("sum_ab", DataType.from_arrow(pa.int64())),
+        ("product_ab", DataType.from_arrow(pa.int64())),
     ]
 )
 
 
-def _make_features_udf():
+def _make_features_udf() -> Callable[..., UDFExpr]:
     """Build a struct-returning UDF computing sum_ab/product_ab from a, b.
 
     Everything the UDF references is defined inside this function so
@@ -31,10 +33,13 @@ def _make_features_udf():
 
         a, b = arr(a), arr(b)
         return pa.StructArray.from_arrays(
+            # pyrefly: ignore[missing-attribute]  # pc functions are runtime-generated.
             [arr(pc.add(a, b)), arr(pc.multiply(a, b))],
             names=["sum_ab", "product_ab"],
         )
 
+    # pyrefly: ignore[bad-return]  # @udf mis-annotates the decorated function
+    # as UDFExpr; it is a callable producing UDFExpr (see udf_callable).
     return make_features
 
 
@@ -116,11 +121,13 @@ def test_unnest_single_evaluation(ray_start_regular_shared, tmp_path):
             f.write("x\n")
         a, b = arr(a), arr(b)
         return pa.StructArray.from_arrays(
+            # pyrefly: ignore[missing-attribute]  # pc functions are runtime-generated.
             [arr(pc.add(a, b)), arr(pc.multiply(a, b))],
             names=["sum_ab", "product_ab"],
         )
 
     ds = ray.data.from_items([{"a": 2, "b": 10}, {"a": 3, "b": 20}]).repartition(1)
+    # pyrefly: ignore[not-callable]  # @udf mis-annotates make_features as UDFExpr.
     ds.with_columns(unnest(make_features(col("a"), col("b")))).materialize()
     assert marker.read_text().count("x") == 1
 
@@ -162,6 +169,7 @@ def test_unnest_cannot_nest():
 
 def test_unnest_rejects_non_expr():
     with pytest.raises(TypeError, match="expects an expression"):
+        # pyrefly: ignore[bad-argument-type]  # the bad argument is the test.
         unnest("stats")
 
 
@@ -203,16 +211,21 @@ def test_unnest_pushdown_prunes_unused_columns(ray_start_regular_shared, tmp_pat
     # projection references (a, b) — "unused" must be pruned. Check the plan
     # BEFORE executing: execution optimizes the plan in place, and optimizing
     # an already-optimized plan a second time double-applies pushdown.
+    from typing import Optional
+
+    from ray.data._internal.logical.interfaces import Operator
     from ray.data._internal.logical.optimizers import LogicalOptimizer
 
     optimized = LogicalOptimizer().optimize(ds._logical_plan)
-    op, read_op = optimized.dag, None
+    op: Optional[Operator] = optimized.dag
+    read_op = None
     while op is not None:
         if hasattr(op, "scanner"):
             read_op = op
             break
         op = op.input_dependencies[0] if op.input_dependencies else None
     assert read_op is not None, "no read operator with a scanner found"
+    # pyrefly: ignore[missing-attribute]  # hasattr-guarded; scanner is on ReadFiles.
     pruned = read_op.scanner.pruned_column_names()
     assert pruned is not None and set(pruned) == {"a", "b"}
 
