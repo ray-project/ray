@@ -141,16 +141,19 @@ def test_flight_fetch_wire_format(tmp_path):
         os.close(fd)
 
 
-def test_flight_unreachable_is_connection_error(tmp_path):
-    # Bind a port with nothing listening -> connect refused -> ConnectionError
-    # (retryable transport fault).
+def test_flight_unreachable_raises_transport_error(tmp_path):
+    # Bind a port with nothing listening -> connect refused. _stream_members_flight
+    # does NOT translate; it raises the raw pyarrow FlightError (a retryable
+    # transport fault that _prefetch_node_into classifies).
+    import pyarrow.flight as flight
+
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]  # bound but never listen()ed
         fd, sink = _open_sink(tmp_path)
         try:
-            with pytest.raises(ConnectionError):
+            with pytest.raises(flight.FlightError):
                 _stream_members_flight(
                     ("127.0.0.1", port, "test-incarnation"),
                     [_FileRanges(path="x.bin", ranges=[(0, 4)])],
@@ -168,11 +171,15 @@ def test_flight_short_read_fails(tmp_path):
     # bytes, so the server MUST fail the stream rather than truncate. A short send
     # silently desyncs every later frame at the client. SPARK-34534: response and
     # request correspondence is lost and data is silently mis-associated.
+    import pyarrow as pa
+
     (tmp_path / "s.bin").write_bytes(b"only8byt")  # 8 bytes
     fd, sink = _open_sink(tmp_path)
     try:
         with _running_flight_server(tmp_path) as endpoint:
-            with pytest.raises(ConnectionError, match="short read"):
+            # Server-side short-read raises mid-stream; the client surfaces it as a
+            # raw ArrowInvalid (no translation), with the message preserved.
+            with pytest.raises(pa.lib.ArrowInvalid, match="short read"):
                 _stream_members_flight(
                     endpoint,
                     [_FileRanges(path="s.bin", ranges=[(0, 64)])],  # asks for 64
