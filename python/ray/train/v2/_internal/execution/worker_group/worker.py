@@ -192,7 +192,7 @@ class RayTrainWorker:
         """
         train_context = get_train_context()
         rank = train_context.get_world_rank()
-        train_context.preemption_context.set(info)
+        train_context.preemption_context.preemption_info = info
         logger.info(
             "Rank %d received preemption signal "
             "(this_worker_preempted=%s, preempted_ranks=%s, deadline_ms=%s).",
@@ -235,7 +235,7 @@ class RayTrainWorker:
             error=error,
             training_report=training_report,
             return_value=return_value,
-            preemption_info=train_context.preemption_context.get(),
+            preemption_info=train_context.preemption_context.preemption_info,
         )
 
     def clear_result_queue(self) -> bool:

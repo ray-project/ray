@@ -153,16 +153,15 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
         # Sample actions for the current state. Note that we need to apply the
         # reparameterization trick (`rsample()` instead of `sample()`) to avoid the
         # expectation over actions.
-        actions_resampled = action_dist_curr.rsample()
-        # Compute the log probabilities for the current state (for the critic loss).
-        output["logp_resampled"] = action_dist_curr.logp(actions_resampled)
+        (
+            actions_resampled,
+            output["logp_resampled"],
+        ) = action_dist_curr.rsample_and_logp()
 
-        # Sample actions for the next state.
-        actions_next_resampled = action_dist_next.sample().detach()
-        # Compute the log probabilities for the next state.
-        output["logp_next_resampled"] = (
-            action_dist_next.logp(actions_next_resampled)
-        ).detach()
+        # Sample actions for the next state
+        actions_next_resampled, logp_next_resampled = action_dist_next.sample_and_logp()
+        actions_next_resampled = actions_next_resampled.detach()
+        output["logp_next_resampled"] = logp_next_resampled.detach()
 
         # Compute Q-values for the current policy in the current state with
         # the sampled actions.

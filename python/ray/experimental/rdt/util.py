@@ -385,11 +385,13 @@ def set_nixl_cuda_stream(stream: Optional["torch.cuda.Stream"]) -> None:
 
 def create_empty_tensors_from_metadata(
     tensor_transport_meta: TensorTransportMetadata,
+    device: Optional[str] = None,
 ) -> List["torch.Tensor"]:
     import torch
 
     tensors = []
-    device = tensor_transport_meta.tensor_device
+    if device is None:
+        device = tensor_transport_meta.tensor_device
     for meta in tensor_transport_meta.tensor_meta:
         shape, dtype = meta
         tensor = torch.empty(shape, dtype=dtype, device=device)
