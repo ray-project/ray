@@ -147,14 +147,36 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
     print(ray.available_resources())
     data = [dict(__key__=str(i), a=str(i), b=str(i**2)) for i in range(100)]
     ds = ray.data.from_items(data).repartition(1)
-    ds.write_webdataset(path=tmp_path, try_create_dir=True)
-    paths = glob.glob(f"{tmp_path}/*.tar")
-    assert len(paths) == 1
-    with open(paths[0], "rb") as stream:
-        tf = tarfile.open(fileobj=stream)
-        for i in range(100):
-            assert tf.extractfile(f"{i}.a").read().decode("utf-8") == str(i)
-            assert tf.extractfile(f"{i}.b").read().decode("utf-8") == str(i**2)
+
+    def assert_archive(path, expected_a):
+        paths = glob.glob(f"{path}/*.tar")
+        assert len(paths) == 1
+        with tarfile.open(paths[0]) as tf:
+            for i in range(100):
+                assert tf.extractfile(f"{i}.a").read().decode("utf-8") == expected_a(i)
+                assert tf.extractfile(f"{i}.b").read().decode("utf-8") == str(i**2)
+
+    default_path = tmp_path / "default"
+    ds.write_webdataset(path=default_path, try_create_dir=True)
+    assert_archive(default_path, lambda i: str(i))
+
+    def encode_a(sample):
+        sample = dict(sample)
+        sample["a"] = f"encoded-{sample['a']}".encode("utf-8")
+        return sample
+
+    callable_path = tmp_path / "callable"
+    ds.write_webdataset(path=callable_path, encoder=encode_a)
+    assert_archive(callable_path, lambda i: f"encoded-{i}")
+
+    def prefix_a(sample):
+        sample = dict(sample)
+        sample["a"] = f"prefixed-{sample['a']}"
+        return sample
+
+    chained_path = tmp_path / "chained"
+    ds.write_webdataset(path=chained_path, encoder=[prefix_a, encode_a])
+    assert_archive(chained_path, lambda i: f"encoded-prefixed-{i}")
 
 
 def custom_decoder(sample):
