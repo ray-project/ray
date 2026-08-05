@@ -7,7 +7,6 @@ import aiohttp.web
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private import ray_constants
 from ray._private.gcs_pubsub import GcsAioJobSubscriber, GcsAioWorkerDeltaSubscriber
 from ray.core.generated import (
     events_event_aggregator_service_pb2,
@@ -28,12 +27,12 @@ logger = logging.getLogger(__name__)
 # Max notifications drained from a GCS pubsub subscriber per poll.
 _SUBSCRIBER_POLL_BATCH_SIZE = 100
 # Delay before failing a dead worker's tasks, so in-flight FINISHED events can still land.
-_MARK_FAILED_ON_WORKER_DEAD_DELAY_S = ray_constants.env_float(
-    "RAY_DASHBOARD_TASK_EVENTS_MARK_FAILED_ON_WORKER_DEAD_DELAY_S", 1.0
+_MARK_FAILED_ON_WORKER_DEAD_DELAY_S = (
+    ray._config.gcs_mark_task_failed_on_worker_dead_delay_ms() / 1000
 )
 # Delay before failing a finished job's tasks, for the same reason.
-_MARK_FAILED_ON_JOB_DONE_DELAY_S = ray_constants.env_float(
-    "RAY_DASHBOARD_TASK_EVENTS_MARK_FAILED_ON_JOB_DONE_DELAY_S", 15.0
+_MARK_FAILED_ON_JOB_DONE_DELAY_S = (
+    ray._config.gcs_mark_task_failed_on_job_done_delay_ms() / 1000
 )
 
 

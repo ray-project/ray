@@ -96,3 +96,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int64_t task_events_max_dropped_task_attempts_tracked_per_job_in_gcs() const
 
         int64_t task_events_gc_job_summary_interval_ms() const
+
+        uint64_t gcs_mark_task_failed_on_worker_dead_delay_ms() const
+
+        uint64_t gcs_mark_task_failed_on_job_done_delay_ms() const
