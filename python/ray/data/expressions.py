@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import uuid as builtin_uuid
 from abc import ABC, abstractmethod
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
@@ -2084,7 +2085,7 @@ def expand_unnest_exprs(
         field_names = [
             resolved_type.field(i).name for i in range(resolved_type.num_fields)
         ]
-        duplicates = {name for name in field_names if field_names.count(name) > 1}
+        duplicates = {name for name, n in Counter(field_names).items() if n > 1}
         if duplicates:
             raise ValueError(
                 f"unnest() cannot expand a struct with duplicate field names "
