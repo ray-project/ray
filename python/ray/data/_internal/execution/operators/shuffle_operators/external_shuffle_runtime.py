@@ -487,18 +487,7 @@ class _PwriteSink:
         bytes_written = 0
         nbytes = len(mv)
         while bytes_written < nbytes:
-            try:
-                n = os.pwrite(self._fd, mv[bytes_written:], self._pos + bytes_written)
-            except OSError as e:
-                # ENOSPC/EDQUOT have no dedicated Python exception class, so
-                # classify by errno right at the syscall: disk/quota exhaustion
-                # becomes a terminal ShuffleDiskError; any other OSError (e.g. EIO)
-                # propagates as-is.
-                if _is_disk_exhausted(e):
-                    raise ShuffleDiskError(
-                        f"Disk exhausted writing to fd {self._fd}: {e}"
-                    ) from e
-                raise
+            n = os.pwrite(self._fd, mv[bytes_written:], self._pos + bytes_written)
             if n <= 0:
                 # POSIX pwrite of a nonzero buffer should return >0 or raise;
                 # 0 can happen on some FUSE / network filesystems and would
@@ -559,6 +548,8 @@ def _prefetch_node_into(
       * conn dead, incarnation unchanged  -> ``ShuffleFileServerAnomalyError``
                                              (network config problem, terminal)
     """
+    import pyarrow.flight as flight
+
     key = _file_server_name(shuffle_id, node_id)
 
     def _resolve() -> _Endpoint:
@@ -621,26 +612,28 @@ def _prefetch_node_into(
             )
             return
         except ShuffleFileServerAnomalyError:
-            # _resolve() already classified a terminal actor state (dead /
-            # unschedulable / name-not-registered) — not retryable.
-            raise
-        except ShuffleDiskError:
-            # The sink (``_PwriteSink.write``) classified a disk/quota exhaustion
-            # (ENOSPC/EDQUOT) at the pwrite — terminal, a retry can't reclaim space.
+            # _resolve() already classified a terminal actor state (dead,
+            # unschedulable, or name-not-registered). Not retryable.
             raise
         except OSError:
-            # Any other sink I/O error (e.g. EIO, or a short pwrite on a FUSE /
-            # network FS). NOT a transport fault — propagate as-is (terminal).
-            # (ConnectionError/TimeoutError are OSError subclasses, but Flight raises
-            # FlightError not those, so real transport faults skip this clause.)
+            # The sink's os.pwrite failed: ENOSPC/EDQUOT (disk or quota full),
+            # EIO (device I/O error), or a short pwrite on a FUSE/network FS.
+            # Terminal, not a transport fault; propagate as-is.
             raise
-        except Exception as e:
-            # A Flight transport failure (server unavailable / restarting / timeout
-            # / mid-stream server error) — retryable. A changed incarnation means
-            # the server restarted (retry in-place); same incarnation means the
-            # process stayed up but the fetch failed. Compare incarnations, not
-            # (host, port): a restart can rebind the same ephemeral port, so an
-            # address match wouldn't prove it's the same process.
+        except pa.lib.ArrowInvalid as e:
+            # Server-side data error over Flight (e.g. a short read on a corrupt
+            # frame). Retrying the same file won't help, so it's terminal.
+            # https://arrow.apache.org/docs/python/generated/pyarrow.ArrowInvalid.html
+            raise
+        except flight.FlightError as e:
+            # Transport fault (server unavailable, timeout, cancelled, internal).
+            # Retryable. See the FlightError subclasses / gRPC status codes:
+            # https://arrow.apache.org/docs/python/api/flight.html
+            # https://grpc.io/docs/guides/status-codes/
+            #
+            # A changed incarnation means the server restarted (retry in place);
+            # same incarnation means the process stayed up but the fetch failed.
+            # Compare incarnations, not (host, port): a restart can rebind the port.
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
@@ -664,9 +657,16 @@ def _prefetch_node_into(
 
             raise ShuffleFileServerAnomalyError(
                 f"node {node_id}: Flight fetch still failing but file server "
-                f"reachable via Ray — likely a network block on the Flight port "
+                f"reachable via Ray; likely a network block on the Flight port "
                 f"(NetworkPolicy/firewall/routing)."
             ) from e
+        except Exception:
+            # Not a known disk, data, or transport fault; unexpected (a bug). Don't
+            # retry it (that would mask the bug and spin the loop); log and surface.
+            logger.exception(
+                f"node {node_id}: unexpected error during prefetch fetch"
+            )
+            raise
 
 
 def _chunk_members_by_bytes(
