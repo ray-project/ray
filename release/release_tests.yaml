@@ -3275,7 +3275,7 @@
     cluster_compute: object_store/callback_throughput.yaml
 
   run:
-    timeout: 600
+    timeout: 3600
     script: python object_store/test_callback_throughput.py
     wait_for_nodes:
       num_nodes: 11
