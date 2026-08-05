@@ -66,7 +66,7 @@ class PlacementGroupClusterAutoscaler(ClusterAutoscaler):
         self._autoscaling_request_expire_time_s = autoscaling_request_expire_time_s
         self._autoscaling_coordinator = autoscaling_coordinator
 
-        self._last_request_time = 0
+        self._last_request_time = 0.0
 
         if pg.id == pg_large.id:
             self._bundle_specs = _get_bundle_specs(pg)
@@ -82,7 +82,7 @@ class PlacementGroupClusterAutoscaler(ClusterAutoscaler):
         self._send_resource_request(self._bundle_specs)
 
     def try_trigger_scaling(self):
-        now = time.time()
+        now = time.monotonic()
         if now - self._last_request_time < self._min_gap_between_autoscaling_requests_s:
             return
 
@@ -113,7 +113,7 @@ class PlacementGroupClusterAutoscaler(ClusterAutoscaler):
             expire_after_s=self._autoscaling_request_expire_time_s,
             request_remaining=False,
         )
-        self._last_request_time = time.time()
+        self._last_request_time = time.monotonic()
 
 
 def _get_bundle_specs(pg: PlacementGroup) -> List[Dict[str, float]]:
