@@ -67,9 +67,12 @@ PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE = ray_constants.env_bool(
 PUBLISH_EVENTS_TO_GCS = ray_constants.env_bool(
     "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", False
 )
-# flag to enable publishing task events to the dashboard head
-PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD = ray_constants.env_bool(
-    "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD", False
+# flag to enable publishing task events to the dashboard head.
+# This happens only when this flag is true since it control spinning up
+# of TaskEventsHead, if task events are published there and if read
+# happens from there.
+PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD = (
+    ray._config.enable_task_events_to_dashboard_head()
 )
 # flag to control whether preserve the proto field name when converting the events to
 # JSON. If True, the proto field name will be preserved. If False, the proto field name
