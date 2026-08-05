@@ -514,6 +514,13 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
 
   enabled_ = true;
 
+  // (claude) Record only while one of the destinations above is live. When the recorder
+  // handles the aggregator send and GCS/export are off, buffered events are dropped at
+  // flush, so filling the ring on the task's call path is pure overhead.
+  recording_enabled_ = send_task_events_to_gcs_enabled_ ||
+                       task_event_buffer_to_aggregator_enabled_ ||
+                       export_event_write_enabled_;
+
   if (!auto_flush) {
     return Status::OK();
   }
@@ -587,7 +594,7 @@ void TaskEventBufferImpl::Stop() {
   }
 }
 
-bool TaskEventBufferImpl::Enabled() const { return enabled_; }
+bool TaskEventBufferImpl::Enabled() const { return enabled_ && recording_enabled_; }
 
 void TaskEventBufferImpl::GetTaskStatusEventsToSend(
     std::vector<std::shared_ptr<TaskEvent>> *status_events_to_send,
@@ -1011,7 +1018,7 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
 
 void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event) {
   absl::MutexLock lock(&mutex_);
-  if (!enabled_) {
+  if (!Enabled()) {
     return;
   }
   std::shared_ptr<TaskEvent> status_event_shared_ptr = std::move(status_event);
@@ -1058,7 +1065,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
 
 void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event) {
   absl::MutexLock lock(&profile_mutex_);
-  if (!enabled_) {
+  if (!Enabled()) {
     return;
   }
   std::shared_ptr<TaskEvent> profile_event_shared_ptr = std::move(profile_event);
