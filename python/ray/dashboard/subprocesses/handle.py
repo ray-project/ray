@@ -28,12 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 def select_start_method() -> str:
-    """Return the multiprocessing start method for launching subprocess modules.
-
-    ``forkserver`` wherever the platform offers it, otherwise ``spawn``. Plain ``fork``
-    is never used: Ray's C bindings keep static state that a forked child would inherit
-    from whichever process happened to call ``start_module()``.
-    """
+    # Never `fork`, though the platform offers it: Ray's C bindings keep static state a
+    # forked child would inherit from whichever process called start_module().
     if "forkserver" in multiprocessing.get_all_start_methods():
         return "forkserver"
     return "spawn"
@@ -94,24 +90,12 @@ class SubprocessModuleHandle:
     - "max number of restarts"? (Now: infinite)
     """
 
-    # Under `forkserver` a module child is forked from the server, so it inherits
-    # whatever the server imported instead of importing it again. That is the whole
-    # speedup, and it is only safe because the preloaded modules leave nothing behind
-    # that a fork would corrupt: `import ray` starts no threads and opens no sockets or
-    # gRPC channels, and each `*_head.py` only builds loggers, reads env vars, and
-    # compiles regexes at module scope. Every GCS client is constructed lazily in
-    # `SubprocessModule`, after the fork. Preloading anything that connects or spawns a
-    # thread would break that, so keep new module-scope work inert.
+    # A module child is forked from the forkserver, so it inherits what the server
+    # imported rather than importing it again. That only stays safe while everything
+    # preloaded is inert at import time, starting no thread and opening no connection.
     #
-    # Under `spawn` each module instead re-executes `dashboard.py` through
-    # `_fixup_main_from_path` and re-imports Ray, one full interpreter startup per module
-    # on the critical path of `ray start`.
-    #
-    # get_context() takes a literal in each branch so the result keeps a concrete type; a
-    # runtime string widens it to BaseContext, which has no Process. Don't name
-    # multiprocessing.context.ForkServerContext to annotate this either, because CPython
-    # defines that class on POSIX only and a class-body annotation is evaluated at
-    # import, so mentioning it breaks the import on Windows.
+    # Branch on a literal instead of passing select_start_method() to get_context(),
+    # which would widen the result to BaseContext and lose Process.
     if select_start_method() == "forkserver":
         mp_context = multiprocessing.get_context("forkserver")
     else:
@@ -123,13 +107,10 @@ class SubprocessModuleHandle:
     ) -> None:
         """Import what module children need once in the forkserver, not once each.
 
-        Does nothing unless the start method is ``forkserver``. Must be called before the
-        first ``start_module()``: the forkserver caches its preload list when it first
-        launches, so a later call is silently ignored.
-
-        CPython swallows ImportError while preloading and leaves the child to import that
-        module itself, but any other exception kills the forkserver and with it every
-        module, so preloaded modules must import cleanly in a bare interpreter.
+        Must be called before the first ``start_module()``, since the forkserver caches
+        its preload list when it first launches. Every name has to import cleanly in a
+        bare interpreter: anything other than an ImportError kills the forkserver, and
+        with it every module.
         """
         if cls.mp_context.get_start_method() != "forkserver":
             return

@@ -1786,9 +1786,9 @@ class Node:
             dashboard_pid = self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
                 0
             ].process.pid
-            # The api server is allowed to fail without failing node startup, so its pid
-            # can already be gone. Losing isolation for its modules beats refusing to
-            # start the node.
+            # The dashboard may already have exited by now, since by default it starts
+            # with raise_on_failure=False and a dead one is not meant to stop the node
+            # from starting. Raising here would stop it.
             try:
                 dashboard_process = psutil.Process(dashboard_pid)
                 system_process_pids += [
