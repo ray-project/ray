@@ -354,7 +354,7 @@ When two rules conflict in this domain, follow this order:
 1. The [Kubernetes documentation style guide](https://kubernetes.io/docs/contribute/style/style-guide/), for Kubernetes casing and terminology only.
 1. The Google developer documentation style guide, as the general fallback.
 
-The Kubernetes guide wins on how to write Kubernetes nouns, because readers arriving from the Kubernetes ecosystem already read those conventions. It doesn't override anything else here. Where its rules follow from Hugo, from the Kubernetes site build, or from a localization workflow that Ray docs don't have, this guide wins.
+The Kubernetes guide wins on how to write Kubernetes nouns, because readers arriving from the Kubernetes ecosystem already read those conventions. It doesn't override anything else here. Some of its rules exist to serve the Kubernetes site build or its translation workflow rather than the prose, and those don't carry over. Its front-matter title casing is one example, since Ray takes a page title from the H1 rather than a front-matter field.
 
 ### Capitalize Kubernetes API objects
 
