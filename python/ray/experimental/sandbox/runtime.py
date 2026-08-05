@@ -11,21 +11,14 @@ from ray.experimental.sandbox.config import SandboxConfig
 
 
 class SandboxRuntime:
-    """Low-level interface for managing local gVisor sandbox runtime environments.
+    """Low-level interface for managing local gVisor sandbox runtime environments."""
 
-    Args:
-        runsc_path_override: Optional path override for the gVisor runsc binary.
-    """
-
-    def __init__(
-        self,
-        runsc_path_override: Optional[str] = None,
-    ):
-        self._backend = GVisorSandboxBackend(runsc_path_override=runsc_path_override)
+    def __init__(self):
+        self._backend = GVisorSandboxBackend()
 
     def create(
         self,
-        image: str = "python:3.10-slim",
+        image: Optional[Union[str, SandboxConfig]] = None,
         cpu: float = 0.0,
         memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
@@ -33,32 +26,24 @@ class SandboxRuntime:
         ttl_seconds: Optional[int] = 3600,
         labels: Optional[Dict[str, str]] = None,
         timeout_seconds: float = 30.0,
-        runsc_path: str = "runsc",
         rootless: bool = True,
         network: str = "none",
         resources: Optional[Dict[str, float]] = None,
-        **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID."""
-        if isinstance(image, SandboxConfig):
-            config = image
-        elif "config" in kwargs and isinstance(kwargs["config"], SandboxConfig):
-            config = kwargs["config"]
-        else:
-            config = SandboxConfig(
-                image=image,
-                cpu=cpu,
-                memory=memory,
-                env=env or {},
-                work_dir=work_dir,
-                ttl_seconds=ttl_seconds,
-                labels=labels or {},
-                timeout_seconds=timeout_seconds,
-                runsc_path=runsc_path,
-                rootless=rootless,
-                network=network,
-                resources=resources or {},
-            )
+        config = SandboxConfig(
+            image=image,
+            cpu=cpu,
+            memory=memory,
+            env=env or {},
+            work_dir=work_dir,
+            ttl_seconds=ttl_seconds,
+            labels=labels or {},
+            timeout_seconds=timeout_seconds,
+            rootless=rootless,
+            network=network,
+            resources=resources or {},
+        )
         return self._backend.create_sandbox(config)
 
     def exec(

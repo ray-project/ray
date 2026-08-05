@@ -8,8 +8,8 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
 def test_sandbox_runtime_interface(tmp_path):
-    rt = SandboxRuntime(runsc_path_override="/bin/sh")
-    config = SandboxConfig(work_dir="/workspace", runsc_path="/bin/sh")
+    rt = SandboxRuntime()
+    config = SandboxConfig(work_dir="/workspace")
     instance_id = rt.create(config)
     assert instance_id.startswith("ray-sb-gvisor-")
 
@@ -35,7 +35,7 @@ def test_sandbox_actor_wrapper():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
-    actor = Sandbox.remote(work_dir="/workspace", runsc_path_override="/bin/sh")
+    actor = Sandbox.remote(work_dir="/workspace")
     instance_id = ray.get(actor.get_instance_id.remote())
     assert instance_id.startswith("ray-sb-gvisor-")
 
@@ -103,10 +103,8 @@ def test_custom_sandbox_actor_with_sandbox_runtime():
     @ray.remote
     class CustomSandbox:
         def __init__(self):
-            self.runtime = SandboxRuntime(runsc_path_override="/bin/sh")
-            self.instance_id = self.runtime.create(
-                work_dir="/workspace", runsc_path="/bin/sh"
-            )
+            self.runtime = SandboxRuntime()
+            self.instance_id = self.runtime.create(work_dir="/workspace")
 
         def exec(self, command, timeout=None, env=None):
             return self.runtime.exec(
@@ -130,9 +128,9 @@ def test_ray_remote_sandbox_runtime():
         ray.init(ignore_reinit_error=True)
 
     remote_rt_cls = ray.remote(SandboxRuntime)
-    rt_actor = remote_rt_cls.remote(runsc_path_override="/bin/sh")
+    rt_actor = remote_rt_cls.remote()
 
-    config = SandboxConfig(work_dir="/workspace", runsc_path="/bin/sh")
+    config = SandboxConfig(work_dir="/workspace")
     instance_id = ray.get(rt_actor.create.remote(config))
     assert instance_id.startswith("ray-sb-gvisor-")
 
@@ -148,9 +146,7 @@ def test_sandbox_actor_resource_translation():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
-    actor = Sandbox.options(num_cpus=2.0).remote(
-        cpu=2.0, work_dir="/workspace", runsc_path_override="/bin/sh"
-    )
+    actor = Sandbox.options(num_cpus=2.0).remote(cpu=2.0, work_dir="/workspace")
 
     ret_config = ray.get(actor.get_config.remote())
     assert ret_config.cpu == 2.0

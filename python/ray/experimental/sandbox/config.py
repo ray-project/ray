@@ -57,7 +57,6 @@ class SandboxConfig:
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
-        runsc_path: Path to the gVisor `runsc` executable (default: "runsc").
         rootless: If True, run gVisor in rootless mode (default: True).
         network: Network mode for runsc ("none", "host", "sandbox") (default: "none").
         resources: Custom logical resource requirements for the placement actor.
@@ -71,7 +70,6 @@ class SandboxConfig:
     ttl_seconds: Optional[int] = 3600
     labels: Dict[str, str] = field(default_factory=dict)
     timeout_seconds: float = 30.0
-    runsc_path: str = "runsc"
     rootless: bool = True
     network: str = "none"
     resources: Dict[str, float] = field(default_factory=dict)

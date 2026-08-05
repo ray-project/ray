@@ -22,7 +22,6 @@ class Sandbox:
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
-        runsc_path: Path to the gVisor `runsc` executable.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
         resources: Custom logical resource requirements.
@@ -39,16 +38,11 @@ class Sandbox:
         ttl_seconds: Optional[int] = 3600,
         labels: Optional[Dict[str, str]] = None,
         timeout_seconds: float = 30.0,
-        runsc_path: str = "runsc",
         rootless: bool = True,
         network: str = "none",
         resources: Optional[Dict[str, float]] = None,
         **kwargs,
     ):
-        runsc_path_override = kwargs.pop("runsc_path_override", None)
-        if runsc_path_override is None and runsc_path != "runsc":
-            runsc_path_override = runsc_path
-
         env = env or {}
         labels = labels or {}
         resources = resources or {}
@@ -62,13 +56,12 @@ class Sandbox:
             ttl_seconds=ttl_seconds,
             labels=labels,
             timeout_seconds=timeout_seconds,
-            runsc_path=runsc_path,
             rootless=rootless,
             network=network,
             resources=resources,
         )
 
-        self.runtime = SandboxRuntime(runsc_path_override=runsc_path_override)
+        self.runtime = SandboxRuntime()
 
         # Translate resources assigned to this Ray actor into runtime config resources
         try:

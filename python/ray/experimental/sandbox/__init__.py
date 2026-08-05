@@ -29,7 +29,6 @@ def create(
     ttl_seconds: Optional[int] = 3600,
     labels: Optional[Dict[str, str]] = None,
     timeout_seconds: float = 30.0,
-    runsc_path: str = "runsc",
     rootless: bool = True,
     network: str = "none",
     resources: Optional[Dict[str, float]] = None,
@@ -46,7 +45,6 @@ def create(
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
-        runsc_path: Path to the gVisor `runsc` executable.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
         resources: Custom logical resource requirements.
@@ -55,10 +53,6 @@ def create(
     Returns:
         A SandboxHandle instance.
     """
-    runsc_path_override = kwargs.pop("runsc_path_override", None)
-    if runsc_path_override:
-        runsc_path = runsc_path_override
-
     actor_opts = {}
     if cpu is not None and cpu > 0:
         actor_opts["num_cpus"] = cpu
@@ -78,7 +72,6 @@ def create(
         ttl_seconds=ttl_seconds,
         labels=labels,
         timeout_seconds=timeout_seconds,
-        runsc_path=runsc_path,
         rootless=rootless,
         network=network,
         resources=resources,
@@ -96,7 +89,6 @@ async def create_async(
     ttl_seconds: Optional[int] = 3600,
     labels: Optional[Dict[str, str]] = None,
     timeout_seconds: float = 30.0,
-    runsc_path: str = "runsc",
     rootless: bool = True,
     network: str = "none",
     resources: Optional[Dict[str, float]] = None,
@@ -113,7 +105,6 @@ async def create_async(
         ttl_seconds=ttl_seconds,
         labels=labels,
         timeout_seconds=timeout_seconds,
-        runsc_path=runsc_path,
         rootless=rootless,
         network=network,
         resources=resources,
