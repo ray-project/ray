@@ -2,7 +2,7 @@
 
 - each MAP task writes ONE file (all its partitions, Arrow IPC) and returns ONE
   small handle (path + per-partition offset index + the source node's fetch
-  endpoint + a per-shuffle auth token). Driver tracks O(N) handles; bulk data
+  endpoint). Driver tracks O(N) handles; bulk data
   stays on local disk and never enters Ray's object store.
 - a per-node ``ShuffleFileServer`` Ray actor runs its OWN Arrow Flight server
   that ``pread``s requested byte-ranges and streams them back. The REDUCE task
@@ -88,13 +88,12 @@ def _external_shuffle_map_task(
     out_dir: str,
     map_id: int,
     shuffle_id: str,
-    token: str,
     compression: Optional[str] = None,
     fsync_on_close: bool = True,
 ) -> ShuffleHandle:
     """Map stage: partition input blocks, write them to a single file on the
     local node's spill dir, and return a ``ShuffleHandle`` (path + per-partition
-    byte index + file-server endpoint + auth token). Shuffle bytes never enter the
+    byte index + file-server endpoint). Shuffle bytes never enter the
     Ray object store.
 
     The output file is sealed via atomic ``rename``: writes land in
@@ -109,7 +108,6 @@ def _external_shuffle_map_task(
         out_dir: Directory to write ``map_{i}.shf`` into.
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the file server's actor name.
-        token: Per-shuffle auth token stamped into the handle.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
         fsync_on_close: If True, ``fsync`` before rename for durability.
     """
@@ -125,7 +123,7 @@ def _external_shuffle_map_task(
         max_restarts=-1,
         scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
         num_cpus=0,
-    ).remote(out_dir, token)
+    ).remote(out_dir)
 
     os.makedirs(out_dir, exist_ok=True)
     final_path = os.path.join(out_dir, f"map_{map_id}.shf")
@@ -197,7 +195,6 @@ def _external_shuffle_map_task(
         # the handle.
         "shuffle_id": shuffle_id,
         "node_id": node_id,
-        "token": token,
         "num_partitions": num_partitions,
         # Total bytes written to the output file, post-seal.
         "total_bytes": final_size_on_close,
@@ -376,7 +373,6 @@ def _external_shuffle_reduce_task(
                     _PwriteSink(fd, base),
                     group.shuffle_id,
                     group.node_id,
-                    group.token,
                     group.members,
                     max_bytes_per_fetch,
                 )
