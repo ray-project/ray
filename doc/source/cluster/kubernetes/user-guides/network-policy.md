@@ -75,8 +75,117 @@ spec:
 Three modes are available:
 
 - **`DenyAll`**: deny all ingress and egress except intra-cluster pod traffic.
+```yaml
+Name:         raycluster-deny-all-head
+Namespace:    default
+Created on:   2026-08-05 15:30:02 +0100 IST
+Labels:       app.kubernetes.io/created-by=kuberay-operator
+              app.kubernetes.io/name=kuberay
+              ray.io/cluster=raycluster-deny-all
+              ray.io/group=headgroup
+Annotations:  <none>
+Spec:
+  PodSelector:     ray.io/cluster=raycluster-deny-all,ray.io/node-type=head
+  Allowing ingress traffic:
+    To Port: <any> (traffic allowed to all ports)
+    From:
+      PodSelector: ray.io/cluster=raycluster-deny-all
+  Allowing egress traffic:
+    To Port: <any> (traffic allowed to all ports)
+    To:
+      PodSelector: ray.io/cluster=raycluster-deny-all
+    ----------
+    To Port: 53/UDP
+    To Port: 53/TCP
+    To:
+      NamespaceSelector: kubernetes.io/metadata.name=kube-system
+      PodSelector: k8s-app=kube-dns
+  Policy Types: Ingress, Egress
+```
 - **`DenyAllIngress`**: deny inbound traffic only; outbound is unrestricted.
+```yaml
+Name:         raycluster-deny-all-ingress-head
+Namespace:    default
+Created on:   2026-08-05 15:46:24 +0100 IST
+Labels:       app.kubernetes.io/created-by=kuberay-operator
+              app.kubernetes.io/name=kuberay
+              ray.io/cluster=raycluster-deny-all-ingress
+              ray.io/group=headgroup
+Annotations:  <none>
+Spec:
+  PodSelector:     ray.io/cluster=raycluster-deny-all-ingress,ray.io/node-type=head
+  Allowing ingress traffic:
+    To Port: <any> (traffic allowed to all ports)
+    From:
+      PodSelector: ray.io/cluster=raycluster-deny-all-ingress
+  Not affecting egress traffic
+  Policy Types: Ingress
+
+Name:         raycluster-deny-all-ingress-workers-workergroup
+Namespace:    default
+Created on:   2026-08-05 15:46:24 +0100 IST
+Labels:       app.kubernetes.io/created-by=kuberay-operator
+              app.kubernetes.io/name=kuberay
+              ray.io/cluster=raycluster-deny-all-ingress
+              ray.io/group=workergroup
+Annotations:  <none>
+Spec:
+  PodSelector:     ray.io/cluster=raycluster-deny-all-ingress,ray.io/group=workergroup,ray.io/node-type=worker
+  Allowing ingress traffic:
+    To Port: <any> (traffic allowed to all ports)
+    From:
+      PodSelector: ray.io/cluster=raycluster-deny-all-ingress
+  Not affecting egress traffic
+  Policy Types: Ingress
+```
 - **`DenyAllEgress`**: deny outbound traffic only; inbound is unrestricted.
+```yaml
+Name:         raycluster-deny-all-egress-head
+Namespace:    default
+Created on:   2026-08-05 15:47:30 +0100 IST
+Labels:       app.kubernetes.io/created-by=kuberay-operator
+              app.kubernetes.io/name=kuberay
+              ray.io/cluster=raycluster-deny-all-egress
+              ray.io/group=headgroup
+Annotations:  <none>
+Spec:
+  PodSelector:     ray.io/cluster=raycluster-deny-all-egress,ray.io/node-type=head
+  Not affecting ingress traffic
+  Allowing egress traffic:
+    To Port: <any> (traffic allowed to all ports)
+    To:
+      PodSelector: ray.io/cluster=raycluster-deny-all-egress
+    ----------
+    To Port: 53/UDP
+    To Port: 53/TCP
+    To:
+      NamespaceSelector: kubernetes.io/metadata.name=kube-system
+      PodSelector: k8s-app=kube-dns
+  Policy Types: Egress
+
+Name:         raycluster-deny-all-egress-workers-workergroup
+Namespace:    default
+Created on:   2026-08-05 15:47:30 +0100 IST
+Labels:       app.kubernetes.io/created-by=kuberay-operator
+              app.kubernetes.io/name=kuberay
+              ray.io/cluster=raycluster-deny-all-egress
+              ray.io/group=workergroup
+Annotations:  <none>
+Spec:
+  PodSelector:     ray.io/cluster=raycluster-deny-all-egress,ray.io/group=workergroup,ray.io/node-type=worker
+  Not affecting ingress traffic
+  Allowing egress traffic:
+    To Port: <any> (traffic allowed to all ports)
+    To:
+      PodSelector: ray.io/cluster=raycluster-deny-all-egress
+    ----------
+    To Port: 53/UDP
+    To Port: 53/TCP
+    To:
+      NamespaceSelector: kubernetes.io/metadata.name=kube-system
+      PodSelector: k8s-app=kube-dns
+  Policy Types: Egress
+```
 
 In all modes, the operator always permits pod-to-pod traffic within the same `RayCluster` on all ports. For `DenyAll` and `DenyAllIngress`, the head pod policy also allows the submitter pod to reach the dashboard port when a `RayJob` running in `K8sJobMode` owns the cluster.
 
