@@ -215,6 +215,7 @@ ray_cc_library(
         "//src/ray/observability:ray_task_event_recorder",
         "//src/ray/observability:ray_task_lifecycle_event",
         "//src/ray/observability:ray_task_profile_event",
+        "//src/ray/observability:task_event_instrumentation",
         "//src/ray/observability:task_event_populators",
         "//src/ray/observability:task_state_update",
         "//src/ray/protobuf:export_task_event_cc_proto",

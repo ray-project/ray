@@ -26,6 +26,7 @@
 #include "ray/observability/ray_task_event_recorder.h"
 #include "ray/observability/ray_task_lifecycle_event.h"
 #include "ray/observability/ray_task_profile_event.h"
+#include "ray/observability/task_event_instrumentation.h"
 #include "ray/observability/task_event_populators.h"
 #include "ray/util/graceful_shutdown.h"
 
@@ -251,27 +252,35 @@ void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
 }
 
 void TaskStatusEvent::RecordTo(ray::observability::RayEventRecorderInterface &recorder) {
+  namespace instr = ray::observability::instr;
   // Definition event (static metadata): only when the task spec is attached.
   // The recorder de-dups definition events per attempt via no-op merge.
   if (task_spec_) {
+    const int64_t instr_def_t0 = instr::NowNanos();
+    std::unique_ptr<ray::observability::RayEventInterface> def_event;
     if (is_actor_task_event_) {
-      recorder.AddEvent(std::make_unique<ray::observability::RayActorTaskDefinitionEvent>(
-          task_spec_, task_id_, job_id_, attempt_number_, session_name_, timestamp_));
+      def_event = std::make_unique<ray::observability::RayActorTaskDefinitionEvent>(
+          task_spec_, task_id_, job_id_, attempt_number_, session_name_, timestamp_);
     } else {
-      recorder.AddEvent(std::make_unique<ray::observability::RayTaskDefinitionEvent>(
-          task_spec_, task_id_, job_id_, attempt_number_, session_name_, timestamp_));
+      def_event = std::make_unique<ray::observability::RayTaskDefinitionEvent>(
+          task_spec_, task_id_, job_id_, attempt_number_, session_name_, timestamp_);
     }
+    instr::ns_construct += instr::NowNanos() - instr_def_t0;
+    recorder.AddEvent(std::move(def_event));
   }
 
   // Lifecycle event (dynamic state transition): always produced.
-  recorder.AddEvent(
+  const int64_t instr_life_t0 = instr::NowNanos();
+  auto lifecycle_event =
       std::make_unique<ray::observability::RayTaskLifecycleEvent>(task_id_,
                                                                   job_id_,
                                                                   attempt_number_,
                                                                   task_status_,
                                                                   state_update_,
                                                                   session_name_,
-                                                                  timestamp_));
+                                                                  timestamp_);
+  instr::ns_construct += instr::NowNanos() - instr_life_t0;
+  recorder.AddEvent(std::move(lifecycle_event));
 }
 
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
@@ -426,6 +435,7 @@ void RecordTaskStatusEventToRecorderIfNeeded(
   if (!spec.EnableTaskEvents()) {
     return;
   }
+  const int64_t instr_t0 = ray::observability::instr::NowNanos();
   TaskStatusEvent event(
       task_id,
       job_id,
@@ -438,6 +448,9 @@ void RecordTaskStatusEventToRecorderIfNeeded(
       include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
       std::move(state_update));
   event.RecordTo(ray_task_event_recorder);
+  ray::observability::instr::n_records += 1;
+  ray::observability::instr::ns_record +=
+      ray::observability::instr::NowNanos() - instr_t0;
 }
 
 TaskEventBufferImpl::TaskEventBufferImpl(

@@ -23,6 +23,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/observability/task_event_instrumentation.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 
@@ -54,6 +55,7 @@ TaskAttemptId RayTaskEventRecorder::GetTaskAttemptOrDie(
 
 void RayTaskEventRecorder::AddDroppedEvents(size_t count) {
   num_dropped_events_unreported_ += count;
+  instr::n_dropped += static_cast<int64_t>(count);
 }
 
 bool RayTaskEventRecorder::Enabled() {
@@ -82,11 +84,18 @@ void RayTaskEventRecorder::AddEvents(
 }
 
 void RayTaskEventRecorder::AddEvent(std::unique_ptr<RayEventInterface> data) {
-  absl::MutexLock lock(&mutex_);
-  if (!enabled_ || !Enabled()) {
-    return;
+  const int64_t instr_t0 = instr::NowNanos();
+  {
+    absl::MutexLock lock(&mutex_);
+    const int64_t instr_t1 = instr::NowNanos();
+    instr::ns_lockwait += instr_t1 - instr_t0;
+    if (!enabled_ || !Enabled()) {
+      return;
+    }
+    AddOneEvent(std::move(data));
   }
-  AddOneEvent(std::move(data));
+  instr::n_events += 1;
+  instr::ns_add += instr::NowNanos() - instr_t0;
 }
 
 void RayTaskEventRecorder::AddStatusEvent(std::unique_ptr<RayEventInterface> event,
@@ -203,11 +212,14 @@ void RayTaskEventRecorder::TakeEventsToSend(
 }
 
 void RayTaskEventRecorder::ExportEvents() {
+  const int64_t instr_export_t0 = instr::NowNanos();
+  int64_t instr_locked_ns = 0;
   std::list<std::unique_ptr<RayEventInterface>> events;
   absl::flat_hash_set<TaskAttemptId> dropped_to_send;
   size_t num_dropped_to_report = 0;
   {
     absl::MutexLock lock(&mutex_);
+    const int64_t instr_locked_t0 = instr::NowNanos();
     if (status_events_.empty() && profile_events_.empty() &&
         dropped_task_attempts_unreported_.empty() &&
         num_dropped_events_unreported_ == 0) {
@@ -226,6 +238,7 @@ void RayTaskEventRecorder::ExportEvents() {
     TakeEventsToSend(&events, &dropped_to_send);
     num_dropped_to_report = num_dropped_events_unreported_;
     num_dropped_events_unreported_ = 0;
+    instr_locked_ns = instr::NowNanos() - instr_locked_t0;
   }
 
   // (claude) Reported here rather than per dropped event: the tag map allocates, and the
@@ -248,10 +261,19 @@ void RayTaskEventRecorder::ExportEvents() {
 
   if (data->events_size() == 0 && metadata->dropped_task_attempts_size() == 0) {
     MarkGrpcDone();
+    instr::n_exports += 1;
+    instr::ns_export_locked += instr_locked_ns;
+    instr::ns_export_total += instr::NowNanos() - instr_export_t0;
+    instr::MaybeReport(10);
     return;
   }
 
   SendRequest(std::move(request));
+
+  instr::n_exports += 1;
+  instr::ns_export_locked += instr_locked_ns;
+  instr::ns_export_total += instr::NowNanos() - instr_export_t0;
+  instr::MaybeReport(10);
 }
 
 }  // namespace observability

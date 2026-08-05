@@ -349,6 +349,16 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "task_event_instrumentation",
+    hdrs = [
+        "task_event_instrumentation.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "task_ray_event_interface",
     hdrs = [
         "task_ray_event_interface.h",
@@ -370,6 +380,7 @@ ray_cc_library(
         ":metric_interface",
         ":ray_event",
         ":ray_event_recorder_base",
+        ":task_event_instrumentation",
         ":task_ray_event_interface",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
