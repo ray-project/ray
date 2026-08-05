@@ -611,7 +611,7 @@ def test_list_get_tasks(shutdown_only):
 def test_list_tasks_reads_from_dashboard_head(monkeypatch, shutdown_only):
     """End-to-end reroute of ``ray list tasks`` from GCS to the dashboard head.
 
-    With ``RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD`` on, ``StateHead`` queries the
+    With ``RAY_enable_task_events_to_dashboard_head`` on, ``StateHead`` queries the
     ``TaskEventsHead`` subprocess over its unix socket instead of GCS. This drives the
     real socket hop that the ``get_all_task_info`` unit tests mock out: events flow
     worker -> aggregator -> ``TaskEventsHead`` store, and the read comes back over the
@@ -622,7 +622,7 @@ def test_list_tasks_reads_from_dashboard_head(monkeypatch, shutdown_only):
     # path and the read reroute.
     monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
     monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
-    monkeypatch.setenv("RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", "1")
+    monkeypatch.setenv("RAY_enable_task_events_to_dashboard_head", "1")
 
     ray_context = ray.init(num_cpus=2)
     wait_for_aggregator_agent_if_enabled(
@@ -1554,7 +1554,7 @@ def _task_info_client(**kwargs):
 @pytest.mark.asyncio
 async def test_get_all_task_info_reads_from_gcs_by_default(monkeypatch):
     monkeypatch.setattr(
-        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", False
+        "ray.util.state.state_manager._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", False
     )
     client = _task_info_client()
     expected = GetTaskEventsReply()
@@ -1569,7 +1569,7 @@ async def test_get_all_task_info_reads_from_gcs_by_default(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_all_task_info_reads_from_dashboard_head_when_enabled(monkeypatch):
     monkeypatch.setattr(
-        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", True
+        "ray.util.state.state_manager._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
     )
     client = _task_info_client(
         dashboard_socket_dir="/tmp/sock", dashboard_session_name="session-1"
@@ -1593,7 +1593,7 @@ async def test_get_all_task_info_reads_from_dashboard_head_when_enabled(monkeypa
 @pytest.mark.asyncio
 async def test_get_all_task_info_from_dashboard_head_non_2xx_raises(monkeypatch):
     monkeypatch.setattr(
-        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", True
+        "ray.util.state.state_manager._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
     )
     client = _task_info_client(
         dashboard_socket_dir="/tmp/sock", dashboard_session_name="session-1"
