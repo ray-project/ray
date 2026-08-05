@@ -74,12 +74,34 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        time.sleep(1)  # TODO: remove before merging
-        if proc.poll() is not None:
-            _, stderr_str = proc.communicate()
-            raise SandboxCreationError(
-                f"gVisor container failed to start: {stderr_str.decode('utf-8', errors='replace')}"
-            )
+        start_time = time.time()
+        timeout = config.timeout_seconds
+        state_args = self._runsc_base_args(config) + ["state", sandbox_id]
+
+        while True:
+            if proc.poll() is not None:
+                _, stderr_str = proc.communicate()
+                raise SandboxCreationError(
+                    f"gVisor container failed to start: {stderr_str.decode('utf-8', errors='replace')}"
+                )
+
+            res = subprocess.run(state_args, capture_output=True, text=True)
+            if res.returncode == 0:
+                try:
+                    state_data = json.loads(res.stdout)
+                    if state_data.get("status") == "running":
+                        break
+                except Exception:
+                    pass
+
+            if time.time() - start_time > timeout:
+                proc.kill()
+                proc.communicate()
+                raise SandboxTimeoutError(
+                    f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
+                )
+
+            time.sleep(0.1)
 
         self._sandbox_meta[sandbox_id] = {
             "root_dir": root_dir,
