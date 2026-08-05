@@ -84,13 +84,16 @@ class MockEventAggregatorAddEvents
 class TaskEventBufferTest : public ::testing::Test {
  public:
   TaskEventBufferTest() {
+    // (claude) The buffer records only while one of its destinations is enabled, so name
+    // one here to exercise the ring.
     RayConfig::instance().initialize(
         R"(
 {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_status_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 100,
-  "task_events_shutdown_flush_timeout_ms": 100
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": true
 }
   )");
 
