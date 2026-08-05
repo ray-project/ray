@@ -40,20 +40,25 @@ class SandboxRuntime:
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID."""
-        config = SandboxConfig(
-            image=image,
-            cpu=cpu,
-            memory=memory,
-            env=env or {},
-            work_dir=work_dir,
-            ttl_seconds=ttl_seconds,
-            labels=labels or {},
-            timeout_seconds=timeout_seconds,
-            runsc_path=runsc_path,
-            rootless=rootless,
-            network=network,
-            resources=resources or {},
-        )
+        if isinstance(image, SandboxConfig):
+            config = image
+        elif "config" in kwargs and isinstance(kwargs["config"], SandboxConfig):
+            config = kwargs["config"]
+        else:
+            config = SandboxConfig(
+                image=image,
+                cpu=cpu,
+                memory=memory,
+                env=env or {},
+                work_dir=work_dir,
+                ttl_seconds=ttl_seconds,
+                labels=labels or {},
+                timeout_seconds=timeout_seconds,
+                runsc_path=runsc_path,
+                rootless=rootless,
+                network=network,
+                resources=resources or {},
+            )
         return self._backend.create_sandbox(config)
 
     def exec(
