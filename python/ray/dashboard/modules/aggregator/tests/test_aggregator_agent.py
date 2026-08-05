@@ -1322,6 +1322,9 @@ def _get_dashboard_head_events_from_httpserver(httpserver):
                 "RAY_enable_task_events_to_dashboard_head": "1",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "True",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                # This test asserts the aggregator receives only the injected event, so
+                # keep the core from emitting its own ray events into the aggregator.
+                "RAY_enable_ray_event": "0",
             },
         },
     ],

@@ -943,10 +943,14 @@ def test_task_logs_info_running_task(shutdown_only):
 
 
 @pytest.mark.asyncio
-async def test_task_events_gc_jobs(shutdown_only):
+async def test_task_events_gc_jobs(shutdown_only, monkeypatch):
     """
     Test that later jobs should override previous jobs' task events.
     """
+    # The dashboard-head store reads its cap from ray._config at import time. Set it via
+    # the env var so the head subprocess picks it up even if _system_config does not
+    # propagate to the head's ray._config.
+    monkeypatch.setenv("RAY_task_events_max_num_task_in_gcs", "3")
     ctx = ray.init(
         num_cpus=8,
         _system_config={
