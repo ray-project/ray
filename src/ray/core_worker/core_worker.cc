@@ -397,9 +397,15 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }),
-      max_free_local_objects_batch_size_(static_cast<size_t>(std::max<int64_t>(
-          1, RayConfig::instance().max_free_local_objects_batch_size()))),
+      max_free_local_objects_batch_size_(
+          static_cast<size_t>(RayConfig::instance().max_free_local_objects_batch_size())),
       clock_(clock) {
+  RAY_CHECK(RayConfig::instance().max_free_local_objects_batch_size() > 0)
+      << "max_free_local_objects_batch_size must be positive, got "
+      << RayConfig::instance().max_free_local_objects_batch_size();
+  RAY_CHECK(RayConfig::instance().free_local_objects_backlog_warn_objects_per_node() > 0)
+      << "free_local_objects_backlog_warn_objects_per_node must be positive, got "
+      << RayConfig::instance().free_local_objects_backlog_warn_objects_per_node();
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -4891,8 +4897,8 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
-  const size_t warn_backlog = std::max<size_t>(
-      1, RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
+  const size_t warn_backlog = static_cast<size_t>(
+      RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
   for (const auto &node_id : locations) {
     {
       absl::MutexLock lock(&free_batch_mu_);
