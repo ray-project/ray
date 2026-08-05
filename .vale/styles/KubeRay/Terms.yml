@@ -1,6 +1,6 @@
 extends: substitution
 message: "Use '%s' instead of '%s'."
-link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#writing-ray-on-kubernetes-and-kuberay-docs'
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#kubernetes-docs-style'
 level: warning
 ignorecase: false
 # A Vocab accept entry otherwise shadows its token for every rule, case-insensitively,
