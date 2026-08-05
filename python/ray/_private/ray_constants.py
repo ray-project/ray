@@ -301,6 +301,10 @@ LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
 RAY_FLUSH_DRIVER_LOGS = env_bool("RAY_FLUSH_DRIVER_LOGS", False)
+# Skip prepending the "(task/actor name pid=...)" prefix to worker log lines
+# forwarded to the driver's stdout/stderr, without disabling forwarding itself
+# or requiring a job-level LoggingConfig.
+RAY_DISABLE_WORKER_LOG_PREFIX = env_bool("RAY_DISABLE_WORKER_LOG_PREFIX", False)
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 
