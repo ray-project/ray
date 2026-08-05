@@ -8,11 +8,9 @@ from ray.experimental.sandbox.exceptions import SandboxNotFoundError
 
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
-    # Use runsc_path_override="/bin/sh" to simulate process execution without requiring runsc binary on host
-    backend = GVisorSandboxBackend(runsc_path_override="/bin/sh")
+    backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
         work_dir="/workspace",
-        runsc_path="/bin/sh",
         cpu=1.0,
         memory="512Mi",
     )
@@ -39,13 +37,13 @@ def test_gvisor_backend_local_lifecycle_and_file_ops():
 
 
 def test_gvisor_backend_not_found():
-    backend = GVisorSandboxBackend(runsc_path_override="/bin/sh")
+    backend = GVisorSandboxBackend()
     with pytest.raises(SandboxNotFoundError):
         backend.exec_command("nonexistent-id", "echo 'hi'")
 
 
 def test_create_sandbox_helper():
-    sb = create(work_dir="/workspace", runsc_path_override="/bin/sh")
+    sb = create(work_dir="/workspace")
     assert isinstance(sb, SandboxHandle)
     res = sb.exec("echo 'Process isolation'")
     assert res.exit_code == 0
