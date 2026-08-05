@@ -176,6 +176,89 @@ class TestListNamespace:
         )
         assert result_table.select(["flattened"]).combine_chunks().equals(expected)
 
+    def test_list_min_max(self, ray_start_regular_shared, dataset_format):
+        """Test list.min() and list.max() per-row reductions."""
+        data = [
+            {"items": [3, 1, 2]},
+            {"items": [5]},
+            {"items": []},  # empty lists yield null
+        ]
+        ds = _create_dataset(data, dataset_format)
+        rows = (
+            ds.with_column("mn", col("items").list.min())
+            .with_column("mx", col("items").list.max())
+            .take_all()
+        )
+        assert [row["mn"] for row in rows] == [1, 5, None]
+        assert [row["mx"] for row in rows] == [3, 5, None]
+
+    def test_list_min_max_ignores_nulls(self, ray_start_regular_shared, dataset_format):
+        """Test that nulls within lists are ignored, and null rows stay null."""
+        if dataset_format != "arrow":
+            pytest.skip("Null list rows only preserved via Arrow tables.")
+        table = pa.table(
+            {
+                "items": pa.array(
+                    [[4, None, 2], None, [None]], type=pa.list_(pa.int64())
+                ),
+            }
+        )
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        rows = (
+            ds.with_column("mn", col("items").list.min())
+            .with_column("mx", col("items").list.max())
+            .take_all()
+        )
+        assert [row["mn"] for row in rows] == [2, None, None]
+        assert [row["mx"] for row in rows] == [4, None, None]
+
+    def test_list_min_max_strings(self, ray_start_regular_shared, dataset_format):
+        """Test list.min()/max() on string elements (ordinal comparison)."""
+        data = [
+            {"items": ["banana", "apple"]},
+            {"items": ["zebra"]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        rows = (
+            ds.with_column("mn", col("items").list.min())
+            .with_column("mx", col("items").list.max())
+            .take_all()
+        )
+        assert [row["mn"] for row in rows] == ["apple", "zebra"]
+        assert [row["mx"] for row in rows] == ["banana", "zebra"]
+
+    def test_list_min_max_fixed_size_list_with_null(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test list.min()/max() on fixed_size_list with null entries."""
+        if dataset_format != "arrow":
+            pytest.skip("FixedSizeList type only available via Arrow tables.")
+        table = pa.table(
+            {
+                "items": pa.array(
+                    [[1, 2], None, [3, 4]],
+                    type=pa.list_(pa.int64(), 2),
+                ),
+            }
+        )
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        rows = (
+            ds.with_column("mn", col("items").list.min())
+            .with_column("mx", col("items").list.max())
+            .take_all()
+        )
+        assert [row["mn"] for row in rows] == [1, None, 3]
+        assert [row["mx"] for row in rows] == [2, None, 4]
+
+    def test_list_min_max_non_list_raises(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test that list.min() on a non-list column raises an error."""
+        data = [{"value": 1}]
+        ds = _create_dataset(data, dataset_format)
+        with pytest.raises((RayTaskError, TypeError)):
+            ds.with_column("bad", col("value").list.min()).take_all()
+
 
 if __name__ == "__main__":
     import sys
