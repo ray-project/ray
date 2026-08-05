@@ -389,13 +389,13 @@ Look up the form here rather than deriving it. Generic nouns stay lowercase even
 |---|---|---|
 | KubeRay | Kuberay, kuberay | Lowercase `kuberay` only in identifiers, such as the Helm repo or image name. |
 | Kubernetes | K8s, k8s | Spell it out in prose. Reserve `k8s` for identifiers and paths. |
-| RayCluster, RayJob, RayService, RayCronJob | Raycluster, ray cluster | The custom resources. |
-| Ray cluster, Ray job, Ray service | RayCluster as a concept | The things the custom resources produce. |
+| RayCluster, RayJob, RayService, RayCronJob | Raycluster, Rayjob, Rayservice, Raycronjob | The custom resources. |
+| Ray cluster, Ray job, Ray service | RayCluster as a concept, ray cluster, ray job, ray service | The things the custom resources produce. |
 | head Pod, worker Pod | head pod, Head Pod, head node | On Kubernetes. |
 | worker group | Worker Group | The API field `workerGroupSpecs` keeps code style. |
 | Ray autoscaler | Ray Autoscaler | "Autoscaler" is a generic noun. |
-| GCS fault tolerance | GCS FT | Spell it out, then use the full phrase. |
-| custom resource | Custom Resource | Lowercase as a general concept. Define CustomResourceDefinition on first use, then use CRD. |
+| GCS fault tolerance | GCS FT | Spell out "FT" as "fault tolerance". |
+| custom resource | Custom Resource | Lowercase as a general concept. Distinct from a CustomResourceDefinition. |
 | namespace | Namespace | Lowercase unless you mean the Kubernetes API object specifically. |
 | YuniKorn, Kueue, Volcano, Helm, Prometheus, Grafana | Yunikorn, kueue, volcano, helm, prometheus, grafana | Third-party names take each project's own casing. |
 | `kubectl` | Kubectl | Always lowercase, always in backticks. |
