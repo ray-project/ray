@@ -174,7 +174,7 @@ if TYPE_CHECKING:
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
-from ray.data.expressions import Expr, StarExpr, col
+from ray.data.expressions import Expr, StarExpr, UnnestExpr, col
 
 logger = logging.getLogger(__name__)
 
@@ -1018,8 +1018,8 @@ class Dataset:
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_columns(
         self,
-        exprs: Mapping[str, "Expr"],
-        *,
+        exprs: Optional[Union[Mapping[str, "Expr"], "UnnestExpr"]] = None,
+        *more_exprs: Union[Mapping[str, "Expr"], "UnnestExpr"],
         compute: Optional[ComputeStrategy] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1041,6 +1041,11 @@ class Dataset:
         columns, which avoids the repeated work of chaining several
         ``with_column`` calls.
 
+        In addition to a mapping from column name to expression, positional
+        arguments may be :func:`~ray.data.expressions.unnest` expressions:
+        each wraps a struct-typed expression and contributes one output
+        column per struct field, named after the fields.
+
         Examples:
             >>> import ray
             >>> from ray.data.expressions import col
@@ -1052,10 +1057,19 @@ class Dataset:
             {'id': 0, 'id_2': 0, 'id_3': 0}
             {'id': 1, 'id_2': 2, 'id_3': 3}
 
+            See :func:`~ray.data.expressions.unnest` for expanding a
+            struct-returning UDF into multiple columns, including mixed
+            usage such as ``ds.with_columns({"a2": col("a") * 2},
+            unnest(make_features(col("a"), col("b"))))``.
+
         Args:
             exprs: A mapping from new column name to the expression that
-                defines its values. Column order follows the mapping's
-                insertion order.
+                defines its values, or an
+                :func:`~ray.data.expressions.unnest` expression. Column
+                order follows the mapping's insertion order.
+            more_exprs: Additional mappings or
+                :func:`~ray.data.expressions.unnest` expressions, appended
+                in argument order.
             compute: The compute strategy to use for the projection operation.
             num_cpus: The number of CPUs to reserve for each worker.
             num_gpus: The number of GPUs to reserve for each worker.
@@ -1081,13 +1095,28 @@ class Dataset:
 
         _warn_on_ray_remote_args(ray_remote_args)
 
-        if not exprs:
+        args = [] if exprs is None else [exprs]
+        args.extend(more_exprs)
+
+        projection_exprs: List[Expr] = [StarExpr()]
+        for arg in args:
+            if isinstance(arg, UnnestExpr):
+                projection_exprs.append(arg)
+            elif isinstance(arg, Mapping):
+                if any(isinstance(expr, DownloadExpr) for expr in arg.values()):
+                    raise ValueError(
+                        "`with_columns` does not support DownloadExpr. "
+                        "Use `with_column` for download expressions instead."
+                    )
+                projection_exprs.extend(expr.alias(name) for name, expr in arg.items())
+            else:
+                raise TypeError(
+                    "`with_columns` arguments must be mappings from column "
+                    "name to expression, or unnest() expressions, got "
+                    f"{type(arg).__name__}."
+                )
+        if len(projection_exprs) == 1:
             return self
-        if any(isinstance(expr, DownloadExpr) for expr in exprs.values()):
-            raise ValueError(
-                "`with_columns` does not support DownloadExpr. "
-                "Use `with_column` for download expressions instead."
-            )
 
         from ray.data._internal.logical.operators import Project
 
@@ -1108,7 +1137,7 @@ class Dataset:
         )
 
         project_op = Project(
-            exprs=[StarExpr(), *(expr.alias(name) for name, expr in exprs.items())],
+            exprs=projection_exprs,
             input_dependencies=[self._logical_plan.dag],
             compute=compute,
             ray_remote_args=ray_remote_args,
