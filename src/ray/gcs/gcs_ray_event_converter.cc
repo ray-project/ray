@@ -159,13 +159,13 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
     task_state_update->set_actor_repr_name(event.actor_repr_name());
   }
   if (event.has_task_log_info()) {
-    const rpc::events::TaskLifecycleEvent::TaskLogInfo &src = event.task_log_info();
+    rpc::events::TaskLifecycleEvent::TaskLogInfo &src = *event.mutable_task_log_info();
     rpc::TaskLogInfo *dst = task_state_update->mutable_task_log_info();
     if (src.has_stdout_file()) {
-      dst->set_stdout_file(src.stdout_file());
+      *dst->mutable_stdout_file() = std::move(*src.mutable_stdout_file());
     }
     if (src.has_stderr_file()) {
-      dst->set_stderr_file(src.stderr_file());
+      *dst->mutable_stderr_file() = std::move(*src.mutable_stderr_file());
     }
     if (src.has_stdout_start()) {
       dst->set_stdout_start(src.stdout_start());
