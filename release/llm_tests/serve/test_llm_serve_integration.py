@@ -15,6 +15,8 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
 import time
 
+from utils import shutdown_serve_and_wait_for_controller
+
 # Pooling models (classify/reward) are only served through vLLM's native ASGI
 # app, which is used when direct streaming is enabled. The default OpenAiIngress
 # path does not expose /classify or /pooling, so these tests only run when
@@ -164,7 +166,7 @@ def test_deepseek_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
-    serve.shutdown()
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -190,7 +192,7 @@ def test_transcription_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
-    serve.shutdown()
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -230,7 +232,7 @@ def test_embedding_model(model_name):
     assert len(embedding) > 0
     assert all(isinstance(x, float) for x in embedding)
 
-    serve.shutdown()
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -270,7 +272,7 @@ def test_score_model(model_name):
         assert "score" in item
         assert isinstance(item["score"], float)
 
-    serve.shutdown()
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -333,7 +335,7 @@ def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
     assert len(data["data"]) == 1
     validate_item(data["data"][0])
 
-    serve.shutdown()
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -366,7 +368,7 @@ def remote_model_app(request):
     yield app
 
     # Cleanup
-    serve.shutdown()
+    shutdown_serve_and_wait_for_controller()
     time.sleep(1)
 
 
@@ -439,6 +441,42 @@ def test_nested_engine_kwargs_structured_outputs():
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
+    shutdown_serve_and_wait_for_controller()
+    time.sleep(1)
+
+
+def test_chat_completion_with_default_chat_template_kwargs():
+    """Ensure mapping-valued vLLM frontend arguments remain dictionaries."""
+    model_name = "Qwen/Qwen3-0.6B"
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=model_name),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            default_chat_template_kwargs={
+                "enable_thinking": False,
+            },
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/chat/completions",
+        json={
+            "model": model_name,
+            "messages": [{"role": "user", "content": "Reply with hello."}],
+            "max_tokens": 8,
+            "temperature": 0,
+        },
+        timeout=120,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["choices"][0]["message"]["content"]
+
     serve.shutdown()
     time.sleep(1)
 
