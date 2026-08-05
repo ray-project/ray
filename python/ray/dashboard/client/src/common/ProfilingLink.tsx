@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import React, { PropsWithChildren, useEffect, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
+import { get } from "../service/requestHandlers";
 import { ClassNameProps } from "./props";
 
 // Cluster-wide defaults for the profiling parameters, configurable by the
@@ -64,20 +65,27 @@ let cachedProfilingEnabled: boolean | null = null;
 let cachedProfilingDefaults: ProfilingDefaults | null = null;
 let fetchPromise: Promise<void> | null = null;
 
+// Exported for tests: reset the module-level cache so each test starts fresh
+// and can control the mocked /api/profiling_enabled response independently.
+export const _resetProfilingEnabledCache = () => {
+  cachedProfilingEnabled = null;
+  cachedProfilingDefaults = null;
+  fetchPromise = null;
+};
+
 const fetchProfilingEnabled = (): Promise<void> => {
   if (cachedProfilingEnabled !== null) {
     return Promise.resolve();
   }
   if (!fetchPromise) {
-    fetchPromise = fetch("/api/profiling_enabled")
-      .then((res) => res.json())
-      .then((data) => {
-        cachedProfilingEnabled = data.data.profilingEnabled;
+    fetchPromise = get("/api/profiling_enabled")
+      .then((res) => {
+        cachedProfilingEnabled = res.data?.data?.profilingEnabled ?? false;
         // Merge onto the fallback so a partial/older payload still yields a
         // complete, well-typed defaults object.
         cachedProfilingDefaults = {
           ...DEFAULT_PROFILING_DEFAULTS,
-          ...(data.data.profilingDefaults ?? {}),
+          ...(res.data?.data?.profilingDefaults ?? {}),
         };
       })
       .catch(() => {
@@ -85,14 +93,6 @@ const fetchProfilingEnabled = (): Promise<void> => {
       });
   }
   return fetchPromise;
-};
-
-// Test-only: clear the module-level fetch cache so each test can control the
-// mocked /api/profiling_enabled response independently.
-export const __resetProfilingCacheForTest = () => {
-  cachedProfilingEnabled = null;
-  cachedProfilingDefaults = null;
-  fetchPromise = null;
 };
 
 const useProfilingEnabled = () => {

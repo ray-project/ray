@@ -550,7 +550,7 @@ def test_report_stats_gpu(tmp_path):
         {
             "index": 3,
             "name": "NVIDIA A10G",
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b399",
             "utilization_gpu": 3,
             "memory_used": 3,
             "memory_total": GPU_MEMORY,
@@ -586,6 +586,7 @@ def test_report_stats_gpu(tmp_path):
                 # The tag value must be string for prometheus.
                 "GpuIndex": str(index),
                 "GpuDeviceName": "NVIDIA A10G",
+                "GpuUuid": f"GPU-36e1567d-37ed-051e-f8ff-df807517b39{6 + index}",
                 "RayNodeType": "head",
                 "IsHeadNode": "true",
             }
@@ -664,10 +665,12 @@ def test_report_stats_gpu_power_and_temperature(tmp_path):
     assert temp_by_index["0"] == 65
     assert temp_by_index["1"] == 72
 
-    # Tags should include GpuIndex and GpuDeviceName
+    # Tags should include GpuIndex, GpuDeviceName and GpuUuid
+    expected_uuids = {"0": "GPU-aaa", "1": "GPU-bbb"}
     for r in power_records + temp_records:
         assert "GpuIndex" in r.tags
         assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
+        assert r.tags.get("GpuUuid") == expected_uuids[r.tags["GpuIndex"]]
 
 
 def test_report_stats_gpu_without_power_temperature(tmp_path):

@@ -19,14 +19,32 @@
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
 ! linux_wheels macos_wheels docker doc python_dependencies min_build tools windows
 ! release_tests spark_on_ray rocksdb_tests redis_tests
+! core_doc data_doc ml_doc rllib_doc serve_doc
 
-# Documentation prose (.md and .rst) does not block premerge. A content-only
-# change to narrative docs triggers no library test steps: prose can't change
-# tested code, and the post-merge documentation build is the coverage for these
-# changes. Executable doc assets such as .py and .ipynb are matched by the rules
-# below and still run tests.
+# Documentation prose (.md and .rst) and static image assets do not block
+# premerge. A content-only change to narrative docs or a diagram swap triggers
+# no library test steps: neither can change tested code, and the post-merge
+# documentation build is the coverage for these changes. Executable doc assets
+# such as .py and .ipynb are matched by the rules below and still run tests.
+#
+# Images are listed here, ahead of the per-library rules, because those rules
+# match a whole directory and would otherwise route a .png or .svg edit to that
+# library's docs example step. Config assets that examples consume (.yaml, .sh)
+# are deliberately absent: they can change what a test does, so they keep
+# routing to the owning library below.
+# Claude Code skills and agent files under doc/.claude/ never participate in
+# the Sphinx build and define no test targets, so they trigger nothing. This
+# matches the RtD build guard, which excludes the same path for the same reason
+# (see the `:!doc/.claude/` exclude in .readthedocs.yaml).
+doc/.claude/
 doc/*.md
 doc/*.rst
+doc/*.png
+doc/*.svg
+doc/*.jpg
+doc/*.jpeg
+doc/*.gif
+doc/*.webp
 # pass
 ;
 
@@ -189,16 +207,146 @@ docker/
 @ doc
 ;
 
-doc/*.py
-doc/*.ipynb
-doc/BUILD
-doc/*/BUILD
-doc/*.rst
+# Documentation validation infra: the Sphinx config, the modules that config
+# imports, the in-repo build extensions, the doc-build helper scripts, the Vale
+# config, the doc pipeline definition, and the doc requirements all drive the
+# documentation build and validation. The `doc` tag is reserved for that build
+# machinery, not for the library example tests that happen to live in the docs.
+# These changes route here only, so they trigger the documentation build and
+# validation without running any library doctest or example execution.
+#
+# The `doc/source/*.py` modules are enumerated one by one on purpose. A
+# `doc/source/*.py` pattern would NOT work: `*` in these patterns is fnmatch
+# and crosses `/`, so it would also swallow every example script under
+# `doc/source/<lib>/doc_code/` and stop those from reaching the per-library
+# rules below. Add a module here when `conf.py` grows a new import.
+#
+# The two `llms_txt` entries are routed ahead of the files existing: they land
+# with ray-project/ray#64458, which adds a hermetic Sphinx-extension test and
+# the summary text that test and the build both consume. A rule for an absent
+# path is inert, and pre-routing them means that PR merges correctly scoped
+# rather than leaving the test on the `doc/*.py` catch-all, which would run Ray
+# Core's doctests and examples for a test that imports no Ray code.
+doc/source/conf.py
+doc/source/custom_directives.py
+doc/source/api_autogen.py
+doc/source/api_mock_imports.py
+doc/source/template_collections.py
+doc/source/preprocess_github_markdown.py
+doc/source/llms_txt_summary.txt
+doc/source/_ext/
+doc/load_doc_cache.py
+doc/update_cache_env.py
+doc/rtd_doctor.py
+doc/test_no_new_rst.py
+doc/test_llms_txt.py
 doc/requirements-doc.txt
 .vale.ini
 .vale/
 .buildkite/doc.rayci.yml
+# The three gallery configs are build inputs, not example inputs. They are
+# parsed by `custom_directives.py` (its `EXAMPLE_GALLERY_CONFIGS` names these
+# three) to generate the gallery pages; they contain no executable code and
+# cannot change what any
+# example does. They live under the per-library doc directories, so they are
+# routed here, ahead of those rules, to keep a gallery edit on the build.
+doc/source/data/examples.yml
+doc/source/serve/examples.yml
+doc/source/train/examples.yml
+# highly_parallel.ipynb is executed by no premerge step. Its `py_test` in
+# doc/BUILD.bazel carries a `highly_parallel` tag that the ml docs example
+# step excludes (`--except-tags ...,highly_parallel` in ml.rayci.yml), and
+# the notebook glob in doc/source/ray-core/examples/BUILD.bazel excludes it
+# as well: it needs a live multi-node cluster and belongs in a release test.
+# Routing it to `ml_doc` alongside its four siblings would start the whole ml
+# example suite while skipping the one file that changed. The documentation
+# build renders it (`nb_execution_mode` is `off`, so render-and-lint only, no
+# execution), which is the only validation premerge actually offers here.
+doc/source/ray-core/examples/highly_parallel.ipynb
 @ doc
+;
+
+# The root doc/BUILD.bazel defines the example and doctest targets for every
+# library, so a change there exercises all of them. Route it to every
+# library's docs example step.
+doc/BUILD.bazel
+@ core_doc data_doc ml_doc rllib_doc serve_doc llm
+;
+
+# Executable doc assets route to the owning library's docs example test step
+# via a dedicated <lib>_doc tag, so a one-library doc change runs only that
+# library's example tests instead of fanning out to every team. Prose
+# (.md/.rst) is skipped by the leading rule; the llm doc assets are routed to
+# `llm` earlier. Each directory rule also covers that library's example
+# BUILD.bazel files.
+doc/source/data/
+doc/source/ray-more-libs/
+@ data_doc
+;
+
+doc/source/serve/
+@ serve_doc
+;
+
+doc/source/rllib/
+@ rllib_doc
+;
+
+doc/source/train/
+doc/source/tune/
+doc/source/ray-air/
+@ ml_doc
+;
+
+# These four notebooks live under ray-core/ but their targets in
+# doc/BUILD.bazel are tagged `team:ml`, and the team argument to
+# ci/ray_ci:test_in_docker filters targets by `team:<team>`
+# (ci/ray_ci/tester.py:372). So the core step would not execute them: routing
+# them to core_doc would run a step that tests everything under ray-core/
+# except the file that changed. They route to ml_doc, the step that actually
+# owns the targets, and carry no tag the step excludes. Re-tagging the targets
+# `team:core` in doc/BUILD.bazel would be the alternative fix and would let
+# these lines go away. Their fifth sibling, highly_parallel.ipynb, is routed to
+# `doc` above: no step executes it at all.
+doc/source/ray-core/examples/plot_hyperparameter.ipynb
+doc/source/ray-core/examples/batch_prediction.ipynb
+doc/source/ray-core/examples/plot_parameter_server.ipynb
+doc/source/ray-core/examples/plot_pong_example.ipynb
+@ ml_doc
+;
+
+doc/source/ray-core/
+doc/source/ray-observability/
+@ core_doc
+;
+
+# doc/external/ holds a vendored PyTorch tutorial and the test that guards it
+# against upstream drift. The same cross-team miss applies: `test_external_hashes`
+# in doc/BUILD.bazel is tagged `team:ml`, so the core step would filter it out.
+# Route the whole directory rather than the test file alone, because the tutorial
+# script is the test's `data` and editing it is what the hash check exists to
+# catch. Without this rule both files fall through to the `doc/*.py` catch-all
+# below, since `*` in these patterns crosses `/`.
+doc/external/
+@ ml_doc
+;
+
+# Any remaining executable doc asset (cluster/, ray-contribute/, other
+# unowned doc dirs, and any example BUILD.bazel outside the library dirs
+# above) falls to the core docs example step as the catch-all owner.
+#
+# `doc/test_myst_doc.py` lands here too. It is the shared notebook runner behind
+# every library's example targets, so a change to it could in principle break
+# any of them, and routing it to all five `<lib>_doc` tags the way
+# `doc/BUILD.bazel` does would be the maximal-coverage choice. One library's
+# worth of execution is deliberately treated as a sufficient smoke signal
+# instead: the runner is shared, so a break shows up in core as readily as
+# anywhere, and the post-merge documentation build covers the rest. Widen this
+# only if a harness regression actually escapes core.
+doc/*.py
+doc/*.ipynb
+doc/*/BUILD.bazel
+@ core_doc
 ;
 
 ci/docker/doctest.build.Dockerfile

@@ -2,9 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import "@testing-library/jest-dom";
+import { get } from "../service/requestHandlers";
 import { TEST_APP_WRAPPER } from "../util/test-utils";
 import {
-  __resetProfilingCacheForTest,
+  _resetProfilingEnabledCache,
   CpuProfilingLink,
   CpuStackTraceLink,
   DEFAULT_PROFILING_DEFAULTS,
@@ -13,32 +14,55 @@ import {
   TaskCpuStackTraceLink,
 } from "./ProfilingLink";
 
-// The link components (unlike ProfilerButton) fetch /api/profiling_enabled to
-// decide whether profiling is on and to seed their dialog defaults. Mock fetch
-// so those tests are deterministic, and clear ProfilingLink's module-level fetch
-// cache so each test controls the response independently.
+jest.mock("../service/requestHandlers");
+
+const mockedGet = jest.mocked(get);
+
+// The link components (unlike ProfilerButton) request /api/profiling_enabled to
+// decide whether profiling is on and to seed their dialog defaults. Mock the
+// shared get() helper so those tests are deterministic, and clear
+// ProfilingLink's module-level cache so each test controls the response
+// independently.
 const mockProfiling = (
   enabled: boolean,
   defaults: Partial<ProfilingDefaults> = {},
 ) => {
-  __resetProfilingCacheForTest();
-  (global as any).fetch = jest.fn(() =>
-    Promise.resolve({
-      json: () =>
-        Promise.resolve({
-          data: {
-            profilingEnabled: enabled,
-            profilingDefaults: defaults,
-          },
-        }),
-    }),
-  );
+  _resetProfilingEnabledCache();
+  mockedGet.mockResolvedValue({
+    data: {
+      data: {
+        profilingEnabled: enabled,
+        profilingDefaults: defaults,
+      },
+    },
+  } as any);
 };
 
 afterEach(() => {
   jest.restoreAllMocks();
-  delete (global as any).fetch;
-  __resetProfilingCacheForTest();
+  mockedGet.mockReset();
+  _resetProfilingEnabledCache();
+});
+
+describe("fetchProfilingEnabled", () => {
+  beforeEach(() => {
+    mockedGet.mockReset();
+    _resetProfilingEnabledCache();
+  });
+
+  it("calls get() with /api/profiling_enabled instead of raw fetch", async () => {
+    mockedGet.mockResolvedValueOnce({
+      data: { data: { profilingEnabled: false } },
+    } as any);
+
+    render(<CpuProfilingLink pid={12345} nodeId="node-abc" type="" />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    await waitFor(() => {
+      expect(mockedGet).toHaveBeenCalledWith("/api/profiling_enabled");
+    });
+  });
 });
 
 describe("ProfilerButton", () => {
