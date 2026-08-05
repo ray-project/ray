@@ -95,8 +95,9 @@ class CoreWorkerProcess {
   /// Whether a running task has been marked for cancellation and should be interrupted.
   ///
   /// Unlike GetCoreWorker(), returns false rather than exiting the process when the core
-  /// worker is already gone, so background threads can poll this during shutdown. Hands
-  /// out no reference to the CoreWorker, so a caller can never become its last owner.
+  /// worker is already gone, so background threads can poll this during shutdown. No
+  /// reference to the CoreWorker escapes, which keeps a caller from becoming its last
+  /// owner.
   static bool ShouldInterruptTaskForCancellation();
 
   /// Whether the current process has been initialized for core worker.

@@ -2841,12 +2841,12 @@ cdef CRayStatus check_signals() nogil:
         # do not call GetCurrentTaskID() without a job (WorkerContext CHECK).
         #
         # Deliberately not GetCoreWorker(), which exits the process once the core worker
-        # is gone: background threads keep polling here while ray.shutdown() tears it
-        # down. Falling through to OK leaves such a poller waiting instead of bailing
-        # out. That is what a compiled-graph channel writer wants, since
-        # ~MutableObjectProvider unblocks it with ChannelError moments later, and
-        # PollWriterClosure RAY_CHECKs any other non-OK status. Other check_signals
-        # callers lose a bail-out they only ever had by way of that process exit.
+        # is gone, while background threads keep polling here as ray.shutdown() tears it
+        # down. Falling through to OK keeps such a poller waiting; a non-OK status would
+        # make it stop and report an error. Waiting is what a compiled-graph channel
+        # writer needs, since ~MutableObjectProvider wakes it with ChannelError moments
+        # later, and PollWriterClosure RAY_CHECKs any other non-OK status. Other
+        # check_signals callers now keep waiting too, where the process used to exit.
         if CCoreWorkerProcess.ShouldInterruptTaskForCancellation():
             return CRayStatus.Interrupted(b"")
 
