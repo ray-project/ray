@@ -18,7 +18,7 @@ class SandboxRuntime:
 
     def create(
         self,
-        image: Optional[Union[str, SandboxConfig]] = None,
+        image: Optional[str] = None,
         cpu: float = 0.0,
         memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
