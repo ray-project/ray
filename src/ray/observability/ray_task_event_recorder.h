@@ -99,8 +99,9 @@ class RayTaskEventRecorder : public RayEventRecorderBase {
   static TaskAttemptId GetTaskAttemptOrDie(
       const std::unique_ptr<RayEventInterface> &event);
 
-  // Record `count` dropped events to the metric.
-  void RecordDropped(size_t count) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  // (claude) Add to the count of dropped events awaiting a metric report. Called on the
+  // task's call path, so it only bumps a counter; the metric is recorded once per export.
+  void AddDroppedEvents(size_t count) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // (claude) A buffered status event and the task attempt it belongs to. The attempt is
   // resolved once when the event is added so the export path does not have to downcast
@@ -121,6 +122,8 @@ class RayTaskEventRecorder : public RayEventRecorderBase {
       profile_events_ ABSL_GUARDED_BY(mutex_);
   // Total profile events buffered across all attempts (for the global cap).
   size_t num_profile_events_buffered_ ABSL_GUARDED_BY(mutex_) = 0;
+  // (claude) Dropped events counted since the last metric report.
+  size_t num_dropped_events_unreported_ ABSL_GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace observability

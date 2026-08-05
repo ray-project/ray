@@ -52,11 +52,8 @@ TaskAttemptId RayTaskEventRecorder::GetTaskAttemptOrDie(
   return task_event->GetTaskAttempt();
 }
 
-void RayTaskEventRecorder::RecordDropped(size_t count) {
-  if (count == 0) {
-    return;
-  }
-  dropped_events_counter_.Record(count, {{"Source", std::string(metric_source_)}});
+void RayTaskEventRecorder::AddDroppedEvents(size_t count) {
+  num_dropped_events_unreported_ += count;
 }
 
 bool RayTaskEventRecorder::Enabled() {
@@ -96,7 +93,7 @@ void RayTaskEventRecorder::AddStatusEvent(std::unique_ptr<RayEventInterface> eve
                                           const TaskAttemptId &attempt) {
   if (dropped_task_attempts_unreported_.count(attempt) != 0u) {
     // This task attempt has already been dropped, so drop this event too.
-    RecordDropped(1);
+    AddDroppedEvents(1);
     return;
   }
   if (status_events_.full()) {
@@ -111,7 +108,7 @@ void RayTaskEventRecorder::AddStatusEvent(std::unique_ptr<RayEventInterface> eve
         << RayConfig::instance().task_events_max_num_status_events_buffer_on_worker()
         << ") to avoid this.";
     dropped_task_attempts_unreported_.insert(evicted);
-    RecordDropped(1);
+    AddDroppedEvents(1);
   }
   status_events_.push_back({attempt, std::move(event)});
 }
@@ -136,7 +133,7 @@ void RayTaskEventRecorder::AddProfileEvent(std::unique_ptr<RayEventInterface> ev
        profile_events_itr->second.size() >=
            static_cast<size_t>(max_num_profile_event_per_task)) ||
       num_profile_events_buffered_ >= max_profile_events_stored) {
-    RecordDropped(1);
+    AddDroppedEvents(1);
     // Data loss. We are dropping the newly reported profile event.
     // This will likely happen on a driver task since the driver has a fixed placeholder
     // driver task id and it could generate large number of profile events when submitting
@@ -202,16 +199,18 @@ void RayTaskEventRecorder::TakeEventsToSend(
     }
   }
 
-  RecordDropped(num_skipped);
+  AddDroppedEvents(num_skipped);
 }
 
 void RayTaskEventRecorder::ExportEvents() {
   std::list<std::unique_ptr<RayEventInterface>> events;
   absl::flat_hash_set<TaskAttemptId> dropped_to_send;
+  size_t num_dropped_to_report = 0;
   {
     absl::MutexLock lock(&mutex_);
     if (status_events_.empty() && profile_events_.empty() &&
-        dropped_task_attempts_unreported_.empty()) {
+        dropped_task_attempts_unreported_.empty() &&
+        num_dropped_events_unreported_ == 0) {
       return;
     }
     // Skip if there's already an in-flight gRPC call to avoid overlapping requests.
@@ -225,6 +224,15 @@ void RayTaskEventRecorder::ExportEvents() {
       return;
     }
     TakeEventsToSend(&events, &dropped_to_send);
+    num_dropped_to_report = num_dropped_events_unreported_;
+    num_dropped_events_unreported_ = 0;
+  }
+
+  // (claude) Reported here rather than per dropped event: the tag map allocates, and the
+  // drop path runs under mutex_ on the task's call path.
+  if (num_dropped_to_report > 0) {
+    dropped_events_counter_.Record(static_cast<double>(num_dropped_to_report),
+                                   {{"Source", std::string(metric_source_)}});
   }
 
   rpc::events::AddEventsRequest request;
