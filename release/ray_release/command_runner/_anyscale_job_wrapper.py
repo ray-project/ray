@@ -382,12 +382,7 @@ def run_spilling_check():
 
 
 def run_obj_store_util_check(max_percent: str):
-    """Fail if peak object store utilization exceeded ``max_percent`` percent.
-
-    A negative limit disables the check. Tests that expect to spill need this
-    because the limit is set through a templated env var, where dropping the
-    variable entirely isn't expressible.
-    """
+    """Fail if peak object store utilization exceeded ``max_percent`` percent."""
     check_name = "Object store utilization check"
     env_var = "RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT"
 
