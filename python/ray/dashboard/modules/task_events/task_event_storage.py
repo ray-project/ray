@@ -11,7 +11,7 @@ import logging
 import time
 from typing import Dict, List, Optional, Set, Tuple
 
-from ray._private import ray_constants
+import ray
 from ray._raylet import JobID, TaskID
 from ray.core.generated import gcs_pb2
 from ray.core.generated.common_pb2 import TaskType
@@ -20,21 +20,17 @@ from ray.dashboard.modules.task_events.gc_policy import FinishedTaskActorTaskGcP
 logger = logging.getLogger(__name__)
 
 # Max number of task events kept before eviction kicks in.
-MAX_NUM_TASK_EVENTS = ray_constants.env_integer(
-    "RAY_DASHBOARD_TASK_EVENTS_MAX_NUM_TASK_EVENTS", 100_000
-)
+MAX_NUM_TASK_EVENTS = ray._config.task_events_max_num_task_in_gcs()
 # Max profile events kept per task attempt; older ones are dropped past this.
-MAX_NUM_PROFILE_EVENTS_PER_TASK = ray_constants.env_integer(
-    "RAY_DASHBOARD_TASK_EVENTS_MAX_NUM_PROFILE_EVENTS_PER_TASK", 1000
+MAX_NUM_PROFILE_EVENTS_PER_TASK = (
+    ray._config.task_events_max_num_profile_events_per_task()
 )
 # Max dropped task attempts tracked per job before the tracking set is trimmed.
-MAX_DROPPED_TASK_ATTEMPTS_PER_JOB = ray_constants.env_integer(
-    "RAY_DASHBOARD_TASK_EVENTS_MAX_DROPPED_TASK_ATTEMPTS_PER_JOB", 1_000_000
+MAX_DROPPED_TASK_ATTEMPTS_PER_JOB = (
+    ray._config.task_events_max_dropped_task_attempts_tracked_per_job_in_gcs()
 )
-# How often the per-job dropped-attempt tracking is trimmed.
-GC_JOB_SUMMARY_INTERVAL_S = ray_constants.env_float(
-    "RAY_DASHBOARD_TASK_EVENTS_GC_JOB_SUMMARY_INTERVAL_S", 5.0
-)
+# How often the per-job dropped-attempt tracking is trimmed. The RayConfig value is in ms.
+GC_JOB_SUMMARY_INTERVAL_S = ray._config.task_events_gc_job_summary_interval_ms() / 1000
 # Minimum seconds between "at capacity" warnings, to avoid log spam on every eviction.
 _CAPACITY_WARNING_INTERVAL_S = 10.0
 
@@ -115,7 +111,7 @@ class JobTaskSummary:
             return
         logger.info(
             "Evicting extra tracked dropped task attempts (%d > %d) for job %s. Set "
-            "RAY_DASHBOARD_TASK_EVENTS_MAX_DROPPED_TASK_ATTEMPTS_PER_JOB to a higher "
+            "RAY_task_events_max_dropped_task_attempts_tracked_per_job_in_gcs to a higher "
             "value to track more.",
             len(self._dropped_task_attempts),
             max_tracked,
@@ -211,7 +207,7 @@ class TaskEventStorage:
         self._last_capacity_warning_time = now
         logger.warning(
             "Max number of task events (%d) reached; old task events will be "
-            "overwritten. Set RAY_DASHBOARD_TASK_EVENTS_MAX_NUM_TASK_EVENTS to a higher "
+            "overwritten. Set RAY_task_events_max_num_task_in_gcs to a higher "
             "value to store more.",
             self._max_num_task_events,
         )
