@@ -99,8 +99,8 @@ export const JobProgressBar = ({
   } = progressSource;
 
   const hasTruncatedTaskData =
-    finalTotalTaskAttempts !== undefined &&
-    finalNumAfterTruncation !== undefined &&
+    typeof finalTotalTaskAttempts === "number" &&
+    typeof finalNumAfterTruncation === "number" &&
     finalTotalTaskAttempts > finalNumAfterTruncation;
 
   return (
