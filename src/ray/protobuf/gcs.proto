@@ -474,6 +474,14 @@ message WorkerTableData {
   optional uint32 debugger_port = 27;
   // The number of paused threads in this worker process
   optional uint32 num_paused_threads = 28;
+  // The worker's memory usage (USS, in bytes) captured at the moment Ray's memory
+  // monitor killed it. Only present when exit_type is NODE_OUT_OF_MEMORY; for all
+  // other death causes the process is already gone and its memory can't be sampled,
+  // so the field is left unset. Consumers must gate on presence (or on
+  // exit_type == NODE_OUT_OF_MEMORY) rather than treating a missing value as 0.
+  optional int64 memory_used_bytes_at_death = 29;
+  // The ID of the job this worker belongs to.
+  bytes job_id = 30;
 }
 
 // Fields to publish when worker fails.

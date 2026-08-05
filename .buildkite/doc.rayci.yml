@@ -34,8 +34,17 @@ steps:
       - doc
       - skip-on-premerge
 
+  # The two API checks below carry no `if:` guard on purpose. Their trigger set
+  # is defined entirely by tags: the library code tags, plus "doc_api" for the
+  # API reference pages and the autodoc machinery that decides what those pages
+  # contain (see test.rules.txt). Tag selection and Buildkite `if:` are separate
+  # passes -- tags choose which steps are emitted, `if:` can only suppress an
+  # already-emitted step -- so a label guard here could only ever subtract from
+  # a trigger set the rules already compute correctly. In particular these steps
+  # are deliberately NOT gated on "docs-go": that label exists to skip the
+  # per-team doc example execution on a content-only PR, and an API reference
+  # page edit is exactly the content-only change these checks must still cover.
   - label: ":book: doc: check API annotations"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - oss
       - core_python
@@ -49,7 +58,7 @@ steps:
       - llm
       - rllib
       - rllib_gpu
-      - doc
+      - doc_api
     key: doc_api_annotations
     instance_type: medium
     depends_on: docbuild
@@ -58,7 +67,6 @@ steps:
       - bash ci/lint/lint.sh api_annotations
 
   - label: ":book: doc: check API doc consistency"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - oss
       - core_python
@@ -72,7 +80,7 @@ steps:
       - llm
       - rllib
       - rllib_gpu
-      - doc
+      - doc_api
     key: doc_api_policy_check
     instance_type: medium
     depends_on: docbuild
