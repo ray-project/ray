@@ -13,8 +13,9 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-        # Fail on spilling
-        - RAYTEST_FAIL_ON_SPILLING=1
+        # Fail if the object store fills up (spilled objects count toward
+        # utilization, so anything over 100% means the test spilled)
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
 
 - name: image_classification
 
@@ -119,13 +120,11 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-          # In general, Ray Data shouldn't spill on stable fixed-size clusters, but
-          # we've observed occasional and negligible O(~10 GiB) spills in weekly runs.
-          # The spilling is likely due to unbalanced object distribution.
-          #
-          # To avoid creating low-signal failures, we've disabled the spill check on
-          # this test.
-        - RAYTEST_FAIL_ON_SPILLING=0
+        # Fail the test if the object store fills up. This previously used the
+        # any-spill check, which was disabled here because of occasional and
+        # negligible O(~10 GiB) spills, likely from unbalanced object
+        # distribution. A utilization limit tolerates those.
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
   run:
     timeout: 3600
 
