@@ -189,7 +189,10 @@ class DistributedTrainFnUtils(TrainFnUtils):
         return DistributedTrainContext()
 
     def get_preemption_info(self) -> Optional["PreemptionInfo"]:
-        return get_internal_train_context().preemption_context.preemption_info
+        local_info = get_internal_train_context().preemption_context.preemption_info
+        return collective_impl.broadcast_from_rank_zero(
+            local_info, caller_method_name="ray.train.get_preemption_info"
+        )
 
     def is_distributed(self) -> bool:
         return True
