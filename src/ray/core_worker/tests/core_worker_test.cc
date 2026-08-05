@@ -1638,10 +1638,10 @@ TEST_F(CoreWorkerTest, FreeLocalObjectsFailureDropsNodeQueue) {
 }
 
 TEST_F(CoreWorkerTest, FreeLocalObjectsKeepsBufferingPastWarnThreshold) {
-  auto &warn_bytes =
-      RayConfig::instance().free_local_objects_backlog_warn_bytes_per_node();
-  const int64_t prev = warn_bytes;
-  warn_bytes = 2 * static_cast<int64_t>(sizeof(ObjectID));  // warn at 2 objects.
+  auto &warn_objects =
+      RayConfig::instance().free_local_objects_backlog_warn_objects_per_node();
+  const int64_t prev = warn_objects;
+  warn_objects = 2;  // warn at 2 objects.
   const NodeID node_id = core_worker_->GetCurrentNodeId();
 
   const int kNumObjects = 5;
@@ -1656,7 +1656,7 @@ TEST_F(CoreWorkerTest, FreeLocalObjectsKeepsBufferingPastWarnThreshold) {
     total += batch;
   }
   EXPECT_EQ(total, kNumObjects);  // Nothing dropped past the warn threshold.
-  warn_bytes = prev;
+  warn_objects = prev;
 }
 
 }  // namespace core

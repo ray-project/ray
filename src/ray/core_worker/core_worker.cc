@@ -4892,9 +4892,7 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
   const size_t warn_backlog = std::max<size_t>(
-      1,
-      RayConfig::instance().free_local_objects_backlog_warn_bytes_per_node() /
-          sizeof(ObjectID));
+      1, RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
   for (const auto &node_id : locations) {
     {
       absl::MutexLock lock(&free_batch_mu_);
