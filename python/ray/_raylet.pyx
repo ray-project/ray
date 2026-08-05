@@ -158,7 +158,6 @@ from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
     CActorCreationOptions,
     CPlacementGroupCreationOptions,
-    CCoreWorker,
     CCoreWorkerOptions,
     CCoreWorkerProcess,
     CTaskOptions,
@@ -2807,7 +2806,6 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
 
 
 cdef CRayStatus check_signals() nogil:
-    cdef shared_ptr[CCoreWorker] worker
     with gil:
         # The Python exceptions are not handled if it is raised from cdef,
         # so we have to handle it here.
@@ -2842,13 +2840,14 @@ cdef CRayStatus check_signals() nogil:
         # Unblock nogil backpressure waits. Uses job/task guards so periodic io threads
         # do not call GetCurrentTaskID() without a job (WorkerContext CHECK).
         #
-        # GetCoreWorker() exits the process once the core worker is gone, and background
-        # threads keep polling for signals while ray.shutdown() tears it down. A
-        # compiled-graph channel's worker.channel_io thread is one of those pollers; the
-        # CoreWorker destructor is what joins it, so it outlives the global pointer.
-        worker = CCoreWorkerProcess.TryGetWorker()
-        if (worker.get() != NULL
-                and worker.get().ShouldInterruptTaskForCancellation()):
+        # Deliberately not GetCoreWorker(), which exits the process once the core worker
+        # is gone: background threads keep polling here while ray.shutdown() tears it
+        # down. Falling through to OK leaves such a poller waiting instead of bailing
+        # out. That is what a compiled-graph channel writer wants, since
+        # ~MutableObjectProvider unblocks it with ChannelError moments later, and
+        # PollWriterClosure RAY_CHECKs any other non-OK status. Other check_signals
+        # callers lose a bail-out they only ever had by way of that process exit.
+        if CCoreWorkerProcess.ShouldInterruptTaskForCancellation():
             return CRayStatus.Interrupted(b"")
 
     return CRayStatus.OK()

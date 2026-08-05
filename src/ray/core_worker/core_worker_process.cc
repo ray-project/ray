@@ -133,6 +133,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
   return core_worker_process->TryGetCoreWorker();
 }
 
+bool CoreWorkerProcess::ShouldInterruptTaskForCancellation() {
+  return core_worker_process != nullptr &&
+         core_worker_process->ShouldInterruptTaskForCancellation();
+}
+
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     CoreWorkerOptions options, const WorkerID &worker_id) {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
@@ -1032,6 +1037,15 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::TryGetCoreWorker() const {
   const auto read_locked = core_worker_.LockForRead();
   return read_locked.Get();
+}
+
+bool CoreWorkerProcessImpl::ShouldInterruptTaskForCancellation() const {
+  const auto read_locked = core_worker_.LockForRead();
+  // Bind by reference. Copying the shared_ptr would let a caller that outlives
+  // ShutdownDriver() become the last owner and run ~CoreWorker on its own thread, and
+  // ~MutableObjectProvider joins that very thread.
+  const auto &worker = read_locked.Get();
+  return worker != nullptr && worker->ShouldInterruptTaskForCancellation();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {

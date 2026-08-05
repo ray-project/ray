@@ -1267,11 +1267,20 @@ print("DRIVER_EXITED_CLEANLY")
     )
 
     # run_string_as_driver hands env to Popen, which replaces rather than extends it.
+    # RAY_LOG_TO_STDERR routes the core worker's own logs into the captured output, so the
+    # assertion below sees them; by default they only reach the session log directory.
     output = run_string_as_driver(
         driver_script,
-        env={**os.environ, "RAY_get_check_signal_interval_milliseconds": "1"},
+        env={
+            **os.environ,
+            "RAY_get_check_signal_interval_milliseconds": "1",
+            "RAY_LOG_TO_STDERR": "1",
+        },
     )
     assert "DRIVER_EXITED_CLEANLY" in output, output
+    # A non-zero exit already raises out of run_string_as_driver. This catches the weaker
+    # case where a poll hit the window but the process happened to survive it.
+    assert "The core worker has already been shutdown" not in output, output
 
 
 @pytest.mark.skipif(

@@ -92,6 +92,13 @@ class CoreWorkerProcess {
   /// \return The `CoreWorker` instance.
   static std::shared_ptr<CoreWorker> TryGetWorker();
 
+  /// Whether a running task has been marked for cancellation and should be interrupted.
+  ///
+  /// Unlike GetCoreWorker(), returns false rather than exiting the process when the core
+  /// worker is already gone, so background threads can poll this during shutdown. Hands
+  /// out no reference to the CoreWorker, so a caller can never become its last owner.
+  static bool ShouldInterruptTaskForCancellation();
+
   /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();
 
@@ -133,6 +140,8 @@ class CoreWorkerProcessImpl {
 
   /// Try to get core worker. Returns nullptr if core worker doesn't exist.
   std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
+
+  bool ShouldInterruptTaskForCancellation() const;
 
   std::shared_ptr<CoreWorker> CreateCoreWorker(CoreWorkerOptions options,
                                                const WorkerID &worker_id);
