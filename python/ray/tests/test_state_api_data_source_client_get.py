@@ -603,6 +603,58 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Exercises the POSIX unix-socket hop between the StateHead and "
+    "TaskEventsHead subprocesses.",
+)
+def test_list_tasks_reads_from_dashboard_head(monkeypatch, shutdown_only):
+    """End-to-end reroute of ``ray list tasks`` from GCS to the dashboard head.
+
+    With ``RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD`` on, ``StateHead`` queries the
+    ``TaskEventsHead`` subprocess over its unix socket instead of GCS. This drives the
+    real socket hop that the ``get_all_task_info`` unit tests mock out: events flow
+    worker -> aggregator -> ``TaskEventsHead`` store, and the read comes back over the
+    socket.
+    """
+    # Feed task events into the dashboard-head store via the aggregator, and read them
+    # back from there instead of GCS. The single umbrella flag enables both the publish
+    # path and the read reroute.
+    monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
+    monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
+    monkeypatch.setenv("RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", "1")
+
+    ray_context = ray.init(num_cpus=2)
+    wait_for_aggregator_agent_if_enabled(
+        ray_context.address_info["address"],
+        ray_context.address_info["node_id"],
+    )
+    job_id = ray.get_runtime_context().get_job_id()
+
+    @ray.remote
+    def f():
+        return 1
+
+    names = [f"dh_task_{i}" for i in range(3)]
+    ray.get([f.options(name=name).remote() for name in names])
+
+    def verify():
+        tasks = list_tasks()
+        names_seen = {task["name"] for task in tasks}
+        assert set(names).issubset(names_seen), (names, names_seen)
+        for task in tasks:
+            assert task["job_id"] == job_id
+
+        # The filter is serialized into the request and applied on the dashboard-head
+        # side, so a correct filtered result also proves the request survived the wire.
+        filtered = list_tasks(filters=[("name", "=", names[0])])
+        assert len(filtered) == 1
+        assert filtered[0]["name"] == names[0]
+        return True
+
+    wait_for_condition(verify, timeout=30)
+
+
 @pytest.mark.parametrize(
     "event_routing_config", ["default", "aggregator"], indirect=True
 )
@@ -1091,7 +1143,11 @@ def test_get_id_not_found(shutdown_only):
 @patch.object(
     StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_client: None
 )
-async def test_state_data_source_client_get_all_task_info_no_early_return():
+async def test_state_data_source_client_get_all_task_info_no_early_return(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", False
+    )
+
     #  Setup
     mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
 
@@ -1473,6 +1529,85 @@ def test_get_actor_timeout_multiplier(shutdown_only):
     # This should work without timeout issues
     result = get_actor(actor_id, timeout=1)
     assert result["actor_id"] == actor_id
+
+
+class _FakeAsyncResponse:
+    """Minimal aiohttp-style response usable as an async context manager."""
+
+    def __init__(self, status, body=b""):
+        self.status = status
+        self.reason = "test-reason"
+        self._body = body
+
+    async def read(self):
+        return self._body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def _task_info_client(**kwargs):
+    return StateDataSourceClient(
+        gcs_channel=MagicMock(), gcs_client=MagicMock(), **kwargs
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_all_task_info_reads_from_gcs_by_default(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", False
+    )
+    client = _task_info_client()
+    expected = GetTaskEventsReply()
+    client._gcs_task_info_stub.GetTaskEvents = AsyncMock(return_value=expected)
+
+    reply = await client.get_all_task_info()
+
+    client._gcs_task_info_stub.GetTaskEvents.assert_awaited_once()
+    assert reply is expected
+
+
+@pytest.mark.asyncio
+async def test_get_all_task_info_reads_from_dashboard_head_when_enabled(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", True
+    )
+    client = _task_info_client(
+        dashboard_socket_dir="/tmp/sock", dashboard_session_name="session-1"
+    )
+    expected = GetTaskEventsReply(num_status_task_events_dropped=3)
+    session = MagicMock()
+    session.post = MagicMock(
+        return_value=_FakeAsyncResponse(200, expected.SerializeToString())
+    )
+    client._task_events_head_session = session
+
+    reply = await client.get_all_task_info()
+
+    session.post.assert_called_once()
+    assert session.post.call_args.args[0] == "http://localhost/api/task_events/query"
+    # The co-located socket call is trusted, so no auth header is attached.
+    assert "headers" not in session.post.call_args.kwargs
+    assert reply.num_status_task_events_dropped == 3
+
+
+@pytest.mark.asyncio
+async def test_get_all_task_info_from_dashboard_head_non_2xx_raises(monkeypatch):
+    monkeypatch.setattr(
+        dashboard_consts, "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD", True
+    )
+    client = _task_info_client(
+        dashboard_socket_dir="/tmp/sock", dashboard_session_name="session-1"
+    )
+    session = MagicMock()
+    session.post = MagicMock(return_value=_FakeAsyncResponse(500))
+    client._task_events_head_session = session
+
+    with pytest.raises(DataSourceUnavailable):
+        await client.get_all_task_info()
 
 
 if __name__ == "__main__":

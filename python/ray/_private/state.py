@@ -8,16 +8,94 @@ from typing import Dict, Optional
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import binary_to_hex, decode, hex_to_binary
+from ray._private import ray_constants
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.protobuf_compat import message_to_dict
 from ray._private.utils import (
     validate_actor_state_name,
 )
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.core.generated import autoscaler_pb2, common_pb2, gcs_pb2
+from ray.core.generated import autoscaler_pb2, common_pb2, gcs_pb2, gcs_service_pb2
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# Timeout for the synchronous task-events query to the dashboard head.
+_DASHBOARD_HEAD_QUERY_TIMEOUT_S = 30
+
+
+class TaskEventsHeadClient:
+    """Synchronous client for the dashboard-head task-events query endpoint.
+
+    Resolves and caches the endpoint address on first use, reuses one HTTP session, and
+    attaches the cluster auth token on every request, so repeated ``ray.timeline`` calls
+    don't re-resolve the address or reopen connections.
+    """
+
+    def __init__(self, accessor: GlobalStateAccessor):
+        import requests
+
+        self._accessor = accessor
+        self._session = requests.Session()
+        self._endpoint = None
+
+    def _get_endpoint(self) -> str:
+        if self._endpoint is None:
+            address = self._accessor.get_internal_kv(
+                ray_constants.KV_NAMESPACE_DASHBOARD,
+                ray_constants.DASHBOARD_ADDRESS.encode(),
+            )
+            if not address:
+                raise RuntimeError(
+                    "Could not find the dashboard address to read task events from the "
+                    "dashboard head. Is the dashboard running? It requires `ray[default]`."
+                )
+            address = address.decode()
+            if not address.startswith(("http://", "https://")):
+                address = f"http://{address}"
+            self._endpoint = f"{address}/api/task_events/query"
+        return self._endpoint
+
+    def get_task_events(self, timeout: int):
+        """Return all task events (as ``TaskEvents`` protos) from the head.
+
+        No ``limit`` is set, so the head returns everything in its store, matching the
+        unbounded GCS ``GetAllTaskEvents`` path this replaces.
+        """
+        import requests
+
+        from ray._private.authentication.http_token_authentication import (
+            get_auth_headers_if_auth_enabled,
+        )
+
+        endpoint = self._get_endpoint()
+        request = gcs_service_pb2.GetTaskEventsRequest()
+        headers = {"Content-Type": "application/octet-stream"}
+        headers.update(get_auth_headers_if_auth_enabled(headers))
+        try:
+            response = self._session.post(
+                endpoint,
+                data=request.SerializeToString(),
+                headers=headers,
+                timeout=timeout,
+            )
+        except (requests.ConnectionError, requests.Timeout):
+            # The dashboard may have restarted at a new address; re-resolve next call.
+            self._endpoint = None
+            raise
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Failed to read task events from the dashboard head at {endpoint}: "
+                f"HTTP {response.status_code} {response.reason}."
+            )
+        reply = gcs_service_pb2.GetTaskEventsReply()
+        reply.ParseFromString(response.content)
+        if reply.status.code != 0:
+            raise RuntimeError(
+                "The dashboard head rejected the task-events query: "
+                f"{reply.status.message}"
+            )
+        return list(reply.events_by_task)
 
 
 class GlobalState:
@@ -34,6 +112,7 @@ class GlobalState:
         self.gcs_options = None
         self._global_state_accessor = None
         self._init_lock = Lock()
+        self._task_events_head_client = None
 
     def _connect_and_get_accessor(self) -> GlobalStateAccessor:
         """
@@ -240,13 +319,9 @@ class GlobalState:
                 ]
             }
         """
-        accessor = self._connect_and_get_accessor()
-
         result = defaultdict(list)
-        task_events = accessor.get_task_events()
-        for i in range(len(task_events)):
-            event = gcs_pb2.TaskEvents.FromString(task_events[i])
-            profile = event.profile_events
+        for task_event in self._get_profiling_task_events():
+            profile = task_event.profile_events
             if not profile:
                 continue
 
@@ -272,6 +347,32 @@ class GlobalState:
                 result[component_id].append(profile_event)
 
         return dict(result)
+
+    def _get_profiling_task_events(self):
+        """Return all task events (as ``TaskEvents`` protos) for timeline/profiling.
+
+        Reads from the dashboard head when the task-events-to-dashboard-head migration is
+        enabled, otherwise from GCS.
+        """
+        import ray.dashboard.consts as dashboard_consts
+
+        if dashboard_consts.RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD:
+            return self._get_task_events_head_client().get_task_events(
+                _DASHBOARD_HEAD_QUERY_TIMEOUT_S
+            )
+        accessor = self._connect_and_get_accessor()
+        return [
+            gcs_pb2.TaskEvents.FromString(task_event)
+            for task_event in accessor.get_task_events()
+        ]
+
+    def _get_task_events_head_client(self) -> "TaskEventsHeadClient":
+        """Lazily build and cache the reusable dashboard-head task-events client."""
+        if self._task_events_head_client is None:
+            self._task_events_head_client = TaskEventsHeadClient(
+                self._connect_and_get_accessor()
+            )
+        return self._task_events_head_client
 
     def get_placement_group_by_name(self, placement_group_name, ray_namespace):
         accessor = self._connect_and_get_accessor()

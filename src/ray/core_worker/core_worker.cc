@@ -42,6 +42,7 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/observability/ray_task_event_recorder.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
@@ -339,6 +340,7 @@ CoreWorker::CoreWorker(
     std::unique_ptr<ActorManager> actor_manager,
     instrumented_io_context &task_execution_service,
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
+    std::unique_ptr<observability::RayEventRecorderInterface> ray_task_event_recorder,
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_gauge,
     ray::observability::MetricInterface &actor_by_state_gauge,
@@ -385,6 +387,7 @@ CoreWorker::CoreWorker(
       max_direct_call_object_size_(RayConfig::instance().max_direct_call_object_size()),
       task_counter_(task_by_state_gauge, actor_by_state_gauge),
       task_event_buffer_(std::move(task_event_buffer)),
+      ray_task_event_recorder_(std::move(ray_task_event_recorder)),
       pid_(pid),
       actor_shutdown_callback_(options_.actor_shutdown_callback),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap),
@@ -422,6 +425,7 @@ CoreWorker::CoreWorker(
         });
     task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
                                                     *task_event_buffer_,
+                                                    *ray_task_event_recorder_,
                                                     execute_task,
                                                     *actor_task_execution_arg_waiter_,
                                                     options_.initialize_thread_callback);
@@ -454,7 +458,8 @@ CoreWorker::CoreWorker(
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
 
     // Add the driver task info.
-    if (task_event_buffer_->Enabled() &&
+    if ((task_event_buffer_->Enabled() ||
+         observability::RayTaskEventRecorder::Enabled()) &&
         !RayConfig::instance().task_events_skip_driver_for_test()) {
       auto spec = std::move(builder).ConsumeAndBuild();
       auto job_id = spec.JobId();
@@ -468,7 +473,12 @@ CoreWorker::CoreWorker(
           options_.session_name,
           GetCurrentNodeId(),
           std::make_shared<const TaskSpecification>(std::move(spec)));
-      task_event_buffer_->AddTaskEvent(std::move(task_event));
+      if (observability::RayTaskEventRecorder::Enabled()) {
+        ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+      }
+      if (task_event_buffer_->Enabled()) {
+        task_event_buffer_->AddTaskEvent(std::move(task_event));
+      }
     }
   }
 
@@ -618,7 +628,8 @@ void CoreWorker::Disconnect(
   RecordMetrics();
 
   // Driver exiting.
-  if (options_.worker_type == WorkerType::DRIVER && task_event_buffer_->Enabled() &&
+  if (options_.worker_type == WorkerType::DRIVER &&
+      (task_event_buffer_->Enabled() || observability::RayTaskEventRecorder::Enabled()) &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         worker_context_->GetCurrentTaskID(),
@@ -629,7 +640,12 @@ void CoreWorker::Disconnect(
         /*is_actor_task_event=*/worker_context_->GetCurrentActorID().IsNil(),
         options_.session_name,
         GetCurrentNodeId());
-    task_event_buffer_->AddTaskEvent(std::move(task_event));
+    if (observability::RayTaskEventRecorder::Enabled()) {
+      ray_task_event_recorder_->AddEvents(task_event->ToRayEventInterfaces());
+    }
+    if (task_event_buffer_->Enabled()) {
+      task_event_buffer_->AddTaskEvent(std::move(task_event));
+    }
   }
 
   opencensus::stats::StatsExporter::ExportNow();
@@ -2770,6 +2786,7 @@ ResourceMappingType CoreWorker::GetResourceIDs() const {
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_name) {
   return std::make_unique<worker::ProfileEvent>(*task_event_buffer_,
+                                                *ray_task_event_recorder_,
                                                 *worker_context_,
                                                 options_.node_ip_address,
                                                 event_name,
@@ -2938,6 +2955,17 @@ Status CoreWorker::ExecuteTask(
                                                         rpc::TaskStatus::RUNNING,
                                                         /*include_task_info=*/false,
                                                         update));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(*ray_task_event_recorder_,
+                                                  task_spec.TaskId(),
+                                                  task_spec.JobId(),
+                                                  task_spec.AttemptNumber(),
+                                                  task_spec,
+                                                  rpc::TaskStatus::RUNNING,
+                                                  clock_.NowUnixNanos(),
+                                                  options_.session_name,
+                                                  GetCurrentNodeId(),
+                                                  /*include_task_info=*/false,
+                                                  update);
 
   worker_context_->SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -4837,6 +4865,18 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
       rpc::TaskStatus::NIL,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(
+      *ray_task_event_recorder_,
+      task_id,
+      worker_context_->GetCurrentJobID(),
+      attempt_number,
+      *current_task,
+      rpc::TaskStatus::NIL,
+      clock_.NowUnixNanos(),
+      options_.session_name,
+      GetCurrentNodeId(),
+      /*include_task_info=*/false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 
 void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
@@ -4858,6 +4898,18 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
       rpc::TaskStatus::NIL,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(task_log_info)));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(
+      *ray_task_event_recorder_,
+      task_id,
+      worker_context_->GetCurrentJobID(),
+      attempt_number,
+      *current_task,
+      rpc::TaskStatus::NIL,
+      clock_.NowUnixNanos(),
+      options_.session_name,
+      GetCurrentNodeId(),
+      /*include_task_info=*/false,
+      worker::TaskStatusEvent::TaskStateUpdate(task_log_info));
 }
 
 void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
@@ -4876,6 +4928,18 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       rpc::TaskStatus::NIL,
       /*include_task_info=*/false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(
+      *ray_task_event_recorder_,
+      task_id,
+      worker_context_->GetCurrentJobID(),
+      running_task_it->second.AttemptNumber(),
+      running_task_it->second,
+      rpc::TaskStatus::NIL,
+      clock_.NowUnixNanos(),
+      options_.session_name,
+      GetCurrentNodeId(),
+      /*include_task_info=*/false,
+      worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused));
 }
 
 void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
