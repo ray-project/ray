@@ -21,6 +21,9 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+)
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
@@ -37,6 +40,14 @@ from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data.context import DataContext, ShuffleStrategy
 
 logger = logging.getLogger(__name__)
+
+
+# A sorting reduce (`_sort_reduce`, used by repartition(sort=True) and thus
+# map_groups) peaks at ~3x its input: on top of holding the decoded input
+# shards and the concatenated table, sort_by materializes a sorted copy.
+# The generic 2x shuffle estimate under-requests it, overpacking reducers
+# per node and risking OOM kills.
+_SORT_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
 def _plan_gpu_shuffle_repartition(
@@ -87,6 +98,11 @@ def _plan_hash_shuffle_repartition_v2(
 
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
     reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
+    peak_memory_multiplier = (
+        _SORT_REDUCE_PEAK_MEMORY_MULTIPLIER
+        if logical_op.sort
+        else SHUFFLE_PEAK_MEMORY_MULTIPLIER
+    )
 
     map_op = ShuffleMapOp(
         input_physical_op,
@@ -105,6 +121,7 @@ def _plan_hash_shuffle_repartition_v2(
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=True,
+        peak_memory_multiplier=peak_memory_multiplier,
         name=(
             f"HashShuffleReduce(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
