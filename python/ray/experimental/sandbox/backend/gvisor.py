@@ -179,20 +179,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
 
         # Production execution against running container via `runsc exec`
-        exec_id = uuid.uuid4().hex[:8]
-        container_out = f"{raw_cwd.rstrip('/')}/.exec_{exec_id}.stdout"
-        container_err = f"{raw_cwd.rstrip('/')}/.exec_{exec_id}.stderr"
-        host_out = self._resolve_path(root_dir, container_out)
-        host_err = self._resolve_path(root_dir, container_err)
-
-        wrapped_cmd = f"({cmd_str}) > '{container_out}' 2> '{container_err}'"
-
         runsc_args = self._runsc_base_args(runsc_path, config)
         runsc_args.extend(["exec", "-cwd", raw_cwd])
         if env:
             for k, v in env.items():
                 runsc_args.extend(["-env", f"{k}={v}"])
-        runsc_args.extend([sandbox_id, "/bin/sh", "-c", wrapped_cmd])
+        if isinstance(command, list):
+            runsc_args.extend([sandbox_id] + command)
+        else:
+            runsc_args.extend([sandbox_id, "/bin/sh", "-c", cmd_str])
 
         start_time = time.time()
         try:
@@ -203,27 +198,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 text=True,
                 env=exec_env,
             )
-            proc.communicate(timeout=timeout)
+            stdout_str, stderr_str = proc.communicate(timeout=timeout)
             duration = time.time() - start_time
-
-            stdout_str = open(host_out).read() if os.path.exists(host_out) else ""
-            stderr_str = open(host_err).read() if os.path.exists(host_err) else ""
-
-            if os.path.exists(host_out):
-                try:
-                    os.remove(host_out)
-                except Exception:
-                    pass
-            if os.path.exists(host_err):
-                try:
-                    os.remove(host_err)
-                except Exception:
-                    pass
 
             return ExecResult(
                 exit_code=proc.returncode,
-                stdout=stdout_str,
-                stderr=stderr_str,
+                stdout=stdout_str or "",
+                stderr=stderr_str or "",
                 duration_seconds=duration,
             )
         except subprocess.TimeoutExpired as err:
