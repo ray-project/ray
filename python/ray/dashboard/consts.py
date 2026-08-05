@@ -15,16 +15,6 @@ DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S = env_integer(
 # The maximum time that parent can be considered
 # as dead before agent kills itself.
 _PARENT_DEATH_THREASHOLD = 5
-# Umbrella feature flag for the "task events out of GCS" migration: gates both the
-# aggregator publishing task events to the dashboard head and the TaskEventsHead module
-# loading (which in turn starts its GCS pubsub subscriptions). Both sides read this
-# single flag so they can't disagree.
-RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD_ENV_NAME = (
-    "RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD"
-)
-RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD = env_bool(
-    RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD_ENV_NAME, False
-)
 
 RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME = "RAY_STATE_SERVER_MAX_HTTP_REQUEST"
 # Default number of in-progress requests to the state api server.
