@@ -28,7 +28,7 @@ py_library(
 
 py_test(
     name = "test_air_usage",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_air_usage.py"],
     # NOTE: This tests Train V1 telemetry.
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
