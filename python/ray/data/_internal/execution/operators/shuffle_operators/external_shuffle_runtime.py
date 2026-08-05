@@ -141,7 +141,6 @@ class ShuffleHandle(TypedDict, total=False):
     index_ranges: "np.ndarray"  # shape [num_partitions, 2], int64
     shuffle_id: str
     node_id: str
-    token: str
     schema: Optional["pa.Schema"]
 
 
@@ -317,7 +316,7 @@ class _PartitionWriter:
 _FLIGHT_CHUNK = MiB
 
 
-# Flight fetch request (Action body): JSON ``{"t": token, "s": [[path, [[off, len], ...]], ...]}``.
+# Flight fetch request (Action body): JSON ``{"s": [[path, [[off, len], ...]], ...]}``.
 
 
 def _grpc_location(host: str, port) -> str:
@@ -327,7 +326,7 @@ def _grpc_location(host: str, port) -> str:
     return f"grpc://{h}:{port}"
 
 
-def _make_flight_server(host: str, base_dir: str, token: str):
+def _make_flight_server(host: str, base_dir: str):
     """Build (not start) an Arrow Flight server serving shuffle byte-ranges via
     DoAction. Each range is framed as ``[u64 length][frame bytes]``."""
     import pyarrow.flight as flight
@@ -335,11 +334,7 @@ def _make_flight_server(host: str, base_dir: str, token: str):
     class _ShuffleFlightServer(flight.FlightServerBase):
         def do_action(self, context, action):
             req = json.loads(action.body.to_pybytes())
-            tok, sources = req["t"], req["s"]
-            if tok != token:
-                # Typed Flight error → client receives FlightUnauthenticatedError
-                # (not a string-matched ArrowInvalid).
-                raise flight.FlightUnauthenticatedError("shuffle token mismatch")
+            sources = req["s"]
             for path, ranges in sources:
                 fpath = os.path.join(base_dir, os.path.basename(path))
                 with open(fpath, "rb") as f:
@@ -380,13 +375,11 @@ class ShuffleFileServer:
     def __init__(
         self,
         base_dir: str,
-        token: str,
     ):
         self.base_dir = os.path.realpath(base_dir)
         os.makedirs(self.base_dir, exist_ok=True)
-        self.token = token
         ip = ray.util.get_node_ip_address()
-        self._server = _make_flight_server(ip, self.base_dir, token)
+        self._server = _make_flight_server(ip, self.base_dir)
         self._host, self._port = ip, self._server.port
         # Unique per actor process; Ray re-runs __init__ on every restart, so
         # this changes on restart. Reducers compare it to detect a restart.
@@ -455,7 +448,6 @@ class _SourceRef:
 
     shuffle_id: str
     node_id: str
-    token: str
     file: _FileRanges
 
 
@@ -468,7 +460,6 @@ class _NodeGroup:
 
     shuffle_id: str
     node_id: str
-    token: str
     members: List[_FileRanges] = field(default_factory=list)
 
 
@@ -513,7 +504,6 @@ class _PwriteSink:
 
 def _stream_members_flight(
     endpoint: _Endpoint,
-    token: str,
     members: List[_FileRanges],
     max_bytes: int,
     sink: _PwriteSink,
@@ -522,9 +512,8 @@ def _stream_members_flight(
     ``Result`` bodies carry ``[u64 len][frame]`` framing, so they stream
     verbatim into the sink. Transport failures map to
     ``ConnectionError`` (so _prefetch_node_into's resolve+retry handles them);
-    auth failure maps to ``PermissionError`` (terminal); disk ``OSError`` from
-    the sink propagates unchanged (so a full disk isn't mistaken for a retryable
-    network fault)."""
+    disk ``OSError`` from the sink propagates unchanged (so a full disk isn't
+    mistaken for a retryable network fault)."""
     import pyarrow.flight as flight
 
     host, port, _incarnation = endpoint
@@ -532,7 +521,7 @@ def _stream_members_flight(
     try:
         for batch in _chunk_members_by_bytes(members, max_bytes):
             sources = [(m.path, m.ranges) for m in batch]
-            body = json.dumps({"t": token, "s": sources}).encode("utf-8")
+            body = json.dumps({"s": sources}).encode("utf-8")
             try:
                 for result in client.do_action(flight.Action("fetch", body)):
                     sink.write(result.body)
@@ -542,8 +531,6 @@ def _stream_members_flight(
                 # would spin forever); _prefetch_node_into classifies it as
                 # ShuffleDiskError.
                 raise
-            except flight.FlightUnauthenticatedError as e:
-                raise PermissionError(f"ShuffleFileServer auth failed: {e}") from e
             except Exception as e:
                 # Any other fetch failure (unavailable / timeout / server error):
                 # retryable transport fault. _prefetch_node_into re-resolves the
@@ -563,7 +550,6 @@ def _prefetch_node_into(
     out_file_obj: "_PwriteSink",
     shuffle_id: str,
     node_id: str,
-    token: str,
     members: List[_FileRanges],
     max_bytes_per_fetch: int,
 ) -> None:
@@ -636,11 +622,9 @@ def _prefetch_node_into(
         try:
             endpoint = _resolve()
             _stream_members_flight(
-                endpoint, token, members, max_bytes_per_fetch, out_file_obj
+                endpoint, members, max_bytes_per_fetch, out_file_obj
             )
             return
-        except PermissionError:
-            raise
         except (ConnectionError, TimeoutError) as e:
             # A changed incarnation means the server restarted (retry in-place);
             # same incarnation means the process stayed up but the fetch failed.
@@ -773,7 +757,6 @@ def _handles_to_sources(
                     _SourceRef(
                         shuffle_id=handle["shuffle_id"],
                         node_id=handle["node_id"],
-                        token=handle["token"],
                         file=_FileRanges(
                             path=handle["path"],
                             ranges=[(int(off), length)],
@@ -800,7 +783,6 @@ def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
             group = _NodeGroup(
                 shuffle_id=source.shuffle_id,
                 node_id=source.node_id,
-                token=source.token,
                 members=[],
             )
             by_key[key] = group
