@@ -31,6 +31,7 @@ from ray.data.util.expression_utils import (
     _star_fingerprint_key,
     _udf_fingerprint_key,
     _unary_fingerprint_key,
+    _unnest_fingerprint_key,
     _uuid_fingerprint_key,
 )
 
@@ -755,6 +756,9 @@ class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
     def visit_uuid(self, expr: UUIDExpr) -> Hashable:
         return _uuid_fingerprint_key(expr)
 
+    def visit_unnest(self, expr: "UnnestExpr") -> Hashable:
+        return _unnest_fingerprint_key(self.visit(expr.inner))
+
 
 @dataclass(frozen=True)
 class _ExpressionOccurrence:
@@ -847,6 +851,12 @@ class _StructuralFingerprintOccurrenceCollector(_ExprVisitor[Hashable]):
 
     def visit_uuid(self, expr: UUIDExpr) -> Hashable:
         return self._record(expr, _uuid_fingerprint_key(expr))
+
+    def visit_unnest(self, expr: "UnnestExpr") -> Hashable:
+        return self._record(
+            expr,
+            _unnest_fingerprint_key(self._visit_child(expr.inner)),
+        )
 
 
 def get_column_references(expr: Expr) -> List[str]:

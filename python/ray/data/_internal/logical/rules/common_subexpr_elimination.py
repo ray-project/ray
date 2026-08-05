@@ -26,6 +26,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnnestExpr,
     UUIDExpr,
 )
 
@@ -47,7 +48,7 @@ class _Candidate:
         return max(o.depth for o in self.occurrences)
 
 
-_IGNORED_CSE_ROOT_TYPES = (ColumnExpr, LiteralExpr, AliasExpr, StarExpr)
+_IGNORED_CSE_ROOT_TYPES = (ColumnExpr, LiteralExpr, AliasExpr, StarExpr, UnnestExpr)
 
 
 def _is_ignored_cse_root(expr: Expr) -> bool:
@@ -102,9 +103,12 @@ def _find_candidates(exprs: List[Expr]) -> List[_Candidate]:
 
     Returns:
         Candidates whose non-ignored root expressions occur more than once.
-        Ignored roots such as columns, literals, aliases, and stars are skipped
-        before structural grouping so wide projections do not pay unnecessary
-        exact-comparison cost for leaves that will never be materialized.
+        Ignored roots such as columns, literals, aliases, stars, and unnest
+        expressions are skipped before structural grouping so wide projections
+        do not pay unnecessary exact-comparison cost for leaves that will never
+        be materialized. Unnest expressions specifically can never be
+        materialized as a single temp column since they expand into multiple
+        output columns at runtime.
     """
     occurrences = _collect_occurrences(exprs)
 
@@ -324,6 +328,12 @@ class _CSEExpressionRewriter:
                     key: self._rewrite(value, allow_root_replacement=True)
                     for key, value in expr.kwargs.items()
                 },
+            )
+
+        if isinstance(expr, UnnestExpr):
+            return replace(
+                expr,
+                inner=self._rewrite(expr.inner, allow_root_replacement=True),
             )
 
         if isinstance(
