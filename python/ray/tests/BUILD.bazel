@@ -72,6 +72,7 @@ py_test_module_list(
         "test_object_spilling_2.py",
         "test_placement_group.py",
         "test_ray_event_export_task_events.py",
+        "test_ray_event_export_worker_events.py",
         "test_ray_get.py",
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",

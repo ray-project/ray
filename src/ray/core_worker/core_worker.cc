@@ -2831,11 +2831,23 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
           object_id, contained_object_ids, owner_address);
     }
 
+    // Force-inline a streaming generator's pre-yield completion error so the
+    // owner can copy it onto peeked EOF refs via the PushTask reply. Putting it
+    // in plasma would pin a copy the owner never learns to free (reply would
+    // look inlined). IsException() distinguishes this from the success None.
+    const std::shared_ptr<const TaskSpecification> current_task =
+        worker_context_->GetCurrentTask();
+    const bool inline_error = current_task != nullptr &&
+                              current_task->IsStreamingGenerator() &&
+                              object_id == current_task->ReturnId(0) &&
+                              RayObject(nullptr, metadata, {}).IsException();
+
     // Allocate a buffer for the return object.
-    if (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
-        // ensure we don't exceed the limit if we allocate this object inline.
-        (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
-         RayConfig::instance().task_rpc_inlined_bytes_limit())) {
+    if (inline_error ||
+        (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
+         // ensure we don't exceed the limit if we allocate this object inline.
+         (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
+          RayConfig::instance().task_rpc_inlined_bytes_limit()))) {
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
       *task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
