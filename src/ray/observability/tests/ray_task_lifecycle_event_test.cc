@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "gtest/gtest.h"
@@ -31,6 +32,7 @@ class RayTaskLifecycleEventTest : public ::testing::Test {};
 // state-transition series, and a later change does not clear the properties reported by
 // an earlier one.
 TEST_F(RayTaskLifecycleEventTest, TestMergeAndSerialize) {
+  auto session_name = std::make_shared<const std::string>("sess1");
   TaskID task_id = TaskID::FromRandom(JobID::FromInt(1));
   JobID job_id = JobID::FromInt(1);
   NodeID node_id = NodeID::FromRandom();
@@ -42,7 +44,7 @@ TEST_F(RayTaskLifecycleEventTest, TestMergeAndSerialize) {
       /*task_attempt=*/0,
       rpc::TaskStatus::SUBMITTED_TO_WORKER,
       std::optional<const TaskStateUpdate>(TaskStateUpdate(node_id, worker_id)),
-      "sess1",
+      session_name,
       /*timestamp=*/1000);
 
   auto event2 = std::make_unique<RayTaskLifecycleEvent>(
@@ -51,7 +53,7 @@ TEST_F(RayTaskLifecycleEventTest, TestMergeAndSerialize) {
       /*task_attempt=*/0,
       rpc::TaskStatus::RUNNING,
       std::optional<const TaskStateUpdate>(TaskStateUpdate(static_cast<uint32_t>(4321))),
-      "sess1",
+      session_name,
       /*timestamp=*/2000);
 
   ASSERT_EQ(event1->GetEntityId(), event2->GetEntityId());
@@ -87,6 +89,7 @@ TEST_F(RayTaskLifecycleEventTest, TestMergeAndSerialize) {
 
 // A status change with no state update contributes only its state transition.
 TEST_F(RayTaskLifecycleEventTest, TestSerializeWithoutStateUpdate) {
+  auto session_name = std::make_shared<const std::string>("sess2");
   TaskID task_id = TaskID::FromRandom(JobID::FromInt(2));
 
   RayTaskLifecycleEvent event(task_id,
@@ -94,7 +97,7 @@ TEST_F(RayTaskLifecycleEventTest, TestSerializeWithoutStateUpdate) {
                               /*task_attempt=*/3,
                               rpc::TaskStatus::FINISHED,
                               std::nullopt,
-                              "sess2",
+                              session_name,
                               /*timestamp=*/5000);
 
   auto serialized_event = std::move(event).Serialize().value();

@@ -71,12 +71,13 @@ TEST_F(RayTaskDefinitionEventTest, TestSerialize) {
   TaskID task_id = TaskID::FromRandom(JobID::FromInt(1));
   JobID job_id = JobID::FromInt(1);
   auto task_spec = BuildTaskSpec(task_id);
+  auto session_name = std::make_shared<const std::string>("sess1");
 
   RayTaskDefinitionEvent event(task_spec,
                                task_id,
                                job_id,
                                /*task_attempt=*/2,
-                               "sess1",
+                               session_name,
                                /*timestamp=*/1000);
 
   ASSERT_EQ(event.GetEntityId(), task_id.Binary() + "2");

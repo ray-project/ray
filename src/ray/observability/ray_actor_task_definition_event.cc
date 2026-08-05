@@ -30,14 +30,14 @@ RayActorTaskDefinitionEvent::RayActorTaskDefinitionEvent(
     const TaskID &task_id,
     const JobID &job_id,
     int32_t task_attempt,
-    const std::string &session_name,
+    std::shared_ptr<const std::string> session_name,
     int64_t timestamp)
     : RayEvent<rpc::events::ActorTaskDefinitionEvent>(
           rpc::events::RayEvent::CORE_WORKER,
           rpc::events::RayEvent::ACTOR_TASK_DEFINITION_EVENT,
           rpc::events::RayEvent::INFO,
           "",
-          session_name,
+          std::move(session_name),
           timestamp),
       task_spec_(std::move(task_spec)),
       task_id_(task_id),
@@ -49,7 +49,7 @@ std::string RayActorTaskDefinitionEvent::GetEntityId() const {
 }
 
 TaskAttemptId RayActorTaskDefinitionEvent::GetTaskAttempt() const {
-  return {task_id_.Binary(), task_attempt_};
+  return {task_id_, task_attempt_};
 }
 
 void RayActorTaskDefinitionEvent::MergeData(

@@ -14,6 +14,7 @@
 
 #include "ray/observability/ray_task_lifecycle_event.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -29,14 +30,14 @@ RayTaskLifecycleEvent::RayTaskLifecycleEvent(
     int32_t task_attempt,
     rpc::TaskStatus task_status,
     const std::optional<const TaskStateUpdate> &state_update,
-    const std::string &session_name,
+    std::shared_ptr<const std::string> session_name,
     int64_t timestamp)
     : RayEvent<rpc::events::TaskLifecycleEvent>(
           rpc::events::RayEvent::CORE_WORKER,
           rpc::events::RayEvent::TASK_LIFECYCLE_EVENT,
           rpc::events::RayEvent::INFO,
           "",
-          session_name,
+          std::move(session_name),
           timestamp),
       task_id_(task_id),
       job_id_(job_id),
@@ -49,7 +50,7 @@ std::string RayTaskLifecycleEvent::GetEntityId() const {
 }
 
 TaskAttemptId RayTaskLifecycleEvent::GetTaskAttempt() const {
-  return {task_id_.Binary(), task_attempt_};
+  return {task_id_, task_attempt_};
 }
 
 void RayTaskLifecycleEvent::MergeData(RayEvent<rpc::events::TaskLifecycleEvent> &&other) {

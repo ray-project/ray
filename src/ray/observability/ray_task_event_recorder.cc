@@ -64,6 +64,15 @@ bool RayTaskEventRecorder::Enabled() {
          RayConfig::instance().enable_ray_task_event_recorder();
 }
 
+void RayTaskEventRecorder::AddOneEvent(std::unique_ptr<RayEventInterface> event) {
+  TaskAttemptId attempt = GetTaskAttemptOrDie(event);
+  if (event->GetEventType() == rpc::events::RayEvent::TASK_PROFILE_EVENT) {
+    AddProfileEvent(std::move(event), attempt);
+  } else {
+    AddStatusEvent(std::move(event), attempt);
+  }
+}
+
 void RayTaskEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
@@ -71,13 +80,16 @@ void RayTaskEventRecorder::AddEvents(
     return;
   }
   for (auto &event : data_list) {
-    TaskAttemptId attempt = GetTaskAttemptOrDie(event);
-    if (event->GetEventType() == rpc::events::RayEvent::TASK_PROFILE_EVENT) {
-      AddProfileEvent(std::move(event), attempt);
-    } else {
-      AddStatusEvent(std::move(event), attempt);
-    }
+    AddOneEvent(std::move(event));
   }
+}
+
+void RayTaskEventRecorder::AddEvent(std::unique_ptr<RayEventInterface> data) {
+  absl::MutexLock lock(&mutex_);
+  if (!enabled_ || !Enabled()) {
+    return;
+  }
+  AddOneEvent(std::move(data));
 }
 
 void RayTaskEventRecorder::AddStatusEvent(std::unique_ptr<RayEventInterface> event,
@@ -90,18 +102,18 @@ void RayTaskEventRecorder::AddStatusEvent(std::unique_ptr<RayEventInterface> eve
   if (status_events_.full()) {
     // The ring is full: pushing will evict the oldest event, so record its attempt as
     // dropped before it is overwritten.
-    TaskAttemptId evicted = GetTaskAttemptOrDie(status_events_.front());
-    dropped_task_attempts_unreported_.insert(evicted);
-    RecordDropped(1);
+    const TaskAttemptId &evicted = status_events_.front().attempt;
     RAY_LOG_EVERY_N(WARNING, 100000)
         << "[RayTaskEventRecorder] Dropping task status events for task: "
-        << TaskID::FromBinary(evicted.first)
+        << evicted.first
         << ", set a higher value for "
            "RAY_task_events_max_num_status_events_buffer_on_worker("
         << RayConfig::instance().task_events_max_num_status_events_buffer_on_worker()
         << ") to avoid this.";
+    dropped_task_attempts_unreported_.insert(evicted);
+    RecordDropped(1);
   }
-  status_events_.push_back(std::move(event));
+  status_events_.push_back({attempt, std::move(event)});
 }
 
 void RayTaskEventRecorder::AddProfileEvent(std::unique_ptr<RayEventInterface> event,
@@ -130,8 +142,7 @@ void RayTaskEventRecorder::AddProfileEvent(std::unique_ptr<RayEventInterface> ev
     // driver task id and it could generate large number of profile events when submitting
     // many tasks.
     RAY_LOG_EVERY_N(WARNING, 100000)
-        << "[RayTaskEventRecorder] Dropping profiling events for task: "
-        << TaskID::FromBinary(attempt.first)
+        << "[RayTaskEventRecorder] Dropping profiling events for task: " << attempt.first
         << ", set a higher value for RAY_task_events_max_num_profile_events_per_task("
         << max_num_profile_event_per_task
         << "), or RAY_task_events_max_num_profile_events_buffer_on_worker ("
@@ -161,13 +172,13 @@ void RayTaskEventRecorder::TakeEventsToSend(
 
   size_t num_status_events_to_take = std::min(batch_size, status_events_.size());
   for (size_t i = 0; i < num_status_events_to_take; i++) {
-    std::unique_ptr<RayEventInterface> event = std::move(status_events_.front());
+    BufferedStatusEvent buffered = std::move(status_events_.front());
     status_events_.pop_front();
-    if (dropped_to_send->contains(GetTaskAttemptOrDie(event))) {
+    if (dropped_to_send->contains(buffered.attempt)) {
       num_skipped++;
       continue;
     }
-    events->push_back(std::move(event));
+    events->push_back(std::move(buffered.event));
   }
 
   size_t num_profile_events_taken = 0;
@@ -223,7 +234,7 @@ void RayTaskEventRecorder::ExportEvents() {
   rpc::events::TaskEventsMetadata *metadata = data->mutable_task_events_metadata();
   for (const auto &attempt : dropped_to_send) {
     rpc::TaskAttempt *rpc_attempt = metadata->add_dropped_task_attempts();
-    rpc_attempt->set_task_id(attempt.first);
+    rpc_attempt->set_task_id(attempt.first.Binary());
     rpc_attempt->set_attempt_number(attempt.second);
   }
 

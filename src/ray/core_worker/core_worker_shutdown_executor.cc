@@ -351,11 +351,10 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         /* timestamp */ core_worker->clock_.NowUnixNanos(),
         /*is_actor_task_event=*/
         core_worker->worker_context_->GetCurrentActorID().IsNil(),
-        core_worker->options_.session_name,
+        core_worker->session_name_,
         core_worker->GetCurrentNodeId());
     if (observability::RayTaskEventRecorder::Enabled()) {
-      core_worker->ray_task_event_recorder_->AddEvents(
-          task_event->ToRayEventInterfaces());
+      task_event->RecordTo(*core_worker->ray_task_event_recorder_);
     }
     if (core_worker->task_event_buffer_->Enabled()) {
       core_worker->task_event_buffer_->AddTaskEvent(std::move(task_event));

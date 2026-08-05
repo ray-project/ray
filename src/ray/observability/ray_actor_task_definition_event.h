@@ -46,7 +46,7 @@ class RayActorTaskDefinitionEvent
                               const TaskID &task_id,
                               const JobID &job_id,
                               int32_t task_attempt,
-                              const std::string &session_name,
+                              std::shared_ptr<const std::string> session_name,
                               int64_t timestamp);
 
   std::string GetEntityId() const override;

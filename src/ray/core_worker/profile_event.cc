@@ -66,7 +66,7 @@ ProfileEvent::~ProfileEvent() {
   event_->SetEndTime(clock_.NowUnixNanos());
   // Record to the event aggregator before moving the event into the buffer.
   if (observability::RayTaskEventRecorder::Enabled()) {
-    ray_task_event_recorder_.AddEvents(event_->ToRayEventInterfaces());
+    event_->RecordTo(ray_task_event_recorder_);
   }
   // Add task event to the task event buffer
   task_event_buffer_.AddTaskEvent(std::move(event_));

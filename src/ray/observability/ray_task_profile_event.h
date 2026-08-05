@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "ray/observability/ray_event.h"
@@ -34,7 +35,7 @@ class RayTaskProfileEvent : public RayEvent<rpc::events::TaskProfileEvents>,
                             public TaskRayEventInterface {
  public:
   RayTaskProfileEvent(rpc::events::TaskProfileEvents data,
-                      const std::string &session_name,
+                      std::shared_ptr<const std::string> session_name,
                       int64_t timestamp);
 
   std::string GetEntityId() const override;

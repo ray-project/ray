@@ -57,6 +57,10 @@ class RayTaskEventRecorder : public RayEventRecorderBase {
   // TaskRayEventInterface.
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override;
 
+  // Add a single task event to the internal buffers. The event must implement
+  // TaskRayEventInterface.
+  void AddEvent(std::unique_ptr<RayEventInterface> data) override;
+
   /**
    * @brief Whether the task-event recorder path is enabled.
    * @return true only when both enable_ray_event and enable_ray_task_event_recorder are
@@ -66,6 +70,11 @@ class RayTaskEventRecorder : public RayEventRecorderBase {
 
  private:
   void ExportEvents() override;
+
+  // (claude) Route one event to the status ring or the profile store. Shared by AddEvents
+  // and AddEvent.
+  void AddOneEvent(std::unique_ptr<RayEventInterface> event)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Add a status (definition / lifecycle) event to the bounded ring. On overflow the
   // oldest event is evicted and its attempt added to dropped_task_attempts_unreported_;
@@ -93,10 +102,17 @@ class RayTaskEventRecorder : public RayEventRecorderBase {
   // Record `count` dropped events to the metric.
   void RecordDropped(size_t count) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  // (claude) A buffered status event and the task attempt it belongs to. The attempt is
+  // resolved once when the event is added so the export path does not have to downcast
+  // every event again.
+  struct BufferedStatusEvent {
+    TaskAttemptId attempt;
+    std::unique_ptr<RayEventInterface> event;
+  };
+
   // Bounded ring of status events (definition + lifecycle). On overflow the oldest is
   // evicted and its attempt is recorded in dropped_task_attempts_unreported_.
-  boost::circular_buffer<std::unique_ptr<RayEventInterface>> status_events_
-      ABSL_GUARDED_BY(mutex_);
+  boost::circular_buffer<BufferedStatusEvent> status_events_ ABSL_GUARDED_BY(mutex_);
   // Task attempts whose status events were dropped and not yet reported.
   absl::flat_hash_set<TaskAttemptId> dropped_task_attempts_unreported_
       ABSL_GUARDED_BY(mutex_);
