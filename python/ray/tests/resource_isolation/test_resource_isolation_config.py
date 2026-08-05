@@ -1,6 +1,8 @@
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
+from typing import Dict, List
 
 import pytest
 
@@ -13,12 +15,14 @@ from ray._private.resource_isolation_config import ResourceIsolationConfig
 import psutil
 
 
-def _fake_process_entry(pid: int):
+def _fake_process_entry(pid: int) -> List[SimpleNamespace]:
     """Mimics the shape Node.all_processes holds: [ProcessInfo] with .process.pid."""
     return [SimpleNamespace(process=SimpleNamespace(pid=pid))]
 
 
-def _all_processes(gcs_pid: int, dashboard_pid: int):
+def _all_processes(
+    gcs_pid: int, dashboard_pid: int
+) -> Dict[str, List[SimpleNamespace]]:
     return {
         ray_constants.PROCESS_TYPE_GCS_SERVER: _fake_process_entry(gcs_pid),
         ray_constants.PROCESS_TYPE_DASHBOARD: _fake_process_entry(dashboard_pid),
@@ -328,38 +332,68 @@ def test_resource_isolation_enabled_with_full_overrides_happy_path(monkeypatch):
     assert override_config.system_reserved_memory == 15 * (1024**3)
 
 
-def test_system_processes_collected_when_dashboard_already_exited():
-    """A dead api server must not fail node startup.
+@pytest.mark.parametrize("error", [psutil.NoSuchProcess, psutil.AccessDenied])
+def test_system_processes_collected_when_dashboard_is_unreadable(monkeypatch, error):
+    """An api server that cannot be inspected must not fail node startup.
 
     The api server runs with raise_on_api_server_failure=False by default, so it can be
-    gone by the time its descendants are enumerated, and psutil.Process() raises
-    NoSuchProcess for an exited pid.
+    gone by the time its descendants are enumerated. psutil then raises NoSuchProcess,
+    or AccessDenied on platforms that restrict inspecting other processes.
     """
-    exited_dashboard = subprocess.Popen([sys.executable, "-c", ""])
-    exited_dashboard.wait()
-    gcs_pid = 1234
 
-    node = SimpleNamespace(
-        all_processes=_all_processes(gcs_pid, exited_dashboard.pid),
-    )
+    def raise_error(pid):
+        raise error(pid)
+
+    monkeypatch.setattr(psutil, "Process", raise_error)
+    gcs_pid, dashboard_pid = 1234, 5678
+
+    node = SimpleNamespace(all_processes=_all_processes(gcs_pid, dashboard_pid))
     pids = Node._get_system_processes_for_resource_isolation(node)
 
-    assert str(gcs_pid) in pids.split(",")
+    assert pids.split(",") == [str(gcs_pid), str(dashboard_pid)]
 
 
-def test_system_processes_collected_when_dashboard_access_denied(monkeypatch):
-    """psutil raises AccessDenied instead of NoSuchProcess on some platforms."""
+_SLEEP = "import time; time.sleep(60)"
+_SPAWN_AND_SLEEP = (
+    "import subprocess, sys, time; "
+    "subprocess.Popen([sys.executable, '-c', {inner!r}]); "
+    "time.sleep(60)"
+)
 
-    def raise_access_denied(pid):
-        raise psutil.AccessDenied(pid)
 
-    monkeypatch.setattr(psutil, "Process", raise_access_denied)
-    gcs_pid = 1234
+def test_system_processes_include_grandchildren_of_the_dashboard():
+    """Subprocess modules are grandchildren of the api server, not children.
 
-    node = SimpleNamespace(all_processes=_all_processes(gcs_pid, dashboard_pid=5678))
-    pids = Node._get_system_processes_for_resource_isolation(node)
+    Under the forkserver start method the api server's only child is the forkserver and
+    the modules hang off that, so a non-recursive lookup collects none of them.
+    """
+    middle = _SPAWN_AND_SLEEP.format(inner=_SLEEP)
+    outer = _SPAWN_AND_SLEEP.format(inner=middle)
+    dashboard = subprocess.Popen([sys.executable, "-c", outer])
 
-    assert str(gcs_pid) in pids.split(",")
+    def grandchildren_of_dashboard():
+        parent = psutil.Process(dashboard.pid)
+        return [
+            grandchild for child in parent.children() for grandchild in child.children()
+        ]
+
+    try:
+        deadline = time.monotonic() + 15
+        while not grandchildren_of_dashboard() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        found = grandchildren_of_dashboard()
+        assert found, "the test never built a two-level process tree"
+        grandchild_pid = found[0].pid
+
+        node = SimpleNamespace(all_processes=_all_processes(1234, dashboard.pid))
+        pids = Node._get_system_processes_for_resource_isolation(node)
+
+        assert str(grandchild_pid) in pids.split(",")
+    finally:
+        for process in psutil.Process(dashboard.pid).children(recursive=True):
+            process.kill()
+        dashboard.kill()
+        dashboard.wait()
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 from ray._common.test_utils import wait_for_condition
 from ray._private.resource_isolation_config import ResourceIsolationConfig
+from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 
 # These tests are intended to run in CI inside a container.
 #
@@ -74,8 +75,10 @@ _MOUNT_FILE_PATH = "/proc/mounts"
 # The names are here to help debug test failures. Tests should
 # only use the size of this list. These processes are expected to be moved
 # into the the system cgroup.
-_EXPECTED_DASHBOARD_MODULES = [
-    "ray.dashboard.modules.usage_stats.usage_stats_head.UsageStatsHead",
+#
+# UsageStatsHead is deliberately absent: it is a DashboardHeadModule, so it runs inside
+# the dashboard head process, which _EXPECTED_SYSTEM_PROCESSES_* already counts.
+_EXPECTED_DASHBOARD_SUBPROCESS_MODULES = [
     "ray.dashboard.modules.metrics.metrics_head.MetricsHead",
     "ray.dashboard.modules.data.data_head.DataHead",
     "ray.dashboard.modules.event.event_head.EventHead",
@@ -87,16 +90,12 @@ _EXPECTED_DASHBOARD_MODULES = [
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
 
-# The `forkserver` start method puts one extra process under the dashboard head, the
-# forkserver itself, which the system cgroup picks up along with the modules.
-#
-# multiprocessing's resource_tracker sits under the dashboard head too, but the count
-# below already covers it: only nine of the ten entries in _EXPECTED_DASHBOARD_MODULES
-# run as separate processes, since UsageStatsHead is a DashboardHeadModule living inside
-# the dashboard head, and the spare entry happens to line up with the resource_tracker.
-# If this number ever needs revisiting, measure the process tree instead of counting the
-# list.
-_EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS = 1
+# multiprocessing leaves its own processes under the dashboard head, and the system
+# cgroup picks them up alongside the modules: a resource_tracker under either start
+# method, plus the forkserver itself when that one is in use.
+_EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS = (
+    2 if SubprocessModuleHandle.mp_context.get_start_method() == "forkserver" else 1
+)
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
@@ -409,7 +408,7 @@ def assert_system_processes_are_in_system_cgroup(
         lines = cgroup_procs_file.readlines()
         assert (
             len(lines) == expected_count
-        ), f"Expected only system process passed into the raylet. Found {lines}. You may have added a new dashboard module in which case you need to update _EXPECTED_DASHBOARD_MODULES"
+        ), f"Expected only system process passed into the raylet. Found {lines}. You may have added a new dashboard subprocess module in which case you need to update _EXPECTED_DASHBOARD_SUBPROCESS_MODULES"
 
 
 def assert_worker_processes_are_in_workers_cgroup(
@@ -550,7 +549,7 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
         node_id,
         resource_isolation_config,
         len(_EXPECTED_SYSTEM_PROCESSES_RAY_START)
-        + len(_EXPECTED_DASHBOARD_MODULES)
+        + len(_EXPECTED_DASHBOARD_SUBPROCESS_MODULES)
         + _EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS,
     )
     assert_worker_processes_are_in_workers_cgroup(
@@ -621,7 +620,7 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
         node_id,
         resource_isolation_config,
         len(_EXPECTED_SYSTEM_PROCESSES_RAY_INIT)
-        + len(_EXPECTED_DASHBOARD_MODULES)
+        + len(_EXPECTED_DASHBOARD_SUBPROCESS_MODULES)
         + _EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS,
     )
     assert_worker_processes_are_in_workers_cgroup(

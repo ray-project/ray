@@ -1,10 +1,8 @@
 import asyncio
 import logging
 import multiprocessing
-import multiprocessing.context
 import os
-import sys
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import multidict
 
@@ -27,6 +25,36 @@ messages to it. Requires non-minimal Ray.
 """
 
 logger = logging.getLogger(__name__)
+
+# Plain `fork` is deliberately not offered: Ray's C bindings keep static state that a
+# forked child would inherit from whichever process happened to call start_module().
+SUPPORTED_START_METHODS = ("forkserver", "spawn")
+
+
+def select_start_method() -> str:
+    """Return the multiprocessing start method for launching subprocess modules.
+
+    Prefers ``forkserver`` where the platform provides it, otherwise ``spawn``.
+    RAY_DASHBOARD_SUBPROCESS_START_METHOD overrides the choice; an unusable value is
+    ignored with a warning rather than silently leaving the default in place.
+    """
+    available = multiprocessing.get_all_start_methods()
+    override = dashboard_consts.SUBPROCESS_MODULE_START_METHOD
+    if override and override not in SUPPORTED_START_METHODS:
+        logger.warning(
+            "Ignoring RAY_DASHBOARD_SUBPROCESS_START_METHOD=%s, expected one of %s.",
+            override,
+            ", ".join(SUPPORTED_START_METHODS),
+        )
+    elif override and override not in available:
+        logger.warning(
+            "Ignoring RAY_DASHBOARD_SUBPROCESS_START_METHOD=%s, which this platform "
+            "does not support.",
+            override,
+        )
+    elif override:
+        return override
+    return "forkserver" if "forkserver" in available else "spawn"
 
 
 def filter_hop_by_hop_headers(
@@ -84,43 +112,51 @@ class SubprocessModuleHandle:
     - "max number of restarts"? (Now: infinite)
     """
 
-    # Never plain `fork`: Ray's C bindings hold static state that has to be initialized
-    # fresh in each process, and a forked child inherits the parent's.
+    # Under `forkserver` a module child is forked from the server, so it inherits
+    # whatever the server imported instead of importing it again. That is the whole
+    # speedup, and it is only safe because the preloaded modules leave nothing behind
+    # that a fork would corrupt: `import ray` starts no threads and opens no sockets or
+    # gRPC channels, and each `*_head.py` only builds loggers, reads env vars, and
+    # compiles regexes at module scope. Every GCS client is constructed lazily in
+    # `SubprocessModule`, after the fork. Preloading anything that connects or spawns a
+    # thread would break that, so keep new module-scope work inert.
     #
-    # `forkserver` keeps that guarantee, because its server is exec'd as a fresh
-    # interpreter rather than forked from us, and it imports Ray once instead of once per
-    # module. Under `spawn` every module re-executes `dashboard.py` through
-    # `_fixup_main_from_path` and re-imports Ray, which puts nine redundant interpreter
-    # startups on the critical path of `ray start`.
+    # Under `spawn` each module instead re-executes `dashboard.py` through
+    # `_fixup_main_from_path` and re-imports Ray, one full interpreter startup per module
+    # on the critical path of `ray start`.
     #
-    # RAY_DASHBOARD_SUBPROCESS_START_METHOD=spawn opts back out.
-    #
-    # get_context() is called with literals so the result keeps a concrete type; a
-    # runtime string widens it to BaseContext, which has no Process. Don't reach for
-    # multiprocessing.context.ForkServerContext to annotate this either. CPython defines
-    # that class on POSIX only, and a class-body annotation is evaluated at import, so
-    # naming it breaks the import on Windows.
-    if sys.platform == "win32" or (
-        os.environ.get("RAY_DASHBOARD_SUBPROCESS_START_METHOD", "").strip().lower()
-        == "spawn"
-    ):
-        mp_context = multiprocessing.get_context("spawn")
-    else:
+    # get_context() takes a literal in each branch so the result keeps a concrete type; a
+    # runtime string widens it to BaseContext, which has no Process. Don't name
+    # multiprocessing.context.ForkServerContext to annotate this either, because CPython
+    # defines that class on POSIX only and a class-body annotation is evaluated at
+    # import, so mentioning it breaks the import on Windows.
+    if select_start_method() == "forkserver":
         mp_context = multiprocessing.get_context("forkserver")
+    else:
+        mp_context = multiprocessing.get_context("spawn")
 
     @classmethod
-    def set_forkserver_preload(cls, module_names: List[str]) -> None:
-        """Import these modules once in the forkserver, so forked children inherit them.
+    def preload_in_forkserver(
+        cls, module_classes: list[type[SubprocessModule]]
+    ) -> None:
+        """Import what module children need once in the forkserver, not once each.
 
         Does nothing unless the start method is ``forkserver``. Must be called before the
-        first ``start_module()``, and every name must be importable in a bare
-        interpreter: an ImportError in the forkserver takes down every module, not one.
+        first ``start_module()``: the forkserver caches its preload list when it first
+        launches, so a later call is silently ignored.
+
+        CPython swallows ImportError while preloading and leaves the child to import that
+        module itself, but any other exception kills the forkserver and with it every
+        module, so preloaded modules must import cleanly in a bare interpreter.
         """
-        # getattr rather than isinstance, since naming the forkserver context class is
-        # not portable to Windows.
-        set_preload = getattr(cls.mp_context, "set_forkserver_preload", None)
-        if set_preload is not None:
-            set_preload(module_names)
+        if cls.mp_context.get_start_method() != "forkserver":
+            return
+        # `__main__` makes the forkserver import dashboard.py itself, which lets each
+        # child's `_fixup_main_from_path` return early instead of re-running it.
+        cls.mp_context.set_forkserver_preload(
+            ["__main__", "ray", SubprocessModule.__module__]
+            + sorted({module_cls.__module__ for module_cls in module_classes})
+        )
 
     def __init__(
         self,
