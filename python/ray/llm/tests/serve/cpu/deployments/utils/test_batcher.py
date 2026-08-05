@@ -111,6 +111,46 @@ class TestBatching:
         assert batcher.queue.empty()
 
     @pytest.mark.asyncio
+    async def test_first_batch_not_delayed_by_interval(self):
+        """The first result must be yielded as soon as it is available rather
+        than after the first full batching interval. Otherwise the batching
+        interval is added to the time-to-first-token of every streaming
+        request (https://github.com/ray-project/ray/issues/59681).
+
+        A deliberately large interval is used so the assertion has a wide
+        margin and stays deterministic under CI scheduling jitter: with the
+        fix the first flush is immediate (<< interval), without it the first
+        flush would take ~interval.
+        """
+
+        interval_ms = 1000.0
+
+        async def generator():
+            yield dict(num_generated_tokens=1, generated_text=TEXT_VALUE)
+            # Keep the stream open well past the first flush.
+            await asyncio.sleep(interval_ms / 1000 * 3)
+            yield dict(num_generated_tokens=1, generated_text=FINAL_TEXT_VALUE)
+
+        batcher = TestBatcher(generator(), interval_ms=interval_ms)
+        stream = batcher.stream()
+
+        start = time.perf_counter()
+        first_batch = await stream.__anext__()
+        first_batch_ms = (time.perf_counter() - start) * 1e3
+
+        assert first_batch["generated_text"] == TEXT_VALUE
+        assert first_batch_ms < interval_ms / 2, (
+            f"First batch took {first_batch_ms:.1f}ms; it should be yielded "
+            f"immediately, not after the batching interval ({interval_ms}ms)."
+        )
+
+        token_count = first_batch["num_generated_tokens"]
+        async for batch in stream:
+            token_count += batch["num_generated_tokens"]
+        assert token_count == 2, "No tokens should be lost or duplicated"
+        assert batcher.queue.empty()
+
+    @pytest.mark.asyncio
     async def test_batch_no_interval(self):
         """Check that the class creates only one batch if there's no interval."""
 
