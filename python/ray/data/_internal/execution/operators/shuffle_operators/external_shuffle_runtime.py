@@ -342,25 +342,24 @@ def _make_flight_server(host: str, base_dir: str):
                         f.seek(off)
                         # Chunk the frame so no single Result materializes a whole
                         # large frame in the server's RAM. The u64 length header
-                        # rides in the first chunk (a header in its own Result would
-                        # pay a full gRPC message's overhead for 8 bytes).
-                        first = f.read(min(length, _FLIGHT_CHUNK))
-                        yield flight.Result(
-                            pa.py_buffer(struct.pack(">Q", length) + first)
-                        )
-                        remaining = length - len(first)
+                        # rides in the first chunk only (its own Result would pay a
+                        # full gRPC message's overhead for 8 bytes).
+                        remaining = length
+                        first = True
                         while remaining:
                             buf = f.read(min(remaining, _FLIGHT_CHUNK))
                             if not buf:
-                                # Header already promised `length` bytes but the
-                                # file is short (truncated / stale / bad offset).
-                                # A short send silently desyncs every later frame
-                                # at the client (SPARK-34534).
+                                # File shorter than the index says (truncated /
+                                # stale offset). A short send silently desyncs
+                                # every later frame at the client (SPARK-34534).
                                 raise ValueError(
                                     f"short read: {fpath} @{off}+{length}, "
                                     f"got {length - remaining}"
                                 )
                             remaining -= len(buf)
+                            if first:
+                                buf = struct.pack(">Q", length) + buf
+                                first = False
                             yield flight.Result(pa.py_buffer(buf))
 
     return _ShuffleFlightServer(_grpc_location(host, 0))
