@@ -94,22 +94,23 @@ class NoProgressGuard:
 
         current_time = self._clock()
         current_progress_count = self._total_progress_count()
-
-        if self._last_check_time is None:
-            self._last_check_time = current_time
-            self._last_progress_count = current_progress_count
-            return
-
         interval = current_time - self._last_check_time
         self._last_check_time = current_time
 
-        new_progress = current_progress_count > self._last_progress_count
-        # Every one of these resets the clock. Resetting only on progress would
-        # let elapsed time accumulate while something else held the pipeline
-        # back, then fail the moment it caught up.
-        if new_progress or not consumer_ready or self._barrier_work_in_flight():
-            self._last_progress_count = current_progress_count
-            self._stalled_s = 0.0
+        # Each of these is a reason the silence isn't a stall. Resetting on
+        # progress alone would let time accumulate while something else held
+        # the pipeline back, then fail the moment it caught up.
+        execution_made_progress = current_progress_count > self._last_progress_count
+        if execution_made_progress:
+            self._reset_stall(current_progress_count)
+            return
+
+        if not consumer_ready:
+            self._reset_stall(current_progress_count)
+            return
+
+        if self._finalize_task_is_running():
+            self._reset_stall(current_progress_count)
             return
 
         # A stalled loop keeps spinning at the `ray.wait` timeout, so its stall
@@ -122,7 +123,11 @@ class NoProgressGuard:
         if self._stalled_s >= self._timeout_s:
             raise ExecutionTimeoutError(self._error_message())
 
-    def _barrier_work_in_flight(self) -> bool:
+    def _reset_stall(self, current_progress_count: int) -> None:
+        self._last_progress_count = current_progress_count
+        self._stalled_s = 0.0
+
+    def _finalize_task_is_running(self) -> bool:
         """Whether a phase reported under ``extra_metrics`` has a task running.
 
         Those phases only report once a whole partition completes, so between

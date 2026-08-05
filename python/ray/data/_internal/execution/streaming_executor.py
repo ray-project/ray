@@ -596,7 +596,7 @@ class StreamingExecutor(Executor, threading.Thread):
             # Skipped once the execution is done, so a final step that completes
             # the topology can't be flagged as a stall.
             self._no_progress_guard.check(
-                consumer_ready=(self._consumer_idling() and self._consumer_waiting())
+                consumer_ready=self._consumer_is_waiting_for_output()
             )
         return should_continue
 
@@ -615,10 +615,14 @@ class StreamingExecutor(Executor, threading.Thread):
         _, state = self._output_node
         return len(state.output_queue) == 0
 
-    def _consumer_waiting(self) -> bool:
-        """Returns whether a consumer is blocked in `get_output_blocking`."""
+    def _consumer_is_waiting_for_output(self) -> bool:
+        """Returns whether a consumer is parked waiting on an empty queue.
+
+        Both halves matter: an empty queue on its own can mean a prefetcher
+        drained it while the caller is still the bottleneck.
+        """
         _, state = self._output_node
-        return state.num_waiting_consumers > 0
+        return len(state.output_queue) == 0 and state.num_waiting_consumers > 0
 
     def _export_operator_schema(self, op: PhysicalOperator) -> None:
         schema = self._op_schema.get(op)
