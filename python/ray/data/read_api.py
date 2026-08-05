@@ -1687,6 +1687,53 @@ def read_parquet(
     )
 
 
+@PublicAPI
+def read_orc(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Dict[str, Any] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = Partitioning("hive"),
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    schema: Optional["pyarrow.Schema"] = None,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` from ORC files."""
+    _validate_shuffle_arg(shuffle)
+
+    from ray.data._internal.datasource_v2.orc_datasource_v2 import OrcDatasourceV2
+
+    datasource_v2 = OrcDatasourceV2(
+        paths=paths if isinstance(paths, list) else [paths],
+        filesystem=filesystem,
+        partitioning=partitioning,
+        file_extensions=file_extensions,
+        ignore_missing_paths=ignore_missing_paths,
+        include_paths=include_paths,
+        shuffle=shuffle,
+        schema=schema,
+    )
+    return _read_datasource_v2(
+        datasource_v2,
+        parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        partition_filter=partition_filter,
+    )
+
+
 @PublicAPI(stability="beta")
 def read_images(
     paths: Union[str, List[str]],
