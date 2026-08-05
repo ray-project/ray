@@ -146,7 +146,6 @@ class ExternalHashShuffleMapOp(
         # its own local FS. Cleanup is driver-driven via ``_teardown_shuffle``
         # (ray.kill + per-node ``_cleanup_shuffle_dir`` task); OS tmpwatch
         # is the last-resort fallback since ``base_dir`` sits under ``$TMPDIR``.
-        self._token: str = secrets.token_hex(16)
         self._shuffle_id: str = secrets.token_hex(8)
         _prefix = os.path.join(
             tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}"
@@ -260,7 +259,6 @@ class ExternalHashShuffleMapOp(
             out_dir=self._map_dir,
             map_id=cur_task_idx,
             shuffle_id=self._shuffle_id,
-            token=self._token,
             compression=compression,
             fsync_on_close=self._fsync_on_close,
         )
@@ -581,10 +579,6 @@ class ExternalHashShuffleMapOp(
     @property
     def base_dir(self) -> str:
         return self._map_dir
-
-    @property
-    def token(self) -> str:
-        return self._token
 
     @property
     def shuffle_id(self) -> str:
