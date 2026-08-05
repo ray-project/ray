@@ -1,5 +1,3 @@
-# TEMP(do-not-merge): touch to tag this checker-only PR into the `doc` pipeline so
-# doc_api_policy_check runs against the docbuild image. Revert before un-drafting.
 group: doc
 steps:
   - name: docbuild
