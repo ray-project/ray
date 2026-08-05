@@ -40,7 +40,6 @@ class ObjectStoreFetchRequest(FetchRequest):
     tensors: Optional[List[Any]] = None
 
 
-
 if TYPE_CHECKING:
     from ray.experimental.rdt.rdt_store import (
         RDTStore,
