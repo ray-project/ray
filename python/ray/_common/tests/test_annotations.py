@@ -1,13 +1,14 @@
 import json
 import logging
+import logging.handlers
 import os
 import sys
 
 import pytest
 
 import ray
+from ray._common.observability import annotation as annotation_mod
 from ray._common.observability.annotation import (
-    _ANNOTATION_LOGGER_BASE_NAME,
     Annotation,
     _AnnotationFileHandler,
 )
@@ -17,6 +18,22 @@ from ray._common.observability.annotation import (
 TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
 RUN_NAME_TAG_KEY = "ray_train_run_name"
 RUN_ID_TAG_KEY = "ray_train_run_id"
+
+_ANNOTATION_MODULE_LOGGER = annotation_mod.__name__
+_ANNOTATION_LOGGER_BASE_NAME = "ray.annotations"
+
+
+def make_log_record(message: str) -> logging.LogRecord:
+    """Build a minimal record to feed directly to ``_AnnotationFileHandler``."""
+    return logging.LogRecord(
+        name="ray.annotations",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg=message,
+        args=(),
+        exc_info=None,
+    )
 
 
 @pytest.fixture
@@ -32,6 +49,29 @@ def captured_annotations():
     handler = _CaptureHandler()
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+
+
+@pytest.fixture
+def captured_warnings():
+    """Capture the warnings the annotation module logs about itself.
+
+    The ``ray`` logger tree does not propagate to the root logger, so pytest's
+    ``caplog`` (whose handler sits on the root logger) never sees these records.
+    """
+    records = []
+
+    class _CaptureHandler(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    logger = logging.getLogger(_ANNOTATION_MODULE_LOGGER)
+    handler = _CaptureHandler()
+    handler.setLevel(logging.WARNING)
+    logger.addHandler(handler)
     try:
         yield records
     finally:
@@ -55,7 +95,7 @@ def test_annotation_emits_json(captured_annotations):
     assert record[RUN_ID_TAG_KEY] == "abc123"
     assert record["epoch"] == 3
     assert record["loss"] == 0.5
-    assert isinstance(record["timestamp"], float)
+    assert isinstance(record["timestamp_s"], float)
 
 
 def test_annotation_file_handler_drops_before_ray_init(monkeypatch, tmp_path):
@@ -68,17 +108,7 @@ def test_annotation_file_handler_drops_before_ray_init(monkeypatch, tmp_path):
     handler = _AnnotationFileHandler()
     handler.setFormatter(logging.Formatter("%(message)s"))
     # Must not raise even though Ray isn't up yet.
-    handler.emit(
-        logging.LogRecord(
-            name=_ANNOTATION_LOGGER_BASE_NAME,
-            level=logging.INFO,
-            pathname=__file__,
-            lineno=0,
-            msg="dropped",
-            args=(),
-            exc_info=None,
-        )
-    )
+    handler.emit(make_log_record("dropped"))
 
     assert handler._handler is None
     assert list(tmp_path.iterdir()) == []
@@ -114,7 +144,7 @@ def test_annotation_file_handler_reopens_after_session_restart():
         )
         logging.getLogger(_ANNOTATION_LOGGER_BASE_NAME).handlers[0].flush()
 
-        file_a = os.path.join(logs_dir_a, f"runtime_env_annotations_{os.getpid()}.log")
+        file_a = os.path.join(logs_dir_a, f"annotations_{os.getpid()}.log")
         assert os.path.exists(file_a)
         assert "from-session-a" in open(file_a).read()
 
@@ -132,7 +162,7 @@ def test_annotation_file_handler_reopens_after_session_restart():
         )
         logging.getLogger(_ANNOTATION_LOGGER_BASE_NAME).handlers[0].flush()
 
-        file_b = os.path.join(logs_dir_b, f"runtime_env_annotations_{os.getpid()}.log")
+        file_b = os.path.join(logs_dir_b, f"annotations_{os.getpid()}.log")
         # The new annotation lands in session B and not in session A
         assert os.path.exists(file_b)
         assert "from-session-b" in open(file_b).read()

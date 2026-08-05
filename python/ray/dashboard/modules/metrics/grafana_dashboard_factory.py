@@ -3,11 +3,12 @@ import json
 import math
 import os
 import re
-from dataclasses import asdict
-from typing import List, Tuple
+from dataclasses import asdict, dataclass
+from typing import List, Optional, Tuple
 
 import ray
 from ray.dashboard.modules.metrics.dashboards.common import (
+    ANNOTATION_STREAM_SELECTOR_PLACEHOLDER,
     Annotation,
     DashboardConfig,
     Panel,
@@ -41,6 +42,11 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
 GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_LOG_LINK_URL"
+
+GRAFANA_ANNOTATION_DATASOURCE_UID_ENV_VAR = "RAY_GRAFANA_ANNOTATION_DATASOURCE_UID"
+GRAFANA_ANNOTATION_DATASOURCE_TYPE_ENV_VAR = "RAY_GRAFANA_ANNOTATION_DATASOURCE_TYPE"
+GRAFANA_ANNOTATION_STREAM_SELECTOR_ENV_VAR = "RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR"
+DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE = "loki"
 
 # Grafana dashboard layout constants
 # Dashboard uses a 24-column grid with 2-column panels
@@ -189,12 +195,83 @@ def generate_train_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(train_dashboard_config)
 
 
-def generate_annotation(annotation: Annotation) -> dict:
-    """Expand an ``Annotation`` into the full Grafana annotation JSON."""
-    datasource = {
-        "type": annotation.datasource_type,
-        "uid": annotation.datasource_uid,
-    }
+@dataclass
+class AnnotationDatasourceConfig:
+    """Operator-supplied log datasource used to render dashboard annotations.
+
+    Attributes:
+        uid: Grafana uid of the datasource to query. May be a literal uid or a
+            ``${var}`` reference to a datasource template variable that the
+            operator has added to the dashboard.
+        stream_selector: Backend-specific selector substituted for
+            ``$__stream_selector`` in every annotation query. It must narrow the
+            log stream to the cluster being viewed, using whatever labels the
+            operator's log collector attaches.
+        datasource_type: Grafana datasource type, e.g. ``"loki"``.
+    """
+
+    uid: str
+    stream_selector: str
+    datasource_type: str = DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE
+
+
+def read_annotation_datasource_config() -> Optional[AnnotationDatasourceConfig]:
+    """Read the annotation datasource config from the environment.
+
+    Ray emits annotation events as JSON lines to a file in the session logs dir
+    (see :class:`ray._common.observability.annotation.Annotation`), but it does
+    not ship a log collector. So rendering annotations on a dashboard requires
+    the operator to supply the rest of the pipeline:
+
+    1. A log collector that tails ``<session_dir>/logs/annotations_*.log`` and
+       ships the lines to a log backend, labelled so a single cluster's lines
+       can be selected.
+    2. That backend registered in Grafana as a datasource, with its uid in
+       ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID`` and its type in
+       ``RAY_GRAFANA_ANNOTATION_DATASOURCE_TYPE`` (default ``"loki"``).
+    3. ``RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR`` set to the selector matching
+       the labels from step 1.
+
+    Returns:
+        The config, or ``None`` when the uid or stream selector is unset. When
+        ``None``, annotations are omitted from the generated dashboard JSON
+        entirely, so the default Prometheus-only setup is unaffected.
+    """
+    uid = os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_UID_ENV_VAR) or ""
+    stream_selector = (
+        os.environ.get(GRAFANA_ANNOTATION_STREAM_SELECTOR_ENV_VAR) or ""
+    ).strip()
+    if not uid or not stream_selector:
+        return None
+
+    datasource_type = (
+        os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_TYPE_ENV_VAR)
+        or DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE
+    )
+    return AnnotationDatasourceConfig(
+        uid=uid,
+        stream_selector=stream_selector,
+        datasource_type=datasource_type,
+    )
+
+
+def generate_annotation(
+    annotation: Annotation, config: AnnotationDatasourceConfig
+) -> dict:
+    """Expand an ``Annotation`` into the full Grafana annotation JSON.
+
+    Args:
+        annotation: The annotation to expand.
+        config: The datasource to query and the stream selector to substitute for
+            ``$__stream_selector`` in the annotation query.
+
+    Returns:
+        The annotation entry to append to the dashboard's ``annotations.list``.
+    """
+    datasource = {"type": config.datasource_type, "uid": config.uid}
+    expr = annotation.expr.replace(
+        ANNOTATION_STREAM_SELECTOR_PLACEHOLDER, config.stream_selector
+    )
 
     return {
         "datasource": datasource,
@@ -202,19 +279,19 @@ def generate_annotation(annotation: Annotation) -> dict:
         "hide": annotation.hide,
         "iconColor": annotation.icon_color,
         "name": annotation.name,
-        "expr": annotation.expr,
+        "expr": expr,
         "queryType": annotation.query_type,
         "tagKeys": annotation.tag_keys,
         "target": {
             "datasource": dict(datasource),
-            "expr": annotation.expr,
+            "expr": expr,
             "queryType": annotation.query_type,
             "refId": annotation.ref_id,
         },
     }
 
 
-def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
+def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> tuple[str, str]:
     """Render the Grafana dashboard JSON for the given config.
 
     Args:
@@ -234,11 +311,12 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     base_json["panels"] = panels
 
     # Append config-defined annotations to the base JSON's built-in annotation list.
-    if dashboard_config.annotations:
+    annotation_datasource_config = read_annotation_datasource_config()
+    if dashboard_config.annotations and annotation_datasource_config is not None:
         annotations = base_json.setdefault("annotations", {})
         annotations_list = annotations.setdefault("list", [])
         annotations_list.extend(
-            generate_annotation(annotation)
+            generate_annotation(annotation, annotation_datasource_config)
             for annotation in dashboard_config.annotations
         )
 

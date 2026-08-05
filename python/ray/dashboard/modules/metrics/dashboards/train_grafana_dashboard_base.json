@@ -46,34 +46,6 @@
       },
 
       {
-        "name": "loki_datasource",
-        "type": "datasource",
-        "description": "Loki datasource used for Train event annotations (controller state changes, report starts).",
-        "datasource": null,
-        "query": "loki",
-        "refresh": 1,
-        "hide": 0,
-        "includeAll": false,
-        "multi": false,
-        "current": {
-          "selected": false
-        }
-      },
-
-      {
-        "name": "ClusterId",
-        "type": "textbox",
-        "description": "Loki stream selector for the cluster emitting Train annotation logs. Adjust to match your log forwarding labels.",
-        "query": ".*",
-        "current": {
-          "selected": false,
-          "text": ".*",
-          "value": ".*"
-        },
-        "hide": 0
-      },
-
-      {
         "name": "window",
         "label": "Window",
         "type": "interval",

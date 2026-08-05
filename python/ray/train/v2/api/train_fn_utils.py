@@ -2,18 +2,14 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
 
-from ray._common.observability.annotation import Annotation
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.v2._internal.constants import (
     TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
     TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
-    TRAIN_ANNOTATION_SOURCE,
 )
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
-from ray.train.v2._internal.metrics.base import RUN_ID_TAG_KEY, RUN_NAME_TAG_KEY
-from ray.train.v2._internal.metrics.worker import WORKER_WORLD_RANK_TAG_KEY
 from ray.train.v2._internal.util import requires_train_worker
 from ray.train.v2.api.context import TrainContext
 from ray.train.v2.api.report_config import (
@@ -154,17 +150,12 @@ def report(
                     },
                     default=str,
                 )
-            Annotation(
-                source=TRAIN_ANNOTATION_SOURCE,
-                base_tags={
-                    RUN_NAME_TAG_KEY: train_context.get_experiment_name(),
-                    RUN_ID_TAG_KEY: train_context.train_run_context.run_id,
-                    WORKER_WORLD_RANK_TAG_KEY: str(train_context.get_world_rank()),
-                },
-            ).annotate(event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT, **report_fields)
+            train_context.annotation.annotate(
+                event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT, **report_fields
+            )
     except Exception:
-        logger.warning(
-            "Failed to emit the ray.train.report Grafana annotation; continuing with the report.",
+        logger.info(
+            "Failed to emit `ray.train.report()` annotation. Continuing",
             exc_info=True,
         )
 
@@ -389,22 +380,18 @@ def annotate(
 ) -> None:
     """Emit a custom annotation that can be visualized in Grafana.
 
-    Annotations are discrete, timestamped events emitted as a single JSON line
-    to a file under the Ray session logs dir. On Anyscale, these are rendered as
-    point annotations on a configured Grafana dashboard. This helps mark moments
-    of interest (e.g. an evaluation completing, a learning-rate change, or a
-    phase transition) on the same timeline as your training metrics.
+    This helps mark moments of interest (e.g. an evaluation completing, a
+    learning-rate change, or a phase transition) on the same timeline as your
+    training metrics. Rendering it as a point annotation on the Train Grafana
+    dashboard additionally requires the cluster operator to ship these log
+    lines to a log backend registered as a Grafana datasource, and to set
+    ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID`` and
+    ``RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR``.
 
     You control what appears on the dashboard tooltip: the ``message`` is shown
     as the annotation text and any ``**fields`` are shown together as a single
     JSON tag. All custom annotations share one dashboard layer (they are emitted
     under a fixed internal event name), colored by ``severity``.
-
-    By default only the rank 0 worker emits the annotation, so a single point
-    appears on the dashboard regardless of world size. Set
-    ``rank_zero_only=False`` to emit one annotation per worker (e.g. when the
-    event is genuinely per-rank); each line carries its ``ray_train_worker_world_rank``
-    tag so per-rank annotations remain distinguishable in LogQL.
 
     Example:
 
@@ -431,11 +418,15 @@ def annotate(
             (see :class:`Annotation`).
         rank_zero_only: If ``True`` (the default), only the rank 0 worker emits
             the annotation, producing a single point on the dashboard. If
-            ``False``, every worker emits its own annotation.
+            ``False``, every worker emits its own annotation and carries
+            ``ray_train_worker_world_rank`` for LogQL to distinguish ranks.
         **fields: Arbitrary additional key-value pairs to include in the emitted
-            JSON payload (e.g. ``epoch=3``, ``loss=0.1``). These are filterable
-            and interpolatable in LogQL after the ``| json`` stage, and are shown
-            together as a single JSON tag on the dashboard annotation.
+            JSON payload (e.g. ``epoch=3``, ``loss=0.1``). These are serialized
+            together into a single JSON string under the ``fields`` key, so they
+            are displayed as one JSON tag on the dashboard annotation. Because
+            ``fields`` parses as a single string label, individual keys within it
+            are not filterable in LogQL; filter on the reserved fields
+            (e.g. ``severity``) or the run/rank tags instead.
     """
     assert severity in ["info", "warning", "error"]
 
@@ -448,20 +439,13 @@ def annotate(
         if fields:
             annotation_fields["fields"] = json.dumps(fields, default=str)
 
-        Annotation(
-            source=TRAIN_ANNOTATION_SOURCE,
-            base_tags={
-                RUN_NAME_TAG_KEY: train_context.get_experiment_name(),
-                RUN_ID_TAG_KEY: train_context.train_run_context.run_id,
-                WORKER_WORLD_RANK_TAG_KEY: str(train_context.get_world_rank()),
-            },
-        ).annotate(
+        train_context.annotation.annotate(
             event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
             severity=severity,
             **annotation_fields,
         )
     except Exception:
         logger.warning(
-            "Failed to emit the ray.train.annotate Grafana annotation; continuing.",
+            "Failed to emit the `ray.train.annotate()` annotation; continuing.",
             exc_info=True,
         )

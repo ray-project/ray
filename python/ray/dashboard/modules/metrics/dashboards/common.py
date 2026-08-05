@@ -4,6 +4,10 @@ from typing import Any, Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
 
+# Placeholder in an ``Annotation.expr`` that is replaced with the
+# operator-configured log stream selector when the dashboard JSON is generated.
+ANNOTATION_STREAM_SELECTOR_PLACEHOLDER = "$__stream_selector"
+
 
 @DeveloperAPI
 @dataclass
@@ -599,16 +603,22 @@ class Annotation:
     """Defines a Grafana dashboard annotation query.
 
     Annotations overlay event markers onto every panel's time axis. Each one runs
-    a query against a datasource and renders a marker per matching event.
+    a query against a log datasource and renders a marker per matching log line.
+
+    Ray does not provision a log datasource, so annotations are rendered only when
+    the cluster operator points Ray at one. Annotations declared here are dropped
+    from the generated dashboard JSON unless both
+    ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID`` and
+    ``RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR`` are set.
 
     Attributes:
         name: Display name shown in the dashboard's annotation toggle.
-        expr: The datasource query used to fetch annotation events.
+        expr: The datasource query used to fetch annotation events. Must contain
+            the ``$__stream_selector`` placeholder, which is replaced with the
+            operator-supplied stream selector at generation time.
         icon_color: rgba/hex color for the annotation markers.
         ref_id: Grafana refId for the annotation's target query.
         tag_keys: Comma-separated label keys surfaced as annotation tags.
-        datasource_type: Grafana datasource type (e.g. "loki", "prometheus").
-        datasource_uid: Datasource uid, typically a ``${var}`` template reference.
         query_type: Datasource query type (e.g. "range").
         enable: Whether the annotation is enabled by default.
         hide: Whether the annotation toggle is hidden by default.
@@ -619,11 +629,17 @@ class Annotation:
     icon_color: str
     ref_id: str
     tag_keys: str = ""
-    datasource_type: str = "loki"
-    datasource_uid: str = "${loki_datasource}"
     query_type: str = "range"
     enable: bool = True
     hide: bool = False
+
+    def __post_init__(self):
+        if ANNOTATION_STREAM_SELECTOR_PLACEHOLDER not in self.expr:
+            raise ValueError(
+                f"Annotation {self.name!r} query must contain the "
+                f"{ANNOTATION_STREAM_SELECTOR_PLACEHOLDER} placeholder so the "
+                "operator-configured stream selector can be substituted in."
+            )
 
 
 @DeveloperAPI

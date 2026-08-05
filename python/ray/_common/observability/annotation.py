@@ -1,27 +1,37 @@
 import json
 import logging
+import logging.handlers
 import os
 import threading
 import time
 from typing import Any, Dict, Optional
 
-_ANNOTATION_LOGGER_BASE_NAME = "ray.annotations"
+from ray._common.utils import env_integer
+
+logger = logging.getLogger(__name__)
 _logger_lock = threading.Lock()
+
+# Annotation files are size-bounded and rotated for long-running processes
+RAY_ANNOTATION_MAX_FILE_SIZE_BYTES = env_integer(
+    "RAY_ANNOTATION_MAX_FILE_SIZE_BYTES", 100 * 1000 * 1000
+)
+RAY_ANNOTATION_MAX_BACKUP_COUNT = env_integer("RAY_ANNOTATION_MAX_BACKUP_COUNT", 5)
 
 
 class _AnnotationFileHandler(logging.Handler):
     """Write annotation records to a per-process file in the Ray session logs dir.
 
-    The session logs directory is only known once Ray is initialized, so the
-    underlying ``FileHandler`` is created lazily on the first ``emit`` after
-    ``ray.init``. Records emitted before Ray is up are dropped: annotations are
-    best-effort observability and never on the critical path.
+    The session logs directory is only known once Ray is initialized and
+    rotated once it reaches ``RAY_ANNOTATION_MAX_FILE_SIZE_BYTES``,
+    keeping ``RAY_ANNOTATION_MAX_BACKUP_COUNT`` previous files.
     """
 
     def __init__(self):
         super().__init__()
-        self._handler: Optional[logging.FileHandler] = None
+        self._handler: Optional[logging.handlers.RotatingFileHandler] = None
         self._logs_dir: Optional[str] = None
+
+        self._setup_failure_reported: bool = False
 
     def emit(self, record: logging.LogRecord) -> None:
         from ray._private.worker import _global_node
@@ -31,23 +41,34 @@ class _AnnotationFileHandler(logging.Handler):
             return
 
         try:
-            # ``get_logs_dir_path`` returns the real timestamped session logs dir
             logs_dir = _global_node.get_logs_dir_path()
             os.makedirs(logs_dir, exist_ok=True)
+
+            if self._handler is None or self._logs_dir != logs_dir:
+                # The session logs dir changed (e.g. after a shutdown/restart).
+                if self._handler is not None:
+                    # Flush and close the previous handler
+                    self._handler.close()
+                    self._handler = None
+
+                filename = f"annotations_{os.getpid()}.log"
+                self._handler = logging.handlers.RotatingFileHandler(
+                    os.path.join(logs_dir, filename),
+                    maxBytes=RAY_ANNOTATION_MAX_FILE_SIZE_BYTES,
+                    backupCount=RAY_ANNOTATION_MAX_BACKUP_COUNT,
+                )
+                self._handler.setFormatter(self.formatter)
+                self._logs_dir = logs_dir
         except Exception:
-            logging.exception("Creating the Annotation logger failed")
+            if not self._setup_failure_reported:
+                self._setup_failure_reported = True
+                logger.warning(
+                    "Failed to open the annotation log file, so annotations will not be "
+                    "written. Emitting will keep being retried, but further failures "
+                    "will not be logged.",
+                    exc_info=True,
+                )
             return
-
-        if self._handler is None or self._logs_dir != logs_dir:
-            # The session logs dir changed (e.g. after a shutdown/restart).
-            if self._handler is not None:
-                # Flush and close the previous handler
-                self._handler.close()
-
-            filename = f"runtime_env_annotations_{os.getpid()}.log"
-            self._handler = logging.FileHandler(os.path.join(logs_dir, filename))
-            self._handler.setFormatter(self.formatter)
-            self._logs_dir = logs_dir
 
         self._handler.emit(record)
 
@@ -91,6 +112,8 @@ class Annotation:
             filtered per run in LogQL.
     """
 
+    _RESERVED_FIELDS = frozenset({"annotation_source", "timestamp_s", "event"})
+
     def __init__(
         self,
         source: str,
@@ -100,6 +123,8 @@ class Annotation:
         self._base_tags = base_tags
         self._logger = self._get_logger()
 
+        self._emit_failure_reported = False
+
     @staticmethod
     def _get_logger() -> logging.Logger:
         """Lazily configure and return the dedicated file-based annotation logger.
@@ -107,19 +132,18 @@ class Annotation:
         Returns:
             The shared ``ray.annotations`` logger.
         """
-        logger = logging.getLogger(_ANNOTATION_LOGGER_BASE_NAME)
+        annotation_logger = logging.getLogger("ray.annotations")
         with _logger_lock:
-            # Re-check under the lock so only one thread configures the logger.
-            if not logger.handlers:
-                logger.setLevel(logging.INFO)
+            if not annotation_logger.handlers:
+                annotation_logger.setLevel(logging.INFO)
                 # Disable propagating to the root logger echoed to the terminal.
-                logger.propagate = False
+                annotation_logger.propagate = False
                 handler = _AnnotationFileHandler()
                 # Emit the raw message (a JSON line) with no extra formatting.
                 handler.setFormatter(logging.Formatter("%(message)s"))
-                logger.addHandler(handler)
+                annotation_logger.addHandler(handler)
 
-        return logger
+        return annotation_logger
 
     def annotate(self, event: str, **fields: Any) -> None:
         """Emit a single annotation event as one JSON line to the annotation log file.
@@ -137,17 +161,30 @@ class Annotation:
         caller.
         """
         try:
+            for key, value in fields.items():
+                if key in self._RESERVED_FIELDS or key in self._base_tags:
+                    logger.warning(
+                        "Annotation field %r collides with a reserved annotation field or "
+                        "with an annotation tag and was dropped. Rename it for it to appear "
+                        "in the emitted annotation.",
+                        key,
+                    )
+                    return
+
             record = {
                 "annotation_source": self._source,
-                "timestamp": time.time(),
+                "timestamp_s": time.time(),
                 "event": event,
                 **fields,
                 **self._base_tags,
             }
             self._logger.info(json.dumps(record, default=str))
         except Exception:
-            logging.getLogger(__name__).warning(
-                "Failed to emit the %r annotation; continuing.",
-                event,
-                exc_info=True,
-            )
+            if not self._emit_failure_reported:
+                self._emit_failure_reported = True
+                logger.warning(
+                    "Failed to emit the %r annotation; continuing. "
+                    "Further annotation failures will not be logged.",
+                    event,
+                    exc_info=True,
+                )

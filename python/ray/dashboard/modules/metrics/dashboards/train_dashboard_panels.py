@@ -1,4 +1,5 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
+    ANNOTATION_STREAM_SELECTOR_PLACEHOLDER,
     Annotation,
     DashboardConfig,
     Panel,
@@ -526,8 +527,11 @@ assert len(all_panel_ids) == len(
     set(all_panel_ids)
 ), f"Duplicated id found. Use unique id for each panel. {all_panel_ids}"
 
-# Ray Train annotations sourced from Loki.
-_LOKI_STREAM = '{cluster_id=~"$ClusterId"} |= "ray_train_annotation" | json | annotation_source="ray_train_annotation"'
+# Ray Train annotations, queried from the operator-configured log datasource.
+_ANNOTATION_STREAM = (
+    f'{ANNOTATION_STREAM_SELECTOR_PLACEHOLDER} |= "ray_train_annotation" '
+    '| json | annotation_source="ray_train_annotation"'
+)
 _RUN_FILTERS = '| ray_train_run_name=~"$TrainRunName" | ray_train_run_id=~"$TrainRunId"'
 
 CONTROLLER_STATE_ANNOTATION = Annotation(
@@ -535,7 +539,7 @@ CONTROLLER_STATE_ANNOTATION = Annotation(
     icon_color="rgba(31, 120, 193, 1)",  # blue
     ref_id="TrainControllerStateAnnotations",
     tag_keys="__no_tags__",
-    expr=f'{_LOKI_STREAM} | event="controller_state_change" {_RUN_FILTERS} | line_format "{{{{.message}}}}"',
+    expr=f'{_ANNOTATION_STREAM} | event="controller_state_change" {_RUN_FILTERS} | line_format "{{{{.message}}}}"',
 )
 
 REPORT_CALL_ANNOTATION = Annotation(
@@ -544,7 +548,7 @@ REPORT_CALL_ANNOTATION = Annotation(
     ref_id="TrainReportCallAnnotations",
     tag_keys="metrics_pill,checkpoint_pill,validation_pill",
     expr=(
-        f'{_LOKI_STREAM} | event="ray.train.report" {_RUN_FILTERS} | label_format '
+        f'{_ANNOTATION_STREAM} | event="ray.train.report" {_RUN_FILTERS} | label_format '
         "metrics_pill=`metrics: {{.metrics}}`, "
         'checkpoint_pill=`{{if eq .has_checkpoint "true"}}checkpoint{{if .checkpoint_dir_name}}: {{.checkpoint_dir_name}}{{end}}{{else}}no checkpoint{{end}}`, '
         'validation_pill=`{{if eq .validation "true"}}with validation{{if .validation_config}} {{.validation_config}}{{end}}{{else}}no validation{{end}}` '
@@ -580,7 +584,7 @@ CUSTOM_ANNOTATIONS = [
         ref_id=ref_id,
         tag_keys="severity,worker,fields",
         expr=(
-            f'{_LOKI_STREAM} | event="ray.train.annotate" '
+            f'{_ANNOTATION_STREAM} | event="ray.train.annotate" '
             f'| severity="{severity}" {_RUN_FILTERS} '
             '| ray_train_worker_world_rank=~"$TrainWorkerWorldRank" '
             "| label_format worker=`rank {{.ray_train_worker_world_rank}}` "
