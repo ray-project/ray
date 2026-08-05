@@ -1,0 +1,24 @@
+# Example Anyscale deploy config for the async video-indexing service.
+# Copy to services.yaml and fill in your own Redis endpoint and S3 bucket.
+#   anyscale service deploy -f services.yaml
+name: video-indexing-async
+# Build the service image from the Containerfile in this directory (a current Ray
+# nightly + ffmpeg + deps). Swap for `image_uri: <prebuilt-image>` if you would
+# rather deploy an image you have already built and pushed.
+containerfile: ./Containerfile
+compute_config: video-indexing-gpu:1
+query_auth_token_enabled: false
+working_dir: .
+excludes:
+  - "**/__pycache__/**"
+  - bench/results
+  - "*.ipynb"
+applications:
+  - name: video-indexing
+    route_prefix: /
+    import_path: app:app
+    runtime_env:
+      env_vars:
+        REDIS_BROKER_URL: redis://<your-redis-host>:6379/0
+        REDIS_BACKEND_URL: redis://<your-redis-host>:6379/1
+        S3_BUCKET: <your-bucket>
