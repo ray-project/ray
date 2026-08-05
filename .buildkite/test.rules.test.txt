@@ -137,14 +137,37 @@ doc/source/cluster/doc_code/slurm-basic.sh:
 # scripts build the docs, so they route to the `doc` build and validation only,
 # never to a library's doctest or example execution.
 .readthedocs.yaml: doc
+doc/source/data/api/api.rst: doc_api
+doc/source/serve/api/index.md: doc_api
+doc/source/ray-core/api/index.rst: doc_api
+doc/source/train/api/api.rst: doc_api
+doc/source/tune/api/api.rst: doc_api
+doc/source/rllib/package_ref/index.rst: doc_api
+doc/source/ray-observability/reference/api.rst: doc_api
+# A nested leaf page under an API dir must also emit doc_api: directory rules
+# match recursively, so a change to any page below the dir triggers the checks,
+# not just the top-level index. Guards against a rule or matcher change that
+# would only catch top-level pages.
+doc/source/rllib/package_ref/env/single_agent_episode.rst: doc_api
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
-doc/requirements-doc.txt: doc
-doc/source/conf.py: doc
-doc/source/_ext/llms_txt.py: doc
-doc/source/custom_directives.py: doc
-doc/source/api_autogen.py: doc
-doc/source/api_mock_imports.py: doc
+doc/requirements-doc.txt: doc doc_api
+doc/source/conf.py: doc doc_api
+doc/source/_ext/llms_txt.py: doc doc_api
+doc/source/custom_directives.py: doc doc_api
+doc/source/api_autogen.py: doc doc_api
+doc/source/api_mock_imports.py: doc doc_api
+.buildkite/doc.rayci.yml: doc doc_api
+# api_sidebar.py sits under doc/source/_ext/ but carries `tools` on top of the
+# dir rule's tags, because //ci/pipeline:test_doc_api_rules_sync is a ci_unit
+# target and ci_unit is selected by `tools`. This case is what keeps the drift
+# guard executing on an API_PATH_PREFIXES edit.
+doc/source/_ext/api_sidebar.py: doc doc_api tools
+# The autodoc machinery above emits doc_api so the two API-consistency checks
+# run on it: these files decide what the API reference contains. The rendering
+# half of the doc infra must NOT, or every Vale vocabulary tweak pays for a
+# docbuild plus both checks. The cases below, and the doc/*.py ones further
+# down, are the guard on that boundary.
 doc/source/template_collections.py: doc
 doc/source/preprocess_github_markdown.py: doc
 # Gallery configs are build inputs, not example inputs: they sit under the
@@ -167,8 +190,8 @@ doc/source/llms_txt_summary.txt: doc
 # The shared notebook runner stays on the catch-all core step by design; see
 # the comment on the catch-all rule in test.rules.txt.
 doc/test_myst_doc.py: core_doc
-python/deplocks/docs/docbuild_depset_py3.10.lock: doc python_dependencies
-ci/raydepsets/configs/docs.depsets.yaml: doc python_dependencies
+python/deplocks/docs/docbuild_depset_py3.10.lock: doc doc_api python_dependencies
+ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
 
 # === Release ===
 
@@ -184,6 +207,12 @@ ci/ci.sh: tools
 # Windows CI driver scripts trigger the Windows test steps, not just tools.
 ci/ray_ci/windows/build_base.sh: windows tools
 ci/ray_ci/windows/install_tools.sh: windows tools
+# The API-consistency checker's own source emits doc_api (re-run the API checks
+# it implements) on top of tools (its six ci_unit py_test targets run in the
+# tools-selected job). Other ci/ray_ci/ files still emit tools alone (tester.py
+# above).
+ci/ray_ci/doc/cmd_check_api_discrepancy.py: doc_api tools
+ci/ray_ci/doc/autodoc.py: doc_api tools
 
 # === Build Scripts ===
 
