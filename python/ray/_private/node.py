@@ -1778,21 +1778,17 @@ class Node:
             str(p[0].process.pid) for p in self.all_processes.values()
         ]
 
-        # If the dashboard api server was started on the head node, then include all of the api server's
-        # descendant processes.
-        #
-        # This must be recursive. The dashboard starts its subprocess modules with the
-        # `forkserver` start method on POSIX, so each module is a child of the forkserver
-        # process rather than of the api server itself. A non-recursive lookup finds the
-        # forkserver but none of the modules, leaving them outside the system cgroup and
-        # therefore unisolated.
+        # The lookup has to be recursive. On POSIX the api server launches its subprocess
+        # modules through a forkserver, so the modules are its grandchildren; asking for
+        # direct children finds the forkserver alone and leaves every module outside the
+        # system cgroup.
         if ray_constants.PROCESS_TYPE_DASHBOARD in self.all_processes:
             dashboard_pid = self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
                 0
             ].process.pid
-            # The api server is allowed to fail without failing node startup, so it may
-            # already be gone by the time we look it up. Losing isolation for its
-            # modules is much better than failing to start the node over it.
+            # The api server is allowed to fail without failing node startup, so its pid
+            # can already be gone. Losing isolation for its modules beats refusing to
+            # start the node.
             try:
                 dashboard_process = psutil.Process(dashboard_pid)
                 system_process_pids += [

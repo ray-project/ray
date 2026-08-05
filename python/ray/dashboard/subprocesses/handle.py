@@ -84,25 +84,22 @@ class SubprocessModuleHandle:
     - "max number of restarts"? (Now: infinite)
     """
 
-    # Class variable. Never use plain `fork`: Ray C bindings have static variables that
-    # need to be re-initialized for a new process, and a forked child would inherit the
-    # parent's already-initialized state.
+    # Never plain `fork`: Ray's C bindings hold static state that has to be initialized
+    # fresh in each process, and a forked child inherits the parent's.
     #
-    # `forkserver` is safe here and much cheaper than `spawn`. Its server process is
-    # exec'd as a fresh interpreter rather than forked from us, so children start from
-    # freshly-imported Ray state exactly as they do under `spawn` -- but the imports
-    # happen once in the server instead of once per module. Under `spawn` every module
-    # re-executes `dashboard.py` via `_fixup_main_from_path` and re-imports Ray, which
-    # put ~9 redundant interpreter startups on the critical path of `ray start`.
+    # `forkserver` keeps that guarantee, because its server is exec'd as a fresh
+    # interpreter rather than forked from us, and it imports Ray once instead of once per
+    # module. Under `spawn` every module re-executes `dashboard.py` through
+    # `_fixup_main_from_path` and re-imports Ray, which puts nine redundant interpreter
+    # startups on the critical path of `ray start`.
     #
-    # `forkserver` is POSIX-only, so Windows keeps using `spawn`. Set
-    # RAY_DASHBOARD_SUBPROCESS_START_METHOD=spawn to opt back out.
+    # RAY_DASHBOARD_SUBPROCESS_START_METHOD=spawn opts back out.
     #
-    # The branches pass literals to get_context() so it returns a concrete context type;
-    # forwarding a runtime string widens the result to BaseContext, which does not
-    # expose Process. Do not annotate this with multiprocessing.context.ForkServerContext
-    # -- CPython only defines that class on POSIX, and a class-body annotation is
-    # evaluated at import time, so naming it raises AttributeError on Windows.
+    # get_context() is called with literals so the result keeps a concrete type; a
+    # runtime string widens it to BaseContext, which has no Process. Don't reach for
+    # multiprocessing.context.ForkServerContext to annotate this either. CPython defines
+    # that class on POSIX only, and a class-body annotation is evaluated at import, so
+    # naming it breaks the import on Windows.
     if sys.platform == "win32" or (
         os.environ.get("RAY_DASHBOARD_SUBPROCESS_START_METHOD", "").strip().lower()
         == "spawn"
@@ -115,13 +112,12 @@ class SubprocessModuleHandle:
     def set_forkserver_preload(cls, module_names: List[str]) -> None:
         """Import these modules once in the forkserver, so forked children inherit them.
 
-        No-op when the start method is not ``forkserver`` (Windows, or the opt-out env
-        var). Must be called before the first ``start_module()``, and every name must be
-        importable in a bare interpreter -- an ImportError in the forkserver breaks
-        every module, not just one.
+        Does nothing unless the start method is ``forkserver``. Must be called before the
+        first ``start_module()``, and every name must be importable in a bare
+        interpreter: an ImportError in the forkserver takes down every module, not one.
         """
-        # getattr rather than isinstance: only the forkserver context defines this, and
-        # naming its class is not portable to Windows.
+        # getattr rather than isinstance, since naming the forkserver context class is
+        # not portable to Windows.
         set_preload = getattr(cls.mp_context, "set_forkserver_preload", None)
         if set_preload is not None:
             set_preload(module_names)

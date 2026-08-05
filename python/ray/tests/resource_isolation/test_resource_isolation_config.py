@@ -18,9 +18,9 @@ def _fake_process_entry(pid: int):
     return [SimpleNamespace(process=SimpleNamespace(pid=pid))]
 
 
-def _all_processes_with_dashboard(dashboard_pid: int):
+def _all_processes(gcs_pid: int, dashboard_pid: int):
     return {
-        ray_constants.PROCESS_TYPE_GCS_SERVER: _fake_process_entry(dashboard_pid + 1),
+        ray_constants.PROCESS_TYPE_GCS_SERVER: _fake_process_entry(gcs_pid),
         ray_constants.PROCESS_TYPE_DASHBOARD: _fake_process_entry(dashboard_pid),
     }
 
@@ -331,32 +331,35 @@ def test_resource_isolation_enabled_with_full_overrides_happy_path(monkeypatch):
 def test_system_processes_collected_when_dashboard_already_exited():
     """A dead api server must not fail node startup.
 
-    The api server is started with raise_on_api_server_failure=False by default, so it
-    can be gone by the time its descendants are enumerated for the system cgroup.
-    psutil.Process() raises NoSuchProcess for an exited pid.
+    The api server runs with raise_on_api_server_failure=False by default, so it can be
+    gone by the time its descendants are enumerated, and psutil.Process() raises
+    NoSuchProcess for an exited pid.
     """
-    dead = subprocess.Popen([sys.executable, "-c", ""])
-    dead.wait()
+    exited_dashboard = subprocess.Popen([sys.executable, "-c", ""])
+    exited_dashboard.wait()
+    gcs_pid = 1234
 
-    node = SimpleNamespace(all_processes=_all_processes_with_dashboard(dead.pid))
+    node = SimpleNamespace(
+        all_processes=_all_processes(gcs_pid, exited_dashboard.pid),
+    )
     pids = Node._get_system_processes_for_resource_isolation(node)
 
-    # The other system processes are still reported, just not the dashboard's children.
-    assert str(dead.pid + 1) in pids.split(",")
+    assert str(gcs_pid) in pids.split(",")
 
 
 def test_system_processes_collected_when_dashboard_access_denied(monkeypatch):
-    """Same for AccessDenied, which psutil can raise instead on some platforms."""
+    """psutil raises AccessDenied instead of NoSuchProcess on some platforms."""
 
     def raise_access_denied(pid):
         raise psutil.AccessDenied(pid)
 
     monkeypatch.setattr(psutil, "Process", raise_access_denied)
+    gcs_pid = 1234
 
-    node = SimpleNamespace(all_processes=_all_processes_with_dashboard(1234))
+    node = SimpleNamespace(all_processes=_all_processes(gcs_pid, dashboard_pid=5678))
     pids = Node._get_system_processes_for_resource_isolation(node)
 
-    assert str(1235) in pids.split(",")
+    assert str(gcs_pid) in pids.split(",")
 
 
 if __name__ == "__main__":

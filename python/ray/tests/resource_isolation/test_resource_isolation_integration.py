@@ -87,18 +87,15 @@ _EXPECTED_DASHBOARD_MODULES = [
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
 
-# The dashboard starts its subprocess modules with the `forkserver` start method on
-# POSIX, which adds one process under the dashboard head -- the forkserver -- on top of
-# the module processes. It is a descendant of the dashboard, so it is moved into the
-# system cgroup along with the modules.
+# The `forkserver` start method puts one extra process under the dashboard head, the
+# forkserver itself, which the system cgroup picks up along with the modules.
 #
-# Only one, not two: multiprocessing's resource_tracker is also a descendant, but the
-# `spawn` start method starts one too, so it is not new. Note it is already absorbed into
-# the count below -- _EXPECTED_DASHBOARD_MODULES lists ten modules while only nine run as
-# separate processes (UsageStatsHead is a DashboardHeadModule, so it runs inside the
-# dashboard head process), and the spare entry happens to account for the
-# resource_tracker. Measure the process tree rather than reasoning from the list length
-# if this count ever needs revisiting.
+# multiprocessing's resource_tracker sits under the dashboard head too, but the count
+# below already covers it: only nine of the ten entries in _EXPECTED_DASHBOARD_MODULES
+# run as separate processes, since UsageStatsHead is a DashboardHeadModule living inside
+# the dashboard head, and the spare entry happens to line up with the resource_tracker.
+# If this number ever needs revisiting, measure the process tree instead of counting the
+# list.
 _EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS = 1
 
 # The list of processes expected to be started in the system cgroup

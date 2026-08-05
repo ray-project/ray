@@ -314,8 +314,8 @@ class DashboardHead:
                 cls for cls in subprocess_cls_list if cls.__name__ in modules_to_load
             ]
 
-        # Import Ray and every module class once in the forkserver rather than once per
-        # module child. Must happen before the first start_module().
+        # The forkserver imports these once, instead of every module child paying for
+        # them. Has to run before the first start_module().
         SubprocessModuleHandle.set_forkserver_preload(
             ["ray", SubprocessModule.__module__]
             + sorted({cls.__module__ for cls in subprocess_cls_list})
