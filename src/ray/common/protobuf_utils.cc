@@ -380,10 +380,12 @@ void TaskLogInfoToExport(const rpc::TaskLogInfo &src,
                          rpc::ExportTaskEventData::TaskLogInfo *dest) {
   dest->set_stdout_file(src.stdout_file());
   dest->set_stderr_file(src.stderr_file());
-  dest->set_stdout_start(src.stdout_start());
-  dest->set_stdout_end(src.stdout_end());
-  dest->set_stderr_start(src.stderr_start());
-  dest->set_stderr_end(src.stderr_end());
+  // The export schema is public and its offsets are int32, so the wider offsets are
+  // narrowed here rather than changing a field type that consumers already parse.
+  dest->set_stdout_start(static_cast<int32_t>(src.stdout_start()));
+  dest->set_stdout_end(static_cast<int32_t>(src.stdout_end()));
+  dest->set_stderr_start(static_cast<int32_t>(src.stderr_start()));
+  dest->set_stderr_end(static_cast<int32_t>(src.stderr_end()));
 }
 
 std::optional<rpc::autoscaler::PlacementConstraint>
