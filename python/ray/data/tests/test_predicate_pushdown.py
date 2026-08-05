@@ -641,6 +641,37 @@ class TestPassthroughBehavior:
         ), "Fused filter should come before Sort"
 
 
+def test_unnest_blocks_filter_pushdown_through_projection():
+    """
+    A filter must never be pushed through a Project containing an UnnestExpr.
+
+    UnnestExpr's output column names are only known at runtime from the Arrow
+    struct type (UnnestExpr.name is None), so
+    _can_push_filter_through_projection cannot detect when the unnest
+    overwrites a column the filter reads. If pushdown were allowed, the
+    filter would evaluate against the pre-unnest value of any such column
+    instead of the unnest's output -- silently dropping or keeping the wrong
+    rows.
+    """
+    from ray.data._internal.logical.operators.input_data_operator import InputData
+    from ray.data._internal.logical.rules import PredicatePushdown
+    from ray.data.expressions import StarExpr, UnnestExpr
+
+    project = Project(
+        exprs=[StarExpr(), UnnestExpr(inner=col("a"))],
+        input_dependencies=[InputData(input_data=[])],
+    )
+    filter_op = Filter(
+        predicate_expr=col("x") > 5,
+        input_dependencies=[InputData(input_data=[])],
+    )
+
+    assert (
+        PredicatePushdown._can_push_filter_through_projection(filter_op, project)
+        is False
+    )
+
+
 class TestPassthroughWithSubstitutionBehavior:
     """Tests for PASSTHROUGH_WITH_SUBSTITUTION behavior operators.
 
