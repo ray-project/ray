@@ -1171,12 +1171,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
-  // Detect a streaming generator replay that produced a different number of
-  // objects than the first attempt, and fail before any return object is
-  // written to the store below — otherwise downstream consumers could observe
-  // the inconsistent objects before the failure propagates. Applies to both
-  // successful and application-error completions: retries must reproduce the
-  // same object count, and app-error replays often report fewer IDs.
+  // Fail inconsistent streaming-generator replays before completion bookkeeping.
   if (FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
     return;
   }
