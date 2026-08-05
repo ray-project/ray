@@ -2269,7 +2269,7 @@
   group: Train tests
   working_dir: train_tests/local_mode
 
-  frequency: nightly
+  frequency: manual
   team: ml
 
   cluster:
