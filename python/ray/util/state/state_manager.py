@@ -9,6 +9,7 @@ import aiohttp
 import grpc
 from grpc.aio._call import UnaryStreamCall
 
+import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._common.network_utils import build_address
@@ -64,6 +65,11 @@ _STATE_MANAGER_GRPC_OPTIONS = [
     ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
 ]
+
+# Serve the State API's task queries from the dashboard-head store instead of GCS.
+_READ_TASK_EVENTS_FROM_DASHBOARD_HEAD = (
+    ray._config.enable_task_events_to_dashboard_head()
+)
 
 
 def handle_grpc_network_errors(func):
@@ -245,7 +251,7 @@ class StateDataSourceClient:
         exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
         request = self._build_task_events_request(limit, filters, exclude_driver)
-        if dashboard_consts.RAY_ENABLE_TASK_EVENTS_TO_DASHBOARD_HEAD:
+        if _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD:
             return await self._get_task_events_from_dashboard_head(request, timeout)
         return await self._get_task_events_from_gcs(request, timeout)
 
