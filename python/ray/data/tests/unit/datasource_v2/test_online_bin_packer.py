@@ -137,6 +137,21 @@ def test_packer_heavy_colour_spans_multiple_bins():
     assert _pairs(bins) == [("a", i) for i in range(4)]
 
 
+def test_full_heavy_bin_is_sealed_immediately():
+    packer = OnlineBinPacker(max_bin_bytes=100)
+
+    # The first two row groups are light and fill a shared bin, which seals
+    # immediately. The third makes this colour heavy and exactly fills its
+    # dedicated bin, which must also seal for early scheduling.
+    packer.add_file_chunks(FileChunks("a", 200, (_rg(0, 60), _rg(1, 40), _rg(2, 100))))
+    assert _manifest_map(packer.next_partition()) == {"a": [0, 1]}
+    assert _manifest_map(packer.next_partition()) == {"a": [2]}
+    assert not packer.has_partition()
+
+    packer.finalize()
+    assert not packer.has_partition()
+
+
 @pytest.mark.parametrize("split_coalesced", [False, True])
 def test_packer_covers_every_row_group_exactly_once(split_coalesced):
     files = [
@@ -160,6 +175,36 @@ def test_split_coalesced_is_noop_without_coalescing():
     )
 
 
+def test_split_coalesced_prefers_bin_that_fits_largest_prefix():
+    # Set up shared bins with 30 and 65 bytes free, respectively. The coalesced
+    # item has three 30-byte units: the first bin fits one exactly, while the
+    # second bin fits two with 5 bytes remaining.
+    coalesced = RowGroupInfo(
+        rg_idx=0,
+        uncompressed_size=90,
+        num_rows=30,
+        rg_count=3,
+        rg_sizes=(30, 30, 30),
+        rg_rows=(10, 10, 10),
+    )
+    bins = _pack(
+        [
+            FileChunks("a", 70, (_rg(0, 70),)),
+            FileChunks("b", 35, (_rg(0, 35),)),
+            FileChunks("c", 90, (coalesced,)),
+        ],
+        max_bin_bytes=100,
+        split_coalesced=True,
+    )
+
+    # Prefer the bin that can swallow c's first two row groups; the remaining
+    # row group then fills the other bin.
+    assert bins == [
+        {"a": [0], "c": [2]},
+        {"b": [0], "c": [0, 1]},
+    ]
+
+
 def test_split_coalesced_splits_oversize_run_at_boundaries():
     # A coalesced chunk (rg 0..2) that can't fit whole in a 50-byte bin is cut at
     # physical row-group boundaries; every group still appears exactly once.
@@ -174,6 +219,27 @@ def test_split_coalesced_splits_oversize_run_at_boundaries():
     bins = _pack([FileChunks("a", 90, (coalesced,))], 50, split_coalesced=True)
     assert _pairs(bins) == [("a", 0), ("a", 1), ("a", 2)]
     assert len(bins) >= 2  # 90 bytes across 50-byte bins
+
+
+def test_oversize_coalesced_run_is_isolated_from_shared_bins():
+    # "big" is light by seen-bytes when it arrives, but the run alone exceeds a
+    # whole bin, so it must take the heavy path instead of best-fitting its
+    # pieces into the shared bin that already holds "light".
+    coalesced = RowGroupInfo(
+        rg_idx=0,
+        uncompressed_size=120,
+        num_rows=12,
+        rg_count=2,
+        rg_sizes=(40, 80),
+        rg_rows=(4, 8),
+    )
+    bins = _pack(
+        [FileChunks("light", 60, (_rg(0, 60),)), FileChunks("big", 120, (coalesced,))],
+        max_bin_bytes=100,
+        split_coalesced=True,
+    )
+
+    assert bins == [{"big": [0]}, {"big": [1]}, {"light": [0]}]
 
 
 if __name__ == "__main__":

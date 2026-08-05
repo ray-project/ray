@@ -39,15 +39,22 @@ def _prefix_sums(unit_sizes: List[int]) -> List[int]:
     return prefix
 
 
-def _largest_prefix_fit(prefix: List[int], start: int, cap_left: int) -> int:
+def _largest_prefix_fit(prefix_sums: List[int], start: int, capacity_left: int) -> int:
     # Largest end (exclusive), end >= start, such that the row groups [start, end)
-    # sum to <= cap_left. prefix[i] is the cumulative size of the first i row
-    # groups, so sum(sizes[start:end]) == prefix[end] - prefix[start]. Binary
-    # search for the largest end with prefix[end] <= cap_left + prefix[start].
+    # sum to <= capacity_left. prefix_sums[i] is the cumulative size of the first i row
+    # groups, so sum(sizes[start:end]) == prefix_sums[end] - prefix_sums[start]. Binary
+    # search for the largest end with prefix_sums[end] <= capacity_left + prefix_sums[start].
     # Returns ``start`` when not even one row group fits (caller treats that as
     # "nothing fits here").
-    end = bisect.bisect_right(prefix, cap_left + prefix[start]) - 1
+    end = bisect.bisect_right(prefix_sums, capacity_left + prefix_sums[start]) - 1
     return max(end, start)
+
+
+def _fit_at_least_one(prefix_sums: List[int], start: int, capacity_left: int) -> int:
+    # Like ``_largest_prefix_fit``, but never returns ``start``: a bin that is
+    # known to be empty must swallow at least one unit, even an over-sized one
+    # (the relaxation for a lone unit larger than a whole bin).
+    return max(_largest_prefix_fit(prefix_sums, start, capacity_left), start + 1)
 
 
 def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
@@ -79,25 +86,156 @@ def _subitem(item: BinItem, num_units: int, start: int, end: int) -> BinItem:
 
 
 def _best_open_bin(
-    bins: List[_OpenBin], prefix: List[int], start: int, cap: int
+    bins: List[_OpenBin], prefix_sums: List[int], start: int, cap: int
 ) -> Tuple[Optional[_OpenBin], int]:
     # Among open bins, the one that swallows the largest prefix of units[start:]
     # with the least leftover space (best fit). Returns (bin, end); (None, start)
     # if no open bin can take even one unit.
     best: Optional[_OpenBin] = None
     best_end, best_gap = start, 0
-    for b in bins:
-        room = cap - b.used_bytes
-        end = _largest_prefix_fit(prefix, start, room)
+    for bin in bins:
+        room = cap - bin.used_bytes
+        end = _largest_prefix_fit(prefix_sums, start, room)
         if end > start:
-            gap = room - (prefix[end] - prefix[start])
-            if best is None or gap < best_gap:
-                best, best_end, best_gap = b, end, gap
+            gap = room - (prefix_sums[end] - prefix_sums[start])
+            if best is None or end > best_end or (end == best_end and gap < best_gap):
+                best, best_end, best_gap = bin, end, gap
     return best, best_end
 
 
+class _BinPool:
+    """Where a placer puts an item's units, and when it seals a bin.
+
+    Placement is the same walk for every item -- acquire a bin plus the run of
+    units it can take, add that run, let the pool decide whether the bin is done
+    -- so the pool is the only thing that differs between light and heavy files.
+    Sealed bins go straight into the packer's output deque.
+    """
+
+    def __init__(self, cap: int, output: Deque[Bin]):
+        self._cap = cap
+        self._output = output
+
+    def acquire(self, prefix_sums: List[int], start: int) -> Tuple[_OpenBin, int]:
+        # The bin to place into, and the exclusive end of the unit run it takes.
+        # Always makes progress: the returned end is > start.
+        raise NotImplementedError
+
+    def after_add(self, bin_: _OpenBin) -> None:
+        # Seal ``bin_`` if it can never take another unit.
+        raise NotImplementedError
+
+    def flush(self) -> None:
+        # Seal everything still open.
+        raise NotImplementedError
+
+    def _seal(self, bin_: _OpenBin) -> None:
+        self._output.append(bin_.seal())
+
+
+class _SharedBinPool(_BinPool):
+    """LIGHT files -> a pool of open bins holding chunks from mixed files."""
+
+    def __init__(self, cap: int, output: Deque[Bin], max_open_bins: int):
+        super().__init__(cap, output)
+        self._max_open_bins = max_open_bins
+        self._bins: List[_OpenBin] = []
+
+    def try_whole(self, item: BinItem) -> bool:
+        # First Fit on the WHOLE item: place it unsplit in the first bin it fits.
+        # Returns False when it fits nowhere, leaving the caller to fall back to
+        # the best-fit-per-unit walk.
+        total = item.uncompressed_size
+        target = next(
+            (b for b in self._bins if b.used_bytes + total <= self._cap), None
+        )
+        if target is None:
+            return False
+        target.add(item)
+        self.after_add(target)
+        return True
+
+    def acquire(self, prefix_sums: List[int], start: int) -> Tuple[_OpenBin, int]:
+        # Best fit: the open bin that swallows the largest prefix of the remaining
+        # units with the least leftover space. Open a fresh bin only when no open
+        # bin can take even one unit.
+        target, end = _best_open_bin(self._bins, prefix_sums, start, self._cap)
+        if target is None:
+            target = self._open_bin()
+            end = _fit_at_least_one(prefix_sums, start, self._cap)
+        return target, end
+
+    def after_add(self, bin_: _OpenBin) -> None:
+        # A shared bin at (or over) cap can never take another positive-size item:
+        # ``_best_open_bin`` gives it end == start and ``try_whole`` fails its
+        # ``used_bytes + total <= cap`` test. Leaving it in the pool just burns one
+        # of the ``_max_open_bins`` slots, so seal and evict it.
+        if bin_.used_bytes >= self._cap:
+            self._bins.remove(bin_)
+            self._seal(bin_)
+
+    def flush(self) -> None:
+        for bin_ in self._bins:
+            if bin_.items:
+                self._seal(bin_)
+        self._bins = []
+
+    def _open_bin(self) -> _OpenBin:
+        if len(self._bins) >= self._max_open_bins:
+            fullest = max(self._bins, key=lambda b: b.used_bytes)
+            self._bins.remove(fullest)
+            self._seal(fullest)
+        bin_ = _OpenBin()
+        self._bins.append(bin_)
+        return bin_
+
+
+class _SingleFileBinPool(_BinPool):
+    """HEAVY files -> dedicated bins holding chunks of one file at a time.
+
+    Next Fit over a single open bin: fill it at a unit boundary, seal it once
+    full, and carry any remnant into the next bin. The open bin is allocated
+    lazily, so "sealed a full bin" and "no heavy file yet" are the same state.
+    """
+
+    def __init__(self, cap: int, output: Deque[Bin]):
+        super().__init__(cap, output)
+        self._path: Optional[str] = None
+        self._bin: Optional[_OpenBin] = None
+
+    def switch_to(self, path: str) -> None:
+        # Bins never mix heavy files, so moving to a new one seals the old bin.
+        if self._path != path:
+            self.flush()
+            self._path = path
+
+    def acquire(self, prefix_sums: List[int], start: int) -> Tuple[_OpenBin, int]:
+        if self._bin is None:
+            self._bin = _OpenBin()
+        end = _largest_prefix_fit(prefix_sums, start, self._cap - self._bin.used_bytes)
+        if end == start:  # nothing fits the open bin
+            if self._bin.items:  # seal it and retry on a fresh bin
+                self._seal(self._bin)
+                self._bin = _OpenBin()
+            end = _fit_at_least_one(prefix_sums, start, self._cap)
+        return self._bin, end
+
+    def after_add(self, bin_: _OpenBin) -> None:
+        # Seal a full bin right away so it can be scheduled early; ``acquire``
+        # opens the next one only if more units follow.
+        if bin_.used_bytes >= self._cap:
+            self._seal(bin_)
+            self._bin = None
+
+    def flush(self) -> None:
+        if self._bin is not None and self._bin.items:
+            self._seal(self._bin)
+        self._bin = None
+        self._path = None
+
+
 class OnlineBinPacker:
-    """Streaming coloured bin packer over row-group chunks.
+    """Streaming per-file bin packer over row-group chunks.
 
     Feed ``FileChunks`` via :meth:`add_file_chunks`; drain sealed bins (as
     :class:`FileManifest` blocks) via :meth:`has_partition` / :meth:`next_partition`
@@ -112,9 +250,8 @@ class OnlineBinPacker:
         max_shared_open_bins: int = 16,
         split_coalesced: bool = False,
     ):
-        # ``max_bin_bytes`` doubles as the "colour turns heavy" isolate threshold.
+        # ``max_bin_bytes`` doubles as the "file turns heavy" isolate threshold.
         self._cap = max_bin_bytes
-        self._max_shared_open_bins = max_shared_open_bins
         # When True, a coalesced item (rg_count > 1) that does not fit whole is
         # split at physical-row-group boundaries to fill residual bin space
         # instead of opening a fresh bin. Single row groups stay atomic, so with
@@ -122,11 +259,12 @@ class OnlineBinPacker:
         # behaves exactly as when the flag is False.
         self._split_coalesced = split_coalesced
 
-        self._seen_bytes_by_path: dict = {}  # running w(c) per colour
-        self._shared_bins: List[_OpenBin] = []  # non-isolated bins (mixed colours)
-        self._heavy_path: Optional[str] = None  # current heavy colour
-        self._heavy_bin: Optional[_OpenBin] = None  # its open monochromatic bin
+        self._seen_bytes_by_path: dict = {}  # running w(f) per file
         self._output: Deque[Bin] = deque()  # sealed bins awaiting drain
+        self._shared = _SharedBinPool(
+            self._cap, self._output, max_shared_open_bins
+        )  # non-isolated bins (mixed files)
+        self._heavy = _SingleFileBinPool(self._cap, self._output)
 
     # === Feeding ===
 
@@ -165,83 +303,32 @@ class OnlineBinPacker:
             # bin. A splittable oversized run instead falls through and is cut into
             # bin-sized pieces by the placers.
             self._output.append(Bin((item,), item_bytes))
-        elif seen_bytes < self._cap:
-            self._place_light(item)
+        elif seen_bytes < self._cap and item_bytes <= self._cap:
+            # Prefer keeping a light item whole; fall back to splitting it across
+            # the shared bins. (With splitting off the item is a single unit, so
+            # this reduces to the original First Fit.)
+            if not self._shared.try_whole(item):
+                self._pack(item, self._shared)
         else:
-            self._place_heavy(item)
+            # An item that on its own exceeds a whole bin already puts w(f) over the
+            # isolate threshold, so it is heavy even when ``seen_bytes`` says the
+            # file was light -- otherwise a splittable oversized run would scatter
+            # across shared bins.
+            self._heavy.switch_to(item.path)
+            self._pack(item, self._heavy)
 
-    def _seal_if_full(self, bin_: _OpenBin) -> None:
-        # A shared bin at (or over) cap can never take another positive-size item:
-        # ``_best_open_bin`` gives it end == start and the whole-item fast path
-        # fails its ``used_bytes + total <= cap`` test. Leaving it in the pool just
-        # burns one of the ``_max_shared_open_bins`` slots, so seal and evict it.
-        if bin_.used_bytes >= self._cap:
-            self._shared_bins.remove(bin_)
-            self._output.append(bin_.seal())
-
-    def _place_light(self, item: BinItem) -> None:
-        # LIGHT colour -> shared First-Fit bins. First try to place the WHOLE item
-        # in the first bin it fits. If it fits nowhere, cut it at unit boundaries
-        # and best-fit each piece into the tightest open bin, opening a fresh bin
-        # only when no open bin can take even one unit. (With splitting off the
-        # item is a single unit, so this reduces to the original First Fit.)
-        cap = self._cap
+    def _pack(self, item: BinItem, pool: _BinPool) -> None:
+        # Walk the item's units, handing each run the pool accepts to the bin it
+        # picked. Cutting only at unit boundaries keeps every piece a contiguous
+        # row-group run with exact sizes and row counts.
         units = self._units(item)
-        prefix = _prefix_sums(units)
-        total = prefix[-1]
-        target = next(
-            (b for b in self._shared_bins if b.used_bytes + total <= cap), None
-        )
-        if target is not None:
-            target.add(item)
-            self._seal_if_full(target)
-            return
+        prefix_sums = _prefix_sums(units)
         start = 0
         while start < len(units):
-            target, end = _best_open_bin(self._shared_bins, prefix, start, cap)
-            if target is None:
-                if len(self._shared_bins) >= self._max_shared_open_bins:
-                    fullest = max(self._shared_bins, key=lambda b: b.used_bytes)
-                    self._shared_bins.remove(fullest)
-                    self._output.append(fullest.seal())
-                target = _OpenBin()
-                self._shared_bins.append(target)
-                # A lone unit larger than a whole bin gets its own (over-sized) bin.
-                end = max(_largest_prefix_fit(prefix, start, cap), start + 1)
-            target.add(_subitem(item, len(units), start, end))
-            self._seal_if_full(target)
+            bin_, end = pool.acquire(prefix_sums, start)
+            bin_.add(_subitem(item, len(units), start, end))
+            pool.after_add(bin_)
             start = end
-
-    def _place_heavy(self, item: BinItem) -> None:
-        # HEAVY colour -> dedicated monochromatic bins. Fill the open bin at a unit
-        # boundary, seal it once full, and carry any remnant into the next bin.
-        # (With splitting off the item is a single unit, so this reduces to the
-        # original Next Fit.)
-        cap = self._cap
-        if self._heavy_path != item.path or self._heavy_bin is None:
-            if self._heavy_bin is not None:
-                self._output.append(self._heavy_bin.seal())
-            self._heavy_path = item.path
-            self._heavy_bin = _OpenBin()
-        heavy_bin = self._heavy_bin
-        units = self._units(item)
-        prefix = _prefix_sums(units)
-        start = 0
-        while start < len(units):
-            end = _largest_prefix_fit(prefix, start, cap - heavy_bin.used_bytes)
-            if end == start:  # nothing fits the open bin
-                if heavy_bin.items:  # seal it and retry on a fresh bin
-                    self._output.append(heavy_bin.seal())
-                    heavy_bin = _OpenBin()
-                    self._heavy_bin = heavy_bin
-                    continue
-                end = start + 1  # empty bin, lone unit > cap -> relaxation
-            heavy_bin.add(_subitem(item, len(units), start, end))
-            start = end
-            if start < len(units):  # remnant remains -> bin is full, seal
-                self._output.append(heavy_bin.seal())
-                heavy_bin = _OpenBin()
-                self._heavy_bin = heavy_bin
 
     # === Draining ===
 
@@ -252,15 +339,10 @@ class OnlineBinPacker:
         return self._bin_to_manifest(self._output.popleft())
 
     def finalize(self) -> None:
-        # Flush everything still open.
-        if self._heavy_bin is not None and self._heavy_bin.items:
-            self._output.append(self._heavy_bin.seal())
-        self._heavy_bin = None
-        self._heavy_path = None
-        for open_bin in self._shared_bins:
-            if open_bin.items:
-                self._output.append(open_bin.seal())
-        self._shared_bins = []
+        # Flush everything still open, heavy bins first so they drain ahead of the
+        # shared ones.
+        self._heavy.flush()
+        self._shared.flush()
 
     @staticmethod
     def _bin_to_manifest(bin_: Bin) -> FileManifest:
