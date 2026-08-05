@@ -487,7 +487,18 @@ class _PwriteSink:
         bytes_written = 0
         nbytes = len(mv)
         while bytes_written < nbytes:
-            n = os.pwrite(self._fd, mv[bytes_written:], self._pos + bytes_written)
+            try:
+                n = os.pwrite(self._fd, mv[bytes_written:], self._pos + bytes_written)
+            except OSError as e:
+                # ENOSPC/EDQUOT have no dedicated Python exception class, so
+                # classify by errno right at the syscall: disk/quota exhaustion
+                # becomes a terminal ShuffleDiskError; any other OSError (e.g. EIO)
+                # propagates as-is.
+                if _is_disk_exhausted(e):
+                    raise ShuffleDiskError(
+                        f"Disk exhausted writing to fd {self._fd}: {e}"
+                    ) from e
+                raise
             if n <= 0:
                 # POSIX pwrite of a nonzero buffer should return >0 or raise;
                 # 0 can happen on some FUSE / network filesystems and would
@@ -509,11 +520,10 @@ def _stream_members_flight(
     sink: _PwriteSink,
 ) -> None:
     """Arrow Flight DoAction: one client, batched fetch requests. Response
-    ``Result`` bodies carry ``[u64 len][frame]`` framing, so they stream
-    verbatim into the sink. Transport failures map to
-    ``ConnectionError`` (so _prefetch_node_into's resolve+retry handles them);
-    disk ``OSError`` from the sink propagates unchanged (so a full disk isn't
-    mistaken for a retryable network fault)."""
+    ``Result`` bodies carry ``[u64 len][frame]`` framing, so they stream verbatim
+    into the sink. This does NOT classify failures: it lets the raw transport
+    error (pyarrow ``FlightError``) or the sink's ``OSError`` propagate, and
+    ``_prefetch_node_into`` decides terminal-vs-retryable in one place."""
     import pyarrow.flight as flight
 
     host, port, _incarnation = endpoint
@@ -522,23 +532,8 @@ def _stream_members_flight(
         for batch in _chunk_members_by_bytes(members, max_bytes):
             sources = [(m.path, m.ranges) for m in batch]
             body = json.dumps({"s": sources}).encode("utf-8")
-            try:
-                for result in client.do_action(flight.Action("fetch", body)):
-                    sink.write(result.body)
-            except OSError:
-                # Sink pwrite failure (e.g. disk full): NOT a transport fault.
-                # Don't remap it to a retryable ConnectionError (a full disk
-                # would spin forever); _prefetch_node_into classifies it as
-                # ShuffleDiskError.
-                raise
-            except Exception as e:
-                # Any other fetch failure (unavailable / timeout / server error):
-                # retryable transport fault. _prefetch_node_into re-resolves the
-                # endpoint and, if unchanged, escalates to a terminal
-                # ShuffleFileServerAnomalyError (no infinite retry).
-                raise ConnectionError(
-                    f"flight fetch from {host}:{port} failed: {e}"
-                ) from e
+            for result in client.do_action(flight.Action("fetch", body)):
+                sink.write(result.body)
     finally:
         try:
             client.close()
@@ -625,12 +620,27 @@ def _prefetch_node_into(
                 endpoint, members, max_bytes_per_fetch, out_file_obj
             )
             return
-        except (ConnectionError, TimeoutError) as e:
-            # A changed incarnation means the server restarted (retry in-place);
-            # same incarnation means the process stayed up but the fetch failed.
-            # Compare incarnations, not (host, port): a restart can rebind the
-            # same ephemeral port, so an address match wouldn't prove it's the
-            # same process.
+        except ShuffleFileServerAnomalyError:
+            # _resolve() already classified a terminal actor state (dead /
+            # unschedulable / name-not-registered) — not retryable.
+            raise
+        except ShuffleDiskError:
+            # The sink (``_PwriteSink.write``) classified a disk/quota exhaustion
+            # (ENOSPC/EDQUOT) at the pwrite — terminal, a retry can't reclaim space.
+            raise
+        except OSError:
+            # Any other sink I/O error (e.g. EIO, or a short pwrite on a FUSE /
+            # network FS). NOT a transport fault — propagate as-is (terminal).
+            # (ConnectionError/TimeoutError are OSError subclasses, but Flight raises
+            # FlightError not those, so real transport faults skip this clause.)
+            raise
+        except Exception as e:
+            # A Flight transport failure (server unavailable / restarting / timeout
+            # / mid-stream server error) — retryable. A changed incarnation means
+            # the server restarted (retry in-place); same incarnation means the
+            # process stayed up but the fetch failed. Compare incarnations, not
+            # (host, port): a restart can rebind the same ephemeral port, so an
+            # address match wouldn't prove it's the same process.
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
@@ -657,12 +667,6 @@ def _prefetch_node_into(
                 f"reachable via Ray — likely a network block on the Flight port "
                 f"(NetworkPolicy/firewall/routing)."
             ) from e
-        except OSError as e:
-            if _is_disk_exhausted(e):
-                raise ShuffleDiskError(
-                    f"Disk exhausted writing prefetch for node {node_id}: {e}"
-                ) from e
-            raise
 
 
 def _chunk_members_by_bytes(
