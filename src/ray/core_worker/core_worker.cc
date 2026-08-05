@@ -4922,13 +4922,11 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
       return;
     }
     auto it = free_pending_.find(node_id);
-    if (it == free_pending_.end()) {
+    if (it == free_pending_.end() || it->second.empty()) {
+      // Nothing queued for this node (an entry is erased as soon as it drains).
       return;
     }
-    // Invariant: an entry is erased as soon as its queue drains, and it is only
-    // ever created together with a push_back under this lock, so it is non-empty.
     std::deque<ObjectID> &queue = it->second;
-    RAY_CHECK(!queue.empty());
     const size_t n = std::min(max_free_local_objects_batch_size_, queue.size());
     request.mutable_object_ids()->Reserve(static_cast<int>(n));
     for (size_t i = 0; i < n; i++) {
