@@ -13,7 +13,7 @@ from ray.experimental import (
     TensorTransportMetadata,
     register_tensor_transport,
 )
-from ray.experimental.rdt.rdt_manager import RDTManager, RDTMeta
+from ray.experimental.rdt.rdt_manager import RDTManager, RDTMeta, RDTSource
 from ray.experimental.rdt.tensor_transport_manager import FetchRequest
 
 _BACKEND_NAME = "TEST_PIPELINE"
@@ -187,7 +187,7 @@ def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTMa
         manager.set_rdt_metadata(
             obj_id,
             RDTMeta(
-                src_actor=None,
+                src_actor=RDTSource.DRIVER,
                 tensor_transport_backend=backend,
                 tensor_transport_meta=meta,
                 sent_dest_actors=set(),

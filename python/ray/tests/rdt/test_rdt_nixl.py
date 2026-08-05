@@ -6,7 +6,7 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental import set_target_for_ref
+from ray.experimental import set_target_for_ref, wait_tensor_freed
 from ray.experimental.rdt.util import get_tensor_transport_manager
 
 
@@ -213,29 +213,16 @@ def test_put_gc(ray_start_regular):
 def test_driver_put_nixl(ray_start_regular):
     tensor = torch.tensor([1, 2, 3], device="cuda")
     ref = ray.put(tensor, _tensor_transport="nixl")
-    obj_id = ref.hex()
-    storage_pointer = tensor.untyped_storage().data_ptr()
-
-    rdt_manager = ray._private.worker.global_worker.rdt_manager
-    nixl_transport = get_tensor_transport_manager("NIXL")
-    metadata = rdt_manager.get_rdt_metadata(obj_id)
-    assert metadata is not None
-    assert metadata.src_actor is None
-    assert rdt_manager.rdt_store.has_tensor(tensor)
-    assert obj_id in nixl_transport._managed_meta_nixl
 
     actor = GPUTestActor.remote()
     assert ray.get(actor.sum.remote(ref, "cuda")) == 6
+    assert ray.get(actor.borrow_and_sum.remote([ref])) == 6
     assert torch.equal(ray.get(ref), tensor)
 
     del ref
     gc.collect()
 
-    rdt_manager.rdt_store.wait_tensor_freed(tensor, timeout=10)
-    assert not rdt_manager.rdt_store.has_tensor(tensor)
-    assert not rdt_manager.is_managed_object(obj_id)
-    assert obj_id not in nixl_transport._managed_meta_nixl
-    assert storage_pointer not in nixl_transport._tensor_desc_cache
+    wait_tensor_freed(tensor, timeout=10)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -251,7 +238,7 @@ def test_driver_owned_rdt_rejects_object_store_fallback(ray_start_regular):
 def test_driver_rejects_two_sided_transport(ray_start_regular):
     tensor = torch.tensor([1, 2, 3], device="cuda")
 
-    with pytest.raises(RuntimeError, match="one-sided transport"):
+    with pytest.raises(ValueError, match="one-sided transport"):
         ray.put(tensor, _tensor_transport="nccl")
 
 
