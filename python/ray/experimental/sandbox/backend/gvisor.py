@@ -70,6 +70,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         proc = subprocess.Popen(
             run_args,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -153,9 +154,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             runsc_args.extend([sandbox_id, "/bin/sh", "-c", cmd_str])
 
         start_time = time.time()
+
         try:
             proc = subprocess.Popen(
                 runsc_args,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -166,8 +169,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
             return ExecResult(
                 exit_code=proc.returncode,
-                stdout=stdout_str or "",
-                stderr=stderr_str or "",
+                stdout=stdout_str,
+                stderr=stderr_str,
                 duration_seconds=duration,
             )
         except subprocess.TimeoutExpired as err:
