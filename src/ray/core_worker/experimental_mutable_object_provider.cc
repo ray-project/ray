@@ -225,13 +225,13 @@ void MutableObjectProvider::PollWriterClosure(
   // The corresponding ReadRelease() will be automatically called when
   // `object` goes out of scope.
   Status status = object_manager_->ReadAcquire(writer_object_id, object);
-  // Check if the thread returned from ReadAcquire() because the process is exiting, not
-  // because there is something to read.
-  if (status.code() == StatusCode::ChannelError) {
-    // The process is exiting.
+  if (!status.ok()) {
+    // ChannelError is how ~MutableObjectProvider ends this thread. Any other status comes
+    // from check_signals reporting that the process is going away, during either
+    // ray.shutdown() or interpreter finalization. Neither leaves a value to push.
+    RAY_LOG(DEBUG).WithField(writer_object_id) << "Writer poll stopped: " << status;
     return;
   }
-  RAY_CHECK_EQ(static_cast<int>(status.code()), static_cast<int>(StatusCode::OK));
 
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());

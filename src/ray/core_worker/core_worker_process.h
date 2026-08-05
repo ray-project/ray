@@ -92,6 +92,11 @@ class CoreWorkerProcess {
   /// \return The `CoreWorker` instance.
   static std::shared_ptr<CoreWorker> TryGetWorker();
 
+  /// Whether the core worker for this process exists. False once ray.shutdown() has
+  /// cleared it, which background threads can use to stop instead of calling
+  /// GetCoreWorker() and exiting the process.
+  static bool HasCoreWorker();
+
   /// Whether a running task has been marked for cancellation and should be interrupted.
   ///
   /// Unlike GetCoreWorker(), returns false rather than exiting the process when the core
@@ -141,6 +146,8 @@ class CoreWorkerProcessImpl {
 
   /// Try to get core worker. Returns nullptr if core worker doesn't exist.
   std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
+
+  bool HasCoreWorker() const;
 
   bool ShouldInterruptTaskForCancellation() const;
 

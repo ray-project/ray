@@ -2835,18 +2835,19 @@ cdef CRayStatus check_signals() nogil:
         # By default, if signals raise an exception, Python just prints them.
         # To keep the same behavior, we don't handle any other exceptions.
 
+        # Background threads keep polling here while ray.shutdown() clears the core
+        # worker, so report that the same way the sys.is_finalizing() branch above does
+        # and let the caller stop. Reaching the core worker through GetCoreWorker()
+        # instead would exit the process outright.
+        if not CCoreWorkerProcess.HasCoreWorker():
+            return CRayStatus.IntentionalSystemExit(
+                "The core worker is shut down.".encode("utf-8")
+            )
+
         # ray.cancel marks running sync actor tasks canceled without sending an OS
         # signal to worker threads (CancelActorTaskOnExecutor for non-async actors).
         # Unblock nogil backpressure waits. Uses job/task guards so periodic io threads
         # do not call GetCurrentTaskID() without a job (WorkerContext CHECK).
-        #
-        # Deliberately not GetCoreWorker(), which exits the process once the core worker
-        # is gone, while background threads keep polling here as ray.shutdown() tears it
-        # down. Falling through to OK keeps such a poller waiting; a non-OK status would
-        # make it stop and report an error. Waiting is what a compiled-graph channel
-        # writer needs, since ~MutableObjectProvider wakes it with ChannelError moments
-        # later, and PollWriterClosure RAY_CHECKs any other non-OK status. Other
-        # check_signals callers now keep waiting too, where the process used to exit.
         if CCoreWorkerProcess.ShouldInterruptTaskForCancellation():
             return CRayStatus.Interrupted(b"")
 

@@ -133,6 +133,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
   return core_worker_process->TryGetCoreWorker();
 }
 
+bool CoreWorkerProcess::HasCoreWorker() {
+  return core_worker_process != nullptr && core_worker_process->HasCoreWorker();
+}
+
 bool CoreWorkerProcess::ShouldInterruptTaskForCancellation() {
   return core_worker_process != nullptr &&
          core_worker_process->ShouldInterruptTaskForCancellation();
@@ -1037,6 +1041,11 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::TryGetCoreWorker() const {
   const auto read_locked = core_worker_.LockForRead();
   return read_locked.Get();
+}
+
+bool CoreWorkerProcessImpl::HasCoreWorker() const {
+  const auto read_locked = core_worker_.LockForRead();
+  return read_locked.Get() != nullptr;
 }
 
 bool CoreWorkerProcessImpl::ShouldInterruptTaskForCancellation() const {
