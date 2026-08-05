@@ -14,45 +14,66 @@
 
 #include "ray/observability/ray_task_lifecycle_event.h"
 
+#include <optional>
 #include <string>
 #include <utility>
+
+#include "ray/observability/task_event_populators.h"
 
 namespace ray {
 namespace observability {
 
-RayTaskLifecycleEvent::RayTaskLifecycleEvent(rpc::events::TaskLifecycleEvent data,
-                                             const std::string &session_name,
-                                             int64_t timestamp)
+RayTaskLifecycleEvent::RayTaskLifecycleEvent(
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t task_attempt,
+    rpc::TaskStatus task_status,
+    const std::optional<const TaskStateUpdate> &state_update,
+    const std::string &session_name,
+    int64_t timestamp)
     : RayEvent<rpc::events::TaskLifecycleEvent>(
           rpc::events::RayEvent::CORE_WORKER,
           rpc::events::RayEvent::TASK_LIFECYCLE_EVENT,
           rpc::events::RayEvent::INFO,
           "",
           session_name,
-          timestamp) {
-  data_ = std::move(data);
+          timestamp),
+      task_id_(task_id),
+      job_id_(job_id),
+      task_attempt_(task_attempt) {
+  status_changes_.push_back({task_status, timestamp, state_update});
 }
 
 std::string RayTaskLifecycleEvent::GetEntityId() const {
-  return data_.task_id() + std::to_string(data_.task_attempt());
+  return task_id_.Binary() + std::to_string(task_attempt_);
 }
 
 TaskAttemptId RayTaskLifecycleEvent::GetTaskAttempt() const {
-  return {data_.task_id(), data_.task_attempt()};
+  return {task_id_.Binary(), task_attempt_};
 }
 
 void RayTaskLifecycleEvent::MergeData(RayEvent<rpc::events::TaskLifecycleEvent> &&other) {
   auto &&other_event = static_cast<RayTaskLifecycleEvent &&>(other);
-  // MergeFrom concatenates the repeated state_transitions (preserving chronological
-  // order, since the recorder merges later events into the earlier accumulator) and
-  // overlays the dynamic scalar/message fields (node_id, worker_id, error_info, etc.)
-  // that individual lifecycle events set.
-  data_.MergeFrom(other_event.data_);
+  // The recorder merges later events into the earlier accumulator, so appending keeps the
+  // status changes in chronological order.
+  for (auto &status_change : other_event.status_changes_) {
+    status_changes_.push_back(std::move(status_change));
+  }
 }
 
 ray::rpc::events::RayEvent RayTaskLifecycleEvent::SerializeData() && {
   ray::rpc::events::RayEvent event;
-  event.mutable_task_lifecycle_event()->Swap(&data_);
+  rpc::events::TaskLifecycleEvent *lifecycle_event_data =
+      event.mutable_task_lifecycle_event();
+  for (const StatusChange &status_change : status_changes_) {
+    AppendTaskLifecycleUpdate(task_id_,
+                              job_id_,
+                              task_attempt_,
+                              status_change.task_status,
+                              status_change.timestamp,
+                              status_change.state_update,
+                              *lifecycle_event_data);
+  }
   return event;
 }
 
