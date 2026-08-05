@@ -4896,7 +4896,7 @@ void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
   for (const auto &node_id : locations) {
     {
       absl::MutexLock lock(&free_batch_mu_);
-      auto &queue = free_pending_[node_id];
+      std::deque<ObjectID> &queue = free_pending_[node_id];
       queue.push_back(object_id);
       // Warn on first crossing the threshold, then every 1024 objects. Keep
       // buffering; never drop.
@@ -4926,7 +4926,7 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
       }
       return;
     }
-    auto &queue = it->second;
+    std::deque<ObjectID> &queue = it->second;
     const int64_t max_batch = RayConfig::instance().max_free_local_objects_batch_size();
     const size_t cap = max_batch <= 0 ? 1 : static_cast<size_t>(max_batch);
     const size_t n = std::min(cap, queue.size());
@@ -4941,7 +4941,7 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
     free_in_flight_.insert(node_id);
   }
 
-  auto client = GetRayletRpcClient(node_id);
+  std::shared_ptr<RayletClientInterface> client = GetRayletRpcClient(node_id);
   if (client == nullptr) {
     // Node is gone: clear in-flight and drop its queue so it cannot wedge.
     absl::MutexLock lock(&free_batch_mu_);
