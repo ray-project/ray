@@ -15,7 +15,6 @@ import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 from ray._common.test_utils import wait_for_condition
 from ray._private.resource_isolation_config import ResourceIsolationConfig
-from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 
 # These tests are intended to run in CI inside a container.
 #
@@ -90,12 +89,10 @@ _EXPECTED_DASHBOARD_SUBPROCESS_MODULES = [
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
 
-# multiprocessing leaves its own processes under the dashboard head, and the system
-# cgroup picks them up alongside the modules: a resource_tracker under either start
-# method, plus the forkserver itself when that one is in use.
-_EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS = (
-    2 if SubprocessModuleHandle.mp_context.get_start_method() == "forkserver" else 1
-)
+# multiprocessing leaves two of its own processes under the dashboard head, and the
+# system cgroup picks them up alongside the modules: the forkserver, and the
+# resource_tracker that the forkserver starts.
+_EXPECTED_DASHBOARD_MULTIPROCESSING_HELPERS = 2
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'

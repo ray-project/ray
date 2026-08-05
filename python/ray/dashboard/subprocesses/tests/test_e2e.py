@@ -102,23 +102,15 @@ class _DummySession:
 
 
 @pytest.mark.parametrize(
-    ("override", "available", "expected"),
+    ("available", "expected"),
     [
-        ("", ["fork", "spawn", "forkserver"], "forkserver"),
-        ("", ["spawn"], "spawn"),
-        ("spawn", ["fork", "spawn", "forkserver"], "spawn"),
-        ("forkserver", ["fork", "spawn", "forkserver"], "forkserver"),
-        # `fork` is never offered, and neither is a typo.
-        ("fork", ["fork", "spawn", "forkserver"], "forkserver"),
-        ("forksrever", ["fork", "spawn", "forkserver"], "forkserver"),
-        # Asking for something the platform lacks falls back rather than raising.
-        ("forkserver", ["spawn"], "spawn"),
+        # `fork` is offered by the platform but must never be picked.
+        (["fork", "spawn", "forkserver"], "forkserver"),
+        # Windows, and POSIX builds without SCM_RIGHTS, fall back rather than raising.
+        (["spawn"], "spawn"),
     ],
 )
-def test_select_start_method(monkeypatch, override, available, expected):
-    monkeypatch.setattr(
-        dashboard_consts, "SUBPROCESS_MODULE_START_METHOD", override, raising=False
-    )
+def test_select_start_method(monkeypatch, available, expected):
     monkeypatch.setattr(
         handle_module.multiprocessing, "get_all_start_methods", lambda: available
     )

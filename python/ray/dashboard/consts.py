@@ -98,13 +98,6 @@ PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
 )
 
-# Overrides the multiprocessing start method used to launch subprocess modules. Empty
-# means pick per platform. Validated where it is consumed, in
-# ray.dashboard.subprocesses.handle.
-SUBPROCESS_MODULE_START_METHOD = (
-    os.environ.get("RAY_DASHBOARD_SUBPROCESS_START_METHOD", "").strip().lower()
-)
-
 # Maximum time to wait for the subprocess module to be ready.
 SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = env_float(
     "RAY_DASHBOARD_SUBPROCESS_MODULE_WAIT_READY_TIMEOUT", 30.0

@@ -26,35 +26,17 @@ messages to it. Requires non-minimal Ray.
 
 logger = logging.getLogger(__name__)
 
-# Plain `fork` is deliberately not offered: Ray's C bindings keep static state that a
-# forked child would inherit from whichever process happened to call start_module().
-SUPPORTED_START_METHODS = ("forkserver", "spawn")
-
 
 def select_start_method() -> str:
     """Return the multiprocessing start method for launching subprocess modules.
 
-    Prefers ``forkserver`` where the platform provides it, otherwise ``spawn``.
-    RAY_DASHBOARD_SUBPROCESS_START_METHOD overrides the choice; an unusable value is
-    ignored with a warning rather than silently leaving the default in place.
+    ``forkserver`` wherever the platform offers it, otherwise ``spawn``. Plain ``fork``
+    is never used: Ray's C bindings keep static state that a forked child would inherit
+    from whichever process happened to call ``start_module()``.
     """
-    available = multiprocessing.get_all_start_methods()
-    override = dashboard_consts.SUBPROCESS_MODULE_START_METHOD
-    if override and override not in SUPPORTED_START_METHODS:
-        logger.warning(
-            "Ignoring RAY_DASHBOARD_SUBPROCESS_START_METHOD=%s, expected one of %s.",
-            override,
-            ", ".join(SUPPORTED_START_METHODS),
-        )
-    elif override and override not in available:
-        logger.warning(
-            "Ignoring RAY_DASHBOARD_SUBPROCESS_START_METHOD=%s, which this platform "
-            "does not support.",
-            override,
-        )
-    elif override:
-        return override
-    return "forkserver" if "forkserver" in available else "spawn"
+    if "forkserver" in multiprocessing.get_all_start_methods():
+        return "forkserver"
+    return "spawn"
 
 
 def filter_hop_by_hop_headers(
