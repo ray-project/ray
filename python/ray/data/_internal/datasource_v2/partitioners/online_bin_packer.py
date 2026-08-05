@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import bisect
+import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Deque, List, Optional, Tuple, cast
@@ -16,6 +17,8 @@ from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
     FileChunks,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -303,17 +306,19 @@ class OnlineBinPacker:
             # bin. A splittable oversized run instead falls through and is cut into
             # bin-sized pieces by the placers.
             self._output.append(Bin((item,), item_bytes))
-        elif seen_bytes < self._cap and item_bytes <= self._cap:
+        elif seen_bytes < self._cap:
             # Prefer keeping a light item whole; fall back to splitting it across
-            # the shared bins. (With splitting off the item is a single unit, so
-            # this reduces to the original First Fit.)
+            # the shared bins. This also lets a first, splittable oversized
+            # coalesced run fill residual shared-bin space. (With splitting off
+            # the item is a single unit, so this reduces to the original First
+            # Fit.)
             if not self._shared.try_whole(item):
                 self._pack(item, self._shared)
         else:
-            # An item that on its own exceeds a whole bin already puts w(f) over the
-            # isolate threshold, so it is heavy even when ``seen_bytes`` says the
-            # file was light -- otherwise a splittable oversized run would scatter
-            # across shared bins.
+            # Once earlier chunks from a file already fill a bin, route its
+            # subsequent chunks to the heavy pool. This preserves per-file
+            # isolation for large files while still allowing their first
+            # splittable coalesced run to fill residual shared-bin capacity.
             self._heavy.switch_to(item.path)
             self._pack(item, self._heavy)
 
@@ -336,7 +341,16 @@ class OnlineBinPacker:
         return len(self._output) > 0
 
     def next_partition(self) -> FileManifest:
-        return self._bin_to_manifest(self._output.popleft())
+        bin_ = self._output.popleft()
+        logger.debug(
+            "Emitting bin with %d uncompressed bytes: %s",
+            bin_.total_uncompressed_size,
+            [
+                (item.path, item.rg_idx, item.rg_idx + item.rg_count - 1)
+                for item in bin_.items
+            ],
+        )
+        return self._bin_to_manifest(bin_)
 
     def finalize(self) -> None:
         # Flush everything still open, heavy bins first so they drain ahead of the
