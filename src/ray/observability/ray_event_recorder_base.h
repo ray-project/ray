@@ -66,8 +66,12 @@ class RayEventRecorderBase : public RayEventRecorderInterface {
 
   // Send a populated request to the event aggregator, tracking the in-flight
   // gRPC so shutdown can drain. Sets grpc_in_progress_; the completion callback resets
-  // it. Call while holding mutex_.
+  // it.
   void SendRequest(rpc::events::AddEventsRequest &&request);
+
+  // (claude) Clear grpc_in_progress_ and wake a shutdown waiter. Needed by an export that
+  // marks the send in progress before it knows whether it has anything to send.
+  void MarkGrpcDone();
 
   rpc::EventAggregatorClient &event_aggregator_client_;
   std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;

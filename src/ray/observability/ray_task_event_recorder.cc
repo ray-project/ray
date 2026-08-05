@@ -14,9 +14,12 @@
 
 #include "ray/observability/ray_task_event_recorder.h"
 
+#include <algorithm>
 #include <list>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
@@ -140,52 +143,78 @@ void RayTaskEventRecorder::AddProfileEvent(std::unique_ptr<RayEventInterface> ev
   profile_events_itr->second.push_back(std::move(event));
 }
 
-void RayTaskEventRecorder::ExportEvents() {
-  absl::MutexLock lock(&mutex_);
-  if (status_events_.empty() && profile_events_.empty() &&
-      dropped_task_attempts_unreported_.empty()) {
-    return;
+void RayTaskEventRecorder::TakeEventsToSend(
+    std::list<std::unique_ptr<RayEventInterface>> *events,
+    absl::flat_hash_set<TaskAttemptId> *dropped_to_send) {
+  const int64_t max_dropped_task_attempts =
+      RayConfig::instance().task_events_dropped_task_attempt_batch_size();
+  while ((max_dropped_task_attempts < 0 ||
+          dropped_to_send->size() < static_cast<size_t>(max_dropped_task_attempts)) &&
+         !dropped_task_attempts_unreported_.empty()) {
+    auto itr = dropped_task_attempts_unreported_.begin();
+    dropped_to_send->insert(*itr);
+    dropped_task_attempts_unreported_.erase(itr);
   }
-  // Skip if there's already an in-flight gRPC call to avoid overlapping requests.
-  if (grpc_in_progress_) {
-    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
-        << "Previous RayTaskEventRecorder export in progress: new events will be "
-           "exported once previous export completes.";
-    return;
-  }
 
-  // TODO(karticam): Unlike TaskEventBufferImpl::FlushEvents, which sends a bounded batch
-  // per flush, this drains the entire buffer so one export can potentially be a large
-  // gRPC. This will be bounded once batching lands in the RayEventRecorder export path
-  // (PR #60045).
-
-  absl::flat_hash_set<TaskAttemptId> dropped_to_send =
-      std::move(dropped_task_attempts_unreported_);
-  dropped_task_attempts_unreported_.clear();
-
-  // Collect events to export, skipping any whose attempt was dropped
-  std::list<std::unique_ptr<RayEventInterface>> events;
+  const size_t batch_size = RayConfig::instance().task_events_send_batch_size();
   size_t num_skipped = 0;
-  for (auto &event : status_events_) {
-    if (dropped_to_send.contains(GetTaskAttemptOrDie(event))) {
+
+  size_t num_status_events_to_take = std::min(batch_size, status_events_.size());
+  for (size_t i = 0; i < num_status_events_to_take; i++) {
+    std::unique_ptr<RayEventInterface> event = std::move(status_events_.front());
+    status_events_.pop_front();
+    if (dropped_to_send->contains(GetTaskAttemptOrDie(event))) {
       num_skipped++;
       continue;
     }
-    events.push_back(std::move(event));
+    events->push_back(std::move(event));
   }
-  status_events_.clear();
-  for (auto &[attempt, profile_vec] : profile_events_) {
-    if (dropped_to_send.contains(attempt)) {
-      num_skipped += profile_vec.size();
-      continue;
+
+  size_t num_profile_events_taken = 0;
+  while (!profile_events_.empty() && num_profile_events_taken < batch_size) {
+    auto itr = profile_events_.begin();
+    std::vector<std::unique_ptr<RayEventInterface>> &profile_vec = itr->second;
+    size_t num_to_take =
+        std::min(batch_size - num_profile_events_taken, profile_vec.size());
+    if (dropped_to_send->contains(itr->first)) {
+      num_skipped += num_to_take;
+    } else {
+      for (size_t i = 0; i < num_to_take; i++) {
+        events->push_back(std::move(profile_vec[i]));
+      }
     }
-    for (auto &event : profile_vec) {
-      events.push_back(std::move(event));
+    profile_vec.erase(profile_vec.begin(), profile_vec.begin() + num_to_take);
+    num_profile_events_taken += num_to_take;
+    num_profile_events_buffered_ -= num_to_take;
+    if (profile_vec.empty()) {
+      profile_events_.erase(itr);
     }
   }
-  profile_events_.clear();
-  num_profile_events_buffered_ = 0;
+
   RecordDropped(num_skipped);
+}
+
+void RayTaskEventRecorder::ExportEvents() {
+  std::list<std::unique_ptr<RayEventInterface>> events;
+  absl::flat_hash_set<TaskAttemptId> dropped_to_send;
+  {
+    absl::MutexLock lock(&mutex_);
+    if (status_events_.empty() && profile_events_.empty() &&
+        dropped_task_attempts_unreported_.empty()) {
+      return;
+    }
+    // Skip if there's already an in-flight gRPC call to avoid overlapping requests.
+    // (claude) Claiming the in-flight slot here, under the lock that guards the buffers,
+    // is what keeps a single export in flight: grouping, serialization and the send below
+    // run unlocked so they never block AddEvents on the task's call path.
+    if (grpc_in_progress_.exchange(true)) {
+      RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
+          << "Previous RayTaskEventRecorder export in progress: new events will be "
+             "exported once previous export completes.";
+      return;
+    }
+    TakeEventsToSend(&events, &dropped_to_send);
+  }
 
   rpc::events::AddEventsRequest request;
   rpc::events::RayEventsData *data = request.mutable_events_data();
@@ -199,6 +228,7 @@ void RayTaskEventRecorder::ExportEvents() {
   }
 
   if (data->events_size() == 0 && metadata->dropped_task_attempts_size() == 0) {
+    MarkGrpcDone();
     return;
   }
 
