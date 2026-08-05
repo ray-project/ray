@@ -207,10 +207,14 @@ class _SelectWorkerStub:
         self._worker_id = worker_id
         self.token_ids = None
         self.allowed = None
+        self.expected_output_tokens = None
 
-    async def __call__(self, request_id, token_ids, allowed_worker_ids):
+    async def __call__(
+        self, request_id, token_ids, allowed_worker_ids, expected_output_tokens=None
+    ):
         self.token_ids = token_ids
         self.allowed = allowed_worker_ids
+        self.expected_output_tokens = expected_output_tokens
         return {
             "worker_id": self._worker_id,
             "dp_rank": 0,
@@ -277,6 +281,7 @@ async def test_choose_replicas_routes_to_selected_worker():
     select = router._kv_token_tracker.select_worker
     assert select.token_ids == [10, 11, 12]
     assert sorted(select.allowed) == sorted(worker_ids)
+    assert select.expected_output_tokens is None
 
 
 @pytest.mark.asyncio

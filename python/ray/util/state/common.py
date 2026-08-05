@@ -386,7 +386,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         A new dictionary containing only the columns allowed by the schema.
     """
     filtered_data = {}
-    columns = state_dataclass.columns() if detail else state_dataclass.base_columns()
+    columns = state_dataclass.list_columns(detail=detail)
     for col in columns:
         if col in data:
             filtered_data[col] = data[col]

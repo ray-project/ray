@@ -2328,6 +2328,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_torch_squashed_gaussian",
+    size = "small",
+    srcs = ["core/distribution/torch/tests/test_torch_squashed_gaussian.py"],
+    tags = [
+        "core",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Default Models
 py_test(
     name = "test_base_models",

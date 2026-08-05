@@ -294,6 +294,11 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
         env_var = ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).get_visible_accelerator_ids_env_var()
+        # Some accelerator families (e.g. Apple Silicon MPS) have no visible-devices
+        # env var: there is only ever one device (id "0"), so there is nothing to
+        # select, override, or reset. Skip env var handling for them.
+        if env_var is None:
+            continue
         original_visible_accelerator_env_vars[env_var] = os.environ.get(env_var, None)
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
