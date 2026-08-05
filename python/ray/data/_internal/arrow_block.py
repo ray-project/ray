@@ -82,6 +82,13 @@ def get_sort_transform(context: DataContext) -> Callable:
         return transform_pyarrow.sort
 
 
+def get_join_transform(context: DataContext) -> Callable:
+    if context.use_polars_join:
+        return transform_polars.join
+    else:
+        return transform_pyarrow.join
+
+
 def get_concat_and_sort_transform(context: DataContext) -> Callable:
     if context.use_polars or context.use_polars_sort:
         return transform_polars.concat_and_sort
