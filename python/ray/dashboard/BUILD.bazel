@@ -196,6 +196,14 @@ py_test(
 )
 
 py_test(
+    name = "test_serve_head_unit",
+    size = "small",
+    srcs = ["modules/serve/tests/test_serve_head_unit.py"],
+    tags = ["team:serve"],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_serve_head_controller_recovery",
     size = "large",
     srcs = ["modules/serve/tests/test_serve_head_controller_recovery.py"],
