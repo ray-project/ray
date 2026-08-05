@@ -78,10 +78,11 @@ def _encode_shard(
 ) -> pa.Buffer:
     """Encode a partition shard as a whole-frame blob (one codec frame per shard,
     vs Arrow's per-buffer IPC compression). ``compression`` comes from
-    ``data_context.hash_shuffle_compression``. ``combine_native`` uses PyArrow's
-    native whole-table combine (one C++ call, ~10x faster) when the caller has
-    confirmed there are no extension columns; else the extension-safe
-    ``transform_pyarrow`` path (which is ~5-12x slower on many small shards)."""
+    ``data_context.hash_shuffle_compression``. When the caller has confirmed there
+    are no extension columns, ``combine_native`` uses PyArrow's native combine,
+    which skips the per-buffer ``nbytes`` accounting the extension-safe
+    ``transform_pyarrow`` path does; that only costs at large partition counts
+    (each shard has many small chunks)."""
     if table.num_columns > 0:
         if combine_native:
             try:
@@ -334,16 +335,15 @@ def _make_flight_server(host: str, base_dir: str):
     class _ShuffleFlightServer(flight.FlightServerBase):
         def do_action(self, context, action):
             req = json.loads(action.body.to_pybytes())
-            sources = req["s"]
-            for path, ranges in sources:
+            for path, ranges in req["s"]:
                 fpath = os.path.join(base_dir, os.path.basename(path))
                 with open(fpath, "rb") as f:
                     for off, length in ranges:
                         f.seek(off)
-                        # Pack the u64 length header into the first chunk: an
-                        # 8-byte header in its own Result would pay a whole gRPC
-                        # message's overhead (protobuf tag, HTTP/2 frame, flow
-                        # control) for an 8-byte payload.
+                        # Chunk the frame so no single Result materializes a whole
+                        # large frame in the server's RAM. The u64 length header
+                        # rides in the first chunk (a header in its own Result would
+                        # pay a full gRPC message's overhead for 8 bytes).
                         first = f.read(min(length, _FLIGHT_CHUNK))
                         yield flight.Result(
                             pa.py_buffer(struct.pack(">Q", length) + first)
@@ -354,8 +354,8 @@ def _make_flight_server(host: str, base_dir: str):
                             if not buf:
                                 # Header already promised `length` bytes but the
                                 # file is short (truncated / stale / bad offset).
-                                # Fail the stream: a short send silently desyncs
-                                # every later frame at the client (SPARK-34534).
+                                # A short send silently desyncs every later frame
+                                # at the client (SPARK-34534).
                                 raise ValueError(
                                     f"short read: {fpath} @{off}+{length}, "
                                     f"got {length - remaining}"
