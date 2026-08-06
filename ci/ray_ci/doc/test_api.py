@@ -9,7 +9,14 @@ from ci.ray_ci.doc.api import (
     AnnotationType,
     CodeType,
 )
-from ci.ray_ci.doc.mock.mock_module import MockClass, mock_function, mock_w00t
+from ci.ray_ci.doc.mock.mock_module import (
+    InheritedAnnotation,
+    MockClass,
+    MockDeprecatedClass,
+    MockDeprecatedSubclass,
+    mock_function,
+    mock_w00t,
+)
 
 _MOCK = "ci.ray_ci.doc.mock.mock_module"
 
@@ -249,6 +256,20 @@ def test_introspect_annotation_type():
     assert API.introspect_annotation_type(object()) == AnnotationType.UNKNOWN
 
 
+def test_introspect_annotation_type_ignores_inherited_annotations():
+    # `_annotated_type` is a plain class attribute, so an undecorated subclass
+    # reads its base's value. Only an annotation the object owns counts, in
+    # either direction: an inherited @Deprecated must not make a subclass read
+    # as deprecated, and an inherited @PublicAPI must not make one read public.
+    assert (
+        API.introspect_annotation_type(MockDeprecatedClass) == AnnotationType.DEPRECATED
+    )
+    assert (
+        API.introspect_annotation_type(MockDeprecatedSubclass) == AnnotationType.UNKNOWN
+    )
+    assert API.introspect_annotation_type(InheritedAnnotation) == AnnotationType.UNKNOWN
+
+
 def test_canonical_name_of():
     # Classes and functions canonicalize to module.qualname; the object comes
     # from the same resolve() walk used to read the annotation.
@@ -291,6 +312,24 @@ def test_split_resolvable_and_broken_doc_apis():
     assert non_public == [f"{mock_function.__module__}.{mock_function.__qualname__}"]
 
 
+def test_split_resolvable_accepts_subclass_of_deprecated_class():
+    # Regression: documenting an undecorated subclass of a @Deprecated class is
+    # legitimate -- the subclass was never deprecated. Reading the inherited
+    # `_annotated_type` would flag it as "documented API resolves to a
+    # deprecated object" and fail the check on a correct doc entry. The
+    # directly-deprecated base is still flagged, so the rule keeps its teeth.
+    unresolved, non_public = API.split_resolvable_and_broken_doc_apis(
+        [
+            _doc_api(f"{_MOCK}.MockDeprecatedSubclass", CodeType.CLASS),
+            _doc_api(f"{_MOCK}.MockDeprecatedClass", CodeType.CLASS),
+        ],
+        set(),
+    )
+
+    assert unresolved == []
+    assert non_public == [f"{_MOCK}.MockDeprecatedClass"]
+
+
 def test_split_resolvable_flags_private_documented_name():
     # A documented name that resolves but is private-named is non-public.
     unresolved, non_public = API.split_resolvable_and_broken_doc_apis(
@@ -301,6 +340,23 @@ def test_split_resolvable_flags_private_documented_name():
     # name resolves. Guard the resolution-miss branch explicitly.
     assert unresolved == [f"{_MOCK}._private_thing"]
     assert non_public == []
+
+
+def test_split_resolvable_exempts_override_hook():
+    # A documented, underscore-named method tagged as an override hook is a
+    # public extension point, so it is not flagged non-public. A sibling
+    # underscore method with no marker still is -- the exemption must not weaken
+    # detection of genuinely private symbols.
+    unresolved, non_public = API.split_resolvable_and_broken_doc_apis(
+        [
+            _doc_api(f"{_MOCK}.MockClass._mock_forward"),
+            _doc_api(f"{_MOCK}.MockClass._mock_private"),
+        ],
+        set(),
+    )
+
+    assert unresolved == []
+    assert non_public == [f"{_MOCK}.MockClass._mock_private"]
 
 
 def test_find_duplicate_doc_apis():

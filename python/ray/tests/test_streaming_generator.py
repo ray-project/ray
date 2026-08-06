@@ -707,6 +707,148 @@ def test_streaming_generator_exception(shutdown_only):
         ray.get(next(g))
 
 
+# payload_size=0 keeps the error under the normal inline threshold; the large
+# payload pushes the serialized completion error above 100KB. Streaming-generator
+# completion errors are force-inlined at allocate time so the owner can copy them
+# onto eagerly peeked EOF refs without a plasma pin the owner would never free.
+@pytest.mark.parametrize("payload_size", [0, 200 * 1024])
+def test_streaming_generator_eager_peek_propagates_failed_dependency(
+    shutdown_only, payload_size
+):
+    ray.init()
+
+    @ray.remote
+    def fail():
+        raise ValueError("upstream failed" + "x" * payload_size)
+
+    @ray.remote(num_returns="streaming")
+    def downstream(value):
+        yield value
+
+    @ray.remote
+    def get_nested_ref(refs):
+        try:
+            ray.get(refs[0])
+        except ray.exceptions.RayTaskError as error:
+            return type(error.cause).__name__
+        return "NO_ERROR"
+
+    generator = downstream.remote(fail.remote())
+    [peeked_ref] = generator._get_next_ref_n(1)
+
+    # Dependency resolution fails before the generator executor can report its
+    # usual streamed exception item. The eagerly peeked ref must preserve the
+    # task's serialized RayTaskError instead of becoming a clean EOF ref.
+    with pytest.raises(ray.exceptions.RayTaskError) as peeked_error:
+        ray.get(peeked_ref)
+    assert isinstance(peeked_error.value.cause, ValueError)
+    assert ray.get(get_nested_ref.remote([peeked_ref])) == "ValueError"
+
+    with pytest.raises(ray.exceptions.RayTaskError) as completed_error:
+        ray.get(generator.completed())
+    assert isinstance(completed_error.value.cause, ValueError)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="sys.exit() actor death flaky on Windows"
+)
+def test_streaming_generator_eager_peek_propagates_failed_actor_dependency(
+    shutdown_only,
+):
+    # Actor variant of the failed-dependency test: the by-reference dependency
+    # resolves to an ActorDiedError (the upstream actor exits before returning)
+    # rather than an application ValueError. The downstream generator still fails
+    # before reporting a streamed exception item, so its eagerly peeked ref must
+    # preserve the serialized error whose cause is the ActorDiedError.
+    ray.init()
+
+    @ray.remote(max_restarts=0)
+    class Upstream:
+        def run(self):
+            sys.exit(0)
+
+    @ray.remote(num_returns="streaming")
+    def downstream(value):
+        yield value
+
+    @ray.remote
+    def get_nested_ref(refs):
+        try:
+            ray.get(refs[0])
+        except ray.exceptions.RayTaskError as error:
+            return type(error.cause).__name__
+        return "NO_ERROR"
+
+    upstream = Upstream.remote()
+    generator = downstream.remote(upstream.run.remote())
+    [peeked_ref] = generator._get_next_ref_n(1)
+
+    with pytest.raises(ray.exceptions.RayTaskError) as peeked_error:
+        ray.get(peeked_ref)
+    assert isinstance(peeked_error.value.cause, ray.exceptions.ActorDiedError)
+    assert ray.get(get_nested_ref.remote([peeked_ref])) == "ActorDiedError"
+
+    with pytest.raises(ray.exceptions.RayTaskError) as completed_error:
+        ray.get(generator.completed())
+    assert isinstance(completed_error.value.cause, ray.exceptions.ActorDiedError)
+
+
+def test_streaming_generator_eager_peek_cancellation_propagates_to_remote_worker(
+    shutdown_only,
+):
+    ray.init(num_cpus=2)
+
+    @ray.remote(num_returns="streaming")
+    def blocked_generator():
+        time.sleep(30)
+        yield 1
+
+    @ray.remote
+    def get_nested_ref(refs):
+        try:
+            ray.get(refs[0])
+        except ray.exceptions.TaskCancelledError:
+            return True
+        return False
+
+    generator = blocked_generator.remote()
+    [eager_ref] = generator._get_next_ref_n(1)
+    ray.cancel(generator, force=True)
+
+    with pytest.raises(ray.exceptions.TaskCancelledError):
+        ray.get(eager_ref)
+    assert ray.get(get_nested_ref.remote([eager_ref]))
+
+
+def test_streaming_generator_eager_peek_actor_death_propagates_to_remote_worker(
+    shutdown_only,
+):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    class Actor:
+        def blocked_generator(self):
+            time.sleep(30)
+            yield 1
+
+    @ray.remote
+    def get_nested_ref(refs):
+        try:
+            ray.get(refs[0])
+        except ray.exceptions.ActorDiedError:
+            return True
+        return False
+
+    actor = Actor.remote()
+    generator = actor.blocked_generator.remote()
+    [eager_ref] = generator._get_next_ref_n(1)
+    ray.kill(actor)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(eager_ref)
+    assert ray.get(get_nested_ref.remote([eager_ref]))
+
+
 def test_next_sync_timeout_when_generator_ref_unavailable(
     monkeypatch, ray_start_cluster
 ):

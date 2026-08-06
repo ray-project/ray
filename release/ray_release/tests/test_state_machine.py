@@ -76,6 +76,8 @@ class MockIssueDB:
 
 
 class MockRepo:
+    full_name = "anyscale/ray"
+
     def create_issue(self, labels: List[str], title: str, *args, **kwargs):
         label_objs = [MockLabel(label) for label in labels]
         issue = MockIssue(MockIssueDB.issue_id, title=title, labels=label_objs)

@@ -263,6 +263,22 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
+
+# Dependency ordered shutdown deletes deployments in tiers, callers before
+# callees. This is the max time to wait on a tier before advancing past it.
+RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S", 30.0
+)
+
+# Dirty-set health-check reconcile: each control tick polls only replicas with an
+# in-flight check plus a round-robin slice, so a tick costs O(slice) instead of O(N).
+# CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION is how long one full sweep takes as a fraction of the
+# reconcile period (min of health_check_period_s and request_routing_stats_period_s):
+# every replica is checked at least once per fraction x period. Smaller = fresher checks
+# but less speedup; larger = more speedup but staler. Default 0.5 = ~2 sweeps per period.
+CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION = get_env_float_positive(
+    "RAY_SERVE_CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION", 0.5
+)
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
@@ -414,6 +430,11 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # ``http_util`` -- that helper tolerates intermediate proxies that swap
 # ``-`` and ``_`` (nginx, AWS API Gateway, ...).
 SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id")
+
+# Request headers under this prefix are owned by the ingress request router.
+# HAProxy strips client-supplied values before applying the trusted header map
+# returned by /internal/route.
+SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
@@ -704,6 +725,11 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# Ingress request router replicas pinned to each proxy node.
+RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE = get_env_int_positive(
+    "RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 1
+)
+
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (
@@ -946,6 +972,12 @@ RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS = get_env_int(
 RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
     "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False  # type: ignore[arg-type]
 )
+
+# Optional flat header map returned by /internal/route. HAProxy applies these
+# as trusted request headers before forwarding to the selected replica. Headers
+# managed by the router should use SERVE_INGRESS_ROUTER_HEADER_PREFIX so
+# client-supplied values can be stripped before this map is applied.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD = "request_headers"
 
 # Emit per-request metrics from the ingress-request-router data path:
 # - truncated body counter

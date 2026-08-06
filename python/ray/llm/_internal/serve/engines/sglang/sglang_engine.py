@@ -10,6 +10,7 @@ provide feedback at https://github.com/ray-project/ray/issues/61114.
 
 import copy
 import json
+import logging
 import signal
 import time
 import uuid
@@ -41,6 +42,11 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TokenizeResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.core.server.llm_server import (
+    _add_openai_models_retrieve_route,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class SGLangPauseConfig(BaseModel):
@@ -98,6 +104,34 @@ class SGLangServer:
                 "Please run `pip install sglang[all, ray]` to install required "
                 "dependencies."
             ) from e
+
+        # Route SGLang engine metrics through Ray's metric agent (Ray's
+        # Prometheus endpoint / dashboard). RayEngine runs schedulers as Ray
+        # actors and auto-wires the Ray-backed stat_loggers when enable_metrics
+        # is set.
+        if self._llm_config.log_engine_metrics:
+            self.engine_kwargs["enable_metrics"] = True
+            # Tag engine metrics with the Serve deployment/replica so the
+            # out-of-process scheduler series can be grouped per deployment
+            # (they can't be joined to the Serve counter on WorkerId).
+            from ray import serve
+            from ray.serve.exceptions import RayServeException
+
+            try:
+                rid = serve.get_replica_context().replica_id
+                self.engine_kwargs.setdefault(
+                    "extra_metric_labels",
+                    {
+                        "application": rid.deployment_id.app_name,
+                        "deployment": rid.deployment_id.name,
+                        "replica": rid.unique_id,
+                    },
+                )
+            except RayServeException:
+                logger.warning(
+                    "No Serve replica context; SGLang metrics will not carry "
+                    "deployment/replica labels."
+                )
 
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
         # in the minimum supported SGLang version for this example.
@@ -243,6 +277,53 @@ class SGLangServer:
         # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
         # this integration does not run. Keep the protocol hook as a no-op.
         return
+
+    async def __serve_build_asgi_app__(self) -> Any:
+        """Return SGLang's native OpenAI ASGI app for Ray Serve direct streaming.
+
+        When ``RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING`` is set, Ray Serve serves the
+        engine's own ASGI app (behind HAProxy) instead of routing every request
+        through the Python ingress. SGLang builds that app in ``launch_server``; here
+        we wire the same app to this replica's in-process ``Engine``.
+
+        Two adjustments are needed relative to ``launch_server``:
+
+        - Force single-tokenizer mode so the app lifespan skips the multi-tokenizer
+          shared-memory bootstrap, which only exists under ``launch_server``.
+        - Skip SGLang's built-in warmup (``skip_server_warmup``), because the
+          default warmup issues a request to ``server_args.port``, which is not
+          where Ray Serve listens. Skipping it also transitions the tokenizer
+          manager's status to ``Up``, which the ``/health`` endpoints require.
+        """
+        # TODO(sgl-project/sglang#31356): replace this module-global wiring with a
+        # per-instance app builder once SGLang provides one.
+        from sglang.srt.entrypoints.http_server import (
+            _GlobalState,
+            app,
+            set_global_state,
+        )
+
+        # Mirror launch_server: _GlobalState.scheduler_info is the first scheduler's
+        # info, which the Engine exposes as _scheduler_init_result.scheduler_infos.
+        scheduler_info = self.engine._scheduler_init_result.scheduler_infos[0]
+
+        set_global_state(
+            _GlobalState(
+                tokenizer_manager=self.engine.tokenizer_manager,
+                template_manager=self.engine.template_manager,
+                scheduler_info=scheduler_info,
+            )
+        )
+        # Copy ``server_args`` so we don't mutate the engine's own instance.
+        server_args = copy.copy(self.engine.server_args)
+        server_args.skip_server_warmup = True
+        app.is_single_tokenizer_mode = True
+        app.server_args = server_args
+        app.warmup_thread_kwargs = {"server_args": server_args}
+        # Match the OpenAiIngress surface: SGLang's native app lists models at
+        # GET /v1/models but has no single-model retrieve route.
+        _add_openai_models_retrieve_route(app, self._llm_config)
+        return app
 
     def _build_generate_kwargs(
         self, request: Any, prompt: Any, stream: bool
