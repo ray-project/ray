@@ -1,6 +1,7 @@
 import collections
 import copy
 import html
+import inspect
 import itertools
 import logging
 import time
@@ -218,11 +219,20 @@ def _warn_on_ray_remote_args_fn(
 
 def _warn_on_ray_remote_args(ray_remote_args: Dict[str, Any]) -> None:
     if ray_remote_args:
+        stacklevel = 1
+        frame = inspect.currentframe()
+        try:
+            while frame is not None and frame.f_code.co_filename == __file__:
+                stacklevel += 1
+                frame = frame.f_back
+        finally:
+            del frame
+
         warnings.warn(
             "`ray_remote_args` is deprecated and will be removed in Ray 2.64. "
             "Use the named scheduling parameters instead.",
             RayDeprecationWarning,
-            stacklevel=3,
+            stacklevel=stacklevel,
         )
 
 
@@ -1077,6 +1087,9 @@ class Dataset:
         expr: Expr,
         *,
         compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         label_selector: Optional[Dict[str, str]] = None,
         fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_calls: Optional[int] = None,
@@ -1144,6 +1157,9 @@ class Dataset:
                   actor pool of ``n`` workers.
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use
                   an autoscaling actor pool from ``m`` to ``n`` workers.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
             label_selector: Labels required on the node where each worker runs.
             fallback_strategy: Alternative label requirements that Ray tries in order
                 when ``label_selector`` can't be satisfied.
@@ -1170,6 +1186,12 @@ class Dataset:
         from ray.data.expressions import DownloadExpr
 
         _warn_on_ray_remote_args(ray_remote_args)
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
         ray_remote_args = _merge_named_ray_remote_args(
             ray_remote_args,
             label_selector=label_selector,
@@ -1209,6 +1231,9 @@ class Dataset:
         batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
         concurrency: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         label_selector: Optional[Dict[str, str]] = None,
         fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_calls: Optional[int] = None,
@@ -1257,6 +1282,9 @@ class Dataset:
                 If ``"numpy"``, batches are ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
             label_selector: Labels required on the node where each worker runs.
             fallback_strategy: Alternative label requirements that Ray tries in order
                 when ``label_selector`` can't be satisfied.
@@ -1343,6 +1371,9 @@ class Dataset:
             compute=compute,
             concurrency=concurrency,
             zero_copy_batch=True,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
             label_selector=label_selector,
             fallback_strategy=fallback_strategy,
             max_calls=max_calls,
@@ -1360,6 +1391,9 @@ class Dataset:
         *,
         compute: Optional[str] = None,
         concurrency: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         label_selector: Optional[Dict[str, str]] = None,
         fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_calls: Optional[int] = None,
@@ -1401,6 +1435,9 @@ class Dataset:
                 during materialization.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
             label_selector: Labels required on the node where each worker runs.
             fallback_strategy: Alternative label requirements that Ray tries in order
                 when ``label_selector`` can't be satisfied.
@@ -1457,6 +1494,9 @@ class Dataset:
                     keep,
                     compute=compute,
                     concurrency=concurrency,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
                     label_selector=label_selector,
                     fallback_strategy=fallback_strategy,
                     max_calls=max_calls,
@@ -1477,6 +1517,9 @@ class Dataset:
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
             label_selector=label_selector,
             fallback_strategy=fallback_strategy,
             max_calls=max_calls,
@@ -1494,6 +1537,9 @@ class Dataset:
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         label_selector: Optional[Dict[str, str]] = None,
         fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_calls: Optional[int] = None,
@@ -1537,6 +1583,9 @@ class Dataset:
                 dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
             label_selector: Labels required on the node where each worker runs.
             fallback_strategy: Alternative label requirements that Ray tries in order
                 when ``label_selector`` can't be satisfied.
@@ -1579,6 +1628,12 @@ class Dataset:
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
         compute = TaskPoolStrategy(size=concurrency)
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
         ray_remote_args = _merge_named_ray_remote_args(
             ray_remote_args,
             label_selector=label_selector,
@@ -1605,6 +1660,9 @@ class Dataset:
         names: Union[List[str], Dict[str, str]],
         *,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         label_selector: Optional[Dict[str, str]] = None,
         fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_calls: Optional[int] = None,
@@ -1657,6 +1715,9 @@ class Dataset:
             names: A dictionary that maps old column names to new column names, or a
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
             label_selector: Labels required on the node where each worker runs.
             fallback_strategy: Alternative label requirements that Ray tries in order
                 when ``label_selector`` can't be satisfied.
@@ -1738,6 +1799,12 @@ class Dataset:
         # Construct the plan and project operation
 
         compute = TaskPoolStrategy(size=concurrency)
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
         ray_remote_args = _merge_named_ray_remote_args(
             ray_remote_args,
             label_selector=label_selector,

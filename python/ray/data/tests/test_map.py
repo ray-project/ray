@@ -5,6 +5,7 @@ import os
 import random
 import threading
 import time
+import warnings
 from typing import Iterable, Iterator, List, Literal, Optional
 from unittest.mock import Mock
 
@@ -99,15 +100,28 @@ def test_transform_ray_remote_args_deprecation_warning(shutdown_only):
             scheduling_strategy="SPREAD",
         )
     assert len(add_column_warnings) == 1
+    assert add_column_warnings[0].filename == __file__
     with pytest.warns(
         RayDeprecationWarning, match="ray_remote_args"
     ) as drop_columns_warnings:
         ds.drop_columns(["id"], scheduling_strategy="SPREAD")
     assert len(drop_columns_warnings) == 1
+    assert drop_columns_warnings[0].filename == __file__
     with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
         ds.select_columns(["id"], scheduling_strategy="SPREAD")
     with pytest.warns(RayDeprecationWarning, match="ray_remote_args"):
         ds.rename_columns({"id": "renamed"}, scheduling_strategy="SPREAD")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        ds.add_column(
+            "copy",
+            lambda batch: batch["id"],
+            batch_format="numpy",
+            num_cpus=0,
+            num_gpus=0,
+            memory=1,
+        )
 
 
 def test_invalid_max_tasks_in_flight_raises_error():
