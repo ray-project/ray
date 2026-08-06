@@ -133,13 +133,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
   return core_worker_process->TryGetCoreWorker();
 }
 
-bool CoreWorkerProcess::HasCoreWorker() {
-  return core_worker_process != nullptr && core_worker_process->HasCoreWorker();
-}
-
-bool CoreWorkerProcess::ShouldInterruptTaskForCancellation() {
-  return core_worker_process != nullptr &&
-         core_worker_process->ShouldInterruptTaskForCancellation();
+std::optional<bool> CoreWorkerProcess::ShouldInterruptTaskForCancellation() {
+  if (core_worker_process == nullptr) {
+    return std::nullopt;
+  }
+  return core_worker_process->ShouldInterruptTaskForCancellation();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
@@ -1043,18 +1041,16 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::TryGetCoreWorker() const {
   return read_locked.Get();
 }
 
-bool CoreWorkerProcessImpl::HasCoreWorker() const {
-  const auto read_locked = core_worker_.LockForRead();
-  return read_locked.Get() != nullptr;
-}
-
-bool CoreWorkerProcessImpl::ShouldInterruptTaskForCancellation() const {
+std::optional<bool> CoreWorkerProcessImpl::ShouldInterruptTaskForCancellation() const {
   const auto read_locked = core_worker_.LockForRead();
   // Bind by reference. Copying the shared_ptr would let a caller that outlives
   // ShutdownDriver() become the last owner and run ~CoreWorker on its own thread, which
   // deadlocks when ~MutableObjectProvider joins that same thread.
   const auto &worker = read_locked.Get();
-  return worker != nullptr && worker->ShouldInterruptTaskForCancellation();
+  if (worker == nullptr) {
+    return std::nullopt;
+  }
+  return worker->ShouldInterruptTaskForCancellation();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {

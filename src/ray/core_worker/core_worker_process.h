@@ -16,6 +16,7 @@
 
 #include <boost/thread.hpp>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "ray/common/metrics.h"
@@ -92,18 +93,12 @@ class CoreWorkerProcess {
   /// \return The `CoreWorker` instance.
   static std::shared_ptr<CoreWorker> TryGetWorker();
 
-  /// Whether the core worker for this process exists. False once ray.shutdown() has
-  /// cleared it, which background threads can use to stop instead of calling
-  /// GetCoreWorker() and exiting the process.
-  static bool HasCoreWorker();
-
   /// Whether a running task has been marked for cancellation and should be interrupted.
-  ///
-  /// Unlike GetCoreWorker(), returns false rather than exiting the process when the core
-  /// worker is already gone, so background threads can poll this during shutdown. No
-  /// reference to the CoreWorker escapes, which keeps a caller from becoming its last
-  /// owner.
-  static bool ShouldInterruptTaskForCancellation();
+  /// Empty once the core worker is gone, so that background threads polling during
+  /// shutdown can tell that case apart in one read instead of exiting the process the way
+  /// GetCoreWorker() does. No reference to the CoreWorker escapes, which keeps a caller
+  /// from becoming its last owner.
+  static std::optional<bool> ShouldInterruptTaskForCancellation();
 
   /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();
@@ -147,9 +142,7 @@ class CoreWorkerProcessImpl {
   /// Try to get core worker. Returns nullptr if core worker doesn't exist.
   std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
 
-  bool HasCoreWorker() const;
-
-  bool ShouldInterruptTaskForCancellation() const;
+  std::optional<bool> ShouldInterruptTaskForCancellation() const;
 
   std::shared_ptr<CoreWorker> CreateCoreWorker(CoreWorkerOptions options,
                                                const WorkerID &worker_id);

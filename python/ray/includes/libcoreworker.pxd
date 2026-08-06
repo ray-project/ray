@@ -500,10 +500,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CCoreWorker &GetCoreWorker()
 
         @staticmethod
-        c_bool HasCoreWorker()
-
-        @staticmethod
-        c_bool ShouldInterruptTaskForCancellation()
+        optional[c_bool] ShouldInterruptTaskForCancellation()
 
         @staticmethod
         void Shutdown()
