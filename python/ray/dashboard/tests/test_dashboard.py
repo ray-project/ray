@@ -1707,8 +1707,8 @@ _COMPONENT_CPU_METRIC = "ray_component_cpu_percentage"
 _record_metrics_once = DashboardHead._record_dashboard_metrics.__wrapped__
 
 
-# Any non-zero reading works; the tests only care that a reused handle reports
-# something other than the meaningless first-call 0.0.
+# Any non-zero value works; the tests only check that a reused handle stops
+# reading 0.0.
 _STUB_CPU_PERCENTAGE = 12.5
 
 
@@ -1728,19 +1728,18 @@ def _idle_process():
 def _stub_cpu_percent(monkeypatch):
     """Emulate psutil's cpu_percent() contract without spending any CPU.
 
-    psutil measures CPU relative to the previous call on the *same* Process
-    object and reports a meaningless 0.0 the first time a given object is asked.
-    Producing a real non-zero reading would mean pegging a core for long enough
-    to register, so the contract is emulated instead: a handle reads 0.0 until it
-    is reused. `as_dict(attrs=["cpu_percent", ...])` dispatches here, which is
-    how the code under test reads the value.
+    psutil measures CPU against the previous call on the same Process object and
+    reads 0.0 the first time an object is asked. Getting a real non-zero reading
+    means pegging a core long enough to register, so this emulates the contract
+    instead: a handle reads 0.0 until it is reused. The code under test reads the
+    value through `as_dict(attrs=["cpu_percent", ...])`, which dispatches here.
     """
 
     def cpu_percent(self, *args, **kwargs):
         if getattr(self, "_asked_before", False):
             return _STUB_CPU_PERCENTAGE
-        # Marking the instance rather than its pid or id() is what makes this
-        # emulate psutil: a rebuilt handle for the same pid starts over at 0.0.
+        # Mark the instance, not the pid: a rebuilt handle for the same pid has
+        # to start over at 0.0, the way psutil behaves.
         self._asked_before = True
         return 0.0
 
@@ -1855,8 +1854,8 @@ async def test_restarted_subprocess_module_cpu_percentage_becomes_nonzero(
         handle = _fake_subprocess_module_handle(first_process)
         await _record_twice(head, [handle])
 
-    # Leaving the block above reaped the first process. Simulate the health
-    # check restarting the module under a new pid.
+    # Leaving the block above reaped the first process, so this stands in for the
+    # health check restarting the module under a new pid.
     with _idle_process() as second_process:
         handle.process = second_process
         assert second_process.pid != first_process.pid

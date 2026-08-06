@@ -132,12 +132,10 @@ class DashboardHead:
         self.ip = node_ip_address
         self.pid = os.getpid()
         self.dashboard_proc = psutil.Process()
-        # pid -> psutil.Process of a subprocess module. The handles are kept
-        # across metric-record cycles because psutil.Process.cpu_percent() is
-        # measured relative to the previous call on the *same* object: the first
-        # call on a freshly created object always returns a meaningless 0.0.
-        # The reporter agent caches its handles for the same reason, see
-        # https://github.com/ray-project/ray/issues/29848
+        # pid -> psutil.Process, reused across record cycles: cpu_percent()
+        # measures against the previous call on the same object and reads 0.0
+        # on the first one. The reporter agent caches handles for the same
+        # reason, see https://github.com/ray-project/ray/issues/29848
         self._subprocess_module_procs: Dict[int, psutil.Process] = {}
         self.proxy_server_url = proxy_server_url
 
@@ -387,12 +385,11 @@ class DashboardHead:
                     subprocess_module_handle.module_cls.__name__,
                 )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
-                # The module may have exited between a health check and this
-                # cycle, either before its handle is built or before it is read.
-                # Skip it rather than abandoning the remaining modules, the
-                # stale-handle cleanup below, and the event loop metrics.
+                # A module can exit between a health check and this cycle.
+                # Letting that escape would cost every later module in this
+                # loop its metrics too.
                 continue
-        # Drop the handles of modules that exited or restarted under a new pid.
+        # A restarted module comes back under a new pid, leaving its old handle here.
         for stale_pid in self._subprocess_module_procs.keys() - live_pids:
             del self._subprocess_module_procs[stale_pid]
 
@@ -416,13 +413,12 @@ class DashboardHead:
         against. See the comment on self._subprocess_module_procs.
 
         Raises psutil.NoSuchProcess or psutil.AccessDenied if the module's
-        process is gone or inaccessible. Callers recording one module at a time
-        handle that per module.
+        process is gone or inaccessible.
         """
         proc = self._subprocess_module_procs.get(pid)
-        # is_running() is False once the process is gone, and also once the pid
-        # has been reused by an unrelated process, in which case the cached
-        # handle's baseline no longer describes the process being measured.
+        # is_running() is False when the process is gone, and when its pid has
+        # been reused by something else, where the cached baseline would belong
+        # to a different process.
         if proc is None or not proc.is_running():
             proc = psutil.Process(pid)
             self._subprocess_module_procs[pid] = proc
