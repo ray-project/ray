@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "ray/core_worker/core_worker.h"
+#include "ray/observability/ray_task_event_recorder.h"
 #include "ray/util/process_utils.h"
 
 namespace ray {
@@ -77,6 +78,12 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
 
   core_worker->task_event_buffer_->FlushEvents(/*forced=*/true);
   core_worker->task_event_buffer_->Stop();
+
+  // Flush and stop the task-event RayEventRecorder before its dedicated io thread (owned
+  // by CoreWorkerProcessImpl) is torn down.
+  if (core_worker->ray_task_event_recorder_ != nullptr) {
+    core_worker->ray_task_event_recorder_->StopExportingEvents();
+  }
 
   if (core_worker->options_.worker_type != WorkerType::WORKER) {
     core_worker->event_loops_running_ = false;
@@ -338,7 +345,8 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
   core_worker->RecordMetrics();
 
   if (core_worker->options_.worker_type == WorkerType::DRIVER &&
-      core_worker->task_event_buffer_->Enabled() &&
+      (core_worker->task_event_buffer_->Enabled() ||
+       observability::RayTaskEventRecorder::Enabled()) &&
       !RayConfig::instance().task_events_skip_driver_for_test()) {
     auto task_event = std::make_unique<worker::TaskStatusEvent>(
         core_worker->worker_context_->GetCurrentTaskID(),
@@ -350,7 +358,13 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
         core_worker->worker_context_->GetCurrentActorID().IsNil(),
         core_worker->options_.session_name,
         core_worker->GetCurrentNodeId());
-    core_worker->task_event_buffer_->AddTaskEvent(std::move(task_event));
+    if (observability::RayTaskEventRecorder::Enabled()) {
+      core_worker->ray_task_event_recorder_->AddEvents(
+          task_event->ToRayEventInterfaces());
+    }
+    if (core_worker->task_event_buffer_->Enabled()) {
+      core_worker->task_event_buffer_->AddTaskEvent(std::move(task_event));
+    }
   }
 
   opencensus::stats::StatsExporter::ExportNow();
