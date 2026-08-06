@@ -309,7 +309,7 @@ For `HTTPMode` and `SidecarMode`, there is no standalone submitter pod, so no ad
 
 ### Standalone clusters with clusterSelector
 
-When a `RayJob` targets a pre-existing cluster with `clusterSelector`, the cluster has no `RayJob` owner reference. The operator can't automatically add a submitter ingress rule. In `K8sJobMode`, KubeRay stamps the submitter pod with stable identity labels, so you can match them directly:
+When a `RayJob` targets a pre-existing cluster with `clusterSelector`, the cluster has no `RayJob` owner reference. The operator can't automatically add a submitter ingress rule. In `K8sJobMode`, KubeRay stamps the submitter pod with stable identity labels, so you can match them directly. This allows any RayJob submitter in the namespace to reach the head dashboard port.
 
 ```yaml
 spec:
@@ -320,14 +320,13 @@ spec:
       - from:
         - podSelector:
             matchLabels:
-              ray.io/originated-from-cr-name: <rayjob-name>
               ray.io/originated-from-crd: RayJob
         ports:
         - port: 8265
           protocol: TCP
 ```
 
-Replace `<rayjob-name>` with the name of the submitting `RayJob`.
+To restrict access to a single specific job, add ray.io/originated-from-cr-name: <rayjob-name> to the matchLabels.
 
 ## Custom rules
 
