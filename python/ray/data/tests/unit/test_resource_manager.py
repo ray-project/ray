@@ -1,8 +1,10 @@
 import warnings
+from unittest.mock import MagicMock
 
 import pytest
 
 import ray
+from ray.data._internal.execution import create_resource_allocator
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
@@ -172,133 +174,6 @@ def test_physical_apply_transform_rejects_in_place_input_mutation():
         root._apply_transform(transform)
 
 
-def test_does_not_double_count_usage_from_union():
-    """Regression test for https://github.com/ray-project/ray/pull/61040."""
-    # Create a mock topology:
-    #
-    #   input1 ───┐
-    #             ├─▶ union_op
-    #   input2 ───┘
-    input1 = PhysicalOperator("op1", [], DataContext.get_current())
-    input2 = PhysicalOperator("op2", [], DataContext.get_current())
-    union_op = UnionOperator(DataContext.get_current(), input1, input2)
-    counter = StubBlockRefCounter()
-    topology = build_streaming_topology(union_op, ExecutionOptions(), counter)
-
-    # Create a resource manager.
-    total_resources = ExecutionResources(cpu=0, object_store_memory=2)
-    resource_manager = ResourceManager(
-        topology,
-        ExecutionOptions(),
-        lambda: total_resources,
-        DataContext.get_current(),
-        counter,
-    )
-
-    # Create two 1-byte `RefBundle`s.
-    block_ref1 = ray.ObjectRef(b"1" * 28)
-    block_ref2 = ray.ObjectRef(b"2" * 28)
-    block_metadata = BlockMetadata(
-        num_rows=1, size_bytes=1, input_files=None, exec_stats=None
-    )
-    bundle1 = RefBundle(
-        [BlockEntry(block_ref1, block_metadata)], owns_blocks=True, schema=None
-    )
-    bundle2 = RefBundle(
-        [BlockEntry(block_ref2, block_metadata)], owns_blocks=True, schema=None
-    )
-
-    # Add two 1-byte `RefBundle` to the union operator.
-    topology[union_op].add_output(bundle1)
-    topology[union_op].add_output(bundle2)
-    # Blocks are attributed to their original producer, not union_op.
-    counter.on_block_produced(block_ref1, 1, input1.id)
-    counter.on_block_produced(block_ref2, 1, input2.id)
-    resource_manager.update_usages()
-
-    # The total object store memory usage should be 2. If the resource manager double-
-    # counts the usage from the union operator, the total object store memory usage can
-    # be greater than 2.
-    total_object_store_memory = sum(
-        [
-            resource_manager.get_op_usage(
-                op, include_ineligible_downstream=True
-            ).object_store_memory
-            for op in topology.keys()
-        ]
-    )
-    assert total_object_store_memory == 2, total_object_store_memory
-
-
-def test_union_memory_attribution_internal_inqueue():
-    """Test that per-input attribution correctly charges each upstream operator
-    only for the blocks it produced in the union's internal input queue.
-
-    When preserve_order=True, the union operator buffers blocks per-input.
-    The resource manager should attribute each input buffer's memory only to
-    the corresponding upstream operator, not to all upstream operators.
-    """
-    # Create a mock topology:
-    #
-    #   input1 ───┐
-    #             ├─▶ union_op
-    #   input2 ───┘
-    input1 = PhysicalOperator("op1", [], DataContext.get_current())
-    input2 = PhysicalOperator("op2", [], DataContext.get_current())
-    union_op = UnionOperator(DataContext.get_current(), input1, input2)
-
-    options = ExecutionOptions()
-    options.preserve_order = True
-    counter = StubBlockRefCounter()
-    topology = build_streaming_topology(union_op, options, counter)
-
-    # Create a resource manager.
-    total_resources = ExecutionResources(cpu=0, object_store_memory=200)
-    resource_manager = ResourceManager(
-        topology,
-        options,
-        lambda: total_resources,
-        DataContext.get_current(),
-        counter,
-    )
-
-    # Create two 10-byte RefBundles with distinct block refs (simulates real execution
-    # where each block from a source has its own ObjectRef).
-    block_ref1 = ray.ObjectRef(b"1" * 28)
-    block_ref2 = ray.ObjectRef(b"2" * 28)
-    block_metadata = BlockMetadata(
-        num_rows=1, size_bytes=10, input_files=None, exec_stats=None
-    )
-    bundle1 = RefBundle(
-        [BlockEntry(block_ref1, block_metadata)], owns_blocks=True, schema=None
-    )
-    bundle2 = RefBundle(
-        [BlockEntry(block_ref2, block_metadata)], owns_blocks=True, schema=None
-    )
-
-    # Add blocks only to input2's buffer inside the union operator.
-    # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
-    union_op.add_input(bundle1, input_index=1)
-    union_op.add_input(bundle2, input_index=1)
-    # Blocks in union's input buffer are attributed to their producer (input2).
-    counter.on_block_produced(block_ref1, 10, input2.id)
-    counter.on_block_produced(block_ref2, 10, input2.id)
-
-    resource_manager.update_usages()
-
-    # input2 should be charged for its blocks in the union's input buffer (20 bytes).
-    input2_usage = resource_manager.get_op_usage(
-        input2, include_ineligible_downstream=True
-    ).object_store_memory
-    # input1 should NOT be charged for input2's blocks (0 bytes from union inqueue).
-    input1_usage = resource_manager.get_op_usage(
-        input1, include_ineligible_downstream=True
-    ).object_store_memory
-
-    assert input1_usage == 0
-    assert input2_usage == 20
-
-
 def test_union_memory_attribution_outqueue():
     """Test that Union's external output queue memory is attributed per-producer
     to upstream operators, avoiding double-counting.
@@ -370,6 +245,75 @@ def test_union_memory_attribution_outqueue():
     assert total == 40, f"Expected 40, got {total}"
 
 
+def test_union_memory_attribution_internal_inqueue():
+    """Test that per-input attribution correctly charges each upstream operator
+    only for the blocks it produced in the union's internal input queue.
+
+    When preserve_order=True, the union operator buffers blocks per-input.
+    The resource manager should attribute each input buffer's memory only to
+    the corresponding upstream operator, not to all upstream operators.
+    """
+    # Create a mock topology:
+    #
+    #   input1 ───┐
+    #             ├─▶ union_op
+    #   input2 ───┘
+    input1 = PhysicalOperator("op1", [], DataContext.get_current())
+    input2 = PhysicalOperator("op2", [], DataContext.get_current())
+    union_op = UnionOperator(DataContext.get_current(), input1, input2)
+
+    options = ExecutionOptions()
+    options.preserve_order = True
+    counter = StubBlockRefCounter()
+    topology = build_streaming_topology(union_op, options, counter)
+
+    # Create a resource manager.
+    total_resources = ExecutionResources(cpu=0, object_store_memory=200)
+    resource_manager = ResourceManager(
+        topology,
+        options,
+        lambda: total_resources,
+        DataContext.get_current(),
+        counter,
+    )
+
+    # Create two 10-byte RefBundles with distinct block refs (simulates real execution
+    # where each block from a source has its own ObjectRef).
+    block_ref1 = ray.ObjectRef(b"1" * 28)
+    block_ref2 = ray.ObjectRef(b"2" * 28)
+    block_metadata = BlockMetadata(
+        num_rows=1, size_bytes=10, input_files=None, exec_stats=None
+    )
+    bundle1 = RefBundle(
+        [BlockEntry(block_ref1, block_metadata)], owns_blocks=True, schema=None
+    )
+    bundle2 = RefBundle(
+        [BlockEntry(block_ref2, block_metadata)], owns_blocks=True, schema=None
+    )
+
+    # Add blocks only to input2's buffer inside the union operator.
+    # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
+    union_op.add_input(bundle1, input_index=1)
+    union_op.add_input(bundle2, input_index=1)
+    # Blocks in union's input buffer are attributed to their producer (input2).
+    counter.on_block_produced(block_ref1, 10, input2.id)
+    counter.on_block_produced(block_ref2, 10, input2.id)
+
+    resource_manager.update_usages()
+
+    # input2 should be charged for its blocks in the union's input buffer (20 bytes).
+    input2_usage = resource_manager.get_op_usage(
+        input2, include_ineligible_downstream=True
+    ).object_store_memory
+    # input1 should NOT be charged for input2's blocks (0 bytes from union inqueue).
+    input1_usage = resource_manager.get_op_usage(
+        input1, include_ineligible_downstream=True
+    ).object_store_memory
+
+    assert input1_usage == 0
+    assert input2_usage == 20
+
+
 def test_union_memory_attribution_through_limit():
     """Test that producer attribution survives through other ineligible operators
     (e.g., Limit) so that per-producer memory attribution works for longer
@@ -434,12 +378,10 @@ def test_union_memory_attribution_through_limit():
     topology[union_op].add_output(bundle_b)
     counter.on_block_produced(ref_b, 10, input1.id)
 
-    # Feed a tagged bundle through limit_out.
+    # Bundle in limit_out's outqueue, tagged with input2's id.
     ref_c, bundle_c = make_bundle(b"c", 30)
-    limit_out._add_input_inner(bundle_c, input_index=0)
+    topology[limit_out].add_output(bundle_c)
     counter.on_block_produced(ref_c, 30, input2.id)
-    while limit_out.has_next():
-        topology[limit_out].add_output(limit_out.get_next())
 
     resource_manager.update_usages()
 
@@ -456,6 +398,28 @@ def test_union_memory_attribution_through_limit():
 
     total = get_attributed_usage(input1) + get_attributed_usage(input2)
     assert total == 50, f"Expected 50, got {total}"
+
+
+def test_union_operator_not_allocated_resources(restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.op_resource_reservation_enabled = True
+    input_op1 = PhysicalOperator("input1", [], ctx)
+    input_op2 = PhysicalOperator("input2", [], ctx)
+    union_op = UnionOperator(ctx, input_op1, input_op2)
+
+    counter = StubBlockRefCounter()
+    topo = build_streaming_topology(union_op, ExecutionOptions(), counter)
+    resource_manager = ResourceManager(
+        topo, ExecutionOptions(), MagicMock(), ctx, counter
+    )
+    allocator = create_resource_allocator(resource_manager, ctx)
+    assert allocator is not None
+
+    allocator.update_budgets(
+        limits=ExecutionResources(cpu=1, gpu=0, object_store_memory=1000)
+    )
+    allocation = allocator.get_allocation(union_op)
+    assert allocation is None
 
 
 if __name__ == "__main__":
