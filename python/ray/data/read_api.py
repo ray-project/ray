@@ -5054,6 +5054,64 @@ def read_unity_catalog(
     raise ValueError(f"Unsupported data_format for read_unity_catalog: {fmt!r}")
 
 
+def _get_column_mapping_mode(dt) -> Optional[str]:
+    """Return the Delta column-mapping mode, if configured."""
+    metadata = dt.metadata()
+    return metadata.configuration.get("delta.columnMapping.mode") if metadata else None
+
+
+def _build_column_name_mapping(dt):
+    """Build validated physical-to-logical and logical-to-physical maps."""
+    physical_to_logical = {}
+    logical_to_physical = {}
+    for field in dt.schema().fields:
+        physical_name = (field.metadata or {}).get("delta.columnMapping.physicalName")
+        if physical_name is None:
+            raise NotImplementedError(
+                f"Column {field.name!r} has no physical name mapping in Delta metadata."
+            )
+        if physical_name in physical_to_logical:
+            raise NotImplementedError(
+                f"Physical column name {physical_name!r} has multiple mappings."
+            )
+        physical_to_logical[physical_name] = field.name
+        logical_to_physical[field.name] = physical_name
+    return physical_to_logical, logical_to_physical
+
+
+class _ColumnMappingParquetDatasource(ParquetDatasource):
+    """Physical Parquet datasource exposing logical Delta column names."""
+
+    def supports_predicate_pushdown(self) -> bool:
+        # Logical predicates must execute after physical-name restoration.
+        return False
+
+    def supports_projection_pushdown(self) -> bool:
+        # Logical projection must run after physical-name restoration too.
+        return False
+
+
+def _validate_name_mapped_table(dt):
+    """Reject Delta features outside this temporary compatibility adapter."""
+    metadata = dt.metadata()
+    mode = metadata.configuration.get("delta.columnMapping.mode") if metadata else None
+    if mode == "id":
+        raise NotImplementedError("Delta id column mapping is not supported.")
+    if mode != "name":
+        raise NotImplementedError(
+            f"Delta column mapping mode {mode!r} is not supported; only 'name' is."
+        )
+    if "deletionVectors" in (dt.protocol().reader_features or []):
+        raise NotImplementedError(
+            "Deletion Vectors are not supported by the Ray column-mapping adapter."
+        )
+    for field in dt.schema().fields:
+        if str(field.type).lower().startswith(("struct", "list", "map", "array")):
+            raise NotImplementedError(
+                "Nested columns are not supported by the Ray column-mapping adapter."
+            )
+
+
 @PublicAPI(stability="alpha")
 def read_delta(
     path: Union[str, List[str]],
@@ -5216,12 +5274,30 @@ def read_delta(
         pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
     except Exception as e:
         error_msg = str(e)
-        # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
         if "deletionVectors" in error_msg:
             raise RuntimeError(
                 f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
                 f"Error: {error_msg}\n"
             ) from e
+        is_column_mapping_error = (
+            "columnMapping" in error_msg or "column mapping" in error_msg.lower()
+        )
+        if _get_column_mapping_mode(dt) is not None and is_column_mapping_error:
+            return _read_delta_with_column_mapping(
+                dt,
+                filesystem=filesystem,
+                columns=columns,
+                arrow_parquet_args=arrow_parquet_args,
+                shuffle=shuffle,
+                include_paths=include_paths,
+                parallelism=parallelism,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                ray_remote_args=ray_remote_args,
+                concurrency=concurrency,
+                override_num_blocks=override_num_blocks,
+            )
         raise
 
     datasource = ParquetDatasource.from_pyarrow_dataset(
@@ -5232,6 +5308,183 @@ def read_delta(
         include_paths=include_paths,
     )
 
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+def _read_delta_with_column_mapping(
+    dt,
+    filesystem,
+    columns,
+    arrow_parquet_args,
+    shuffle,
+    include_paths,
+    parallelism,
+    num_cpus,
+    num_gpus,
+    memory,
+    ray_remote_args,
+    concurrency,
+    override_num_blocks,
+):
+    """Read a flat name-mapped Delta table until delta-rs supports it natively."""
+    import pyarrow as pa
+    import pyarrow.dataset as pds
+    import pyarrow.fs as pafs
+
+    _validate_name_mapped_table(dt)
+    physical_to_logical, logical_to_physical = _build_column_name_mapping(dt)
+    arrow_schema = pa.schema(dt.schema().to_arrow())
+
+    metadata = dt.metadata()
+    raw_partition_columns = metadata.partition_columns if metadata else []
+    logical_partition_columns = []
+    for partition_column in raw_partition_columns:
+        logical_name = physical_to_logical.get(partition_column, partition_column)
+        if logical_name not in logical_to_physical:
+            raise NotImplementedError(
+                f"Delta partition column {partition_column!r} is absent from schema."
+            )
+        logical_partition_columns.append(logical_name)
+
+    if columns is None:
+        scan_columns = None
+    else:
+        scan_columns = []
+        for column in columns:
+            if column not in logical_to_physical:
+                raise ValueError(f"Requested column {column!r} does not exist.")
+            scan_columns.append(
+                column
+                if column in logical_partition_columns
+                else logical_to_physical[column]
+            )
+
+    if "filter" in arrow_parquet_args:
+        raise NotImplementedError(
+            "PyArrow filter pushdown is not supported for Delta name column mapping. "
+            "Apply Dataset.filter() after read_delta() instead."
+        )
+
+    # Catalog resolution above already gives a table-rooted filesystem. The
+    # Delta storage handler is also table-rooted, so never wrap either twice.
+    table_uri = dt.table_uri
+    table_uri_filesystem, _ = pafs.FileSystem.from_uri(table_uri)
+    if filesystem is None:
+        from deltalake.fs import DeltaStorageHandler
+
+        handler = DeltaStorageHandler.from_table(
+            dt._table,
+            dt._storage_options,
+            dt._table.get_add_file_sizes(),
+        )
+        table_filesystem = pafs.PyFileSystem(handler)
+    else:
+        table_filesystem = filesystem
+
+    # Add actions contain table-relative paths and only files active in this
+    # snapshot. They also contain partition values, unlike raw Parquet files.
+    add_actions = pa.table(dt.get_add_actions(flatten=True)).to_pydict()
+    paths = add_actions.get("path", [])
+    file_sizes = add_actions.get("size_bytes", [])
+
+    # Use current Delta schema rather than one arbitrary Parquet file. Arrow
+    # null-fills evolved fields absent from old fragments.
+    physical_fields = []
+    for field in arrow_schema:
+        if field.name in logical_partition_columns:
+            physical_fields.append(field)
+        else:
+            physical_fields.append(field.with_name(logical_to_physical[field.name]))
+    physical_schema = pa.schema(physical_fields, metadata=arrow_schema.metadata)
+
+    parquet_format = pds.ParquetFileFormat()
+    fragments = []
+    for index, path in enumerate(paths):
+        partition_expression = None
+        for logical_name in logical_partition_columns:
+            physical_name = logical_to_physical[logical_name]
+            values = add_actions.get(f"partition.{logical_name}")
+            if values is None:
+                values = add_actions.get(f"partition.{physical_name}")
+            if values is None:
+                raise NotImplementedError(
+                    f"Active Delta file {path!r} lacks partition {logical_name!r}."
+                )
+            value = values[index]
+            field = arrow_schema.field(logical_name)
+            expression = (
+                pds.field(logical_name).is_null()
+                if value is None
+                else pds.field(logical_name) == pa.scalar(value).cast(field.type)
+            )
+            partition_expression = (
+                expression
+                if partition_expression is None
+                else partition_expression & expression
+            )
+        fragments.append(
+            parquet_format.make_fragment(
+                path,
+                filesystem=table_filesystem,
+                partition_expression=partition_expression,
+            )
+        )
+
+    rename_map = {
+        physical_name: logical_name
+        for physical_name, logical_name in physical_to_logical.items()
+        if logical_name not in logical_partition_columns
+    }
+
+    def _rename_columns(batch):
+        return batch.rename_columns(
+            [rename_map.get(name, name) for name in batch.column_names]
+        )
+
+    is_local = isinstance(table_uri_filesystem, pafs.LocalFileSystem)
+    local_scheduling = None
+    if is_local:
+        import ray.util.client
+
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Ray Client cannot read a local Delta table from cluster workers."
+            )
+        local_scheduling = {
+            ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+        }
+
+    datasource = _ColumnMappingParquetDatasource.from_state(
+        supports_distributed_reads=not is_local,
+        local_scheduling=local_scheduling,
+        source_paths_ref=ray.put(paths),
+        filesystem=table_filesystem,
+        fragments=fragments,
+        file_sizes=file_sizes,
+        file_schema=physical_schema,
+        read_schema=physical_schema,
+        # Fragment partition expressions already materialize logical partitions.
+        partition_columns=[],
+        partition_columns_selected=False,
+        partition_schema=pa.schema([]),
+        partitioning=None,
+        projection_map={column: column for column in scan_columns}
+        if scan_columns is not None
+        else None,
+        to_batch_kwargs=arrow_parquet_args if arrow_parquet_args else None,
+        _block_udf=_rename_columns,
+        shuffle=shuffle,
+        include_paths=include_paths,
+    )
     return read_datasource(
         datasource,
         parallelism=parallelism,
