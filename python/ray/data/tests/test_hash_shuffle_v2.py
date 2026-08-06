@@ -14,6 +14,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
     ShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     _encode_partition_ipc,
     _get_shard_batch,
     _ipc_write_options,
@@ -175,6 +176,26 @@ def test_repartition_with_sort_produces_sorted_partitions(
         for block_ref in ref_bundle.block_refs:
             ids = ray.get(block_ref)["id"].to_pylist()
             assert ids == sorted(ids)
+
+
+def test_sort_reduce_uses_higher_multiplier(ray_start_regular_shared_2_cpus):
+    """Sorted reduces request 3x their input (sort_by materializes a sorted
+    copy on top of the concatenated shards); plain concat reduces keep the
+    2x default."""
+    from ray.data._internal.logical.optimizers import get_execution_plan
+
+    sorted_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"], sort=True)._logical_plan
+    )[0].dag
+    assert sorted_dag._peak_memory_multiplier == 3
+    # The multiplier drives the reduce task's memory request.
+    sorted_dag.input_dependencies[0]._partition_bytes[0] = 100
+    assert sorted_dag.incremental_resource_usage().memory == 300
+
+    plain_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"])._logical_plan
+    )[0].dag
+    assert plain_dag._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
 
 
 def test_get_shard_batch_no_timeout(ray_start_regular_shared_2_cpus):

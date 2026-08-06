@@ -132,11 +132,11 @@ steps:
         --python-version 3.12
     depends_on: rllibgpubuild
 
-  - label: ":brain: rllib: doc tests"
+  - label: ":brain: rllib: docs example tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - rllib_directly
-      - doc
+      - rllib_doc
       - skip-on-microcheck
     instance_type: medium
     commands:

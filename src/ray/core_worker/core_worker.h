@@ -356,8 +356,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * \param[in] generator_id The object ref id of the streaming generator task.
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
-   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
-   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   * \return Status InvalidArgument if the last requested ref is not ready, or
+   * if the requested range would exceed max_num_generator_returns. OK
+   * otherwise.
    */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
 
@@ -1578,6 +1579,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
   void SubscribeToNodeChanges();
 
+  /**
+   * Subscribe to GCS worker failures so ``HandleOwnerDied`` can clean up
+   * generator backpressure state when an owner dies. Covers both per-task BP
+   * (unblock ``WaitUntilObjectConsumed``) and actor-wide BP (reclaim shared
+   * budget held by finished tasks). Called from
+   * ``RegisterGeneratorBackpressureState``; idempotent via ``std::call_once``.
+   */
+  void SubscribeToOwnerWorkerFailures();
+
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 
@@ -2166,6 +2176,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Used to ensure we only subscribe to node changes once.
   std::once_flag subscribe_to_node_changes_flag_;
+
+  /** Used to ensure we only subscribe to owner-worker failures once. */
+  std::once_flag subscribe_to_owner_worker_failures_flag_;
 
   // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
   // the shutdown procedure without exposing additional public APIs.
