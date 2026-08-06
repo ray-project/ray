@@ -2,7 +2,7 @@
 
 # Configuring mTLS for RayClusters
 
-KubeRay v1.7 introduces automated mutual TLS (mTLS) for RayCluster internal communication via the `RayClusterMTLS` feature gate. When enabled, the operator uses [cert-manager](https://cert-manager.io/) to provision a full PKI (self-signed CA, head and worker leaf certificates) and injects the necessary TLS environment variables and volume mounts into every Ray container. All inter-process communication (GCS, raylet, and dashboard) is encrypted and mutually authenticated without any manual certificate management.
+KubeRay v1.7 introduces automated mutual TLS (mTLS) for RayCluster internal communication via the `RayClusterMTLS` feature gate. Ray uses TLS on its gRPC channels, which means that connecting to the Ray head requires an appropriate set of credentials and that data exchanged between various processes (client, head, workers) is encrypted. When enabled, the operator uses [cert-manager](https://cert-manager.io/) to provision a full PKI (self-signed CA, head and worker leaf certificates) and injects the necessary TLS environment variables and volume mounts into every Ray container, so you don't need to manage certificates manually.
 
 This guide covers the automated cert-manager approach. If you prefer to manage certificates yourself (for example, with your own CA or init-container scripts), see {ref}`kuberay-tls`.
 
@@ -14,97 +14,31 @@ Enabling TLS incurs a performance overhead from encryption and decryption of int
 
 ## Prerequisites
 
-- KubeRay operator v1.7 or later installed
-- [cert-manager](https://cert-manager.io/docs/installation/) installed in the cluster
-- `kubectl` access to the cluster
+- KubeRay operator v1.7 or later installed.
+- [cert-manager](https://cert-manager.io/docs/installation/) installed in the cluster.
+- `kubectl` installed and configured to interact with your cluster.
 
 The Helm examples in this guide install the operator into the `ray-system` namespace. Adjust the namespace in commands if your installation uses a different one.
 
-Install cert-manager if not already present:
-
-```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
-# Wait for cert-manager pods to be ready
-kubectl wait --for=condition=Ready pod -l app.kubernetes.io/instance=cert-manager \
-  -n cert-manager --timeout=90s
-```
+You need to successfully install cert-manager on your Kubernetes cluster before enabling mTLS with KubeRay. See [cert-manager Installation](https://cert-manager.io/docs/installation/) for installation instructions.
 
 ## Enable the feature gate
 
 `RayClusterMTLS` is disabled by default. You must enable it on the KubeRay operator before creating RayClusters with `spec.tlsOptions.enabled: true`.
 
-### Helm
 
-The `featureGates` array in `values.yaml` is replaced wholesale on `helm upgrade`. The safest approach is to supply a complete override with `RayClusterMTLS` set to `true`.
+### Install the KubeRay operator 
+Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.7.0. To use this feature, the `RayClusterMTLS` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command: 
 
-**Fresh install:**
+```sh 
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/ 
+helm repo update 
 
-```bash
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo update
-
-helm install kuberay-operator kuberay/kuberay-operator -n ray-system --create-namespace -f - <<'EOF'
-featureGates:
-- name: RayClusterStatusConditions
-  enabled: true
-- name: RayJobDeletionPolicy
-  enabled: true
-- name: RayMultiHostIndexing
-  enabled: true
-- name: RayServiceIncrementalUpgrade
-  enabled: false
-- name: RayCronJob
-  enabled: false
-- name: RayClusterMTLS
-  enabled: true
-EOF
-```
-
-**Upgrading an existing installation:**
-
-```bash
-# Export current values, edit, then upgrade
-helm get values kuberay-operator -n ray-system -o yaml > current-values.yaml
-# Edit current-values.yaml: set enabled: true on the RayClusterMTLS entry in featureGates
-helm upgrade kuberay-operator kuberay/kuberay-operator -n ray-system -f current-values.yaml
-```
-
-### Kustomize
-
-Create a strategic merge patch for the operator `Deployment`. Because Kubernetes strategic merge patch replaces the `args` list rather than appending to it, include every feature gate you want active, not only the new one:
-
-```yaml
-# patch-feature-gates.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kuberay-operator
-  namespace: ray-system
-spec:
-  template:
-    spec:
-      containers:
-      - name: kuberay-operator
-        args:
-        - --feature-gates=RayClusterStatusConditions=true,RayJobDeletionPolicy=true,RayMultiHostIndexing=true,RayServiceIncrementalUpgrade=false,RayCronJob=false,RayClusterNetworkPolicy=false,RayClusterMTLS=true
-```
-
-Adjust the list to match the gates your installation currently passes. If you're unsure, run `kubectl get deployment kuberay-operator -n ray-system -o jsonpath='{.spec.template.spec.containers[0].args}'` to inspect the live args before patching.
-
-Add the patch to your `kustomization.yaml`:
-
-```yaml
-namespace: ray-system
-resources:
-- github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.7.0
-patches:
-- path: patch-feature-gates.yaml
-```
-
-Then apply:
-
-```bash
-kubectl apply -k .
+# Install KubeRay operator v1.7.0 with the RayClusterMTLS feature gate enabled
+helm install kuberay-operator kuberay/kuberay-operator \
+  --version 1.7.0 \
+  --set "featureGates[0].name=RayClusterMTLS" \
+  --set "featureGates[0].enabled=true"
 ```
 
 ## Enable mTLS on a RayCluster
@@ -213,10 +147,6 @@ For most workloads this is not a concern because RayClusters are typically short
 kubectl delete pod -l ray.io/node-type=head,ray.io/cluster=<cluster-name> -n <namespace>
 kubectl delete pods -l ray.io/node-type=worker,ray.io/cluster=<cluster-name> -n <namespace>
 ```
-
-:::{note}
-Future versions of KubeRay may automate pod restarts on certificate renewal. Track upstream progress in [kuberay#5048](https://github.com/ray-project/kuberay/issues/5048).
-:::
 
 ## Cluster scale limit
 
