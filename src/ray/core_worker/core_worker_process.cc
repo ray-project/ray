@@ -380,7 +380,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
         object_free_rpc_service_.post(
             [this, object_id, locations]() {
-              GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
+              auto core_worker = TryGetCoreWorker();
+              if (core_worker) {
+                core_worker->FreeObjectOnNodesAsync(object_id, locations);
+              }
             },
             "ReferenceCounter.FreeObjectOnNodesAsync");
       },
