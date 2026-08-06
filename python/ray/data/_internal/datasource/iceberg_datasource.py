@@ -86,24 +86,43 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Approximate width in bytes of each Iceberg primitive type, keyed by
-# ``str(field_type)``. Used to pick the cheapest stand-in column for an empty
-# projection, see ``IcebergDatasource._get_cheapest_sentinel_field``. Types
-# absent here -- strings, binary, decimals, nested -- are unbounded, so they
-# lose to any type listed.
-_SENTINEL_FIELD_WIDTHS = {
-    "boolean": 1,
-    "int": 4,
-    "float": 4,
-    "date": 4,
-    "long": 8,
-    "double": 8,
-    "time": 8,
-    "timestamp": 8,
-    "timestamptz": 8,
-    "uuid": 16,
-}
-_UNKNOWN_FIELD_WIDTH = 1 << 20
+# Field ID for the fabricated stub field, see ``_get_empty_projection_schema``.
+# Iceberg matches columns by ID, so this must not be a real column's: colliding
+# with a non-boolean column raises ``ResolveError``, and with a boolean column
+# reads that column's data instead (the row count is still right, but the read
+# is no longer free). Catalogs assign IDs sequentially from 1, so a value this
+# large will not collide; Iceberg reserves 2147483546 and above for metadata
+# columns, so stay below that.
+_STUB_FIELD_ID = 2147483000
+
+
+def _get_empty_projection_schema() -> "Schema":
+    """Return a projected schema that reads no data but keeps the row count.
+
+    PyIceberg rebuilds its output to match the projected schema, and a table
+    rebuilt from zero fields reports zero rows however many the scan matched --
+    so an empty projection, which ``Dataset.count()`` legitimately requests,
+    would silently count zero. Project a single optional field that no data file
+    has instead: Iceberg fills a missing optional field with nulls, the same way
+    it reads a file written before a column was added, so the row count arrives
+    in a column that costs nothing to read.
+
+    The field is named after Ray's stub column so the resulting block matches
+    what every other reader produces for an empty projection. ``boolean`` is
+    used because Iceberg gained a null-valued type only after 0.9.0;
+    ``_get_read_task`` retypes the column to ``null`` on the way out.
+    """
+    from pyiceberg.schema import Schema
+    from pyiceberg.types import BooleanType, NestedField
+
+    return Schema(
+        NestedField(
+            field_id=_STUB_FIELD_ID,
+            name=_BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+            field_type=BooleanType(),
+            required=False,
+        )
+    )
 
 
 class _IcebergExpressionVisitor(
@@ -231,7 +250,7 @@ def _get_read_task(
     case_sensitive: bool,
     limit: Optional[int],
     schema: "Schema",
-    drop_all_columns: bool = False,
+    empty_projection: bool = False,
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
@@ -278,9 +297,11 @@ def _get_read_task(
             yield table
 
     for table in _generate_tables():
-        if drop_all_columns:
-            # We over-read one column so the row count survives; drop it here.
-            # See ``IcebergDatasource._get_cheapest_sentinel_field``.
+        if empty_projection:
+            # The scan read a boolean-typed stub, see
+            # ``_get_empty_projection_schema``. Re-derive it through Ray's own
+            # empty projection so the column is ``null``-typed, matching the
+            # schema we report and every other reader's stub.
             table = BlockAccessor.for_block(table).select([])
         yield table
 
@@ -428,49 +449,6 @@ class IcebergDatasource(Datasource):
 
         return combined_filter
 
-    def _get_cheapest_sentinel_field(self) -> str:
-        """Return the cheapest column to read in place of an empty projection.
-
-        PyIceberg reconstructs its output against the projected schema, and a
-        table reconstructed from zero columns reports zero rows however many the
-        scan matched -- so an empty projection, which ``Dataset.count()``
-        legitimately requests, would silently count zero. Read one column
-        instead and slice it away in ``_get_read_task``, which preserves the
-        count. Pick the narrowest: a string column can cost orders of magnitude
-        more bytes than a boolean one.
-
-        The column comes from the schema the scan reads, not
-        ``self.table.schema()``, which with ``snapshot_id`` pinned can name
-        columns the snapshot lacks -- ``ValueError: Could not find column``.
-        """
-        fields = self._get_scan_schema().fields
-        if not fields:
-            raise ValueError(
-                f"Cannot read table '{self.table_identifier}': it has no columns."
-            )
-        # ``min`` is stable, so an all-equal-width schema deterministically
-        # yields the first field.
-        cheapest_field = min(
-            fields,
-            key=lambda field: _SENTINEL_FIELD_WIDTHS.get(
-                str(field.field_type), _UNKNOWN_FIELD_WIDTH
-            ),
-        )
-        return cheapest_field.name
-
-    def _get_scan_schema(self) -> "Schema":
-        """Return the full schema this scan reads against.
-
-        ``DataScan.projection()`` resolves the pinned snapshot's schema itself,
-        and returns it whole when every field is selected, so this agrees with
-        ``_get_data_scan`` by construction. Building a scan reads no data files.
-        """
-        return self.table.scan(
-            row_filter=self._get_combined_filter(),
-            selected_fields=("*",),
-            **self._scan_kwargs,
-        ).projection()
-
     def _is_empty_projection(self) -> bool:
         """Whether the pushed-down projection selects no columns at all."""
         return self._get_data_columns() == []
@@ -479,12 +457,12 @@ class IcebergDatasource(Datasource):
         # Get the combined filter
         combined_filter = self._get_combined_filter()
 
-        # Convert back to tuple for PyIceberg API (None -> ("*",))
+        # Convert back to tuple for PyIceberg API (None -> ("*",)). An empty
+        # projection also scans everything: it selects its own columns through
+        # the projected schema instead, see ``_get_empty_projection_schema``.
         data_columns = self._get_data_columns()
-        if data_columns is None:
+        if not data_columns:
             selected_fields = ("*",)
-        elif not data_columns:
-            selected_fields = (self._get_cheapest_sentinel_field(),)
         else:
             selected_fields = tuple(data_columns)
 
@@ -561,12 +539,13 @@ class IcebergDatasource(Datasource):
         # Get the arrow schema, to set in the metadata
         pya_schema = pyi_pa_io.schema_to_pyarrow(projected_schema)
 
-        # An empty projection is read as one sentinel column, see
-        # ``_get_cheapest_sentinel_field``, which the read tasks replace with Ray's
-        # ``__bsp_stub``. Declare the placeholder so the reported schema matches
-        # the blocks; it is hidden from the user-visible schema.
-        drop_all_columns = self._is_empty_projection()
-        if drop_all_columns:
+        # An empty projection reads a fabricated stub column instead of none at
+        # all, see ``_get_empty_projection_schema``. Declare the placeholder so
+        # the reported schema matches the blocks; it is hidden from the
+        # user-visible schema.
+        empty_projection = self._is_empty_projection()
+        if empty_projection:
+            projected_schema = _get_empty_projection_schema()
             pya_schema = pa.schema(
                 [pa.field(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.null())]
             )
@@ -598,6 +577,11 @@ class IcebergDatasource(Datasource):
         # check and the counts hold. Same test PyIceberg's own
         # ``DataScan.count()`` uses. A ``limit`` stops the read early, so no
         # count taken from the manifests describes what comes back.
+        #
+        # The subtraction below only accounts for position deletes, but an
+        # equality delete cannot reach here: ``plan_files`` rejects them in both
+        # of its paths, locally in ``_plan_files_local`` and over REST in
+        # ``FileScanTask.from_rest_response``.
         counts_are_exact = limit is None and (
             isinstance(row_filter, AlwaysTrue)
             or all(
@@ -614,7 +598,7 @@ class IcebergDatasource(Datasource):
             case_sensitive=case_sensitive,
             limit=limit,
             schema=projected_schema,
-            drop_all_columns=drop_all_columns,
+            empty_projection=empty_projection,
         )
 
         read_tasks = []

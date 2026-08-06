@@ -21,6 +21,7 @@ from pyiceberg.transforms import IdentityTransform
 
 import ray
 from ray.data import read_iceberg
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
@@ -324,6 +325,34 @@ def test_empty_projection_preserves_row_count():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
+def test_empty_projection_reads_only_the_stub_column():
+    """An empty projection must read no real column, only the stub.
+
+    It projects a field present in no schema version, relying on PyIceberg
+    null-filling a missing optional field. Should an upgrade stop doing that,
+    the row count collapses to zero silently, so pin the resulting schema: one
+    ``null``-typed stub column, matching what every other reader produces.
+    """
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        selected_fields=(),
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    blocks = [
+        block for read_task in iceberg_ds.get_read_tasks(1) for block in read_task()
+    ]
+    assert blocks, "fixture table should produce at least one block"
+    expected_schema = pa.schema(
+        [pa.field(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.null())]
+    )
+    for block in blocks:
+        assert block.schema.equals(expected_schema), block.schema
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
 @pytest.mark.parametrize(
     ("row_filter", "count_must_be_exact"),
     [
@@ -399,22 +428,20 @@ def test_reported_num_rows_is_unknown_when_scan_stops_early():
     get_pyarrow_version() < parse_version("14.0.0"),
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
-def test_empty_projection_respects_pinned_snapshot_schema():
-    """The stand-in column must exist in the snapshot being read.
+def test_empty_projection_survives_schema_evolution_on_pinned_snapshot():
+    """An empty projection must not depend on the table's current schema.
 
-    An empty projection reads one cheap column and slices it away. Choosing it
-    from the table's *current* schema breaks a read pinned to an older snapshot:
-    a column added since is absent there, PyIceberg raises ``ValueError: Could
-    not find column``, and ``count()`` fails instead of counting.
+    Reading a pinned snapshot after a column was added is where naming a real
+    stand-in column breaks: picked from the *current* schema it is absent from
+    the snapshot, PyIceberg raises ``ValueError: Could not find column``, and
+    ``count()`` fails instead of counting. The fabricated stub belongs to no
+    schema version, so no schema change can reach it.
     """
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS.copy())
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
     old_snapshot_id = table.current_snapshot().snapshot_id
     expected_rows = 101  # the fixture appends 120 rows, then deletes col_a >= 101
 
-    # Evolve the schema by adding a boolean, which is the *cheapest* column in
-    # the table and so the one the sentinel picks -- and which does not exist in
-    # the snapshot above.
     with table.update_schema() as update:
         update.add_column("col_d", pyi_types.BooleanType())
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
@@ -425,10 +452,6 @@ def test_empty_projection_respects_pinned_snapshot_schema():
         catalog_kwargs=_CATALOG_KWARGS.copy(),
         snapshot_id=old_snapshot_id,
     )
-    assert (
-        iceberg_ds._get_cheapest_sentinel_field() != "col_d"
-    ), "the stand-in column must come from the pinned snapshot's schema"
-
     read_tasks = iceberg_ds.apply_projection({}).get_read_tasks(2)
     actual = sum(block.num_rows for read_task in read_tasks for block in read_task())
     assert actual == expected_rows
