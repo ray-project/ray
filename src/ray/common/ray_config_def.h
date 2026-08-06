@@ -186,7 +186,8 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, true)
 
-/// The maximum batch size for coalesced FreeLocalObjects RPCs.
+/// The maximum number of objects (object ids) sent in a single coalesced
+/// FreeLocalObjects RPC. Anything beyond this rides the next batch.
 RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
 
 /// Warn when a node's buffered FreeLocalObjects backlog reaches this many objects,
