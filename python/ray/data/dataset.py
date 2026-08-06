@@ -30,6 +30,7 @@ from ray._common.usage import usage_lib
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data._internal.dataset_id import generate_dataset_ulid
 from ray.data._internal.dataset_repr import (
     build_dataset_ascii_repr,
     build_dataset_summary_repr,
@@ -330,7 +331,10 @@ class Dataset:
         # Bind context to logical plan.
         self._logical_plan.context = context
 
-        self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
+        if self._context.use_legacy_dataset_ids:
+            self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
+        else:
+            self._set_uuid(generate_dataset_ulid())
 
     @classmethod
     def _from_parent(cls, parent: "Dataset", logical_plan: LogicalPlan) -> "Dataset":
@@ -8094,11 +8098,14 @@ class Dataset:
         }
 
     def __setstate__(self, state):
-        self._uuid = state["uuid"]
         self._logical_plan = state["logical_plan"]
         self._dataset_name = state.get("dataset_name")
         self._in_stats = state["in_stats"]
         self._context = state["context"]
+        if self._context.use_legacy_dataset_ids:
+            self._set_uuid(state["uuid"])
+        else:
+            self._set_uuid(generate_dataset_ulid())
         self._cache = _ExecutionCache()
         self._run_index = -1
         self._current_executor = None
