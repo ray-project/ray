@@ -224,6 +224,35 @@ def test_fetch_from_file_server(tmp_path):
         os.close(fd)
 
 
+def test_fetch_server_error_is_terminal(tmp_path):
+    # A server-side error (here a missing file) surfaces as FlightServerError, a
+    # FlightError subclass. It must be terminal, not retried as a transport fault:
+    # _fetch_from_file_server re-raises it.
+    import pyarrow.flight as flight
+
+    fd, sink = _open_sink(tmp_path)
+    shuffle_id, node_id = "shuffle-0", "node-1"
+    key = _file_server_name(shuffle_id, node_id)
+    try:
+        with _running_flight_server(tmp_path) as (host, port, incarnation):
+            with _ENDPOINT_CACHE_LOCK:
+                _ENDPOINT_CACHE[key] = _Endpoint(host, port, incarnation)
+            try:
+                with pytest.raises(flight.FlightServerError):
+                    _fetch_from_file_server(
+                        sink,
+                        shuffle_id,
+                        node_id,
+                        [_FileRanges(path="missing.bin", ranges=[(0, 4)])],
+                        max_bytes_per_fetch=1 << 20,
+                    )
+            finally:
+                with _ENDPOINT_CACHE_LOCK:
+                    _ENDPOINT_CACHE.pop(key, None)
+    finally:
+        os.close(fd)
+
+
 # --------------------------- reducer helpers (no Ray and no sockets)
 def test_chunk_members_by_bytes():
     # Cover the three interesting shapes: fits-in-one, split-across-batches,

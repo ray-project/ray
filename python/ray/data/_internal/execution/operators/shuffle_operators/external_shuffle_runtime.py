@@ -606,11 +606,16 @@ def _fetch_from_file_server(
                 endpoint, members, max_bytes_per_fetch, out_file_obj
             )
             return
+        except flight.FlightServerError:
+            # A server-side error (missing/unreadable shuffle file, a server-side
+            # OSError) surfaces as FlightServerError, a FlightError subclass.
+            # Retrying the fetch can't fix it, so propagate as terminal.
+            raise
         except flight.FlightError as e:
-            # Only Flight transport faults are retryable (server unavailable /
-            # timeout / cancelled / internal). Everything else propagates as
-            # terminal: the sink's OSError (disk full), an ArrowInvalid from a
-            # corrupt frame, _resolve's ShuffleFileServerAnomalyError, or a bug.
+            # A real transport fault (server unavailable / timeout / cancelled /
+            # internal); retryable. Server-side FlightServerError is handled above;
+            # other failures (sink OSError, corrupt-frame ArrowInvalid, _resolve's
+            # anomaly, or a bug) propagate as terminal.
             # https://arrow.apache.org/docs/python/api/flight.html
             # https://grpc.io/docs/guides/status-codes/
             #
