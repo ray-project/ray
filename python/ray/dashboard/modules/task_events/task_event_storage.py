@@ -225,19 +225,35 @@ class TaskEventStorage:
                 self._remove_task_attempt(attempt)
 
     def mark_tasks_failed_on_worker_dead(
-        self, worker_id: bytes, worker_table_data: gcs_pb2.WorkerTableData
+        self,
+        worker_id: bytes,
+        worker_table_data: Optional[gcs_pb2.WorkerTableData],
     ) -> None:
-        """Mark all non-terminal task attempts run by a dead worker as failed."""
+        """Mark all non-terminal task attempts run by a dead worker as failed.
+
+        ``worker_table_data`` is None when the worker's record could not be fetched from
+        GCS. The tasks are still failed so they don't linger as running, but without exit
+        details and stamped with the current time instead of the worker's end time.
+        """
         attempts = self._worker_index.get(worker_id)
         if attempts is None:
             return
         error_info = RayErrorInfo(error_type=ErrorType.WORKER_DIED)
-        error_info.error_message = (
-            f"Worker running the task ({worker_id.hex()}) died with exit_type: "
-            f"{worker_table_data.exit_type} with error_message: "
-            f"{worker_table_data.exit_detail}"
-        )
-        failed_ts_ns = worker_table_data.end_time_ms * 10**6
+        if worker_table_data is not None:
+            error_info.error_message = (
+                f"Worker running the task ({worker_id.hex()}) died with exit_type: "
+                f"{worker_table_data.exit_type} with error_message: "
+                f"{worker_table_data.exit_detail}"
+            )
+            failed_ts_ns = worker_table_data.end_time_ms * 10**6
+        else:
+            error_info.error_message = (
+                f"Worker running the task ({worker_id.hex()}) died, but its exit details "
+                "could not be fetched from GCS: either GCS evicted the worker's "
+                "record or the GetWorkerInfo request failed (e.g. timed out or GCS was"
+                " unavailable)."
+            )
+            failed_ts_ns = time.time_ns()
         for attempt in list(attempts):
             self._mark_task_attempt_failed_if_needed(attempt, failed_ts_ns, error_info)
 
