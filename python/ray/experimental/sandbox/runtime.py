@@ -29,9 +29,10 @@ class SandboxRuntime:
         rootless: bool = True,
         network: str = "none",
         resources: Optional[Dict[str, float]] = None,
+        **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID."""
-        config = SandboxConfig(
+        cfg = SandboxConfig(
             image=image,
             cpu=cpu,
             memory=memory,
@@ -43,8 +44,9 @@ class SandboxRuntime:
             rootless=rootless,
             network=network,
             resources=resources or {},
+            **kwargs,
         )
-        return self._backend.create_sandbox(config)
+        return self._backend.create_sandbox(cfg)
 
     def exec(
         self,

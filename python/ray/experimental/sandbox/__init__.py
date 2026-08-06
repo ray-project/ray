@@ -21,7 +21,7 @@ from ray.experimental.sandbox.sandbox import Sandbox, SandboxHandle
 
 
 def create(
-    image: str = "python:3.10-slim",
+    image: Optional[str] = None,
     cpu: float = 0.0,
     memory: Union[str, int, float] = 0,
     env: Optional[Dict[str, str]] = None,
@@ -81,7 +81,7 @@ def create(
 
 
 async def create_async(
-    image: str = "python:3.10-slim",
+    image: Optional[str] = None,
     cpu: float = 0.0,
     memory: Union[str, int, float] = 0,
     env: Optional[Dict[str, str]] = None,

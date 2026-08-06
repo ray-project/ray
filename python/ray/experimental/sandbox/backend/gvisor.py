@@ -7,6 +7,9 @@ import time
 import uuid
 from typing import Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.image_utils import (
+    pull_and_extract_container_image,
+)
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -62,6 +65,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             env_dict=config.env,
             cpu=config.cpu,
             memory=config.memory,
+            image=config.image,
         )
         run_args = self._runsc_base_args(config)
         if config.network:
@@ -258,6 +262,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise SandboxNotFoundError(f"Sandbox ID '{sandbox_id}' not found.")
         return self._sandbox_meta[sandbox_id]
 
+    def _pull_and_extract_image(self, image: str) -> str:
+        """Pull a container image and extract rootfs to local directory."""
+        return pull_and_extract_container_image(image)
+
     def _prepare_oci_bundle(
         self,
         root_dir: str,
@@ -266,6 +274,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
+        image: Optional[str] = None,
     ) -> str:
         config_json_path = os.path.join(root_dir, "config.json")
         rootfs_dir = os.path.join(root_dir, "rootfs")
@@ -276,6 +285,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         with open(config_json_path, "r", encoding="utf-8") as f:
             spec = json.load(f)
+
+        if image:
+            image_rootfs = self._pull_and_extract_image(image)
+            spec["root"]["path"] = image_rootfs
 
         spec["process"]["args"] = ["sleep", "infinity"]
         spec["process"]["cwd"] = container_cwd
@@ -289,13 +302,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
 
-        default_binds = [
-            ("/bin", "/bin"),
-            ("/usr", "/usr"),
-            ("/lib", "/lib"),
-            ("/lib64", "/lib64"),
-            (container_cwd, work_dir_path),
-        ]
+        if image:
+            default_binds = [
+                (container_cwd, work_dir_path),
+            ]
+        else:
+            default_binds = [
+                ("/bin", "/bin"),
+                ("/usr", "/usr"),
+                ("/lib", "/lib"),
+                ("/lib64", "/lib64"),
+                (container_cwd, work_dir_path),
+            ]
         for dest, src in default_binds:
             if dest not in existing_dests and os.path.exists(src):
                 mounts.append(
