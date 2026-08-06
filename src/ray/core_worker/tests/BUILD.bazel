@@ -57,7 +57,7 @@ ray_cc_test(
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:ray_object",
-        "//src/ray/common:test_utils",
+        "//src/ray/common:status",
         "//src/ray/core_worker:future_resolver",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_counter",

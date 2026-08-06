@@ -18,8 +18,11 @@
 
 #include "gtest/gtest.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/test_utils.h"
+#include "ray/asio/asio_util.h"
+#include "ray/common/ray_object.h"
+#include "ray/common/status.h"
 #include "ray/core_worker/reference_counter.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/util/clock.h"
@@ -42,13 +45,17 @@ class FutureResolverTest : public ::testing::Test {
             /*is_node_dead=*/[](const NodeID &) { return false; },
             /*free_object_on_nodes_async=*/
             [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
-            *std::make_shared<ray::observability::FakeGauge>(),
-            *std::make_shared<ray::observability::FakeGauge>())),
+            owned_object_count_by_state_,
+            owned_object_sizes_by_state_)),
         resolver_(
             memory_store_,
             ref_counter_,
             /*report_locality_data_callback=*/
             [](const ObjectID &, const absl::flat_hash_set<NodeID> &, uint64_t) {},
+            // These tests only drive ProcessResolvedObject, which never touches the
+            // client pool. A test for ResolveFutureAsync would need a real pool and a
+            // non-empty owner worker ID, otherwise it either dereferences this null
+            // pool or silently returns early as if we owned the object.
             /*core_worker_client_pool=*/nullptr,
             rpc::Address()) {}
 
@@ -61,9 +68,15 @@ class FutureResolverTest : public ::testing::Test {
     return object_id;
   }
 
+  // Stop the io thread before the members it may run callbacks against are
+  // destroyed.
+  void TearDown() override { io_context_.Stop(); }
+
  protected:
   Clock clock_;
   InstrumentedIOContextWithThread io_context_;
+  ray::observability::FakeGauge owned_object_count_by_state_;
+  ray::observability::FakeGauge owned_object_sizes_by_state_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
