@@ -4,6 +4,7 @@ import os
 import tempfile
 from typing import List, Optional
 
+from ray._common.utils import is_path_within
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
@@ -96,17 +97,10 @@ def _modify_context_impl(
         "--userns=keep-id",
     ]
 
-    if logs_dir is not None:
-        ray_tmp_dir_abs = os.path.abspath(ray_tmp_dir)
-        logs_dir_abs = os.path.abspath(logs_dir)
-        try:
-            logs_dir_is_mounted = (
-                os.path.commonpath([ray_tmp_dir_abs, logs_dir_abs]) == ray_tmp_dir_abs
-            )
-        except ValueError:
-            logs_dir_is_mounted = False
-        if not logs_dir_is_mounted:
-            container_command.extend(["-v", f"{logs_dir}:{logs_dir}"])
+    # A logs directory outside the Ray temp dir is not covered by the mount
+    # above, so the worker in the container would have nowhere to write.
+    if logs_dir is not None and not is_path_within(logs_dir, ray_tmp_dir):
+        container_command.extend(["-v", f"{logs_dir}:{logs_dir}"])
 
     # Environment variables to set in container
     env_vars = dict()
