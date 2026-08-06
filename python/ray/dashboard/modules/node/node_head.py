@@ -421,12 +421,12 @@ class NodeHead(SubprocessModule):
     @dashboard_optional_utils.aiohttp_cache
     async def get_node(self, req) -> aiohttp.web.Response:
         node_id = req.match_info.get("node_id")
-        if node_id not in DataSource.nodes:
+        node_info = await DataOrganizer.get_node_info(node_id)
+        if node_info is None:
             return dashboard_optional_utils.rest_response(
                 status_code=dashboard_utils.HTTPStatusCode.NOT_FOUND,
                 message=f"Node {node_id} not found.",
             )
-        node_info = await DataOrganizer.get_node_info(node_id)
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="Node details fetched.",
