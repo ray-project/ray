@@ -163,25 +163,24 @@ def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
         or pa.types.is_list(values.type)
         or pa.types.is_large_list(values.type)
     ):
+        if values.null_count:
+            raise ValueError(
+                f"Windowed LeRobot feature {name!r} cannot contain null lists."
+            )
         if pa.types.is_fixed_size_list(values.type):
-            unique_lengths = {values.type.list_size}
-            if values.null_count:
-                unique_lengths.add(None)
+            length = values.type.list_size
         else:
             # Keep the common, uniformly shaped path inside Arrow. Converting
             # every row's length to Python is prohibitively expensive for the
             # large action/state columns found in real LeRobot datasets.
-            unique_lengths = set(pc.unique(pc.list_value_length(values)).to_pylist())
-        if None in unique_lengths:
-            raise ValueError(
-                f"Windowed LeRobot feature {name!r} cannot contain null lists."
-            )
-        if len(unique_lengths) != 1:
-            raise ValueError(
-                f"Windowed LeRobot feature {name!r} must have one uniform "
-                f"shape, but found list lengths {unique_lengths}."
-            )
-        shape.append(next(iter(unique_lengths)))
+            lengths = pc.unique(pc.list_value_length(values))
+            if len(lengths) != 1:
+                raise ValueError(
+                    f"Windowed LeRobot feature {name!r} must have one uniform "
+                    f"shape, but found list lengths {sorted(lengths.to_pylist())}."
+                )
+            length = lengths[0].as_py()
+        shape.append(length)
         values = values.flatten()
 
     return values.to_numpy(zero_copy_only=False).reshape(shape)
