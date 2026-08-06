@@ -2,6 +2,8 @@
 # (Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes
 We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes ecosystem.
 
+For how Ray and Kubernetes divide scheduling responsibility more generally, see {ref}`kuberay-scheduling`.
+
 ## Ray Autoscaler vs. Horizontal Pod Autoscaler
 The Ray autoscaler adjusts the number of Ray nodes in a Ray cluster. On Kubernetes, each Ray node is run as a Kubernetes Pod. Thus in the context of Kubernetes, the Ray autoscaler scales Ray **Pod quantities**. In this sense, the Ray autoscaler plays a role similar to that of the Kubernetes [Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-Pod-autoscale/) (HPA). However, the following features distinguish the Ray Autoscaler from the HPA.
 
