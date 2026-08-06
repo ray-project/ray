@@ -233,7 +233,9 @@ class RuntimeEnvAgent:
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir, logs_dir)
         self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir, logs_dir)
-        self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir, logs_dir)
+        # Pass logs_dir by keyword: get_image_uri_plugin_cls() is an extension
+        # point, and out-of-tree classes may not accept it positionally.
+        self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir, logs_dir=logs_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
