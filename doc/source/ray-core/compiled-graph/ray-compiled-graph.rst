@@ -1,12 +1,13 @@
 .. _ray-compiled-graph:
 
-Ray Compiled Graph (beta)
-=========================
+Ray Compiled Graph (deprecated)
+===============================
 
 .. warning::
 
-    Ray Compiled Graph is currently in beta (since Ray 2.44). The APIs are subject to change and expected to evolve.
-    The API is available from Ray 2.32, but it's recommended to use a version after 2.44.
+    Ray Compiled Graph is deprecated and will be removed in a future release.
+    For direct GPU-to-GPU tensor transfer between actors, use
+    :ref:`Ray Direct Transport (RDT) <direct-transport>` instead.
 
 As large language models (LLMs) become common, programming distributed systems with multiple GPUs is essential.
 :ref:`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:

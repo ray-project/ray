@@ -43,6 +43,18 @@ def temporary_change_timeout(request):
     ctx.submit_timeout = original
 
 
+def test_experimental_compile_deprecation_warning(ray_start_regular):
+    from ray.util.annotations import RayDeprecationWarning
+
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    with pytest.warns(RayDeprecationWarning, match="Ray Compiled Graph is deprecated"):
+        compiled_dag = dag.experimental_compile()
+    compiled_dag.teardown()
+
+
 def test_basic(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:

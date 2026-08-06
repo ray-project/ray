@@ -1,6 +1,12 @@
 Profiling
 =========
 
+.. warning::
+
+    Ray Compiled Graph is deprecated and will be removed in a future release.
+    For direct GPU-to-GPU tensor transfer between actors, use
+    :ref:`Ray Direct Transport (RDT) <direct-transport>` instead.
+
 Ray Compiled Graph provides both PyTorch-based and Nsight-based profiling functionalities to better understand the performance
 of individual tasks, system overhead, and performance bottlenecks. You can pick your favorite profiler based on your preference.
 

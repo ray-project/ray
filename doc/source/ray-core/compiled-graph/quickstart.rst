@@ -1,6 +1,12 @@
 Quickstart
 ==========
 
+.. warning::
+
+    Ray Compiled Graph is deprecated and will be removed in a future release.
+    For direct GPU-to-GPU tensor transfer between actors, use
+    :ref:`Ray Direct Transport (RDT) <direct-transport>` instead.
+
 Hello World
 -----------
 This "hello world" example uses Ray Compiled Graph. First, install Ray.

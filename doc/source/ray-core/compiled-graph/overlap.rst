@@ -3,6 +3,12 @@
 Experimental: Overlapping communication and computation
 =======================================================
 
+.. warning::
+
+    Ray Compiled Graph is deprecated and will be removed in a future release.
+    For direct GPU-to-GPU tensor transfer between actors, use
+    :ref:`Ray Direct Transport (RDT) <direct-transport>` instead.
+
 Compiled Graph currently provides experimental support for GPU communication and computation overlap. When you turn this feature on, it automatically overlaps the GPU communication with computation operations, thereby hiding the communication overhead and improving performance.
 
 To enable this feature, specify ``_overlap_gpu_communication=True`` when calling :func:`dag.experimental_compile() <ray.dag.DAGNode.experimental_compile>`.
