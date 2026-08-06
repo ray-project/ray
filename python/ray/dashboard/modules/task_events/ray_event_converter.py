@@ -81,6 +81,28 @@ def _convert_task_definition_event(event) -> gcs_pb2.TaskEvents:
     return task_event
 
 
+_TASK_LOG_INFO_FIELDS = (
+    "stdout_file",
+    "stderr_file",
+    "stdout_start",
+    "stdout_end",
+    "stderr_start",
+    "stderr_end",
+)
+
+
+def _convert_task_log_info(src, dst) -> None:
+    """Copy only the fields the event actually set.
+
+    The log paths and start offsets arrive when the task starts and the end offsets in a
+    later event, so copying an unset field would overwrite what the earlier event
+    reported once the two are merged.
+    """
+    for field in _TASK_LOG_INFO_FIELDS:
+        if src.HasField(field):
+            setattr(dst, field, getattr(src, field))
+
+
 def _convert_task_lifecycle_event(event) -> gcs_pb2.TaskEvents:
     task_event = gcs_pb2.TaskEvents()
     task_event.task_id = event.task_id
@@ -101,6 +123,8 @@ def _convert_task_lifecycle_event(event) -> gcs_pb2.TaskEvents:
         state_update.is_debugger_paused = event.is_debugger_paused
     if event.HasField("actor_repr_name"):
         state_update.actor_repr_name = event.actor_repr_name
+    if event.HasField("task_log_info"):
+        _convert_task_log_info(event.task_log_info, state_update.task_log_info)
 
     for transition in event.state_transitions:
         ts = transition.timestamp
