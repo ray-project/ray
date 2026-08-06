@@ -39,6 +39,9 @@ from ray.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+# ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id).
+_SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_external"
+
 # pyarrow-supported shard codecs (``"none"``/``None`` = uncompressed). Rides
 # ``data_context.hash_shuffle_compression``.
 Compression = Optional[
@@ -118,10 +121,6 @@ def _read_ipc(
     raw = body if codec is None else codec.decompress(body, decompressed_size=n)
     with pa.ipc.open_stream(raw) as r:
         return r.read_all()
-
-
-# ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id)
-_SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_external"
 
 
 def _file_server_name(shuffle_id: str, node_id: str) -> str:
@@ -511,7 +510,7 @@ def _stream_members_flight(
     ``Result`` bodies carry ``[u64 len][frame]`` framing, so they stream verbatim
     into the sink. This does NOT classify failures: it lets the raw transport
     error (pyarrow ``FlightError``) or the sink's ``OSError`` propagate, and
-    ``_prefetch_node_into`` decides terminal-vs-retryable in one place."""
+    ``_fetch_from_file_server`` decides terminal-vs-retryable in one place."""
     import pyarrow.flight as flight
 
     host, port, _incarnation = endpoint
@@ -529,7 +528,7 @@ def _stream_members_flight(
             pass
 
 
-def _prefetch_node_into(
+def _fetch_from_file_server(
     out_file_obj: "_PwriteSink",
     shuffle_id: str,
     node_id: str,
