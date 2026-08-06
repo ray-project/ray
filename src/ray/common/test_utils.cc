@@ -66,7 +66,11 @@ bool WaitForPortAcceptingConnections(int port, int timeout_ms) {
     boost::asio::ip::tcp::socket socket(io_context);
     boost::system::error_code ec;
     socket.connect(endpoint, ec);
-    socket.close();
+    // Non-throwing overload: the connect above routinely fails while the
+    // server is still coming up, and close() must not turn that into an
+    // exception that escapes the helper.
+    boost::system::error_code ignored;
+    socket.close(ignored);
     if (!ec) {
       return true;
     }
