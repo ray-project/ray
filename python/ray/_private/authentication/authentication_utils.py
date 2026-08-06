@@ -1,3 +1,5 @@
+import os
+
 try:
     from ray._raylet import (
         AuthenticationMode,
@@ -18,7 +20,12 @@ def is_token_auth_enabled() -> bool:
         bool: True if AUTH_MODE is set to "token".
     """
     if not _RAYLET_AVAILABLE:
-        return False
+        # Fail closed: if the operator explicitly requested token auth via
+        # RAY_AUTH_MODE=token, report it enabled even though the raylet
+        # extension is unavailable, so the HTTP/gRPC middlewares keep
+        # enforcing (and validate_request_token fails closed) instead of
+        # silently downgrading the deployment to unauthenticated.
+        return os.environ.get("RAY_AUTH_MODE", "").lower() == "token"
 
     return get_authentication_mode() == AuthenticationMode.TOKEN
 
