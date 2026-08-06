@@ -10,6 +10,7 @@ them by value and Ray workers never need to import this test module.
 """
 
 import gc
+import platform
 import sys
 import threading
 import time
@@ -17,9 +18,12 @@ import weakref
 
 import numpy as np
 import pytest
+from joblib import Parallel, delayed, parallel_backend
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray.cluster_utils import AutoscalingCluster
+from ray.util.joblib import register_ray
 from ray.util.multiprocessing import Pool
 
 
@@ -237,10 +241,6 @@ def test_autoscale_serialization_error_does_not_stop_dispatcher(shutdown_only):
 
 def test_joblib_autoscale_propagates_serialization_errors(shutdown_only):
     """Joblib must report serialization failures instead of timing out."""
-    from joblib import Parallel, delayed, parallel_backend
-
-    from ray.util.joblib import register_ray
-
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
     register_ray(max_size=4, initial_size=0)
 
@@ -262,10 +262,6 @@ def test_joblib_autoscale_propagates_serialization_errors(shutdown_only):
 
 def test_joblib_autoscale_propagates_errors_and_can_be_reused(shutdown_only):
     """Joblib failures must propagate without stranding later dispatch."""
-    from joblib import Parallel, delayed, parallel_backend
-
-    from ray.util.joblib import register_ray
-
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
     register_ray(max_size=4, initial_size=0, idle_timeout_s=999)
 
@@ -287,10 +283,6 @@ def test_joblib_autoscale_propagates_errors_and_can_be_reused(shutdown_only):
 
 def test_joblib_n_jobs_limits_autoscale_concurrency(shutdown_only):
     """max_size must not exceed joblib's n_jobs concurrency limit."""
-    from joblib import Parallel, delayed, parallel_backend
-
-    from ray.util.joblib import register_ray
-
     ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
     register_ray(
         min_size=4,
@@ -789,7 +781,7 @@ def test_fixed_pool_imap_after_close_fails_fast(shutdown_only):
 
 
 # ---------------------------------------------------------------------------
-# End-to-end autoscaling (AutoscalingCluster — the real Ray autoscaler)
+# End-to-end autoscaling
 # ---------------------------------------------------------------------------
 
 
@@ -801,15 +793,8 @@ def test_autoscaling_cluster_e2e():
     pending actors that surface CPU demand; the autoscaler adds workers; the
     work completes.
     """
-    import platform
-
     if platform.system() == "Windows":
         pytest.skip("AutoscalingCluster not supported on Windows.")
-
-    from joblib import Parallel, delayed, parallel_backend
-
-    from ray.cluster_utils import AutoscalingCluster
-    from ray.util.joblib import register_ray
 
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
