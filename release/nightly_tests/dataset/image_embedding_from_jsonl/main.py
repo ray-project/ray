@@ -229,6 +229,8 @@ def main(args: argparse.Namespace, profiling: Profiling):
     if args.chaos:
         start_chaos()
 
+    ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
+
     infer_cls = FakeInfer if args.fake_gpu else Infer
     infer_kwargs = {
         "batch_size": BATCH_SIZE,
@@ -245,13 +247,9 @@ def main(args: argparse.Namespace, profiling: Profiling):
         infer_kwargs["runtime_env"] = nsys_env
 
     num_gpus = max(args.inference_concurrency)
+    ds_holder = {}
 
     def benchmark_fn():
-        # `default_map_logical_memory_enabled` is a best practice that's required for
-        # Ray Data to prevent OOMs. It's not enabled by default in Ray 2.56, but we
-        # intend to enable it by default in a future release.
-        ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
-
         ds = (
             ray.data.read_json(INPUT_PREFIX, lines=True, memory=READ_MEMORY)
             .flat_map(decode)
@@ -262,22 +260,27 @@ def main(args: argparse.Namespace, profiling: Profiling):
             )
         )
         ds.write_parquet(OUTPUT_PREFIX)
-        metrics = collect_dataset_stats(ds)
-        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-        # Hold ds in scope so Ray Data keeps the actor pool alive while nsys
-        # finalizes its .nsys-rep files via stop-on-exit / atexit. Without
-        # this, ds drops out of scope on return and Ray tears the actors
-        # down before nsys gets to flush.
-        if profiling.profiler_mode == "nsys":
-            print("Holding ds in scope for 30s to let nsys finalize...", flush=True)
-            time.sleep(30)
-        if profiling.is_enabled():
-            metrics.update(
-                extract_pipeline_metrics(ds, num_gpus=num_gpus, outdir=SHARED_OUTDIR)
-            )
-        return metrics
+        ds_holder["ds"] = ds
 
     benchmark.run_fn("main", benchmark_fn)
+
+    ds = ds_holder["ds"]
+    # Hold ds in scope so Ray Data keeps the actor pool alive while nsys
+    # finalizes its .nsys-rep files via stop-on-exit / atexit. Without
+    # this, ds drops out of scope on return and Ray tears the actors
+    # down before nsys gets to flush.
+    if profiling.profiler_mode == "nsys":
+        print("Holding ds in scope for 30s to let nsys finalize...", flush=True)
+        time.sleep(30)
+
+    metrics = collect_dataset_stats(ds)
+    metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+    if profiling.is_enabled():
+        metrics.update(
+            extract_pipeline_metrics(ds, num_gpus=num_gpus, outdir=SHARED_OUTDIR)
+        )
+    benchmark.result["main"].update(metrics)
+
     benchmark.write_result()
 
     # Copy result.json to shared storage for telemetry upload.
