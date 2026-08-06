@@ -1959,6 +1959,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_default_tqc_rl_module",
+    size = "small",
+    srcs = ["algorithms/tqc/tests/test_default_tqc_rl_module.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Generic testing
 py_test(
     name = "algorithms/tests/test_custom_resource",

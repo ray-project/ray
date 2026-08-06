@@ -1213,8 +1213,7 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
         ASSERT_TRUE(status.ok());
       });
 
-  // The second call to HandlePubsubCommandBatch publishes the object location. The
-  // publisher stores the second snapshot in the mailbox.
+  // Second publish is coalesced: object-location messages are snapshots.
   rpc::PubsubCommandBatchReply command_reply2;
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
@@ -1223,10 +1222,7 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
         ASSERT_TRUE(status.ok());
       });
 
-  // Since the max_processed_sequence_id is 0, the publisher sends the second AND first
-  // snapshot of the object location. The first snapshot is not erased until it gets a
-  // long poll request with a max_processed_sequence_id greater or equal to the first
-  // snapshot's sequence id.
+  // max_processed_sequence_id is still 0; only the latest snapshot is resent.
   rpc::PubsubLongPollingReply long_polling_reply2;
   core_worker_->HandlePubsubLongPolling(
       request,
@@ -1236,25 +1232,19 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
       });
 
   EXPECT_EQ(long_polling_reply1.pub_messages_size(), 1);
-  EXPECT_EQ(long_polling_reply2.pub_messages_size(), 2);
+  EXPECT_EQ(long_polling_reply2.pub_messages_size(), 1);
 
-  auto CheckMessage = [&](const rpc::PubMessage &msg, int i) {
+  auto CheckMessage = [&](const rpc::PubMessage &msg, int64_t expected_sequence_id) {
     EXPECT_EQ(msg.channel_type(), rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
     EXPECT_EQ(msg.key_id(), object_id.Binary());
     EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
     EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
     EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
-    // AddObjectLocation triggers a publish so the sequence id is bumped by 1
-    EXPECT_EQ(msg.sequence_id(), i + 2);
+    // Subscribe snapshot is seq 2; coalesced retry snapshot is seq 3.
+    EXPECT_EQ(msg.sequence_id(), expected_sequence_id);
   };
-  for (int i = 0; i < 2; i++) {
-    if (i == 0) {
-      const auto &msg = long_polling_reply1.pub_messages(i);
-      CheckMessage(msg, i);
-    }
-    const auto &msg = long_polling_reply2.pub_messages(i);
-    CheckMessage(msg, i);
-  }
+  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/2);
+  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/3);
 }
 
 class HandleWaitForActorRefDeletedRetriesTest

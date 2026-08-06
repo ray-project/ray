@@ -21,7 +21,10 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_init_data.h"
+#include "ray/observability/ray_worker_definition_event.h"
+#include "ray/observability/ray_worker_lifecycle_event.h"
 
 namespace ray {
 namespace gcs {
@@ -110,6 +113,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
              gcs_publisher_.PublishWorkerFailure(worker_id, std::move(worker_failure));
              if (!is_duplicate_death_report) {
                TrimDeadWorkers(worker_id, worker_failure_data->exit_type());
+               RecordWorkerLifecycleEvent(*worker_failure_data);
              }
            }
            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -221,17 +225,30 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
   auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
   RAY_LOG(DEBUG).WithField(worker_id) << "Adding worker ";
 
-  auto on_done =
-      [worker_id, worker_data, reply, send_reply_callback](const Status &status) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to add worker information, "
-                         << worker_data->DebugString();
-        }
-        RAY_LOG(DEBUG).WithField(worker_id) << "Finished adding worker ";
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-      };
-
-  gcs_table_storage_.WorkerTable().Put(worker_id, *worker_data, {on_done, io_context_});
+  GetWorkerInfo(worker_id,
+                {[this, worker_id, worker_data, reply, send_reply_callback](
+                     const std::optional<rpc::WorkerTableData> &result) {
+                   // dedup guards for RPC retries
+                   const bool is_duplicate_registration = result.has_value();
+                   auto on_done = [this,
+                                   worker_id,
+                                   worker_data,
+                                   reply,
+                                   is_duplicate_registration,
+                                   send_reply_callback](const Status &status) {
+                     if (!status.ok()) {
+                       RAY_LOG(ERROR) << "Failed to add worker information, "
+                                      << worker_data->DebugString();
+                     } else if (!is_duplicate_registration) {
+                       RecordWorkerLifecycleEvent(*worker_data);
+                     }
+                     RAY_LOG(DEBUG).WithField(worker_id) << "Finished adding worker ";
+                     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+                   };
+                   gcs_table_storage_.WorkerTable().Put(
+                       worker_id, *worker_data, {std::move(on_done), io_context_});
+                 },
+                 io_context_});
 }
 
 void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
@@ -408,6 +425,23 @@ void GcsWorkerManager::TrimDeadWorkers(const WorkerID &worker_id,
       break;
     }
   }
+}
+
+void GcsWorkerManager::RecordWorkerLifecycleEvent(const rpc::WorkerTableData &data) {
+  if (!RayConfig::instance().enable_ray_event()) {
+    return;
+  }
+  if (data.worker_type() == rpc::WorkerType::DRIVER) {
+    return;
+  }
+  std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+  if (data.is_alive()) {
+    events.push_back(
+        std::make_unique<observability::RayWorkerDefinitionEvent>(data, session_name_));
+  }
+  events.push_back(
+      std::make_unique<observability::RayWorkerLifecycleEvent>(data, session_name_));
+  ray_event_recorder_.AddEvents(std::move(events));
 }
 
 }  // namespace gcs
