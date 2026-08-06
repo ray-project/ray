@@ -440,6 +440,104 @@ def test_autoscale_maxtasksperchild_replaces_actor(shutdown_only):
 
 
 # ---------------------------------------------------------------------------
+# Crash recovery (a crashed actor is replaced, like scaling up)
+# ---------------------------------------------------------------------------
+
+
+def test_fixed_pool_replaces_crashed_actor(shutdown_only):
+    """A crashed fixed-pool actor is replaced and the pool keeps working."""
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(processes=1)
+
+    def sleep_a_while(_):
+        time.sleep(60)
+
+    result = pool.apply_async(sleep_a_while, (0,))
+    wait_for_condition(lambda: len(pool._running_actor_refs) == 1, timeout=10)
+    ray.kill(pool._actor_pool[0][0])
+    # The in-flight batch is the one unavoidable loss per actor death.
+    with pytest.raises(ray.exceptions.RayActorError):
+        result.get(timeout=10)
+    # A follow-up submission runs on a replacement actor.
+    assert pool.apply(lambda: 42) == 42
+    wait_for_condition(
+        lambda: sum(1 for s in pool._actor_pool if s is not None) == 1, timeout=10
+    )
+    pool.terminate()
+
+
+def test_crash_recovery_replaces_with_new_actor(shutdown_only):
+    """The replacement for a crashed actor is a brand-new actor."""
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+
+    def actor_id(_):
+        return str(ray.get_runtime_context().get_actor_id())
+
+    def sleep_a_while(_):
+        time.sleep(60)
+
+    for kwargs in (
+        # Fixed pool (no size kwargs).
+        {"processes": 1},
+        # Autoscaling pool with min_size == max_size.
+        {"min_size": 1, "max_size": 1, "initial_size": 1, "idle_timeout_s": 999},
+    ):
+        pool = Pool(**kwargs)
+        first_id = pool.apply(actor_id, (0,))
+        result = pool.apply_async(sleep_a_while, (0,))
+        wait_for_condition(lambda: len(pool._running_actor_refs) == 1, timeout=10)
+        ray.kill(pool._actor_pool[0][0])
+        with pytest.raises(ray.exceptions.RayActorError):
+            result.get(timeout=10)
+        second_id = pool.apply(actor_id, (0,))
+        assert second_id != first_id
+        pool.terminate()
+
+
+def test_processes_and_size_kwargs_autoscale(shutdown_only):
+    """Supplying size kwargs with processes autoscales; processes feeds max_size."""
+    ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
+
+    pool = Pool(processes=2, max_size=4)
+    assert pool._autoscale is True
+    assert len(pool._actor_pool) == 4
+    assert pool.map(lambda x: x * x, range(8)) == [x * x for x in range(8)]
+    pool.terminate()
+
+    pool = Pool(processes=3, min_size=1)
+    assert pool._autoscale is True
+    # max_size defaulted to processes.
+    assert len(pool._actor_pool) == 3
+    pool.terminate()
+
+
+def test_size_kwarg_inference(shutdown_only):
+    """Size kwargs enable autoscaling; otherwise a fixed pool is created."""
+    ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
+
+    pool = Pool()
+    assert pool._autoscale is False
+    assert len(pool._actor_pool) == 4
+    pool.terminate()
+
+    pool = Pool(processes=2)
+    assert pool._autoscale is False
+    assert len(pool._actor_pool) == 2
+    pool.terminate()
+
+    pool = Pool(initial_size=0)
+    assert pool._autoscale is True
+    # max_size defaulted to the cluster CPU count.
+    assert len(pool._actor_pool) == 4
+    pool.terminate()
+
+    pool = Pool(idle_timeout_s=30)
+    assert pool._autoscale is True
+    assert len(pool._actor_pool) == 4
+    pool.terminate()
+
+
+# ---------------------------------------------------------------------------
 # End-to-end autoscaling (AutoscalingCluster — the real Ray autoscaler)
 # ---------------------------------------------------------------------------
 
