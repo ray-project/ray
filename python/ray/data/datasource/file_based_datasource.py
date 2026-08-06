@@ -180,23 +180,27 @@ class FileBasedDatasource(Datasource):
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )
-        paths, file_sizes = map(
-            list,
-            zip(
-                *meta_provider.expand_paths(
-                    paths,
-                    self._filesystem,
-                    partitioning,
-                    ignore_missing_paths=ignore_missing_paths,
-                )
-            ),
+        expanded_paths = list(
+            meta_provider.expand_paths(
+                paths,
+                self._filesystem,
+                partitioning,
+                ignore_missing_paths=ignore_missing_paths,
+            )
         )
 
-        if ignore_missing_paths and len(paths) == 0:
+        if not expanded_paths:
+            if ignore_missing_paths:
+                raise ValueError(
+                    "None of the provided paths exist. "
+                    "The 'ignore_missing_paths' field is set to True."
+                )
             raise ValueError(
-                "None of the provided paths exist. "
-                "The 'ignore_missing_paths' field is set to True."
+                f"no files found under {paths!r}. Check the path and any "
+                "configured `partition_filter` or `file_extensions` filters."
             )
+
+        paths, file_sizes = map(list, zip(*expanded_paths))
 
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
