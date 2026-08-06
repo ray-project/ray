@@ -108,5 +108,57 @@ TEST_F(RayTaskLifecycleEventTest, TestSerializeWithoutStateUpdate) {
   ASSERT_FALSE(lifecycle.has_is_debugger_paused());
 }
 
+// Log start and log end arrive as two separate updates carrying disjoint task_log_info
+// sub-fields. Merging them must accumulate all six fields, not let the later update
+// overwrite the earlier one's file paths and start offsets.
+TEST_F(RayTaskLifecycleEventTest, TestMergeCombinesTaskLogInfo) {
+  TaskID task_id = TaskID::FromRandom(JobID::FromInt(1));
+  JobID job_id = JobID::FromInt(1);
+
+  rpc::TaskLogInfo start_log;
+  start_log.set_stdout_file("out.log");
+  start_log.set_stderr_file("err.log");
+  start_log.set_stdout_start(10);
+  start_log.set_stderr_start(20);
+
+  rpc::TaskLogInfo end_log;
+  end_log.set_stdout_end(100);
+  end_log.set_stderr_end(200);
+
+  auto log_start = std::make_unique<RayTaskLifecycleEvent>(
+      task_id,
+      job_id,
+      /*task_attempt=*/0,
+      rpc::TaskStatus::NIL,
+      std::optional<const TaskStateUpdate>(TaskStateUpdate(start_log)),
+      "sess1",
+      /*timestamp=*/1000);
+
+  auto log_end = std::make_unique<RayTaskLifecycleEvent>(
+      task_id,
+      job_id,
+      /*task_attempt=*/0,
+      rpc::TaskStatus::NIL,
+      std::optional<const TaskStateUpdate>(TaskStateUpdate(end_log)),
+      "sess1",
+      /*timestamp=*/2000);
+
+  log_start->Merge(std::move(*log_end));
+  auto serialized_event = std::move(*log_start).Serialize().value();
+  const auto &lifecycle = serialized_event.task_lifecycle_event();
+
+  // NIL log-only updates carry no state transition.
+  ASSERT_EQ(lifecycle.state_transitions_size(), 0);
+
+  ASSERT_TRUE(lifecycle.has_task_log_info());
+  const auto &log_info = lifecycle.task_log_info();
+  ASSERT_EQ(log_info.stdout_file(), "out.log");
+  ASSERT_EQ(log_info.stderr_file(), "err.log");
+  ASSERT_EQ(log_info.stdout_start(), 10);
+  ASSERT_EQ(log_info.stderr_start(), 20);
+  ASSERT_EQ(log_info.stdout_end(), 100);
+  ASSERT_EQ(log_info.stderr_end(), 200);
+}
+
 }  // namespace observability
 }  // namespace ray

@@ -111,8 +111,12 @@ void AppendTaskLifecycleUpdate(const TaskID &task_id,
   }
 
   if (state_update->task_log_info_.has_value()) {
-    *lifecycle_event_data.mutable_task_log_info() =
-        TaskLogInfoToLifecycleEvent(state_update->task_log_info_.value());
+    // Merge rather than overwrite: log start and log end arrive as two separate updates
+    // carrying disjoint sub-fields (file paths + start offsets vs. end offsets), so an
+    // assignment would drop whichever came first. Matches the GCS path in
+    // ToRpcTaskEvents.
+    lifecycle_event_data.mutable_task_log_info()->MergeFrom(
+        TaskLogInfoToLifecycleEvent(state_update->task_log_info_.value()));
   }
 }
 
