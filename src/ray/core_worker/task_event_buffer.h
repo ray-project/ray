@@ -293,6 +293,12 @@ class TaskProfileEvent : public TaskEvent {
  * only for the first/submission event of an attempt.
  * @param state_update Optional lifecycle details (node/worker/error/log) for this change.
  */
+// TODO(karticam): expose this as a method on RayEventRecorderInterface so call
+//  sites do recorder.RecordTaskStatusEvent(...) instead of a free function. Kept free for
+//  now because it builds the event from a TaskSpecification; folding it into the
+//  observability-layer recorder would make that layer depend on core_worker task types.
+//  core-worker already depends on observabillity right now. this might lead to circular
+//  dependencies.
 void RecordTaskStatusEventToRecorderIfNeeded(
     ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
     const TaskID &task_id,
