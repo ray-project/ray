@@ -603,16 +603,12 @@ def _fetch_from_file_server(
 
     same_incarnation_retried = False
     while True:
+        endpoint = _resolve()
         try:
-            endpoint = _resolve()
             _stream_members_flight(
                 endpoint, members, max_bytes_per_fetch, out_file_obj
             )
             return
-        except ShuffleFileServerAnomalyError:
-            # _resolve() already classified a terminal actor state (dead,
-            # unschedulable, or name-not-registered). Not retryable.
-            raise
         except OSError:
             # The sink's os.pwrite failed: ENOSPC/EDQUOT (disk or quota full),
             # EIO (device I/O error), or a short pwrite on a FUSE/network FS.
