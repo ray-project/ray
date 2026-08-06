@@ -128,7 +128,7 @@ class _ReadGranularity(str, enum.Enum):
     EPISODE = "episode"
 
 
-def _delta_tensor_type(data_type: pa.DataType) -> "pa.ExtensionType":
+def _delta_tensor_type(data_type: pa.DataType) -> pa.ExtensionType:
     """Build the output tensor type for a windowed tabular Arrow field.
 
     LeRobot stores vectors as list columns and higher-rank features either as
@@ -137,7 +137,9 @@ def _delta_tensor_type(data_type: pa.DataType) -> "pa.ExtensionType":
     """
     from ray.data.extensions import ArrowVariableShapedTensorType
 
-    if isinstance(data_type, pa.ExtensionType):
+    # BaseExtensionType covers canonical (C++-defined) extension types like
+    # pa.fixed_shape_tensor too, not just Python-defined ones like HF ArrayXD.
+    if isinstance(data_type, pa.BaseExtensionType):
         data_type = data_type.storage_type
 
     ndim = 1
@@ -933,17 +935,19 @@ def _prepare_delta_segment(
         vk for vk in root.video_keys if vk in delta_steps
     ]
     # Materialize tabular delta columns to numpy once, preserving the stored dtype
-    # so stacked windows match the schema: list columns (fixed or variable) flatten
-    # to (n_rows, dim) via the value array -- which keeps e.g. float32 that
-    # to_pylist would widen to float64 -- and scalar columns stay 1-D.
+    # so stacked windows match the schema: nested-list columns (fixed or variable)
+    # materialize to (n_rows, *shape) via the value array -- which keeps e.g.
+    # float32 that to_pylist would widen to float64 -- and scalar columns stay 1-D.
     tabular_base: Dict[str, np.ndarray] = {}
     for name in delta_tabular_keys:
         col = full.column(name).combine_chunks()
-        if isinstance(col.type, pa.ExtensionType):
-            # Hugging Face ArrayXD columns already expose a typed, shaped NumPy
-            # representation.
-            tabular_base[name] = np.asarray(col.to_numpy(zero_copy_only=False))
-        elif (
+        if isinstance(col.type, pa.BaseExtensionType):
+            # In lerobot, multidimensional columns can be backed by Hugging Face ArrayXD.
+            # Hugging Face ArrayXD is a pa.ExtensionType
+            # Unwrap it so the one validated path below
+            # materializes every encoding
+            col = col.storage
+        if (
             pa.types.is_fixed_size_list(col.type)
             or pa.types.is_list(col.type)
             or pa.types.is_large_list(col.type)
