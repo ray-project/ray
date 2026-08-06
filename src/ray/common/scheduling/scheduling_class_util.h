@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -71,12 +72,18 @@ struct SchedulingClassToIds {
   /// Keep global static id mappings for SchedulingClass for performance.
   static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
       ABSL_GUARDED_BY(mutex_);
-  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
-      ABSL_GUARDED_BY(mutex_);
+  static absl::flat_hash_map<SchedulingClass,
+                             std::shared_ptr<const SchedulingClassDescriptor>>
+      sched_id_to_cls_ ABSL_GUARDED_BY(mutex_);
   static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 
   /// Gets the scheduling class descriptor for the given id.
-  static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
+  ///
+  /// Returns a `shared_ptr<const>` copied out under `mutex_`. Descriptors are immutable
+  /// once registered, so callers can read the result after the lock is released, and the
+  /// shared ownership keeps it valid even if the map rehashes or evicts the entry.
+  static std::shared_ptr<const SchedulingClassDescriptor> GetSchedulingClassDescriptor(
+      SchedulingClass id);
 
   /// Gets or creates a scheduling class id for the given descriptor.
   static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);

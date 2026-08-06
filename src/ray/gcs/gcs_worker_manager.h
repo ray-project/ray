@@ -14,13 +14,17 @@
 
 #pragma once
 
+#include <array>
 #include <deque>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/stats/metric.h"
 
@@ -33,10 +37,14 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
   GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
                    instrumented_io_context &io_context,
-                   pubsub::GcsPublisher &gcs_publisher)
+                   pubsub::GcsPublisher &gcs_publisher,
+                   observability::RayEventRecorderInterface &ray_event_recorder,
+                   std::string session_name)
       : gcs_table_storage_(gcs_table_storage),
         io_context_(io_context),
-        gcs_publisher_(gcs_publisher) {}
+        gcs_publisher_(gcs_publisher),
+        ray_event_recorder_(ray_event_recorder),
+        session_name_(std::move(session_name)) {}
 
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -70,6 +78,7 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   void SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
     usage_stats_client_ = usage_stats_client;
   }
+
   /**
    * @brief Rebuilds the dead-worker id queue from the worker table on GCS startup and
    * trims it to the retention cap.
@@ -80,20 +89,38 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   void RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_data);
 
  private:
+  /**
+   * @brief Reads one worker's record from the worker table, logging on failure.
+   *
+   * @param worker_id The worker to look up.
+   * @param callback Invoked with the record, or std::nullopt if absent or the
+   * read failed.
+   */
   void GetWorkerInfo(const WorkerID &worker_id,
                      Postable<void(std::optional<rpc::WorkerTableData>)> callback) const;
 
   /**
-   * @brief Records a newly dead worker and evicts the oldest one when the retention cap
-   * is exceeded.
+   * @brief Records a newly dead worker in its priority tier and, when the retention cap
+   * is exceeded, evicts the oldest worker from the lowest-priority tier first
    *
    * @param worker_id The id of the worker that just died.
+   * @param exit_type How the worker exited; determines its retention priority tier.
    */
-  void TrimDeadWorkers(const WorkerID &worker_id);
+  void TrimDeadWorkers(const WorkerID &worker_id, rpc::WorkerExitType exit_type);
+
+  /**
+   * @brief Records a worker lifecycle event if ray events are enabled. Callers must
+   * exclude driver workers (covered by driver job events).
+   *
+   * @param data Worker table data to build the lifecycle event from.
+   */
+  void RecordWorkerLifecycleEvent(const rpc::WorkerTableData &data);
 
   gcs::GcsTableStorage &gcs_table_storage_;
   instrumented_io_context &io_context_;
   pubsub::GcsPublisher &gcs_publisher_;
+  observability::RayEventRecorderInterface &ray_event_recorder_;
+  std::string session_name_;
   UsageStatsClient *usage_stats_client_;
 
   /// Only listens for unexpected worker deaths not expected like node death.
@@ -114,9 +141,24 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
       "due to system related errors.",
       /*unit=*/""};
 
-  /// Queue of dead worker ids in death order (oldest at front); bounds retention in the
-  /// worker table. Only accessed on io_context_.
-  std::deque<WorkerID> dead_worker_ids_queue_;
+  /// Total dead workers retained across all priority tiers
+  size_t TotalDeadWorkers() const {
+    size_t total = 0;
+    for (const auto &tier : dead_workers_by_tier_) {
+      total += tier.size();
+    }
+    return total;
+  }
+
+  /// Number of dead-worker retention priority tiers; lower index is evicted first
+  /// Right now, we only have two tiers:
+  //    0: INTENDED_SYSTEM_EXIT, INTENDED_USER_EXIT
+  //    1: USER_ERROR, SYSTEM_ERROR, NODE_OUT_OF_MEMORY
+  static constexpr size_t kNumDeadWorkerTiers = 2;
+
+  /// Dead worker ids bucketed by retention priority tier; each tier is FIFO (oldest at
+  /// front). Bounds retention in the worker table. Only accessed on io_context_.
+  std::array<std::deque<WorkerID>, kNumDeadWorkerTiers> dead_workers_by_tier_;
 };
 
 }  // namespace gcs

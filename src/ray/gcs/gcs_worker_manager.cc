@@ -14,13 +14,17 @@
 
 #include "ray/gcs/gcs_worker_manager.h"
 
+#include <array>
 #include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_init_data.h"
+#include "ray/observability/ray_worker_definition_event.h"
+#include "ray/observability/ray_worker_lifecycle_event.h"
 
 namespace ray {
 namespace gcs {
@@ -29,6 +33,11 @@ namespace {
 bool IsIntentionalWorkerFailure(rpc::WorkerExitType exit_type) {
   return exit_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
          exit_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
+}
+
+// Retention priority tier for a dead worker (lower index = evicted first)
+size_t DeadWorkerTier(rpc::WorkerExitType exit_type) {
+  return IsIntentionalWorkerFailure(exit_type) ? 0 : 1;
 }
 }  // namespace
 
@@ -103,7 +112,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
              worker_failure.set_node_id(worker_failure_data->worker_address().node_id());
              gcs_publisher_.PublishWorkerFailure(worker_id, std::move(worker_failure));
              if (!is_duplicate_death_report) {
-               TrimDeadWorkers(worker_id);
+               TrimDeadWorkers(worker_id, worker_failure_data->exit_type());
+               RecordWorkerLifecycleEvent(*worker_failure_data);
              }
            }
            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -215,17 +225,30 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
   auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
   RAY_LOG(DEBUG).WithField(worker_id) << "Adding worker ";
 
-  auto on_done =
-      [worker_id, worker_data, reply, send_reply_callback](const Status &status) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to add worker information, "
-                         << worker_data->DebugString();
-        }
-        RAY_LOG(DEBUG).WithField(worker_id) << "Finished adding worker ";
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-      };
-
-  gcs_table_storage_.WorkerTable().Put(worker_id, *worker_data, {on_done, io_context_});
+  GetWorkerInfo(worker_id,
+                {[this, worker_id, worker_data, reply, send_reply_callback](
+                     const std::optional<rpc::WorkerTableData> &result) {
+                   // dedup guards for RPC retries
+                   const bool is_duplicate_registration = result.has_value();
+                   auto on_done = [this,
+                                   worker_id,
+                                   worker_data,
+                                   reply,
+                                   is_duplicate_registration,
+                                   send_reply_callback](const Status &status) {
+                     if (!status.ok()) {
+                       RAY_LOG(ERROR) << "Failed to add worker information, "
+                                      << worker_data->DebugString();
+                     } else if (!is_duplicate_registration) {
+                       RecordWorkerLifecycleEvent(*worker_data);
+                     }
+                     RAY_LOG(DEBUG).WithField(worker_id) << "Finished adding worker ";
+                     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+                   };
+                   gcs_table_storage_.WorkerTable().Put(
+                       worker_id, *worker_data, {std::move(on_done), io_context_});
+                 },
+                 io_context_});
 }
 
 void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
@@ -342,50 +365,83 @@ void GcsWorkerManager::GetWorkerInfo(
 }
 
 void GcsWorkerManager::RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_data) {
-  std::vector<std::pair<WorkerID, uint64_t>> dead;
-  dead.reserve(gcs_init_data.Workers().size());
+  std::array<std::vector<std::pair<uint64_t, WorkerID>>, kNumDeadWorkerTiers>
+      dead_workers_bucket;
   for (const auto &[worker_id, data] : gcs_init_data.Workers()) {
     if (!data.is_alive()) {
-      dead.emplace_back(worker_id,
-                        data.end_time_ms() != 0
-                            ? data.end_time_ms()
-                            : static_cast<uint64_t>(data.timestamp() * 1000));
+      dead_workers_bucket[DeadWorkerTier(data.exit_type())].emplace_back(
+          data.end_time_ms() != 0 ? data.end_time_ms()
+                                  : static_cast<uint64_t>(data.timestamp() * 1000),
+          worker_id);
     }
   }
-  std::sort(dead.begin(), dead.end(), [](const auto &left, const auto &right) {
-    return left.second < right.second;
-  });
-  const size_t cap = RayConfig::instance().maximum_gcs_dead_worker_cached_count();
-  const size_t overflow = dead.size() > cap ? dead.size() - cap : 0;
-  // Drop the oldest rows beyond the cap from the table in one batch.
-  if (overflow > 0) {
-    std::vector<WorkerID> to_evict;
-    to_evict.reserve(overflow);
-    for (size_t i = 0; i < overflow; ++i) {
-      to_evict.push_back(dead[i].first);
+  for (size_t tier = 0; tier < kNumDeadWorkerTiers; ++tier) {
+    std::sort(
+        dead_workers_bucket[tier].begin(),
+        dead_workers_bucket[tier].end(),
+        [](const auto &left, const auto &right) { return left.first < right.first; });
+    for (const auto &entry : dead_workers_bucket[tier]) {
+      dead_workers_by_tier_[tier].push_back(entry.second);
     }
+  }
+  const size_t cap = RayConfig::instance().maximum_gcs_dead_worker_cached_count();
+  const size_t total = TotalDeadWorkers();
+  // Steady-state trimming keeps the table at or below the cap, so `overflow` is
+  // normally 0 here. It can be positive only when the persisted (Redis FT) table
+  // was bounded to a larger cap than the current one — i.e. the operator lowered
+  // maximum_gcs_dead_worker_cached_count across a restart.
+  size_t overflow = total > cap ? total - cap : 0;
+  std::vector<WorkerID> to_evict;
+  to_evict.reserve(overflow);
+  for (auto &tier : dead_workers_by_tier_) {
+    while (overflow > 0 && !tier.empty()) {
+      to_evict.push_back(tier.front());
+      tier.pop_front();
+      --overflow;
+    }
+    if (overflow == 0) {
+      break;
+    }
+  }
+  if (!to_evict.empty()) {
     gcs_table_storage_.WorkerTable().BatchDelete(to_evict,
                                                  {[](const auto &) {}, io_context_});
   }
-  // Seed the queue with the retained (newest `cap`) ids, oldest first.
-  for (size_t i = overflow; i < dead.size(); ++i) {
-    dead_worker_ids_queue_.push_back(dead[i].first);
+}
+
+void GcsWorkerManager::TrimDeadWorkers(const WorkerID &worker_id,
+                                       rpc::WorkerExitType exit_type) {
+  dead_workers_by_tier_[DeadWorkerTier(exit_type)].push_back(worker_id);
+  if (TotalDeadWorkers() <=
+      RayConfig::instance().maximum_gcs_dead_worker_cached_count()) {
+    return;
+  }
+  for (auto &tier : dead_workers_by_tier_) {
+    if (!tier.empty()) {
+      const WorkerID evict_id = tier.front();
+      tier.pop_front();
+      gcs_table_storage_.WorkerTable().Delete(evict_id,
+                                              {[](const auto &) {}, io_context_});
+      break;
+    }
   }
 }
 
-void GcsWorkerManager::TrimDeadWorkers(const WorkerID &worker_id) {
-  const size_t cap = RayConfig::instance().maximum_gcs_dead_worker_cached_count();
-  if (cap == 0) {
-    gcs_table_storage_.WorkerTable().Delete(worker_id,
-                                            {[](const auto &) {}, io_context_});
+void GcsWorkerManager::RecordWorkerLifecycleEvent(const rpc::WorkerTableData &data) {
+  if (!RayConfig::instance().enable_ray_event()) {
     return;
   }
-  if (dead_worker_ids_queue_.size() >= cap) {
-    const WorkerID evict_id = dead_worker_ids_queue_.front();
-    dead_worker_ids_queue_.pop_front();
-    gcs_table_storage_.WorkerTable().Delete(evict_id, {[](const auto &) {}, io_context_});
+  if (data.worker_type() == rpc::WorkerType::DRIVER) {
+    return;
   }
-  dead_worker_ids_queue_.push_back(worker_id);
+  std::vector<std::unique_ptr<observability::RayEventInterface>> events;
+  if (data.is_alive()) {
+    events.push_back(
+        std::make_unique<observability::RayWorkerDefinitionEvent>(data, session_name_));
+  }
+  events.push_back(
+      std::make_unique<observability::RayWorkerLifecycleEvent>(data, session_name_));
+  ray_event_recorder_.AddEvents(std::move(events));
 }
 
 }  // namespace gcs

@@ -50,6 +50,9 @@ from ray.rllib.algorithms.utils import (
     _get_offline_eval_runner_bundles,
 )
 from ray.rllib.callbacks.utils import make_callback
+from ray.rllib.connectors.agent.mean_std_filter import (
+    MeanStdObservationFilterAgentConnector,
+)
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.core import (
@@ -4683,7 +4686,6 @@ class Algorithm(Checkpointable, Trainable):
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
                 f"Algorithm's local worker!"
             )
-        pp = policy.agent_connectors[ObsPreprocessorConnector]
 
         if not isinstance(observation, (np.ndarray, dict, tuple)):
             try:
@@ -4693,25 +4695,33 @@ class Algorithm(Checkpointable, Trainable):
                     f"Observation type {type(observation)} cannot be converted to "
                     f"np.ndarray."
                 )
-        if pp:
-            assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
-            pp = pp[0]
 
-            if not pp.is_identity():
-                pp.in_eval()
-                if observation is not None:
-                    _input_dict = {Columns.OBS: observation}
-                elif input_dict is not None:
-                    _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
-                else:
-                    raise ValueError(
-                        "Either observation or input_dict must be provided."
-                    )
+        for pp_type in [
+            ObsPreprocessorConnector,
+            MeanStdObservationFilterAgentConnector,
+        ]:
+            pp = policy.agent_connectors[pp_type]
+            if pp:
+                assert (
+                    len(pp) == 1
+                ), f"Only one preprocessor of type {pp_type} is allowed per policy!"
+                pp = pp[0]
 
-                acd = AgentConnectorDataType("0", "0", _input_dict)
-                pp.reset(env_id="0")
-                ac_o = pp([acd])[0]
-                observation = ac_o.data[Columns.OBS]
+                if not hasattr(pp, "is_identity") or not pp.is_identity():
+                    pp.in_eval()
+                    if observation is not None:
+                        _input_dict = {Columns.OBS: observation}
+                    elif input_dict is not None:
+                        _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
+                    else:
+                        raise ValueError(
+                            "Either observation or input_dict must be provided."
+                        )
+
+                    acd = AgentConnectorDataType("0", "0", _input_dict)
+                    pp.reset(env_id="0")
+                    ac_o = pp([acd])[0]
+                    observation = ac_o.data[Columns.OBS]
 
         if input_dict is not None:
             input_dict[Columns.OBS] = observation
