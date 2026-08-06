@@ -25,6 +25,7 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
     GangPlacementStrategy,
@@ -190,73 +191,78 @@ class TestDeploymentConfig:
         # Test default value
         assert DeploymentConfig().max_constructor_retry_count == 20
 
-    def test_backpressure_status_code_validation(self):
+    def test_backpressure_config_status_code_validation(self):
         # Only 503 (the default) and 429 are allowed.
-        assert DeploymentConfig().backpressure_status_code == 503
+        assert BackpressureConfig().status_code == 503
+        assert BackpressureConfig(status_code=429).status_code == 429
+        assert BackpressureConfig(status_code=503).status_code == 503
+        # The deployment config accepts a model or a plain dict.
+        assert DeploymentConfig().backpressure_config.status_code == 503
         assert (
-            DeploymentConfig(backpressure_status_code=429).backpressure_status_code
+            DeploymentConfig(
+                backpressure_config=BackpressureConfig(status_code=429)
+            ).backpressure_config.status_code
             == 429
         )
         assert (
-            DeploymentConfig(backpressure_status_code=503).backpressure_status_code
-            == 503
+            DeploymentConfig(
+                backpressure_config={"status_code": 429}
+            ).backpressure_config.status_code
+            == 429
         )
 
-        with pytest.raises(ValidationError):
-            DeploymentConfig(backpressure_status_code=404)
-        with pytest.raises(ValidationError):
-            DeploymentConfig(backpressure_status_code=200)
-        with pytest.raises(ValidationError):
-            DeploymentConfig(backpressure_status_code=None)
+        for invalid_status_code in (404, 200, None):
+            with pytest.raises(ValidationError):
+                BackpressureConfig(status_code=invalid_status_code)
+            with pytest.raises(ValidationError):
+                DeploymentConfig(
+                    backpressure_config={"status_code": invalid_status_code}
+                )
 
-    def test_backpressure_retry_after_s_validation(self):
+    def test_backpressure_config_retry_after_s_validation(self):
         # None (the default) means no `Retry-After` header.
-        assert DeploymentConfig().backpressure_retry_after_s is None
-        assert (
-            DeploymentConfig(backpressure_retry_after_s=None).backpressure_retry_after_s
-            is None
-        )
+        assert BackpressureConfig().retry_after_s is None
+        assert BackpressureConfig(retry_after_s=None).retry_after_s is None
         # 0 is legal: "retry immediately."
-        assert (
-            DeploymentConfig(backpressure_retry_after_s=0).backpressure_retry_after_s
-            == 0
-        )
-        assert (
-            DeploymentConfig(backpressure_retry_after_s=7.5).backpressure_retry_after_s
-            == 7.5
-        )
+        assert BackpressureConfig(retry_after_s=0).retry_after_s == 0
+        assert BackpressureConfig(retry_after_s=7.5).retry_after_s == 7.5
+        assert DeploymentConfig().backpressure_config.retry_after_s is None
 
-        with pytest.raises(ValidationError):
-            DeploymentConfig(backpressure_retry_after_s=-1)
-        with pytest.raises(ValidationError):
-            DeploymentConfig(backpressure_retry_after_s="hello")
+        # inf/nan are rejected (allow_inf_nan=False): an infinite value would
+        # crash `Retry-After` header construction at rejection time.
+        for invalid_retry_after in (-1, "hello", float("inf"), float("nan")):
+            with pytest.raises(ValidationError):
+                BackpressureConfig(retry_after_s=invalid_retry_after)
+            with pytest.raises(ValidationError):
+                DeploymentConfig(
+                    backpressure_config={"retry_after_s": invalid_retry_after}
+                )
 
-    def test_backpressure_fields_proto_round_trip(self):
+    def test_backpressure_config_proto_round_trip(self):
         # Explicit values survive the proto round trip.
         config = DeploymentConfig(
-            backpressure_status_code=429, backpressure_retry_after_s=7.5
+            backpressure_config=BackpressureConfig(status_code=429, retry_after_s=7.5)
         )
         round_tripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
-        assert round_tripped.backpressure_status_code == 429
-        assert round_tripped.backpressure_retry_after_s == 7.5
+        assert round_tripped.backpressure_config.status_code == 429
+        assert round_tripped.backpressure_config.retry_after_s == 7.5
 
         # Defaults survive the round trip (None must not become 0.0).
         round_tripped = DeploymentConfig.from_proto_bytes(
             DeploymentConfig().to_proto_bytes()
         )
-        assert round_tripped.backpressure_status_code == 503
-        assert round_tripped.backpressure_retry_after_s is None
+        assert round_tripped.backpressure_config.status_code == 503
+        assert round_tripped.backpressure_config.retry_after_s is None
 
-        # Protos from older versions don't have the fields at all (e.g., sent
+        # Protos from older versions don't have the field at all (e.g., sent
         # by an older controller during a rolling upgrade); simulate by
-        # clearing them so they're absent from the wire format. They must
-        # fall back to the defaults.
+        # clearing it so it's absent from the wire format. It must fall back
+        # to the defaults.
         old_proto = DeploymentConfig().to_proto()
-        old_proto.ClearField("backpressure_status_code")
-        old_proto.ClearField("backpressure_retry_after_s")
+        old_proto.ClearField("backpressure_config")
         from_old_proto = DeploymentConfig.from_proto(old_proto)
-        assert from_old_proto.backpressure_status_code == 503
-        assert from_old_proto.backpressure_retry_after_s is None
+        assert from_old_proto.backpressure_config.status_code == 503
+        assert from_old_proto.backpressure_config.retry_after_s is None
 
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)

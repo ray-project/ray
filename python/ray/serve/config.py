@@ -4,7 +4,7 @@ import logging
 import warnings
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -550,6 +550,45 @@ class AutoscalingPolicy(BaseModel):
             ) from e
         self._cached_policy = policy
         return policy
+
+
+@PublicAPI(stability="alpha")
+class BackpressureConfig(BaseModel):
+    """Config for the HTTP response returned on backpressure rejections.
+
+    When a deployment's ``max_queued_requests`` limit is reached, additional
+    requests are rejected. This class configures the HTTP response for those
+    rejections; requests rejected because the deployment is unavailable
+    (e.g., it failed to deploy) always return 503. The gRPC path is
+    unaffected: backpressure rejections always map to ``RESOURCE_EXHAUSTED``.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import BackpressureConfig
+
+            @serve.deployment(
+                max_queued_requests=64,
+                backpressure_config=BackpressureConfig(
+                    status_code=429,
+                    retry_after_s=5,
+                ),
+            )
+            class Deployment:
+                ...
+
+    Args:
+        status_code: HTTP status code returned for requests rejected due to
+            backpressure. Must be 503 (default) or 429.
+        retry_after_s: If set, rejected HTTP responses include a
+            `Retry-After` header with this value (rounded up to an integer
+            number of seconds). Defaults to None (no header).
+    """
+
+    status_code: Literal[503, 429] = 503
+    retry_after_s: Optional[NonNegativeFloat] = Field(default=None, allow_inf_nan=False)
 
 
 @PublicAPI(stability="stable")

@@ -2170,12 +2170,8 @@ class Replica:
         return self._deployment_config.max_queued_requests
 
     @property
-    def backpressure_status_code(self) -> int:
-        return self._deployment_config.backpressure_status_code
-
-    @property
-    def backpressure_retry_after_s(self) -> Optional[float]:
-        return self._deployment_config.backpressure_retry_after_s
+    def backpressure_config(self):
+        return self._deployment_config.backpressure_config
 
     async def _maybe_start_direct_ingress_servers(self):
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
@@ -3020,8 +3016,10 @@ class Replica:
             # because between incrementing and decrementing the queued requests, we yield to the event loop.
             for msg in convert_object_to_asgi_messages(
                 "Request dropped due to backpressure",
-                status_code=self.backpressure_status_code,
-                extra_headers=retry_after_headers(self.backpressure_retry_after_s),
+                status_code=self.backpressure_config.status_code,
+                extra_headers=retry_after_headers(
+                    self.backpressure_config.retry_after_s
+                ),
             ):
                 await send(msg)
             return

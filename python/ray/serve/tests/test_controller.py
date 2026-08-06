@@ -173,8 +173,10 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                 "name": "autoscaling_app",
                                 "max_ongoing_requests": 5,
                                 "max_queued_requests": -1,
-                                "backpressure_status_code": 503,
-                                "backpressure_retry_after_s": None,
+                                "backpressure_config": {
+                                    "status_code": 503,
+                                    "retry_after_s": None,
+                                },
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,

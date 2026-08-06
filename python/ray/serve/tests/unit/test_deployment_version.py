@@ -2,6 +2,7 @@ import pytest
 
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.deployment_state import DeploymentVersion
+from ray.serve.config import BackpressureConfig
 
 
 def test_validation():
@@ -391,15 +392,31 @@ def test_requires_actor_reconfigure():
     v2 = DeploymentVersion("1", DeploymentConfig(num_replicas=2), {})
     assert not v1.requires_actor_reconfigure(v2)
 
-    # Backpressure response options require actor reconfigure, since the
-    # direct-ingress path reads them from the replica's local deployment
+    # The backpressure response config requires actor reconfigure, since the
+    # direct-ingress path reads it from the replica's local deployment
     # config when rejecting requests.
-    v1 = DeploymentVersion("1", DeploymentConfig(backpressure_status_code=503), {})
-    v2 = DeploymentVersion("1", DeploymentConfig(backpressure_status_code=429), {})
+    v1 = DeploymentVersion(
+        "1",
+        DeploymentConfig(backpressure_config=BackpressureConfig(status_code=503)),
+        {},
+    )
+    v2 = DeploymentVersion(
+        "1",
+        DeploymentConfig(backpressure_config=BackpressureConfig(status_code=429)),
+        {},
+    )
     assert v1.requires_actor_reconfigure(v2)
 
-    v1 = DeploymentVersion("1", DeploymentConfig(backpressure_retry_after_s=None), {})
-    v2 = DeploymentVersion("1", DeploymentConfig(backpressure_retry_after_s=5), {})
+    v1 = DeploymentVersion(
+        "1",
+        DeploymentConfig(backpressure_config=BackpressureConfig(retry_after_s=None)),
+        {},
+    )
+    v2 = DeploymentVersion(
+        "1",
+        DeploymentConfig(backpressure_config=BackpressureConfig(retry_after_s=5)),
+        {},
+    )
     assert v1.requires_actor_reconfigure(v2)
 
 
