@@ -306,9 +306,13 @@ When `enableInTreeAutoscaling: true`, the Ray autoscaler on the head pod must re
 
 | CNI | Required form |
 |---|---|
-| kindnet, Calico, Antrea | `ipBlock` with the endpoint IP (post-DNAT) |
-| Cilium | `CiliumNetworkPolicy` with `toEntities: [kube-apiserver]`; standard `ipBlock` doesn't work |
-| EKS (Amazon VPC CNI) | `ipBlock` with the `kubernetes` Service ClusterIP |
+| kindnet | No rule needed — kindnet allows egress to the API server by default |
+| Calico, Cilium (with `kube-proxy-replacement`) | `ipBlock` with the endpoint IP (post-DNAT); a ClusterIP rule blocks autoscaling |
+| EKS (Amazon VPC CNI) | `ipBlock` with the `kubernetes` Service ClusterIP; an endpoint IP rule blocks autoscaling |
+
+These results come from testing in [kuberay#4638](https://github.com/ray-project/kuberay/pull/4638#issuecomment-4660571594); other CNIs or configurations may behave differently.
+
+Calico and Cilium also require `policyCIDRMatchMode: Node` set on the CNI (see [this issue](https://github.com/hcloud-k8s/terraform-hcloud-kubernetes/issues/285)) for the endpoint-IP `ipBlock` rule below to match. Without it, the rule may not take effect.
 
 Find the endpoint IP with:
 
@@ -316,7 +320,7 @@ Find the endpoint IP with:
 kubectl get endpointslices -n default -l kubernetes.io/service-name=kubernetes
 ```
 
-For kindnet, Calico, and Antrea, add this rule to `head.egressRules`:
+For Calico and Cilium (with `kube-proxy-replacement`), add this rule to `head.egressRules`:
 
 ```yaml
 - to:
@@ -327,7 +331,7 @@ For kindnet, Calico, and Antrea, add this rule to `head.egressRules`:
     protocol: TCP
 ```
 
-For EKS, replace `<endpoint-ip>` with the ClusterIP from `kubectl get svc kubernetes`. For Cilium, create a `CiliumNetworkPolicy` instead.
+For EKS, replace `<endpoint-ip>` with the ClusterIP from `kubectl get svc kubernetes`. As a [suggested alternative for Cilium in kuberay#4638](https://github.com/ray-project/kuberay/pull/4638#discussion_r3336164401), you can instead use a `CiliumNetworkPolicy` with `toEntities: [kube-apiserver]` to target the API server by identity instead of IP. See Cilium's [Layer 3 policy docs](https://docs.cilium.io/en/stable/security/policy/layer3/) for details.
 
 ## RayJob patterns
 
