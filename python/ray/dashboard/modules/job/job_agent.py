@@ -225,6 +225,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         """
         backoff_s = 1
         max_backoff_s = 60
+        initialized_here = False
         while True:
             try:
                 if not ray.is_initialized():
@@ -238,6 +239,14 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                         namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         _skip_env_hook=True,
                     )
+                    initialized_here = True
+
+                # Verify GCS is responsive before initializing JobManager to ensure
+                # that the background job recovery task does not fail due to GCS recovery delays.
+                await dashboard_utils.get_head_node_id(
+                    self._dashboard_agent.gcs_client, timeout=5
+                )
+
                 self.get_job_manager()
                 logger.info(
                     "Head node JobAgent: JobManager initialized, "
@@ -249,10 +258,12 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                     "Head node JobAgent: Failed to initialize JobManager, "
                     f"retrying in {backoff_s}s."
                 )
-                try:
-                    ray.shutdown()
-                except Exception:
-                    pass
+                if initialized_here:
+                    try:
+                        ray.shutdown()
+                    except Exception:
+                        pass
+                    initialized_here = False
                 await asyncio.sleep(backoff_s)
                 backoff_s = min(backoff_s * 2, max_backoff_s)
 

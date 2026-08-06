@@ -4,6 +4,8 @@ Tests verify that:
 1. Head node JobAgent eagerly initializes JobManager in run() without HTTP requests.
 2. Worker node JobAgent does NOT initialize JobManager in run().
 3. Initialization retries with exponential backoff on failure.
+4. GCS responsiveness is verified before JobManager initialization.
+5. ray.shutdown() is only called if ray was initialized by _initialize_job_manager.
 
 These tests use mocking to avoid requiring a running Ray cluster or compiled
 C extensions, making them fast and self-contained unit tests.
@@ -95,6 +97,10 @@ async def test_initialize_job_manager_retries_on_failure():
             "ray.dashboard.modules.job.job_agent.asyncio.sleep",
             new_callable=AsyncMock,
         ) as mock_sleep,
+        patch(
+            "ray.dashboard.modules.job.job_agent.dashboard_utils.get_head_node_id",
+            new_callable=AsyncMock,
+        ),
         patch.object(job_agent, "get_job_manager") as mock_get_jm,
     ):
         await job_agent._initialize_job_manager()
@@ -128,6 +134,10 @@ async def test_initialize_job_manager_succeeds_immediately():
             "ray.dashboard.modules.job.job_agent.asyncio.sleep",
             new_callable=AsyncMock,
         ) as mock_sleep,
+        patch(
+            "ray.dashboard.modules.job.job_agent.dashboard_utils.get_head_node_id",
+            new_callable=AsyncMock,
+        ),
         patch.object(job_agent, "get_job_manager") as mock_get_jm,
     ):
         await job_agent._initialize_job_manager()
@@ -151,6 +161,10 @@ async def test_initialize_job_manager_skips_ray_init_if_already_initialized():
             return_value=True,
         ),
         patch("ray.dashboard.modules.job.job_agent.ray.init") as mock_init,
+        patch(
+            "ray.dashboard.modules.job.job_agent.dashboard_utils.get_head_node_id",
+            new_callable=AsyncMock,
+        ),
         patch.object(job_agent, "get_job_manager") as mock_get_jm,
     ):
         await job_agent._initialize_job_manager()
@@ -192,6 +206,10 @@ async def test_initialize_job_manager_backoff_caps_at_max():
             "ray.dashboard.modules.job.job_agent.asyncio.sleep",
             new_callable=AsyncMock,
         ) as mock_sleep,
+        patch(
+            "ray.dashboard.modules.job.job_agent.dashboard_utils.get_head_node_id",
+            new_callable=AsyncMock,
+        ),
         patch.object(job_agent, "get_job_manager"),
     ):
         await job_agent._initialize_job_manager()
@@ -201,6 +219,49 @@ async def test_initialize_job_manager_backoff_caps_at_max():
         sleep_values = [call.args[0] for call in mock_sleep.call_args_list]
         expected = [1, 2, 4, 8, 16, 32, 60, 60]
         assert sleep_values == expected
+
+
+@pytest.mark.asyncio
+async def test_initialize_job_manager_does_not_shutdown_preexisting_ray():
+    """If ray was already initialized before _initialize_job_manager, failure should not call ray.shutdown."""
+    from ray.dashboard.modules.job.job_agent import JobAgent
+
+    mock_agent = _make_mock_dashboard_agent(is_head=True)
+    job_agent = JobAgent(mock_agent)
+
+    call_count = 0
+
+    async def mock_get_head_node_id(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise TimeoutError("GCS unresponsive")
+
+    with (
+        patch(
+            "ray.dashboard.modules.job.job_agent.ray.is_initialized",
+            return_value=True,
+        ),
+        patch("ray.dashboard.modules.job.job_agent.ray.init") as mock_init,
+        patch("ray.dashboard.modules.job.job_agent.ray.shutdown") as mock_shutdown,
+        patch(
+            "ray.dashboard.modules.job.job_agent.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "ray.dashboard.modules.job.job_agent.dashboard_utils.get_head_node_id",
+            side_effect=mock_get_head_node_id,
+        ),
+        patch.object(job_agent, "get_job_manager") as mock_get_jm,
+    ):
+        await job_agent._initialize_job_manager()
+
+        # ray.init should not be called
+        mock_init.assert_not_called()
+        # ray.shutdown MUST NOT be called because ray was not initialized here
+        mock_shutdown.assert_not_called()
+        # get_job_manager called on the 2nd attempt after retry
+        mock_get_jm.assert_called_once()
 
 
 if __name__ == "__main__":
