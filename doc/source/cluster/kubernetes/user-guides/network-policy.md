@@ -8,59 +8,25 @@ The KubeRay operator can generate Kubernetes `NetworkPolicy` resources for each 
 NetworkPolicy support is alpha and disabled by default. Enable the `RayClusterNetworkPolicy` feature gate before using `spec.networkPolicy`.
 :::
 
-## Enable the feature gate
+## Prerequisites
 
-### Helm
+- KubeRay operator v1.7 or later installed.
+- `kubectl` installed and configured to interact with your cluster.
 
-Pass a complete `featureGates` override inline at install time in order to enable the feature:
+## Install the KubeRay operator
 
-```bash
-helm install kuberay-operator kuberay/kuberay-operator -n ray-system -f - <<'EOF'
-featureGates:
-- name: RayClusterStatusConditions
-  enabled: true
-- name: RayJobDeletionPolicy
-  enabled: true
-- name: RayMultiHostIndexing
-  enabled: true
-- name: RayServiceIncrementalUpgrade
-  enabled: false
-- name: RayCronJob
-  enabled: false
-- name: RayClusterMTLS
-  enabled: false
-- name: RayClusterNetworkPolicy
-  enabled: true
-EOF
+Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.7.0. To use this feature, you must enable the `RayClusterNetworkPolicy` feature gate. To enable the feature gate when installing the KubeRay operator, run the following command:
+
+```sh
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+
+# Install KubeRay operator v1.7.0 with the RayClusterNetworkPolicy feature gate enabled
+helm install kuberay-operator kuberay/kuberay-operator \
+  --version 1.7.0 \
+  --set "featureGates[0].name=RayClusterNetworkPolicy" \
+  --set "featureGates[0].enabled=true"
 ```
-
-For an existing installation, export the current values, set `RayClusterNetworkPolicy` to `true`, and upgrade:
-
-```bash
-helm get values kuberay-operator -n ray-system -o yaml > values-override.yaml
-# edit values-override.yaml: set RayClusterNetworkPolicy enabled: true
-helm upgrade kuberay-operator kuberay/kuberay-operator -n ray-system -f values-override.yaml
-```
-
-### Kustomize
-
-Add a strategic merge patch to the operator `Deployment`. Because Kubernetes strategic merge patch replaces the `args` list rather than appending to it, include every feature gate you want active, not only the new one:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kuberay-operator
-spec:
-  template:
-    spec:
-      containers:
-      - name: kuberay-operator
-        args:
-        - --feature-gates=RayClusterStatusConditions=true,RayJobDeletionPolicy=true,RayMultiHostIndexing=true,RayServiceIncrementalUpgrade=false,RayCronJob=false,RayClusterMTLS=false,RayClusterNetworkPolicy=true
-```
-
-Adjust the list to match the gates your installation currently passes. If you're unsure, run `kubectl get deployment kuberay-operator -n ray-system -o jsonpath='{.spec.template.spec.containers[0].args}'` to inspect the live args before patching.
 
 ## Enable NetworkPolicy
 
@@ -255,16 +221,16 @@ spec:
 The rules the operator generates are additive on top of whichever policy you apply. Kubernetes NetworkPolicy is allow-only — KubeRay's generated allow rules layer on top without needing to modify the namespace policy.
 
 :::{warning}
-Don't apply the `DenyAll` variant with `DenyAllIngress` or `DenyAllEgress` modes. It will silently block the direction those modes intentionally leave unrestricted, because KubeRay's generated policies can't override a namespace-level deny.
+Don't apply the `DenyAll` variant with `DenyAllIngress` or `DenyAllEgress` modes. It silently blocks the direction those modes intentionally leave unrestricted, because KubeRay's generated policies can't override a namespace-level deny.
 :::
 
 ## Required rules under DenyAll and DenyAllEgress
 
-The operator doesn't add DNS or API server egress rules. Add both when using `DenyAll` or `DenyAllEgress`.
+The operator doesn't add Domain Name System (DNS) or API server egress rules. Add both when using `DenyAll` or `DenyAllEgress`.
 
 ### DNS egress
 
-Workers reach the head node through its service FQDN. Without a DNS egress rule, workers can't resolve the head address and the cluster won't start. The operator doesn't add this rule by default because DNS deployments vary across clusters. Adjust the selector to match your cluster's DNS provider before applying. Add the rule to both `head.egressRules` and `worker.egressRules`:
+Workers reach the head node through its service fully qualified domain name (FQDN). Without a DNS egress rule, workers can't resolve the head address and the cluster won't start. The operator doesn't add this rule by default because DNS deployments vary across clusters. Adjust the selector to match your cluster's DNS provider before applying. Add the rule to both `head.egressRules` and `worker.egressRules`:
 
 ```yaml
 spec:
@@ -302,15 +268,15 @@ spec:
 
 ### API server egress
 
-When `enableInTreeAutoscaling: true`, the Ray autoscaler on the head pod must reach the Kubernetes API server to scale the cluster. The operator doesn't add this rule because the correct form depends on the CNI:
+When `enableInTreeAutoscaling: true`, the Ray autoscaler on the head pod must reach the Kubernetes API server to scale the cluster. The operator doesn't add this rule because the correct form depends on the Container Network Interface (CNI) plugin:
 
 | CNI | Required form |
 |---|---|
 | kindnet | No rule needed — kindnet allows egress to the API server by default |
-| Calico, Cilium (with `kube-proxy-replacement`) | `ipBlock` with the endpoint IP (post-DNAT); a ClusterIP rule blocks autoscaling |
+| Calico, Cilium (with `kube-proxy-replacement`) | `ipBlock` with the endpoint IP (after Destination NAT); a ClusterIP rule blocks autoscaling |
 | EKS (Amazon VPC CNI) | `ipBlock` with the `kubernetes` Service ClusterIP; an endpoint IP rule blocks autoscaling |
 
-These results come from testing in [kuberay#4638](https://github.com/ray-project/kuberay/pull/4638#issuecomment-4660571594); other CNIs or configurations may behave differently.
+These results come from testing in [KubeRay #4638](https://github.com/ray-project/kuberay/pull/4638#issuecomment-4660571594). Other CNI configurations may behave differently.
 
 Calico and Cilium also require `policyCIDRMatchMode: Node` set on the CNI (see [this issue](https://github.com/hcloud-k8s/terraform-hcloud-kubernetes/issues/285)) for the endpoint-IP `ipBlock` rule below to match. Without it, the rule may not take effect.
 
@@ -331,7 +297,7 @@ For Calico and Cilium (with `kube-proxy-replacement`), add this rule to `head.eg
     protocol: TCP
 ```
 
-For EKS, replace `<endpoint-ip>` with the ClusterIP from `kubectl get svc kubernetes`. As a [suggested alternative for Cilium in kuberay#4638](https://github.com/ray-project/kuberay/pull/4638#discussion_r3336164401), you can instead use a `CiliumNetworkPolicy` with `toEntities: [kube-apiserver]` to target the API server by identity instead of IP. See Cilium's [Layer 3 policy docs](https://docs.cilium.io/en/stable/security/policy/layer3/) for details.
+For EKS, replace `<endpoint-ip>` with the ClusterIP from `kubectl get svc kubernetes`. As a [suggested alternative for Cilium in KubeRay #4638](https://github.com/ray-project/kuberay/pull/4638#discussion_r3336164401), you can instead use a `CiliumNetworkPolicy` with `toEntities: [kube-apiserver]` to target the API server by identity instead of IP. See Cilium's [Layer 3 policy docs](https://docs.cilium.io/en/stable/security/policy/layer3/) for details.
 
 ## RayJob patterns
 
