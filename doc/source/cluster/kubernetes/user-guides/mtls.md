@@ -7,7 +7,7 @@ KubeRay v1.7 introduces automated mTLS for RayCluster internal communication thr
 This guide covers the automated cert-manager approach. If you prefer to manage certificates yourself, for example with your own CA or init-container scripts, see {ref}`kuberay-tls`.
 
 :::{warning}
-`RayClusterMTLS` is an **alpha** feature gate (introduced in KubeRay v1.7, `Default: false`). Enable it explicitly before use. See [Enable the feature gate](#enable-the-feature-gate) below.
+`RayClusterMTLS` is an **alpha** feature gate (introduced in KubeRay v1.7, `Default: false`). Enable it explicitly before use. See [Install the KubeRay operator](#install-the-kuberay-operator) below.
 
 Enabling TLS incurs a performance overhead from encryption and decryption of inter-process traffic. The impact is most noticeable in communication-intensive workloads: frequent large object transfers and small tasks with high invocation rates. Compute-bound workloads with minimal data movement see little to no overhead.
 :::
@@ -18,15 +18,9 @@ Enabling TLS incurs a performance overhead from encryption and decryption of int
 - [cert-manager](https://cert-manager.io/docs/installation/) installed in the cluster.
 - `kubectl` installed and configured to interact with your cluster.
 
-The Helm examples in this guide install the operator into the `ray-system` namespace. Adjust the namespace in commands if your installation uses a different one.
-
 You need to successfully install cert-manager on your Kubernetes cluster before enabling mTLS with KubeRay. See [cert-manager Installation](https://cert-manager.io/docs/installation/) for installation instructions.
 
-## Enable the feature gate
-
-`RayClusterMTLS` is disabled by default. You must enable it on the KubeRay operator before creating RayClusters with `spec.tlsOptions.enabled: true`.
-
-### Install the KubeRay operator
+## Install the KubeRay operator
 
 Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.7.0. To use this feature, you must enable the `RayClusterMTLS` feature gate. To enable the feature gate when installing the KubeRay operator, run the following command:
 
@@ -147,6 +141,10 @@ For most workloads this isn't a concern because RayClusters are typically shorte
 kubectl delete pod -l ray.io/node-type=head,ray.io/cluster=<cluster-name> -n <namespace>
 kubectl delete pods -l ray.io/node-type=worker,ray.io/cluster=<cluster-name> -n <namespace>
 ```
+
+:::{warning}
+Deleting the head pod terminates the Ray head node. Without {ref}`GCS fault tolerance <kuberay-gcs-ft>` enabled, this causes the loss of all cluster state, active jobs, and metadata. Don't run this on a production cluster without understanding the consequences and configuring GCS fault tolerance first.
+:::
 
 ## Cluster scale limit
 
