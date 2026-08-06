@@ -468,11 +468,13 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (object_id.IsNil()) {
     return;
   }
+  std::vector<DeferredOOSWork> deferred;
   {
     absl::MutexLock lock(&mutex_);
     RemoveLocalReferenceInternal(object_id, deleted);
+    deferred.swap(deferred_oos_work_);
   }
-  DrainDeferredOOSWork();
+  ExecuteDeferredOOSWork(deferred);
 }
 
 void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
@@ -869,12 +871,7 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
 }
 
-void ReferenceCounter::DrainDeferredOOSWork() {
-  std::vector<DeferredOOSWork> work;
-  {
-    absl::MutexLock lock(&mutex_);
-    work.swap(deferred_oos_work_);
-  }
+void ReferenceCounter::ExecuteDeferredOOSWork(std::vector<DeferredOOSWork> &work) {
   for (auto &item : work) {
     // Fire callbacks first so Data-side BlockRefCounter updates before
     // the slow gRPC free broadcast.

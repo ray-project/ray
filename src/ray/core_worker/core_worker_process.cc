@@ -210,6 +210,23 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     RAY_LOG(INFO) << "Object-freed callback service stopped.";
   });
 
+  boost::thread::attributes free_rpc_thread_attrs;
+#if defined(__APPLE__)
+  free_rpc_thread_attrs.set_stack_size(16777216);
+#endif
+  object_free_rpc_thread_ = boost::thread(free_rpc_thread_attrs, [this]() {
+#ifndef _WIN32
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+#endif
+    SetThreadName("worker.free_objects_rpc");
+    object_free_rpc_service_.run();
+    RAY_LOG(INFO) << "Object-free RPC service stopped.";
+  });
+
   if (options.worker_type == WorkerType::DRIVER &&
       !options.serialized_job_config.empty()) {
     // Driver populates the job config via initialization.
@@ -361,7 +378,11 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       /*free_object_on_nodes_async=*/
       [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
-        GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
+        object_free_rpc_service_.post(
+            [this, object_id, locations]() {
+              GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
+            },
+            "ReferenceCounter.FreeObjectOnNodesAsync");
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,
@@ -709,6 +730,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(worker_context),
                                    io_service_,
                                    object_freed_callback_service_,
+                                   object_free_rpc_service_,
                                    std::move(core_worker_client_pool),
                                    std::move(raylet_client_pool),
                                    std::move(periodical_runner),
@@ -719,6 +741,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(local_raylet_rpc_client),
                                    io_thread_,
                                    object_freed_callback_thread_,
+                                   object_free_rpc_thread_,
                                    std::move(reference_counter),
                                    std::move(memory_store),
                                    std::move(plasma_store_provider),
@@ -755,6 +778,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
+      object_free_rpc_service_work_(object_free_rpc_service_.get_executor()),
       service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()) {
   if (options_.enable_logging) {
     // Setup logging for worker system logging.

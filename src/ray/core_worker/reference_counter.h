@@ -546,13 +546,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// This should be called whenever the object is out of scope or manually freed.
   /// Collects deferred work (gRPC frees, callbacks) into deferred_oos_work_
-  /// to be executed outside the lock via DrainDeferredOOSWork().
+  /// to be swapped out and executed outside the lock.
   void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Execute deferred OOS work (gRPC frees, callbacks) collected under
-  /// mutex_. Must be called AFTER releasing mutex_.
-  void DrainDeferredOOSWork() ABSL_LOCKS_EXCLUDED(mutex_);
+  /// Execute deferred OOS work (gRPC frees, callbacks).
+  /// Called with work already swapped out from deferred_oos_work_ under mutex_.
+  void ExecuteDeferredOOSWork(std::vector<DeferredOOSWork> &work);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
@@ -801,9 +801,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                            const absl::flat_hash_set<NodeID> &locations)>
       free_object_on_nodes_async_;
 
-  /// Work collected by OnObjectOutOfScopeOrFreed under mutex_ that must be
-  /// executed after the lock is released. Callers must call
-  /// DrainDeferredOOSWork() after releasing mutex_.
+  /// Work collected by OnObjectOutOfScopeOrFreed under mutex_. Callers
+  /// swap this out before releasing the lock and pass it to
+  /// ExecuteDeferredOOSWork().
   std::vector<DeferredOOSWork> deferred_oos_work_ ABSL_GUARDED_BY(mutex_);
 
   /// A buffer of the objects whose primary or spilled locations have been lost
