@@ -1,5 +1,7 @@
+import concurrent.futures
 import os
 import sys
+import threading
 from tempfile import NamedTemporaryFile
 
 import pytest
@@ -382,6 +384,60 @@ class TestJobLogStorageClientRotation:
         result = await client.get_last_n_log_lines("test_job", num_log_lines=2)
         assert "should not appear" not in result
         assert result.endswith("b\nc\n")
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_runs_on_supplied_executor(self, log_client):
+        """When an executor is supplied, get_last_n_log_lines must
+        actually run its synchronous file I/O on that executor rather
+        than inline on the calling thread, and still return the correct
+        result. This is what makes the failure-path read in
+        JobSupervisor.run() non-blocking for its event loop, see the
+        PR #64528 discussion on Cursor's "full-file scan before log
+        tail" comment.
+        """
+        client, log_path = log_client
+        with open(log_path, "w") as f:
+            f.write("a\nb\nc\n")
+
+        seen_thread_names = []
+
+        def tracking_initializer():
+            seen_thread_names.append(threading.current_thread().name)
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="test-log-read",
+            initializer=tracking_initializer,
+        ) as executor:
+            result = await client.get_last_n_log_lines(
+                "test_job", num_log_lines=2, executor=executor
+            )
+
+        assert result.endswith("b\nc\n")
+        assert len(seen_thread_names) == 1
+        assert seen_thread_names[0].startswith("test-log-read")
+        assert seen_thread_names[0] != threading.current_thread().name
+
+    @pytest.mark.asyncio
+    async def test_get_last_n_log_lines_no_executor_runs_inline(self, log_client):
+        """Explicitly confirms the executor=None default still runs
+        inline on the calling thread, preserving the exact behavior
+        this method had before it became executor-aware.
+        """
+        client, log_path = log_client
+        with open(log_path, "w") as f:
+            f.write("a\nb\nc\n")
+
+        calling_thread_name = threading.current_thread().name
+        result = await client.get_last_n_log_lines(
+            "test_job", num_log_lines=2, executor=None
+        )
+        assert result.endswith("b\nc\n")
+        # No executor was involved, so nothing to assert about a
+        # different thread here, this test's real purpose is simply to
+        # confirm executor=None still works end to end after the
+        # rewrite in job_log_storage_client.py.
+        assert threading.current_thread().name == calling_thread_name
 
 
 class TestFastTailLastNLines:

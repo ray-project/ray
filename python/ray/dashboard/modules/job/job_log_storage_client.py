@@ -1,6 +1,8 @@
+import asyncio
+import concurrent.futures
 import os
 import shutil
-from typing import AsyncIterator, List, Tuple
+from typing import AsyncIterator, List, Optional, Tuple
 
 import ray
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
@@ -55,7 +57,10 @@ class JobLogStorageClient:
         return file_tail_iterator(self.get_log_file_path(job_id))
 
     async def get_last_n_log_lines(
-        self, job_id: str, num_log_lines: int = NUM_LOG_LINES_ON_ERROR
+        self,
+        job_id: str,
+        num_log_lines: int = NUM_LOG_LINES_ON_ERROR,
+        executor: Optional[concurrent.futures.Executor] = None,
     ) -> str:
         """Returns the last MAX_LOG_SIZE (20000) characters in the last ``num_log_lines`` lines.
 
@@ -64,13 +69,36 @@ class JobLogStorageClient:
         recent rotated backup file so a rotation boundary does not appear
         as a loss of log history right after it happens.
 
+        This method's own body is entirely synchronous file I/O with no
+        internal await points. By default it runs inline on the calling
+        coroutine's thread, same as before this became executor-aware. If
+        an executor is supplied, the work is submitted there instead and
+        awaited via asyncio.wrap_future, so a large active log file (up
+        to the configured max_bytes, 512MB by default) does not block
+        the event loop of a caller that shares it with other work, e.g.
+        JobSupervisor's actor loop. See PR #64528 discussion.
+
         Args:
             job_id: The id of the job whose logs we want to return
             num_log_lines: The number of lines to return.
+            executor: Optional executor to run the synchronous file I/O
+                on. If None, runs inline on the calling thread.
 
         Returns:
             Up to ``MAX_LOG_SIZE`` characters drawn from the last
             ``num_log_lines`` lines of the job's log file.
+        """
+        if executor is None:
+            return self._get_last_n_log_lines_sync(job_id, num_log_lines)
+        future = executor.submit(self._get_last_n_log_lines_sync, job_id, num_log_lines)
+        return await asyncio.wrap_future(future)
+
+    def _get_last_n_log_lines_sync(self, job_id: str, num_log_lines: int) -> str:
+        """Synchronous implementation of get_last_n_log_lines.
+
+        Kept as a plain method (not async) so it can be run directly on
+        the calling thread or submitted to an executor unchanged. See
+        get_last_n_log_lines for the public, executor-aware entry point.
         """
         log_path = self.get_log_file_path(job_id)
         try:

@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -83,6 +84,31 @@ class JobSupervisor:
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
+
+        # Dedicated single-thread executor for log rotation. A raw
+        # concurrent.futures.Future (not the asyncio wrapper returned by
+        # loop.run_in_executor) is required here because cancelling the
+        # asyncio task that awaits it also cancels that asyncio-level
+        # future immediately, without stopping or waiting for the
+        # underlying thread. Keeping a direct reference to the raw future
+        # lets us genuinely wait for an in-flight rotation to finish
+        # before reading the driver log for a failure message.
+        self._log_rotation_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"log-rotation-{job_id}"
+        )
+        self._log_rotation_future: Optional[concurrent.futures.Future] = None
+
+        # Separate dedicated executor for the failure-path log read
+        # (get_last_n_log_lines). Kept distinct from
+        # _log_rotation_executor so a large failure-log read is never
+        # queued behind an in-flight rotation on a shared single-worker
+        # pool, which would just reintroduce a smaller version of the
+        # same blocking concern this executor exists to avoid. This
+        # call only happens once per failed job, so max_workers=1 is
+        # sufficient.
+        self._log_read_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"log-read-{job_id}"
+        )
 
         # Default metadata if not passed by the user.
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
@@ -315,25 +341,69 @@ class JobSupervisor:
                 self.LOG_ROTATION_CHECK_PERIOD_S,
             )
         )
-        loop = asyncio.get_running_loop()
         while True:
             await asyncio.sleep(check_period_s)
             try:
                 if os.path.getsize(log_path) >= max_bytes:
                     # rotate_log_file does synchronous file copy/truncate
                     # that can take real time for large log files. Run it
-                    # in the default executor so it doesn't block the
+                    # in a dedicated executor so it doesn't block the
                     # event loop JobSupervisor shares with subprocess
-                    # polling, stop handling, and status updates.
-                    await loop.run_in_executor(
-                        None,
+                    # polling, stop handling, and status updates. The raw
+                    # future is kept on self so a genuine wait for
+                    # completion is possible later, see
+                    # _wait_for_rotation_to_finish.
+                    self._log_rotation_future = self._log_rotation_executor.submit(
                         self._log_client.rotate_log_file,
                         log_path,
                         backup_count,
                     )
+                    try:
+                        await asyncio.wrap_future(self._log_rotation_future)
+                    finally:
+                        self._log_rotation_future = None
             except FileNotFoundError:
                 # Job finished and log file was already cleaned up.
                 return
+
+    async def _wait_for_rotation_to_finish(self, timeout: float = 30) -> None:
+        """Wait for an in-flight log rotation to genuinely finish.
+
+        Cancelling the asyncio task running _rotate_driver_log_if_needed
+        cancels the asyncio-level future it may be awaiting, but does not
+        stop or wait for the underlying executor thread doing the actual
+        file copy/truncate. This waits on the raw concurrent.futures.Future
+        directly, which is unaffected by that cancellation, so callers can
+        be sure rotation has actually stopped touching the log file before
+        reading it, e.g. for a job failure message.
+
+        Note on test coverage: this method is not covered by a local unit
+        test. JobSupervisor's constructor builds a real GcsClient against
+        a live cluster address, and every existing test in
+        test_job_manager.py goes through that same real-cluster path, so a
+        mocked-GcsClient unit test here would be inconsistent with the
+        rest of the file and unverifiable in this environment. The
+        underlying asyncio/executor cancellation semantics this method
+        relies on were verified empirically with standalone repro scripts
+        before writing this method. End-to-end coverage comes from the
+        existing test_job_driver_log_rotation integration test in CI.
+        """
+        if self._log_rotation_future is None or self._log_rotation_future.done():
+            return
+        self._logger.info(
+            f"Job {self._job_id} waiting for in-flight log "
+            "rotation to finish before reading logs."
+        )
+        try:
+            await asyncio.wait_for(
+                asyncio.wrap_future(self._log_rotation_future), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            self._logger.warning(
+                f"Job {self._job_id} timed out waiting for log "
+                "rotation to finish, proceeding, failure message "
+                "may reflect a transient mid-rotation state."
+            )
 
     async def _poll_all(self, processes: List[psutil.Process]):
         """Poll processes until all are completed."""
@@ -426,6 +496,7 @@ class JobSupervisor:
                 return_when=FIRST_COMPLETED,
             )
             log_rotation_task.cancel()
+            await self._wait_for_rotation_to_finish()
 
             if self._stop_event.is_set():
                 polling_task.cancel()
@@ -486,7 +557,9 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = await self._log_client.get_last_n_log_lines(self._job_id)
+                    log_tail = await self._log_client.get_last_n_log_lines(
+                        self._job_id, executor=self._log_read_executor
+                    )
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job entrypoint command "
