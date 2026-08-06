@@ -86,8 +86,6 @@ class ExternalHashShuffleMapOp(
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "ExternalHashShuffleMap",
-        # -- External-shuffle-specific below --
-        fsync_on_close: bool = True,
     ):
         super().__init__(
             name=name,
@@ -137,9 +135,6 @@ class ExternalHashShuffleMapOp(
         # =====================================================================
         # External-shuffle-specific state below.
         # =====================================================================
-
-        # -- External-shuffle config knobs -----------------------------------
-        self._fsync_on_close: bool = fsync_on_close
 
         # -- Per-shuffle identity & on-disk staging --------------------------
         # Driver only computes the path template; each mapper mkdirs it on
@@ -260,7 +255,6 @@ class ExternalHashShuffleMapOp(
             map_id=cur_task_idx,
             shuffle_id=self._shuffle_id,
             compression=compression,
-            fsync_on_close=self._fsync_on_close,
         )
 
         task = MetadataOpTask(
