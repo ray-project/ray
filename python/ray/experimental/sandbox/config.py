@@ -60,7 +60,7 @@ class SandboxConfig:
         rootless: If True, run gVisor in rootless mode (default: True).
         network: Network mode for runsc ("none", "host", "sandbox") (default: "none").
         resources: Custom logical resource requirements for the placement actor.
-        readonly: If True, mount rootfs in read-only mode (default: True).
+        readonly: If True, mount container image rootfs in read-only mode (default: True). Only applicable when an image is specified.
     """
 
     image: str = "python:3.10-slim"

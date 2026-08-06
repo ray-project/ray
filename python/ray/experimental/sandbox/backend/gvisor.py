@@ -71,7 +71,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         run_args = self._runsc_base_args(config)
         if config.network:
             run_args.extend(["--network", config.network])
-        if config.image and not config.readonly:
+        if config.image:
             overlay_dir = os.path.join(root_dir, "overlay")
             os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
             run_args.append(f"--overlay2=root:dir={overlay_dir}")
@@ -295,8 +295,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if image:
             image_rootfs = self._pull_and_extract_image(image)
             spec["root"]["path"] = image_rootfs
-            spec["root"]["readonly"] = readonly
-        else:
             spec["root"]["readonly"] = readonly
 
         spec["process"]["args"] = ["sleep", "infinity"]
