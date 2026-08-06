@@ -132,6 +132,13 @@ def test_deserialize_request_roundtrip():
 
 _HEAD = "ray.dashboard.modules.task_events.task_events_head"
 _WORKER = b"worker_1"
+_WORKER_2 = b"worker_2"
+
+
+def _worker_table_data(worker_id: bytes, is_alive: bool) -> gcs_pb2.WorkerTableData:
+    data = gcs_pb2.WorkerTableData(is_alive=is_alive, exit_detail="boom", end_time_ms=5)
+    data.worker_address.worker_id = worker_id
+    return data
 
 
 def _add_stored_task(head, task_id, worker=None, job=_JOB):
@@ -168,7 +175,7 @@ async def test_handle_worker_delta_fails_tasks(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_worker_delta_missing_worker_info_is_noop(monkeypatch):
+async def test_handle_worker_delta_missing_worker_info_still_fails(monkeypatch):
     monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_WORKER_DEAD_DELAY_S", 0.0)
     head = _make_head()
     _add_stored_task(head, _task_id(1), worker=_WORKER)
@@ -179,9 +186,24 @@ async def test_handle_worker_delta_missing_worker_info_is_noop(monkeypatch):
     monkeypatch.setattr(head, "_get_worker_info", fake_get)
 
     head._handle_worker_delta(gcs_pb2.WorkerDeltaData(worker_id=_WORKER))
-    await asyncio.sleep(0.05)
 
-    assert not _is_failed(head, _task_id(1))
+    # Even without worker table data, the task is failed — with a fallback message.
+    await async_wait_for_condition(lambda: _is_failed(head, _task_id(1)))
+    error = head._store.get_task_event((_task_id(1), 0)).state_updates.error_info
+    assert "could not be fetched" in error.error_message
+
+
+@pytest.mark.asyncio
+async def test_get_worker_info_returns_none_on_rpc_failure():
+    head = _make_head()
+
+    stub = AsyncMock()
+    stub.GetWorkerInfo.side_effect = RuntimeError("gcs unavailable")
+    head._worker_info_stub = stub
+
+    # A failing fetch must be swallowed (returns None) so the spawned reconciliation task
+    # doesn't die silently; the caller then fails the tasks without exit details.
+    assert await head._get_worker_info(_WORKER) is None
 
 
 @pytest.mark.asyncio
@@ -267,6 +289,12 @@ async def test_worker_death_subscription_loop_reconciles(monkeypatch):
 
     monkeypatch.setattr(head, "_get_worker_info", fake_get)
 
+    # Isolate the subscription path from the startup backfill (no real GCS here).
+    async def no_backfill():
+        return []
+
+    monkeypatch.setattr(head, "_get_all_worker_info", no_backfill)
+
     fake = _FakeSubscriber([(b"key", gcs_pb2.WorkerDeltaData(worker_id=_WORKER))])
     monkeypatch.setattr(
         f"{_HEAD}.GcsAioWorkerDeltaSubscriber", lambda address=None: fake
@@ -277,6 +305,27 @@ async def test_worker_death_subscription_loop_reconciles(monkeypatch):
         await async_wait_for_condition(lambda: _is_failed(head, _task_id(1)))
     finally:
         await _cancel(task)
+
+
+@pytest.mark.asyncio
+async def test_reconcile_dead_workers_on_startup(monkeypatch):
+    head = _make_head()
+    _add_stored_task(head, _task_id(1), worker=_WORKER)
+    _add_stored_task(head, _task_id(2), worker=_WORKER_2)
+
+    async def fake_get_all():
+        return [
+            _worker_table_data(_WORKER, is_alive=False),
+            _worker_table_data(_WORKER_2, is_alive=True),
+        ]
+
+    monkeypatch.setattr(head, "_get_all_worker_info", fake_get_all)
+
+    await head._reconcile_dead_workers_on_startup()
+
+    # The dead worker's task is failed; the live worker's task is left alone.
+    assert _is_failed(head, _task_id(1))
+    assert not _is_failed(head, _task_id(2))
 
 
 @pytest.mark.asyncio
