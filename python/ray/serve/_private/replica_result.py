@@ -94,7 +94,7 @@ class ActorReplicaResult(ReplicaResult):
         self._request_id: str = metadata.request_id
         self._with_rejection = with_rejection
         self._rejection_response = None
-        self._rejection_response_ref = None
+        self._rejection_response_ref: Optional[ray.ObjectRef] = None
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
             self._obj_ref_gen = obj_ref_or_gen
@@ -108,27 +108,26 @@ class ActorReplicaResult(ReplicaResult):
             ), "An ObjectRefGenerator must be passed for streaming requests."
 
             if self._with_rejection:
-                [self._rejection_response_ref] = self._obj_ref_gen._get_next_ref_n(1)
-                self._rejection_response_ref._on_completed(
-                    lambda _: self._obj_ref_gen._consume_next_ref_n(1)
+                obj_ref_gen = self._obj_ref_gen
+                [rejection_ref] = obj_ref_gen._get_next_ref_n(1)
+                self._rejection_response_ref = rejection_ref
+                rejection_ref._on_completed(
+                    lambda _: obj_ref_gen._consume_next_ref_n(1)
                 )
         elif self._obj_ref_gen is not None:
+            obj_ref_gen = self._obj_ref_gen
             if self._with_rejection:
-                (
-                    self._rejection_response_ref,
-                    self._obj_ref,
-                ) = self._obj_ref_gen._get_next_ref_n(2)
-                self._rejection_response_ref._on_completed(
-                    lambda _: self._obj_ref_gen._consume_next_ref_n(1)
+                rejection_ref, obj_ref = obj_ref_gen._get_next_ref_n(2)
+                self._rejection_response_ref = rejection_ref
+                self._obj_ref = obj_ref
+                rejection_ref._on_completed(
+                    lambda _: obj_ref_gen._consume_next_ref_n(1)
                 )
-                self._obj_ref._on_completed(
-                    lambda _: self._obj_ref_gen._consume_next_ref_n(1)
-                )
+                obj_ref._on_completed(lambda _: obj_ref_gen._consume_next_ref_n(1))
             else:
-                [self._obj_ref] = self._obj_ref_gen._get_next_ref_n(1)
-                self._obj_ref._on_completed(
-                    lambda _: self._obj_ref_gen._consume_next_ref_n(1)
-                )
+                [obj_ref] = obj_ref_gen._get_next_ref_n(1)
+                self._obj_ref = obj_ref
+                obj_ref._on_completed(lambda _: obj_ref_gen._consume_next_ref_n(1))
 
         request_context = ray.serve.context._get_serve_request_context()
         if request_context.cancel_on_parent_request_cancel:
@@ -172,6 +171,7 @@ class ActorReplicaResult(ReplicaResult):
 
         try:
             if self._rejection_response is None:
+                assert self._rejection_response_ref is not None
                 response = await self._rejection_response_ref
                 self._rejection_response = pickle.loads(response)
 
@@ -249,6 +249,7 @@ class ActorReplicaResult(ReplicaResult):
         assert (
             not self._is_streaming
         ), "to_object_ref can only be called on a unary ReplicaActorResult."
+        assert self._obj_ref is not None
 
         return self._obj_ref
 
@@ -256,6 +257,7 @@ class ActorReplicaResult(ReplicaResult):
         assert (
             not self._is_streaming
         ), "to_object_ref_async can only be called on a unary ReplicaActorResult."
+        assert self._obj_ref is not None
 
         return self._obj_ref
 
@@ -263,6 +265,7 @@ class ActorReplicaResult(ReplicaResult):
         assert (
             self._is_streaming
         ), "to_object_ref_gen can only be called on a streaming ReplicaActorResult."
+        assert self._obj_ref_gen is not None
 
         return self._obj_ref_gen
 
