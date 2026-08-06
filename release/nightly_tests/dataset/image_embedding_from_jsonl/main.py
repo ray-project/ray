@@ -229,6 +229,9 @@ def main(args: argparse.Namespace, profiling: Profiling):
     if args.chaos:
         start_chaos()
 
+    # `default_map_logical_memory_enabled` is a best practice that's required for
+    # Ray Data to prevent OOMs. It's not enabled by default in Ray 2.56, but we
+    # intend to enable it by default in a future release.
     ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
 
     infer_cls = FakeInfer if args.fake_gpu else Infer
