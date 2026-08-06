@@ -160,7 +160,10 @@ def _delta_tensor_type(data_type: pa.DataType) -> pa.ExtensionType:
 
 
 def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
-    """Materialize a uniformly shaped nested-list column as a typed ndarray."""
+    """Materialize a uniformly shaped nested-list column as a typed ndarray.
+
+    Convert an Arrow nested-list column into one typed, rectangular ndarray without going through Python objects.
+    """
     shape = [len(column)]
     values = column
     while _is_list_type(values.type):
