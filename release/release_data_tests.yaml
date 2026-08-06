@@ -600,7 +600,7 @@
       --left_join_keys column00
       --right_join_keys column0
       --join_type {{join_type}}
-      --num_partitions 500
+      --num_partitions 1000
 
 ###############
 # Wide Schema tests
