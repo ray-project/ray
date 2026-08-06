@@ -22,6 +22,15 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray.util.multiprocessing import Pool
 
+
+def _wait_for_pool_collected(pool_ref, dispatcher):
+    """Wait until the Pool is garbage-collected and its dispatcher exits."""
+    wait_for_condition(
+        lambda: pool_ref() is None and not dispatcher.is_alive(),
+        timeout=10,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Correctness
 # ---------------------------------------------------------------------------
@@ -76,10 +85,7 @@ def test_autoscale_pool_can_be_collected(shutdown_only):
     del pool
     gc.collect()
 
-    wait_for_condition(
-        lambda: pool_ref() is None and not dispatcher.is_alive(),
-        timeout=10,
-    )
+    _wait_for_pool_collected(pool_ref, dispatcher)
 
 
 def test_autoscale_pool_lives_until_async_result_finishes(shutdown_only):
@@ -102,10 +108,7 @@ def test_autoscale_pool_lives_until_async_result_finishes(shutdown_only):
 
     assert pool_ref() is not None
     assert result.get(timeout=10) == 42
-    wait_for_condition(
-        lambda: pool_ref() is None and not dispatcher.is_alive(),
-        timeout=10,
-    )
+    _wait_for_pool_collected(pool_ref, dispatcher)
 
 
 def test_autoscale_rejects_invalid_sizes(shutdown_only):
