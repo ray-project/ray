@@ -54,7 +54,7 @@ Start from what the pods are doing. The pod state separates the cases cleanly.
 
 ## Choosing where to express a constraint
 
-Express a constraint in Kubernetes when it's about machines: which hardware a pod may land on, which team's quota it draws from, or whether to admit a workload at all. Node selectors, taints, tolerations, and resource quotas are the tools. Ray integrates with four batch schedulers for queueing, priority, and gang scheduling at the pod level. See {ref}`kuberay-kueue`, {ref}`kuberay-kai-scheduler`, {ref}`kuberay-volcano`, and {ref}`kuberay-yunikorn`.
+Express a constraint in Kubernetes when it's about machines: which hardware a pod may land on, which team's quota it draws from, or whether to admit a workload at all. Node selectors, taints, tolerations, and resource quotas are the tools. Ray integrates with five batch schedulers for queueing, priority, and gang scheduling at the pod level. See {ref}`kuberay-kueue`, {ref}`kuberay-kai-scheduler`, {ref}`kuberay-volcano`, {ref}`kuberay-yunikorn`, and {ref}`kuberay-scheduler-plugins`.
 
 Express a constraint in Ray when it's about your application: which tasks need accelerators, which actors must sit together for low-latency communication, and how work spreads across the nodes you already have. Use resource requirements, {ref}`scheduling strategies <ray-scheduling-strategies>`, {ref}`placement groups <ray-placement-group-doc-ref>` for gang scheduling within a Ray cluster, and {ref}`label-based scheduling <kuberay-label-scheduling>` to target nodes by label rather than by ID.
 
