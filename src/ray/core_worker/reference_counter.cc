@@ -310,7 +310,7 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
 
 void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
                                            std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   for (const auto &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
     if (it == object_id_refs_.end()) {
@@ -451,7 +451,7 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 }
 
 void ReferenceCounter::ReleaseAllLocalReferences() {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   std::vector<ObjectID> refs_to_remove;
   for (auto &ref : object_id_refs_) {
     for (int i = ref.second.local_ref_count; i > 0; --i) {
@@ -468,13 +468,8 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (object_id.IsNil()) {
     return;
   }
-  std::vector<DeferredOOSWork> deferred;
-  {
-    absl::MutexLock lock(&mutex_);
-    RemoveLocalReferenceInternal(object_id, deleted);
-    deferred.swap(deferred_oos_work_);
-  }
-  ExecuteDeferredOOSWork(deferred);
+  MutexLockWithOOSDrain guard(*this);
+  RemoveLocalReferenceInternal(object_id, deleted);
 }
 
 void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
@@ -507,7 +502,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> &argument_ids_to_add,
     const std::vector<ObjectID> &argument_ids_to_remove,
     std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, true);
   }
@@ -555,7 +550,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
     const rpc::Address &worker_addr,
     const ReferenceTableProto &borrowed_refs,
     std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, false);
   }
@@ -722,7 +717,7 @@ bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
 }
 
 void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   for (const ObjectID &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
     if (it == object_id_refs_.end()) {
@@ -829,7 +824,7 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
 }
 
 int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   int64_t lineage_bytes_evicted = 0;
   while (!reconstructable_owned_objects_.empty() &&
          lineage_bytes_evicted < min_bytes_to_evict) {
@@ -850,8 +845,8 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
 
   // Collect work that does not need mutex_ (gRPC frees, callbacks) into
-  // deferred_oos_work_. The caller must invoke DrainDeferredOOSWork() after
-  // releasing the lock.
+  // deferred_oos_work_. MutexLockWithOOSDrain swaps it out and executes
+  // it after releasing the lock.
   DeferredOOSWork work;
   work.object_id = it->first;
   if (it->second.owned_by_us_) {
@@ -1072,7 +1067,7 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
     const std::vector<ObjectID> &borrowed_ids,
     ReferenceTableProto *proto,
     std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   // Reuse the `encountered_ids` set to deduplicate object IDs across loop iterations.
   absl::flat_hash_set<ObjectID> encountered_ids;
   for (const auto &borrowed_id : borrowed_ids) {
@@ -1263,7 +1258,7 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ReferenceTable &new_borrower_refs,
     const ObjectID &object_id,
     const rpc::Address &borrower_addr) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
   // Erase the previous borrower.
@@ -1438,7 +1433,7 @@ void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
 void ReferenceCounter::SubscribeRefRemoved(const ObjectID &object_id,
                                            const ObjectID &contained_in_id,
                                            const rpc::Address &owner_address) {
-  absl::MutexLock lock(&mutex_);
+  MutexLockWithOOSDrain guard(*this);
   RAY_LOG(DEBUG).WithField(object_id)
       << "Received WaitForRefRemoved object contained in " << contained_in_id;
 

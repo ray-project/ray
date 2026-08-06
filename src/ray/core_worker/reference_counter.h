@@ -544,6 +544,32 @@ class ReferenceCounter : public ReferenceCounterInterface,
     std::vector<std::function<void(const ObjectID &)>> callbacks;
   };
 
+  /// RAII guard that acquires mutex_ and, on destruction, swaps out any
+  /// deferred OOS work, releases the lock, then executes the work (callbacks
+  /// + gRPC frees) outside the lock. Use this instead of absl::MutexLock in
+  /// methods that may trigger OnObjectOutOfScopeOrFreed.
+  class ABSL_SCOPED_LOCKABLE MutexLockWithOOSDrain {
+   public:
+    explicit MutexLockWithOOSDrain(ReferenceCounter &rc)
+        ABSL_EXCLUSIVE_LOCK_FUNCTION(rc.mutex_)
+        : rc_(rc) {
+      rc_.mutex_.Lock();
+    }
+
+    ~MutexLockWithOOSDrain() ABSL_UNLOCK_FUNCTION() {
+      work_.swap(rc_.deferred_oos_work_);
+      rc_.mutex_.Unlock();
+      rc_.ExecuteDeferredOOSWork(work_);
+    }
+
+    MutexLockWithOOSDrain(const MutexLockWithOOSDrain &) = delete;
+    MutexLockWithOOSDrain &operator=(const MutexLockWithOOSDrain &) = delete;
+
+   private:
+    ReferenceCounter &rc_;
+    std::vector<DeferredOOSWork> work_;
+  };
+
   /// This should be called whenever the object is out of scope or manually freed.
   /// Collects deferred work (gRPC frees, callbacks) into deferred_oos_work_
   /// to be swapped out and executed outside the lock.
