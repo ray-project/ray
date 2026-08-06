@@ -89,7 +89,6 @@ def _external_shuffle_map_task(
     map_id: int,
     shuffle_id: str,
     compression: Optional[str] = None,
-    fsync_on_close: bool = True,
 ) -> ShuffleHandle:
     """Map stage: partition input blocks, write them to a single file on the
     local node's spill dir, and return a ``ShuffleHandle`` (path + per-partition
@@ -109,7 +108,6 @@ def _external_shuffle_map_task(
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the file server's actor name.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
-        fsync_on_close: If True, ``fsync`` before rename for durability.
     """
     node_id = ray.get_runtime_context().get_node_id()
     # Ensure the file-server actor exists (get_if_exists=True → reuse across
@@ -157,8 +155,7 @@ def _external_shuffle_map_task(
             # write; refuse to publish (the except below unlinks tmp).
             out_file.flush()
             final_size_on_close = out_file.tell()
-            if fsync_on_close:
-                os.fsync(out_file.fileno())
+            os.fsync(out_file.fileno())  # durability: to disk before the rename
             if writer.index:
                 expected_size = max(
                     off + length

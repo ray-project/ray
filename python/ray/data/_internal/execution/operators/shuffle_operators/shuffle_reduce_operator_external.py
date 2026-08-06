@@ -88,9 +88,6 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
-        # -- External-shuffle-specific below --
-        max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
-        fetch_threads: int = _DEFAULT_FETCH_THREADS,
     ):
         super().__init__(
             name=name,
@@ -129,11 +126,9 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         # External-shuffle-specific state below.
         # =====================================================================
 
-        # _external_shuffle_reduce_task behavior knobs:
-        # - ``max_bytes_per_fetch``: cap per-FETCH byte volume
-        # - ``fetch_threads``: concurrent per-source-node fetch threads
-        self._max_bytes_per_fetch: int = max_bytes_per_fetch
-        self._fetch_threads: int = fetch_threads
+        # _external_shuffle_reduce_task tuning (internal defaults, not exposed):
+        self._max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH
+        self._fetch_threads: int = _DEFAULT_FETCH_THREADS
 
     def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
         remote_args: Dict[str, Any] = {
