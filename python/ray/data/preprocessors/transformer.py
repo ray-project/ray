@@ -99,6 +99,9 @@ class PowerTransformer(SerializablePreprocessorBase):
             # Materialize as NumPy up front. An Arrow-backed column represents
             # missing values with `pd.NA`, which makes `s >= 0` below a
             # three-valued `bool[pyarrow]` mask that cannot index `result`.
+            # `transform` converts batches before calling this, but
+            # `transform_batch` hands a user-supplied frame straight through, so
+            # the conversion has to happen here too.
             s = to_numpy_backed(s)
 
             if self._method == "yeo-johnson":

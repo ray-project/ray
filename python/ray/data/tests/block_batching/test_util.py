@@ -119,6 +119,25 @@ def test_blocks_to_batches(block_size, drop_last):
     )
 
 
+def test_format_batches_arrow_backed_pandas():
+    """``arrow_backed_pandas=True`` keeps the block's Arrow dtypes.
+
+    ``Dataset.to_pandas`` is the only caller that sets it; everything that hands
+    a batch to a function leaves it off (see ``test_format_batches``).
+    """
+    block_iter = block_generator(num_rows=2, num_blocks=1)
+    batch_iter = (
+        Batch(BatchMetadata(batch_idx=i), block) for i, block in enumerate(block_iter)
+    )
+
+    (batch,) = list(
+        format_batches(batch_iter, batch_format="pandas", arrow_backed_pandas=True)
+    )
+
+    assert isinstance(batch.data, pd.DataFrame)
+    assert isinstance(batch.data.dtypes["foo"], pd.ArrowDtype)
+
+
 @pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
 def test_format_batches(batch_format):
     block_iter = block_generator(num_rows=2, num_blocks=2)

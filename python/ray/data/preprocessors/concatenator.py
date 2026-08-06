@@ -145,7 +145,10 @@ class Concatenator(SerializablePreprocessorBase):
         # Arrow-backed columns represent missing values with `pd.NA`, which
         # cannot be stored in a numeric NumPy array. Without this, `to_numpy()`
         # below silently falls back to `dtype=object` and the output degrades
-        # from a tensor column to pickled Python objects.
+        # from a tensor column to pickled Python objects. `transform` converts
+        # batches before calling this, but `transform_batch` hands a
+        # user-supplied frame straight through, so the conversion has to happen
+        # here too.
         columns = to_numpy_backed(df[self._columns])
 
         if self._flatten:

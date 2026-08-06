@@ -119,7 +119,9 @@ class FeatureHasher(SerializablePreprocessorBase):
 
         # Arrow-backed columns represent missing values with `pd.NA`, which
         # poisons the `hash_counts` accumulator above (`0 + pd.NA` is `pd.NA`)
-        # and degrades the output to `dtype=object`.
+        # and degrades the output to `dtype=object`. `transform` converts batches
+        # before calling this, but `transform_batch` hands a user-supplied frame
+        # straight through, so the conversion has to happen here too.
         feature_columns = to_numpy_backed(df.loc[:, self._columns]).apply(
             row_feature_hasher, axis=1, result_type="expand"
         )

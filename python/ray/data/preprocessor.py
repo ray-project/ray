@@ -314,6 +314,14 @@ class Preprocessor(abc.ABC):
             kwargs["concurrency"] = concurrency
 
         if transform_type == BatchFormat.PANDAS:
+            # `_transform_pandas` receives NumPy-backed pandas, like any other
+            # `map_batches` function. Ray could hand its own preprocessors the
+            # Arrow-backed batch instead and save the conversion, but that is
+            # conservatively incorrect: `Preprocessor` is a public class, so
+            # `_transform_pandas` is user code as often as it is Ray's, and
+            # NumPy-style code silently misbehaves on `pd.NA` (see
+            # `ray.data._internal.util.to_numpy_backed`). Correct-by-default beats
+            # a per-batch conversion we can measure.
             return ds.map_batches(
                 self._transform_pandas,
                 batch_format=BatchFormat.PANDAS,

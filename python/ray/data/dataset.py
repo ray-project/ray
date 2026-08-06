@@ -725,6 +725,9 @@ class Dataset:
                 ``cudf.DataFrame`` (requires cudf to be installed).
                 If ``batch_format`` is set to ``None`` input block format
                 will be used.
+                ``"pandas"`` batches are NumPy-backed, so a column containing
+                nulls uses ``np.nan`` and an integer column with nulls widens to
+                ``float64``. Use ``"pyarrow"`` to preserve exact types.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -852,7 +855,6 @@ class Dataset:
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """Apply a function to batches without public ``map_batches`` validation."""
         # NOTE: The `map_groups` implementation calls `map_batches` with
         # `batch_size=None`. The issue is that if you request GPUs with
         # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
@@ -6365,6 +6367,9 @@ class Dataset:
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
                 ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
                 ``cudf.DataFrame``.
+                ``"pandas"`` batches are NumPy-backed, so a column containing
+                nulls uses ``np.nan`` and an integer column with nulls widens to
+                ``float64``. Use ``"pyarrow"`` to preserve exact types.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
@@ -7087,6 +7092,14 @@ class Dataset:
         This method errors if the number of rows exceeds the provided ``limit``.
         To truncate the dataset beforehand, call :meth:`.limit`.
 
+        Columns are Arrow-backed (``pd.ArrowDtype``), which preserves the dataset's
+        types -- an integer column containing nulls stays an integer column instead
+        of widening to float. This differs from :meth:`.iter_batches` and
+        :meth:`.map_batches`, which return conventional NumPy-backed pandas because
+        they feed user-defined functions. Set
+        ``DataContext.enable_arrow_backed_pandas_conversion`` to ``False`` for
+        NumPy-backed columns here as well.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.from_items([{"a": i} for i in range(3)])
@@ -7122,7 +7135,15 @@ class Dataset:
                 )
 
         builder = PandasBlockBuilder()
-        for batch in self.iter_batches(batch_format="pandas", batch_size=None):
+        # `_arrow_backed_pandas=True` preserves the Arrow-backed dtypes that
+        # `to_pandas` has returned since Ray 2.56 -- an integer column with nulls
+        # stays an integer column here rather than widening to float. User-facing
+        # batch APIs (`map_batches`, `iter_batches`) deliberately do not, because
+        # they feed arbitrary user code; see
+        # `ray.data._internal.util.to_numpy_backed`.
+        for batch in self.iterator()._iter_batches(
+            batch_format="pandas", batch_size=None, _arrow_backed_pandas=True
+        ):
             builder.add_block(batch)
         block = builder.build()
 

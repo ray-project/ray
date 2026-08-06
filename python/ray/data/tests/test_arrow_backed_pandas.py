@@ -33,6 +33,7 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.util import is_null, to_numpy_backed
 from ray.data.block import BlockAccessor
+from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
     Categorizer,
     Concatenator,
@@ -637,6 +638,149 @@ def test_simple_imputer_column_null_typed_in_every_block():
 
     assert transformed.take_all() == [{"a": -1.0}, {"a": -1.0}, {"a": -1.0}]
     assert transformed.schema().types == [pa.float64()]
+
+
+# ---------------------------------------------------------------------------
+# Batch-format contract: user code gets NumPy-backed pandas
+# ---------------------------------------------------------------------------
+
+
+def _dtype_probe(df):
+    """Report, from inside the worker, what the user function was handed.
+
+    The dtype has to be observed where the UDF runs, not on the driver, so it is
+    returned as data.
+    """
+    return pd.DataFrame(
+        {
+            "dtype": [str(df.dtypes["id"])],
+            "numpy_dtype": [str(df[["id"]].to_numpy().dtype)],
+        }
+    )
+
+
+def test_map_batches_pandas_batch_is_numpy_backed():
+    """A pandas batch handed to user code must be the conventional kind.
+
+    Were it Arrow-backed, ``dtype`` would be ``int64[pyarrow]`` and
+    ``to_numpy()`` would degrade to ``object``.
+    """
+    rows = (
+        ray.data.range(4, override_num_blocks=1)
+        .map_batches(_dtype_probe, batch_format="pandas")
+        .take_all()
+    )
+
+    assert rows == [{"dtype": "int64", "numpy_dtype": "int64"}]
+
+
+def test_map_batches_pandas_supports_operators_the_arrow_backend_lacks():
+    """``%`` and ``divmod`` are unimplemented on Arrow-backed columns.
+
+    See https://github.com/pandas-dev/pandas/issues/58723; on an Arrow-backed
+    batch this raises ``NotImplementedError: mod not implemented.``
+    """
+
+    def modulo(df):
+        return df.assign(m=df["id"] % 2)
+
+    rows = (
+        ray.data.range(4, override_num_blocks=1)
+        .map_batches(modulo, batch_format="pandas")
+        .take_all()
+    )
+
+    assert [row["m"] for row in rows] == [0, 1, 0, 1]
+
+
+def test_map_batches_pandas_missing_value_is_nan():
+    """Nulls must arrive as ``np.nan``, whose comparisons are two-valued.
+
+    ``pd.NA >= 0`` is ``pd.NA``, making the mask ``bool[pyarrow]`` and unusable
+    as a NumPy index.
+    """
+
+    def probe(df):
+        return pd.DataFrame(
+            {
+                "is_nan": [bool(np.isnan(value)) for value in df["v"]],
+                "mask_dtype": [str((df["v"] >= 0).dtype)] * len(df),
+            }
+        )
+
+    rows = (
+        ray.data.from_items([{"v": 1.0}, {"v": None}], override_num_blocks=1)
+        .map_batches(probe, batch_format="pandas")
+        .take_all()
+    )
+
+    assert [row["is_nan"] for row in rows] == [False, True]
+    assert {row["mask_dtype"] for row in rows} == {"bool"}
+
+
+def test_iter_batches_pandas_is_numpy_backed():
+    ds = ray.data.range(4, override_num_blocks=2)
+
+    batches = list(ds.iter_batches(batch_format="pandas"))
+
+    assert batches
+    for batch in batches:
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.dtypes["id"] == np.int64
+        assert batch[["id"]].to_numpy().dtype == np.int64
+
+
+def test_iter_batches_default_format_is_unaffected():
+    """``batch_format="default"`` on an Arrow block yields numpy, not pandas."""
+    batches = list(ray.data.range(2, override_num_blocks=1).iter_batches())
+
+    assert all(isinstance(batch, dict) for batch in batches)
+
+
+class TestToPandasStaysArrowBacked:
+    """``Dataset.to_pandas`` deliberately keeps Arrow-backed dtypes.
+
+    It returns a result to the driver rather than feeding a user function, and
+    the Arrow-backed dtypes preserve the dataset's types.
+    """
+
+    def test_dtype_is_arrow_backed(self):
+        df = ray.data.range(4).to_pandas()
+
+        assert df.dtypes["id"] == pd.ArrowDtype(pa.int64())
+
+    def test_integer_column_with_nulls_stays_integral(self):
+        ds = ray.data.from_items([{"v": 1}, {"v": None}], override_num_blocks=1)
+
+        df = ds.to_pandas()
+
+        # NumPy-backed pandas would have to widen this to float64.
+        assert df.dtypes["v"] == pd.ArrowDtype(pa.int64())
+        assert df["v"][0] == 1
+        assert pd.isna(df["v"][1])
+
+
+class _BatchDtypeRecorder(Preprocessor):
+    """Reports the dtype of the pandas batch that Ray hands a preprocessor."""
+
+    _is_fittable = False
+
+    def _transform_pandas(self, df: pd.DataFrame) -> pd.DataFrame:
+        return pd.DataFrame({"dtype": [str(df.dtypes["id"])] * len(df)})
+
+
+def test_preprocessors_receive_numpy_backed_pandas():
+    """``_transform_pandas`` gets the same batch any ``map_batches`` function does.
+
+    ``Preprocessor`` is public, so a subclass's ``_transform_pandas`` is user code
+    as often as it is Ray's; it must not be handed ``pd.NA``. This recorder is
+    itself a user-defined subclass, which is the case that matters.
+    """
+    ds = ray.data.range(2, override_num_blocks=1)
+
+    rows = _BatchDtypeRecorder().transform(ds).take_all()
+
+    assert rows == [{"dtype": "int64"}, {"dtype": "int64"}]
 
 
 if __name__ == "__main__":

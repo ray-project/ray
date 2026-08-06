@@ -238,7 +238,14 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], "CollatedData"]] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
+        _arrow_backed_pandas: bool = False,
     ) -> Iterable[DataBatch]:
+        """``_arrow_backed_pandas`` keeps pandas batches Arrow-backed.
+
+        Internal-only, and False for every user-facing caller: pandas batches
+        handed to user code are converted to NumPy-backed pandas. See
+        ``ray.data._internal.util.to_numpy_backed``.
+        """
         batch_format = _apply_batch_format(batch_format)
 
         def _create_iterator() -> Iterator[DataBatch]:
@@ -287,6 +294,7 @@ class DataIterator(abc.ABC):
                 prefetch_batches=prefetch_batches,
                 prefetch_bytes_callback=prefetch_bytes_callback,
                 preserve_order=self.get_context().execution_options.preserve_order,
+                arrow_backed_pandas=_arrow_backed_pandas,
             )
 
             if stats:
