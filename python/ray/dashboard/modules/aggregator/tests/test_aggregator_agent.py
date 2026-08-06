@@ -152,7 +152,19 @@ def test_aggregator_agent_http_target_not_enabled(
     export_addr,
     expected_http_target_enabled,
     expected_event_processing_enabled,
+    monkeypatch,
 ):
+    # This test isolates HTTP-target enablement, so hold the other publishers off
+    # regardless of their module-level defaults (read at import, not from the test env).
+    monkeypatch.setattr(
+        "ray.dashboard.modules.aggregator.aggregator_agent.PUBLISH_EVENTS_TO_GCS",
+        False,
+    )
+    monkeypatch.setattr(
+        "ray.dashboard.modules.aggregator.aggregator_agent."
+        "PUBLISH_TASK_EVENTS_TO_DASHBOARD_HEAD",
+        False,
+    )
     dashboard_agent = MagicMock()
     dashboard_agent.events_export_addr = export_addr
     dashboard_agent.gcs_address = "127.0.0.1:8000"
@@ -1297,6 +1309,9 @@ def _get_dashboard_head_events_from_httpserver(httpserver):
                 "RAY_enable_task_events_to_dashboard_head": "1",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE": "True",
                 "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": _EVENT_AGGREGATOR_AGENT_TARGET_ADDR,
+                # This test asserts the aggregator receives only the injected event, so
+                # keep the core from emitting its own ray events into the aggregator.
+                "RAY_enable_ray_event": "0",
             },
         },
     ],
@@ -1473,13 +1488,16 @@ def test_aggregator_agent_publish_to_both_gcs_and_http(
 
     agg_stub.AddEvents(request)
 
-    # Verify HTTP received the event
-    wait_for_condition(lambda: len(httpserver.log) == 1)
-    req, _ = httpserver.log[0]
-    req_json = json.loads(req.data)
-    assert len(req_json) == 1
-    assert req_json[0]["eventType"] == "TASK_DEFINITION_EVENT"
-    assert req_json[0]["taskDefinitionEvent"]["taskName"] == unique_task_name
+    # Verify HTTP received the event. Other producers share this publisher, so look for
+    # the task event across every POST instead of expecting it alone in the first one.
+    def _task_event_received():
+        return any(
+            event["eventType"] == "TASK_DEFINITION_EVENT"
+            and event["taskDefinitionEvent"]["taskName"] == unique_task_name
+            for event in _get_json_events_from_httpserver(httpserver)
+        )
+
+    wait_for_condition(_task_event_received)
 
     # Verify GCS stored the event and fields match
     _wait_for_and_verify_task_definition_event_in_gcs(unique_task_name, event)
