@@ -26,7 +26,8 @@ class NoProgressGuard:
     it only reports once a whole partition lands, and the gap in between grows
     with the data, so the clock also pauses while one of those phases has a
     task in flight. That gives up detecting a hang inside a finalize, which no
-    counter here could distinguish from work anyway.
+    counter here could distinguish from work anyway, and the pause is
+    topology-wide, so a hang elsewhere goes undetected until it completes.
 
     Progress also freezes when the consumer is the bottleneck, since a slow
     loop between iterations backpressures every operator upstream. Failing
@@ -74,7 +75,9 @@ class NoProgressGuard:
         self._max_stall_interval_s = max_stall_interval_s
 
         self._last_check_time = clock()
-        self._last_progress_count = self._total_progress_count()
+        self._last_progress_count = self._total_progress_count(
+            [op.metrics for op in topology]
+        )
         self._stalled_s = 0.0
 
     @property
@@ -93,7 +96,10 @@ class NoProgressGuard:
             return
 
         current_time = self._clock()
-        current_progress_count = self._total_progress_count()
+        # Read each operator's metrics once: on a hash-based operator the
+        # property rebuilds its finalize snapshot on every access.
+        snapshots = [op.metrics for op in self._topology]
+        current_progress_count = self._total_progress_count(snapshots)
         interval = current_time - self._last_check_time
         self._last_check_time = current_time
 
@@ -109,7 +115,7 @@ class NoProgressGuard:
             self._reset_stall(current_progress_count)
             return
 
-        if self._finalize_task_is_running():
+        if self._finalize_task_is_running(snapshots):
             self._reset_stall(current_progress_count)
             return
 
@@ -127,7 +133,7 @@ class NoProgressGuard:
         self._last_progress_count = current_progress_count
         self._stalled_s = 0.0
 
-    def _finalize_task_is_running(self) -> bool:
+    def _finalize_task_is_running(self, snapshots) -> bool:
         """Whether a phase reported under ``extra_metrics`` has a task running.
 
         Those phases only report once a whole partition completes, so between
@@ -136,15 +142,14 @@ class NoProgressGuard:
         """
         return any(
             extra.get("num_tasks_running", 0) > 0
-            for op in self._topology
-            for extra in op.metrics.extra_metrics.values()
+            for metrics in snapshots
+            for extra in metrics.extra_metrics.values()
             if isinstance(extra, dict)
         )
 
-    def _total_progress_count(self) -> int:
+    def _total_progress_count(self, snapshots) -> int:
         total = 0
-        for op in self._topology:
-            metrics = op.metrics
+        for metrics in snapshots:
             total += metrics.num_outputs_taken
             # A hash shuffle, join or aggregate reports its finalize phase
             # under `extra_metrics`; `metrics` itself only covers the shuffle
