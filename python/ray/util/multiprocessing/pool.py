@@ -1137,6 +1137,16 @@ class Pool:
                     pool._stop_pool_actors(force=True)
                     return
                 pool._dispatch_ready_batches(pending)
+                # Dispatching can drop a slot when a submission fails
+                # synchronously on an actor whose death has already
+                # propagated. Top the pool back up so the still-pending work
+                # is not stranded waiting for a wakeup nothing would generate.
+                resize_error = pool._resize_actor_pool(desired)
+                if resize_error is not None:
+                    pool._closed = True
+                    pool._fail_pending_batches(pending, resize_error)
+                    pool._stop_pool_actors(force=True)
+                    return
                 pool._reap_idle_actors()
 
                 if pool._closed and not pending and pool._batch_queue.empty():
