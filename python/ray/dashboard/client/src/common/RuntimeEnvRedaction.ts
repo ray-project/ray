@@ -42,6 +42,12 @@ export const useRuntimeEnvRedacted = () => {
   return redacted;
 };
 
+/**
+ * Placeholder the dashboard substitutes for redacted values.
+ * Keep in sync with REDACTED_PLACEHOLDER in dashboard/runtime_env_redaction.py.
+ */
+export const REDACTED_PLACEHOLDER = "<redacted>";
+
 export const RUNTIME_ENV_REDACTED_TOOLTIP =
   "Environment variable values are redacted for security reasons. " +
   "The Ray CLI and Python SDK still return the raw values: run " +

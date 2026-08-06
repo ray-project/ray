@@ -1,8 +1,13 @@
-import { Box, Card, Link, SxProps, Theme, Typography } from "@mui/material";
+import { Alert, Box, Card, Link, SxProps, Theme, Typography } from "@mui/material";
 import yaml from "js-yaml";
 import React, { useState } from "react";
 import DialogWithTitle from "../DialogWithTitle";
 import { ClassNameProps } from "../props";
+import {
+  REDACTED_PLACEHOLDER,
+  RUNTIME_ENV_REDACTED_TOOLTIP,
+  useRuntimeEnvRedacted,
+} from "../RuntimeEnvRedaction";
 
 export type CodeDialogButtonProps = {
   /**
@@ -18,6 +23,48 @@ export type CodeDialogButtonProps = {
    */
   code: string | object;
   sx?: SxProps<Theme>;
+};
+
+/**
+ * Body of the code dialog.
+ *
+ * Split out from CodeDialogButton so it only mounts once the dialog is open:
+ * this component stringifies the code, which is wasteful for the many closed
+ * dialogs rendered by table rows.
+ */
+const CodeDialogContents = ({ code }: Pick<CodeDialogButtonProps, "code">) => {
+  const runtimeEnvRedacted = useRuntimeEnvRedacted();
+  const codeText =
+    typeof code === "string" ? code : yaml.dump(code, { indent: 2 });
+  // Explain the placeholder wherever it shows up: a runtime env reaches this
+  // dialog from job, Serve, actor and task pages alike.
+  const showRedactionHelp =
+    runtimeEnvRedacted && codeText.includes(REDACTED_PLACEHOLDER);
+
+  return (
+    <React.Fragment>
+      {showRedactionHelp && (
+        <Alert severity="info" sx={{ marginBottom: 2 }}>
+          {RUNTIME_ENV_REDACTED_TOOLTIP}
+        </Alert>
+      )}
+      <Card variant="outlined">
+        <Typography
+          sx={{
+            whiteSpace: "pre",
+            fontFamily:
+              "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
+            padding: 2,
+            overflow: "scroll",
+            maxHeight: 600,
+            textWrap: "wrap",
+          }}
+        >
+          {codeText}
+        </Typography>
+      </Card>
+    </React.Fragment>
+  );
 };
 
 /**
@@ -52,21 +99,7 @@ export const CodeDialogButton = ({
             setShowConfigDialog(false);
           }}
         >
-          <Card variant="outlined">
-            <Typography
-              sx={{
-                whiteSpace: "pre",
-                fontFamily:
-                  "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-                padding: 2,
-                overflow: "scroll",
-                maxHeight: 600,
-                textWrap: "wrap",
-              }}
-            >
-              {typeof code === "string" ? code : yaml.dump(code, { indent: 2 })}
-            </Typography>
-          </Card>
+          <CodeDialogContents code={code} />
         </DialogWithTitle>
       )}
     </React.Fragment>

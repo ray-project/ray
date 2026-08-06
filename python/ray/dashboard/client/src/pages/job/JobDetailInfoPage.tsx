@@ -12,10 +12,6 @@ import {
   CpuStackTraceLink,
   MemoryProfilingButton,
 } from "../../common/ProfilingLink";
-import {
-  RUNTIME_ENV_REDACTED_TOOLTIP,
-  useRuntimeEnvRedacted,
-} from "../../common/RuntimeEnvRedaction";
 import { filterRuntimeEnvSystemVariables } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -81,9 +77,6 @@ type JobMetadataSectionProps = {
 };
 
 export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
-  const runtimeEnvRedacted = useRuntimeEnvRedacted();
-  const showRedactionHelp = runtimeEnvRedacted && !!job.runtime_env?.env_vars;
-
   return (
     <MetadataSection
       metadataList={[
@@ -153,9 +146,6 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
         },
         {
           label: "Runtime environment",
-          ...(showRedactionHelp
-            ? { labelTooltip: RUNTIME_ENV_REDACTED_TOOLTIP }
-            : {}),
           ...(job.runtime_env
             ? {
                 content: (
