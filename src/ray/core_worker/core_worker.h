@@ -356,8 +356,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * \param[in] generator_id The object ref id of the streaming generator task.
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
-   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
-   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   * \return Status InvalidArgument if the last requested ref is not ready, or
+   * if the requested range would exceed max_num_generator_returns. OK
+   * otherwise.
    */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
 
@@ -1578,6 +1579,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
   void SubscribeToNodeChanges();
 
+  /**
+   * @brief Subscribe to the GCS failure notification of a single owner worker
+   * so ``HandleOwnerDied`` can clean up generator backpressure state when that
+   * owner dies. Covers both per-task BP (unblock ``WaitUntilObjectConsumed``)
+   * and actor-wide BP (reclaim shared budget held by finished tasks).
+   *
+   * @param owner_worker_id The owner worker whose failure to watch.
+   */
+  void SubscribeToOwnerWorkerFailure(const WorkerID &owner_worker_id);
+
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 
@@ -2166,6 +2177,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Used to ensure we only subscribe to node changes once.
   std::once_flag subscribe_to_node_changes_flag_;
+
+  /// Owners whose worker-failure notifications this worker is subscribed to
+  /// for generator-backpressure cleanup. An owner is inserted on the first
+  /// backpressure registration for one of its generator tasks and erased in
+  /// HandleOwnerDied (a dead owner's keyed subscription is useless; live
+  /// owners stay subscribed so churning generator tasks don't
+  /// unsubscribe/resubscribe).
+  absl::flat_hash_set<WorkerID> subscribed_bp_owners_ ABSL_GUARDED_BY(mutex_);
 
   // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
   // the shutdown procedure without exposing additional public APIs.

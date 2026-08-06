@@ -2,7 +2,12 @@ import abc
 from enum import Enum
 from typing import Dict, List, Optional
 
-ResourceDict = Dict[str, float]
+ResourceType = str
+ResourceDict = Dict[ResourceType, float]
+RequesterId = str
+LabelKey = str
+LabelValue = str
+LabelSelector = Dict[LabelKey, LabelValue]
 
 
 class ResourceRequestPriority(Enum):
@@ -21,7 +26,7 @@ class AutoscalingCoordinator(abc.ABC):
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
-        label_selectors: Optional[List[Dict[str, str]]] = None,
+        label_selectors: Optional[List[LabelSelector]] = None,
     ) -> None:
         """Request cluster resources.
 

@@ -16,8 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <deque>
 #include <functional>
+#include <list>
 #include <memory>
 #include <queue>
 #include <string>
@@ -49,7 +49,9 @@ class EntityState {
    * @brief Construct a new EntityState.
    *
    * @param max_message_size_bytes Maximum size of a single message.
-   * @param max_buffered_bytes Maximum bytes to buffer. Set to -1 to disable buffering.
+   * @param max_buffered_bytes -1 unlimited; >0 drop oldest when buffer would
+   *        exceed this size. WorkerObjectLocationsPubMessage coalescing is
+   *        keyed by message type, not by this value.
    */
   EntityState(int64_t max_message_size_bytes, int64_t max_buffered_bytes)
       : max_message_size_bytes_(max_message_size_bytes),
@@ -295,6 +297,16 @@ class SubscriberState {
   void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
   /**
+   * @brief Queue a WorkerObjectLocationsPubMessage, replacing any prior
+   *        in-flight locations message for the same key_id. Appends at
+   *        the end so global sequence_id order is preserved (gaps ok,
+   *        out-of-order not).
+   *
+   * @param pub_message The WorkerObjectLocationsPubMessage to queue.
+   */
+  void QueueObjectLocationsMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
+
+  /**
    * @brief Publish all queued messages if possible.
    *
    * @param force_noop If true, reply to the subscriber with an empty message,
@@ -311,6 +323,13 @@ class SubscriberState {
    * @return true if no metadata remains (no leaks), false otherwise.
    */
   bool CheckNoLeaks() const;
+
+  /**
+   * @brief Returns the number of messages currently queued for this subscriber.
+   *
+   * @return The mailbox size.
+   */
+  size_t MailboxSize() const { return mailbox_.size(); }
 
   /**
    * @brief Checks if there is an active long polling connection.
@@ -338,8 +357,13 @@ class SubscriberState {
   const UniqueID subscriber_id_;
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
-  /// Queued messages to publish.
-  std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
+  /// Queued messages to publish, in sequence_id order.
+  std::list<std::shared_ptr<rpc::PubMessage>> mailbox_;
+  /// In-flight WorkerObjectLocationsPubMessage: key_id -> mailbox node.
+  /// Lets us replace the prior locations message for a key without
+  /// tombstones/scanning.
+  absl::flat_hash_map<std::string, std::list<std::shared_ptr<rpc::PubMessage>>::iterator>
+      object_locations_message_index_;
   /// Clock used to read the current time.
   ClockInterface &clock_;
   /// The time in which the connection is considered as timed out.
