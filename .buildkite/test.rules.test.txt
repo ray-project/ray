@@ -81,14 +81,117 @@ docker/Dockerfile.ray: docker linux_wheels
 
 # === Documentation ===
 
-doc/code.py: doc
-doc/example.ipynb: doc
+# Executable doc assets route to the owning library's docs example step via a
+# dedicated <lib>_doc tag, instead of the blanket `doc` tag, so a one-library
+# doc change no longer fans out to every team.
+doc/source/serve/doc_code/example.py: serve_doc
+doc/source/serve/examples/example.ipynb: serve_doc
+doc/source/data/doc_code/example.py: data_doc
+doc/source/ray-more-libs/example.py: data_doc
+doc/source/train/examples/example.py: ml_doc
+doc/source/tune/examples/example.py: ml_doc
+doc/source/rllib/doc_code/example.py: rllib_doc
+doc/source/ray-core/examples/example.ipynb: core_doc
+doc/source/ray-observability/example.py: core_doc
+# The four ray-core notebooks whose targets are tagged team:ml route to ml_doc,
+# because the core step filters targets by team and would not execute them.
+doc/source/ray-core/examples/plot_hyperparameter.ipynb: ml_doc
+doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
+# highly_parallel.ipynb is the exception: the ml docs example step excludes its
+# tag, so no step runs it. It routes to the build instead.
+doc/source/ray-core/examples/highly_parallel.ipynb: doc
+# doc/external/ is the same team:ml case: the hash-guard test and the vendored
+# tutorial it covers both route to the step that owns the target.
+doc/external/test_hashes.py: ml_doc
+doc/external/pytorch_tutorials_hyperparameter_tuning_tutorial.py: ml_doc
+# Claude Code skills and agent files trigger nothing, matching the RtD guard.
+doc/.claude/skills/sphinx-fix/sphinx_fix.py:
+doc/.claude/agents/reviewer.md:
+doc/source/llm/doc_code/example.py: llm
+# Unowned doc dirs and doc-root executables fall to the core docs example step.
+doc/source/cluster/example.py: core_doc
+doc/code.py: core_doc
+doc/example.ipynb: core_doc
+# A library's example BUILD.bazel routes to that library; the root doc
+# BUILD.bazel defines every library's targets, so it routes to all of them.
+doc/source/serve/examples/BUILD.bazel: serve_doc
+doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
+# Prose and static images under a library doc dir are skipped, not routed to
+# that library's docs example step. The per-library rules match whole
+# directories, so these cases lock in that the leading skip rule wins first.
+doc/source/data/key-concepts.rst:
+doc/source/serve/index.md:
+doc/source/rllib/images/rllib-stack.svg:
+doc/source/data/images/dataset-arch.png:
+doc/source/train/images/overview.jpg:
+doc/source/tune/images/tune-flow.gif:
+# Config and script assets a doc example consumes can change what the test
+# does, so under a library doc dir they keep routing to that library. Under an
+# unowned dir they still fall through to the trailing `doc/` skip, because the
+# catch-all matches only .py, .ipynb, and BUILD.bazel. That is unchanged from
+# before this rework, and none of those assets is a bazel test dep today.
+doc/source/serve/doc_code/config.yaml: serve_doc
+doc/source/cluster/doc_code/slurm-basic.sh:
+# Documentation validation infra stays on the `doc` tag. The Sphinx config, the
+# modules it imports, the in-repo build extensions, and the doc-build helper
+# scripts build the docs, so they route to the `doc` build and validation only,
+# never to a library's doctest or example execution.
 .readthedocs.yaml: doc
+doc/source/data/api/api.rst: doc_api
+doc/source/serve/api/index.md: doc_api
+doc/source/ray-core/api/index.rst: doc_api
+doc/source/train/api/api.rst: doc_api
+doc/source/tune/api/api.rst: doc_api
+doc/source/rllib/package_ref/index.rst: doc_api
+doc/source/ray-observability/reference/api.rst: doc_api
+# A nested leaf page under an API dir must also emit doc_api: directory rules
+# match recursively, so a change to any page below the dir triggers the checks,
+# not just the top-level index. Guards against a rule or matcher change that
+# would only catch top-level pages.
+doc/source/rllib/package_ref/env/single_agent_episode.rst: doc_api
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
-doc/requirements-doc.txt: doc
-python/deplocks/docs/docbuild_depset_py3.10.lock: doc python_dependencies
-ci/raydepsets/configs/docs.depsets.yaml: doc python_dependencies
+doc/requirements-doc.txt: doc doc_api
+doc/source/conf.py: doc doc_api
+doc/source/_ext/llms_txt.py: doc doc_api
+doc/source/custom_directives.py: doc doc_api
+doc/source/api_autogen.py: doc doc_api
+doc/source/api_mock_imports.py: doc doc_api
+.buildkite/doc.rayci.yml: doc doc_api
+# api_sidebar.py sits under doc/source/_ext/ but carries `tools` on top of the
+# dir rule's tags, because //ci/pipeline:test_doc_api_rules_sync is a ci_unit
+# target and ci_unit is selected by `tools`. This case is what keeps the drift
+# guard executing on an API_PATH_PREFIXES edit.
+doc/source/_ext/api_sidebar.py: doc doc_api tools
+# The autodoc machinery above emits doc_api so the two API-consistency checks
+# run on it: these files decide what the API reference contains. The rendering
+# half of the doc infra must NOT, or every Vale vocabulary tweak pays for a
+# docbuild plus both checks. The cases below, and the doc/*.py ones further
+# down, are the guard on that boundary.
+doc/source/template_collections.py: doc
+doc/source/preprocess_github_markdown.py: doc
+# Gallery configs are build inputs, not example inputs: they sit under the
+# per-library doc dirs but route to the build, not to that library's examples.
+doc/source/data/examples.yml: doc
+doc/source/serve/examples.yml: doc
+doc/source/train/examples.yml: doc
+# A sibling .yml under the same dir still routes to the library, so the gallery
+# rule is a targeted exception rather than a blanket .yml skip.
+doc/source/data/doc_code/some_config.yml: data_doc
+doc/load_doc_cache.py: doc
+doc/update_cache_env.py: doc
+doc/rtd_doctor.py: doc
+doc/test_no_new_rst.py: doc
+# Pre-routed ahead of the files landing with ray-project/ray#64458. The
+# llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
+# belongs on the doc build side, not on a library example step.
+doc/test_llms_txt.py: doc
+doc/source/llms_txt_summary.txt: doc
+# The shared notebook runner stays on the catch-all core step by design; see
+# the comment on the catch-all rule in test.rules.txt.
+doc/test_myst_doc.py: core_doc
+python/deplocks/docs/docbuild_depset_py3.10.lock: doc doc_api python_dependencies
+ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
 
 # === Release ===
 
@@ -104,6 +207,12 @@ ci/ci.sh: tools
 # Windows CI driver scripts trigger the Windows test steps, not just tools.
 ci/ray_ci/windows/build_base.sh: windows tools
 ci/ray_ci/windows/install_tools.sh: windows tools
+# The API-consistency checker's own source emits doc_api (re-run the API checks
+# it implements) on top of tools (its six ci_unit py_test targets run in the
+# tools-selected job). Other ci/ray_ci/ files still emit tools alone (tester.py
+# above).
+ci/ray_ci/doc/cmd_check_api_discrepancy.py: doc_api tools
+ci/ray_ci/doc/autodoc.py: doc_api tools
 
 # === Build Scripts ===
 

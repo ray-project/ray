@@ -147,8 +147,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
 
     @override
     def throttling_disabled(self) -> bool:
-        # TODO: Disable throttling along with Union once NAry operator resource accounting is fixed.
-        return False
+        return True
 
     # ------------------------------------------------------------------
     # Output selection

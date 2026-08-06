@@ -1,3 +1,4 @@
+import os
 import re
 import time
 import subprocess
@@ -76,6 +77,10 @@ print(f"num_connections: {NUM_CONNECTIONS}")
 print(f"num_threads: {NUM_THREADS}")
 print(f"time_per_cycle: {TIME_PER_CYCLE}")
 
+# Stop before the 24h job timeout so the test exits cleanly as success.
+MAX_RUNTIME_S = int(os.environ.get("MAX_RUNTIME_S", 22 * 60 * 60))
+start_time = time.time()
+
 while True:
     proc = subprocess.Popen(
         [
@@ -134,3 +139,6 @@ while True:
     print(err.decode())
 
     update_progress(metrics_dict)
+    if time.time() - start_time > MAX_RUNTIME_S:
+        print(f"Reached max runtime of {MAX_RUNTIME_S}s. Exiting successfully.")
+        break
