@@ -518,6 +518,10 @@ def httpserver_listen_address():
                 # Turn off task events generation to avoid the task events from the
                 # cluster impacting the test result
                 "RAY_task_events_report_interval_ms": 0,
+                # Also turn off RayEvent emission so the cluster's own node/job events do
+                # not reach the aggregator and inflate events_received_total past the
+                # injected 3.
+                "RAY_enable_ray_event": "0",
                 "RAY_enable_open_telemetry": "true",
             },
         },
