@@ -14,6 +14,8 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
     get_export_event_logger,
 )
+from ray._private.protobuf_compat import message_to_dict
+from ray._private.runtime_env.utils import summary_line
 from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
@@ -84,6 +86,144 @@ class JobErrorType(str, Enum):
     JOB_ENTRYPOINT_COMMAND_START_ERROR = "JOB_ENTRYPOINT_COMMAND_START_ERROR"
     # Job driver script failed due to non-zero exit code
     JOB_ENTRYPOINT_COMMAND_ERROR = "JOB_ENTRYPOINT_COMMAND_ERROR"
+    # Job driver exited non-zero, but Ray's own records for the job name an infra
+    # cause (a node died, a worker was OOM-killed) rather than the entrypoint.
+    # The driver still exited non-zero, so this is a narrowing of
+    # JOB_ENTRYPOINT_COMMAND_ERROR, not a separate stage.
+    JOB_DRIVER_INFRA_FAILURE = "JOB_DRIVER_INFRA_FAILURE"
+
+
+class JobFailureStage(str, Enum):
+    """Where in the job lifecycle a failure happened.
+
+    Values must match the JobFailureInfo.Stage enum in
+    src/ray/protobuf/common.proto.
+    """
+
+    RUNTIME_ENV_SETUP = "RUNTIME_ENV_SETUP"
+    SUPERVISOR_START = "SUPERVISOR_START"
+    DRIVER_RUN = "DRIVER_RUN"
+
+
+def context_dict_from_proto(message: Any) -> Dict[str, Any]:
+    """Convert a failure-context proto into the dict make_failure_info carries.
+
+    preserving_proto_field_name is required: the rest of the record is written
+    with proto field names, so emitting the JSON camelCase spelling for nested
+    contexts would leave one record using two spellings of the same schema.
+
+    always_print_fields_with_no_presence is left at its default so unset
+    optional fields stay unset rather than arriving downstream as zeroes, which
+    for e.g. an installer exit code is a materially different claim.
+
+    Note that a uint64 field comes back as a JSON string, per the protobuf JSON
+    mapping. That round-trips through the GCS's parse; do not "fix" it to an int.
+    """
+    return message_to_dict(message, preserving_proto_field_name=True)
+
+
+def make_failure_info(
+    stage: JobFailureStage,
+    *,
+    context_key: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
+    driver_exit_code: Optional[int] = None,
+    log_excerpt_ref: Optional[str] = None,
+    infra_cause: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build the dict carried on JobInfo.failure_info.
+
+    Mirrors the JobFailureInfo proto in src/ray/protobuf/common.proto. Keys must
+    match that proto's field names exactly: the GCS parses this JSON into
+    JobsAPIInfo with ignore_unknown_fields left at its default of false, so an
+    unrecognised key does not just drop the key -- it fails the parse and leaves
+    the job's entire job_info record empty.
+
+    That is also why every nested context dict passed in here must come from
+    MessageToDict on the real proto rather than being hand-built.
+
+    None values are omitted rather than written as null so the proto's optional
+    fields stay genuinely unset, and HasField() means what it says downstream.
+
+    Args:
+        stage: Which stage of the job's startup or execution failed. The
+            discriminator every consumer reads first.
+        context_key: Field name of the stage-specific context to attach, e.g.
+            "runtime_env". Must name one of JobFailureInfo's oneof branches.
+        context: The context dict itself, passed together with context_key.
+        driver_exit_code: The entrypoint's exit code, when it ran and exited.
+            Note this does not separate a kernel OOM from `kill -9`; see the
+            proto comment on the field.
+        log_excerpt_ref: Reference to the captured log excerpt for this failure.
+            A reference rather than the bytes: the output is unbounded, and pip
+            and uv echo index URLs that can carry credentials.
+        infra_cause: An InfraCauseContext dict. Sibling of the stage context
+            rather than one of its branches: a driver that exited non-zero
+            because a node it depended on died is still a DRIVER_RUN failure,
+            it is just not the entrypoint's fault.
+
+    Returns:
+        The failure_info dict, with every unset optional field omitted rather
+        than written as null.
+    """
+    info: Dict[str, Any] = {"stage": stage.value}
+    if driver_exit_code is not None:
+        # No signal is derived from a negative returncode. CPython only reports
+        # one when the *direct* child was signalled, and the entrypoint runs
+        # under shell=True, so the direct child is /bin/sh -- a signal to the
+        # Python process under it arrives as a positive 128+N. Verified against a
+        # real run: SIGKILL of the driver surfaced as exit 137 and no signal.
+        # Naming the signal needs the node's own termination reason, which this
+        # process cannot see.
+        info["driver_exit_code"] = driver_exit_code
+    if log_excerpt_ref is not None:
+        info["log_excerpt_ref"] = log_excerpt_ref
+    if infra_cause:
+        info["infra_cause"] = infra_cause
+    if context_key is not None and context:
+        pruned = {k: v for k, v in context.items() if v is not None}
+        if pruned:
+            info[context_key] = pruned
+    return _cap_error_messages(info)
+
+
+def _cap_error_messages(value: Any) -> Any:
+    """Reduce every ``error_message`` anywhere in ``value`` to one capped line.
+
+    Enforced here rather than at each call site on purpose. The rule this upholds
+    -- that no unbounded text rides the failure_info path -- was originally written
+    per field, on the basis that some of these messages are Ray's own short strings
+    and some are customer-shaped. That does not survive contact with the code:
+    ``driver_run.error_message`` is "failed with exit code N" at one call site and a
+    formatted traceback at another, so a field cannot be classified by origin, and a
+    new call site would quietly reintroduce the problem.
+
+    Capping uniformly costs nothing on the short Ray-generated strings, which are
+    already a single line under the limit, and makes the invariant hold for every
+    writer including ones not written yet.
+
+    Args:
+        value: A failure_info fragment -- dict, list or leaf.
+
+    Returns:
+        The same shape with every ``error_message`` string capped.
+    """
+    if isinstance(value, dict):
+        capped = {}
+        for key, item in value.items():
+            if key == "error_message" and isinstance(item, str):
+                line = summary_line(item)
+                # Drop the key when there was nothing to carry. str(e) is empty
+                # for an exception raised with no message, and a present-but-blank
+                # message reads as a reported fact rather than as an absence.
+                if line is not None:
+                    capped[key] = line
+            else:
+                capped[key] = _cap_error_messages(item)
+        return capped
+    if isinstance(value, list):
+        return [_cap_error_messages(item) for item in value]
+    return value
 
 
 # TODO(aguo): Convert to pydantic model
@@ -127,6 +267,16 @@ class JobInfo:
     #: The driver process exit code after the driver executed. Return None if driver
     #: doesn't finish executing
     driver_exit_code: Optional[int] = None
+    #: Structured detail about why the job failed, mirroring the JobFailureInfo
+    #: proto in src/ray/protobuf/common.proto. None unless the job failed.
+    #: Held as a plain dict here, like runtime_env, so that to_json/from_json
+    #: stay a straight round-trip.
+    #:
+    #: NOTE: from_json below is `cls(**json_dict)`, so a record written by a Ray
+    #: that has this field and read by one that does not raises TypeError. That
+    #: is why this field and its JobsAPIInfo counterpart must ship in the same
+    #: release rather than rolling out independently.
+    failure_info: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if isinstance(self.status, str):
@@ -356,6 +506,7 @@ class JobInfoStorageClient:
         message: Optional[str] = None,
         driver_exit_code: Optional[int] = None,
         error_type: Optional[JobErrorType] = None,
+        failure_info: Optional[Dict[str, Any]] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = 30,
     ):
@@ -370,6 +521,7 @@ class JobInfoStorageClient:
             message=message,
             driver_exit_code=driver_exit_code,
             error_type=error_type,
+            failure_info=failure_info,
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():

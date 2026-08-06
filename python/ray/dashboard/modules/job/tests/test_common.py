@@ -6,14 +6,25 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from google.protobuf.json_format import Parse
 
+from ray._private.runtime_env.utils import MAX_SUMMARY_LINE_CHARS
+from ray.core.generated.common_pb2 import (
+    ActorDiedErrorContext,
+    ErrorType,
+    InfraCauseContext,
+    JobFailureInfo,
+    RuntimeEnvFailedContext,
+)
 from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobErrorType,
+    JobFailureStage,
     JobInfo,
     JobInfoStorageClient,
     JobStatus,
     JobSubmitRequest,
+    context_dict_from_proto,
     http_uri_components_to_uri,
+    make_failure_info,
     uri_to_http_components,
     validate_request_type,
 )
@@ -230,6 +241,15 @@ def test_job_info_json_to_proto():
         runtime_env={"pip": ["pkg"]},
         driver_agent_http_address="http://localhost:1234",
         driver_node_id="node_id",
+        failure_info=make_failure_info(
+            JobFailureStage.DRIVER_RUN,
+            driver_exit_code=-9,
+            context_key="driver_run",
+            context={
+                "error_message": "boom",
+                "exception_class": "ValueError",
+            },
+        ),
     )
     info_json = json.dumps(info.to_json())
     info_proto = Parse(info_json, JobsAPIInfo())
@@ -251,6 +271,15 @@ def test_job_info_json_to_proto():
     assert info_proto.error_type == "JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE"
     assert info_proto.driver_agent_http_address == "http://localhost:1234"
     assert info_proto.driver_node_id == "node_id"
+    # failure_info must survive the JSON -> JobsAPIInfo hop. The GCS parses this
+    # same JSON with ignore_unknown_fields=false, so a key here that the proto
+    # does not know silently blanks the entire job_info record.
+    assert info_proto.failure_info.stage == JobFailureInfo.Stage.DRIVER_RUN
+    assert info_proto.failure_info.driver_exit_code == -9
+    assert info_proto.failure_info.WhichOneof("context") == "driver_run"
+    assert info_proto.failure_info.driver_run.exception_class == "ValueError"
+    # Unset optionals inside the context must stay unset, not default-false.
+    assert not info_proto.failure_info.driver_run.HasField("failed_to_start")
 
     minimal_info = JobInfo(status=JobStatus.PENDING, entrypoint="echo hi")
     minimal_info_json = json.dumps(minimal_info.to_json())
@@ -265,8 +294,205 @@ def test_job_info_json_to_proto():
         "error_type",
         "driver_agent_http_address",
         "driver_node_id",
+        "failure_info",
     ]:
         assert not minimal_info_proto.HasField(unset_optional_field)
+
+
+def _parse_failure_info(failure_info):
+    """Round-trip a failure_info dict through the hop the GCS performs.
+
+    The GCS parses the job record with ignore_unknown_fields at its default of
+    false, so a key the proto does not know does not get dropped: the parse fails
+    and the job's entire job_info record is left empty. Every context key
+    therefore needs a case here, and the assertions have to reach the leaves --
+    the dict is written on one side of this hop and read on the other, with
+    nothing in between to notice a mismatch.
+    """
+    info = JobInfo(
+        status=JobStatus.FAILED,
+        entrypoint="echo hi",
+        failure_info=failure_info,
+    )
+    return Parse(json.dumps(info.to_json()), JobsAPIInfo()).failure_info
+
+
+def test_runtime_env_failure_info_json_to_proto():
+    setup_failure = RuntimeEnvFailedContext(
+        error_message="the agent's own message",
+        plugin="pip",
+        phase="install",
+        installer_exit_code=1,
+    )
+    setup_failure.attempts.add(attempt=1, exit_code=1, duration_ms=123)
+    # Built from the proto rather than by hand, which is what job_manager does
+    # and the only way the keys are guaranteed to be ones the proto knows.
+    context = context_dict_from_proto(setup_failure)
+    context["error_message"] = "Failed to set up runtime environment."
+
+    failure_info = _parse_failure_info(
+        make_failure_info(
+            JobFailureStage.RUNTIME_ENV_SETUP,
+            context_key="runtime_env",
+            context=context,
+        )
+    )
+    assert failure_info.stage == JobFailureInfo.Stage.RUNTIME_ENV_SETUP
+    assert failure_info.WhichOneof("context") == "runtime_env"
+    assert failure_info.runtime_env.plugin == "pip"
+    assert failure_info.runtime_env.phase == "install"
+    assert failure_info.runtime_env.installer_exit_code == 1
+    assert (
+        failure_info.runtime_env.error_message
+        == "Failed to set up runtime environment."
+    )
+    # A uint64 is a string in protobuf JSON, so the dict carries "123". It parses
+    # back to an int; do not "clean up" the dict builder to emit one.
+    assert context["attempts"][0]["duration_ms"] == "123"
+    assert len(failure_info.runtime_env.attempts) == 1
+    assert failure_info.runtime_env.attempts[0].attempt == 1
+    assert failure_info.runtime_env.attempts[0].duration_ms == 123
+    # An installer that never ran is a different claim from one that exited 0.
+    assert not failure_info.runtime_env.HasField("failed_package")
+
+
+def test_error_messages_are_capped_wherever_they_appear():
+    """No unbounded text rides the failure_info path, whoever wrote it.
+
+    This is enforced in make_failure_info rather than at each call site because
+    the rule cannot be applied per field: driver_run.error_message is a short
+    Ray-generated string on the exit-code path and a formatted traceback on the
+    failed-to-start path. A field's content is a property of its writer, so a
+    per-field rule silently lapses the moment a new writer appears.
+    """
+    traceback_text = (
+        "Traceback (most recent call last):\n"
+        '  File "job_supervisor.py", line 1, in _exec_entrypoint\n'
+        "FileNotFoundError: [Errno 2] No such file or directory: 'missing.sh'"
+    )
+
+    info = make_failure_info(
+        JobFailureStage.DRIVER_RUN,
+        context_key="driver_run",
+        context={"error_message": traceback_text, "failed_to_start": True},
+    )
+    # Only the actionable last line survives, and it is one line.
+    assert info["driver_run"]["error_message"] == (
+        "FileNotFoundError: [Errno 2] No such file or directory: 'missing.sh'"
+    )
+
+    # Nested messages are reached too. A supervisor death cause carries its own,
+    # one level down inside the oneof branch it has to be wrapped in.
+    nested = make_failure_info(
+        JobFailureStage.SUPERVISOR_START,
+        context_key="supervisor",
+        context={
+            "error_message": "outer\n" + "o" * 400,
+            "death_cause": {
+                "actor_died_error_context": {"error_message": "inner\n" + "i" * 400}
+            },
+        },
+    )
+    supervisor = nested["supervisor"]
+    assert len(supervisor["error_message"]) == MAX_SUMMARY_LINE_CHARS
+    inner = supervisor["death_cause"]["actor_died_error_context"]["error_message"]
+    assert len(inner) == MAX_SUMMARY_LINE_CHARS
+
+    # And inside a list, which is how runtime env attempts arrive.
+    attempts = make_failure_info(
+        JobFailureStage.RUNTIME_ENV_SETUP,
+        context_key="runtime_env",
+        context={"attempts": [{"attempt": 1, "error_message": "a\n" + "x" * 400}]},
+    )
+    assert (
+        len(attempts["runtime_env"]["attempts"][0]["error_message"])
+        == MAX_SUMMARY_LINE_CHARS
+    )
+
+    # A short Ray-generated string is untouched, so capping uniformly costs
+    # nothing on the messages that were already fine.
+    ray_generated = "Job entrypoint command failed with exit code 1."
+    plain = make_failure_info(
+        JobFailureStage.DRIVER_RUN,
+        context_key="driver_run",
+        context={"error_message": ray_generated},
+    )
+    assert plain["driver_run"]["error_message"] == ray_generated
+
+    # str(e) is "" for an exception raised with no message. The key has to be
+    # absent rather than present-and-blank: a blank message reads as a reported
+    # fact, and null would contradict every other optional field on this record.
+    blank = make_failure_info(
+        JobFailureStage.SUPERVISOR_START,
+        context_key="supervisor",
+        context={"error_message": "", "exception_class": "RuntimeError"},
+    )
+    assert blank["supervisor"] == {"exception_class": "RuntimeError"}
+
+
+def test_supervisor_failure_info_json_to_proto():
+    died = ActorDiedErrorContext(
+        error_message="The actor died unexpectedly before finishing this task.",
+        reason=ActorDiedErrorContext.NODE_DIED,
+        actor_id=b"\x05\x06",
+    )
+    failure_info = _parse_failure_info(
+        make_failure_info(
+            JobFailureStage.SUPERVISOR_START,
+            context_key="supervisor",
+            context={
+                "error_message": "The actor died unexpectedly.",
+                "exception_class": "ActorDiedError",
+                # The death cause is one branch of an ActorDeathCause, so it has
+                # to be written inside that branch: ActorDiedErrorContext's own
+                # field names are not ActorDeathCause's.
+                "death_cause": {
+                    "actor_died_error_context": context_dict_from_proto(died)
+                },
+            },
+        )
+    )
+    assert failure_info.stage == JobFailureInfo.Stage.SUPERVISOR_START
+    assert failure_info.WhichOneof("context") == "supervisor"
+    assert failure_info.supervisor.exception_class == "ActorDiedError"
+    assert (
+        failure_info.supervisor.death_cause.WhichOneof("context")
+        == "actor_died_error_context"
+    )
+    assert (
+        failure_info.supervisor.death_cause.actor_died_error_context.reason
+        == ActorDiedErrorContext.NODE_DIED
+    )
+
+
+def test_infra_cause_failure_info_json_to_proto():
+    infra_cause = InfraCauseContext(
+        error_type=ErrorType.NODE_DIED,
+        error_message="node died",
+        ray_job_id=b"\x64\x00\x00\x00",
+    )
+    infra_cause.sample_task_ids.append("task_id_1")
+    failure_info = _parse_failure_info(
+        make_failure_info(
+            JobFailureStage.DRIVER_RUN,
+            driver_exit_code=1,
+            context_key="driver_run",
+            context={"error_message": "driver exited with code 1"},
+            log_excerpt_ref="node_id:job-driver-raysubmit_1.log",
+            infra_cause=context_dict_from_proto(infra_cause),
+        )
+    )
+    # infra_cause annotates the stage rather than replacing it: the driver really
+    # did exit non-zero, so driver_run stays set alongside it.
+    assert failure_info.stage == JobFailureInfo.Stage.DRIVER_RUN
+    assert failure_info.WhichOneof("context") == "driver_run"
+    # A reference rather than the tail itself: the driver log is unbounded and
+    # this field is served by the state and export APIs.
+    assert failure_info.log_excerpt_ref == "node_id:job-driver-raysubmit_1.log"
+    assert failure_info.HasField("infra_cause")
+    assert failure_info.infra_cause.error_type == ErrorType.NODE_DIED
+    assert failure_info.infra_cause.ray_job_id == b"\x64\x00\x00\x00"
+    assert list(failure_info.infra_cause.sample_task_ids) == ["task_id_1"]
 
 
 def test_get_all_jobs_filters_out_none_job_info():
@@ -294,6 +520,37 @@ def test_get_all_jobs_filters_out_none_job_info():
     assert result == {"job1": job_info_1}
     for job_id, job_info in result.items():
         asdict(job_info)  # This should not raise an exception
+
+
+def test_job_supervisor_actor_class_is_serializable():
+    """JobSupervisor must survive cloudpickle, or no job can start at all.
+
+    `ray.remote` rebinds the class as `_modify_class.<locals>.Class`. Because
+    that is defined in a local scope, cloudpickle serialises it BY VALUE, which
+    means walking the globals referenced by every method. Anything unpicklable
+    reachable that way breaks job submission entirely -- not the feature that
+    introduced it, every job.
+
+    Known-unpicklable things reachable that way include protobuf enum symbols
+    (`TaskStatus`, `ErrorType`, `FilterPredicate`), which are EnumTypeWrapper
+    instances rather than classes:
+
+        TypeError: cannot pickle 'google._upb._message.EnumDescriptor' object
+
+    Rather than police the list, the infra-attribution code lives at module
+    scope. A module-level function is pickled BY REFERENCE, so its globals are
+    never walked, and it can use protobuf and _raylet symbols freely. Anything
+    moved back onto the class re-opens the hole.
+
+    Nothing else in the suite catches this: the module imports cleanly and every
+    unit test passes with an unpicklable global in place, because it only fails
+    when Ray tries to ship the actor -- at which point no job can start.
+    """
+    import ray
+    from ray import cloudpickle
+    from ray.dashboard.modules.job.job_supervisor import JobSupervisor
+
+    cloudpickle.dumps(ray.remote(JobSupervisor))
 
 
 if __name__ == "__main__":

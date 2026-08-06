@@ -87,15 +87,17 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   void TriggerCallbacksWithNotOKStatus(
-      PopWorkerStatus status, const std::string &runtime_env_setup_error_msg = "") {
+      PopWorkerStatus status,
+      const std::string &runtime_env_setup_error_msg = "",
+      const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure = nullptr) {
     RAY_CHECK(status != PopWorkerStatus::OK);
     for (const auto &pair : callbacks) {
       for (const auto &callback : pair.second) {
         // No lease should be dispatched.
-        ASSERT_FALSE(
-            callback(nullptr,
-                     status,
-                     /*runtime_env_setup_error_msg*/ runtime_env_setup_error_msg));
+        ASSERT_FALSE(callback(nullptr,
+                              status,
+                              /*runtime_env_setup_error_msg*/ runtime_env_setup_error_msg,
+                              runtime_env_setup_failure));
       }
     }
     callbacks.clear();
@@ -112,7 +114,10 @@ class MockWorkerPool : public WorkerPoolInterface {
         RAY_CHECK(!list.empty());
         for (auto list_it = list.begin(); list_it != list.end();) {
           auto &callback = *list_it;
-          dispatched = callback(worker, PopWorkerStatus::OK, "");
+          dispatched = callback(worker,
+                                PopWorkerStatus::OK,
+                                "",
+                                /*runtime_env_setup_failure*/ nullptr);
           list_it = list.erase(list_it);
           if (dispatched) {
             break;
@@ -1368,9 +1373,15 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerAfterDrainingTest) {
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(drain_request);
 
   pool_.callbacks[lease1.GetLeaseSpecification().GetRuntimeEnvHash()].front()(
-      nullptr, PopWorkerStatus::WorkerPendingRegistration, "");
+      nullptr,
+      PopWorkerStatus::WorkerPendingRegistration,
+      "",
+      /*runtime_env_setup_failure*/ nullptr);
   pool_.callbacks[lease1.GetLeaseSpecification().GetRuntimeEnvHash()].back()(
-      nullptr, PopWorkerStatus::RuntimeEnvCreationFailed, "runtime env setup error");
+      nullptr,
+      PopWorkerStatus::RuntimeEnvCreationFailed,
+      "runtime env setup error",
+      /*runtime_env_setup_failure*/ nullptr);
   pool_.callbacks.clear();
   lease_manager_.ScheduleAndGrantLeases();
   // lease1 is spilled and lease2 is cancelled.
@@ -1416,14 +1427,26 @@ TEST_F(ClusterLeaseManagerTest, NotOKPopWorkerTest) {
   ASSERT_EQ(NumRunningLeases(), 1);
   // The lease should be cancelled.
   const auto runtime_env_error_msg = "Runtime env error message";
+  rpc::RuntimeEnvFailedContext runtime_env_setup_failure;
+  runtime_env_setup_failure.set_plugin("pip");
+  runtime_env_setup_failure.set_phase("install");
+  runtime_env_setup_failure.set_installer_exit_code(1);
   pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::RuntimeEnvCreationFailed,
-                                        runtime_env_error_msg);
+                                        runtime_env_error_msg,
+                                        &runtime_env_setup_failure);
   ASSERT_TRUE(callback_called);
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
   ASSERT_EQ(NumLeasesToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningLeases(), 0);
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(reply.scheduling_failure_message(), runtime_env_error_msg);
+  // The agent's structured detail has to be copied onto the reply too, not just
+  // the message: this is the one process boundary the context crosses, and the
+  // GCS reads it from here.
+  ASSERT_TRUE(reply.has_runtime_env_setup_failure());
+  ASSERT_EQ(reply.runtime_env_setup_failure().plugin(), "pip");
+  ASSERT_EQ(reply.runtime_env_setup_failure().phase(), "install");
+  ASSERT_EQ(reply.runtime_env_setup_failure().installer_exit_code(), 1);
 
   // Test that local lease manager handles PopWorkerStatus::JobFinished correctly.
   callback_called = false;

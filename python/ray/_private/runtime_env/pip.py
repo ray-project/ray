@@ -14,7 +14,7 @@ from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
-from ray._private.runtime_env.utils import check_output_cmd
+from ray._private.runtime_env.utils import check_output_cmd, sole_requirement
 from ray._private.utils import get_directory_size_bytes
 
 default_logger = logging.getLogger(__name__)
@@ -170,7 +170,17 @@ class PipProcessor:
         ]
         logger.info("Installing pip with version %s", pip_version)
 
-        await check_output_cmd(pip_reinstall_cmd, logger=logger, cwd=cwd, env=pip_env)
+        # This cmd installs exactly one requirement, and its name is built from
+        # the user's own pip_version, so it can be reported as the package that
+        # failed without inspecting pip's output.
+        await check_output_cmd(
+            pip_reinstall_cmd,
+            logger=logger,
+            cwd=cwd,
+            env=pip_env,
+            phase="install_pip",
+            attributed_package=f"pip{pip_version}",
+        )
 
     async def _pip_check(
         self,
@@ -193,6 +203,7 @@ class PipProcessor:
             logger=logger,
             cwd=cwd,
             env=pip_env,
+            phase="dependency_check",
         )
 
         logger.info("Pip check on %s successfully.", path)
@@ -249,7 +260,14 @@ class PipProcessor:
 
         logger.info("Installing python requirements to %s", virtualenv_path)
 
-        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+        await check_output_cmd(
+            pip_install_cmd,
+            logger=logger,
+            cwd=cwd,
+            env=pip_env,
+            phase="install",
+            attributed_package=sole_requirement(self._pip_config.get("packages")),
+        )
 
     async def _run(self):
         path = self._target_dir

@@ -246,14 +246,28 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   // This is ordinarily done in Python by the Ray Job API.
   std::string job_info_json = R"(
     {
-      "status": "PENDING",
+      "status": "FAILED",
       "entrypoint": "echo hi",
       "entrypoint_num_cpus": 1,
       "entrypoint_num_gpus": 1,
       "entrypoint_resources": {
         "Custom": 1
       },
-      "runtime_env_json": "{\"pip\": [\"pkg\"]}"
+      "runtime_env_json": "{\"pip\": [\"pkg\"]}",
+      "failure_info": {
+        "stage": "DRIVER_RUN",
+        "driver_exit_code": 1,
+        "driver_run": {
+          "error_message": "driver exited with code 1",
+          "exception_class": "ValueError"
+        },
+        "infra_cause": {
+          "error_type": "NODE_DIED",
+          "error_message": "node died",
+          "ray_job_id": "ZAAAAA==",
+          "sample_task_ids": ["taskId1"]
+        }
+      }
     }
   )";
 
@@ -291,13 +305,33 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
 
   // Verify the contents of the job info proto from the reply.
   auto job_info = job_table_data_for_api_job.job_info();
-  ASSERT_EQ(job_info.status(), "PENDING");
+  ASSERT_EQ(job_info.status(), "FAILED");
   ASSERT_EQ(job_info.entrypoint(), "echo hi");
   ASSERT_EQ(job_info.entrypoint_num_cpus(), 1);
   ASSERT_EQ(job_info.entrypoint_num_gpus(), 1);
   ASSERT_EQ(job_info.entrypoint_resources().size(), 1);
   ASSERT_EQ(job_info.entrypoint_resources().at("Custom"), 1);
   ASSERT_EQ(job_info.runtime_env_json(), "{\"pip\": [\"pkg\"]}");
+
+  // failure_info is written by the Python job layer and parsed here with
+  // ignore_unknown_fields left at false, so a key the proto does not know does
+  // not drop that key: it fails the whole parse and leaves the job's job_info
+  // empty. That failure mode is silent, which is why the round trip is asserted
+  // field by field rather than only at the top level.
+  ASSERT_TRUE(job_info.has_failure_info());
+  ASSERT_EQ(job_info.failure_info().stage(), rpc::JobFailureInfo::DRIVER_RUN);
+  ASSERT_EQ(job_info.failure_info().driver_exit_code(), 1);
+  ASSERT_EQ(job_info.failure_info().context_case(),
+            rpc::JobFailureInfo::ContextCase::kDriverRun);
+  ASSERT_EQ(job_info.failure_info().driver_run().exception_class(), "ValueError");
+  // infra_cause is a sibling of the stage context, not one of its branches: the
+  // driver did exit non-zero, it just was not the entrypoint's fault.
+  ASSERT_TRUE(job_info.failure_info().has_infra_cause());
+  ASSERT_EQ(job_info.failure_info().infra_cause().error_type(),
+            rpc::ErrorType::NODE_DIED);
+  // The id arrives base64-encoded, as protobuf JSON represents bytes.
+  ASSERT_EQ(job_info.failure_info().infra_cause().ray_job_id(), job_api_job_id.Binary());
+  ASSERT_EQ(job_info.failure_info().infra_cause().sample_task_ids_size(), 1);
 
   // Manually overwrite with bad JobInfo JSON to test error handling on parse.
   job_info_json = R"(

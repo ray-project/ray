@@ -426,6 +426,9 @@ message JobsAPIInfo {
   optional int32 driver_exit_code = 14;
   // The amount of reservable memory resource in bytes for the entrypoint command.
   optional uint64 entrypoint_memory = 15;
+  // Structured detail about why the job failed. Absent for jobs that did not
+  // fail, and for clusters running an image that predates this field.
+  optional JobFailureInfo failure_info = 16;
 }
 
 message WorkerTableData {

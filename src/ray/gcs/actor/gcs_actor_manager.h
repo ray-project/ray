@@ -200,10 +200,14 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// \param actor The actor whose creation task is infeasible.
   /// \param failure_type Scheduling failure type.
   /// \param scheduling_failure_message The scheduling failure error message.
+  /// \param runtime_env_setup_failure Structured detail about the runtime env
+  /// setup failure, or nullptr if the raylet did not report one. Borrowed for the
+  /// duration of the call: it is copied into the actor's death cause here.
   void OnActorSchedulingFailed(
       std::shared_ptr<GcsActor> actor,
       const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-      const std::string &scheduling_failure_message);
+      const std::string &scheduling_failure_message,
+      const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
@@ -565,6 +569,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   FRIEND_TEST(GcsActorManagerTest, TestDeadCount);
   FRIEND_TEST(GcsActorManagerTest, TestNonDeadEntryEvictionDecrementsCounter);
   FRIEND_TEST(GcsActorManagerTest, TestSchedulingFailed);
+  FRIEND_TEST(GcsActorManagerTest, TestWorkerStartupFailedIsNotUnschedulable);
+  FRIEND_TEST(GcsActorManagerTest, TestUnschedulableKeepsUnschedulableContext);
   FRIEND_TEST(GcsActorManagerTest, TestWorkerFailure);
   FRIEND_TEST(GcsActorManagerTest, TestNodeFailure);
   FRIEND_TEST(GcsActorManagerTest, TestActorStateMetrics);

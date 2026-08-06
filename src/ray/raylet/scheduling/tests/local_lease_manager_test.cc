@@ -85,10 +85,10 @@ class MockWorkerPool : public WorkerPoolInterface {
     for (const auto &pair : callbacks) {
       for (const auto &callback : pair.second) {
         // No lease should be granted.
-        ASSERT_FALSE(
-            callback(nullptr,
-                     status,
-                     /*runtime_env_setup_error_msg*/ runtime_env_setup_error_msg));
+        ASSERT_FALSE(callback(nullptr,
+                              status,
+                              /*runtime_env_setup_error_msg*/ runtime_env_setup_error_msg,
+                              /*runtime_env_setup_failure*/ nullptr));
       }
     }
     callbacks.clear();
@@ -105,7 +105,10 @@ class MockWorkerPool : public WorkerPoolInterface {
         RAY_CHECK(!list.empty());
         for (auto list_it = list.begin(); list_it != list.end();) {
           auto &callback = *list_it;
-          granted = callback(worker, PopWorkerStatus::OK, "");
+          granted = callback(worker,
+                             PopWorkerStatus::OK,
+                             "",
+                             /*runtime_env_setup_failure*/ nullptr);
           list_it = list.erase(list_it);
           if (granted) {
             break;

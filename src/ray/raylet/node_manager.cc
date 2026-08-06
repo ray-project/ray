@@ -1672,15 +1672,30 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetAssignedJobId())
         << "Driver (pid=" << worker->GetProcess().GetId() << ") is disconnected.";
-    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+    // Report every exit the driver did not ask for. Gating this on SYSTEM_ERROR alone
+    // meant a driver taken down for any other unintended reason - the node memory
+    // monitor evicting it, for instance - disconnected without emitting anything, so
+    // the job was left with no record at all of why its driver went away. The exit
+    // type goes out as its own field so a consumer can classify on it rather than
+    // pattern-matching the message.
+    if (disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT &&
+        disconnect_type != rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
       RAY_EVENT(ERROR, "RAY_DRIVER_FAILURE")
               .WithField("node_id", self_node_id_.Hex())
               .WithField("job_id", worker->GetAssignedJobId().Hex())
+              .WithField("exit_type", rpc::WorkerExitType_Name(disconnect_type))
           << "Driver " << worker->WorkerId()
           << " died. Address: " << BuildAddress(worker->IpAddress(), worker->Port())
           << ", Pid: " << worker->GetProcess().GetId()
-          << ", JobId: " << worker->GetAssignedJobId();
-
+          << ", JobId: " << worker->GetAssignedJobId()
+          << ", Worker exit type: " << rpc::WorkerExitType_Name(disconnect_type)
+          << ", Worker exit detail: " << disconnect_detail;
+    }
+    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+      // Deliberately still gated on SYSTEM_ERROR: this is a pre-existing time series,
+      // and the other unintended exits are already counted elsewhere (a driver evicted
+      // for memory is recorded as MemoryManager.DriverEviction.Total), so widening it
+      // here would double count.
       node_manager_unexpected_worker_failure_total_count_.Record(
           1, {{"Type", "Raylet.UnexpectedDriverFailure.Total"}, {"Name", ""}});
     }
@@ -1998,7 +2013,8 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
       /*callback=*/
       [request](const std::shared_ptr<WorkerInterface> &worker,
                 PopWorkerStatus status,
-                const std::string &runtime_env_setup_error_message) {
+                const std::string &runtime_env_setup_error_message,
+                const rpc::RuntimeEnvFailedContext * /*runtime_env_setup_failure*/) {
         // This callback does not use the worker.
         RAY_LOG(DEBUG).WithField(worker->WorkerId())
             << "Prestart worker started! status " << status

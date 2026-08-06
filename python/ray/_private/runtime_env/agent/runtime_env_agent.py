@@ -4,8 +4,8 @@ import os
 import time
 import traceback
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Callable, Dict, List, Set, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
@@ -29,6 +29,10 @@ from ray._private.runtime_env.plugin import (
 from ray._private.runtime_env.py_executable import PyExecutablePlugin
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
+from ray._private.runtime_env.utils import (
+    SubprocessCalledProcessError,
+    summary_line,
+)
 from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
 from ray._raylet import GcsClient
@@ -54,6 +58,36 @@ class CreatedEnvResult:
     result: str
     # The time to create a runtime env in ms.
     creation_time_ms: int
+    # One entry per failed setup attempt, as recorded by
+    # _create_runtime_env_with_retry. Cached so that a job replaying a cached
+    # failure gets the same structured detail as the job that first hit it.
+    setup_attempts: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class SetupProgress:
+    """Which plugin the setup is currently working on.
+
+    Mutated in place as setup advances. This is the only attribution available
+    on the timeout path: `asyncio.wait_for` raises from the agent's own frame,
+    so there is no plugin exception to read a `runtime_env_plugin` attribute
+    off, and setup timeouts are the highest-volume runtime env failure.
+    """
+
+    plugin: Optional[str] = None
+
+
+def _installer_exit_code(e: BaseException) -> Optional[int]:
+    """The exit code of the installer process, when one ran and exited.
+
+    check_output_cmd raises SubprocessCalledProcessError, and the plugins that
+    run a subprocess directly (conda, podman) set `returncode` on the error they
+    raise. Anything else - a timeout, a validation error, a download failure -
+    never had a process exit, which is why this returns None rather than 0.
+    """
+    exit_code = getattr(e, "returncode", None)
+    # An exception may carry any attribute; only an int is an exit code.
+    return exit_code if isinstance(exit_code, int) else None
 
 
 # e.g., "working_dir"
@@ -268,6 +302,7 @@ class RuntimeEnvAgent:
             self._node_prefix = f"[Node {self._node_ip}] "
         except Exception as e:
             self._logger.warning(f"Failed to get node IP address, using fallback: {e}")
+            self._node_ip = None
             self._node_prefix = "[Node unknown] "
 
     def uris_parser(self, runtime_env: RuntimeEnv):
@@ -312,6 +347,63 @@ class RuntimeEnvAgent:
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]
 
+    def _installer_output_ref(self, e: BaseException, job_id: bytes) -> Optional[str]:
+        """A reference to where the failing command's output was logged.
+
+        The output itself is never copied into the reply: it is unbounded, and
+        pip and uv echo their index URLs, which can carry credentials.
+        check_output_cmd has already written the merged stream to this job's
+        setup log, so the log plus the cmd index locates it.
+        """
+        if not isinstance(e, SubprocessCalledProcessError) or e.cmd_index is None:
+            return None
+        return (
+            f"{self._node_ip}:runtime_env_setup-{job_id.decode()}.log "
+            f"(cmd[{e.cmd_index}])"
+        )
+
+    def _populate_setup_failure(
+        self, reply, error_message: str, attempts: List[Dict[str, Any]]
+    ) -> None:
+        """Fill in the structured setup failure from the recorded attempts.
+
+        Shared by the live failure path and the cached-failure replay, so that
+        the second job to hit a broken env gets the same structure as the job
+        that first hit it. error_message is left untouched on the reply so
+        existing consumers are unaffected.
+        """
+        setup_failure = reply.setup_failure
+        # One redacted line, not the traceback. `reply.error_message` above still
+        # carries the full text for the callers that already read it -- it is the
+        # structured field, which travels further, that is held to one line.
+        setup_failure.error_message = summary_line(error_message) or ""
+        for attempt in attempts:
+            entry = setup_failure.attempts.add()
+            entry.attempt = attempt["attempt"]
+            attempt_summary = summary_line(attempt.get("error_message"))
+            if attempt_summary:
+                entry.error_message = attempt_summary
+            if attempt.get("duration_ms") is not None:
+                entry.duration_ms = attempt["duration_ms"]
+            # Tested against None, not truthiness: 0 is a real exit code, and
+            # -9 means the installer was SIGKILLed under node memory pressure,
+            # which is a different cause from a dependency conflict.
+            if attempt.get("exit_code") is not None:
+                entry.exit_code = attempt["exit_code"]
+        if attempts:
+            # The last attempt is the failure the caller is being told about.
+            last = attempts[-1]
+            if last.get("plugin"):
+                setup_failure.plugin = last["plugin"]
+            if last.get("phase"):
+                setup_failure.phase = last["phase"]
+            if last.get("failed_package"):
+                setup_failure.failed_package = last["failed_package"]
+            if last.get("exit_code") is not None:
+                setup_failure.installer_exit_code = last["exit_code"]
+            if last.get("stderr_ref"):
+                setup_failure.stderr_ref = last["stderr_ref"]
+
     async def GetOrCreateRuntimeEnv(self, request):
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
@@ -322,6 +414,7 @@ class RuntimeEnvAgent:
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
             runtime_env_config: RuntimeEnvConfig,
+            progress: SetupProgress,
         ):
             log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
@@ -345,6 +438,7 @@ class RuntimeEnvAgent:
 
             # First create working dir...
             working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
+            progress.plugin = working_dir_ctx.name
             await create_for_plugin_if_needed(
                 runtime_env,
                 working_dir_ctx.class_instance,
@@ -363,6 +457,7 @@ class RuntimeEnvAgent:
                     plugin = plugin_setup_context.class_instance
                     if plugin.name != WorkingDirPlugin.name:
                         uri_cache = plugin_setup_context.uri_cache
+                        progress.plugin = plugin.name
                         await create_for_plugin_if_needed(
                             runtime_env, plugin, uri_cache, context, per_job_logger
                         )
@@ -382,10 +477,15 @@ class RuntimeEnvAgent:
                 runtime_env_config: The configuration for the runtime environment.
 
             Returns:
-                Tuple[bool, str, str]: A tuple containing:
+                Tuple[bool, str, str, List[Dict[str, Any]]]: A tuple containing:
                     - result (bool): Whether the creation was successful
                     - runtime_env_context (str): The serialized context if successful, None otherwise
                     - error_message (str): Error message if failed, None otherwise
+                    - attempts (list): One entry per failed setup attempt, in
+                      order, each with attempt number, error message, duration,
+                      whether it timed out, and the typed attribution of the
+                      failure (plugin, phase, exit code, failed package,
+                      stderr reference). Empty when setup succeeded first try.
             """
             self._logger.info(
                 f"Creating runtime env: {serialized_env} with timeout "
@@ -394,6 +494,11 @@ class RuntimeEnvAgent:
             num_retries = runtime_env_consts.RUNTIME_ENV_RETRY_TIMES
             error_message = None
             serialized_context = None
+            # One entry per attempt. Previously each retry overwrote the last,
+            # so a failure that recurred N times was indistinguishable from one
+            # that failed once, and the attempt that carried the real cause was
+            # lost if a later attempt failed differently.
+            attempts: List[Dict[str, Any]] = []
             for i in range(num_retries):
                 # Only sleep when retrying.
                 if i != 0:
@@ -401,9 +506,13 @@ class RuntimeEnvAgent:
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
 
+                attempt_start = time.perf_counter()
+                # Fresh per attempt so a retry cannot inherit the previous
+                # attempt's attribution.
+                progress = SetupProgress()
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
-                        runtime_env, runtime_env_config
+                        runtime_env, runtime_env_config, progress
                     )
                     runtime_env_context = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds
@@ -417,7 +526,30 @@ class RuntimeEnvAgent:
                     error_message = "".join(
                         traceback.format_exception(type(e), e, e.__traceback__)
                     )
-                    if isinstance(e, asyncio.TimeoutError):
+                    timed_out = isinstance(e, asyncio.TimeoutError)
+                    attempts.append(
+                        {
+                            "attempt": i + 1,
+                            "error_message": error_message,
+                            "duration_ms": int(
+                                round((time.perf_counter() - attempt_start) * 1000, 0)
+                            ),
+                            "timed_out": timed_out,
+                            # Everything below is an attribute the raise site
+                            # set, never something read back out of the message
+                            # or the installer's output.
+                            "plugin": getattr(e, "runtime_env_plugin", None)
+                            or progress.plugin,
+                            # A timeout is raised by asyncio.wait_for in this
+                            # frame, so it carries no phase of its own.
+                            "phase": getattr(e, "phase", None)
+                            or ("timeout" if timed_out else None),
+                            "exit_code": _installer_exit_code(e),
+                            "failed_package": getattr(e, "attributed_package", None),
+                            "stderr_ref": self._installer_output_ref(e, request.job_id),
+                        }
+                    )
+                    if timed_out:
                         hint = (
                             f"Failed to install runtime_env within the "
                             f"timeout of {setup_timeout_seconds} seconds. Consider "
@@ -435,14 +567,14 @@ class RuntimeEnvAgent:
                     "runtime_env creation failed %d times, giving up.",
                     num_retries,
                 )
-                return False, None, error_message
+                return False, None, error_message, attempts
             else:
                 self._logger.info(
                     "Successfully created runtime env: %s, context: %s",
                     serialized_env,
                     serialized_context,
                 )
-                return True, serialized_context, None
+                return True, serialized_context, None, attempts
 
         try:
             serialized_env = request.serialized_runtime_env
@@ -496,10 +628,18 @@ class RuntimeEnvAgent:
                     self._reference_table.decrease_reference(
                         runtime_env, serialized_env, request.source_process
                     )
-                    return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                    cached_reply = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=f"{self._node_prefix}{error_message}",
                     )
+                    # Replaying a cached failure must carry the structured
+                    # context too, otherwise the second and later jobs hitting
+                    # the same broken env get strictly less detail than the
+                    # first one did.
+                    self._populate_setup_failure(
+                        cached_reply, error_message, result.setup_attempts
+                    )
+                    return cached_reply
 
             if SLEEP_FOR_TESTING_S:
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
@@ -520,6 +660,7 @@ class RuntimeEnvAgent:
                 successful,
                 serialized_context,
                 error_message,
+                setup_attempts,
             ) = await _create_runtime_env_with_retry(
                 runtime_env,
                 setup_timeout_seconds,
@@ -536,9 +677,10 @@ class RuntimeEnvAgent:
                 successful,
                 serialized_context if successful else error_message,
                 creation_time_ms,
+                setup_attempts,
             )
             # Reply the RPC
-            return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+            reply = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
                 if successful
                 else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
@@ -547,6 +689,10 @@ class RuntimeEnvAgent:
                 if not successful
                 else "",
             )
+            if not successful:
+                # Structured counterpart to error_message.
+                self._populate_setup_failure(reply, error_message, setup_attempts)
+            return reply
 
     async def DeleteRuntimeEnvIfPossible(self, request):
         self._logger.info(

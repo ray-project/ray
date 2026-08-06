@@ -15,7 +15,7 @@ from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
-from ray._private.runtime_env.utils import check_output_cmd
+from ray._private.runtime_env.utils import check_output_cmd, sole_requirement
 from ray._private.utils import get_directory_size_bytes
 
 default_logger = logging.getLogger(__name__)
@@ -90,6 +90,7 @@ class UvProcessor:
             # Use default version.
             return "uv"
 
+        uv_exec_to_install = _get_uv_exec_to_install()
         uv_install_cmd = [
             python,
             "-m",
@@ -97,10 +98,20 @@ class UvProcessor:
             "install",
             "--disable-pip-version-check",
             "--no-cache-dir",
-            _get_uv_exec_to_install(),
+            uv_exec_to_install,
         ]
         logger.info("Installing package uv to %s", virtualenv_path)
-        await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+        # This cmd installs exactly one requirement, built from the user's own
+        # uv_version, so it can be reported as the package that failed without
+        # inspecting pip's output.
+        await check_output_cmd(
+            uv_install_cmd,
+            logger=logger,
+            cwd=cwd,
+            env=pip_env,
+            phase="install_uv",
+            attributed_package=uv_exec_to_install,
+        )
 
     async def _check_uv_existence(
         self, path: str, cwd: str, env: dict, logger: logging.Logger
@@ -117,7 +128,9 @@ class UvProcessor:
 
         try:
             # If `uv` doesn't exist, exception will be thrown.
-            await check_output_cmd(check_existence_cmd, logger=logger, cwd=cwd, env=env)
+            await check_output_cmd(
+                check_existence_cmd, logger=logger, cwd=cwd, env=env, phase="probe_uv"
+            )
             return True
         except Exception:
             return False
@@ -134,6 +147,7 @@ class UvProcessor:
             cmd,
             logger=logger,
             cwd=cwd,
+            phase="dependency_check",
         )
 
     async def _install_uv_packages(
@@ -182,7 +196,14 @@ class UvProcessor:
             uv_install_cmd += uv_opt_list
 
         logger.info("Installing python requirements to %s", virtualenv_path)
-        await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+        await check_output_cmd(
+            uv_install_cmd,
+            logger=logger,
+            cwd=cwd,
+            env=pip_env,
+            phase="install",
+            attributed_package=sole_requirement(uv_packages),
+        )
 
         # Check python environment for conflicts.
         if self._uv_config.get("uv_check", False):

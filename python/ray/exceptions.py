@@ -8,6 +8,7 @@ import colorama
 
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
+from ray._private.protobuf_compat import message_to_dict
 from ray._raylet import ActorID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import (
     PYTHON,
@@ -17,6 +18,7 @@ from ray.core.generated.common_pb2 import (
     Language,
     NodeDeathInfo,
     RayException,
+    RuntimeEnvFailedContext,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -521,10 +523,28 @@ class ActorDiedError(RayActorError):
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
+        # Kept so that consumers can read the cause instead of parsing it back
+        # out of error_msg, which flattens it. Read through the death_cause
+        # property below, which does not hand out the protobuf message itself.
+        self._death_cause = cause
 
     @staticmethod
     def from_task_error(task_error: RayTaskError):
         return ActorDiedError(task_error)
+
+    @property
+    def death_cause(self) -> Optional[dict]:
+        """The system-level death context, as a plain dict.
+
+        None when the actor died because of an exception raised in its creation
+        task -- the cause is then a ``RayTaskError``, which ``str(self)``
+        already carries -- and None when no cause was reported at all.
+        """
+        if not isinstance(self._death_cause, ActorDiedErrorContext):
+            return None
+        # snake_case keys, matching the proto field names the consumers of this
+        # dict parse it back into. MessageToDict emits camelCase by default.
+        return message_to_dict(self._death_cause, preserving_proto_field_name=True)
 
 
 @DeveloperAPI
@@ -957,10 +977,25 @@ class RuntimeEnvSetupError(RayError):
     Args:
         error_message: The error message that explains
             why runtime env setup has failed.
+        setup_failure: Structured detail about the failure as reported by the
+            runtime env agent -- which plugin and step failed, the installer's
+            exit code, and one entry per setup attempt. None when the agent
+            reported no context.
     """
 
-    def __init__(self, error_message: str = None):
+    def __init__(
+        self,
+        error_message: str = None,
+        setup_failure: Optional[RuntimeEnvFailedContext] = None,
+    ):
         self.error_message = error_message
+        # A detached copy rather than the argument itself: callers pass a
+        # sub-message view of a RayErrorInfo they own and are free to reuse,
+        # while this exception is pickled by RayError.to_bytes and outlives it.
+        self.setup_failure = None
+        if setup_failure is not None:
+            self.setup_failure = RuntimeEnvFailedContext()
+            self.setup_failure.CopyFrom(setup_failure)
 
     def __str__(self):
         msgs = ["Failed to set up runtime environment."]

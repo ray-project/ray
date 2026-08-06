@@ -32,14 +32,21 @@ namespace ray {
 namespace raylet {
 
 namespace {
-void ReplyCancelled(const std::shared_ptr<internal::Work> &work,
-                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-                    const std::string &scheduling_failure_message) {
+void ReplyCancelled(
+    const std::shared_ptr<internal::Work> &work,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message,
+    const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure = nullptr) {
   for (const auto &reply_callback : work->reply_callbacks_) {
     auto reply = reply_callback.reply_;
     reply->set_canceled(true);
     reply->set_failure_type(failure_type);
     reply->set_scheduling_failure_message(scheduling_failure_message);
+    if (runtime_env_setup_failure != nullptr) {
+      // The borrowed pointer stops here: it is copied into the reply, which the
+      // caller owns. scheduling_failure_message stays the user-visible text.
+      reply->mutable_runtime_env_setup_failure()->CopyFrom(*runtime_env_setup_failure);
+    }
     reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
   }
 }
@@ -395,7 +402,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
             [this, lease_id, scheduling_class, work, is_detached_actor, owner_address](
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,
-                const std::string &runtime_env_setup_error_message) -> bool {
+                const std::string &runtime_env_setup_error_message,
+                const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure) -> bool {
               return PoppedWorkerHandler(worker,
                                          status,
                                          lease_id,
@@ -403,7 +411,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
                                          work,
                                          is_detached_actor,
                                          owner_address,
-                                         runtime_env_setup_error_message);
+                                         runtime_env_setup_error_message,
+                                         runtime_env_setup_failure);
             });
         work_it++;
       }
@@ -552,7 +561,8 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     const std::shared_ptr<internal::Work> &work,
     bool is_detached_actor,
     const rpc::Address &owner_address,
-    const std::string &runtime_env_setup_error_message) {
+    const std::string &runtime_env_setup_error_message,
+    const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure) {
   const auto &reply_callbacks = work->reply_callbacks_;
   const bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &lease = work->lease_;
@@ -626,12 +636,12 @@ bool LocalLeaseManager::PoppedWorkerHandler(
       // directly and raise a `RuntimeEnvSetupError` exception to user
       // eventually. The task will be removed from dispatch queue in
       // `CancelTask`.
-      CancelLeases(
+      CancelLeasesWithRuntimeEnvSetupFailure(
           [lease_id](const auto &w) {
             return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
           },
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
-          /*scheduling_failure_message*/ runtime_env_setup_error_message);
+          /*scheduling_failure_message*/ runtime_env_setup_error_message,
+          runtime_env_setup_failure);
     } else if (status == PopWorkerStatus::JobFinished) {
       // The task job finished.
       // Just remove the task from dispatch queue.
@@ -920,6 +930,21 @@ bool LocalLeaseManager::CancelLeases(
   auto cancelled_works = CancelLeasesWithoutReply(predicate);
   for (const auto &work : cancelled_works) {
     ReplyCancelled(work, failure_type, scheduling_failure_message);
+  }
+  return !cancelled_works.empty();
+}
+
+bool LocalLeaseManager::CancelLeasesWithRuntimeEnvSetupFailure(
+    const std::function<bool(const std::shared_ptr<internal::Work> &)> &predicate,
+    const std::string &scheduling_failure_message,
+    const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure) {
+  auto cancelled_works = CancelLeasesWithoutReply(predicate);
+  for (const auto &work : cancelled_works) {
+    ReplyCancelled(
+        work,
+        rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
+        scheduling_failure_message,
+        runtime_env_setup_failure);
   }
   return !cancelled_works.empty();
 }
