@@ -485,5 +485,74 @@ def test_async_actor_finalizes_objects_dropped_on_fiber(ray_start_regular_shared
     )
 
 
+@pytest.mark.asyncio
+async def test_wait_async_basic(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def blocked():
+        ray.get(signal.wait.remote())
+        return "ok"
+
+    ref = blocked.remote()
+    # Pending ref should not be ready yet.
+    ready, remaining = await ray._wait_async([ref], timeout=0.1, fetch_local=False)
+    assert ready == []
+    assert remaining == [ref]
+
+    # Event loop should keep progressing while waiting.
+    progressed = False
+
+    async def mark_progressed():
+        nonlocal progressed
+        await asyncio.sleep(0.05)
+        progressed = True
+
+    wait_task = asyncio.create_task(ray._wait_async([ref], fetch_local=False))
+    progress_task = asyncio.create_task(mark_progressed())
+    await progress_task
+    assert progressed
+
+    ray.get(signal.send.remote())
+    ready, remaining = await wait_task
+    assert ready == [ref]
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_wait_async_num_returns(ray_start_regular_shared):
+    @ray.remote
+    def f(x):
+        return x
+
+    refs = [f.remote(i) for i in range(3)]
+    ready, remaining = await ray._wait_async(refs, num_returns=2, fetch_local=False)
+    assert len(ready) == 2
+    assert len(remaining) == 1
+    assert set(ready + remaining) == set(refs)
+
+
+@pytest.mark.asyncio
+async def test_wait_async_fetch_local_false_no_value_fetch(ray_start_regular_shared):
+    """fetch_local=False should complete when the object exists without awaiting it."""
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def large_blocked():
+        ray.get(signal.wait.remote())
+        return b"x" * (1024 * 1024)
+
+    ref = large_blocked.remote()
+    wait_task = asyncio.create_task(ray._wait_async([ref], fetch_local=False))
+    await asyncio.sleep(0.05)
+    assert not wait_task.done()
+    ray.get(signal.send.remote())
+    ready, remaining = await wait_task
+    assert ready == [ref]
+    assert remaining == []
+    # Value is still available via normal get.
+    assert len(ray.get(ref)) == 1024 * 1024
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

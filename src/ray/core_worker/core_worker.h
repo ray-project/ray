@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <queue>
@@ -787,6 +788,36 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               const int64_t timeout_ms,
               std::vector<bool> *results,
               bool fetch_local);
+
+  /**
+   * Asynchronously wait for objects to become ready without blocking the
+   * calling thread. Invokes ``callback`` once ``num_objects`` are ready or
+   * ``timeout_ms`` elapses (``timeout_ms < 0`` waits forever).
+   *
+   * Semantics match ``Wait``:
+   * - ``fetch_local=false``: an object is ready when it is in the memory store
+   *   or a plasma marker is present (no pull).
+   * - ``fetch_local=true``: plasma objects are pulled local before ready.
+   *
+   * The callback is invoked at most once. ``ready`` is a byte array of length
+   * ``n`` with 1 for ready and 0 otherwise (parallel to ``object_ids``).
+   *
+   * \param[in] object_ids IDs of the objects to wait for. Must be unique.
+   * \param[in] num_objects Number of objects that should become ready.
+   * \param[in] timeout_ms Timeout in milliseconds; wait forever if negative.
+   * \param[in] fetch_local Whether ready objects must be present on the local
+   * node.
+   * \param[in] callback Invoked with status, ready bit array, length, and
+   * ``user``.
+   * \param[in] user Opaque pointer passed through to ``callback``.
+   */
+  void WaitAsync(
+      const std::vector<ObjectID> &object_ids,
+      int num_objects,
+      int64_t timeout_ms,
+      bool fetch_local,
+      void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
+      void *user);
 
   /// Delete a list of objects from the plasma object store.
   ///

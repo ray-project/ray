@@ -795,10 +795,17 @@ async def deployment_response_to_object_ref(deployment_response):
 
     ``_to_object_ref`` returns immediately (peeked ref). We still wait for the
     upstream result before the router enqueues the request so autoscaling
-    metrics do not count unresolved composition args (#60624).
+    metrics do not count unresolved composition args.
+
+    Args:
+        deployment_response: Upstream handle response to convert.
+
+    Returns:
+        The underlying ObjectRef after its value is ready in the cluster.
     """
     obj_ref = await deployment_response._to_object_ref()
-    await obj_ref
+    # fetch_local=False: forward by reference; downstream fetches the value.
+    await ray._wait_async([obj_ref], fetch_local=False)
     return obj_ref
 
 

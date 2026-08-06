@@ -44,6 +44,7 @@ from libc.stdint cimport (
     uint64_t,
     uint8_t,
 )
+from libc.stddef cimport size_t
 from libcpp cimport bool as c_bool, nullptr
 from libcpp.memory cimport (
     dynamic_pointer_cast,
@@ -3758,6 +3759,55 @@ cdef class CoreWorker:
 
         return ready, not_ready
 
+    def wait_async(self,
+                   object_refs_or_generators,
+                   int num_returns,
+                   int64_t timeout_ms,
+                   c_bool fetch_local,
+                   callback: Callable):
+        """Register an async wait that invokes ``callback`` once.
+
+        Args:
+            object_refs_or_generators: List of ObjectRef or ObjectRefGenerator
+                to wait on.
+            num_returns: Number of waitables that should become ready.
+            timeout_ms: Timeout in milliseconds; negative means wait forever.
+            fetch_local: Whether ready objects must be present locally.
+            callback: Called as ``callback(exc, ready_bits)``. ``ready_bits``
+                is a list[bool] parallel to ``object_refs_or_generators``.
+                On error, ``exc`` is set and ``ready_bits`` is None.
+
+        Returns:
+            None. The result is delivered asynchronously via ``callback``.
+        """
+        cdef:
+            c_vector[CObjectID] wait_ids
+
+        for ref_or_generator in object_refs_or_generators:
+            if isinstance(ref_or_generator, ObjectRef):
+                wait_ids.push_back((<ObjectRef>ref_or_generator).native())
+            elif isinstance(ref_or_generator, ObjectRefGenerator):
+                wait_ids.push_back(
+                    CObjectID.FromBinary(
+                        ref_or_generator._get_next_object_id_binary()))
+            else:
+                raise TypeError(
+                    "wait_async() expected a list of ray.ObjectRef "
+                    "or ObjectRefGenerator, "
+                    f"got list containing {type(ref_or_generator)}"
+                )
+
+        # Keep the callback alive until the C++ side invokes it.
+        cpython.Py_INCREF(callback)
+        CCoreWorkerProcess.GetCoreWorker().WaitAsync(
+            wait_ids,
+            num_returns,
+            timeout_ms,
+            fetch_local,
+            wait_async_callback_impl,
+            <void*>callback,
+        )
+
     def free_objects(self, object_refs, c_bool local_only):
         cdef:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
@@ -5431,6 +5481,23 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.
+        cpython.Py_DECREF(user_callback)
+
+
+cdef void wait_async_callback_impl(CRayStatus status,
+                                   const uint8_t *ready,
+                                   size_t n,
+                                   void *user_callback_ptr) with gil:
+    user_callback = <object>user_callback_ptr
+    try:
+        if not status.ok():
+            user_callback(RuntimeError(status.message().decode()), None)
+            return
+        ready_bits = [ready[i] != 0 for i in range(n)]
+        user_callback(None, ready_bits)
+    except Exception:
+        logger.exception("failed to run wait_async callback (user func)")
+    finally:
         cpython.Py_DECREF(user_callback)
 
 

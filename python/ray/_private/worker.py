@@ -3220,6 +3220,122 @@ def wait(
         return ready_ids, remaining_ids
 
 
+async def _wait_async(
+    ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],
+    *,
+    num_returns: int = 1,
+    timeout: Optional[float] = None,
+    fetch_local: bool = True,
+) -> Tuple[
+    List[Union[ObjectRef, ObjectRefGenerator]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
+]:
+    """Async-friendly ``ray.wait`` that does not block the event loop.
+
+    Private API. Same arguments and return value as :func:`ray.wait`. Unlike
+    ``await obj_ref``, ``fetch_local=False`` waits for readiness without
+    pulling the object to the local node.
+
+    Args:
+        ray_waitables: List of :class:`~ObjectRef` or
+            :class:`~ObjectRefGenerator` to wait on. Must be unique.
+        num_returns: Number of waitables that should become ready before
+            returning.
+        timeout: Max seconds to wait, or ``None`` to wait indefinitely.
+        fetch_local: If True, wait until objects are present on the local
+            node. If False, return as soon as each object exists anywhere in
+            the cluster (no local pull).
+
+    Returns:
+        A pair ``(ready, remaining)`` of waitable lists, preserving input
+        order within each list.
+    """
+    import asyncio
+
+    worker = global_worker
+    worker.check_connected()
+
+    if isinstance(ray_waitables, ObjectRef) or isinstance(
+        ray_waitables, ObjectRefGenerator
+    ):
+        raise TypeError(
+            "_wait_async() expected a list of ray.ObjectRef or "
+            "ray.ObjectRefGenerator, got a single ray.ObjectRef or "
+            f"ray.ObjectRefGenerator {ray_waitables}"
+        )
+
+    if not isinstance(ray_waitables, list):
+        raise TypeError(
+            "_wait_async() expected a list of ray.ObjectRef or "
+            "ray.ObjectRefGenerator, "
+            f"got {type(ray_waitables)}"
+        )
+
+    if timeout is not None and timeout < 0:
+        raise ValueError(
+            "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
+        )
+
+    for ray_waitable in ray_waitables:
+        if not isinstance(ray_waitable, ObjectRef) and not isinstance(
+            ray_waitable, ObjectRefGenerator
+        ):
+            raise TypeError(
+                "_wait_async() expected a list of ray.ObjectRef or "
+                "ray.ObjectRefGenerator, "
+                f"got list containing {type(ray_waitable)}"
+            )
+
+    if len(ray_waitables) == 0:
+        return [], []
+
+    if len(ray_waitables) != len(set(ray_waitables)):
+        raise ValueError("_wait_async requires a list of unique ray_waitables.")
+    if num_returns <= 0:
+        raise ValueError("Invalid number of objects to return %d." % num_returns)
+    if num_returns > len(ray_waitables):
+        raise ValueError(
+            "num_returns cannot be greater than the number "
+            "of ray_waitables provided to ray._wait_async."
+        )
+
+    # timeout=None -> wait forever (-1). Explicit timeout uses milliseconds.
+    timeout_milliseconds = -1 if timeout is None else int(timeout * 1000)
+
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future = loop.create_future()
+
+    def _on_complete(exc, ready_bits):
+        if fut.done():
+            return
+
+        def _set():
+            if fut.done():
+                return
+            if exc is not None:
+                fut.set_exception(exc)
+                return
+            ready_ids = []
+            remaining_ids = []
+            for i, ray_waitable in enumerate(ray_waitables):
+                if ready_bits[i]:
+                    ready_ids.append(ray_waitable)
+                else:
+                    remaining_ids.append(ray_waitable)
+            fut.set_result((ready_ids, remaining_ids))
+
+        loop.call_soon_threadsafe(_set)
+
+    worker.core_worker.wait_async(
+        ray_waitables,
+        num_returns,
+        timeout_milliseconds,
+        fetch_local,
+        _on_complete,
+    )
+    return await fut
+
+
 @client_mode_hook
 def _wait_generators_bulk(
     ray_generators: List[Tuple[ObjectRefGenerator, List[bool]]],

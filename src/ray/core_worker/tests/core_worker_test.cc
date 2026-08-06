@@ -1590,5 +1590,250 @@ TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresExactlyOnce) {
   EXPECT_EQ(fire_count, 1);
 }
 
+namespace {
+
+struct WaitAsyncCallbackResult {
+  Status status = Status::OK();
+  std::vector<uint8_t> ready;
+  int calls = 0;
+};
+
+void OnWaitAsyncDone(Status status, const uint8_t *ready, size_t n, void *user) {
+  WaitAsyncCallbackResult *result = static_cast<WaitAsyncCallbackResult *>(user);
+  result->status = std::move(status);
+  result->ready.assign(ready, ready + n);
+  result->calls += 1;
+}
+
+void AddOwnedObjectForWaitAsync(
+    const std::shared_ptr<CoreWorker> &core_worker,
+    const std::shared_ptr<ReferenceCounterInterface> &reference_counter,
+    const ObjectID &object_id) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker->GetWorkerID().Binary());
+  reference_counter->AddOwnedObject(object_id,
+                                    {},
+                                    owner_address,
+                                    "",
+                                    0,
+                                    LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                    true);
+}
+
+void DrainIoUntilWaitAsyncDone(instrumented_io_context &io_service,
+                               WaitAsyncCallbackResult &result) {
+  while (result.calls == 0) {
+    ASSERT_GT(io_service.run_one(), 0);
+  }
+}
+
+}  // namespace
+
+TEST_F(CoreWorkerTest, WaitAsyncInvalidNumObjects) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync({object_id},
+                          /*num_objects=*/0,
+                          /*timeout_ms=*/-1,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsInvalid());
+  ASSERT_EQ(result.ready.size(), 1);
+  ASSERT_EQ(result.ready[0], 0);
+
+  result = WaitAsyncCallbackResult();
+  core_worker_->WaitAsync({object_id},
+                          /*num_objects=*/2,
+                          /*timeout_ms=*/-1,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsInvalid());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncDuplicateObjectIds) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync({object_id, object_id},
+                          /*num_objects=*/1,
+                          /*timeout_ms=*/-1,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsInvalid());
+  ASSERT_EQ(result.ready.size(), 2);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncUnknownOwner) {
+  ObjectID object_id = ObjectID::FromRandom();
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync({object_id},
+                          /*num_objects=*/1,
+                          /*timeout_ms=*/-1,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsObjectUnknownOwner());
+  ASSERT_EQ(result.ready.size(), 1);
+  ASSERT_EQ(result.ready[0], 0);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncReadyInMemoryStore) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync({object_id},
+                          /*num_objects=*/1,
+                          /*timeout_ms=*/-1,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready.size(), 1);
+  ASSERT_EQ(result.ready[0], 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncBecomesReadyLater) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync({object_id},
+                          /*num_objects=*/1,
+                          /*timeout_ms=*/-1,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  ASSERT_EQ(result.calls, 0);
+  ASSERT_FALSE(io_service_.poll_one());
+
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready[0], 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReadyWithoutFetchLocal) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync({object_id},
+                          /*num_objects=*/1,
+                          /*timeout_ms=*/-1,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready.size(), 1);
+  ASSERT_EQ(result.ready[0], 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncNumObjects) {
+  std::vector<ObjectID> object_ids = {
+      ObjectID::FromRandom(), ObjectID::FromRandom(), ObjectID::FromRandom()};
+  for (const ObjectID &object_id : object_ids) {
+    AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  }
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync(object_ids,
+                          /*num_objects=*/2,
+                          /*timeout_ms=*/-1,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  ASSERT_EQ(result.calls, 0);
+
+  memory_store_->Put(*MakeRayObject("a", "m"),
+                     object_ids[0],
+                     reference_counter_->HasReference(object_ids[0]));
+  ASSERT_EQ(io_service_.run_one(), 1);
+  ASSERT_EQ(result.calls, 0);
+
+  memory_store_->Put(*MakeRayObject("b", "m"),
+                     object_ids[1],
+                     reference_counter_->HasReference(object_ids[1]));
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready.size(), 3);
+  ASSERT_EQ(result.ready[0], 1);
+  ASSERT_EQ(result.ready[1], 1);
+  ASSERT_EQ(result.ready[2], 0);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncTimeout) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync({object_id},
+                          /*num_objects=*/1,
+                          /*timeout_ms=*/50,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready.size(), 1);
+  ASSERT_EQ(result.ready[0], 0);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncCallbackInvokedAtMostOnce) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  core_worker_->WaitAsync({object_id},
+                          /*num_objects=*/1,
+                          /*timeout_ms=*/50,
+                          /*fetch_local=*/false,
+                          OnWaitAsyncDone,
+                          &result);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_EQ(result.ready[0], 0);
+
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  // The GetAsync callback may still run after timeout, but must not re-invoke the user
+  // callback.
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 1);
+}
+
 }  // namespace core
 }  // namespace ray
