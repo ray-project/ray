@@ -905,6 +905,7 @@ class Pool:
             return
         ready, _ = ray.wait(refs, num_returns=len(refs), timeout=0)
         now = time.monotonic()
+        startup_error = None
         for object_ref in ready:
             if object_ref in self._starting_actor_refs:
                 actor_index, _ = self._starting_actor_refs.pop(object_ref)
@@ -913,20 +914,12 @@ class Pool:
                 except ray.exceptions.RayError as error:
                     self._actor_pool[actor_index] = None
                     self._last_used[actor_index] = 0.0
-                    if not self._pool_ever_healthy:
-                        # The pool has not served any work yet, so a startup
-                        # failure means it cannot function at all; fail fast
-                        # rather than hang.
-                        return error
-                    # The pool was already serving work, so a failed actor
-                    # (for example a replacement started by the resize step)
-                    # is just dropped; the resize step will retry. Closing the
-                    # pool here would also kill healthy actors. Bound the
-                    # retries, though: if replacements keep failing while no
-                    # actor makes progress, fail fast instead of churning.
-                    self._startup_failures += 1
-                    if self._startup_failures > self._max_size:
-                        return error
+                    # Remember the first failure but keep processing the other
+                    # ready refs: other actors in this batch may have started
+                    # successfully and can serve work, so whether to fail fast
+                    # is decided only after the whole batch is handled.
+                    if startup_error is None:
+                        startup_error = error
                     continue
                 else:
                     self._last_used[actor_index] = now
@@ -963,6 +956,19 @@ class Pool:
                     self._pool_ever_healthy = True
                     self._startup_failures = 0
                     self._ready_actor_indices.append(actor_index)
+
+        if startup_error is None:
+            return None
+        if not self._pool_ever_healthy:
+            # No actor has become ready, so the pool cannot function; fail
+            # fast rather than hang.
+            return startup_error
+        # The pool is serving work, so a failed (replacement) actor is just
+        # dropped and the resize step will retry. Bound the retries so a pool
+        # whose replacements persistently fail fails fast instead of churning.
+        self._startup_failures += 1
+        if self._startup_failures > self._max_size:
+            return startup_error
         return None
 
     def _resize_actor_pool(self, desired):
@@ -973,13 +979,13 @@ class Pool:
                 self._start_actor(actor_index)
             except Exception as error:
                 # _start_actor already cleared the slot and killed the actor.
-                # Fail fast when nothing else can serve work or generate a
-                # completion wakeup to retry: either the pool has not been
-                # healthy yet, or no actor is live or starting. Otherwise
-                # other live/starting actors produce wakeups, so a later
-                # resize can retry.
-                if not self._pool_ever_healthy or (
-                    live == 0 and not self._starting_actor_refs
+                # Fail fast only when nothing else can serve work or generate
+                # a completion wakeup to retry: actors still starting complete
+                # their pings and wake the dispatcher (their results are then
+                # handled by _update_actor_states), and live actors do the
+                # same when their batches finish.
+                if not self._starting_actor_refs and (
+                    not self._pool_ever_healthy or live == 0
                 ):
                     return error
                 break
