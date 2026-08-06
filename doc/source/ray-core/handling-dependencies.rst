@@ -817,8 +817,8 @@ uploading a copy:
   runtime_env = {"working_dir": "local:///app"}
   runtime_env = {"py_modules": ["local:///app/lib"]}
 
-The path must be absolute, so write three slashes: ``local:///app``, not ``local://app``.
-On Windows, spell the drive the same way: ``local:///C:/app``.
+The path must be absolute: ``local:///app``, not ``local://app``. On Windows, write the
+drive where the path goes: ``local://C:/app``.
 
 Ray uses the directory in place. Workers start in it and it is first on their
 ``PYTHONPATH``, exactly as with a downloaded ``working_dir``. Nothing is packaged,

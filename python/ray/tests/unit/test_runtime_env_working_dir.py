@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from ray._common import runtime_env_uri
 from ray._common.runtime_env_uri import parse_uri
 from ray._private.ray_constants import get_runtime_env_default_excludes
 from ray._private.runtime_env.packaging import (
@@ -71,19 +70,23 @@ class TestLocalDirURI:
     @pytest.mark.parametrize(
         "uri,expected",
         [
+            ("local:///app", "/app"),
+            ("local://C:/app", "C:/app"),
+            ("local://c:/a/b", "c:/a/b"),
+            ("local://C:\\app", "C:\\app"),
             ("local:///C:/app", "C:/app"),
-            ("local:///c:/a/b", "c:/a/b"),
+            ("local:///C:\\app", "C:\\app"),
             ("local:////server/share/app", "//server/share/app"),
         ],
     )
-    def test_windows_paths(self, monkeypatch, uri, expected):
-        """A drive path arrives as '/C:/app' and must lose the leading slash."""
-        monkeypatch.setattr(runtime_env_uri, "_WIN32", True)
+    def test_parses_identically_on_every_platform(self, uri, expected):
+        """A URI is not a path: the host OS must not change what it means."""
         assert parse_uri(uri)[1] == expected
 
-    @pytest.mark.parametrize("uri", ["local://C:/app", "local:///app", "local://app"])
-    def test_windows_rejects_paths_without_a_root(self, monkeypatch, uri):
-        monkeypatch.setattr(runtime_env_uri, "_WIN32", True)
+    @pytest.mark.parametrize(
+        "uri", ["local://app", "local://", "local://server/share", "local://C:app"]
+    )
+    def test_rejects_paths_without_a_root(self, uri):
         with pytest.raises(ValueError, match="the path must be absolute"):
             parse_uri(uri)
 
