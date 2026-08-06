@@ -1,6 +1,7 @@
 import logging
 import os
 import shlex
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -283,7 +284,8 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             context.command_prefix += ["cd", shlex.quote(str(local_dir)), "&&"]
         else:
             # Include '/d' incase temp folder is on different drive than Ray install.
-            context.command_prefix += ["cd", "/d", f"{local_dir}", "&&"]
+            quoted = subprocess.list2cmdline([str(local_dir)])
+            context.command_prefix += ["cd", "/d", quoted, "&&"]
         set_pythonpath_in_context(python_path=str(local_dir), context=context)
 
     @contextmanager

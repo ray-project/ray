@@ -687,6 +687,12 @@ def test_working_dir_does_not_propagate_driver_paths(start_cluster):
             ray.shutdown()
 
 
+def _local_uri(path) -> str:
+    """Builds a `local://` URI for a path on this machine, POSIX or Windows."""
+    posix = Path(path).as_posix()
+    return f"local://{posix}" if posix.startswith("/") else f"local:///{posix}"
+
+
 class TestLocalWorkingDir:
     """`local://` working_dirs: already on the node, used in place."""
 
@@ -696,7 +702,7 @@ class TestLocalWorkingDir:
     ):
         """cwd, imports and relative file IO all resolve against the directory."""
         _, address = start_cluster
-        uri = f"local://{tmp_working_dir}"
+        uri = _local_uri(tmp_working_dir)
         if option == "working_dir":
             runtime_env = {"working_dir": uri}
         else:
@@ -742,7 +748,7 @@ class TestLocalWorkingDir:
     async def test_directory_is_never_deleted(self, tmpdir, tmp_working_dir):
         """Ray must not garbage collect a directory it does not own."""
         plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
-        uri = f"local://{tmp_working_dir}"
+        uri = _local_uri(tmp_working_dir)
 
         # Nothing is fetched, and nothing is charged to the URI cache.
         assert await plugin.create(uri, {}, RuntimeEnvContext()) == 0
@@ -756,7 +762,7 @@ class TestLocalWorkingDir:
         self, tmpdir, tmp_working_dir
     ):
         plugin = WorkingDirPlugin(tmpdir, gcs_client=None)
-        uri = f"local://{tmp_working_dir}"
+        uri = _local_uri(tmp_working_dir)
         context = RuntimeEnvContext()
 
         plugin.modify_context([uri], {"working_dir": uri}, context)
