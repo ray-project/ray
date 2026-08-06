@@ -75,7 +75,9 @@ describe("runtime env redaction help", () => {
   // A redacted runtime env reaches this dialog from the job, Serve, actor and
   // task pages, so the help belongs here rather than on any one page.
   const REDACTED_CONFIG = {
-    ray_actor_options: { runtime_env: { env_vars: { DB_PASSWORD: "<redacted>" } } },
+    ray_actor_options: {
+      runtime_env: { env_vars: { DB_PASSWORD: "<redacted>" } },
+    },
   };
 
   const openDialog = async (code: object) => {
