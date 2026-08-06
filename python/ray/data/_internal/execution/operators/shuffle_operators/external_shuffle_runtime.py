@@ -609,19 +609,11 @@ def _fetch_from_file_server(
                 endpoint, members, max_bytes_per_fetch, out_file_obj
             )
             return
-        except OSError:
-            # The sink's os.pwrite failed: ENOSPC/EDQUOT (disk or quota full),
-            # EIO (device I/O error), or a short pwrite on a FUSE/network FS.
-            # Terminal, not a transport fault; propagate as-is.
-            raise
-        except pa.lib.ArrowInvalid as e:
-            # Server-side data error over Flight (e.g. a short read on a corrupt
-            # frame). Retrying the same file won't help, so it's terminal.
-            # https://arrow.apache.org/docs/python/generated/pyarrow.ArrowInvalid.html
-            raise
         except flight.FlightError as e:
-            # Transport fault (server unavailable, timeout, cancelled, internal).
-            # Retryable. See the FlightError subclasses / gRPC status codes:
+            # Only Flight transport faults are retryable (server unavailable /
+            # timeout / cancelled / internal). Everything else propagates as
+            # terminal: the sink's OSError (disk full), an ArrowInvalid from a
+            # corrupt frame, _resolve's ShuffleFileServerAnomalyError, or a bug.
             # https://arrow.apache.org/docs/python/api/flight.html
             # https://grpc.io/docs/guides/status-codes/
             #
@@ -654,13 +646,6 @@ def _fetch_from_file_server(
                 f"reachable via Ray; likely a network block on the Flight port "
                 f"(NetworkPolicy/firewall/routing)."
             ) from e
-        except Exception:
-            # Not a known disk, data, or transport fault; unexpected (a bug). Don't
-            # retry it (that would mask the bug and spin the loop); log and surface.
-            logger.exception(
-                f"node {node_id}: unexpected error during prefetch fetch"
-            )
-            raise
 
 
 def _chunk_members_by_bytes(
