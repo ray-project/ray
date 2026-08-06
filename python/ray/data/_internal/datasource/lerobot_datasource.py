@@ -162,7 +162,15 @@ def _delta_tensor_type(data_type: pa.DataType) -> pa.ExtensionType:
 def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
     """Materialize a uniformly shaped nested-list column as a typed ndarray.
 
-    Convert an Arrow nested-list column into one typed, rectangular ndarray without going through Python objects.
+    Convert an Arrow nested-list column into one typed, rectangular ndarray --
+    ``(n_rows, *feature_shape)``, the layout the delta gather fancy-indexes
+    into windows -- without going through Python objects.
+
+    The leaf dtype survives (``np.array(column.to_pylist())`` widens float32
+    to float64), so the produced block matches the schema
+    ``_delta_tensor_type`` declares from the same nesting.
+
+    Raises a ValueError if the column is null or ragged.
     """
     shape = [len(column)]
     values = column
