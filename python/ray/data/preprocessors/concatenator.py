@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from ray.data._internal.util import to_numpy_backed
 from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _PublicField,
@@ -141,8 +142,14 @@ class Concatenator(SerializablePreprocessorBase):
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
 
+        # Arrow-backed columns represent missing values with `pd.NA`, which
+        # cannot be stored in a numeric NumPy array. Without this, `to_numpy()`
+        # below silently falls back to `dtype=object` and the output degrades
+        # from a tensor column to pickled Python objects.
+        columns = to_numpy_backed(df[self._columns])
+
         if self._flatten:
-            concatenated = df[self._columns].to_numpy()
+            concatenated = columns.to_numpy()
             concatenated = [
                 np.concatenate(
                     [
@@ -155,7 +162,7 @@ class Concatenator(SerializablePreprocessorBase):
                 for row in concatenated
             ]
         else:
-            concatenated = df[self._columns].to_numpy(dtype=self._dtype)
+            concatenated = columns.to_numpy(dtype=self._dtype)
 
         df = df.drop(columns=self._columns)
         # Use a Pandas Series for column assignment to get more consistent

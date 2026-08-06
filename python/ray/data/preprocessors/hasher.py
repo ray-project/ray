@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
+from ray.data._internal.util import to_numpy_backed
 from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _PublicField,
@@ -116,7 +117,10 @@ class FeatureHasher(SerializablePreprocessorBase):
                 hash_counts[hashed_value] += row[column]
             return {f"hash_{i}": hash_counts[i] for i in range(self._num_features)}
 
-        feature_columns = df.loc[:, self._columns].apply(
+        # Arrow-backed columns represent missing values with `pd.NA`, which
+        # poisons the `hash_counts` accumulator above (`0 + pd.NA` is `pd.NA`)
+        # and degrades the output to `dtype=object`.
+        feature_columns = to_numpy_backed(df.loc[:, self._columns]).apply(
             row_feature_hasher, axis=1, result_type="expand"
         )
 
