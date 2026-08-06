@@ -317,10 +317,12 @@ def test_excluded_prefixes_only_raises_no_files_found(
 
 
 def test_all_paths_missing_with_ignore_missing_paths(ray_start_regular_shared):
-    with pytest.raises(ValueError, match="None of the provided paths exist"):
+    with pytest.raises(ValueError, match="no files found under") as exc_info:
         MockFileBasedDatasource(
             ["missing1.txt", "missing2.txt"], ignore_missing_paths=True
         )
+
+    assert "'ignore_missing_paths' is set to True" in str(exc_info.value)
 
 
 def test_local_paths(ray_start_regular_shared, tmp_path):

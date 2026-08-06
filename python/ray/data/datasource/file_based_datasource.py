@@ -190,15 +190,18 @@ class FileBasedDatasource(Datasource):
         )
 
         if not expanded_paths:
-            if ignore_missing_paths:
-                raise ValueError(
-                    "None of the provided paths exist. "
-                    "The 'ignore_missing_paths' field is set to True."
-                )
-            raise ValueError(
+            message = (
                 f"no files found under {paths!r}. Check the path and any "
                 "configured `partition_filter` or `file_extensions` filters."
             )
+            if ignore_missing_paths:
+                # Paths that do not exist were dropped during listing, so we
+                # cannot tell here whether they were absent or merely empty.
+                message += (
+                    " Paths that do not exist were skipped because "
+                    "'ignore_missing_paths' is set to True."
+                )
+            raise ValueError(message)
 
         paths, file_sizes = map(list, zip(*expanded_paths))
 
