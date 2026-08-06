@@ -133,32 +133,6 @@ def train_func(config: Dict):
     batch = torch.randn(config["batch_size"], 3, IMAGE_SIZE, IMAGE_SIZE, device=device)
     target = torch.randint(0, 1000, (config["batch_size"],), device=device)
 
-    preempt_flag = torch.zeros(1, device=device)
-
-    def any_rank_preempted() -> bool:
-        """Whether *any* rank has observed the preemption yet.
-
-        The watcher fans the signal out with independent RPCs, so ranks might
-        observe it on different steps. Every rank has to take the branch below on
-        the same step: a rank that enters `report` while the others run another
-        `backward` deadlocks the group, because `report` and DDP's gradient
-        all-reduce are both collectives and neither side can yield to the other.
-
-        TODO(lehui): Ray Train should own this agreement instead of the UDF. JAX exposes
-        `reached_preemption_sync_point(step)`, which all-reduces the max step
-        across hosts and returns True at max+1, so Orbax users never write a
-        collective themselves.
-        """
-        local = ray.train.get_preemption_info() is not None
-        if (
-            not torch.distributed.is_available()
-            or not torch.distributed.is_initialized()
-        ):
-            return local
-        preempt_flag[0] = 1.0 if local else 0.0
-        torch.distributed.all_reduce(preempt_flag, op=torch.distributed.ReduceOp.MAX)
-        return preempt_flag.item() > 0
-
     saved_on_preemption = False
     for step in range(start_step, target_steps):
         optimizer.zero_grad()
@@ -170,8 +144,13 @@ def train_func(config: Dict):
             ray.get(tracker.record_step.remote())
 
         # Checkpoint on the first observed preemption, then keep training until
-        # the node is actually reclaimed.
-        if use_jit_checkpoint and not saved_on_preemption and any_rank_preempted():
+        # the node is actually reclaimed. `get_preemption_info` returns the same
+        # value on every rank, so all ranks take this branch on the same step.
+        if (
+            use_jit_checkpoint
+            and not saved_on_preemption
+            and ray.train.get_preemption_info() is not None
+        ):
             saved_on_preemption = True
             save_checkpoint(step, {"step": step, "jit": True})
             if is_rank_0:
