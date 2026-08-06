@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 # ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id).
 _SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_external"
 
+# Materialized handle metadata per reduce resolve batch.
+_DEFAULT_HANDLE_BATCH_BYTES = 64 * MiB
+
 # pyarrow-supported shard codecs (``"none"``/``None`` = uncompressed). Rides
 # ``data_context.hash_shuffle_compression``.
 Compression = Optional[
@@ -514,18 +517,12 @@ def _stream_members_flight(
     import pyarrow.flight as flight
 
     host, port, _incarnation = endpoint
-    client = flight.connect(_grpc_location(host, port))
-    try:
+    with flight.connect(_grpc_location(host, port)) as client:
         for batch in _chunk_members_by_bytes(members, max_bytes):
             sources = [(m.path, m.ranges) for m in batch]
             body = json.dumps({"s": sources}).encode("utf-8")
             for result in client.do_action(flight.Action("fetch", body)):
                 sink.write(result.body)
-    finally:
-        try:
-            client.close()
-        except Exception:
-            pass
 
 
 def _fetch_from_file_server(
@@ -698,9 +695,6 @@ def _handle_batch_size(handles, batch_bytes):
         npart = 1
     per_handle = max(1, npart * 16)
     return max(1, min(len(handles), batch_bytes // per_handle))
-
-
-_DEFAULT_HANDLE_BATCH_BYTES = 64 * MiB  # materialized metadata per resolve batch
 
 
 def _handles_to_sources(
