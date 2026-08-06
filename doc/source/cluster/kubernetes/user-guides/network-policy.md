@@ -197,6 +197,18 @@ Ray cluster pods and their `NetworkPolicy` resources are created by different co
 
 To address this, pre-apply a namespace-level policy scoped to the directions your chosen mode manages. This closes the race window without interfering with the directions your mode leaves unrestricted.
 
+:::{note}
+This applies to every pod in the namespace, including pods that KubeRay doesn't manage. To scope it to Ray pods only, add a `podSelector` that matches the label KubeRay applies to head and worker pods:
+
+```yaml
+  podSelector:
+    matchLabels:
+      ray.io/is-ray-node: "yes"
+```
+
+Add this selector when you use the `DenyAll` or `DenyAllEgress` variant. The submitter pod for a `RayJob` doesn't carry the `ray.io/is-ray-node` label, so this selector excludes it from the deny rule. Without it, the submitter pod loses egress, and the `RayJob` fails unless you add an extra rule to allow submitter egress.
+:::
+
 **`DenyAll`** — deny both ingress and egress:
 
 ```yaml
