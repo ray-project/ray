@@ -2847,9 +2847,7 @@ cdef CRayStatus check_signals() nogil:
         # worker through GetCoreWorker() instead would exit the process outright.
         should_interrupt = CCoreWorkerProcess.ShouldInterruptTaskForCancellation()
         if not should_interrupt.has_value():
-            return CRayStatus.IntentionalSystemExit(
-                "The core worker is shut down.".encode("utf-8")
-            )
+            return CRayStatus.IntentionalSystemExit(b"The core worker is shut down.")
         if should_interrupt.value():
             return CRayStatus.Interrupted(b"")
 

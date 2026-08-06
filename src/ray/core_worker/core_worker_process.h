@@ -142,6 +142,7 @@ class CoreWorkerProcessImpl {
   /// Try to get core worker. Returns nullptr if core worker doesn't exist.
   std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
 
+  /// Whether a running task should be interrupted. Empty if core worker doesn't exist.
   std::optional<bool> ShouldInterruptTaskForCancellation() const;
 
   std::shared_ptr<CoreWorker> CreateCoreWorker(CoreWorkerOptions options,
