@@ -33,11 +33,34 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.dashboard.utils import close_logger_file_descriptor, get_head_node_id
-from ray.exceptions import ActorDiedError, ActorUnschedulableError, RuntimeEnvSetupError
+from ray.exceptions import (
+    ActorDiedError,
+    ActorUnschedulableError,
+    RpcError,
+    RuntimeEnvSetupError,
+)
 from ray.job_submission import JobErrorType, JobStatus
 from ray.runtime_env import RuntimeEnvConfig
 
 logger = logging.getLogger(__name__)
+
+# gRPC status codes considered transient during GCS failover.
+_TRANSIENT_RPC_CODES = {1, 14}  # CANCELLED=1, UNAVAILABLE=14
+
+# Max consecutive transient failures before giving up.
+_MAX_TRANSIENT_ERROR_RETRIES = ray_constants.env_integer(
+    "RAY_JOB_MONITOR_MAX_TRANSIENT_ERROR_RETRIES", 40
+)
+
+
+def _is_transient_rpc_error(exc: Exception) -> bool:
+    """Return True if the exception is a transient gRPC error."""
+    if isinstance(exc, RpcError) and exc.rpc_code in _TRANSIENT_RPC_CODES:
+        return True
+    if isinstance(exc, RpcError):
+        error_msg = str(exc).lower()
+        return "cancelled" in error_msg or "unavailable" in error_msg
+    return False
 
 
 def generate_job_id() -> str:
@@ -164,6 +187,8 @@ class JobManager:
         job_status = None
         job_info = None
         ping_obj_ref = None
+        transient_error_count = 0
+        gcs_unreachable_exhausted = False
 
         while True:
             try:
@@ -268,13 +293,43 @@ class JobManager:
                 if ready:
                     ray.get(ping_obj_ref)
                     ping_obj_ref = None
+                    transient_error_count = 0
                 else:
                     continue
 
             except Exception as e:
-                job_status = await self._job_info_client.get_status(
-                    job_id, timeout=None
-                )
+                try:
+                    job_status = await self._job_info_client.get_status(
+                        job_id, timeout=None
+                    )
+                except Exception as get_status_exc:
+                    if _is_transient_rpc_error(e) or _is_transient_rpc_error(
+                        get_status_exc
+                    ):
+                        transient_error_count += 1
+                        if transient_error_count < _MAX_TRANSIENT_ERROR_RETRIES:
+                            logger.warning(
+                                f"Job {job_id} monitoring hit transient RPC "
+                                f"error (attempt {transient_error_count}/"
+                                f"{_MAX_TRANSIENT_ERROR_RETRIES}): {e}. "
+                                f"GCS also unreachable, retrying..."
+                            )
+                            await asyncio.sleep(
+                                min(2 ** min(transient_error_count, 5), 30)
+                            )
+                            ping_obj_ref = None
+                            continue
+                        logger.error(
+                            f"Job {job_id} monitoring exhausted "
+                            f"{_MAX_TRANSIENT_ERROR_RETRIES} transient "
+                            f"error retries while GCS unreachable. "
+                            f"Cannot determine job state, stopping "
+                            f"monitor without overwriting status: {e}.",
+                            exc_info=e,
+                        )
+                        gcs_unreachable_exhausted = True
+                        break
+                    job_status = None
                 target_job_error_message = ""
                 target_job_error_type: Optional[JobErrorType] = None
                 if job_status is not None and job_status.is_terminal():
@@ -307,11 +362,38 @@ class JobManager:
                         target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
 
                     else:
-                        logger.error(
-                            f"Job monitoring for job {job_id} failed "
-                            f"unexpectedly: {e}.",
-                            exc_info=e,
-                        )
+                        if _is_transient_rpc_error(e):
+                            transient_error_count += 1
+                            if transient_error_count < _MAX_TRANSIENT_ERROR_RETRIES:
+                                logger.warning(
+                                    f"Job {job_id} monitoring hit transient "
+                                    f"RPC error (attempt "
+                                    f"{transient_error_count}/"
+                                    f"{_MAX_TRANSIENT_ERROR_RETRIES}): {e}. "
+                                    f"Retrying after backoff..."
+                                )
+                                await asyncio.sleep(
+                                    min(
+                                        2 ** min(transient_error_count, 5),
+                                        30,
+                                    )
+                                )
+                                ping_obj_ref = None
+                                continue
+
+                            logger.error(
+                                f"Job {job_id} monitoring exhausted "
+                                f"{_MAX_TRANSIENT_ERROR_RETRIES} transient "
+                                f"error retries, marking as failed: {e}.",
+                                exc_info=e,
+                            )
+
+                        else:
+                            logger.error(
+                                f"Job monitoring for job {job_id} failed "
+                                f"unexpectedly: {e}.",
+                                exc_info=e,
+                            )
 
                         target_job_error_message = f"Unexpected error occurred: {e}"
                         target_job_error_type = (
@@ -349,10 +431,13 @@ class JobManager:
                 break
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
-        if job_supervisor is None:
-            job_supervisor = self._get_actor_for_job(job_id)
-        if job_supervisor is not None:
-            ray.kill(job_supervisor, no_restart=True)
+        # Skip kill if we exited because GCS was unreachable — the job may still
+        # be running and will recover once GCS comes back.
+        if not gcs_unreachable_exhausted:
+            if job_supervisor is None:
+                job_supervisor = self._get_actor_for_job(job_id)
+            if job_supervisor is not None:
+                ray.kill(job_supervisor, no_restart=True)
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
