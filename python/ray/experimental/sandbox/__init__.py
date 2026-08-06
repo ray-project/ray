@@ -32,6 +32,7 @@ def create(
     rootless: bool = True,
     network: str = "none",
     resources: Optional[Dict[str, float]] = None,
+    readonly: bool = True,
     **kwargs,
 ) -> SandboxHandle:
     """Create a sandbox environment.
@@ -48,6 +49,7 @@ def create(
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
         resources: Custom logical resource requirements.
+        readonly: If True, mount rootfs in read-only mode (default: True).
         **kwargs: Additional options.
 
     Returns:
@@ -75,6 +77,7 @@ def create(
         rootless=rootless,
         network=network,
         resources=resources,
+        readonly=readonly,
         **kwargs,
     )
     return SandboxHandle(actor_handle=actor_handle)
@@ -92,6 +95,7 @@ async def create_async(
     rootless: bool = True,
     network: str = "none",
     resources: Optional[Dict[str, float]] = None,
+    readonly: bool = True,
     **kwargs,
 ) -> SandboxHandle:
     """Create a sandbox environment asynchronously."""
@@ -108,6 +112,7 @@ async def create_async(
         rootless=rootless,
         network=network,
         resources=resources,
+        readonly=readonly,
         **kwargs,
     )
 

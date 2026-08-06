@@ -29,6 +29,7 @@ class SandboxRuntime:
         rootless: bool = True,
         network: str = "none",
         resources: Optional[Dict[str, float]] = None,
+        readonly: bool = True,
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID."""
@@ -44,6 +45,7 @@ class SandboxRuntime:
             rootless=rootless,
             network=network,
             resources=resources or {},
+            readonly=readonly,
             **kwargs,
         )
         return self._backend.create_sandbox(cfg)

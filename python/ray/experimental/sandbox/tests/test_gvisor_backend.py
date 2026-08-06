@@ -106,3 +106,84 @@ def test_gvisor_backend_invalid_image():
     )
     with pytest.raises(SandboxCreationError):
         backend.create_sandbox(config)
+
+
+def test_gvisor_backend_container_image_overlay_isolation():
+    backend = GVisorSandboxBackend()
+    cfg1 = GVisorSandboxConfig(
+        image="busybox:latest", work_dir="/workspace", readonly=False
+    )
+    cfg2 = GVisorSandboxConfig(
+        image="busybox:latest", work_dir="/workspace", readonly=False
+    )
+
+    sb1 = backend.create_sandbox(cfg1)
+    sb2 = backend.create_sandbox(cfg2)
+    try:
+        # SB1 writes to rootfs
+        res1 = backend.exec_command(
+            sb1, "/bin/sh -c 'echo sb1_root > /overlay_test.txt'"
+        )
+        assert res1.exit_code == 0
+
+        # SB2 writes to rootfs with different content
+        res2 = backend.exec_command(
+            sb2, "/bin/sh -c 'echo sb2_root > /overlay_test.txt'"
+        )
+        assert res2.exit_code == 0
+
+        # Verify SB1 sees sb1_root
+        read1 = backend.exec_command(sb1, "cat /overlay_test.txt")
+        assert read1.exit_code == 0
+        assert "sb1_root" in read1.stdout
+
+        # Verify SB2 sees sb2_root
+        read2 = backend.exec_command(sb2, "cat /overlay_test.txt")
+        assert read2.exit_code == 0
+        assert "sb2_root" in read2.stdout
+
+        # Base image rootfs must not contain /overlay_test.txt
+        extracted_dir = "/tmp/ray/sandboxes/images/busybox_latest"
+        assert not os.path.exists(os.path.join(extracted_dir, "overlay_test.txt"))
+    finally:
+        backend.delete_sandbox(sb1)
+        backend.delete_sandbox(sb2)
+
+    # A newly created SB3 should not see /overlay_test.txt
+    cfg3 = GVisorSandboxConfig(
+        image="busybox:latest", work_dir="/workspace", readonly=False
+    )
+    sb3 = backend.create_sandbox(cfg3)
+    try:
+        read3 = backend.exec_command(sb3, "/bin/sh -c 'test -f /overlay_test.txt'")
+        assert read3.exit_code != 0
+    finally:
+        backend.delete_sandbox(sb3)
+
+
+def test_gvisor_backend_readonly_rootfs():
+    backend = GVisorSandboxBackend()
+    # Default is readonly=True
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        work_dir="/workspace",
+    )
+    assert cfg.readonly is True
+    sandbox_id = backend.create_sandbox(cfg)
+    try:
+        # Writing to rootfs should fail because readonly=True by default
+        res = backend.exec_command(
+            sandbox_id, "/bin/sh -c 'echo test > /test_readonly.txt'"
+        )
+        assert res.exit_code != 0
+        assert "Read-only file system" in res.stderr
+
+        # Writing to /workspace should still succeed because it is mounted rw
+        res_ws = backend.exec_command(
+            sandbox_id,
+            "/bin/sh -c 'echo ws_ok > /workspace/ws.txt && cat /workspace/ws.txt'",
+        )
+        assert res_ws.exit_code == 0
+        assert "ws_ok" in res_ws.stdout
+    finally:
+        backend.delete_sandbox(sandbox_id)
