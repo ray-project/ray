@@ -73,6 +73,26 @@ class InheritedAnnotation(MockClass):
 
 
 @Deprecated
+class MockDeprecatedClass:
+    """
+    A directly-deprecated class. Documenting it is an error the check must catch.
+    """
+
+    pass
+
+
+class MockDeprecatedSubclass(MockDeprecatedClass):
+    """
+    An undecorated subclass of a deprecated class. It inherits ``_annotated_type``
+    as a plain class attribute, so reading that attribute without an ownership
+    check would classify it as deprecated and flag a documented name that nobody
+    deprecated.
+    """
+
+    pass
+
+
+@Deprecated
 def mock_function():
     """
     This function is used for testing purpose only. It should not be used in production.
