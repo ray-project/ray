@@ -293,7 +293,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         spec["process"]["args"] = ["sleep", "infinity"]
         spec["process"]["cwd"] = container_cwd
 
-        env_list = ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"]
+        env_list = [
+            "PATH=/home/ray/anaconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        ]
         if env_dict:
             for k, v in env_dict.items():
                 env_list.append(f"{k}={v}")
@@ -312,6 +314,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 ("/usr", "/usr"),
                 ("/lib", "/lib"),
                 ("/lib64", "/lib64"),
+                ("/home/ray/anaconda3/bin", "/home/ray/anaconda3/bin"),
                 (container_cwd, work_dir_path),
             ]
         for dest, src in default_binds:
