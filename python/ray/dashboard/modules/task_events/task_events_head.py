@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 import aiohttp.web
 
@@ -34,6 +34,8 @@ _MARK_FAILED_ON_WORKER_DEAD_DELAY_S = (
 _MARK_FAILED_ON_JOB_DONE_DELAY_S = (
     ray._config.gcs_mark_task_failed_on_job_done_delay_ms() / 1000
 )
+# Timeout for the worker-table fetches used to reconcile dead workers.
+_WORKER_INFO_FETCH_TIMEOUT_S = 30
 
 
 class TaskEventsHead(SubprocessModule):
@@ -107,30 +109,28 @@ class TaskEventsHead(SubprocessModule):
             self._spawn(self._on_job_finished(job_data.job_id, job_data.end_time))
 
     async def _on_worker_dead(self, worker_id: bytes) -> None:
-        # Fetch the dead worker's exit info concurrently with the delay.We should start
-        # fetch immediately to avoid the worker info to be trimmed out of the table.
-        # The delay lets in-flight FINISHED events land — so the two overlap instead
-        # of adding up.
-        # TODO(karticam): a (very unlikely) race — the record could be trimmed from that
-        #   cache before this fetch completes.
-        # TODO(karticam): avoid this extra round-trip by letting the worker-death
-        #   subscription request the fields we need (e.g. exit info) in the notification.
-        #   PR #64887 moves worker events to one-event framework. If we migrate worker
-        #   events to dashboard head too, we can use that instead of pubsub, and we will
-        #   also have full worker table data available to avoid the extra RPC.
+        # Fetch the dead worker's exit info concurrently with the delay: we start the
+        # fetch immediately so the record is less likely to be trimmed from the worker
+        # table first, and the delay lets in-flight FINISHED events land, so the two
+        # overlap instead of adding up. If the fetch comes back empty (record evicted, or
+        # a transient failure), we still fail the tasks — just without exit details.
+        # TODO(karticam): avoid this round-trip by having the worker-death subscription
+        #   carry the fields we need. PR #64887 moves worker events to the one-event
+        #   framework; migrating those to the dashboard head would give full worker data
+        #   inline and drop this RPC.
         worker_table_data, _ = await asyncio.gather(
             self._get_worker_info(worker_id),
             asyncio.sleep(_MARK_FAILED_ON_WORKER_DEAD_DELAY_S),
         )
         if worker_table_data is None:
             logger.warning(
-                f"No worker info found for dead worker {worker_id.hex()}; its tasks "
-                "cannot be marked as failed."
+                f"Could not fetch exit info for dead worker {worker_id.hex()}; marking "
+                "its tasks failed without exit details."
             )
-            return
-        logger.debug(
-            f"Marking all running tasks of worker {worker_id.hex()} as failed."
-        )
+        else:
+            logger.debug(
+                f"Marking all running tasks of worker {worker_id.hex()} as failed."
+            )
         self._store.mark_tasks_failed_on_worker_dead(worker_id, worker_table_data)
 
     async def _on_job_finished(self, job_id: bytes, end_time_ms: int) -> None:
@@ -147,16 +147,56 @@ class TaskEventsHead(SubprocessModule):
             self._worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
                 self.aiogrpc_gcs_channel
             )
-        reply = await self._worker_info_stub.GetWorkerInfo(
-            gcs_service_pb2.GetWorkerInfoRequest(worker_id=worker_id)
-        )
+        try:
+            reply = await self._worker_info_stub.GetWorkerInfo(
+                gcs_service_pb2.GetWorkerInfoRequest(worker_id=worker_id),
+                timeout=_WORKER_INFO_FETCH_TIMEOUT_S,
+            )
+        except Exception as e:
+            # A transient GCS/RPC failure must not sink the reconciliation task; treat it
+            # like a missing record so the caller still fails the worker's tasks.
+            logger.warning(f"Failed to fetch worker info for {worker_id.hex()}: {e}")
+            return None
         if not reply.HasField("worker_table_data"):
             return None
         return reply.worker_table_data
 
+    async def _get_all_worker_info(self) -> List[gcs_pb2.WorkerTableData]:
+        if self._worker_info_stub is None:
+            self._worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
+                self.aiogrpc_gcs_channel
+            )
+        # Empty request → GCS returns every worker (no limit);
+        reply = await self._worker_info_stub.GetAllWorkerInfo(
+            gcs_service_pb2.GetAllWorkerInfoRequest(),
+            timeout=_WORKER_INFO_FETCH_TIMEOUT_S,
+        )
+        return reply.worker_table_data
+
+    async def _reconcile_dead_workers_on_startup(self) -> None:
+        # GCS pubsub does not replay worker deaths from before we subscribed, so snapshot
+        # the worker table once and fail tasks for any already-dead worker. This must run
+        # AFTER subscribe() so a death between the snapshot and the subscription is still
+        # delivered over pubsub.
+        try:
+            worker_infos = await self._get_all_worker_info()
+        except Exception:
+            logger.exception("Failed to reconcile dead workers on startup.")
+            return
+        for worker_table_data in worker_infos:
+            if not worker_table_data.is_alive:
+                self._store.mark_tasks_failed_on_worker_dead(
+                    worker_table_data.worker_address.worker_id, worker_table_data
+                )
+
     async def _subscribe_for_worker_deaths(self) -> None:
         subscriber = GcsAioWorkerDeltaSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
+        # Backfill deaths from before the subscription (pubsub won't replay them). Order
+        # matters: subscribe first, then snapshot, so nothing falls between the two.
+        # It happen that, since we already subscribed, we get a dead worker via pubsub
+        # as well as through this route. But marking tasks dead failed is idempotent.
+        await self._reconcile_dead_workers_on_startup()
         while True:
             try:
                 for _, worker_delta in await subscriber.poll(
