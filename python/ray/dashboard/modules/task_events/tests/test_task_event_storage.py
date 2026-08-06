@@ -150,6 +150,22 @@ def test_mark_tasks_failed_on_worker_dead():
     assert "boom" in state.error_info.error_message
 
 
+def test_mark_tasks_failed_on_worker_dead_without_worker_data():
+    store = tes.TaskEventStorage()
+    store.add_or_replace_task_event(
+        _event(_task_id(1), task_type=TaskType.NORMAL_TASK, worker=_WORKER)
+    )
+
+    # No worker table data (record evicted, or the fetch failed): the task is still failed,
+    # stamped with a best-effort time and a message noting the details are unavailable.
+    store.mark_tasks_failed_on_worker_dead(_WORKER, None)
+
+    state = store.get_task_event((_task_id(1), 0)).state_updates
+    assert state.state_ts_ns[TaskStatus.FAILED] > 0
+    assert state.error_info.error_type == ErrorType.WORKER_DIED
+    assert "could not be fetched" in state.error_info.error_message
+
+
 def test_mark_tasks_failed_on_worker_dead_skips_terminated():
     store = tes.TaskEventStorage()
     store.add_or_replace_task_event(
