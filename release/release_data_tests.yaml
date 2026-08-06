@@ -1360,6 +1360,29 @@
           frequency: manual
           fail_on_dead_nodes: 0
           fail_on_spilling: 0  # We expected bounded spills with chaos.
+      - with:
+          case: fake_gpu_fixed_size
+          cluster_type: fake_gpu_fixed_size
+          args: --inference-concurrency 40 40 --fake-gpu
+          frequency: weekly
+          fail_on_dead_nodes: 0 # Allow node death during test
+          fail_on_spilling: 1
+      - with:
+          case: fake_gpu_autoscaling
+          cluster_type: fake_gpu_autoscaling
+          args: --inference-concurrency 1 40 --fake-gpu
+          frequency: weekly
+          fail_on_dead_nodes: 1
+          fail_on_spilling: 0  # We expected bounded spills with autoscaling.
+      - with:
+          case: fake_gpu_fixed_size_chaos
+          cluster_type: fake_gpu_fixed_size
+          args: --inference-concurrency 40 40 --chaos --fake-gpu
+          # This release test is run on a 'manual' frequency because it's expected to
+          # fail.
+          frequency: manual
+          fail_on_dead_nodes: 0
+          fail_on_spilling: 0  # We expected bounded spills with chaos.
 
   cluster:
     anyscale_sdk_2026: true

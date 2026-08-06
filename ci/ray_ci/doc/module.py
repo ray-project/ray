@@ -3,7 +3,7 @@ import inspect
 from types import ModuleType
 from typing import List
 
-from ci.ray_ci.doc.api import API, AnnotationType, CodeType
+from ci.ray_ci.doc.api import API, AnnotationType, CodeType, _is_directly_annotated
 
 
 class Module:
@@ -90,7 +90,7 @@ class Module:
         return module.__name__.startswith(self._module.__name__)
 
     def _is_api(self, module: ModuleType) -> bool:
-        return self._is_valid_child(module) and hasattr(module, "_annotated")
+        return self._is_valid_child(module) and _is_directly_annotated(module)
 
     def _get_annotation_type(self, module: ModuleType) -> AnnotationType:
         return AnnotationType(module._annotated_type.value)
