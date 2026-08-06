@@ -50,7 +50,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _handles_to_sources,
     _is_disk_exhausted,
     _PartitionWriter,
-    _prefetch_node_into,
+    _fetch_from_file_server,
     _PwriteSink,
     _read_ipc,
 )
@@ -369,7 +369,7 @@ def _external_shuffle_reduce_task(
 
             def _fetch_one(args):
                 base, size, group = args
-                _prefetch_node_into(
+                _fetch_from_file_server(
                     _PwriteSink(fd, base),
                     group.shuffle_id,
                     group.node_id,
