@@ -49,7 +49,8 @@ def create(
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
         resources: Custom logical resource requirements.
-        readonly: If True, mount rootfs in read-only mode (default: True).
+        readonly: If True, mount container image rootfs in read-only mode (default: True).
+            Only applicable when an image is specified.
         **kwargs: Additional options.
 
     Returns:
