@@ -42,7 +42,8 @@ def create(
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        work_dir: Default working directory inside the sandbox.
+        work_dir: Default working directory inside the sandbox. Note that the
+            working directory is the only writable path in the sandbox.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -99,7 +100,28 @@ async def create_async(
     readonly: bool = True,
     **kwargs,
 ) -> SandboxHandle:
-    """Create a sandbox environment asynchronously."""
+    """Create a sandbox environment asynchronously.
+
+    Args:
+        image: Container image for the sandbox environment.
+        cpu: Number of CPU cores allocated to the sandbox.
+        memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
+        env: Environment variables to inject into the sandbox.
+        work_dir: Default working directory inside the sandbox. Note that the
+            working directory is the only writable path in the sandbox.
+        ttl_seconds: Optional automatic cleanup time-to-live in seconds.
+        labels: Optional key-value metadata labels for tracking.
+        timeout_seconds: Timeout in seconds for sandbox creation.
+        rootless: If True, run gVisor in rootless mode.
+        network: Network mode for runsc.
+        resources: Custom logical resource requirements.
+        readonly: If True, mount container image rootfs in read-only mode (default: True).
+            Only applicable when an image is specified.
+        **kwargs: Additional options.
+
+    Returns:
+        A SandboxHandle instance.
+    """
     return await asyncio.to_thread(
         create,
         image=image,

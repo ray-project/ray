@@ -18,7 +18,8 @@ class Sandbox:
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        work_dir: Default working directory inside the sandbox.
+        work_dir: Default working directory inside the sandbox. Note that the
+            working directory is the only writable path in the sandbox.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
