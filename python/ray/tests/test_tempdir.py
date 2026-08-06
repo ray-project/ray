@@ -154,6 +154,22 @@ def test_custom_logs_dir(ray_start_cluster, request):
         )
 
 
+def test_logs_dir_containing_session_dir_skips_symlink(ray_start_cluster, request):
+    """A logs dir above the session dir must not get a self-referential symlink."""
+    base_dir = os.path.join("/tmp", f"ray-{uuid.uuid4().hex[:6]}")
+    request.addfinalizer(lambda: shutil.rmtree(base_dir, ignore_errors=True))
+
+    cluster = ray_start_cluster
+    node = cluster.add_node(num_cpus=1, temp_dir=base_dir, logs_dir=base_dir)
+    cluster.wait_for_nodes()
+
+    assert node.get_logs_dir_path() == base_dir
+    # session_dir/logs would resolve to an ancestor of itself, so walking the
+    # logs directory recursively would never terminate.
+    assert not os.path.exists(os.path.join(node.get_session_dir_path(), "logs"))
+    wait_for_condition(lambda: os.path.exists(os.path.join(base_dir, "raylet.out")))
+
+
 def test_raylet_tempfiles(shutdown_only):
     expected_socket_files = (
         {"plasma_store", "raylet"} if sys.platform != "win32" else set()
