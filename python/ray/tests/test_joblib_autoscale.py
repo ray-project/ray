@@ -538,6 +538,254 @@ def test_size_kwarg_inference(shutdown_only):
 
 
 # ---------------------------------------------------------------------------
+# Adversarial / concurrency scenarios
+# ---------------------------------------------------------------------------
+
+
+def test_close_with_backlog_completes_in_order(shutdown_only):
+    """close() lets already-submitted batches finish and preserves ordering."""
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(max_size=4, initial_size=0)
+
+    def identity(x):
+        return x
+
+    result = pool.map_async(identity, range(40), chunksize=1)
+    pool.close()
+
+    # close() drains the queued work, then stops the actors and the
+    # dispatcher. Wait (bounded) for the dispatcher to finish draining.
+    wait_for_condition(lambda: not pool._dispatcher_thread.is_alive(), timeout=30)
+    assert result.get(timeout=30) == list(range(40))
+
+    # close() must also have stopped the actors (graceful __ray_terminate__ /
+    # kill), not left them running.
+    actors = [slot[0] for slot in pool._actor_pool if slot is not None]
+
+    def actors_stopped():
+        for actor in actors:
+            try:
+                ray.get(actor.ping.remote(), timeout=5)
+                return False  # ping answered -> actor still alive
+            except ray.exceptions.RayActorError:
+                continue  # actor is dead -> stopped
+            except Exception:
+                return False  # transient (e.g. timeout) -> retry
+        return True
+
+    wait_for_condition(actors_stopped, timeout=30)
+
+
+def test_terminate_with_concurrent_maps_fails_bounded(shutdown_only):
+    """terminate() interrupts several in-flight map_async calls, no hang."""
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(max_size=4, initial_size=0)
+
+    def block(x):
+        time.sleep(30)
+        return x
+
+    results = [pool.map_async(block, range(4), chunksize=1) for _ in range(4)]
+    # Make sure at least one batch is actually running (not just queued) so
+    # terminate() interrupts both running and queued work.
+    wait_for_condition(lambda: len(pool._running_actor_refs) >= 1, timeout=10)
+    pool.terminate()
+
+    for result in results:
+        with pytest.raises(Exception) as exc_info:
+            result.get(timeout=15)
+        # terminate() must fail the result promptly, not leave it pending (a
+        # pending result would only surface as a get() timeout, and ready()
+        # would still be False).
+        assert result.ready()
+        # The failure must come from terminate(): a killed running actor
+        # (RayError) or a queued batch failed as terminated (RuntimeError).
+        assert isinstance(exc_info.value, (RuntimeError, ray.exceptions.RayError))
+
+
+def test_capacity_below_max_with_recycling_in_order(shutdown_only):
+    """max_size above available CPUs completes in order while recycling."""
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(max_size=6, initial_size=0, maxtasksperchild=2, idle_timeout_s=999)
+
+    def value_and_actor_id(x):
+        return x, str(ray.get_runtime_context().get_actor_id())
+
+    results = pool.map(value_and_actor_id, range(40), chunksize=1)
+    # Ordering is preserved even though capacity < max_size.
+    assert [value for value, _ in results] == list(range(40))
+    # maxtasksperchild=2 forces recycling: 40 single-item batches cannot be
+    # served by only the actors that fit concurrently, so many distinct actors
+    # serve them (expected ~20; assert a loose lower bound).
+    assert len({actor_id for _, actor_id in results}) >= 5
+    pool.terminate()
+
+
+def test_idle_timeout_zero_reap_regrow_cycle(shutdown_only):
+    """idle_timeout_s=0 reaps idle actors between bursts, never running ones."""
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(min_size=0, max_size=2, initial_size=0, idle_timeout_s=0)
+
+    def identity(x):
+        return x
+
+    for _ in range(3):
+        assert pool.map(identity, range(8), chunksize=1) == list(range(8))
+        # All actors are idle now and must be reaped down to min_size=0.
+        wait_for_condition(
+            lambda: all(slot is None for slot in pool._actor_pool), timeout=10
+        )
+    pool.terminate()
+
+
+def test_concurrent_driver_threads_no_loss_or_dup(shutdown_only):
+    """Multiple driver threads sharing one pool lose no task, duplicate none."""
+    ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(processes=4)
+
+    def identity(x):
+        return x
+
+    num_threads = 8
+    per_thread = 50
+    outputs = [None] * num_threads
+    errors = []
+
+    def worker(tid):
+        try:
+            start = tid * per_thread
+            outputs[tid] = pool.map(identity, range(start, start + per_thread))
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(num_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    flattened = [x for out in outputs for x in out]
+    assert sorted(flattened) == list(range(num_threads * per_thread))
+    pool.terminate()
+
+
+def test_kill_ready_actor_then_followup_recovers(shutdown_only):
+    """Killing a ready actor fails the affected batch bounded, then recovers."""
+    ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(processes=1)
+
+    def value(x):
+        return x
+
+    # Sanity: the single (ready, post-barrier) actor serves work.
+    assert pool.apply(value, (0,)) == 0
+
+    # Kill the ready actor. ray.kill is fire-and-forget, so the (asynchronous)
+    # death can land on whichever submission is in flight or dispatched next;
+    # exactly one batch may be lost to the dead actor before the pool replaces
+    # it. Probe until several submissions succeed and tolerate at most one
+    # failure, so the test does not depend on when the death propagates.
+    ray.kill(pool._actor_pool[0][0])
+    failures = 0
+    succeeded = 0
+    for probe in range(1, 12):
+        result = pool.apply_async(value, (probe,))
+        try:
+            got = result.get(timeout=15)
+        except Exception:
+            failures += 1
+            continue
+        # A returned result must be correct.
+        assert got == probe
+        succeeded += 1
+        if succeeded >= 3:
+            break
+    assert failures <= 1
+    assert succeeded >= 3
+    pool.terminate()
+
+
+def test_concurrent_mixed_submission_stress(shutdown_only):
+    """Mixed concurrent apply_async/map/empty submissions all stay correct."""
+    ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(processes=4, maxtasksperchild=1)
+
+    def square(x):
+        return x * x
+
+    results = {}
+    errors = []
+
+    def run_apply_async(key):
+        try:
+            refs = [pool.apply_async(square, (i,)) for i in range(8)]
+            results[key] = [r.get(timeout=30) for r in refs]
+        except Exception as e:
+            errors.append(e)
+
+    def run_map(key):
+        try:
+            results[key] = pool.map(square, range(8))
+        except Exception as e:
+            errors.append(e)
+
+    def run_empty(key):
+        try:
+            results[key] = pool.map(square, [])
+        except Exception as e:
+            errors.append(e)
+
+    threads = []
+    for i in range(3):
+        threads.append(threading.Thread(target=run_apply_async, args=(f"aa{i}",)))
+    for i in range(2):
+        threads.append(threading.Thread(target=run_map, args=(f"m{i}",)))
+    threads.append(threading.Thread(target=run_empty, args=("e0",)))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    for key, val in results.items():
+        if key == "e0":
+            assert val == []
+        else:
+            assert val == [i * i for i in range(8)]
+    pool.terminate()
+
+
+# ---------------------------------------------------------------------------
+# Fixed-pool compatibility through the unified dispatcher
+# ---------------------------------------------------------------------------
+
+
+def test_fixed_pool_imap_after_close_fails_fast(shutdown_only):
+    """Fixed pool: after close(), a lazy imap submission fails fast."""
+    ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
+    pool = Pool(processes=2)
+
+    def identity(x):
+        return x
+
+    result = pool.imap(identity, iter(range(50)), chunksize=1)
+    wait_for_condition(lambda: result._result_thread._num_ready >= 1, timeout=10)
+    pool.close()
+
+    # Drain until the first post-close submission error surfaces.
+    error = None
+    for _ in range(50):
+        item = result.next(timeout=5)
+        if isinstance(item, Exception):
+            error = item
+            break
+    assert error is not None
+    assert isinstance(error.underlying, ValueError)
+    pool.terminate()
+
+
+# ---------------------------------------------------------------------------
 # End-to-end autoscaling (AutoscalingCluster — the real Ray autoscaler)
 # ---------------------------------------------------------------------------
 
