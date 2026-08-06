@@ -34,6 +34,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/util/clock.h"
 
@@ -167,6 +168,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   MOCK_METHOD(std::string, GetSessionName, (), (const, override));
 
   MOCK_METHOD(NodeID, GetNodeID, (), (const, override));
+  MOCK_METHOD(int64_t, GetCurrentTimestampNanos, (), (const, override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -218,6 +220,7 @@ class TaskManagerTest : public ::testing::Test {
                double timestamp) { return Status::OK(); },
             max_lineage_bytes,
             *task_event_buffer_mock_.get(),
+            fake_ray_event_recorder_,
             [](const ActorID &actor_id)
                 -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
               return nullptr;
@@ -297,6 +300,7 @@ class TaskManagerTest : public ::testing::Test {
   Clock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
+  ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
@@ -1612,6 +1616,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
+  ray::observability::FakeRayEventRecorder failing_mgr_recorder;
   TaskManager failing_mgr(
       *local_store,
       *local_ref_counter,
@@ -1631,6 +1636,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      failing_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -1678,6 +1684,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       lineage_pinning_enabled_);
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
+  ray::observability::FakeRayEventRecorder retry_mgr_recorder;
   TaskManager retry_mgr(
       *local_store,
       *local_ref_counter,
@@ -1701,6 +1708,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      retry_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -1746,6 +1754,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       lineage_pinning_enabled_);
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
+  ray::observability::FakeRayEventRecorder dyn_mgr_recorder;
   TaskManager dyn_mgr(
       *local_store,
       *local_ref_counter,
@@ -1769,6 +1778,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       },
       /*max_lineage_bytes*/ 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      dyn_mgr_recorder,
       [](const ActorID &) -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> {
         return nullptr;
       },
@@ -5128,6 +5138,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
+  ray::observability::FakeRayEventRecorder test_manager_recorder;
   TaskManager test_manager(
       *local_store,
       *local_reference_counter,
@@ -5145,6 +5156,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       capturing_push_error_callback,  // This will capture the error message
       1024 * 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      test_manager_recorder,
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,
@@ -5215,6 +5227,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
   auto local_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService(), clock_);
 
+  ray::observability::FakeRayEventRecorder test_manager_recorder;
   TaskManager test_manager(
       *local_store,
       *local_reference_counter,
@@ -5232,6 +5245,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       failing_push_error_callback,  // This will fail
       1024 * 1024 * 1024,
       *task_event_buffer_mock_.get(),
+      test_manager_recorder,
       [](const ActorID &actor_id)
           -> std::shared_ptr<ray::rpc::CoreWorkerClientInterface> { return nullptr; },
       mock_gcs_client_,

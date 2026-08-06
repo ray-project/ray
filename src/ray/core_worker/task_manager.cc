@@ -452,6 +452,17 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       spec,
       rpc::TaskStatus::PENDING_ARGS_AVAIL,
       /* include_task_info */ true));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(
+      ray_task_event_recorder_,
+      spec.TaskId(),
+      spec.JobId(),
+      spec.AttemptNumber(),
+      spec,
+      rpc::TaskStatus::PENDING_ARGS_AVAIL,
+      task_event_buffer_.GetCurrentTimestampNanos(),
+      task_event_buffer_.GetSessionName(),
+      task_event_buffer_.GetNodeID(),
+      /*include_task_info=*/true);
 
   return returned_refs;
 }
@@ -2078,6 +2089,18 @@ void TaskManager::SetTaskStatus(
                                                               status,
                                                               include_task_info,
                                                               state_update_to_record));
+  worker::RecordTaskStatusEventToRecorderIfNeeded(
+      ray_task_event_recorder_,
+      task_entry.spec_.TaskId(),
+      task_entry.spec_.JobId(),
+      attempt_number_to_record,
+      task_entry.spec_,
+      status,
+      task_event_buffer_.GetCurrentTimestampNanos(),
+      task_event_buffer_.GetSessionName(),
+      task_event_buffer_.GetNodeID(),
+      include_task_info,
+      state_update_to_record);
 }
 
 std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
