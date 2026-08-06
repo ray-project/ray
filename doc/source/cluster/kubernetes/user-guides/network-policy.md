@@ -365,7 +365,7 @@ Replace `<rayjob-name>` with the name of the submitting `RayJob`.
 
 ## Custom rules
 
-Add per-role rules under `head` and `worker`. The operator appends them to the base policy for that role and doesn't apply head rules to workers or vice versa.
+Add rules under `head` or `worker` to target that role's policy. The operator appends `head` rules only to the head pod's policy, and `worker` rules only to worker pods' policy.
 
 ### Allow Prometheus to scrape metrics
 
