@@ -28,7 +28,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _make_flight_server,
     _NodeGroup,
     _PartitionWriter,
-    _prefetch_node_into,
+    _fetch_from_file_server,
     _PwriteSink,
     _read_ipc,
     _SourceRef,
@@ -144,7 +144,7 @@ def test_flight_fetch_wire_format(tmp_path):
 def test_flight_unreachable_raises_transport_error(tmp_path):
     # Bind a port with nothing listening -> connect refused. _stream_members_flight
     # does NOT translate; it raises the raw pyarrow FlightError (a retryable
-    # transport fault that _prefetch_node_into classifies).
+    # transport fault that _fetch_from_file_server classifies).
     import pyarrow.flight as flight
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -190,8 +190,8 @@ def test_flight_short_read_fails(tmp_path):
         os.close(fd)
 
 
-def test_prefetch_node_into(tmp_path):
-    # _prefetch_node_into resolves the file-server endpoint and streams every
+def test_fetch_from_file_server(tmp_path):
+    # _fetch_from_file_server resolves the file-server endpoint and streams every
     # member's ranges into the sink over one Flight client. Seed the endpoint
     # cache so _resolve returns without a Ray RPC (no Ray needed here), then
     # assert the shard bytes land in the sink.
@@ -205,7 +205,7 @@ def test_prefetch_node_into(tmp_path):
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE[key] = _Endpoint(host, port, incarnation)
             try:
-                _prefetch_node_into(
+                _fetch_from_file_server(
                     sink,
                     shuffle_id,
                     node_id,
