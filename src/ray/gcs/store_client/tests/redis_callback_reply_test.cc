@@ -103,4 +103,18 @@ TEST(TestCallbackReply, TestParseAsStringArray) {
     ASSERT_EQ(callback_reply.ReadAsScanArray(&scan_array), 18446744073709551614u);
   }
 }
+
+TEST(TestCallbackReply, TestErrorReplyDoesNotCrash) {
+  // A REDIS_REPLY_ERROR reply must not abort the process (it previously
+  // RAY_LOG(FATAL)'d). It should be flagged as an error instead, so callers can
+  // return a Status, e.g. ValidateRedisDB during a non-fatal Connect.
+  redisReply redis_reply_error;
+  redis_reply_error.type = REDIS_REPLY_ERROR;
+  std::string error = "ERR This instance has cluster support disabled";
+  redis_reply_error.str = error.data();
+  redis_reply_error.len = error.size();
+
+  CallbackReply callback_reply(redis_reply_error);
+  ASSERT_TRUE(callback_reply.IsError());
+}
 }  // namespace ray::gcs
