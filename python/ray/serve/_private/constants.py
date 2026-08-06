@@ -896,23 +896,14 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
     "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
 )
 
-# When enabled, backend replica servers are configured with
-# `observe layer4 error-limit <N> on-error mark-down`: HAProxy marks a server
-# DOWN as soon as live traffic observes <N> consecutive connection-level
-# failures to it, without waiting for the health checker. This matters most
-# in a soft-stopped (reloaded-away) process, which keeps serving its
-# established connections with a frozen config and receives no backend
-# updates: when replicas are torn down under it (node drain / scale-down /
-# spot reclaim), traffic observation is its only way to learn a server is
-# gone, letting `option redispatch` + the `backup` fallback server take over.
-# Without it, requests entering such a process can be black-holed until
-# hard-stop-after because dead servers stay nominally UP. Recovery is
-# automatic: health checks keep probing DOWN servers every
-# HEALTH_CHECK_DOWNINTER (default 250ms) and HEALTH_CHECK_RISE (default 2)
-# passes restore the server, so a false positive self-heals in ~0.5s. The
-# backup/fallback servers are never configured with observation (the last
-# resort must not mark itself down); router-path servers inherit server
-# state via `track`.
+# When enabled, backend replica servers get
+# `observe layer4 error-limit <N> on-error mark-down`: live traffic marks a
+# server DOWN after <N> consecutive connect failures without waiting for the
+# health checker, so `option redispatch` + the `backup` fallback take over.
+# This matters in soft-stopped (reloaded-away) HAProxy processes, whose
+# frozen config would otherwise black-hole requests to torn-down replicas
+# (e.g. node drains). Health checks keep probing DOWN servers, so a false
+# positive self-heals in ~0.5s. Backup/fallback servers are never observed.
 RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED = (
     os.environ.get(
         "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED",
