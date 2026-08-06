@@ -347,6 +347,51 @@ def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
     assert roundtripped.to_pydict() == {"x": expected_values}
 
 
+def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
+    # A block whose column is entirely null is typed pa.null(). Keeping that as
+    # null[pyarrow] makes the column unusable in pandas: fillna and masked
+    # assignment cannot box a non-null value into Arrow's null type. Fall back to
+    # pandas' default conversion instead, which still round-trips to pa.null().
+    table = pa.table({"x": pa.array([None, None], type=pa.null())})
+
+    df = ArrowBlockAccessor(table).to_pandas()
+    assert not isinstance(df.dtypes["x"], pd.ArrowDtype)
+    assert df["x"].tolist() == [None, None]
+
+    # Untouched, the column round-trips back to Arrow's null type.
+    roundtripped = BlockAccessor.for_block(df).to_arrow()
+    assert roundtripped.schema.field("x").type == pa.null()
+    assert roundtripped.to_pydict() == {"x": [None, None]}
+
+    # Filling the nulls now works and yields the fill value's type.
+    filled = BlockAccessor.for_block(df.fillna({"x": 3.0})).to_arrow()
+    assert filled.to_pydict() == {"x": [3.0, 3.0]}
+
+
+def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
+    # One-row blocks type a column with no values as pa.null(), so a pandas UDF
+    # calling fillna used to fail with ArrowInvalid on whichever block happened
+    # to hold only nulls for that column.
+    ds = ray.data.from_items(
+        [
+            {"a": 1.0, "b": 2.0},
+            {"a": 3.0, "b": None},
+            {"a": None, "b": 4.0},
+        ],
+        override_num_blocks=3,
+    )
+
+    filled = ds.map_batches(
+        lambda df: df.fillna({"a": 0.0, "b": 0.0}), batch_format="pandas"
+    )
+
+    assert sorted(filled.take_all(), key=lambda row: row["a"]) == [
+        {"a": 0.0, "b": 4.0},
+        {"a": 1.0, "b": 2.0},
+        {"a": 3.0, "b": 0.0},
+    ]
+
+
 def test_arrow_block_to_pandas_opt_out_numpy_dtypes(restore_data_context):
     # https://github.com/ray-project/ray/issues/64765: opting out restores the
     # pre-2.56 numpy conversion, so standard Arrow types no longer become
