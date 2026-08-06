@@ -1390,7 +1390,10 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     # Set environment
     with monkeypatch.context() as m:
         m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", "3")
-        # These make list_nodes, list_workers, list_actors never return in 20secs
+        # Pin the read path to GCS so list_tasks stays a delayable GCS
+        # GetTaskEvents query.
+        m.setenv("RAY_enable_task_events_to_dashboard_head", "0")
+        # These make list_tasks, list_workers, list_actors never return in 20secs
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
