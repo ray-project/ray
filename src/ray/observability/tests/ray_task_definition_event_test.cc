@@ -81,7 +81,7 @@ TEST_F(RayTaskDefinitionEventTest, TestSerialize) {
                                /*timestamp=*/1000);
 
   ASSERT_EQ(event.GetEntityId(), task_id.Binary() + "2");
-  ASSERT_EQ(event.GetTaskAttempt().first, task_id.Binary());
+  ASSERT_EQ(event.GetTaskAttempt().first, task_id);
   ASSERT_EQ(event.GetTaskAttempt().second, 2);
 
   auto serialized_event = std::move(event).Serialize().value();
