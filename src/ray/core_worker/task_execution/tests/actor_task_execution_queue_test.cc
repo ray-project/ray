@@ -117,7 +117,7 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
         status,
         /* timestamp */ absl::GetCurrentTimeNanos(),
         /*is_actor_task_event=*/spec.IsActorTask(),
-        "test-session-name",
+        session_name_,
         GetNodeID(),
         include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
         std::move(state_update)));

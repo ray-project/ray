@@ -100,7 +100,7 @@ class TaskEventBufferTest : public ::testing::Test {
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
-        std::make_shared<const std::string>("test_session_name"),
+        "test_session_name",
         NodeID::Nil(),
         clock_);
   }

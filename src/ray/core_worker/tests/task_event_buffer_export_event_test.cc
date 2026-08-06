@@ -96,16 +96,17 @@ class TaskEventTestWriteExport : public ::testing::Test {
       int64_t running_ts = 1,
       std::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
           absl::nullopt) {
-    return std::make_unique<TaskStatusEvent>(task_id,
-                                             JobID::FromInt(0),
-                                             attempt_num,
-                                             rpc::TaskStatus::RUNNING,
-                                             running_ts,
-                                             /*is_actor_task_event=*/false,
-                                             "test_session_name",
-                                             NodeID::Nil(),
-                                             nullptr,
-                                             state_update);
+    return std::make_unique<TaskStatusEvent>(
+        task_id,
+        JobID::FromInt(0),
+        attempt_num,
+        rpc::TaskStatus::RUNNING,
+        running_ts,
+        /*is_actor_task_event=*/false,
+        std::make_shared<const std::string>("test_session_name"),
+        NodeID::Nil(),
+        nullptr,
+        state_update);
   }
 
   Clock clock_;
