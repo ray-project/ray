@@ -86,8 +86,13 @@ _EXPECTED_DASHBOARD_MODULES = [
     "ray.dashboard.modules.state.state_head.StateHead",
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
-# TaskEventsHead is intentionally omitted: it is gated off by default
-# (RAY_enable_task_events_to_dashboard_head) and so does not run as a subprocess here.
+# TaskEventsHead only runs as a subprocess when the migration flag is on. Mirror the
+# loader (is_enabled reads the same flag) so the expected count tracks the flag rather
+# than assuming a fixed default.
+if ray._config.enable_task_events_to_dashboard_head():
+    _EXPECTED_DASHBOARD_MODULES.append(
+        "ray.dashboard.modules.task_events.task_events_head.TaskEventsHead"
+    )
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
