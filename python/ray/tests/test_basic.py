@@ -2,6 +2,7 @@
 import logging
 import os
 import pickle
+import platform
 import random
 import re
 import sys
@@ -582,6 +583,15 @@ print("remote", ray.get(check.remote()))
 
 
 # https://github.com/ray-project/ray/issues/54868
+@pytest.mark.skipif(
+    sys.platform == "darwin" and platform.machine() == "arm64",
+    reason=(
+        "On Apple Silicon the GPU resource is managed by AppleGPUAcceleratorManager, "
+        "which has no visible-devices env var (e.g. CUDA_VISIBLE_DEVICES) to set or "
+        "override, so this NVIDIA-specific override behavior does not apply. Manager "
+        "selection is hardware-based, so NVIDIA semantics can't be exercised on a Mac."
+    ),
+)
 def test_not_override_accelerator_ids_when_num_accelerators_is_zero():
     not_override_check_script = """
 import ray

@@ -1,35 +1,18 @@
 import os
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    FileChunker,
     LineDelimitedFileChunker,
     ParquetFileChunker,
     WholeFileChunker,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import (
-    FileInfo,
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.listing.file_pruners import FileExtensionPruner
-
-
-class _CountingChunker(FileChunker):
-    """Fake chunker that emits a fixed number of chunks per file and reports it
-    reads metadata, so the indexer takes the threaded fan-out path."""
-
-    reads_file_metadata = True
-
-    def __init__(self, chunks_per_file: int):
-        self._chunks_per_file = chunks_per_file
-
-    def generate_chunk_metadatas(self, path, file_size, filesystem=None):
-        for i in range(self._chunks_per_file):
-            yield {"chunk_index": i}, file_size
 
 
 def _list_all(indexer, paths, **kwargs):
@@ -42,6 +25,14 @@ def _list_all(indexer, paths, **kwargs):
         for p, s in zip(m.paths, m.file_sizes):
             results.append((str(p), int(s)))
     return sorted(results)
+
+
+def _list_all_file_infos(indexer, paths, **kwargs):
+    """Run list_file_infos and flatten into sorted (path, size) pairs."""
+    file_infos = indexer.list_file_infos(
+        pa.array(paths), filesystem=LocalFileSystem(), **kwargs
+    )
+    return sorted((fi.path, fi.size) for fi in file_infos)
 
 
 @pytest.fixture(params=[1, 2], ids=["sequential", "threaded"])
@@ -136,6 +127,67 @@ class TestListFiles:
         assert results == []
 
 
+class TestListFileInfos:
+    """``list_file_infos`` is the pre-chunk file stream ``list_files`` sits on.
+
+    It owns the zero-size skip and pruner filtering for both paths, so those
+    have to hold here directly and not just through ``list_files``.
+    """
+
+    def test_yields_path_and_size(self, tmp_path, indexer):
+        (tmp_path / "a.csv").write_bytes(b"x" * 10)
+        (tmp_path / "b.csv").write_bytes(b"x" * 20)
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "a.csv"), 10),
+            (str(tmp_path / "b.csv"), 20),
+        ]
+
+    def test_skips_zero_size_files(self, tmp_path, indexer):
+        (tmp_path / "empty.csv").write_bytes(b"")
+        (tmp_path / "real.csv").write_bytes(b"x" * 50)
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "real.csv"), 50)
+        ]
+
+    def test_applies_pruners(self, tmp_path, indexer):
+        (tmp_path / "keep.csv").write_bytes(b"x" * 10)
+        (tmp_path / "drop.json").write_bytes(b"x" * 10)
+
+        results = _list_all_file_infos(
+            indexer,
+            [str(tmp_path)],
+            pruners=[FileExtensionPruner(file_extensions=["csv"])],
+        )
+
+        assert results == [(str(tmp_path / "keep.csv"), 10)]
+
+    def test_does_not_chunk(self, tmp_path):
+        """One entry per file even when the chunker would split it."""
+        (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False,
+            num_workers=1,
+            file_chunker=LineDelimitedFileChunker(),
+        )
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "a.jsonl"), 10_000)
+        ]
+
+    def test_is_lazy(self, tmp_path, indexer):
+        """Consumers stop early under a limit, so nothing may be eager."""
+        for i in range(5):
+            (tmp_path / f"f{i}.csv").write_bytes(b"x" * 10)
+
+        stream = indexer.list_file_infos(
+            pa.array([str(tmp_path)]), filesystem=LocalFileSystem()
+        )
+
+        assert isinstance(next(iter(stream)).path, str)
+
+
 class TestPruners:
     @pytest.fixture
     def indexer(self):
@@ -198,6 +250,53 @@ class TestMissingPaths:
         assert results == [(str(real), 10)]
 
 
+class TestSkipPaths:
+    def test_skips_named_existing_file(self, tmp_path):
+        a = tmp_path / "a.csv"
+        b = tmp_path / "b.csv"
+        a.write_bytes(b"x" * 10)
+        b.write_bytes(b"x" * 20)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(b)}
+        )
+
+        results = _list_all(indexer, [str(a), str(b)])
+        assert results == [(str(a), 10)]
+
+    def test_skips_missing_named_path_without_ignore_missing(self, tmp_path):
+        # ``skip_paths`` drops a named path *before* the existence check, so a
+        # missing entry is skipped even with ``ignore_missing_paths=False``.
+        a = tmp_path / "a.csv"
+        a.write_bytes(b"x" * 10)
+        missing = str(tmp_path / "gone.csv")
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={missing}
+        )
+
+        results = _list_all(indexer, [str(a), missing])
+        assert results == [(str(a), 10)]
+
+    def test_skips_file_discovered_under_directory(self, tmp_path):
+        a = tmp_path / "a.csv"
+        b = tmp_path / "b.csv"
+        a.write_bytes(b"x" * 10)
+        b.write_bytes(b"x" * 20)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(a)}
+        )
+
+        results = _list_all(indexer, [str(tmp_path)])
+        assert results == [(str(b), 20)]
+
+    def test_empty_skip_paths_is_noop(self, tmp_path):
+        a = tmp_path / "a.csv"
+        a.write_bytes(b"x" * 10)
+        indexer = NonSamplingFileIndexer(ignore_missing_paths=False, skip_paths=None)
+
+        results = _list_all(indexer, [str(a)])
+        assert results == [(str(a), 10)]
+
+
 class TestManifestBatching:
     def test_splits_into_multiple_manifests(self, tmp_path):
         indexer = NonSamplingFileIndexer(
@@ -246,13 +345,10 @@ class TestFileChunkerIntegration:
         assert list(manifest.file_chunk_metadatas) == [None]
         assert list(manifest.file_sizes) == [100]
 
-    def test_parquet_chunker_splits_file_on_row_group_boundaries(self, tmp_path):
-        # A real Parquet file with 8 row groups; the chunker reads the footer
-        # at listing time and (target < row-group size) emits one chunk per
-        # row group with an explicit half-open range.
-        table = pa.table({"a": list(range(80))})
-        pq.write_table(table, str(tmp_path / "big.parquet"), row_group_size=10)
-        chunker = ParquetFileChunker(target_chunk_size=1)
+    def test_parquet_chunker_splits_large_file_into_many_chunks(self, tmp_path):
+        # Write a "Parquet" file by name only — the chunker doesn't open it.
+        (tmp_path / "big.parquet").write_bytes(b"x" * 10_000)
+        chunker = ParquetFileChunker(target_chunk_size=1024)
         indexer = NonSamplingFileIndexer(
             ignore_missing_paths=False,
             num_workers=1,
@@ -265,36 +361,12 @@ class TestFileChunkerIntegration:
             for path, size, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
                 rows.append((str(path), int(size), md))
 
-        # 8 row groups → 8 chunks, contiguous half-open ranges.
-        assert len(rows) == 8
-        ranges = [(md["row_group_start"], md["row_group_end"]) for _, _, md in rows]
-        assert ranges == [(i, i + 1) for i in range(8)]
-
-    def test_parquet_chunker_parallel_footer_reads(self, tmp_path):
-        # With num_workers > 1 the chunker's footer reads fan across the
-        # thread pool (reads_file_metadata=True). Verify correctness is
-        # unaffected: every file's row groups are represented exactly once.
-        for f in range(4):
-            table = pa.table({"a": list(range(30))})
-            pq.write_table(table, str(tmp_path / f"f{f}.parquet"), row_group_size=10)
-        chunker = ParquetFileChunker(target_chunk_size=1)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False,
-            num_workers=4,
-            file_chunker=chunker,
-        )
-        fs = LocalFileSystem()
-        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
-        per_path_ranges = {}
-        for m in manifests:
-            for path, _, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
-                per_path_ranges.setdefault(str(path), []).append(
-                    (md["row_group_start"], md["row_group_end"])
-                )
-        # 4 files × 3 row groups each.
-        assert len(per_path_ranges) == 4
-        for ranges in per_path_ranges.values():
-            assert sorted(ranges) == [(0, 1), (1, 2), (2, 3)]
+        # 10000 bytes / 1024 target chunk size -> 10 chunks (ceil).
+        assert len(rows) == 10
+        for i, (_, _, md) in enumerate(rows):
+            assert md is not None
+            assert md["chunk_idx"] == i
+            assert md["total_num_chunks"] == 10
 
     def test_line_delimited_chunker_byte_ranges(self, tmp_path):
         (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
@@ -317,33 +389,6 @@ class TestFileChunkerIntegration:
         # Byte ranges must tile the file exactly.
         assert rows[0][2]["chunk_byte_start_idx"] == 0
         assert rows[-1][2]["chunk_byte_end_idx"] == 10_000
-
-    def test_parallel_chunking_preserves_discovery_order(self):
-        """Regression: with num_workers>1 and preserve_order, a multi-chunk-per-
-        file chunker's records stay grouped per file in discovery order.
-
-        ``make_async_gen`` only preserves order for a 1:1 map, so the indexer
-        must emit one record list per file (not yield chunk rows individually) --
-        otherwise its round-robin merge interleaves chunks across the files
-        processed concurrently, e.g. f0,f1,f2,f3,f0,f1,... instead of f0,f0,f0,...
-        """
-        chunker = _CountingChunker(chunks_per_file=3)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False, num_workers=4, file_chunker=chunker
-        )
-        file_infos = [FileInfo(path=f"f{i}.parquet", size=100 + i) for i in range(8)]
-        records = list(
-            indexer._generate_chunk_records(
-                file_infos, filesystem=None, preserve_order=True
-            )
-        )
-        # 8 files x 3 chunks each, contiguous per file in discovery order.
-        assert [path for path, _, _ in records] == [
-            f"f{i}.parquet" for i in range(8) for _ in range(3)
-        ]
-        assert [md["chunk_index"] for _, _, md in records] == [
-            i for _ in range(8) for i in range(3)
-        ]
 
 
 if __name__ == "__main__":

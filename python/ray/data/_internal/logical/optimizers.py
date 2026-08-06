@@ -13,6 +13,7 @@ from ray.data._internal.logical.interfaces import (
     Rule,
 )
 from ray.data._internal.logical.rules import (
+    CombineDownloads,
     CombineShuffles,
     CommonSubExprElimination,
     ConfigureMapTaskMemoryUsingOutputSize,
@@ -21,6 +22,7 @@ from ray.data._internal.logical.rules import (
     LimitPushdownRule,
     PredicatePushdown,
     ProjectionPushdown,
+    PushdownCountFiles,
     SetReadParallelismRule,
 )
 from ray.util.annotations import DeveloperAPI
@@ -31,6 +33,8 @@ _LOGICAL_RULESET = Ruleset(
         ProjectionPushdown,
         PredicatePushdown,
         CombineShuffles,
+        CombineDownloads,
+        PushdownCountFiles,
     ]
 )
 

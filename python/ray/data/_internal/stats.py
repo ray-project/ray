@@ -493,10 +493,7 @@ class _StatsActor:
         # Per Node metrics
         self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
 
-        iter_tag_keys = ("dataset",)
-        # TODO: add a per-streaming-split-worker ``rank`` label to iteration
-        # metrics so users can distinguish which split worker blocked on
-        # which stage.
+        iter_tag_keys = ("dataset", "split")
 
         self.time_to_first_batch_s = Gauge(
             "data_iter_time_to_first_batch_seconds",
@@ -527,7 +524,7 @@ class _StatsActor:
         )
         self.iter_batch_finalizing_s = Gauge(
             "data_iter_batch_finalizing_seconds",
-            description="Seconds taken to collate batches by iter_batches()",
+            description="Seconds taken to finalize batches by iter_batches()",
             tag_keys=iter_tag_keys,
         )
 
@@ -816,9 +813,11 @@ class _StatsActor:
     def update_iteration_metrics(
         self,
         stats: "DatasetStats",
-        dataset_tag,
+        dataset_id: str,
+        split_index: Optional[str] = None,
     ):
-        tags = self._create_tags(dataset_tag)
+        split_tag = "no_split" if split_index is None else f"split_{split_index}"
+        tags = self._create_tags(dataset_tag=dataset_id, split_tag=split_tag)
 
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
         self.iter_total_s.set(stats.iter_total_s.get(), tags)
@@ -1039,12 +1038,15 @@ class _StatsActor:
         dataset_tag: str,
         operator_tag: Optional[str] = None,
         node_ip_tag: Optional[str] = None,
+        split_tag: Optional[str] = None,
     ):
         tags = {"dataset": dataset_tag}
         if operator_tag is not None:
             tags["operator"] = operator_tag
         if node_ip_tag is not None:
             tags["node_ip"] = node_ip_tag
+        if split_tag is not None:
+            tags["split"] = split_tag
         return tags
 
 
@@ -1140,8 +1142,10 @@ class _StatsManager:
             return
 
     @staticmethod
-    def update_iteration_metrics(stats: "DatasetStats", dataset_tag: str):
-        args = (stats, dataset_tag)
+    def update_iteration_metrics(
+        stats: "DatasetStats", dataset_tag: str, split_index: Optional[str] = None
+    ):
+        args = (stats, dataset_tag, split_index)
         try:
             get_or_create_stats_actor().update_iteration_metrics.remote(*args)
         except Exception as e:

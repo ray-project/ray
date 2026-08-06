@@ -1754,6 +1754,7 @@ class ReporterAgent(
                 gram_total += gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
+                gpu_uuid = gpu.get("uuid")
                 gpu_power_mw = gpu.get("power_mw")
                 gpu_temperature_c = gpu.get("temperature_c")
 
@@ -1763,6 +1764,8 @@ class ReporterAgent(
                     gpu_tags = {**node_tags, "GpuIndex": str(gpu_index)}
                     if gpu_name:
                         gpu_tags["GpuDeviceName"] = gpu_name
+                    if gpu_uuid:
+                        gpu_tags["GpuUuid"] = gpu_uuid
 
                     # There's only 1 GPU per each index, so we record 1 here.
                     gpus_available_record = Record(

@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         GcpOauthToken,
         GenerateTemporaryTableCredentialResponse,
         TableInfo,
+        TableOperation,
     )
 
     from ray.data._internal.datasource.databricks_credentials import (
@@ -62,6 +63,25 @@ class ReaderFormat(str, Enum):
 
 
 @DeveloperAPI
+class CatalogAccessMode(str, Enum):
+    """Whether the catalog should vend read or write credentials."""
+
+    READ = "read"
+    WRITE = "write"
+
+    def as_databricks_table_op(self) -> "TableOperation":
+        # Unity Catalog only exposes READ and READ_WRITE (there is no write-only
+        # operation), so WRITE maps to READ_WRITE.
+        from databricks.sdk.service.catalog import TableOperation
+
+        if self == CatalogAccessMode.READ:
+            return TableOperation.READ
+        elif self == CatalogAccessMode.WRITE:
+            return TableOperation.READ_WRITE
+        raise ValueError("Unsupported CatalogAccessMode for Databricks TableOperation")
+
+
+@DeveloperAPI
 @dataclass
 class ResolvedSource:
     """The output of :meth:`Catalog.resolve` — location/credentials for a reader.
@@ -91,8 +111,14 @@ class Catalog(ABC):
     """A directory service that resolves a table name to a readable source."""
 
     @abstractmethod
-    def resolve(self, table: str, *, reader: ReaderFormat) -> ResolvedSource:
-        """Resolve ``table`` for the given ``reader``."""
+    def resolve(
+        self,
+        table: str,
+        *,
+        reader: ReaderFormat,
+        mode: CatalogAccessMode = CatalogAccessMode.READ,
+    ) -> ResolvedSource:
+        """Resolve ``table`` for the given ``reader`` and access ``mode``."""
         ...
 
 
@@ -165,27 +191,46 @@ class DatabricksUnityCatalog(Catalog):
         object.__setattr__(self, "_base_url", _normalize_host(provider.get_host()))
 
     # ---- Catalog interface -------------------------------------------------
-    def resolve(self, table: str, *, reader: ReaderFormat) -> ResolvedSource:
+    def resolve(
+        self,
+        table: str,
+        *,
+        reader: ReaderFormat,
+        mode: CatalogAccessMode = CatalogAccessMode.READ,
+    ) -> ResolvedSource:
         assert reader is not None and isinstance(reader, ReaderFormat)
+        assert mode is not None and isinstance(mode, CatalogAccessMode)
         if reader is ReaderFormat.ICEBERG:
             return self._resolve_iceberg(table)
         if reader in (ReaderFormat.DELTA, ReaderFormat.PARQUET):
-            return self._resolve_storage(table, reader)
+            return self._resolve_storage(table, reader, mode)
         # Reached only if a new ReaderFormat is added without handling here.
         raise ValueError(f"DatabricksUnityCatalog does not support format={reader!r}")
 
     # ---- storage-credential vending (delta / parquet) ----------------------
-    def _resolve_storage(self, table: str, reader: ReaderFormat) -> ResolvedSource:
+    def _resolve_storage(
+        self, table: str, reader: ReaderFormat, mode: CatalogAccessMode
+    ) -> ResolvedSource:
         table_info = self._get_table_info(table)
-        creds, table_url = self._get_creds(table_info.table_id)
+        creds, table_url = self._get_creds(table_info.table_id, mode)
 
-        # Some reads need an explicit pyarrow filesystem:
+        # Some readers/writers need an explicit pyarrow filesystem:
         #  - AWS Delta: the vended session token isn't reliably propagated through
         #    `DeltaTable.to_pyarrow_dataset`'s auto-built filesystem.
+        #  - AWS write: an S3FileSystem built from the default credential chain
+        #    (the `filesystem=None` path) does NOT serialize its credentials, so a
+        #    worker would rebuild it from *its own* environment. Reads get away
+        #    with this because `_apply_env` can seed the vended creds into the
+        #    cluster `runtime_env` while Ray is still uninitialized; a write always
+        #    runs after Ray is initialized (a materialized Dataset already exists),
+        #    so that propagation is unavailable. Build an explicit S3FileSystem
+        #    whose creds *do* pickle into the datasink and reach the workers.
         #  - GCP Parquet: a bare OAuth token has no env var pyarrow auto-reads,
         #    so the data scan needs an explicit GcsFileSystem.
         filesystem = None
-        if creds.aws_temp_credentials is not None and reader is ReaderFormat.DELTA:
+        if creds.aws_temp_credentials is not None and (
+            reader is ReaderFormat.DELTA or mode is CatalogAccessMode.WRITE
+        ):
             filesystem = self._build_s3_filesystem(creds.aws_temp_credentials)
         elif creds.gcp_oauth_token is not None:
             if reader is ReaderFormat.DELTA:
@@ -270,14 +315,13 @@ class DatabricksUnityCatalog(Catalog):
         return self._call_with_token_refresh(lambda w: w.tables.get(full_name=table))
 
     def _get_creds(
-        self, table_id: Optional[str]
+        self, table_id: Optional[str], mode: CatalogAccessMode = CatalogAccessMode.READ
     ) -> Tuple["GenerateTemporaryTableCredentialResponse", str]:
-        from databricks.sdk.service.catalog import TableOperation
-
         assert table_id is not None
+        operation = mode.as_databricks_table_op()
         creds = self._call_with_token_refresh(
             lambda w: w.temporary_table_credentials.generate_temporary_table_credentials(
-                table_id=table_id, operation=TableOperation.READ
+                table_id=table_id, operation=operation
             )
         )
         return creds, creds.url

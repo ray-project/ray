@@ -50,7 +50,7 @@ class gRPCGenericServer(Server):
             compression=None,
             options=DEFAULT_GRPC_SERVER_OPTIONS + (extra_options or []),
         )
-        self.generic_rpc_handlers = []
+        self.generic_rpc_handlers: List[Sequence[grpc.GenericRpcHandler]] = []
         self.service_handler_factory = service_handler_factory
 
     def add_generic_rpc_handlers(

@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Iterable, List, Optional, Tuple, Union
 
 from pyarrow.fs import FileSystem
 
@@ -18,7 +18,6 @@ from ray.data._internal.datasource_v2.listing.indexing_utils import (
     _get_path_contents,
 )
 from ray.data._internal.dynamic_work_queue import parallel_process_work_stealing
-from ray.data._internal.util import make_async_gen
 from ray.data.block import BlockColumn
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
@@ -52,6 +51,24 @@ class FileIndexer(ABC):
         Returns:
             An iterator of `FileManifest` objects, each of which contains a file path
             and the on-disk size of the file in bytes.
+        """
+        ...
+
+    @abstractmethod
+    def list_file_infos(
+        self,
+        paths: "BlockColumn",
+        *,
+        filesystem: "FileSystem",
+        pruners: Optional[List[FilePruner]] = None,
+        preserve_order: bool = False,
+    ) -> Iterable["FileInfo"]:
+        """List files as raw ``FileInfo``\\ s (path + on-disk size).
+
+        Unlike :meth:`list_files`, this yields the pre-chunk file stream. The
+        footer-based Parquet path consumes it directly -- it reads each file's
+        footer and bin-packs row groups itself, so it needs paths + sizes rather
+        than pre-chunked manifest rows.
         """
         ...
 
@@ -110,11 +127,16 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         *,
         ignore_missing_paths: bool,
+        skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
         file_chunker: Optional[FileChunker] = None,
     ):
         self._ignore_missing_paths = ignore_missing_paths
+        # Resolved paths to exclude from the listing (see
+        # ``ParquetDatasourceV2``). ``frozenset()`` when unset so the membership
+        # check in ``_get_path_contents`` is a cheap no-op.
+        self._skip_paths = frozenset(skip_paths) if skip_paths else frozenset()
         self._max_paths_per_output = (
             max_paths_per_output
             if max_paths_per_output is not None
@@ -148,18 +170,29 @@ class NonSamplingFileIndexer(FileIndexer):
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable[FileManifest]:
-        file_info_iterator = (
-            self._get_file_info_iterator_threaded(paths, filesystem, preserve_order)
-            if self._num_workers > 1
-            else self._get_file_info_iterator_sequential(paths, filesystem)
+        # ``list_file_infos`` already skips zero-size files and applies pruners,
+        # so the manifest builder only has to chunk.
+        file_infos = self.list_file_infos(
+            paths,
+            filesystem=filesystem,
+            pruners=pruners,
+            preserve_order=preserve_order,
         )
+        yield from self._process_file_infos_to_manifests(file_infos)
 
-        # Stage pipeline: list → prune (cheap, inline) → chunk (may read
-        # per-file metadata) → batch into manifests. Pruning runs *before*
-        # chunking so we never read a footer for a file we'd discard.
-        pruned = self._filter_file_infos(file_info_iterator, pruners or [])
-        chunk_records = self._generate_chunk_records(pruned, filesystem, preserve_order)
-        yield from self._batch_chunk_records_to_manifests(chunk_records)
+    def _get_file_info_iterator(
+        self,
+        paths: "BlockColumn",
+        filesystem: "FileSystem",
+        preserve_order: bool,
+    ) -> Iterable[FileInfo]:
+        """Threaded (work-stealing) traversal when ``num_workers > 1``, else
+        sequential. Shared by :meth:`list_files` and :meth:`list_file_infos`."""
+        if self._num_workers > 1:
+            return self._get_file_info_iterator_threaded(
+                paths, filesystem, preserve_order
+            )
+        return self._get_file_info_iterator_sequential(paths, filesystem)
 
     def _get_file_info_iterator_sequential(
         self,
@@ -171,7 +204,10 @@ class NonSamplingFileIndexer(FileIndexer):
             assert len(resolved_paths) == 1
 
             for path, file_size in _get_file_infos(
-                resolved_paths[0], filesystem, self._ignore_missing_paths
+                resolved_paths[0],
+                filesystem,
+                self._ignore_missing_paths,
+                self._skip_paths,
             ):
                 yield FileInfo(path=path, size=file_size)
 
@@ -222,7 +258,11 @@ class NonSamplingFileIndexer(FileIndexer):
                 root_path = path
 
             contents = _get_path_contents(
-                path, filesystem, self._ignore_missing_paths, root_path=root_path
+                path,
+                filesystem,
+                self._ignore_missing_paths,
+                self._skip_paths,
+                root_path=root_path,
             )
             for file_path, file_size in contents.files:
                 file_info_result = FileInfo(path=file_path, size=file_size)
@@ -266,13 +306,28 @@ class NonSamplingFileIndexer(FileIndexer):
                 num_workers=num_workers,
             )
 
-    def _filter_file_infos(
+    def list_file_infos(
         self,
-        file_infos: Iterable[FileInfo],
-        pruners: List[FilePruner],
-    ) -> Iterator[FileInfo]:
-        """Drop zero-size and pruned files before any per-file metadata read."""
-        for file_info in file_infos:
+        paths: "BlockColumn",
+        *,
+        filesystem: "FileSystem",
+        pruners: Optional[List[FilePruner]] = None,
+        preserve_order: bool = False,
+    ) -> Iterable[FileInfo]:
+        """Yield pruned, non-empty ``FileInfo``\\ s (path + on-disk size).
+
+        The raw file-info stream that :meth:`list_files` chunks into manifests.
+        The footer-based Parquet path consumes this directly -- it reads each
+        file's footer and bin-packs row groups itself, so it needs paths + sizes
+        rather than pre-chunked manifest rows. Zero-size files are skipped and
+        ``pruners`` (file-extension / partition filters) are applied here, so
+        both listing paths share one filtering point.
+        """
+        pruners = pruners or []
+        file_info_iterator = self._get_file_info_iterator(
+            paths, filesystem, preserve_order
+        )
+        for file_info in file_info_iterator:
             if file_info.size is None or file_info.size == 0:
                 logger.warning(f"Skipping zero-size file: {file_info.path!r}")
                 continue
@@ -280,87 +335,46 @@ class NonSamplingFileIndexer(FileIndexer):
                 continue
             yield file_info
 
-    def _generate_chunk_records(
+    def _process_file_infos_to_manifests(
         self,
         file_infos: Iterable[FileInfo],
-        filesystem: "FileSystem",
-        preserve_order: bool,
-    ) -> Iterator[Tuple[str, int, Optional[ChunkMetadata]]]:
-        """Drive the chunker per file, yielding ``(path, chunk_size, metadata)``.
-
-        When the chunker reads per-file metadata (e.g. ``ParquetFileChunker``
-        reading footers), fan the work across the indexer's thread pool so the
-        I/O parallelizes even for a single input directory — ``make_async_gen``
-        over the *discovered files*, not the input paths. Chunkers that don't
-        read metadata (whole-file / line-delimited) are driven inline to avoid
-        a pointless thread hand-off.
-        """
-        chunker = self._file_chunker
-
-        def chunk_file(
-            fi: FileInfo,
-        ) -> List[Tuple[str, int, Optional[ChunkMetadata]]]:
-            return [
-                (fi.path, chunk_size, chunk_metadata)
-                for chunk_metadata, chunk_size in chunker.generate_chunk_metadatas(
-                    fi.path, fi.size, filesystem
-                )
-            ]
-
-        if chunker.reads_file_metadata and self._num_workers > 1:
-            # Fan per-file footer reads across the thread pool. ``make_async_gen``
-            # only preserves ordering for a 1:1 map (one output per input item), so
-            # emit ONE record list per file and flatten here. Yielding chunk rows
-            # individually would let its round-robin merge interleave chunks from
-            # the files processed concurrently -- breaking per-file contiguity and
-            # discovery order under ``preserve_order=True``.
-            def chunk_files(
-                infos: Iterator[FileInfo],
-            ) -> Iterator[List[Tuple[str, int, Optional[ChunkMetadata]]]]:
-                for fi in infos:
-                    yield chunk_file(fi)
-
-            for records in make_async_gen(
-                # ``iter(...)`` so a non-iterator iterable (e.g. a list from a
-                # test or subclass) is still consumed correctly by the helper.
-                base_iterator=iter(file_infos),
-                fn=chunk_files,
-                preserve_ordering=preserve_order,
-                num_workers=self._num_workers,
-                buffer_size=self._queue_size_per_thread,
-            ):
-                yield from records
-        else:
-            for fi in file_infos:
-                yield from chunk_file(fi)
-
-    def _batch_chunk_records_to_manifests(
-        self,
-        chunk_records: Iterable[Tuple[str, int, Optional[ChunkMetadata]]],
     ) -> Iterable[FileManifest]:
-        """Batch chunk records into ``FileManifest`` blocks of bounded size."""
+        # ``file_infos`` are already filtered (zero-size skipped, pruners applied)
+        # by ``list_file_infos``; this method only chunks them into manifests.
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
         running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
         chunks_count = 0
 
-        for path, chunk_size, chunk_metadata in chunk_records:
-            running_paths.append(path)
-            running_file_sizes.append(chunk_size)
-            running_chunk_metadatas.append(chunk_metadata)
-            chunks_count += 1
+        for file_info in file_infos:
+            # ``list_file_infos`` already dropped zero/None-size files.
+            assert file_info.size is not None
+            path, file_size = file_info.path, file_info.size
 
-            if len(running_paths) >= self._max_paths_per_output:
-                manifests_count += 1
-                yield FileManifest.construct_manifest(
-                    running_paths,
-                    running_file_sizes,
-                    running_chunk_metadatas,
-                )
-                running_paths = []
-                running_file_sizes = []
-                running_chunk_metadatas = []
+            # Drive the chunker once per file; emit one manifest row per chunk.
+            # ``chunk_metadata`` is ``None`` for whole-file chunks (default
+            # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
+            # smaller than the target chunk size).
+            for (
+                chunk_metadata,
+                chunk_size,
+            ) in self._file_chunker.generate_chunk_metadatas(path, file_size):
+                running_paths.append(path)
+                running_file_sizes.append(chunk_size)
+                running_chunk_metadatas.append(chunk_metadata)
+                chunks_count += 1
+
+                if len(running_paths) >= self._max_paths_per_output:
+                    manifests_count += 1
+                    yield FileManifest.construct_manifest(
+                        running_paths,
+                        running_file_sizes,
+                        running_chunk_metadatas,
+                    )
+                    running_paths = []
+                    running_file_sizes = []
+                    running_chunk_metadatas = []
 
         if running_paths:
             manifests_count += 1

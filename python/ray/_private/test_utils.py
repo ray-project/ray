@@ -31,8 +31,11 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import (
+    DEFAULT_DRIVER_TIMEOUT_SECONDS,
+    KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS,
     MetricSamplePattern,
     PrometheusTimeseries,
+    _detach_process,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
     wait_for_condition,
@@ -542,7 +545,10 @@ def kill_processes(process_infos: List[ProcessInfo]):
 
 
 def run_string_as_driver_stdout_stderr(
-    driver_script: str, env: Dict = None, encode: str = "utf-8"
+    driver_script: str,
+    env: Dict = None,
+    encode: str = "utf-8",
+    timeout: Optional[float] = DEFAULT_DRIVER_TIMEOUT_SECONDS,
 ) -> Tuple[str, str]:
     """Run a driver as a separate process.
 
@@ -551,9 +557,14 @@ def run_string_as_driver_stdout_stderr(
         env: The environment variables for the driver.
         encode: Text encoding used to send the script to the subprocess and
             decode its stdout/stderr.
+        timeout: Seconds to wait for the driver to exit before killing it and
+            raising. Pass None to wait forever.
 
     Returns:
         The script's stdout and stderr.
+
+    Raises:
+        subprocess.TimeoutExpired: If the driver did not exit within ``timeout``.
     """
     proc = subprocess.Popen(
         [sys.executable, "-"],
@@ -563,7 +574,27 @@ def run_string_as_driver_stdout_stderr(
         env=env,
     )
     with proc:
-        outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
+        try:
+            outputs_bytes = proc.communicate(
+                driver_script.encode(encoding=encode), timeout=timeout
+            )
+        except subprocess.TimeoutExpired as e:
+            proc.kill()
+            try:
+                outputs_bytes = proc.communicate(
+                    timeout=KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS
+                )
+            except subprocess.TimeoutExpired:
+                # The driver did not die on SIGKILL either, so take whatever
+                # was captured before the first timeout and stop waiting on it.
+                outputs_bytes = (e.stdout or b"", e.stderr or b"")
+                _detach_process(proc)
+            logger.error(
+                "Driver did not exit within %ss; killed it. Output so far:\n%s",
+                timeout,
+                outputs_bytes,
+            )
+            raise
         out_str, err_str = [
             ray._common.utils.decode(output, encode_type=encode)
             for output in outputs_bytes
