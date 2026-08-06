@@ -137,6 +137,7 @@ py_test_module_list(
         "test_record_replica_metadata.py",
         "test_record_routing_stats.py",
         "test_regression.py",
+        "test_replica_grpc_auth.py",
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_round_robin_router.py",
@@ -160,6 +161,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "test_dependency_ordered_shutdown.py",
         "test_deployment_scheduler.py",
     ],
     tags = [

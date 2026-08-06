@@ -312,12 +312,15 @@ class ActorPool:
         future_key = tuple(future) if isinstance(future, list) else future
         i, a = self._future_to_actor.pop(future_key)
 
-        self._return_actor(a)
         if raise_timeout_after_ignore:
+            # TODO: Keep tracking the ignored task and only return the actor
+            # after it finishes so a later task cannot inherit its failure.
+            self._return_actor(a)
             raise TimeoutError(
                 timeout_msg + ". The task {} has been ignored.".format(future)
             )
-        return ray.get(future)
+
+        return self._get_result(future, a)
 
     def get_next_unordered(
         self,
@@ -382,18 +385,35 @@ class ActorPool:
             else:
                 raise_timeout_after_ignore = True
         i, a = self._future_to_actor.pop(future)
-        self._return_actor(a)
         del self._index_to_future[i]
         self._next_return_index = max(self._next_return_index, i + 1)
+
         if raise_timeout_after_ignore:
+            # TODO: Keep tracking the ignored task and only return the actor
+            # after it finishes so a later task cannot inherit its failure.
+            self._return_actor(a)
             raise TimeoutError(
                 timeout_msg + ". The task {} has been ignored.".format(future)
             )
-        return ray.get(future)
 
-    def _return_actor(self, actor):
-        self._idle_actors.append(actor)
-        if self._pending_submits:
+        return self._get_result(future, a)
+
+    def _get_result(self, future, actor):
+        is_alive = True
+        try:
+            return ray.get(future)
+        except ray.exceptions.ActorDiedError:
+            is_alive = False
+            raise
+        finally:
+            self._return_actor(actor, is_alive=is_alive)
+
+    def _return_actor(self, actor, is_alive=True):
+        # A dead actor stays out of the idle set, otherwise submit() would keep
+        # picking it and the pool would never make progress.
+        if is_alive:
+            self._idle_actors.append(actor)
+        if self._pending_submits and self._idle_actors:
             self.submit(*self._pending_submits.pop(0))
 
     def has_free(self):

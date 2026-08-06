@@ -1959,6 +1959,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_default_tqc_rl_module",
+    size = "small",
+    srcs = ["algorithms/tqc/tests/test_default_tqc_rl_module.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Generic testing
 py_test(
     name = "algorithms/tests/test_custom_resource",
@@ -2323,6 +2334,17 @@ py_test(
     tags = [
         "core",
         "models",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_torch_squashed_gaussian",
+    size = "small",
+    srcs = ["core/distribution/torch/tests/test_torch_squashed_gaussian.py"],
+    tags = [
+        "core",
         "team:rllib",
     ],
     deps = [":conftest"],

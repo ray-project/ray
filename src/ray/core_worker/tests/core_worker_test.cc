@@ -511,6 +511,144 @@ TEST_F(CoreWorkerTest, AsyncGeneratorUnblockNotifyFiresOnConsumptionUpdate) {
   ASSERT_EQ(count, 1);
 }
 
+TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribesToOwnerFailureOnly) {
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  // Backpressure registration must never install the all-workers failure
+  // subscription. established once per owner no matter how
+  // many generator tasks it submits.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailures(_, _))
+      .Times(0);
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .Times(1);
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  // A second generator task from the same owner reuses the subscription.
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+
+  // Once the owner dies its keyed subscription can never fire again, so the
+  // sweep drops it.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .Times(1);
+  core_worker_->HandleOwnerDied(owner_worker_id);
+
+  // With the owner gone, a fresh registration for it re-subscribes (the
+  // liveness fetch after subscribing re-detects the death in production).
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .Times(1);
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+}
+
+TEST_F(CoreWorkerTest, GeneratorBackpressureLivenessFetchTreatsMissingOwnerAsDead) {
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  rpc::StatusCallback subscribe_done;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
+      .WillOnce(::testing::Invoke(
+          [](const WorkerID &,
+             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+            // Alive workers are always in the worker table, so a missing row
+            // after a successful subscribe means dead-and-trimmed.
+            callback(Status::OK(), std::nullopt);
+          }));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .Times(1);
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  ASSERT_TRUE(subscribe_done);
+  subscribe_done(Status::OK());
+}
+
+TEST_F(CoreWorkerTest, GeneratorBackpressureSubscribeFailureKeepsClaimForResubscribe) {
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  rpc::StatusCallback subscribe_done;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .Times(1)
+      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  ASSERT_TRUE(subscribe_done);
+
+  // Subscribe failed but the owner is alive: keep the bookkeeping so
+  // AsyncResubscribe can replay the stored operation. Do not unsubscribe.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
+      .WillOnce(::testing::Invoke(
+          [](const WorkerID &,
+             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+            rpc::WorkerTableData alive;
+            alive.set_is_alive(true);
+            callback(Status::OK(), alive);
+          }));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .Times(0);
+  subscribe_done(Status::IOError("subscribe failed"));
+
+  // Still subscribed: another registration must not start a duplicate
+  // subscribe.
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .Times(0);
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+}
+
+TEST_F(CoreWorkerTest, GeneratorBackpressureFailedSubscribeMissingOwnerDoesNotSweep) {
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+
+  rpc::StatusCallback subscribe_done;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailure(owner_worker_id, _, _))
+      .WillOnce(::testing::SaveArg<2>(&subscribe_done));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor, AsyncGet(owner_worker_id, _))
+      .WillOnce(::testing::Invoke(
+          [](const WorkerID &,
+             const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
+            // Ambiguous: the subscribe failed and the row is missing, so
+            // there is no evidence the owner is dead. Do not sweep.
+            callback(Status::OK(), std::nullopt);
+          }));
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncUnsubscribeFromWorkerFailure(owner_worker_id))
+      .Times(0);
+
+  auto waiter = std::make_shared<TaskGeneratorBackpressureWaiter>(
+      /*generator_backpressure_num_objects=*/1, []() { return Status::OK(); });
+  core_worker_->RegisterGeneratorBackpressureState(
+      ObjectID::FromRandom(), waiter, /*actor_metadata=*/nullptr, owner_address);
+  ASSERT_TRUE(subscribe_done);
+  subscribe_done(Status::IOError("subscribe failed"));
+}
+
 TEST_F(CoreWorkerTest, HandleGetObjectStatusIdempotency) {
   auto object_id = ObjectID::FromRandom();
   auto ray_object = MakeRayObject("test_data", "meta");
@@ -1213,8 +1351,7 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
         ASSERT_TRUE(status.ok());
       });
 
-  // The second call to HandlePubsubCommandBatch publishes the object location. The
-  // publisher stores the second snapshot in the mailbox.
+  // Second publish is coalesced: object-location messages are snapshots.
   rpc::PubsubCommandBatchReply command_reply2;
   core_worker_->HandlePubsubCommandBatch(
       command_batch_request,
@@ -1223,10 +1360,7 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
         ASSERT_TRUE(status.ok());
       });
 
-  // Since the max_processed_sequence_id is 0, the publisher sends the second AND first
-  // snapshot of the object location. The first snapshot is not erased until it gets a
-  // long poll request with a max_processed_sequence_id greater or equal to the first
-  // snapshot's sequence id.
+  // max_processed_sequence_id is still 0; only the latest snapshot is resent.
   rpc::PubsubLongPollingReply long_polling_reply2;
   core_worker_->HandlePubsubLongPolling(
       request,
@@ -1236,25 +1370,19 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
       });
 
   EXPECT_EQ(long_polling_reply1.pub_messages_size(), 1);
-  EXPECT_EQ(long_polling_reply2.pub_messages_size(), 2);
+  EXPECT_EQ(long_polling_reply2.pub_messages_size(), 1);
 
-  auto CheckMessage = [&](const rpc::PubMessage &msg, int i) {
+  auto CheckMessage = [&](const rpc::PubMessage &msg, int64_t expected_sequence_id) {
     EXPECT_EQ(msg.channel_type(), rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
     EXPECT_EQ(msg.key_id(), object_id.Binary());
     EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
     EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
     EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
-    // AddObjectLocation triggers a publish so the sequence id is bumped by 1
-    EXPECT_EQ(msg.sequence_id(), i + 2);
+    // Subscribe snapshot is seq 2; coalesced retry snapshot is seq 3.
+    EXPECT_EQ(msg.sequence_id(), expected_sequence_id);
   };
-  for (int i = 0; i < 2; i++) {
-    if (i == 0) {
-      const auto &msg = long_polling_reply1.pub_messages(i);
-      CheckMessage(msg, i);
-    }
-    const auto &msg = long_polling_reply2.pub_messages(i);
-    CheckMessage(msg, i);
-  }
+  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/2);
+  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/3);
 }
 
 class HandleWaitForActorRefDeletedRetriesTest
