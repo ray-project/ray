@@ -145,18 +145,22 @@ def redact_state_rows(
             continue
 
         redacted_row = None
+
+        def get_or_create_copy():
+            nonlocal redacted_row
+            if redacted_row is None:
+                redacted_row = dict(row)
+            return redacted_row
+
         for key in _RUNTIME_ENV_DICT_KEYS:
             if key in row:
-                redacted_row = redacted_row if redacted_row is not None else dict(row)
-                redacted_row[key] = redact_runtime_env(row[key])
+                get_or_create_copy()[key] = redact_runtime_env(row[key])
         for key in _SERIALIZED_RUNTIME_ENV_KEYS:
             if key in row:
-                redacted_row = redacted_row if redacted_row is not None else dict(row)
-                redacted_row[key] = redact_serialized_runtime_env(row[key])
+                get_or_create_copy()[key] = redact_serialized_runtime_env(row[key])
         for key in _RUNTIME_ENV_INFO_KEYS:
             if key in row:
-                redacted_row = redacted_row if redacted_row is not None else dict(row)
-                redacted_row[key] = redact_runtime_env_info(row[key])
+                get_or_create_copy()[key] = redact_runtime_env_info(row[key])
 
         redacted_rows.append(redacted_row if redacted_row is not None else row)
     return redacted_rows
