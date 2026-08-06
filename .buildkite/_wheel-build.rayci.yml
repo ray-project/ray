@@ -16,6 +16,9 @@ steps:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
+      # TEMP (do not merge): bypass the wanda image cache so the bazel build
+      # actually runs and re-downloads org_lzma_lzma from its mirror list.
+      RAYCI_WANDA_ALWAYS_REBUILD: "true"
     tags:
       - release_wheels
 
