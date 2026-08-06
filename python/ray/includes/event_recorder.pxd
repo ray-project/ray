@@ -28,3 +28,6 @@ cdef extern from "ray/observability/python_event_interface.h" namespace "ray::ob
                              const c_string &metric_source)
         void AddEvents(c_vector[unique_ptr[CRayEventInterface]] &&data_list)
         void Shutdown()
+
+    c_string SerializeEventsToRayEventsDataJson(
+        c_vector[unique_ptr[CRayEventInterface]] &&events)

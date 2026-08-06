@@ -15,8 +15,10 @@
 #include "ray/observability/python_event_interface.h"
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
+#include "google/protobuf/util/json_util.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -186,6 +188,38 @@ void PythonEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   RAY_CHECK(recorder_) << "PythonEventRecorder has been shut down.";
   recorder_->AddEvents(std::move(data_list));
+}
+
+std::string SerializeEventsToRayEventsDataJson(
+    std::vector<std::unique_ptr<RayEventInterface>> &&events) {
+  google::protobuf::util::JsonPrintOptions options;
+  options.always_print_primitive_fields = true;
+  options.preserve_proto_field_names = true;
+
+  std::vector<std::string> json_parts;
+  json_parts.reserve(events.size());
+  for (std::unique_ptr<RayEventInterface> &event : events) {
+    StatusSetOr<rpc::events::RayEvent, StatusT::Invalid> ray_event_or =
+        std::move(*event).Serialize();
+    if (ray_event_or.has_error()) {
+      RAY_LOG(WARNING) << "Skipping event that failed to serialize: "
+                       << ray_event_or.message();
+      continue;
+    }
+    std::string json_str;
+    google::protobuf::util::Status status = google::protobuf::util::MessageToJsonString(
+        ray_event_or.value(), &json_str, options);
+    if (!status.ok()) {
+      // TODO: We can support an input param to control whether we raise an exception
+      // here or fail silently like we do today. Also we can emit a metric to track how
+      // many events failed to serialize to JSON.
+      RAY_LOG(WARNING) << "Skipping event that failed to serialize to JSON: "
+                       << status.message();
+      continue;
+    }
+    json_parts.push_back(std::move(json_str));
+  }
+  return absl::StrCat("[", absl::StrJoin(json_parts, ","), "]");
 }
 
 }  // namespace observability
