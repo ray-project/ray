@@ -1707,10 +1707,15 @@ _COMPONENT_CPU_METRIC = "ray_component_cpu_percentage"
 _record_metrics_once = DashboardHead._record_dashboard_metrics.__wrapped__
 
 
+# Any non-zero reading works; the tests only care that a reused handle reports
+# something other than the meaningless first-call 0.0.
+_STUB_CPU_PERCENTAGE = 12.5
+
+
 @contextlib.contextmanager
-def _busy_process():
-    """Spawn a CPU-bound child process, and reap it on exit."""
-    process = subprocess.Popen([sys.executable, "-c", "while True: pass"])
+def _idle_process():
+    """Spawn a child process that only sleeps, and reap it on exit."""
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3600)"])
     try:
         yield process
     finally:
@@ -1718,6 +1723,28 @@ def _busy_process():
         # Wait so the pid is not left behind as a zombie, which psutil still
         # considers running.
         process.wait()
+
+
+def _stub_cpu_percent(monkeypatch):
+    """Emulate psutil's cpu_percent() contract without spending any CPU.
+
+    psutil measures CPU relative to the previous call on the *same* Process
+    object and reports a meaningless 0.0 the first time a given object is asked.
+    Producing a real non-zero reading would mean pegging a core for long enough
+    to register, so the contract is emulated instead: a handle reads 0.0 until it
+    is reused. `as_dict(attrs=["cpu_percent", ...])` dispatches here, which is
+    how the code under test reads the value.
+    """
+
+    def cpu_percent(self, *args, **kwargs):
+        if getattr(self, "_asked_before", False):
+            return _STUB_CPU_PERCENTAGE
+        # Marking the instance rather than its pid or id() is what makes this
+        # emulate psutil: a rebuilt handle for the same pid starts over at 0.0.
+        self._asked_before = True
+        return 0.0
+
+    monkeypatch.setattr(psutil.Process, "cpu_percent", cpu_percent)
 
 
 def _fake_subprocess_module_handle(process, module_name="DataHead"):
@@ -1777,23 +1804,10 @@ def _component_cpu_percentage(head, component, pid=None):
     return None
 
 
-async def _record_until_nonzero_cpu(head, handles, component, pid=None, cycles=20):
-    """Drive record cycles until `component` reports non-zero CPU.
-
-    Returns the last value read, which is 0.0 if the metric never moved. A
-    process spinning in a `while True` loop pegs a core, so one cycle past the
-    first is normally enough; the rest of the budget is for a heavily loaded
-    machine where the child gets little CPU time. The sleep matters:
-    cpu_percent() over a zero-length interval reads 0.0.
-    """
-    value = 0.0
-    for _ in range(cycles):
-        await asyncio.sleep(0.1)
-        await _record_metrics_once(head, handles)
-        value = _component_cpu_percentage(head, component, pid) or 0.0
-        if value > 0:
-            break
-    return value
+async def _record_twice(head, handles):
+    """Record two cycles, the minimum for a handle to report CPU usage."""
+    await _record_metrics_once(head, handles)
+    await _record_metrics_once(head, handles)
 
 
 @pytest.mark.skipif(
@@ -1801,7 +1815,7 @@ async def _record_until_nonzero_cpu(head, handles, component, pid=None, cycles=2
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.asyncio
-async def test_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir):
+async def test_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir, monkeypatch):
     """The `dashboard_<Module>` CPU metric must not be stuck at zero.
 
     `psutil.Process.cpu_percent()` is measured relative to the previous call on
@@ -1810,17 +1824,20 @@ async def test_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir):
     metric at ~0. See https://github.com/ray-project/ray/issues/29848
     """
     head = _make_dashboard_head_for_metrics(tmpdir)
-    with _busy_process() as process:
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as process:
         handles = [_fake_subprocess_module_handle(process)]
 
         await _record_metrics_once(head, handles)
-        # The very first cycle has no baseline to compare against, so 0.0 is
+        # The very first reading has no baseline to compare against, so 0.0 is
         # expected.
         assert _component_cpu_percentage(head, "dashboard_DataHead") == 0.0
 
+        await _record_metrics_once(head, handles)
         assert (
-            await _record_until_nonzero_cpu(head, handles, "dashboard_DataHead") > 0
-        ), "ray_component_cpu_percentage stayed at 0 for a CPU-bound module"
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        ), "the module's handle was rebuilt, so its CPU reading stayed at 0"
 
 
 @pytest.mark.skipif(
@@ -1828,26 +1845,26 @@ async def test_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.asyncio
-async def test_restarted_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir):
+async def test_restarted_subprocess_module_cpu_percentage_becomes_nonzero(
+    tmpdir, monkeypatch
+):
     """A module that restarts under a new pid still reports its CPU usage."""
     head = _make_dashboard_head_for_metrics(tmpdir)
-    with _busy_process() as first_process:
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as first_process:
         handle = _fake_subprocess_module_handle(first_process)
-        await _record_until_nonzero_cpu(
-            head, [handle], "dashboard_DataHead", first_process.pid
-        )
+        await _record_twice(head, [handle])
 
     # Leaving the block above reaped the first process. Simulate the health
     # check restarting the module under a new pid.
-    with _busy_process() as second_process:
+    with _idle_process() as second_process:
         handle.process = second_process
         assert second_process.pid != first_process.pid
 
+        await _record_twice(head, [handle])
         assert (
-            await _record_until_nonzero_cpu(
-                head, [handle], "dashboard_DataHead", second_process.pid
-            )
-            > 0
+            _component_cpu_percentage(head, "dashboard_DataHead", second_process.pid)
+            == _STUB_CPU_PERCENTAGE
         ), "the restarted module's CPU usage was not reported under its new pid"
 
 
@@ -1856,25 +1873,14 @@ async def test_restarted_subprocess_module_cpu_percentage_becomes_nonzero(tmpdir
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.asyncio
-async def test_dashboard_component_cpu_percentage_becomes_nonzero(tmpdir):
+async def test_dashboard_component_cpu_percentage_becomes_nonzero(tmpdir, monkeypatch):
     """Recording module metrics must not disturb the main `dashboard` component."""
     head = _make_dashboard_head_for_metrics(tmpdir)
-    with _busy_process() as process:
-        handles = [_fake_subprocess_module_handle(process)]
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as process:
+        await _record_twice(head, [_fake_subprocess_module_handle(process)])
 
-        cpu_percentage = 0.0
-        for _ in range(20):
-            # The `dashboard` component measures the process running this test,
-            # so burn CPU here rather than sleeping, to give it something to
-            # report.
-            deadline = time.monotonic() + 0.1
-            while time.monotonic() < deadline:
-                pass
-            await _record_metrics_once(head, handles)
-            cpu_percentage = _component_cpu_percentage(head, "dashboard") or 0.0
-            if cpu_percentage > 0:
-                break
-        assert cpu_percentage > 0
+    assert _component_cpu_percentage(head, "dashboard") == _STUB_CPU_PERCENTAGE
 
 
 @pytest.mark.skipif(
@@ -1884,7 +1890,7 @@ async def test_dashboard_component_cpu_percentage_becomes_nonzero(tmpdir):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("recorded_while_alive", [False, True])
 async def test_exited_subprocess_module_does_not_hide_other_modules(
-    tmpdir, recorded_while_alive
+    tmpdir, monkeypatch, recorded_while_alive
 ):
     """A module that has exited must not cost the other modules their metrics.
 
@@ -1894,8 +1900,11 @@ async def test_exited_subprocess_module_does_not_hide_other_modules(
     a module that was never recorded and one whose handle is already cached.
     """
     head = _make_dashboard_head_for_metrics(tmpdir)
-    with _busy_process() as live_process:
-        exiting_process = subprocess.Popen([sys.executable, "-c", "while True: pass"])
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as live_process:
+        exiting_process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(3600)"]
+        )
         # The exiting module is recorded first, so an unhandled psutil error
         # would abandon the cycle before reaching the live one.
         handles = [
@@ -1909,7 +1918,11 @@ async def test_exited_subprocess_module_does_not_hide_other_modules(
             exiting_process.kill()
             exiting_process.wait()
 
-        assert await _record_until_nonzero_cpu(head, handles, "dashboard_DataHead") > 0
+        await _record_twice(head, handles)
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        )
 
 
 @pytest.mark.skipif(
@@ -1927,7 +1940,8 @@ async def test_subprocess_module_dying_mid_read_does_not_hide_other_modules(
     too small to hit reliably, so `as_dict` is patched to raise for one module.
     """
     head = _make_dashboard_head_for_metrics(tmpdir)
-    with _busy_process() as dying_process, _busy_process() as live_process:
+    _stub_cpu_percent(monkeypatch)
+    with _idle_process() as dying_process, _idle_process() as live_process:
         handles = [
             _fake_subprocess_module_handle(dying_process, "DyingHead"),
             _fake_subprocess_module_handle(live_process, "DataHead"),
@@ -1941,7 +1955,11 @@ async def test_subprocess_module_dying_mid_read_does_not_hide_other_modules(
 
         monkeypatch.setattr(psutil.Process, "as_dict", as_dict)
 
-        assert await _record_until_nonzero_cpu(head, handles, "dashboard_DataHead") > 0
+        await _record_twice(head, handles)
+        assert (
+            _component_cpu_percentage(head, "dashboard_DataHead")
+            == _STUB_CPU_PERCENTAGE
+        )
 
 
 if __name__ == "__main__":
