@@ -67,6 +67,8 @@ Adjust the list to match the gates your installation currently passes. If you're
 Add a `networkPolicy` field to `spec` and choose a mode:
 
 ```yaml
+apiVersion: ray.io/v1
+kind: RayCluster
 spec:
   networkPolicy:
     mode: DenyAll
