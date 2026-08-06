@@ -64,7 +64,7 @@ Adjust the list to match the gates your installation currently passes. If you're
 
 ## Enable NetworkPolicy
 
-Add a `networkPolicy` field to `spec` and choose a mode:
+Add a `networkPolicy` field to the `RayCluster` `spec` and choose a mode:
 
 ```yaml
 apiVersion: ray.io/v1
