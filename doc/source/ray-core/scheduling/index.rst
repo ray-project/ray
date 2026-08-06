@@ -10,7 +10,7 @@ Scheduling at a glance
 
 Ray schedules every task and actor without any configuration from you. Each control below has a default that applies until you override it, so read this section as a map of the available controls rather than a list of required settings.
 
-Ray places a task or actor in two steps. First it narrows the cluster to the nodes that can run the work at all, using the resource requirements and label selectors you declared. Then it picks one of those nodes using the scheduling strategy, with data locality breaking ties for tasks.
+Ray places a task or actor in two steps. First it narrows the cluster to the nodes that can run the work at all, using the resource requirements and label selectors you declared. Then it picks one of those nodes using the scheduling strategy. For tasks under the ``"DEFAULT"`` strategy, data locality takes precedence over utilization, so Ray prefers a node that already holds the task's large arguments.
 
 .. list-table::
    :header-rows: 1
@@ -38,10 +38,10 @@ Ray places a task or actor in two steps. First it narrows the cluster to the nod
      - Enabled for tasks, ignored for actors and when you set a strategy
      - :ref:`Locality-aware scheduling <ray-scheduling-locality>`
    * - Gang placement
-     - None; bundles are scheduled independently unless you create a placement group
+     - None. Ray schedules each task and actor independently unless you create a placement group
      - :doc:`./placement-group`
 
-Because both defaults above are non-zero, an actor with no arguments still needs a node with at least one free CPU to start, and any number of them can then run there. A node with ``num_cpus=0`` runs neither by default.
+Because the actor scheduling default is non-zero while its running default is zero, an actor with no arguments still needs a node with at least one free CPU to start, and any number of them can then run there. A node with ``num_cpus=0`` runs neither tasks nor actors by default.
 
 The ``"DEFAULT"`` strategy's node selection is tunable through environment variables, though most clusters never need to change them:
 
