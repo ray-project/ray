@@ -535,13 +535,23 @@ def _fetch_from_file_server(
     """Stream every member's shards into ``out_file_obj`` over ONE Flight
     client, batched into DoAction requests of ≤ ``max_bytes_per_fetch``.
 
-    Actor state drives the recovery policy:
-      * Dead (init fail/ray.kill)     -> ``ShuffleFileServerAnomalyError`` (terminal)
-      * Unschedulable (node lost)     -> ``ShuffleFileServerAnomalyError`` (terminal)
-      * Unavailable (restarting)      -> poll until Ray resolves
-      * conn dead, incarnation changed   -> reset sink, reconnect, retry in-place
-      * conn dead, incarnation unchanged  -> ``ShuffleFileServerAnomalyError``
-                                             (network config problem, terminal)
+    Only a Flight *transport* fault is retryable; everything else is terminal:
+      * ``flight.FlightServerError`` -- a server-side error (missing/unreadable
+        shuffle file, server-side OSError). Retrying can't recreate the file.
+      * sink ``OSError`` (disk full), ``pa.lib.ArrowInvalid`` (a corrupt / short
+        frame), or ``_resolve``'s ``ShuffleFileServerAnomalyError`` (dead /
+        unschedulable / unregistered actor) -- all propagate as-is.
+      * other ``flight.FlightError`` (server unavailable / timeout / cancelled /
+        internal) -- retried by the policy below.
+
+    On a transport fault, re-resolve and compare incarnations (not host:port -- a
+    restart can rebind the port). A changed incarnation means the server restarted:
+    reset the sink and retry in place. An unchanged incarnation means the process
+    stayed up but the fetch still failed: retry once (a blip ``_resolve`` may have
+    polled through), then escalate to a terminal ``ShuffleFileServerAnomalyError``
+    (likely a network block on the Flight port). Flight error classes / gRPC codes:
+    https://arrow.apache.org/docs/python/api/flight.html
+    https://grpc.io/docs/guides/status-codes/
     """
     import pyarrow.flight as flight
 
@@ -607,21 +617,9 @@ def _fetch_from_file_server(
             )
             return
         except flight.FlightServerError:
-            # A server-side error (missing/unreadable shuffle file, a server-side
-            # OSError) surfaces as FlightServerError, a FlightError subclass.
-            # Retrying the fetch can't fix it, so propagate as terminal.
-            raise
+            raise  # server-side error, terminal (see docstring)
         except flight.FlightError as e:
-            # A real transport fault (server unavailable / timeout / cancelled /
-            # internal); retryable. Server-side FlightServerError is handled above;
-            # other failures (sink OSError, corrupt-frame ArrowInvalid, _resolve's
-            # anomaly, or a bug) propagate as terminal.
-            # https://arrow.apache.org/docs/python/api/flight.html
-            # https://grpc.io/docs/guides/status-codes/
-            #
-            # A changed incarnation means the server restarted (retry in place);
-            # same incarnation means the process stayed up but the fetch failed.
-            # Compare incarnations, not (host, port): a restart can rebind the port.
+            # Transport fault: retry per the policy in the docstring.
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
@@ -632,9 +630,6 @@ def _fetch_from_file_server(
                 logger.warning(f"node {node_id}: file server restarted, retrying")
                 continue
 
-            # Same incarnation: retry once to tell a persistent block from a
-            # transient blip that _resolve already polled through; only if it
-            # fails again is it a genuine network-config problem.
             if not same_incarnation_retried:
                 same_incarnation_retried = True
                 logger.warning(
