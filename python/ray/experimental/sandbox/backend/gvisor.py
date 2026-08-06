@@ -66,10 +66,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             cpu=config.cpu,
             memory=config.memory,
             image=config.image,
+            readonly=config.readonly,
         )
         run_args = self._runsc_base_args(config)
         if config.network:
             run_args.extend(["--network", config.network])
+        if config.image and not config.readonly:
+            overlay_dir = os.path.join(root_dir, "overlay")
+            os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
+            run_args.append(f"--overlay2=root:dir={overlay_dir}")
         run_args.extend(["run", "--bundle", root_dir, sandbox_id])
 
         proc = subprocess.Popen(
@@ -275,6 +280,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         image: Optional[str] = None,
+        readonly: bool = True,
     ) -> str:
         config_json_path = os.path.join(root_dir, "config.json")
         rootfs_dir = os.path.join(root_dir, "rootfs")
@@ -289,6 +295,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if image:
             image_rootfs = self._pull_and_extract_image(image)
             spec["root"]["path"] = image_rootfs
+            spec["root"]["readonly"] = readonly
+        else:
+            spec["root"]["readonly"] = readonly
 
         spec["process"]["args"] = ["sleep", "infinity"]
         spec["process"]["cwd"] = container_cwd

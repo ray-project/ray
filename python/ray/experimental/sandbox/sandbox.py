@@ -25,6 +25,7 @@ class Sandbox:
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
         resources: Custom logical resource requirements.
+        readonly: If True, mount rootfs in read-only mode (default: True).
         **kwargs: Additional parameters passed to runtime.
     """
 
@@ -41,6 +42,7 @@ class Sandbox:
         rootless: bool = True,
         network: str = "none",
         resources: Optional[Dict[str, float]] = None,
+        readonly: bool = True,
         **kwargs,
     ):
         env = env or {}
@@ -84,6 +86,7 @@ class Sandbox:
             rootless=rootless,
             network=network,
             resources=resources,
+            readonly=readonly,
             **kwargs,
         )
 
