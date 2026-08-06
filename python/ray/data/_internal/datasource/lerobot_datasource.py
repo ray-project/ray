@@ -128,6 +128,15 @@ class _ReadGranularity(str, enum.Enum):
     EPISODE = "episode"
 
 
+def _is_list_type(data_type: pa.DataType) -> bool:
+    """True for any Arrow list layout: list, large_list, or fixed_size_list."""
+    return (
+        pa.types.is_fixed_size_list(data_type)
+        or pa.types.is_list(data_type)
+        or pa.types.is_large_list(data_type)
+    )
+
+
 def _delta_tensor_type(data_type: pa.DataType) -> pa.ExtensionType:
     """Build the output tensor type for a windowed tabular Arrow field.
 
@@ -143,11 +152,7 @@ def _delta_tensor_type(data_type: pa.DataType) -> pa.ExtensionType:
         data_type = data_type.storage_type
 
     ndim = 1
-    while (
-        pa.types.is_fixed_size_list(data_type)
-        or pa.types.is_list(data_type)
-        or pa.types.is_large_list(data_type)
-    ):
+    while _is_list_type(data_type):
         ndim += 1
         data_type = data_type.value_type
 
@@ -158,11 +163,7 @@ def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
     """Materialize a uniformly shaped nested-list column as a typed ndarray."""
     shape = [len(column)]
     values = column
-    while (
-        pa.types.is_fixed_size_list(values.type)
-        or pa.types.is_list(values.type)
-        or pa.types.is_large_list(values.type)
-    ):
+    while _is_list_type(values.type):
         if values.null_count:
             raise ValueError(
                 f"Windowed LeRobot feature {name!r} cannot contain null lists."
@@ -946,11 +947,7 @@ def _prepare_delta_segment(
             # Unwrap it so the one validated path below
             # materializes every encoding
             col = col.storage
-        if (
-            pa.types.is_fixed_size_list(col.type)
-            or pa.types.is_list(col.type)
-            or pa.types.is_large_list(col.type)
-        ):
+        if _is_list_type(col.type):
             tabular_base[name] = _nested_list_column_to_numpy(col, name)
         else:
             tabular_base[name] = col.to_numpy(zero_copy_only=False)
