@@ -280,12 +280,12 @@ cdef class InnerGcsClient:
     # NodeInfo methods
     #############################################################
     def is_gcs_leader_local(self) -> bool:
-        if not ray_constants.RAY_LEADER_ELECT:
+        if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
             return True
         return self.inner.get().Nodes().IsGcsLeader()
 
     def is_gcs_leader(self) -> bool:
-        if not ray_constants.RAY_LEADER_ELECT:
+        if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
             return True
         try:
             self.check_alive([], timeout=2)

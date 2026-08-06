@@ -1115,10 +1115,10 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 
 // Whether to enable GCS active-passive leader election.
-// Uppercased so the overriding env var (RAY_LEADER_ELECT) matches the name Python
-// reads (ray_constants.RAY_LEADER_ELECT), keeping the C++ and Python views of
-// leader election in sync.
-RAY_CONFIG(bool, LEADER_ELECT, false)
+// Uppercased so the overriding env var (RAY_ENABLE_GCS_LEADER_ELECTION) matches the name
+// Python reads (ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION), keeping the C++ and Python
+// views of leader election in sync.
+RAY_CONFIG(bool, ENABLE_GCS_LEADER_ELECTION, false)
 
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.

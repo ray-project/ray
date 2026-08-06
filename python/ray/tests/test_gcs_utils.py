@@ -335,9 +335,9 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
 
 def _test_gcs_leader_local_default_when_leader_elect(gcs_address):
     # Enable leader election in this subprocess only.
-    os.environ["RAY_LEADER_ELECT"] = "true"
-    ray_constants.RAY_LEADER_ELECT = True
-    Config.initialize(b'{"LEADER_ELECT": true}')
+    os.environ["RAY_ENABLE_GCS_LEADER_ELECTION"] = "true"
+    ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION = True
+    Config.initialize(b'{"ENABLE_GCS_LEADER_ELECTION": true}')
 
     gcs_client_le = GcsClient(address=gcs_address)
     # With leader election enabled, the client conservatively starts as
@@ -350,13 +350,13 @@ def _test_gcs_leader_local_default_when_leader_elect(gcs_address):
 def test_is_gcs_leader_defaults(ray_start_regular):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
 
-    # By default, RAY_LEADER_ELECT is False, so the client always reports itself
-    # as leader (legacy behavior).
+    # By default, RAY_ENABLE_GCS_LEADER_ELECTION is False, so the client always
+    # reports itself as leader (legacy behavior).
     gcs_client = GcsClient(address=gcs_address)
     assert gcs_client.is_gcs_leader() is True
     assert gcs_client.is_gcs_leader_local() is True
 
-    # With RAY_LEADER_ELECT enabled, is_gcs_leader_local() starts as False.
+    # With RAY_ENABLE_GCS_LEADER_ELECTION enabled, is_gcs_leader_local() starts as False.
     # Run in a spawned subprocess so the env var / Config only affect that
     # process.
     ctx = multiprocessing.get_context("spawn")

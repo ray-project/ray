@@ -107,12 +107,12 @@ TEST(NodeInfoAccessorTest, TestIsGcsLeaderCaching) {
 // cluster running with the feature off (including during a rolling upgrade before
 // the flag is flipped) identical to legacy.
 TEST(NodeInfoAccessorTest, TestLeaderElectionDisabledByDefault) {
-  ASSERT_FALSE(RayConfig::instance().LEADER_ELECT())
-      << "LEADER_ELECT must default to false for single-head behavior.";
+  ASSERT_FALSE(RayConfig::instance().ENABLE_GCS_LEADER_ELECTION())
+      << "ENABLE_GCS_LEADER_ELECTION must default to false for single-head behavior.";
   NodeInfoAccessor accessor;
   ASSERT_TRUE(accessor.IsGcsLeader())
-      << "With LEADER_ELECT disabled the client must always report itself as "
-         "leader, regardless of any is_leader value in CheckAlive replies.";
+      << "With ENABLE_GCS_LEADER_ELECTION disabled the client must always report itself "
+         "as leader, regardless of any is_leader value in CheckAlive replies.";
 }
 
 }  // namespace gcs

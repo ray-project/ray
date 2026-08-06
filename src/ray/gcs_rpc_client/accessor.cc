@@ -167,15 +167,17 @@ void JobInfoAccessor::AsyncGetNextJobID(const rpc::ItemCallback<JobID> &callback
 // nullptr so that dereferencing it is a well-defined crash rather than
 // undefined behavior if a method that uses it is called in this state.
 NodeInfoAccessor::NodeInfoAccessor()
-    : client_impl_(nullptr), is_gcs_leader_(!RayConfig::instance().LEADER_ELECT()) {}
+    : client_impl_(nullptr),
+      is_gcs_leader_(!RayConfig::instance().ENABLE_GCS_LEADER_ELECTION()) {}
 
-// is_gcs_leader_ is seeded from LEADER_ELECT: when leader election is disabled
-// (the default), the client always assumes it is talking to the leader, so
+// is_gcs_leader_ is seeded from ENABLE_GCS_LEADER_ELECTION: when leader election is
+// disabled (the default), the client always assumes it is talking to the leader, so
 // is_gcs_leader_ starts as true and legacy behavior is preserved. When leader
 // election is enabled, it starts as false and is updated once the first
 // CheckAlive reply reports the actual leadership status.
 NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl)
-    : client_impl_(client_impl), is_gcs_leader_(!RayConfig::instance().LEADER_ELECT()) {}
+    : client_impl_(client_impl),
+      is_gcs_leader_(!RayConfig::instance().ENABLE_GCS_LEADER_ELECTION()) {}
 
 void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
                                     const rpc::StatusCallback &callback) {
