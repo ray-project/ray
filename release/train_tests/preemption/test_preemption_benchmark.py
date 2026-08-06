@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     get_and_run_resource_killer,
     safe_write_to_results_json,
 )
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.train import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
@@ -42,7 +43,11 @@ def create_model(model_name: str) -> nn.Module:
 
 @ray.remote(num_cpus=0)
 class StepTracker:
-    """Counts work across worker-group restarts."""
+    """Counts work across worker-group restarts.
+
+    Must be pinned to the head node: it has to outlive the worker nodes, and a
+    preemption reclaims a worker node.
+    """
 
     def __init__(self):
         self._executed_steps = 0
@@ -199,7 +204,13 @@ def run_experiment(use_jit_checkpoint: bool, args: argparse.Namespace) -> Dict:
     wait_for_worker_nodes(args.num_workers)
 
     tracker_name = f"step_tracker_{label}"
-    tracker = StepTracker.options(name=tracker_name).remote()
+    # Without the head-node pin the tracker can land on a worker node and be
+    # reclaimed along with it, which fails every subsequent attempt.
+    tracker = StepTracker.options(
+        name=tracker_name,
+        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+        scheduling_strategy="DEFAULT",
+    ).remote()
 
     # TODO: make the grace period configurable.
     resource_killer = get_and_run_resource_killer(
