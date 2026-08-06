@@ -39,6 +39,8 @@ from ray.runtime_env import RuntimeEnvConfig
 
 logger = logging.getLogger(__name__)
 
+_PENDING_JOB_INFO_FETCH_TIMEOUT_S = 5
+
 
 def generate_job_id() -> str:
     """Returns a job_id of the form 'raysubmit_XYZ'.
@@ -113,6 +115,13 @@ class JobManager:
         try:
             all_jobs = await self._job_info_client.get_all_jobs()
             for job_id, job_info in all_jobs.items():
+                if job_info is None:
+                    logger.warning(
+                        "Skipping recovery for job %s because its job info was "
+                        "deleted concurrently.",
+                        job_id,
+                    )
+                    continue
                 if not job_info.status.is_terminal():
                     run_background_task(self._monitor_job(job_id))
         finally:
@@ -129,6 +138,19 @@ class JobManager:
             )
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
+
+    def _log_job_completion_event(
+        self, job_id: str, job_status: JobStatus, error_message: str = ""
+    ) -> None:
+        if not self.event_logger:
+            return
+
+        event_log = f"Completed a ray job {job_id} with a status {job_status}."
+        if error_message:
+            event_log += f" {error_message}"
+            self.event_logger.error(event_log, submission_id=job_id)
+        else:
+            self.event_logger.info(event_log, submission_id=job_id)
 
     async def _monitor_job(
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
@@ -176,16 +198,50 @@ class JobManager:
                 job_status = await self._job_info_client.get_status(
                     job_id, timeout=None
                 )
+                if job_status is None:
+                    logger.info(
+                        "Stopping monitoring for job %s because its job info "
+                        "was deleted.",
+                        job_id,
+                    )
+                    return
+                if job_status.is_terminal():
+                    self._log_job_completion_event(job_id, job_status)
+                    return
+
                 if job_status == JobStatus.PENDING:
                     # Compare the current time with the job start time.
                     # If the job is still pending, we will set the status
                     # to FAILED.
                     if job_info is None:
-                        job_info = await self._job_info_client.get_info(
-                            job_id, timeout=None
-                        )
+                        try:
+                            job_info = await self._job_info_client.get_info(
+                                job_id, timeout=_PENDING_JOB_INFO_FETCH_TIMEOUT_S
+                            )
+                        except Exception:
+                            logger.warning(
+                                "Failed to fetch job info for pending job %s; "
+                                "retrying on the next monitor iteration.",
+                                job_id,
+                                exc_info=True,
+                            )
+                            continue
 
-                    if (
+                        if job_info is None:
+                            logger.info(
+                                "Stopping monitoring for job %s because its job "
+                                "info was deleted.",
+                                job_id,
+                            )
+                            return
+
+                        # The job may have advanced after the preceding status read.
+                        job_status = job_info.status
+                        if job_status.is_terminal():
+                            self._log_job_completion_event(job_id, job_status)
+                            return
+
+                    if job_status == JobStatus.PENDING and (
                         self._timeout_check_timer.time() - job_info.start_time / 1000
                         > timeout
                     ):
@@ -223,13 +279,22 @@ class JobManager:
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
                             )
-                        await self._job_info_client.put_status(
+                        status_updated = await self._job_info_client.put_status(
                             job_id,
                             JobStatus.FAILED,
                             message=err_msg,
                             error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
                             timeout=None,
+                            jobinfo_must_exist=True,
+                            expected_status=JobStatus.PENDING,
                         )
+                        if not status_updated:
+                            logger.info(
+                                "Stopping monitoring for job %s because its job "
+                                "info was deleted or its status changed.",
+                                job_id,
+                            )
+                            return
                         logger.error(err_msg)
                         break
 
@@ -247,7 +312,7 @@ class JobManager:
                         # actor is not created due to some unexpected errors.
                         # We will set the job status to FAILED.
                         logger.error(f"Failed to get job supervisor for job {job_id}.")
-                        await self._job_info_client.put_status(
+                        status_updated = await self._job_info_client.put_status(
                             job_id,
                             JobStatus.FAILED,
                             message=(
@@ -256,7 +321,16 @@ class JobManager:
                             ),
                             error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
                             timeout=None,
+                            jobinfo_must_exist=True,
+                            expected_status=job_status,
                         )
+                        if not status_updated:
+                            logger.info(
+                                "Stopping monitoring for job %s because its job "
+                                "info was deleted or its status changed.",
+                                job_id,
+                            )
+                            return
                         break
 
                 # Check to see if `JobSupervisor` is alive and reachable
@@ -275,58 +349,75 @@ class JobManager:
                 job_status = await self._job_info_client.get_status(
                     job_id, timeout=None
                 )
-                target_job_error_message = ""
-                target_job_error_type: Optional[JobErrorType] = None
-                if job_status is not None and job_status.is_terminal():
+                if job_status is None:
+                    logger.info(
+                        "Stopping monitoring for job %s because its job info "
+                        "was deleted.",
+                        job_id,
+                    )
+                    return
+                if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
-                    pass
-                else:
-                    if isinstance(e, RuntimeEnvSetupError):
-                        logger.error(f"Failed to set up runtime_env for job {job_id}.")
+                    self._log_job_completion_event(job_id, job_status)
+                    return
 
-                        target_job_error_message = f"runtime_env setup failed: {e}"
-                        target_job_error_type = JobErrorType.RUNTIME_ENV_SETUP_FAILURE
+                target_job_error_message = ""
+                target_job_error_type: Optional[JobErrorType] = None
+                if isinstance(e, RuntimeEnvSetupError):
+                    logger.error(f"Failed to set up runtime_env for job {job_id}.")
 
-                    elif isinstance(e, ActorUnschedulableError):
-                        logger.error(
-                            f"Failed to schedule job {job_id} because the supervisor "
-                            f"actor could not be scheduled: {e}"
-                        )
+                    target_job_error_message = f"runtime_env setup failed: {e}"
+                    target_job_error_type = JobErrorType.RUNTIME_ENV_SETUP_FAILURE
 
-                        target_job_error_message = (
-                            f"Job supervisor actor could not be scheduled: {e}"
-                        )
-                        target_job_error_type = (
-                            JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE
-                        )
-
-                    elif isinstance(e, ActorDiedError):
-                        logger.error(f"Job supervisor actor for {job_id} died: {e}")
-                        target_job_error_message = f"Job supervisor actor died: {e}"
-                        target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
-
-                    else:
-                        logger.error(
-                            f"Job monitoring for job {job_id} failed "
-                            f"unexpectedly: {e}.",
-                            exc_info=e,
-                        )
-
-                        target_job_error_message = f"Unexpected error occurred: {e}"
-                        target_job_error_type = (
-                            JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
-                        )
-
-                    job_status = JobStatus.FAILED
-                    await self._job_info_client.put_status(
-                        job_id,
-                        job_status,
-                        message=target_job_error_message,
-                        error_type=target_job_error_type
-                        or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
-                        timeout=None,
+                elif isinstance(e, ActorUnschedulableError):
+                    logger.error(
+                        f"Failed to schedule job {job_id} because the supervisor "
+                        f"actor could not be scheduled: {e}"
                     )
+
+                    target_job_error_message = (
+                        f"Job supervisor actor could not be scheduled: {e}"
+                    )
+                    target_job_error_type = (
+                        JobErrorType.JOB_SUPERVISOR_ACTOR_UNSCHEDULABLE
+                    )
+
+                elif isinstance(e, ActorDiedError):
+                    logger.error(f"Job supervisor actor for {job_id} died: {e}")
+                    target_job_error_message = f"Job supervisor actor died: {e}"
+                    target_job_error_type = JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
+
+                else:
+                    logger.error(
+                        f"Job monitoring for job {job_id} failed unexpectedly: {e}.",
+                        exc_info=e,
+                    )
+
+                    target_job_error_message = f"Unexpected error occurred: {e}"
+                    target_job_error_type = (
+                        JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE
+                    )
+
+                monitored_status = job_status
+                job_status = JobStatus.FAILED
+                status_updated = await self._job_info_client.put_status(
+                    job_id,
+                    job_status,
+                    message=target_job_error_message,
+                    error_type=target_job_error_type
+                    or JobErrorType.JOB_SUPERVISOR_ACTOR_UNKNOWN_FAILURE,
+                    timeout=None,
+                    jobinfo_must_exist=True,
+                    expected_status=monitored_status,
+                )
+                if not status_updated:
+                    logger.info(
+                        "Stopping monitoring for job %s because its job info was "
+                        "deleted or its status changed.",
+                        job_id,
+                    )
+                    return
 
                 # Log error message to the job driver file for easy access.
                 if target_job_error_message:
@@ -335,16 +426,9 @@ class JobManager:
                     with open(log_path, "a") as log_file:
                         log_file.write(target_job_error_message)
 
-                # Log events
-                if self.event_logger:
-                    event_log = (
-                        f"Completed a ray job {job_id} with a status {job_status}."
-                    )
-                    if target_job_error_message:
-                        event_log += f" {target_job_error_message}"
-                        self.event_logger.error(event_log, submission_id=job_id)
-                    else:
-                        self.event_logger.info(event_log, submission_id=job_id)
+                self._log_job_completion_event(
+                    job_id, job_status, target_job_error_message
+                )
 
                 break
 
