@@ -30,7 +30,7 @@ class Sandbox:
 
     def __init__(
         self,
-        image: str = "python:3.10-slim",
+        image: Optional[str] = None,
         cpu: float = 0.0,
         memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
@@ -47,30 +47,14 @@ class Sandbox:
         labels = labels or {}
         resources = resources or {}
 
-        config = SandboxConfig(
-            image=image,
-            cpu=cpu,
-            memory=memory,
-            env=env,
-            work_dir=work_dir,
-            ttl_seconds=ttl_seconds,
-            labels=labels,
-            timeout_seconds=timeout_seconds,
-            rootless=rootless,
-            network=network,
-            resources=resources,
-        )
-
-        self.runtime = SandboxRuntime()
-
         # Translate resources assigned to this Ray actor into runtime config resources
         try:
             assigned = ray.get_runtime_context().get_assigned_resources()
             if "CPU" in assigned and assigned["CPU"] > 0:
-                config.cpu = float(assigned["CPU"])
+                cpu = float(assigned["CPU"])
 
             if "memory" in assigned and assigned["memory"] > 0:
-                config.memory = int(assigned["memory"])
+                memory = int(assigned["memory"])
 
             custom_resources = {}
             for k, v in assigned.items():
@@ -83,11 +67,25 @@ class Sandbox:
                     custom_resources[k] = float(v)
 
             if custom_resources:
-                config.resources.update(custom_resources)
+                resources.update(custom_resources)
         except Exception:
             pass
 
-        self.instance_id = self.runtime.create(config)
+        self.runtime = SandboxRuntime()
+        self.instance_id = self.runtime.create(
+            image=image,
+            cpu=cpu,
+            memory=memory,
+            env=env,
+            work_dir=work_dir,
+            ttl_seconds=ttl_seconds,
+            labels=labels,
+            timeout_seconds=timeout_seconds,
+            rootless=rootless,
+            network=network,
+            resources=resources,
+            **kwargs,
+        )
 
     def get_instance_id(self) -> str:
         """Get the unique instance ID for the sandbox."""

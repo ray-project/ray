@@ -3,14 +3,12 @@ from unittest.mock import MagicMock
 import ray
 from ray.experimental.sandbox import Sandbox, SandboxHandle
 from ray.experimental.sandbox.backend.base import ExecResult
-from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
 def test_sandbox_runtime_interface(tmp_path):
     rt = SandboxRuntime()
-    config = SandboxConfig(work_dir="/workspace")
-    instance_id = rt.create(config)
+    instance_id = rt.create(work_dir="/workspace")
     assert instance_id.startswith("ray-sb-gvisor-")
 
     res = rt.exec(instance_id, "echo 'Hello world'")
@@ -130,8 +128,7 @@ def test_ray_remote_sandbox_runtime():
     remote_rt_cls = ray.remote(SandboxRuntime)
     rt_actor = remote_rt_cls.remote()
 
-    config = SandboxConfig(work_dir="/workspace")
-    instance_id = ray.get(rt_actor.create.remote(config))
+    instance_id = ray.get(rt_actor.create.remote(work_dir="/workspace"))
     assert instance_id.startswith("ray-sb-gvisor-")
 
     res = ray.get(rt_actor.exec.remote(instance_id, "echo 'Hello remote runtime'"))
@@ -153,3 +150,22 @@ def test_sandbox_actor_resource_translation():
 
     ray.get(actor.delete.remote())
     ray.kill(actor)
+
+
+def test_sandbox_runtime_create_variants():
+    rt = SandboxRuntime()
+
+    # Pass image as positional arg
+    id1 = rt.create("busybox:latest", work_dir="/workspace")
+    assert id1.startswith("ray-sb-gvisor-")
+    rt.delete(id1)
+
+    # Pass image as keyword arg
+    id2 = rt.create(image="busybox:latest", work_dir="/workspace")
+    assert id2.startswith("ray-sb-gvisor-")
+    rt.delete(id2)
+
+    # Pass keyword args only
+    id3 = rt.create(work_dir="/workspace", cpu=1.0)
+    assert id3.startswith("ray-sb-gvisor-")
+    rt.delete(id3)
