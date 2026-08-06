@@ -127,11 +127,16 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         *,
         ignore_missing_paths: bool,
+        skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
         file_chunker: Optional[FileChunker] = None,
     ):
         self._ignore_missing_paths = ignore_missing_paths
+        # Resolved paths to exclude from the listing (see
+        # ``ParquetDatasourceV2``). ``frozenset()`` when unset so the membership
+        # check in ``_get_path_contents`` is a cheap no-op.
+        self._skip_paths = frozenset(skip_paths) if skip_paths else frozenset()
         self._max_paths_per_output = (
             max_paths_per_output
             if max_paths_per_output is not None
@@ -199,7 +204,10 @@ class NonSamplingFileIndexer(FileIndexer):
             assert len(resolved_paths) == 1
 
             for path, file_size in _get_file_infos(
-                resolved_paths[0], filesystem, self._ignore_missing_paths
+                resolved_paths[0],
+                filesystem,
+                self._ignore_missing_paths,
+                self._skip_paths,
             ):
                 yield FileInfo(path=path, size=file_size)
 
@@ -250,7 +258,11 @@ class NonSamplingFileIndexer(FileIndexer):
                 root_path = path
 
             contents = _get_path_contents(
-                path, filesystem, self._ignore_missing_paths, root_path=root_path
+                path,
+                filesystem,
+                self._ignore_missing_paths,
+                self._skip_paths,
+                root_path=root_path,
             )
             for file_path, file_size in contents.files:
                 file_info_result = FileInfo(path=file_path, size=file_size)
