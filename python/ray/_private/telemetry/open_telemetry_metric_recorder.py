@@ -307,12 +307,20 @@ class OpenTelemetryMetricRecorder:
 
             # Created without holding self._lock (see __init__ lock-ordering
             # contract).
-            instrument = self.meter.create_histogram(
-                name=f"{NAMESPACE}_{name}",
-                description=description,
-                unit="1",
-                explicit_bucket_boundaries_advisory=buckets,
-            )
+            try:
+                instrument = self.meter.create_histogram(
+                    name=f"{NAMESPACE}_{name}",
+                    description=description,
+                    unit="1",
+                    explicit_bucket_boundaries_advisory=buckets,
+                )
+            except TypeError as error:
+                # OpenTelemetry 1.27, used with protobuf 4.25.8, lacks this API.
+                if "explicit_bucket_boundaries_advisory" not in str(error):
+                    raise
+                instrument = self.meter.create_histogram(
+                    name=f"{NAMESPACE}_{name}", description=description, unit="1"
+                )
 
             # calculate the bucket midpoints; this is used for converting histogram
             # internal representation to approximated histogram data points.

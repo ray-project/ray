@@ -213,6 +213,12 @@ def test_register_histogram_metric(
         name="test_histogram", description="Test Histogram", buckets=[1.0, 2.0, 3.0]
     )
     assert "test_histogram" in recorder._registered_instruments
+    mock_meter.create_histogram.assert_called_once_with(
+        name="ray_test_histogram",
+        description="Test Histogram",
+        unit="1",
+        explicit_bucket_boundaries_advisory=[1.0, 2.0, 3.0],
+    )
     recorder.set_metric_value(
         name="test_histogram",
         tags={"label_key": "label_value"},
@@ -229,6 +235,22 @@ def test_register_histogram_metric(
 
     mids = recorder.get_histogram_bucket_midpoints("neg_histogram")
     assert mids == pytest.approx([-7.5, -2.5, 5.0, 20.0])
+
+    mock_meter.create_histogram.reset_mock()
+    mock_meter.create_histogram.side_effect = [
+        TypeError("unexpected keyword argument 'explicit_bucket_boundaries_advisory'"),
+        NoOpHistogram(name="legacy_histogram"),
+    ]
+    recorder.register_histogram_metric(
+        name="legacy_histogram", description="Legacy Histogram", buckets=[1.0]
+    )
+    assert mock_meter.create_histogram.call_count == 2
+    assert "explicit_bucket_boundaries_advisory" in (
+        mock_meter.create_histogram.call_args_list[0].kwargs
+    )
+    assert "explicit_bucket_boundaries_advisory" not in (
+        mock_meter.create_histogram.call_args_list[1].kwargs
+    )
 
 
 @patch("opentelemetry.metrics.set_meter_provider")
