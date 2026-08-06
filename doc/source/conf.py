@@ -193,7 +193,7 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-myst_heading_anchors = 3
+myst_heading_anchors = 4
 
 # Add these for attachment handling
 nb_render_key_pairs = {
