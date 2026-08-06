@@ -60,8 +60,11 @@ void RayTaskEventRecorder::RecordDropped(size_t count) {
 }
 
 bool RayTaskEventRecorder::Enabled() {
+  // task_events_report_interval_ms == 0 is the global kill-switch for task events, so the
+  // recorder honors it too (matching the buffer, which is only started when it is > 0).
   return RayConfig::instance().enable_ray_event() &&
-         RayConfig::instance().enable_ray_task_event_recorder();
+         RayConfig::instance().enable_ray_task_event_recorder() &&
+         RayConfig::instance().task_events_report_interval_ms() > 0;
 }
 
 void RayTaskEventRecorder::AddOneEvent(std::unique_ptr<RayEventInterface> event) {
