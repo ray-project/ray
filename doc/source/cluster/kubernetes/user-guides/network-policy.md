@@ -264,7 +264,7 @@ The operator doesn't add DNS or API server egress rules. Add both when using `De
 
 ### DNS egress
 
-Workers reach the head node through its service FQDN. Without a DNS egress rule, workers can't resolve the head address and the cluster won't start. Add this rule to both `head.egressRules` and `worker.egressRules`:
+Workers reach the head node through its service FQDN. Without a DNS egress rule, workers can't resolve the head address and the cluster won't start. The operator doesn't add this rule by default because DNS deployments vary across clusters. Adjust the selector to match your cluster's DNS provider before applying. Add the rule to both `head.egressRules` and `worker.egressRules`:
 
 ```yaml
 spec:
