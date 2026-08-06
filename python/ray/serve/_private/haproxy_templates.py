@@ -287,9 +287,14 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
-    # Servers in this backend
+    # Servers in this backend. With observe enabled, live traffic marks a
+    # server DOWN after error-limit consecutive connect failures (without
+    # waiting for the checker), so redispatch reaches the backup even in a
+    # soft-stopped process whose checker/config state is frozen. The backup
+    # fallback below is deliberately NOT observed; router-path servers
+    # inherit this state via `track`.
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
@@ -435,7 +440,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
     {%- for server in backend.servers %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} proto h2 check backup
