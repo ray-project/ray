@@ -51,6 +51,10 @@ constexpr int kRedisStartupTimeoutMs = 30000;
 /// `Process::Spawn` only reports that the binary launched; the server may not
 /// have bound and listened yet. Callers that connect immediately afterwards
 /// would then hit a closed port, so wait for the socket to actually answer.
+///
+/// \param port The localhost TCP port to probe.
+/// \param timeout_ms How long to keep polling before giving up.
+/// \return True if the port accepted a connection before the timeout expired.
 bool WaitForPortAcceptingConnections(int port, int timeout_ms) {
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
