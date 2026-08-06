@@ -30,6 +30,8 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/observability/ray_event_interface.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
@@ -188,6 +190,12 @@ class TaskStatusEvent : public TaskEvent {
   /// to be filled.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
+  /// Convert this status event into RayEventInterface objects for recording through
+  /// RayEventRecorder. Produces a TaskLifecycleEvent always, plus a
+  /// (Actor)TaskDefinitionEvent when task_spec_ is set.
+  std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
+  ToRayEventInterfaces();
+
   bool IsProfileEvent() const override { return false; }
 
  private:
@@ -242,6 +250,11 @@ class TaskProfileEvent : public TaskEvent {
   /// Note: The extra data will be moved when this is called and will no longer be usable.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
+  /// Convert this profile event into a RayEventInterface for recording through
+  /// RayEventRecorder.
+  std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
+  ToRayEventInterfaces();
+
   bool IsProfileEvent() const override { return true; }
 
   void SetEndTime(int64_t end_time) { end_time_ = end_time; }
@@ -269,6 +282,29 @@ class TaskProfileEvent : public TaskEvent {
   /// The current Ray session name.
   std::string session_name_;
 };
+
+/**
+ * @brief Build the RayEventInterface objects for a task status change and record them to
+ * the task-event recorder. No-op when task events are disabled for the task or the
+ * recorder path is disabled.
+ *
+ * @param timestamp The status-change time in Unix nanoseconds (from an injected clock).
+ * @param include_task_info Whether to attach the task spec (the definition event); true
+ * only for the first/submission event of an attempt.
+ * @param state_update Optional lifecycle details (node/worker/error/log) for this change.
+ */
+void RecordTaskStatusEventToRecorderIfNeeded(
+    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t attempt_number,
+    const TaskSpecification &spec,
+    rpc::TaskStatus status,
+    int64_t timestamp,
+    const std::string &session_name,
+    const NodeID &node_id,
+    bool include_task_info = false,
+    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt);
 
 /// @brief An enum class defining counters to be used in TaskEventBufferImpl.
 enum TaskEventBufferCounter {
@@ -388,6 +424,9 @@ class TaskEventBuffer {
 
   /// Return the node ID.
   virtual NodeID GetNodeID() const = 0;
+
+  /// Return the current timestamp in nanoseconds from the injected clock.
+  virtual int64_t GetCurrentTimestampNanos() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -439,6 +478,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::string GetSessionName() const override { return session_name_; }
 
   NodeID GetNodeID() const override { return node_id_; }
+
+  int64_t GetCurrentTimestampNanos() const override { return clock_.NowUnixNanos(); }
 
  private:
   /// Add a task status event to be reported.
@@ -626,7 +667,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   bool send_task_events_to_gcs_enabled_ = true;
 
   /// If true, ray events from the event buffer are sent to the event aggregator
-  bool send_ray_events_to_aggregator_enabled_ = false;
+  bool task_event_buffer_to_aggregator_enabled_ = false;
 
   /// The current Ray session name. Passed in from the core worker
   std::string session_name_ = "";
@@ -656,6 +697,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
               TestStopWaitsForInflightThenFlushes);
   FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
               TestFlushSendsDroppedAttemptsWithoutEvents);
+  FRIEND_TEST(TaskEventBufferTestRecorderSwitch, TestRecorderTakesOverAggregatorSend);
 };
 
 }  // namespace worker
