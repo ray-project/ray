@@ -1270,14 +1270,33 @@ def test_delta_targets_clamps_to_episode():
     assert pad.tolist() == [[True, False, False], [False, False, True]]
 
 
-def test_delta_tensor_type_preserves_hf_array_dimensions():
-    from datasets import Array2D
-
+@pytest.mark.parametrize(
+    "extension_kind, expected_ndim",
+    [
+        # HF ArrayXD: a Python-defined pa.ExtensionType backed by nested lists.
+        ("hf-array2d", 3),
+        # A canonical (C++-defined) extension type -- a pa.BaseExtensionType but
+        # NOT a pa.ExtensionType -- backed by one flat fixed-size list.
+        ("fixed-shape-tensor", 2),
+    ],
+)
+def test_delta_tensor_type_preserves_extension_dimensions(
+    extension_kind, expected_ndim
+):
+    """The declared window rank follows the extension's *storage* nesting, for
+    Python-defined and canonical extension types alike."""
     from ray.data._internal.datasource.lerobot_datasource import _delta_tensor_type
 
-    tensor_type = _delta_tensor_type(Array2D(shape=(2, 3), dtype="float32")())
+    if extension_kind == "hf-array2d":
+        from datasets import Array2D
+
+        extension_type = Array2D(shape=(2, 3), dtype="float32")()
+    else:
+        extension_type = pa.fixed_shape_tensor(pa.float32(), [2, 2])
+
+    tensor_type = _delta_tensor_type(extension_type)
     assert tensor_type.value_type == pa.float32()
-    assert tensor_type.ndim == 3
+    assert tensor_type.ndim == expected_ndim
 
 
 def test_nested_list_column_to_numpy_rejects_null_lists():
