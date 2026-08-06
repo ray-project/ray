@@ -1466,10 +1466,12 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
             e
         ), f"Expect an exception raised due to rate limit, but have {str(e)}"
 
-        # Consecutive APIs should be successful after the previous delay ones timeout
+        # Consecutive APIs should be successful after the previous delay ones timeout.
+        # Use list_tasks: the dashboard head serves it, so the GCS asio delay can't slow
+        # it. list_objects can't be used here because it needs the delayed
+        # GetAllNodeInfo to enumerate nodes, so it would never return in time.
         def verify():
-            assert len(list_objects()) > 0, "non-delay APIs should be successful"
-            "after previous ones timeout"
+            assert len(list_tasks()) > 0, "non-delay APIs should be successful"
 
             return True
 
