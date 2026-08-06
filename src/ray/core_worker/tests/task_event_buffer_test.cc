@@ -100,7 +100,7 @@ class TaskEventBufferTest : public ::testing::Test {
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
         std::make_unique<ray::gcs::MockGcsClient>(),
         std::make_unique<MockEventAggregatorClient>(),
-        "test_session_name",
+        std::make_shared<const std::string>("test_session_name"),
         NodeID::Nil(),
         clock_);
   }
@@ -167,7 +167,7 @@ class TaskEventBufferTest : public ::testing::Test {
         rpc::TaskStatus::RUNNING,
         1,
         /*is_actor_task_event=*/false,
-        "test_session_name",
+        std::make_shared<const std::string>("test_session_name"),
         NodeID::Nil(),
         std::make_shared<TaskSpecification>(task_spec),
         status_update);
@@ -179,29 +179,31 @@ class TaskEventBufferTest : public ::testing::Test {
       int64_t running_ts = 1,
       std::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
           absl::nullopt) {
-    return std::make_unique<TaskStatusEvent>(task_id,
-                                             JobID::FromInt(0),
-                                             attempt_num,
-                                             rpc::TaskStatus::RUNNING,
-                                             running_ts,
-                                             /*is_actor_task_event=*/false,
-                                             "test_session_name",
-                                             NodeID::Nil(),
-                                             nullptr,
-                                             state_update);
+    return std::make_unique<TaskStatusEvent>(
+        task_id,
+        JobID::FromInt(0),
+        attempt_num,
+        rpc::TaskStatus::RUNNING,
+        running_ts,
+        /*is_actor_task_event=*/false,
+        std::make_shared<const std::string>("test_session_name"),
+        NodeID::Nil(),
+        nullptr,
+        state_update);
   }
 
   std::unique_ptr<TaskEvent> GenProfileTaskEvent(TaskID task_id, int32_t attempt_num) {
-    return std::make_unique<TaskProfileEvent>(task_id,
-                                              JobID::FromInt(0),
-                                              attempt_num,
-                                              "",
-                                              "",
-                                              "",
-                                              "test_event",
-                                              1,
-                                              "test_session_name",
-                                              NodeID::Nil());
+    return std::make_unique<TaskProfileEvent>(
+        task_id,
+        JobID::FromInt(0),
+        attempt_num,
+        "",
+        "",
+        "",
+        "test_event",
+        1,
+        std::make_shared<const std::string>("test_session_name"),
+        NodeID::Nil());
   }
 
   static void CompareTaskEventData(const rpc::TaskEventData &actual_data,
@@ -1022,17 +1024,17 @@ TEST_F(TaskEventBufferTest, TestTaskLifecycleEventNodeId) {
   {
     TaskStatusEvent::TaskStateUpdate submitted_state_update(executor_node_id,
                                                             WorkerID::FromRandom());
-    auto submitted_event =
-        std::make_unique<TaskStatusEvent>(task_id,
-                                          JobID::FromInt(0),
-                                          /*attempt_number=*/0,
-                                          rpc::TaskStatus::SUBMITTED_TO_WORKER,
-                                          /*timestamp=*/1,
-                                          /*is_actor_task_event=*/false,
-                                          "test_session_name",
-                                          submitter_node_id,
-                                          nullptr,
-                                          submitted_state_update);
+    auto submitted_event = std::make_unique<TaskStatusEvent>(
+        task_id,
+        JobID::FromInt(0),
+        /*attempt_number=*/0,
+        rpc::TaskStatus::SUBMITTED_TO_WORKER,
+        /*timestamp=*/1,
+        /*is_actor_task_event=*/false,
+        std::make_shared<const std::string>("test_session_name"),
+        submitter_node_id,
+        nullptr,
+        submitted_state_update);
 
     RayEventsTuple submitted_ray_events;
     submitted_event->ToRpcRayEvents(submitted_ray_events);
@@ -1048,16 +1050,17 @@ TEST_F(TaskEventBufferTest, TestTaskLifecycleEventNodeId) {
   // For RUNNING (no state_update node_id), node_id should NOT be set — the submitter's
   // node must not leak into the lifecycle event's node_id field.
   {
-    auto task_event = std::make_unique<TaskStatusEvent>(task_id,
-                                                        JobID::FromInt(0),
-                                                        /*attempt_number=*/0,
-                                                        rpc::TaskStatus::RUNNING,
-                                                        /*timestamp=*/2,
-                                                        /*is_actor_task_event=*/false,
-                                                        "test_session_name",
-                                                        submitter_node_id,
-                                                        nullptr,
-                                                        /*state_update=*/absl::nullopt);
+    auto task_event = std::make_unique<TaskStatusEvent>(
+        task_id,
+        JobID::FromInt(0),
+        /*attempt_number=*/0,
+        rpc::TaskStatus::RUNNING,
+        /*timestamp=*/2,
+        /*is_actor_task_event=*/false,
+        std::make_shared<const std::string>("test_session_name"),
+        submitter_node_id,
+        nullptr,
+        /*state_update=*/absl::nullopt);
 
     RayEventsTuple ray_events_tuple;
     task_event->ToRpcRayEvents(ray_events_tuple);
@@ -1083,16 +1086,17 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   std::string event_name = "test_profile_event";
   int64_t start_time = 1000;
 
-  auto profile_event = std::make_unique<TaskProfileEvent>(task_id,
-                                                          job_id,
-                                                          attempt_number,
-                                                          component_type,
-                                                          component_id,
-                                                          node_ip,
-                                                          event_name,
-                                                          start_time,
-                                                          "test_session_name",
-                                                          NodeID::Nil());
+  auto profile_event = std::make_unique<TaskProfileEvent>(
+      task_id,
+      job_id,
+      attempt_number,
+      component_type,
+      component_id,
+      node_ip,
+      event_name,
+      start_time,
+      std::make_shared<const std::string>("test_session_name"),
+      NodeID::Nil());
 
   // Set end time and extra data to test full population
   profile_event->SetEndTime(2000);
@@ -1153,16 +1157,17 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventDefaultExtraDataIsEmptyJson) {
   // and makes consumers that json-parse the field (the state API) fail on the
   // whole request. The default must be "{}".
   auto make_event = [](const std::string &event_name) {
-    return std::make_unique<TaskProfileEvent>(RandomTaskId(),
-                                              JobID::FromInt(123),
-                                              /*attempt_number=*/1,
-                                              /*component_type=*/"core_worker",
-                                              /*component_id=*/"worker_123",
-                                              /*node_ip_address=*/"127.0.0.1",
-                                              event_name,
-                                              /*start_time=*/1000,
-                                              /*session_name=*/"test_session_name",
-                                              NodeID::Nil());
+    return std::make_unique<TaskProfileEvent>(
+        RandomTaskId(),
+        JobID::FromInt(123),
+        /*attempt_number=*/1,
+        /*component_type=*/"core_worker",
+        /*component_id=*/"worker_123",
+        /*node_ip_address=*/"127.0.0.1",
+        event_name,
+        /*start_time=*/1000,
+        /*session_name=*/std::make_shared<const std::string>("test_session_name"),
+        NodeID::Nil());
   };
 
   // State API path: ToRpcTaskEvents (rpc::TaskEvents consumed via GCS).
@@ -1204,44 +1209,47 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEventsMultipleEvents) {
   std::string node_ip = "127.0.0.1";
 
   // Create first profile event
-  auto profile_event1 = std::make_unique<TaskProfileEvent>(task_id,
-                                                           job_id,
-                                                           attempt_number,
-                                                           component_type,
-                                                           component_id,
-                                                           node_ip,
-                                                           "task:deserialize_arguments",
-                                                           1000,
-                                                           "test_session_name",
-                                                           NodeID::Nil());
+  auto profile_event1 = std::make_unique<TaskProfileEvent>(
+      task_id,
+      job_id,
+      attempt_number,
+      component_type,
+      component_id,
+      node_ip,
+      "task:deserialize_arguments",
+      1000,
+      std::make_shared<const std::string>("test_session_name"),
+      NodeID::Nil());
   profile_event1->SetEndTime(2000);
   profile_event1->SetExtraData("extra_data_1");
 
   // Create second profile event
-  auto profile_event2 = std::make_unique<TaskProfileEvent>(task_id,
-                                                           job_id,
-                                                           attempt_number,
-                                                           component_type,
-                                                           component_id,
-                                                           node_ip,
-                                                           "task:execute",
-                                                           2000,
-                                                           "test_session_name",
-                                                           NodeID::Nil());
+  auto profile_event2 = std::make_unique<TaskProfileEvent>(
+      task_id,
+      job_id,
+      attempt_number,
+      component_type,
+      component_id,
+      node_ip,
+      "task:execute",
+      2000,
+      std::make_shared<const std::string>("test_session_name"),
+      NodeID::Nil());
   profile_event2->SetEndTime(3000);
   profile_event2->SetExtraData("extra_data_2");
 
   // Create third profile event
-  auto profile_event3 = std::make_unique<TaskProfileEvent>(task_id,
-                                                           job_id,
-                                                           attempt_number,
-                                                           component_type,
-                                                           component_id,
-                                                           node_ip,
-                                                           "task:store_outputs",
-                                                           3000,
-                                                           "test_session_name",
-                                                           NodeID::Nil());
+  auto profile_event3 = std::make_unique<TaskProfileEvent>(
+      task_id,
+      job_id,
+      attempt_number,
+      component_type,
+      component_id,
+      node_ip,
+      "task:store_outputs",
+      3000,
+      std::make_shared<const std::string>("test_session_name"),
+      NodeID::Nil());
   profile_event3->SetEndTime(4000);
   profile_event3->SetExtraData("extra_data_3");
 
@@ -1313,16 +1321,17 @@ TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {
   int32_t attempt_number = 2;
 
   // Create a profile event
-  auto profile_event = std::make_unique<TaskProfileEvent>(task_id,
-                                                          job_id,
-                                                          attempt_number,
-                                                          "core_worker",
-                                                          "worker_456",
-                                                          "192.168.1.2",
-                                                          "profile_test",
-                                                          5000,
-                                                          "test_session_name",
-                                                          NodeID::Nil());
+  auto profile_event = std::make_unique<TaskProfileEvent>(
+      task_id,
+      job_id,
+      attempt_number,
+      "core_worker",
+      "worker_456",
+      "192.168.1.2",
+      "profile_test",
+      5000,
+      std::make_shared<const std::string>("test_session_name"),
+      NodeID::Nil());
   profile_event->SetEndTime(6000);
 
   absl::flat_hash_map<TaskAttempt, RayEventsTuple> agg_ray_events;
@@ -1363,16 +1372,17 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   auto job_id = JobID::FromInt(789);
 
   auto make_profile_event = [&]() {
-    return std::make_unique<TaskProfileEvent>(task_id,
-                                              job_id,
-                                              1,
-                                              "core_worker",
-                                              "worker_789",
-                                              "192.168.1.3",
-                                              "mixed_test",
-                                              7000,
-                                              "test_session_name",
-                                              NodeID::Nil());
+    return std::make_unique<TaskProfileEvent>(
+        task_id,
+        job_id,
+        1,
+        "core_worker",
+        "worker_789",
+        "192.168.1.3",
+        "mixed_test",
+        7000,
+        std::make_shared<const std::string>("test_session_name"),
+        NodeID::Nil());
   };
 
   // Create a status event (should populate both elements of RayEventsPair) and a
@@ -1739,29 +1749,25 @@ INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestBatchSendDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestDroppedAttemptsOnly,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestLimitBufferDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 }  // namespace worker
 

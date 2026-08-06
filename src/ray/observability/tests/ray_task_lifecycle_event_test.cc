@@ -57,7 +57,7 @@ TEST_F(RayTaskLifecycleEventTest, TestMergeAndSerialize) {
       /*timestamp=*/2000);
 
   ASSERT_EQ(event1->GetEntityId(), event2->GetEntityId());
-  ASSERT_EQ(event1->GetTaskAttempt().first, task_id.Binary());
+  ASSERT_EQ(event1->GetTaskAttempt().first, task_id);
   ASSERT_EQ(event1->GetTaskAttempt().second, 0);
 
   event1->Merge(std::move(*event2));
