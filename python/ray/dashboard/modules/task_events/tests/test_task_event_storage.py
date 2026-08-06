@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray._raylet import JobID, TaskID
+from ray._raylet import JobID, TaskID, WorkerID
 from ray.core.generated import gcs_pb2
 from ray.core.generated.common_pb2 import ErrorType, TaskAttempt, TaskStatus, TaskType
 from ray.dashboard.modules.task_events import task_event_storage as tes
@@ -131,7 +131,7 @@ def test_job_summary_gc_trims_over_cap(monkeypatch):
     assert summary.num_task_attempts_dropped == 10
 
 
-_WORKER = b"w" * 28
+_WORKER = WorkerID.from_random().binary()
 
 
 def test_mark_tasks_failed_on_worker_dead():
