@@ -1,6 +1,8 @@
+import asyncio
 import dataclasses
 import json
 import logging
+import random
 import traceback
 
 import aiohttp
@@ -22,6 +24,10 @@ from ray.dashboard.modules.job.utils import find_job_by_ids, parse_and_validate_
 
 routes = optional_utils.DashboardAgentRouteTable
 logger = logging.getLogger(__name__)
+
+_INIT_RETRY_BASE_SECONDS = 30
+_INIT_RETRY_MAX_SECONDS = 300
+_INIT_RETRY_JITTER = 0.2
 
 
 class JobAgent(dashboard_utils.DashboardAgentModule):
@@ -203,7 +209,37 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        pass
+        if not self._dashboard_agent.is_head:
+            return
+
+        retry_delay_s = _INIT_RETRY_BASE_SECONDS
+        attempt = 0
+        while True:
+            try:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None, optional_utils.init_ray_connection, self.gcs_address
+                )
+                self.get_job_manager()
+                logger.info(
+                    "Initialized JobManager on the head node and scheduled "
+                    "submission job recovery."
+                )
+                return
+            except Exception:
+                attempt += 1
+                delay_s = retry_delay_s * (
+                    1 + random.uniform(-_INIT_RETRY_JITTER, _INIT_RETRY_JITTER)
+                )
+                logger.warning(
+                    "Failed to initialize JobManager on the head node "
+                    "(attempt %d); retrying in %.1f seconds.",
+                    attempt,
+                    delay_s,
+                    exc_info=True,
+                )
+                await asyncio.sleep(delay_s)
+                retry_delay_s = min(retry_delay_s * 2, _INIT_RETRY_MAX_SECONDS)
 
     @staticmethod
     def is_minimal_module():
