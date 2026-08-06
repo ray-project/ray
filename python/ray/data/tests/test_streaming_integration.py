@@ -604,6 +604,70 @@ def test_streaming_split_schema_after_execution(ray_start_10_cpus_shared):
     assert "id" in schema.names
 
 
+def test_streaming_split_count_equal(ray_start_10_cpus_shared):
+    """`count()` returns the per-split row count for equal splits."""
+    ds = ray.data.range(100)
+    i1, i2 = ds.streaming_split(2, equal=True)
+    assert i1.count() == 50
+    assert i2.count() == 50
+
+    # Non-evenly-divisible total drops the remainder for equal splits.
+    ds = ray.data.range(101)
+    i1, i2 = ds.streaming_split(2, equal=True)
+    assert i1.count() == 50
+    assert i2.count() == 50
+
+
+def test_streaming_split_count_not_equal_raises(ray_start_10_cpus_shared):
+    """`count()` is not supported for non-equal splits, since the per-split
+    row count is only determined at runtime."""
+    ds = ray.data.range(100)
+    i1, i2 = ds.streaming_split(2, equal=False)
+    with pytest.raises(NotImplementedError, match="equal=True"):
+        i1.count()
+
+    # The coordinator actor guards against non-equal splits too, so bypassing
+    # the iterator wrapper still fails loudly instead of returning a bogus count.
+    with pytest.raises(NotImplementedError, match="equal=True"):
+        ray.get(i1._coord_actor.count.remote())
+
+
+def test_streaming_split_count_during_execution_raises(ray_start_10_cpus_shared):
+    """`count()` raises while the split is actively being iterated, since it
+    would otherwise race with the in-progress executor."""
+
+    # A slow transform over many blocks keeps the executor's dispatch thread
+    # genuinely running, and holding the consumer open (via ``release``) keeps
+    # it from finishing, so the guard is exercised deterministically rather
+    # than relying on a small dataset draining slowly enough.
+    def slow(batch):
+        time.sleep(0.1)
+        return batch
+
+    ds = ray.data.range(200, override_num_blocks=20).map_batches(slow, batch_size=10)
+    it = ds.streaming_split(1, equal=True)[0]
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def consume():
+        for _ in it.iter_batches(batch_size=10):
+            started.set()
+            # Pause after the first batch so the executor stays active while
+            # the main thread probes count().
+            release.wait(timeout=30)
+
+    t = threading.Thread(target=consume)
+    t.start()
+    try:
+        assert started.wait(timeout=30), "consumer never produced a batch"
+        with pytest.raises(RuntimeError, match="active dataset execution"):
+            it.count()
+    finally:
+        release.set()
+        t.join()
+
+
 def test_streaming_split_context(ray_start_10_cpus_shared):
     """Test that get_context() returns a valid DataContext from the coordinator."""
     ds = ray.data.range(10)
