@@ -512,6 +512,12 @@ def _backfill_missing_fields(
 
     Returns:
         pa.StructArray: The aligned struct array.
+
+    Raises:
+        ValueError: If ``column`` is not a struct array. This happens when the
+            unified schema claims a field is a struct but some block holds a
+            non-struct there, which ``unify_schemas`` allows because struct
+            reconciliation ignores the non-struct arms.
     """
     import pyarrow as pa
 
@@ -526,6 +532,17 @@ def _backfill_missing_fields(
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
+
+    # The caller in ``_align_struct_fields`` checks this for top-level columns,
+    # but the recursive call below only inspects the *target* field type, so a
+    # nested non-struct field reaches here and would fail while iterating
+    # ``column.type``.
+    if not pa.types.is_struct(column.type):
+        raise ValueError(
+            f"Column of type {column.type} cannot be aligned with struct type "
+            f"{unified_struct_type}. A block holds a non-struct value where the "
+            "unified schema expects a struct."
+        )
 
     # Extract the current struct field names and their corresponding data
     current_fields = {
