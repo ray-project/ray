@@ -35,6 +35,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
+    cast,
     overload,
 )
 from urllib.parse import urlparse
@@ -1401,6 +1402,54 @@ global_worker = Worker()
 We use a global Worker object to ensure that there is a single worker object
 per worker process.
 """
+
+
+class _CoreWorkerAPI(Protocol):
+    """Structural type for :func:`get_core_worker`.
+
+    This Protocol is intentionally incomplete and is meant to grow as more
+    call sites move off ``Worker.core_worker`` direct access. Only methods
+    used through the helper need to be declared here.
+
+    ``Worker.core_worker`` is attached dynamically on connect (and deleted on
+    shutdown), so static checkers do not see it on ``Worker``.
+    """
+
+    def wait_async(
+        self,
+        object_refs_or_generators: List[Any],
+        num_returns: int,
+        timeout_ms: int,
+        fetch_local: bool,
+        callback: Callable,
+    ) -> int:
+        ...
+
+    def cancel_wait_async(self, handle: int) -> None:
+        ...
+
+
+def get_core_worker() -> _CoreWorkerAPI:
+    """Return the connected worker's CoreWorker.
+
+    The returned value is typed as :class:`_CoreWorkerAPI`, a structural
+    Protocol that currently declares only the wait-async helpers; extend that
+    Protocol when new call sites need additional CoreWorker methods.
+
+    Returns:
+        The process-global CoreWorker attached on ``ray.init()``.
+
+    Raises:
+        RaySystemError: If Ray is not initialized or the core worker is
+            unavailable (same condition as ``Worker.check_connected``).
+    """
+    core_worker = getattr(global_worker, "core_worker", None)
+    if core_worker is None:
+        raise RaySystemError(
+            "Ray has not been started yet. You can start Ray with 'ray.init()'."
+        )
+    return cast(_CoreWorkerAPI, core_worker)
+
 
 _global_node = None
 """ray._private.node.Node: The global node object that is created by ray.init()."""
@@ -3230,11 +3279,15 @@ async def _wait_async(
     List[Union[ObjectRef, ObjectRefGenerator]],
     List[Union[ObjectRef, ObjectRefGenerator]],
 ]:
-    """Async-friendly ``ray.wait`` that does not block the event loop.
+    """Async-friendly wait that does not block the event loop.
 
-    Private API. Same arguments and return value as :func:`ray.wait`. Unlike
-    ``await obj_ref``, ``fetch_local=False`` waits for readiness without
-    pulling the object to the local node.
+    Private API. Argument shape and ``(ready, remaining)`` return value match
+    :func:`ray.wait`, but this helper does not auto-init Ray or honor client
+    mode. Unlike ``await obj_ref``, ``fetch_local=False`` waits for readiness
+    without pulling the object to the local node.
+
+    Cancelling the awaiting task cancels the underlying C++ wait so the
+    Python callback can be released promptly.
 
     Args:
         ray_waitables: List of :class:`~ObjectRef` or
@@ -3242,6 +3295,9 @@ async def _wait_async(
         num_returns: Number of waitables that should become ready before
             returning.
         timeout: Max seconds to wait, or ``None`` to wait indefinitely.
+            ``timeout=0`` reports waitables already present in the in-process
+            memory store and does not start plasma pulls (unlike
+            :func:`ray.wait`, which may begin fetches on a zero timeout).
         fetch_local: If True, wait until objects are present on the local
             node. If False, return as soon as each object exists anywhere in
             the cluster (no local pull).
@@ -3326,13 +3382,20 @@ async def _wait_async(
 
         loop.call_soon_threadsafe(_set)
 
-    worker.core_worker.wait_async(
+    core_worker = get_core_worker()
+    handle = core_worker.wait_async(
         ray_waitables,
         num_returns,
         timeout_milliseconds,
         fetch_local,
         _on_complete,
     )
+
+    def _cancel_cpp_wait(f: asyncio.Future) -> None:
+        if f.cancelled() and handle != 0:
+            core_worker.cancel_wait_async(handle)
+
+    fut.add_done_callback(_cancel_cpp_wait)
     return await fut
 
 

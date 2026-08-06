@@ -117,7 +117,7 @@ class CoreWorkerTest : public ::testing::Test {
 
     auto fake_local_raylet_rpc_client = std::make_shared<rpc::FakeRayletClient>();
 
-    auto fake_raylet_ipc_client = std::make_shared<ipc::FakeRayletIpcClient>();
+    fake_raylet_ipc_client_ = std::make_shared<ipc::FakeRayletIpcClient>();
 
     auto service_handler = std::make_unique<CoreWorkerServiceHandlerProxy>();
     auto worker_context = std::make_unique<WorkerContext>(
@@ -273,7 +273,7 @@ class CoreWorkerTest : public ::testing::Test {
                                                 std::move(core_worker_server),
                                                 std::move(rpc_address_),
                                                 mock_gcs_client_,
-                                                std::move(fake_raylet_ipc_client),
+                                                fake_raylet_ipc_client_,
                                                 std::move(fake_local_raylet_rpc_client),
                                                 io_thread_,
                                                 object_freed_callback_thread_,
@@ -327,6 +327,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
   std::shared_ptr<ActorCreator> actor_creator_;
   std::shared_ptr<CoreWorker> core_worker_;
+  std::shared_ptr<ipc::FakeRayletIpcClient> fake_raylet_ipc_client_;
   ray::observability::FakeGauge fake_task_by_state_gauge_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
@@ -1696,14 +1697,14 @@ TEST_F(CoreWorkerTest, WaitAsyncReadyInMemoryStore) {
                      reference_counter_->HasReference(object_id));
 
   WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync({object_id},
-                          /*num_objects=*/1,
-                          /*timeout_ms=*/-1,
-                          /*fetch_local=*/false,
-                          OnWaitAsyncDone,
-                          &result);
-  DrainIoUntilWaitAsyncDone(io_service_, result);
-
+  // Already-present memory objects complete in the synchronous pre-pass.
+  uint64_t handle = core_worker_->WaitAsync({object_id},
+                                            /*num_objects=*/1,
+                                            /*timeout_ms=*/-1,
+                                            /*fetch_local=*/false,
+                                            OnWaitAsyncDone,
+                                            &result);
+  ASSERT_EQ(handle, 0u);
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.ok());
   ASSERT_EQ(result.ready.size(), 1);
@@ -1742,14 +1743,13 @@ TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReadyWithoutFetchLocal) {
                      reference_counter_->HasReference(object_id));
 
   WaitAsyncCallbackResult result;
-  core_worker_->WaitAsync({object_id},
-                          /*num_objects=*/1,
-                          /*timeout_ms=*/-1,
-                          /*fetch_local=*/false,
-                          OnWaitAsyncDone,
-                          &result);
-  DrainIoUntilWaitAsyncDone(io_service_, result);
-
+  uint64_t handle = core_worker_->WaitAsync({object_id},
+                                            /*num_objects=*/1,
+                                            /*timeout_ms=*/-1,
+                                            /*fetch_local=*/false,
+                                            OnWaitAsyncDone,
+                                            &result);
+  ASSERT_EQ(handle, 0u);
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.ok());
   ASSERT_EQ(result.ready.size(), 1);
@@ -1808,6 +1808,112 @@ TEST_F(CoreWorkerTest, WaitAsyncTimeout) {
   ASSERT_TRUE(result.status.ok());
   ASSERT_EQ(result.ready.size(), 1);
   ASSERT_EQ(result.ready[0], 0);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncTimeoutZeroReportsAlreadyReady) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  // Pre-pass completes synchronously; return 0 (no cancellable handle).
+  uint64_t handle = core_worker_->WaitAsync({object_id},
+                                            /*num_objects=*/1,
+                                            /*timeout_ms=*/0,
+                                            /*fetch_local=*/false,
+                                            OnWaitAsyncDone,
+                                            &result);
+  ASSERT_EQ(handle, 0u);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready.size(), 1);
+  ASSERT_EQ(result.ready[0], 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncFetchLocalTrueReadyInMemory) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync({object_id},
+                                            /*num_objects=*/1,
+                                            /*timeout_ms=*/0,
+                                            /*fetch_local=*/true,
+                                            OnWaitAsyncDone,
+                                            &result);
+  ASSERT_EQ(handle, 0u);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready[0], 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncFetchLocalTruePlasmaMarkerNotReadyAtTimeoutZero) {
+  // Plasma markers are not treated as ready in the in-process pre-pass when
+  // fetch_local=true. timeout=0 must complete without SubscribePlasmaReady
+  // (the old pull-start path registered no async_plasma_callbacks_ entry and
+  // could UB / abort — asserting the subscription list catches that regression).
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync({object_id},
+                                            /*num_objects=*/1,
+                                            /*timeout_ms=*/0,
+                                            /*fetch_local=*/true,
+                                            OnWaitAsyncDone,
+                                            &result);
+  ASSERT_EQ(handle, 0u);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready[0], 0);
+  EXPECT_TRUE(fake_raylet_ipc_client_->plasma_subscriptions.empty());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncCancel) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync({object_id},
+                                            /*num_objects=*/1,
+                                            /*timeout_ms=*/-1,
+                                            /*fetch_local=*/false,
+                                            OnWaitAsyncDone,
+                                            &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+  ASSERT_EQ(result.ready[0], 0);
+
+  // Second cancel is a no-op.
+  core_worker_->CancelWaitAsync(handle);
+  ASSERT_EQ(result.calls, 1);
+
+  // After cancel, a new wait on the same ref can still complete.
+  WaitAsyncCallbackResult result2;
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  uint64_t handle2 = core_worker_->WaitAsync({object_id},
+                                             /*num_objects=*/1,
+                                             /*timeout_ms=*/0,
+                                             /*fetch_local=*/false,
+                                             OnWaitAsyncDone,
+                                             &result2);
+  ASSERT_EQ(handle2, 0u);
+  ASSERT_EQ(result2.calls, 1);
+  ASSERT_EQ(result2.ready[0], 1);
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncCallbackInvokedAtMostOnce) {

@@ -3778,10 +3778,12 @@ cdef class CoreWorker:
                 On error, ``exc`` is set and ``ready_bits`` is None.
 
         Returns:
-            None. The result is delivered asynchronously via ``callback``.
+            A non-zero handle for ``cancel_wait_async``, or 0 if ``callback``
+            already ran synchronously (validation error / immediate completion).
         """
         cdef:
             c_vector[CObjectID] wait_ids
+            uint64_t handle = 0
 
         for ref_or_generator in object_refs_or_generators:
             if isinstance(ref_or_generator, ObjectRef):
@@ -3797,16 +3799,28 @@ cdef class CoreWorker:
                     f"got list containing {type(ref_or_generator)}"
                 )
 
-        # Keep the callback alive until the C++ side invokes it.
+        # Keep the callback alive until the C++ side invokes it (or cancel).
+        # WaitAsync invokes the callback exactly once on every path (including
+        # sync validation / immediate completion); the callback's finally
+        # DECREFs. Do not DECREF again if WaitAsync returns or throws after
+        # that invocation — that would underflow the refcount.
         cpython.Py_INCREF(callback)
-        CCoreWorkerProcess.GetCoreWorker().WaitAsync(
-            wait_ids,
-            num_returns,
-            timeout_ms,
-            fetch_local,
-            wait_async_callback_impl,
-            <void*>callback,
-        )
+        with nogil:
+            handle = CCoreWorkerProcess.GetCoreWorker().WaitAsync(
+                wait_ids,
+                num_returns,
+                timeout_ms,
+                fetch_local,
+                wait_async_callback_impl,
+                <void*>callback,
+            )
+        # handle == 0 means the callback already ran synchronously.
+        return handle
+
+    def cancel_wait_async(self, uint64_t handle):
+        """Cancel an in-flight ``wait_async`` identified by ``handle``."""
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().CancelWaitAsync(handle)
 
     def free_objects(self, object_refs, c_bool local_only):
         cdef:
@@ -5491,11 +5505,29 @@ cdef void wait_async_callback_impl(CRayStatus status,
     user_callback = <object>user_callback_ptr
     try:
         if not status.ok():
-            user_callback(RuntimeError(status.message().decode()), None)
+            # Mirror check_status exception types without calling check_status
+            # (nogil raises across this C++ callback boundary are unsafe).
+            # Notably Status::Invalid falls through to RaySystemError there,
+            # not ValueError — keep the same here.
+            message = status.message().decode()
+            if (status.IsInvalidArgument() or status.IsNotFound() or
+                    status.IsObjectNotFound() or status.IsObjectUnknownOwner()):
+                exc = ValueError(message)
+            elif status.IsTimedOut():
+                exc = GetTimeoutError(message)
+            elif status.IsObjectRefEndOfStream():
+                exc = ObjectRefStreamEndOfStreamError(message)
+            elif status.IsIOError():
+                exc = IOError(message)
+            else:
+                # Includes Status::Invalid (duplicate ids, bad num_objects).
+                exc = RaySystemError(message)
+            user_callback(exc, None)
             return
         ready_bits = [ready[i] != 0 for i in range(n)]
         user_callback(None, ready_bits)
-    except Exception:
+    except BaseException:
+        # Must not skip DECREF or leave the awaiting future hung.
         logger.exception("failed to run wait_async callback (user func)")
     finally:
         cpython.Py_DECREF(user_callback)

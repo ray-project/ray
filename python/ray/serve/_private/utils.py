@@ -790,7 +790,7 @@ async def await_deployment_response(deployment_response):
     return await deployment_response
 
 
-async def deployment_response_to_object_ref(deployment_response):
+async def deployment_response_to_object_ref(deployment_response: Any) -> ray.ObjectRef:
     """Convert a DeploymentResponse to an ObjectRef and wait until it is ready.
 
     ``_to_object_ref`` returns immediately (peeked ref). We still wait for the
