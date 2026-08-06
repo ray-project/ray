@@ -4925,7 +4925,8 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
       // is replied from the raylet.
       return;
     }
-    auto it = free_pending_.find(node_id);
+    absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
+        free_pending_.find(node_id);
     if (it == free_pending_.end() || it->second.empty()) {
       // Nothing queued for this node (an entry is erased as soon as it drains).
       return;
@@ -4961,7 +4962,15 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
           if (!status.ok()) {
             // The retryable client only surfaces an error once the node is dead;
             // its copies died with it, so drop the queue instead of wedging.
-            free_pending_.erase(node_id);
+            absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
+                free_pending_.find(node_id);
+            const size_t dropped = (it == free_pending_.end()) ? 0 : it->second.size();
+            if (it != free_pending_.end()) {
+              free_pending_.erase(it);
+            }
+            RAY_LOG(INFO).WithField(node_id)
+                << "FreeLocalObjects RPC failed (" << status << "); dropping " << dropped
+                << " buffered free request(s) for this node, which is likely dead.";
             return;
           }
         }
