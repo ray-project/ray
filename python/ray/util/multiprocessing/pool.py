@@ -689,14 +689,7 @@ class Pool:
         self._dispatcher_wakeup = threading.Event()
         self._dispatcher_terminate = threading.Event()
         self._dispatcher_thread: Optional[threading.Thread] = None
-        # True once at least one actor has become ready. Used to decide whether
-        # a failed actor startup should close the pool (it never became healthy)
-        # or just drop the slot so the resize step can retry (it was healthy).
-        self._pool_ever_healthy = False
-        # Count of consecutive actor-startup failures while no actor is making
-        # progress. Resets to zero whenever an actor becomes ready. Bounds the
-        # retry of failed replacements so a pool whose actors persistently fail
-        # to start fails fast instead of churning forever.
+        # Consecutive actor-startup failure budget; see _start_actor_pool.
         self._startup_failures = 0
 
         if context and log_once("context_argument_warning"):
@@ -784,6 +777,11 @@ class Pool:
         # Validate actor options synchronously even when no actors are
         # initially created. Dispatcher failures must not strand results.
         self._pool_actor = PoolActor.options(**self._ray_remote_args)
+        # Start the startup-failure budget at its cap: until the first actor
+        # becomes ready (_mark_ready resets it to 0), the first startup
+        # failure aborts the pool instead of retrying; afterwards it bounds
+        # the retry of failed replacements.
+        self._startup_failures = self._max_size
         # Fixed-length slot list. A slot is None until its actor is created:
         # autoscaling pools create actors lazily on demand, while fixed pools
         # create all of them below. Lazy creation lets pending num_cpus=1
@@ -804,10 +802,7 @@ class Pool:
             try:
                 ray.get(list(self._starting_actor_refs))
             except Exception:
-                for slot in self._actor_pool:
-                    if slot is not None:
-                        ray.kill(slot[0])
-                self._starting_actor_refs.clear()
+                self._stop_pool_actors(force=True)
                 raise
 
         wakeup = self._dispatcher_wakeup
@@ -843,13 +838,23 @@ class Pool:
             # The actor is already dead; there is nothing to stop gracefully.
             pass
 
+    def _clear_slot(self, actor_index):
+        # Forget the actor in this slot. Used by every transition that removes
+        # an actor from the pool (startup failure, death, retirement, reap).
+        self._actor_pool[actor_index] = None
+        self._last_used[actor_index] = 0.0
+
+    def _mark_ready(self, actor_index, now):
+        # Transition an actor into the ready state: it can receive batches,
+        # and a successful startup resets the startup-failure budget.
+        self._last_used[actor_index] = now
+        self._startup_failures = 0
+        self._ready_actor_indices.append(actor_index)
+
     def _new_actor_entry(self):
         # NOTE(edoakes): The initializer function can't currently be used to
         # modify the global namespace (e.g., import packages or set globals)
         # due to a limitation in cloudpickle.
-        # Cache the PoolActor with options
-        if not self._pool_actor:
-            self._pool_actor = PoolActor.options(**self._ray_remote_args)
         return (self._pool_actor.remote(self._initializer, self._initargs), 0)
 
     def _start_actor(self, actor_index, demand=True):
@@ -864,8 +869,7 @@ class Pool:
             # actor handle is already unusable). Clear the slot so it is not
             # left as an untracked entry, kill the actor, and re-raise so the
             # caller decides how to handle the failure.
-            self._actor_pool[actor_index] = None
-            self._last_used[actor_index] = 0.0
+            self._clear_slot(actor_index)
             ray.kill(actor)
             raise
         self._starting_actor_refs[object_ref] = (actor_index, demand)
@@ -912,8 +916,7 @@ class Pool:
                 try:
                     ray.get(object_ref)
                 except ray.exceptions.RayError as error:
-                    self._actor_pool[actor_index] = None
-                    self._last_used[actor_index] = 0.0
+                    self._clear_slot(actor_index)
                     # Remember the first failure but keep processing the other
                     # ready refs: other actors in this batch may have started
                     # successfully and can serve work, so whether to fail fast
@@ -921,11 +924,7 @@ class Pool:
                     if startup_error is None:
                         startup_error = error
                     continue
-                else:
-                    self._last_used[actor_index] = now
-                    self._pool_ever_healthy = True
-                    self._startup_failures = 0
-                    self._ready_actor_indices.append(actor_index)
+                self._mark_ready(actor_index, now)
             else:
                 actor_index, retire = self._running_actor_refs.pop(object_ref)
                 try:
@@ -934,8 +933,7 @@ class Pool:
                     # The actor died while running the batch. The batch's error
                     # is surfaced to the caller through the ResultThread; drop
                     # the slot here so the resize step replaces the actor.
-                    self._actor_pool[actor_index] = None
-                    self._last_used[actor_index] = 0.0
+                    self._clear_slot(actor_index)
                     continue
                 except Exception:
                     # The batch failed without killing the actor (for example,
@@ -949,23 +947,17 @@ class Pool:
                 if retire:
                     actor, _ = self._actor_pool[actor_index]
                     self._stop_actor(actor)
-                    self._actor_pool[actor_index] = None
-                    self._last_used[actor_index] = 0.0
+                    self._clear_slot(actor_index)
                 else:
-                    self._last_used[actor_index] = now
-                    self._pool_ever_healthy = True
-                    self._startup_failures = 0
-                    self._ready_actor_indices.append(actor_index)
+                    self._mark_ready(actor_index, now)
 
         if startup_error is None:
             return None
-        if not self._pool_ever_healthy:
-            # No actor has become ready, so the pool cannot function; fail
-            # fast rather than hang.
-            return startup_error
-        # The pool is serving work, so a failed (replacement) actor is just
-        # dropped and the resize step will retry. Bound the retries so a pool
-        # whose replacements persistently fail fails fast instead of churning.
+        # _startup_failures starts at its cap, so until the first actor
+        # becomes ready (which resets it to 0) the first startup failure
+        # aborts the pool instead of retrying. After that it bounds the retry
+        # of failed replacements so a pool whose actors persistently fail to
+        # start fails fast instead of churning forever.
         self._startup_failures += 1
         if self._startup_failures > self._max_size:
             return startup_error
@@ -984,9 +976,7 @@ class Pool:
                 # their pings and wake the dispatcher (their results are then
                 # handled by _update_actor_states), and live actors do the
                 # same when their batches finish.
-                if not self._starting_actor_refs and (
-                    not self._pool_ever_healthy or live == 0
-                ):
+                if not self._starting_actor_refs and live == 0:
                     return error
                 break
             live += 1
@@ -994,21 +984,27 @@ class Pool:
         # Pending actors created for backlog are only demand signals. Remove
         # excess ones once the backlog shrinks; initial warm actors are left
         # for normal idle-timeout reaping.
-        for object_ref, (actor_index, demand) in list(
-            self._starting_actor_refs.items()
-        ):
-            if live <= desired:
-                break
-            if demand:
-                actor, _ = self._actor_pool[actor_index]
-                self._starting_actor_refs.pop(object_ref)
-                self._actor_pool[actor_index] = None
-                self._last_used[actor_index] = 0.0
-                ray.kill(actor)
-                live -= 1
+        if live > desired:
+            for object_ref, (actor_index, demand) in list(
+                self._starting_actor_refs.items()
+            ):
+                if live <= desired:
+                    break
+                if demand:
+                    actor, _ = self._actor_pool[actor_index]
+                    self._starting_actor_refs.pop(object_ref)
+                    self._clear_slot(actor_index)
+                    ray.kill(actor)
+                    live -= 1
         return None
 
     def _dispatch_ready_batches(self, pending):
+        """Hand queued batches to ready actors.
+
+        Returns True if a dead actor's slot was dropped while dispatching,
+        so the caller can top the pool back up.
+        """
+        dropped = False
         while pending and self._ready_actor_indices:
             func, batch, add_object_ref = pending[0]
             actor_index = self._ready_actor_indices.popleft()
@@ -1021,8 +1017,8 @@ class Pool:
                 # the slot (the resize step replaces the actor) and retry the
                 # batch, which is still at the front of the queue, on another
                 # ready actor or the replacement.
-                self._actor_pool[actor_index] = None
-                self._last_used[actor_index] = 0.0
+                self._clear_slot(actor_index)
+                dropped = True
                 continue
             except Exception as error:
                 # Submission may fail synchronously (for example, when func or
@@ -1042,6 +1038,7 @@ class Pool:
             self._actor_pool[actor_index] = (actor, count)
             self._running_actor_refs[object_ref] = (actor_index, retire)
             self._wake_dispatcher_when_ready(object_ref)
+        return dropped
 
     def _reap_idle_actors(self):
         now = time.monotonic()
@@ -1052,8 +1049,7 @@ class Pool:
             if now - self._last_used[actor_index] > self._idle_timeout_s:
                 actor, _ = self._actor_pool[actor_index]
                 self._ready_actor_indices.remove(actor_index)
-                self._actor_pool[actor_index] = None
-                self._last_used[actor_index] = 0.0
+                self._clear_slot(actor_index)
                 self._stop_actor(actor)
                 live -= 1
 
@@ -1075,6 +1071,14 @@ class Pool:
                 ray.kill(actor)
             else:
                 self._stop_actor(actor)
+
+    def _abort_dispatch(self, pending, error):
+        # Poison the pool when actors cannot be started or replaced: fail
+        # every batch that has not been dispatched and stop all actors.
+        # Called under the pool lock.
+        self._closed = True
+        self._fail_pending_batches(pending, error)
+        self._stop_pool_actors(force=True)
 
     def _next_idle_timeout(self):
         live = sum(slot is not None for slot in self._actor_pool)
@@ -1122,36 +1126,25 @@ class Pool:
                     )
                     return
 
-                startup_error = pool._update_actor_states()
-                if startup_error is not None:
-                    pool._closed = True
-                    pool._fail_pending_batches(pending, startup_error)
-                    pool._stop_pool_actors(force=True)
-                    return
-
-                desired = min(
-                    pool._max_size,
-                    max(
-                        pool._min_size,
-                        len(pending) + len(pool._running_actor_refs),
-                    ),
-                )
-                resize_error = pool._resize_actor_pool(desired)
-                if resize_error is not None:
-                    pool._closed = True
-                    pool._fail_pending_batches(pending, resize_error)
-                    pool._stop_pool_actors(force=True)
-                    return
-                pool._dispatch_ready_batches(pending)
-                # Dispatching can drop a slot when a submission fails
-                # synchronously on an actor whose death has already
-                # propagated. Top the pool back up so the still-pending work
-                # is not stranded waiting for a wakeup nothing would generate.
-                resize_error = pool._resize_actor_pool(desired)
-                if resize_error is not None:
-                    pool._closed = True
-                    pool._fail_pending_batches(pending, resize_error)
-                    pool._stop_pool_actors(force=True)
+                error = pool._update_actor_states()
+                if error is None:
+                    desired = min(
+                        pool._max_size,
+                        max(
+                            pool._min_size,
+                            len(pending) + len(pool._running_actor_refs),
+                        ),
+                    )
+                    error = pool._resize_actor_pool(desired)
+                    if error is None:
+                        dropped = pool._dispatch_ready_batches(pending)
+                        if dropped:
+                            # Dispatching dropped a dead slot; top the pool
+                            # back up so still-pending work is not stranded
+                            # waiting for a wakeup nothing would generate.
+                            error = pool._resize_actor_pool(desired)
+                if error is not None:
+                    pool._abort_dispatch(pending, error)
                     return
                 pool._reap_idle_actors()
 
