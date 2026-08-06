@@ -26,7 +26,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "boost/asio/post.hpp"
 #include "ray/util/logging.h"
@@ -41,47 +40,6 @@ namespace gcs {
 namespace {
 
 constexpr char kDefaultCFName[] = "default";
-
-// GCS tables written with `sync = false` (skip the per-write WAL fsync).
-// Every other table keeps the fsync-before-ack durability contract.
-//
-// This is a fundamental design property of the RocksDB GCS backend, not an
-// operator-tunable knob: the set is fixed by the correctness/performance
-// argument below and can only change alongside a change to the GCS
-// death-notification design or the Ray-core reconstruction path. It is a
-// hardcoded constant (rather than a config flag) so that intent is explicit
-// and nobody relaxes durability at runtime.
-//
-// Why this exists: GCS publishes death notifications (node down, actor dead)
-// from inside the storage write's completion callback -- i.e.
-// publish-after-persist. Under RocksDB the per-write fsync therefore delays
-// the cluster-wide death notification by the fsync latency, which widens a
-// pre-existing Ray-core object-reconstruction/task-resubmission race far
-// enough that a generator (num_returns=None) reconstruction can hang. The
-// other GCS backends do not expose this because their "persist" is
-// effectively in-memory-fast: Ray's recommended Redis GCS runs with
-// `appendfsync everysec` (fsync once per second, not per write; see
-// doc/.../kuberay-gcs-persistent-ft.md) and Ray's test Redis has no
-// persistence at all.
-//
-// Relaxing the fsync on these tables keeps RocksDB at least as durable as
-// that proven, shipped baseline (a crash can lose only the last,
-// not-yet-fsynced write -- the same window Redis everysec already tolerates),
-// while removing the notification delay. The chosen tables are the two
-// death-notification tables, whose state is re-derivable after a GCS restart
-// anyway: NODE liveness is re-established by health checks and ACTOR state is
-// reconciled from the running cluster.
-//
-// FOLLOW-UP: soft durability is a workaround. The underlying
-// publish-after-persist race is rooted in the GCS core code
-// (https://github.com/ray-project/ray/pull/64187). Once that root cause is
-// fixed, this relaxation should be revisited and, ideally, removed so all
-// tables keep the strict per-write fsync.
-const absl::flat_hash_set<std::string> &SoftDurableTables() {
-  static const auto *const kTables =
-      new absl::flat_hash_set<std::string>{"NODE", "ACTOR"};
-  return *kTables;
-}
 
 // Bounded memory configuration for the embedded RocksDB.
 //
@@ -143,17 +101,19 @@ RocksDbOptions BuildRocksDbOptions() {
 
 }  // namespace
 
-rocksdb::WriteOptions RocksDbStoreClient::SyncWriteOptions(
-    const std::string &table_name) const {
-  rocksdb::WriteOptions wo;
-  // REP §"Durability and Consistency Semantics": fsync per write is the
-  // GCS FT durability contract. The death-notification tables in
-  // SoftDurableTables() are the exception (sync = false): their per-write
-  // fsync would delay publish-after-persist death notifications and widen
-  // a core reconstruction race, and their state is re-derivable after a
-  // restart. See SoftDurableTables() for the full rationale.
-  wo.sync = !SoftDurableTables().contains(table_name);
-  return wo;
+const rocksdb::WriteOptions &RocksDbStoreClient::SyncWriteOptions() const {
+  // REP §"Durability and Consistency Semantics": every GCS write fsyncs the
+  // WAL before it is acked. This is the RocksDB GCS fault-tolerance
+  // durability contract -- a committed write survives a GCS process crash.
+  // The options are identical for every synchronous write, so return a
+  // reference to a single thread-safe static instance rather than
+  // constructing a WriteOptions on every mutating call (a hot path).
+  static const rocksdb::WriteOptions kSyncWriteOptions = [] {
+    rocksdb::WriteOptions wo;
+    wo.sync = true;
+    return wo;
+  }();
+  return kSyncWriteOptions;
 }
 
 RocksDbStoreClient::RocksDbStoreClient(
@@ -405,8 +365,7 @@ void RocksDbStoreClient::AsyncPut(const std::string &table_name,
                   }
                 }
 
-                auto put_status =
-                    db_->Put(SyncWriteOptions(table_name), cf, key, std::move(data));
+                auto put_status = db_->Put(SyncWriteOptions(), cf, key, std::move(data));
                 RAY_CHECK(put_status.ok())
                     << "RocksDB Put failed for table=" << table_name << " key=" << key
                     << ": " << put_status.ToString();
@@ -538,7 +497,7 @@ void RocksDbStoreClient::AsyncDelete(const std::string &table_name,
         // unchanged: the bool reports whether the key existed at the
         // moment of the read.
         if (existed) {
-          auto del_status = db_->Delete(SyncWriteOptions(table_name), cf, key);
+          auto del_status = db_->Delete(SyncWriteOptions(), cf, key);
           RAY_CHECK(del_status.ok()) << "RocksDB Delete failed for table=" << table_name
                                      << " key=" << key << ": " << del_status.ToString();
         }
@@ -588,7 +547,7 @@ void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
                        << get_status.ToString();
       }
       if (existed) {
-        auto del_status = db_->Delete(SyncWriteOptions(table_name), cf, key);
+        auto del_status = db_->Delete(SyncWriteOptions(), cf, key);
         RAY_CHECK(del_status.ok())
             << "RocksDB Delete during BatchDelete failed for table=" << table_name
             << " key=" << key << ": " << del_status.ToString();

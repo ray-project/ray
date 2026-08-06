@@ -114,6 +114,10 @@ DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
 
+DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
+    "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -229,6 +233,15 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
     "DEADLINE_EXCEEDED",
 )
 
+DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS = env_integer("RAY_DATA_DELTA_COMMIT_MAX_ATTEMPTS", 5)
+DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_DELTA_COMMIT_RETRY_MAX_BACKOFF_S", 16
+)
+# Reuses the same transient-error substring set already proven for Iceberg's
+# catalog operations -- both are HTTP/RPC calls to a metadata service, so the
+# same class of transient failures (rate limiting, connection resets) applies.
+DEFAULT_DELTA_COMMIT_RETRIED_ERRORS = DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS
+
 DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
 DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS = env_integer(
     "RAY_DATA_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS", 10
@@ -251,6 +264,10 @@ DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
+
+DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS = env_integer(
+    "RAY_DATA_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS", 0
+)
 
 DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
 
@@ -300,6 +317,8 @@ DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
+
+DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
 
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
 
@@ -374,6 +393,36 @@ class IcebergConfig:
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
     )
+
+
+@DeveloperAPI
+@dataclass
+class DeltaConfig:
+    """Configuration for the ``write_delta`` prototype's commit/retry behavior.
+
+    Args:
+        commit_max_attempts: Maximum number of retry attempts for the driver's
+            Delta commit operations (existence check, create table, write
+            transaction). Defaults to 5.
+        commit_retry_max_backoff_s: Maximum backoff time in seconds between
+            commit retry attempts. Uses exponential backoff with jitter.
+            Defaults to 16.
+        commit_retried_errors: A list of substrings of error messages that
+            should trigger a retry of a commit operation, in addition to
+            authentication errors (which are always retried when
+            ``credential_refresh_enabled`` is set).
+        credential_refresh_enabled: Whether an authentication error (expired
+            or invalid cloud/catalog credentials) triggers a credential
+            refresh before the next retry attempt, on both the driver and
+            workers. Defaults to ``True``.
+    """
+
+    commit_max_attempts: int = DEFAULT_DELTA_COMMIT_MAX_ATTEMPTS
+    commit_retry_max_backoff_s: int = DEFAULT_DELTA_COMMIT_RETRY_MAX_BACKOFF_S
+    commit_retried_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_DELTA_COMMIT_RETRIED_ERRORS)
+    )
+    credential_refresh_enabled: bool = True
 
 
 @DeveloperAPI
@@ -540,8 +589,10 @@ class DataContext:
         use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
             the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
             driver-side first-file sampling for schema inference,
-            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to False — V1
-            remains the production path while V2 bakes.
+            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to True;
+            override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
+            V2). Parquet is the only reader migrated to V2 so far; the others
+            read through V1 for now regardless of this flag.
         parquet_chunker_target_chunk_size: Target chunk size in bytes used by
             ``ParquetFileChunker`` when splitting large Parquet files into
             multiple read tasks. When ``None``, the chunker's built-in default
@@ -589,12 +640,29 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
-        actor_init_retry_on_errors: Whether to retry when actor initialization fails.
-            Default to `False` to not retry on any errors. Set to `True` to retry
-            all errors.
-        actor_init_max_retries: Maximum number of consecutive retries for actor
-            initialization failures. The counter resets when an actor successfully
-            initializes. Default is 3. Set to -1 for infinite retries.
+        actor_init_retry_on_errors: Whether to retry when the UDF constructor
+            raises during actor initialization. The retry happens in-process,
+            inside the same (still-alive) actor; contrast with
+            ``max_consecutive_actor_init_deaths``, which handles actors that
+            die during initialization. Default to `False` to not retry on any
+            errors. Set to `True` to retry all errors.
+        actor_init_max_retries: Maximum number of consecutive in-process UDF
+            constructor retries per actor (see ``actor_init_retry_on_errors``).
+            The counter resets when an actor successfully initializes. Default
+            is 3. Set to -1 for infinite retries.
+        max_consecutive_actor_init_deaths: Per-operator number of consecutive
+            actor deaths during initialization to tolerate by replacing the
+            dead actor with a fresh one (an actor dies when its process
+            crashes, e.g. OOM or segfault, or when any in-actor
+            ``actor_init_retry_on_errors`` retries are exhausted; Ray Core
+            doesn't restart actors whose creation task failed). The counter
+            resets whenever an actor of the operator initializes successfully,
+            so sporadic deaths in a progressing pipeline are tolerated while a
+            systemically broken UDF exhausts the budget. Default is 0, which
+            fails the job on the first death. Set to -1 for unlimited. When
+            the budget is exceeded, the last actor error is re-raised. Note:
+            an operator start gated by ``wait_for_min_actors_s`` still fails
+            fast on the first error.
         retried_map_errors: Controls which user exceptions are retried in map
             tasks. ``False`` (default) disables retries. ``True`` retries any user
             exception. A list of patterns retries only when the exception message
@@ -643,6 +711,9 @@ class DataContext:
         iceberg_config: Configuration for Iceberg datasource operations including
             retry settings for file writes and catalog operations. See
             :class:`IcebergConfig` for details.
+        delta_config: Configuration for the ``write_delta`` prototype's
+            commit/retry behavior, including credential-refresh-on-auth-error.
+            See :class:`DeltaConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         hash_shuffle_compression: Codec used to compress hash-shuffle
@@ -653,6 +724,16 @@ class DataContext:
             ``ray.get()`` each hash-shuffle reduce task to fetch a batch of
             its input shards. A non-positive value (``<= 0``) disables the
             timeout, fetching each batch in a single blocking call.
+        shuffle_input_batch_bytes: Target batch size in bytes for coalescing
+            shuffle input blocks before partitioning. Currently only applies
+            to the ``HASH_SHUFFLE_V2`` shuffle strategy; other shuffle
+            strategies ignore it. Input blocks are buffered per node and
+            processed as a batch once this size is reached; remaining
+            buffered blocks are flushed when input is exhausted. Lower values
+            increase shuffle parallelism (useful for CPU-intensive shuffles)
+            at the cost of more, smaller intermediate shard objects. Set to
+            ``0`` to disable batching, processing each input bundle
+            individually. Defaults to 1GiB.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -669,6 +750,7 @@ class DataContext:
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
         use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
+        use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
@@ -754,6 +836,11 @@ class DataContext:
     # logged and fails with GetTimeoutError. <= 0 disables.
     hash_shuffle_reduce_get_timeout_s: float = DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S
 
+    # Target batch size (bytes) for coalescing shuffle input blocks before
+    # partitioning (currently hash_shuffle_v2 only); blocks are buffered per
+    # node until this size is reached. 0 disables batching.
+    shuffle_input_batch_bytes: int = DEFAULT_SHUFFLE_INPUT_BATCH_BYTES
+
     # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
     #
@@ -810,6 +897,7 @@ class DataContext:
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
     use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
+    use_legacy_dataset_ids: bool = DEFAULT_USE_LEGACY_DATASET_IDS
     eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
@@ -850,6 +938,7 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
+    max_consecutive_actor_init_deaths: int = DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS
     retried_map_errors: Union[bool, List[str]] = DEFAULT_RETRIED_MAP_ERRORS
     max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
@@ -873,6 +962,7 @@ class DataContext:
     )
     lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
+    delta_config: DeltaConfig = field(default_factory=DeltaConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
