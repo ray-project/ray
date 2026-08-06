@@ -81,22 +81,23 @@ configuration options) before calling ``with joblib.parallel_backend('ray')``.
     If you do not set the ``RAY_ADDRESS`` environment variable and do not provide
     ``address`` in ``ray.init(address=<address>)`` then scikit-learn will run on a SINGLE node!
 
-Experimental autoscaling (``autoscale=True``)
----------------------------------------------
+Experimental autoscaling
+------------------------
 
 .. note::
 
-    The ``autoscale`` opt-in is experimental and may change in future releases.
+    Pool autoscaling is experimental and may change in future releases.
 
 By default the ``"ray"`` backend eagerly creates a fixed pool of ``n_jobs``
-actors. Pass ``autoscale=True`` to grow and shrink the pool on demand instead:
+actors. Supplying any of ``min_size``, ``max_size``, ``initial_size``, or
+``idle_timeout_s`` grows and shrinks the pool on demand instead:
 
 .. code-block:: python
 
   import joblib
   from ray.util.joblib import register_ray
   register_ray()
-  with joblib.parallel_backend("ray", n_jobs=8, autoscale=True):
+  with joblib.parallel_backend("ray", n_jobs=8, max_size=8):
       search.fit(digits.data, digits.target)
 
 Actors request ``num_cpus=1`` so pending placements drive the Ray autoscaler to

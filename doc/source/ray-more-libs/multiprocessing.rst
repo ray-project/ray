@@ -46,17 +46,16 @@ The full ``multiprocessing.Pool`` API is currently supported. Please see the
 Experimental autoscaling
 ------------------------
 
-By default, ``Pool`` eagerly creates a fixed number of actors. Pass
-``autoscale=True`` to create actors on demand and retire them after they have
-been idle:
+By default, ``Pool`` eagerly creates a fixed number of actors. Supplying any of
+``min_size``, ``max_size``, ``initial_size``, or ``idle_timeout_s`` instead
+creates an autoscaling pool that creates actors on demand and retires them after
+they have been idle:
 
 .. code-block:: python
 
   from ray.util.multiprocessing import Pool
 
   pool = Pool(
-      processes=64,
-      autoscale=True,
       min_size=0,
       max_size=64,
       initial_size=0,
@@ -66,9 +65,10 @@ been idle:
 
 Autoscaling actors request one CPU by default. Pending actors therefore expose
 resource demand to the Ray autoscaler, while work is submitted only to actors
-that are ready. ``processes`` is the concurrency target when ``max_size`` is
-not specified; set it explicitly when connecting to a cluster whose head node
-has zero CPUs and whose workers start at zero.
+that are ready. ``max_size`` defaults to ``processes`` when it is given,
+otherwise to the number of cluster CPUs; set ``max_size`` explicitly when
+connecting to a cluster whose head node has zero CPUs and whose workers start
+at zero. Actors that crash are replaced automatically.
 
 ``min_size`` is the minimum number of actors retained, ``max_size`` caps the
 pool, ``initial_size`` controls how many actors are pre-warmed, and

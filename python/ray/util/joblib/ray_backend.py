@@ -22,12 +22,13 @@ class RayBackend(MultiprocessingBackend):
         nesting_level: Optional[int] = None,
         inner_max_num_threads: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        # Autoscaling params (forwarded to Pool via configure).
-        autoscale: bool = False,
-        min_size: int = 0,
+        # Autoscaling params (forwarded to Pool via configure). Supplying any
+        # of them makes the pool autoscale; None means "unspecified" so the
+        # default fixed-size pool keeps its current behavior.
+        min_size: Optional[int] = None,
         max_size: Optional[int] = None,
         initial_size: Optional[int] = None,
-        idle_timeout_s: float = 60.0,
+        idle_timeout_s: Optional[float] = None,
         **kwargs
     ):
         """``ray_remote_args`` will be used to configure Ray Actors
@@ -36,8 +37,7 @@ class RayBackend(MultiprocessingBackend):
         usage_lib.record_library_usage("util.joblib")
 
         self.ray_remote_args = ray_remote_args
-        self._autoscale = autoscale
-        self._autoscale_kwargs = dict(
+        self._size_kwargs = dict(
             min_size=min_size,
             max_size=max_size,
             initial_size=initial_size,
@@ -91,25 +91,27 @@ class RayBackend(MultiprocessingBackend):
             n_jobs = ray_cpus
 
         # Forward autoscaling params through
-        # MemmappingPool -> PicklingPool -> Pool.__init__. joblib's n_jobs
-        # remains the concurrency limit; max_size may only lower that limit.
-        if self._autoscale:
-            autoscale_kwargs = self._autoscale_kwargs.copy()
+        # MemmappingPool -> PicklingPool -> Pool.__init__. Supplying any of
+        # them enables Pool autoscaling. joblib's n_jobs remains the
+        # concurrency limit; max_size may only lower that limit.
+        size_kwargs = dict(self._size_kwargs)
+        if any(v is not None for v in size_kwargs.values()):
             pool_size = self.effective_n_jobs(n_jobs)
-            configured_max = autoscale_kwargs["max_size"]
-            autoscale_kwargs["max_size"] = (
+            configured_max = size_kwargs["max_size"]
+            size_kwargs["max_size"] = (
                 pool_size if configured_max is None else min(configured_max, pool_size)
             )
-            autoscale_kwargs["min_size"] = min(
-                autoscale_kwargs["min_size"], autoscale_kwargs["max_size"]
-            )
-            configured_initial = autoscale_kwargs["initial_size"]
-            if configured_initial is not None:
-                autoscale_kwargs["initial_size"] = min(
-                    configured_initial, autoscale_kwargs["max_size"]
+            if size_kwargs["min_size"] is not None:
+                size_kwargs["min_size"] = min(
+                    size_kwargs["min_size"], size_kwargs["max_size"]
                 )
-            memmappingpool_args["autoscale"] = True
-            memmappingpool_args.update(autoscale_kwargs)
+            if size_kwargs["initial_size"] is not None:
+                size_kwargs["initial_size"] = min(
+                    size_kwargs["initial_size"], size_kwargs["max_size"]
+                )
+            memmappingpool_args.update(
+                {k: v for k, v in size_kwargs.items() if v is not None}
+            )
 
         eff_n_jobs = super(RayBackend, self).configure(
             n_jobs,

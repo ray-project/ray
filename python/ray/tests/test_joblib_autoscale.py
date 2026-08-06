@@ -1,7 +1,9 @@
-"""Tests for the opt-in autoscaling mode of ``ray.util.multiprocessing.Pool``.
+"""Tests for autoscaling ``ray.util.multiprocessing.Pool``.
 
-Covers fixed-pool compatibility, pull-based dispatch, asynchronous APIs,
-failure handling, idle reaping, and end-to-end autoscaling.
+Autoscaling is enabled by supplying any of the size kwargs (``min_size``,
+``max_size``, ``initial_size``, ``idle_timeout_s``). Covers fixed-pool
+compatibility, pull-based dispatch, asynchronous APIs, failure handling, idle
+reaping, and end-to-end autoscaling.
 
 Callables are defined as closures inside each test so cloudpickle serializes
 them by value and Ray workers never need to import this test module.
@@ -26,7 +28,7 @@ from ray.util.multiprocessing import Pool
 
 
 def test_default_path_uses_fixed_pool(shutdown_only):
-    """autoscale=False keeps the existing fixed-pool invariant."""
+    """No size kwargs keeps the existing fixed-pool invariant."""
     ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
     pool = Pool(processes=4)
     assert len(pool._actor_pool) == 4
@@ -36,9 +38,9 @@ def test_default_path_uses_fixed_pool(shutdown_only):
 
 
 def test_autoscale_lazy_creation(shutdown_only):
-    """autoscale=True, initial_size=0: no actors at startup, lazy-create."""
+    """initial_size=0: no actors at startup, lazy-create."""
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=2, autoscale=True, max_size=2, initial_size=0)
+    pool = Pool(processes=2, max_size=2, initial_size=0)
     assert len(pool._actor_pool) == 2
     assert all(slot is None for slot in pool._actor_pool)
 
@@ -54,7 +56,7 @@ def test_autoscale_lazy_creation(shutdown_only):
 def test_autoscale_zero_cpu_head_accepts_explicit_target(shutdown_only):
     """A zero-CPU head can create pending actors to drive scale-up."""
     ray.init(num_cpus=0, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=2, autoscale=True, max_size=2, initial_size=0)
+    pool = Pool(processes=2, max_size=2, initial_size=0)
 
     result = pool.apply_async(lambda: 1)
     wait_for_condition(lambda: len(pool._starting_actor_refs) == 1, timeout=10)
@@ -67,7 +69,7 @@ def test_autoscale_zero_cpu_head_accepts_explicit_target(shutdown_only):
 def test_autoscale_pool_can_be_collected(shutdown_only):
     """The dispatcher thread must not keep an unused Pool alive."""
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=2, autoscale=True, max_size=2, initial_size=0)
+    pool = Pool(processes=2, max_size=2, initial_size=0)
     dispatcher = pool._dispatcher_thread
     pool_ref = weakref.ref(pool)
 
@@ -83,7 +85,7 @@ def test_autoscale_pool_can_be_collected(shutdown_only):
 def test_autoscale_pool_lives_until_async_result_finishes(shutdown_only):
     """Dropping the Pool must not strand an outstanding AsyncResult."""
     ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=1, autoscale=True, max_size=1, initial_size=0)
+    pool = Pool(processes=1, max_size=1, initial_size=0)
 
     def slow_identity(value):
         time.sleep(0.5)
@@ -119,7 +121,7 @@ def test_autoscale_rejects_invalid_sizes(shutdown_only):
     ]
     for options in invalid_options:
         with pytest.raises(ValueError):
-            Pool(processes=2, autoscale=True, **options)
+            Pool(processes=2, **options)
 
 
 def test_autoscale_submits_only_to_ready_actors(shutdown_only):
@@ -127,7 +129,6 @@ def test_autoscale_submits_only_to_ready_actors(shutdown_only):
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
     pool = Pool(
         processes=8,
-        autoscale=True,
         max_size=8,
         initial_size=0,
         idle_timeout_s=999,
@@ -150,7 +151,7 @@ def test_autoscale_submits_only_to_ready_actors(shutdown_only):
 def test_autoscale_map_accepts_numpy_arrays(shutdown_only):
     """Array truth-value semantics must not affect autoscale chunking."""
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=2, autoscale=True, max_size=2, initial_size=0)
+    pool = Pool(processes=2, max_size=2, initial_size=0)
 
     def square(value):
         return value * value
@@ -164,7 +165,7 @@ def test_autoscale_map_accepts_numpy_arrays(shutdown_only):
 def test_autoscale_apply_async_returns_immediately(shutdown_only):
     """apply_async must not wait for actor startup or task completion."""
     ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=2, autoscale=True, max_size=2, initial_size=0)
+    pool = Pool(processes=2, max_size=2, initial_size=0)
 
     def slow_identity(x):
         time.sleep(1)
@@ -185,7 +186,6 @@ def test_autoscale_actor_start_failures_do_not_hang(shutdown_only):
     with pytest.raises(ValueError):
         Pool(
             processes=2,
-            autoscale=True,
             max_size=2,
             initial_size=0,
             ray_remote_args={"num_cpus": -1},
@@ -196,7 +196,6 @@ def test_autoscale_actor_start_failures_do_not_hang(shutdown_only):
 
     pool = Pool(
         processes=2,
-        autoscale=True,
         max_size=2,
         initial_size=0,
         initializer=bad_initializer,
@@ -215,7 +214,7 @@ def test_autoscale_actor_start_failures_do_not_hang(shutdown_only):
 def test_autoscale_serialization_error_does_not_stop_dispatcher(shutdown_only):
     """A bad batch must fail without stranding later valid submissions."""
     ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=4, autoscale=True, max_size=4, initial_size=0)
+    pool = Pool(processes=4, max_size=4, initial_size=0)
 
     def identity(value):
         return value
@@ -240,7 +239,7 @@ def test_joblib_autoscale_propagates_serialization_errors(shutdown_only):
     from ray.util.joblib import register_ray
 
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
-    register_ray(autoscale=True, max_size=4, initial_size=0)
+    register_ray(max_size=4, initial_size=0)
 
     def identity(value):
         return value
@@ -265,7 +264,7 @@ def test_joblib_autoscale_propagates_errors_and_can_be_reused(shutdown_only):
     from ray.util.joblib import register_ray
 
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
-    register_ray(autoscale=True, max_size=4, initial_size=0, idle_timeout_s=999)
+    register_ray(max_size=4, initial_size=0, idle_timeout_s=999)
 
     def maybe_fail(x):
         if x == 5:
@@ -291,7 +290,6 @@ def test_joblib_n_jobs_limits_autoscale_concurrency(shutdown_only):
 
     ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
     register_ray(
-        autoscale=True,
         min_size=4,
         max_size=4,
         initial_size=4,
@@ -336,7 +334,7 @@ def test_joblib_n_jobs_limits_autoscale_concurrency(shutdown_only):
 def test_autoscale_terminate_finishes_queued_results(shutdown_only):
     """Undispatched batches fail instead of leaving ResultThreads blocked."""
     ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=4, autoscale=True, max_size=4, initial_size=0)
+    pool = Pool(processes=4, max_size=4, initial_size=0)
 
     def slow_identity(x):
         time.sleep(10)
@@ -356,7 +354,7 @@ def test_autoscale_terminate_finishes_queued_results(shutdown_only):
 def test_autoscale_imap_does_not_submit_after_stop(shutdown_only, stop_method):
     """Lazy imap submissions after stopping the pool must not hang."""
     ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=1, autoscale=True, max_size=1, initial_size=0)
+    pool = Pool(processes=1, max_size=1, initial_size=0)
 
     result = pool.imap(lambda value: value, iter(range(3)), chunksize=1)
     wait_for_condition(lambda: result._result_thread._num_ready == 1, timeout=10)
@@ -372,7 +370,7 @@ def test_autoscale_imap_does_not_submit_after_stop(shutdown_only, stop_method):
 def test_autoscale_imap_exact_chunks_stops_result_thread(shutdown_only):
     """Exact chunk multiples must still signal the dynamic result thread."""
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
-    pool = Pool(processes=8, autoscale=True, max_size=8, initial_size=0)
+    pool = Pool(processes=8, max_size=8, initial_size=0)
 
     for values in ([], list(range(10))):
         result = pool.imap(lambda value: value, iter(values), chunksize=1)
@@ -386,7 +384,6 @@ def test_autoscale_idle_reap(shutdown_only):
     ray.init(num_cpus=2, include_dashboard=False, ignore_reinit_error=True)
     pool = Pool(
         processes=2,
-        autoscale=True,
         max_size=2,
         initial_size=2,
         min_size=0,
@@ -405,7 +402,6 @@ def test_autoscale_does_not_reap_busy_actor(shutdown_only):
     ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
     pool = Pool(
         processes=1,
-        autoscale=True,
         max_size=1,
         initial_size=0,
         idle_timeout_s=0.1,
@@ -429,7 +425,6 @@ def test_autoscale_maxtasksperchild_replaces_actor(shutdown_only):
     ray.init(num_cpus=1, include_dashboard=False, ignore_reinit_error=True)
     pool = Pool(
         processes=1,
-        autoscale=True,
         max_size=1,
         initial_size=0,
         maxtasksperchild=1,
@@ -453,7 +448,7 @@ def test_autoscaling_cluster_e2e():
     """Pending num_cpus=1 actors drive the autoscaler to add worker nodes.
 
     Uses AutoscalingCluster (the same autoscaler KubeRay uses) with a zero-CPU
-    head + 4-CPU workers. register_ray(autoscale=True, max_size=8) creates
+    head + 4-CPU workers. register_ray(max_size=8) creates
     pending actors that surface CPU demand; the autoscaler adds workers; the
     work completes.
     """
@@ -485,7 +480,7 @@ def test_autoscaling_cluster_e2e():
 
         # The head has no CPUs. All eight actors are pending until the
         # autoscaler launches workers.
-        register_ray(autoscale=True, max_size=8, initial_size=0, idle_timeout_s=999)
+        register_ray(max_size=8, initial_size=0, idle_timeout_s=999)
 
         def compute(x):
             time.sleep(0.5)
