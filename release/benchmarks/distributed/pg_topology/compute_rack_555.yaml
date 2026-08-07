@@ -1,25 +1,24 @@
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
-
-# NFS needs to be disabled for this test, since the test spawns too many nodes
-# and may hit the limit on the # of clients.
 advanced_instance_config:
+  # Disable NFS: at this node count the shared mount hits its client limit.
   TagSpecifications:
     - ResourceType: "instance"
       Tags:
         - Key: as-feature-disable-nfs-mount
           Value: "true"
-
   BlockDeviceMappings:
     - DeviceName: /dev/sda1
       Ebs:
         DeleteOnTermination: true
         VolumeSize: 30
-
 head_node:
   instance_type: m5.16xlarge
-
 worker_nodes:
-  - instance_type: m6i.large
-    min_nodes: 500
-    max_nodes: 10000
+{% for k in range(555) %}  - name: rack-{{k}}
+    instance_type: m6i.large
+    min_nodes: 18
+    max_nodes: 18
     market_type: ON_DEMAND
+    labels:
+      ray.io/gpu-domain: rack-{{k}}
+{% endfor %}
