@@ -226,3 +226,9 @@ async def test_recovered_monitor_stops_when_missing_supervisor_update_loses_race
         == JobStatus.RUNNING
     )
     kill.assert_not_called()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
