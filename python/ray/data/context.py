@@ -614,7 +614,7 @@ class DataContext:
         execution_no_progress_timeout_s: Maximum time in seconds that an execution may
             go without any operator producing or consuming an output before it fails
             with `ExecutionTimeoutError`. Doesn't apply to Datasets with an
-            all-to-all operation or hash shuffle.
+            all-to-all operation.
             Raise this if your workload can wait a long time for cluster capacity.
             Set to -1 to disable.
         max_errored_blocks: Max number of blocks that are allowed to have errors,

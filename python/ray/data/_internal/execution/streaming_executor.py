@@ -292,8 +292,8 @@ class StreamingExecutor(Executor, threading.Thread):
             callback.before_execution_starts(self)
 
         # AllToAllOperator blocks the execution loop inside bulk_fn.
-        # Hash shuffle does not show its finalization metrics,
-        # and it will be deprecated in 2.60
+        # Hash shuffle V1 does not show its finalization metrics,
+        # and hash shuffle V1 will be deprecated in 2.60.
         # Neither is distinguishable from a stall, so we disable the guard.
         if any(
             isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
@@ -302,7 +302,8 @@ class StreamingExecutor(Executor, threading.Thread):
             timeout = -1
         else:
             timeout = self._data_context.execution_no_progress_timeout_s
-        # Clock starts measuring time upon construction of the guard.
+        # The clock starts on construction, so build the guard right before
+        # the loop starts.
         self._no_progress_guard = NoProgressGuard(
             self._topology,
             timeout,
