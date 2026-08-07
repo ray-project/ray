@@ -61,10 +61,10 @@ class SandboxConfig:
         rootless: If True, run gVisor in rootless mode (default: True).
         network: Network mode for runsc ("none", "host", "sandbox") (default: "none").
         resources: Custom logical resource requirements for the placement actor.
-        readonly: If True, mount container image rootfs in read-only mode (default: True). Only applicable when an image is specified.
+        readonly: If True, mount container image rootfs in read-only mode (default: True).
     """
 
-    image: str = "python:3.10-slim"
+    image: str
     cpu: float = 0.0
     memory: Union[str, int, float] = 0
     env: Dict[str, str] = field(default_factory=dict)
@@ -76,6 +76,10 @@ class SandboxConfig:
     network: str = "none"
     resources: Dict[str, float] = field(default_factory=dict)
     readonly: bool = True
+
+    def __post_init__(self):
+        if not self.image or not isinstance(self.image, str) or not self.image.strip():
+            raise ValueError("A valid container image name must be specified.")
 
 
 GVisorSandboxConfig = SandboxConfig

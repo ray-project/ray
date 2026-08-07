@@ -18,7 +18,7 @@ class SandboxRuntime:
 
     def create(
         self,
-        image: Optional[str] = None,
+        image: str,
         cpu: float = 0.0,
         memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
@@ -48,7 +48,6 @@ class SandboxRuntime:
             network: Network mode for runsc.
             resources: Custom logical resource requirements.
             readonly: If True, mount container image rootfs in read-only mode (default: True).
-                Only applicable when an image is specified.
             **kwargs: Additional parameters.
 
         Returns:

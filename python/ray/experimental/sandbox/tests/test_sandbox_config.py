@@ -8,7 +8,7 @@ from ray.experimental.sandbox.config import (
 
 
 def test_default_sandbox_config():
-    config = SandboxConfig()
+    config = SandboxConfig(image="python:3.10-slim")
     assert config.image == "python:3.10-slim"
     assert config.cpu == 0.0
     assert config.memory == 0
@@ -18,6 +18,16 @@ def test_default_sandbox_config():
     assert config.network == "none"
     assert config.resources == {}
     assert config.readonly is True
+
+    # SandboxConfig requires image
+    with pytest.raises(TypeError):
+        SandboxConfig()
+
+    with pytest.raises(ValueError):
+        SandboxConfig(image="")
+
+    with pytest.raises(ValueError):
+        SandboxConfig(image=None)
 
 
 def test_gvisor_sandbox_config():

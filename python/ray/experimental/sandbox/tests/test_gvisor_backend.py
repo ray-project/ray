@@ -15,6 +15,7 @@ from ray.experimental.sandbox.exceptions import (
 def test_gvisor_backend_local_lifecycle_and_file_ops():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
+        image="busybox:latest",
         work_dir="/workspace",
         cpu=1.0,
         memory="512Mi",
@@ -48,7 +49,7 @@ def test_gvisor_backend_not_found():
 
 
 def test_create_sandbox_helper():
-    sb = create(work_dir="/workspace")
+    sb = create("busybox:latest", work_dir="/workspace")
     assert isinstance(sb, SandboxHandle)
     res = sb.exec("echo 'Process isolation'")
     assert res.exit_code == 0
@@ -83,19 +84,16 @@ def test_gvisor_backend_container_image_support():
     assert os.path.exists("/tmp/ray/sandboxes/images/busybox_latest")
 
 
-def test_gvisor_backend_image_none():
-    backend = GVisorSandboxBackend()
-    config = GVisorSandboxConfig(
-        image=None,
-        work_dir="/workspace",
-    )
-    sandbox_id = backend.create_sandbox(config)
-    try:
-        res = backend.exec_command(sandbox_id, "echo 'no image test'")
-        assert res.exit_code == 0
-        assert "no image test" in res.stdout
-    finally:
-        backend.delete_sandbox(sandbox_id)
+def test_gvisor_backend_image_required():
+    with pytest.raises((TypeError, ValueError)):
+        GVisorSandboxConfig(
+            image=None,
+            work_dir="/workspace",
+        )
+    with pytest.raises((TypeError, ValueError)):
+        GVisorSandboxConfig(
+            work_dir="/workspace",
+        )
 
 
 def test_gvisor_backend_invalid_image():

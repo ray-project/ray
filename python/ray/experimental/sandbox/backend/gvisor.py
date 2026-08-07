@@ -62,19 +62,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             root_dir=root_dir,
             work_dir_path=work_dir_path,
             container_cwd=config.work_dir,
+            image=config.image,
             env_dict=config.env,
             cpu=config.cpu,
             memory=config.memory,
-            image=config.image,
             readonly=config.readonly,
         )
         run_args = self._runsc_base_args(config)
         if config.network:
             run_args.extend(["--network", config.network])
-        if config.image:
-            overlay_dir = os.path.join(root_dir, "overlay")
-            os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
-            run_args.append(f"--overlay2=root:dir={overlay_dir}")
+        overlay_dir = os.path.join(root_dir, "overlay")
+        os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
+        run_args.append(f"--overlay2=root:dir={overlay_dir}")
         run_args.extend(["run", "--bundle", root_dir, sandbox_id])
 
         proc = subprocess.Popen(
@@ -276,10 +275,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         root_dir: str,
         work_dir_path: str,
         container_cwd: str,
+        image: str,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
-        image: Optional[str] = None,
         readonly: bool = True,
     ) -> str:
         config_json_path = os.path.join(root_dir, "config.json")
@@ -292,10 +291,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         with open(config_json_path, "r", encoding="utf-8") as f:
             spec = json.load(f)
 
-        if image:
-            image_rootfs = self._pull_and_extract_image(image)
-            spec["root"]["path"] = image_rootfs
-            spec["root"]["readonly"] = readonly
+        image_rootfs = self._pull_and_extract_image(image)
+        spec["root"]["path"] = image_rootfs
+        spec["root"]["readonly"] = readonly
 
         spec["process"]["args"] = ["sleep", "infinity"]
         spec["process"]["cwd"] = container_cwd
@@ -311,19 +309,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
 
-        if image:
-            default_binds = [
-                (container_cwd, work_dir_path),
-            ]
-        else:
-            default_binds = [
-                ("/bin", "/bin"),
-                ("/usr", "/usr"),
-                ("/lib", "/lib"),
-                ("/lib64", "/lib64"),
-                ("/home/ray/anaconda3/bin", "/home/ray/anaconda3/bin"),
-                (container_cwd, work_dir_path),
-            ]
+        default_binds = [
+            (container_cwd, work_dir_path),
+        ]
         for dest, src in default_binds:
             if dest not in existing_dests and os.path.exists(src):
                 mounts.append(
