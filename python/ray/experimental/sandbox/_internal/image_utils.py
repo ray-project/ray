@@ -1,4 +1,5 @@
 import fcntl
+import hashlib
 import io
 import json
 import logging
@@ -27,7 +28,9 @@ def sanitize_image_name(image: str) -> str:
         raise TypeError(f"Expected image to be a string, got {type(image).__name__}")
 
     if image.endswith(".tar"):
-        image = os.path.basename(image)[:-4]
+        # append a hash to avoid collisions with images from registries.
+        name_hash = hashlib.sha256(image.encode("utf-8")).hexdigest()[:12]
+        image = f"{os.path.basename(image)[:-4]}_{name_hash}"
 
     safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", image)
     safe = safe.lstrip(".")
@@ -270,7 +273,11 @@ def pull_and_extract_container_image(
             fcntl.flock(f_lock, fcntl.LOCK_EX)
             marker_path = os.path.join(target_dir, ".extracted")
             if os.path.isdir(target_dir) and os.path.exists(marker_path):
-                return target_dir
+                if os.path.isfile(image):
+                    if os.path.getmtime(marker_path) >= os.path.getmtime(image):
+                        return target_dir
+                else:
+                    return target_dir
 
             tmp_extract_dir = os.path.join(
                 images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
