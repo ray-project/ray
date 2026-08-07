@@ -328,7 +328,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
-        _oci_spec_transforms: Optional[List[Callable[[Dict], Optional[Dict]]]] = None,
+        _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         config_json_path = os.path.join(root_dir, "config.json")
         rootfs_dir = os.path.join(root_dir, "rootfs")
@@ -401,10 +401,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             mem_res["limit"] = parsed_mem
 
         if _oci_spec_transforms:
-            for transform in _oci_spec_transforms:
-                result = transform(spec)
-                if result is not None:
-                    spec = result
+            result = _oci_spec_transforms(spec)
+            if result is not None:
+                spec = result
 
         config_json_str = json.dumps(spec, indent=2)
         with open(config_json_path, "w", encoding="utf-8") as f:
