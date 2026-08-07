@@ -3,7 +3,7 @@ import logging
 import sys
 from collections import defaultdict
 from threading import Lock
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 # Timeout for the synchronous task-events query to the dashboard head.
 _DASHBOARD_HEAD_QUERY_TIMEOUT_S = 30
+# Dashboard-head route that answers task-events queries.
+_TASK_EVENTS_QUERY_PATH = "/api/task_events/query"
+# GcsStatus.code value for a successful reply.
+_GCS_STATUS_CODE_OK = 0
 # Read task events (for ray.timeline / profiling) from the dashboard head instead of GCS.
 _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD = (
     ray._config.enable_task_events_to_dashboard_head()
@@ -57,10 +61,10 @@ class TaskEventsHeadClient:
             address = address.decode()
             if not address.startswith(("http://", "https://")):
                 address = f"http://{address}"
-            self._endpoint = f"{address}/api/task_events/query"
+            self._endpoint = f"{address}{_TASK_EVENTS_QUERY_PATH}"
         return self._endpoint
 
-    def get_task_events(self, timeout: int):
+    def get_task_events(self, timeout: int) -> List["gcs_pb2.TaskEvents"]:
         """Return all task events (as ``TaskEvents`` protos) from the head.
 
         No ``limit`` is set, so the head returns everything in its store, matching the
@@ -69,6 +73,7 @@ class TaskEventsHeadClient:
         import requests
 
         from ray._private.authentication.http_token_authentication import (
+            format_authentication_http_error,
             get_auth_headers_if_auth_enabled,
         )
 
@@ -83,18 +88,25 @@ class TaskEventsHeadClient:
                 headers=headers,
                 timeout=timeout,
             )
-        except (requests.ConnectionError, requests.Timeout):
-            # The dashboard may have restarted at a new address; re-resolve next call.
+        except requests.RequestException:
+            # Any request failure may mean the head is unreachable or restarted at a new
+            # address; drop the cached endpoint so the next call re-resolves it. This is
+            # slightly conservative though.
             self._endpoint = None
             raise
-        if response.status_code != 200:
+        if not (200 <= response.status_code < 300):
+            auth_error = format_authentication_http_error(
+                response.status_code, response.text
+            )
+            if auth_error:
+                raise RuntimeError(auth_error)
             raise RuntimeError(
                 f"Failed to read task events from the dashboard head at {endpoint}: "
                 f"HTTP {response.status_code} {response.reason}."
             )
         reply = gcs_service_pb2.GetTaskEventsReply()
         reply.ParseFromString(response.content)
-        if reply.status.code != 0:
+        if reply.status.code != _GCS_STATUS_CODE_OK:
             raise RuntimeError(
                 "The dashboard head rejected the task-events query: "
                 f"{reply.status.message}"
@@ -352,7 +364,7 @@ class GlobalState:
 
         return dict(result)
 
-    def _get_profiling_task_events(self):
+    def _get_profiling_task_events(self) -> List["gcs_pb2.TaskEvents"]:
         """Return all task events (as ``TaskEvents`` protos) for timeline/profiling.
 
         Reads from the dashboard head when the task-events-to-dashboard-head migration is
