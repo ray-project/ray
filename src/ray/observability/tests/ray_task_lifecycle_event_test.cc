@@ -134,7 +134,7 @@ TEST_F(RayTaskLifecycleEventTest, TestMergeCombinesTaskLogInfo) {
       /*task_attempt=*/0,
       rpc::TaskStatus::NIL,
       std::optional<const TaskStateUpdate>(TaskStateUpdate(start_log)),
-      "sess1",
+      std::make_shared<const std::string>("sess1"),
       /*timestamp=*/1000);
 
   auto log_end = std::make_unique<RayTaskLifecycleEvent>(
@@ -143,7 +143,7 @@ TEST_F(RayTaskLifecycleEventTest, TestMergeCombinesTaskLogInfo) {
       /*task_attempt=*/0,
       rpc::TaskStatus::NIL,
       std::optional<const TaskStateUpdate>(TaskStateUpdate(end_log)),
-      "sess1",
+      std::make_shared<const std::string>("sess1"),
       /*timestamp=*/2000);
 
   log_start->Merge(std::move(*log_end));
