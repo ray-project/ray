@@ -1120,6 +1120,17 @@ RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 // event aggregator.
 RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
 
+// Whether core-worker task events are sent to the event aggregator via the
+// RayTaskEventRecorder. When true (and enable_ray_event is also true),
+// the recorder is used.
+RAY_CONFIG(bool, enable_ray_task_event_recorder, false)
+
+// Flag for the migration of task events from GCS to dashboard head. When true: the
+// aggregator publishes task events to the dashboard head, the TaskEventsHead module is
+// loaded, and the state API (list tasks / ray.timeline) reads task events from the
+// dashboard head instead of GCS.
+RAY_CONFIG(bool, enable_task_events_to_dashboard_head, false)
+
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
 
