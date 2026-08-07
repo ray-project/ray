@@ -219,6 +219,12 @@ class TestDeploymentConfig:
                     backpressure_config={"status_code": invalid_status_code}
                 )
 
+        # Unknown keys (e.g. typos) are rejected rather than silently dropped.
+        with pytest.raises(ValidationError):
+            BackpressureConfig(statuscode=429)
+        with pytest.raises(ValidationError):
+            DeploymentConfig(backpressure_config={"retry_after": 5})
+
     def test_backpressure_config_retry_after_s_validation(self):
         # None (the default) means no `Retry-After` header.
         assert BackpressureConfig().retry_after_s is None

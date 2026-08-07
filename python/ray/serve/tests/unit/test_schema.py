@@ -14,6 +14,7 @@ from ray.serve._private.deploy_utils import get_app_code_version
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     DeploymentActorConfig,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
@@ -302,6 +303,34 @@ class TestDeploymentSchema:
             DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = -100
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+    def test_validate_backpressure_config(self):
+        # Dict inputs are coerced into `BackpressureConfig` so invalid values
+        # fail at config parse time, not at deploy time.
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["backpressure_config"] = {
+            "status_code": 429,
+            "retry_after_s": 7,
+        }
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert isinstance(schema.backpressure_config, BackpressureConfig)
+        assert schema.backpressure_config.status_code == 429
+        assert schema.backpressure_config.retry_after_s == 7
+
+        deployment_schema["backpressure_config"] = {"status_code": 404}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+        deployment_schema["backpressure_config"] = {"retry_after_s": float("inf")}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+        # Unknown keys (e.g. typos) are rejected rather than silently dropped.
+        deployment_schema["backpressure_config"] = {"retry_after": 5}
         with pytest.raises(ValidationError):
             DeploymentSchema.model_validate(deployment_schema)
 

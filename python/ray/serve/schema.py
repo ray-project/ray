@@ -347,7 +347,7 @@ class DeploymentSchema(BaseModel):
             "(no limit)."
         ),
     )
-    backpressure_config: Optional[Union[Dict, BackpressureConfig]] = Field(
+    backpressure_config: BackpressureConfig = Field(
         default=DEFAULT.VALUE,
         description=(
             "Configuration of the HTTP response returned when a request to "

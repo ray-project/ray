@@ -587,6 +587,10 @@ class BackpressureConfig(BaseModel):
             number of seconds). Defaults to None (no header).
     """
 
+    # Reject unknown keys so typos (e.g. `retry_after` instead of
+    # `retry_after_s`) fail at config parse time instead of being dropped.
+    model_config = ConfigDict(extra="forbid")
+
     status_code: Literal[503, 429] = 503
     retry_after_s: Optional[NonNegativeFloat] = Field(default=None, allow_inf_nan=False)
 
