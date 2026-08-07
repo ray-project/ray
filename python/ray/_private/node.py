@@ -26,7 +26,7 @@ from ray._common.network_utils import (
     parse_address,
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
-from ray._common.utils import try_to_create_directory
+from ray._common.utils import is_path_within, try_to_create_directory
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -63,6 +63,26 @@ logger = logging.getLogger(__name__)
 # is still around after this long is parked in an uninterruptible syscall and
 # will never be reaped by waiting longer.
 KILLED_PROCESS_REAP_TIMEOUT_SECONDS = 30
+
+
+def _is_path_within_resolved(path: str, directory: str) -> bool:
+    """Return whether an existing path is physically within a directory."""
+    path = os.path.realpath(path)
+    directory = os.path.realpath(directory)
+
+    while True:
+        try:
+            if os.path.samefile(path, directory):
+                return True
+        except (OSError, ValueError):
+            # Fall back for filesystems where samefile is unavailable. normcase
+            # handles case-insensitive path comparison on Windows.
+            return is_path_within(os.path.normcase(path), os.path.normcase(directory))
+
+        parent = os.path.dirname(path)
+        if parent == path:
+            return False
+        path = parent
 
 
 class Node:
@@ -774,7 +794,11 @@ class Node:
         self._session_dir = os.path.join(self.temp_dir, self._session_name)
         session_symlink = os.path.join(self.temp_dir, ray_constants.SESSION_LATEST)
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
-        self._logs_dir = os.path.join(self._session_dir, "logs")
+        default_logs_dir = os.path.normpath(os.path.join(self._session_dir, "logs"))
+        configured_logs_dir = self._ray_params.logs_dir
+        if configured_logs_dir is None and node_to_connect_info is not None:
+            configured_logs_dir = getattr(node_to_connect_info, "logs_dir", None)
+        self._logs_dir = os.path.normpath(configured_logs_dir or default_logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
         # Create a directory to be used for runtime environment.
         self._runtime_env_dir = os.path.join(
@@ -792,6 +816,8 @@ class Node:
             # Create a directory to be used for process log files.
             try_to_create_directory(self._logs_dir)
             try_to_create_directory(old_logs_dir)
+            if self._logs_dir != default_logs_dir:
+                self._link_default_logs_dir(default_logs_dir)
             try_to_create_directory(self._runtime_env_dir)
 
         # Create a symlink to the libtpu tpu_logs directory if it exists.
@@ -803,6 +829,54 @@ class Node:
         if os.path.isdir(tpu_log_dir):
             tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
             try_to_symlink(tpu_logs_symlink, tpu_log_dir)
+
+    def _link_default_logs_dir(self, default_logs_dir: str):
+        """Point session_dir/logs at the configured logs directory.
+
+        Ray has always exposed the node's logs at session_dir/logs, and tools
+        that have not migrated to get_logs_dir_path() still read from there.
+        Keep that path working when the logs directory lives elsewhere.
+
+        Args:
+            default_logs_dir: The session_dir/logs path to create the symlink at.
+
+        Returns:
+            None.
+        """
+        if _is_path_within_resolved(self._session_dir, self._logs_dir):
+            # The symlink would resolve to one of its own ancestors, so walking
+            # the logs directory recursively would never terminate. Log
+            # shippers commonly do exactly that.
+            if os.path.islink(default_logs_dir):
+                try:
+                    os.remove(default_logs_dir)
+                except OSError:
+                    logger.warning(
+                        "Failed to remove the existing %s compatibility symlink. "
+                        "It may remain self-referential.",
+                        default_logs_dir,
+                        exc_info=True,
+                    )
+            logger.warning(
+                "Not creating the %s compatibility symlink because the "
+                "configured logs directory %s contains the session directory, "
+                "which would make the symlink self-referential.",
+                default_logs_dir,
+                self._logs_dir,
+            )
+            return
+
+        try_to_symlink(default_logs_dir, self._logs_dir)
+        if not os.path.islink(default_logs_dir):
+            # try_to_symlink swallows failures, and on platforms without
+            # symlink support this path is all some tools know about.
+            logger.warning(
+                "Failed to create the %s compatibility symlink to %s. Tools "
+                "that read logs from the session directory rather than from "
+                "get_logs_dir_path() will not find this node's logs.",
+                default_logs_dir,
+                self._logs_dir,
+            )
 
     def get_resource_and_label_spec(self):
         """Resolve and return the current ResourceAndLabelSpec for the node."""

@@ -97,6 +97,12 @@ You can sort by their names to find the latest session.
 
 Change the *root temporary directory* by passing ``--temp-dir={your temp path}`` to ``ray start``.
 
+To place logs on a different filesystem without moving sockets, runtime environment
+resources, or other session data, pass ``--logs-dir={your log path}`` to ``ray start``.
+This option can be specified independently on each node. Ray continues to expose
+``<session_dir>/logs`` as a compatibility symlink to the configured directory on
+platforms that support symlinks.
+
 There currently isn't a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``.
 
 See :ref:`Logging Directory Structure <logging-directory-structure>` for more details.

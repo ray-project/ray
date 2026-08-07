@@ -18,6 +18,7 @@ from ray._common.utils import (
     env_bool,
     get_or_create_event_loop,
     get_system_memory,
+    is_path_within,
     load_class,
     run_background_task,
     try_to_create_directory,
@@ -165,6 +166,32 @@ class TestTryToCreateDirectory:
             finally:
                 # Restore original expanduser
                 os.path.expanduser = original_expanduser
+
+
+class TestIsPathWithin:
+    """Tests for the is_path_within utility function."""
+
+    @pytest.mark.parametrize(
+        "path,directory,expected",
+        [
+            ("/tmp/ray/session/logs", "/tmp/ray", True),
+            ("/tmp/ray", "/tmp/ray", True),
+            ("/tmp/ray/", "/tmp/ray", True),
+            # A shared prefix is not containment.
+            ("/tmp/ray-logs", "/tmp/ray", False),
+            ("/var/log/ray", "/tmp/ray", False),
+            ("/tmp", "/tmp/ray", False),
+            # Traversal is normalized before comparing.
+            ("/tmp/ray/../ray-logs", "/tmp/ray", False),
+        ],
+    )
+    def test_containment(self, path, directory, expected):
+        """Test whether a path is reported as nested inside a directory."""
+        assert is_path_within(path, directory) is expected
+
+    def test_incomparable_paths(self):
+        """Test that paths which cannot be compared are not within."""
+        assert is_path_within("C:/logs", "D:/ray") is False
 
 
 class TestLoadClass:
