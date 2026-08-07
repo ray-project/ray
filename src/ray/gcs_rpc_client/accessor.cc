@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/container_util.h"
@@ -161,7 +162,11 @@ void JobInfoAccessor::AsyncGetNextJobID(const rpc::ItemCallback<JobID> &callback
       });
 }
 
-NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
+NodeInfoAccessor::NodeInfoAccessor()
+    : is_gcs_leader_(!RayConfig::instance().LEADER_ELECT()) {}
+
+NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl), is_gcs_leader_(!RayConfig::instance().LEADER_ELECT()) {}
 
 void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
                                     const rpc::StatusCallback &callback) {
@@ -226,8 +231,9 @@ void NodeInfoAccessor::AsyncCheckAlive(const std::vector<NodeID> &node_ids,
   size_t num_raylets = node_ids.size();
   client_impl_->GetGcsRpcClient().CheckAlive(
       std::move(request),
-      [num_raylets, callback](const Status &status, rpc::CheckAliveReply &&reply) {
+      [this, num_raylets, callback](const Status &status, rpc::CheckAliveReply &&reply) {
         if (status.ok()) {
+          is_gcs_leader_.store(reply.is_leader());
           RAY_CHECK_EQ(static_cast<size_t>(reply.raylet_alive().size()), num_raylets);
           std::vector<bool> is_alive;
           is_alive.reserve(num_raylets);
@@ -420,6 +426,8 @@ bool NodeInfoAccessor::IsNodeAlive(const NodeID &node_id) const {
   return node_iter != node_cache_address_and_liveness_.end() &&
          node_iter->second.state() == rpc::GcsNodeInfo::ALIVE;
 }
+
+bool NodeInfoAccessor::IsGcsLeader() const { return is_gcs_leader_.load(); }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());

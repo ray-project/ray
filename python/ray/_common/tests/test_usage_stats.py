@@ -1,9 +1,11 @@
+import asyncio
 import json
 import os
 import pathlib
 import sys
 import threading
 import time
+import types
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -21,6 +23,7 @@ from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray._common.usage.usage_lib import ClusterConfigToReport, UsageStatsEnabledness
+from ray._private import ray_constants
 from ray._private.accelerators import NvidiaGPUAcceleratorManager
 from ray._private.test_utils import (
     format_web_url,
@@ -28,6 +31,7 @@ from ray._private.test_utils import (
 )
 from ray._raylet import GcsClient
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.dashboard.modules.usage_stats.usage_stats_head import UsageStatsHead
 from ray.tests.conftest import *  # noqa: F403
 from ray.util.placement_group import (
     placement_group,
@@ -1648,6 +1652,74 @@ def test_get_cloud_azure_not_detected_as_aws():
             "This is the critical bug where status_code != 404 accepted "
             "Azure's 400 response to AWS query."
         )
+
+
+def test_usage_stats_head_passive_suppression(monkeypatch):
+    """Verify that UsageStatsHead suppresses telemetry reports in passive mode."""
+    mock_gcs_client = types.SimpleNamespace()
+    # Simulate GCS running in standby (passive) mode on this head node
+    mock_gcs_client.is_gcs_leader_local = lambda: False
+
+    called = {"report": False}
+
+    async def mock_report_usage_async():
+        called["report"] = True
+
+    head = UsageStatsHead.__new__(UsageStatsHead)
+    head._gcs_client = mock_gcs_client
+    head._report_usage_async = mock_report_usage_async
+
+    # Enable leader election config
+    monkeypatch.setattr(ray_constants, "RAY_LEADER_ELECT", True)
+
+    # Invoke the raw un-decorated instance method by calling UsageStatsHead.periodically_report_usage directly
+    async def mock_periodically_report_usage():
+        await UsageStatsHead.periodically_report_usage.__wrapped__(head)
+
+    monkeypatch.setattr(
+        head, "periodically_report_usage", mock_periodically_report_usage
+    )
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(head.periodically_report_usage())
+    loop.close()
+
+    # Verify telemetry report was suppressed in passive mode
+    assert not called["report"]
+
+
+def test_usage_stats_head_active_resume(monkeypatch):
+    """Verify that UsageStatsHead sends telemetry reports in active mode."""
+    mock_gcs_client = types.SimpleNamespace()
+    # Simulate GCS running in active leader mode on this head node
+    mock_gcs_client.is_gcs_leader_local = lambda: True
+
+    called = {"report": False}
+
+    async def mock_report_usage_async():
+        called["report"] = True
+
+    head = UsageStatsHead.__new__(UsageStatsHead)
+    head._gcs_client = mock_gcs_client
+    head._report_usage_async = mock_report_usage_async
+
+    # Enable leader election config
+    monkeypatch.setattr(ray_constants, "RAY_LEADER_ELECT", True)
+
+    # Invoke the raw un-decorated instance method by calling UsageStatsHead.periodically_report_usage directly
+    async def mock_periodically_report_usage():
+        await UsageStatsHead.periodically_report_usage.__wrapped__(head)
+
+    monkeypatch.setattr(
+        head, "periodically_report_usage", mock_periodically_report_usage
+    )
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(head.periodically_report_usage())
+    loop.close()
+
+    # Verify telemetry report was executed in active mode
+    assert called["report"]
 
 
 if __name__ == "__main__":

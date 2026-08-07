@@ -117,5 +117,68 @@ def test_unified_healthz_worker_gcs_down(monkeypatch, ray_start_cluster):
     assert requests.get(uri).status_code == 200
 
 
+def test_gcs_readiness_normal(ray_start_cluster):
+    dashboard_port = find_free_port()
+    ray_start_cluster.add_node(dashboard_port=dashboard_port)
+    uri = f"http://localhost:{dashboard_port}/api/gcs_readiness"
+    wait_for_condition(lambda: requests.get(uri).status_code == 200)
+
+
+def test_healthz_passive(monkeypatch, external_redis, ray_start_cluster):
+    from ray._private.node import Node
+    from ray._private.parameter import RayParams
+
+    # 1. Start leader node to populate ClusterID and run as active GCS
+    h_leader = ray_start_cluster.add_node()
+
+    # 2. Start passive node with head=True and RAY_LEADER_ELECT env var
+    dashboard_port = find_free_port()
+    agent_port = find_free_port()
+
+    passive_params = RayParams(
+        redis_address=h_leader.redis_address,
+        redis_username=ray_constants.REDIS_DEFAULT_USERNAME,
+        redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
+        dashboard_port=dashboard_port,
+        dashboard_agent_listen_port=agent_port,
+        num_cpus=1,
+        num_gpus=0,
+        object_store_memory=150 * 1024 * 1024,
+        _system_config={"LEADER_ELECT": True},
+        env_vars={"RAY_LEADER_ELECT": "true"},
+    )
+
+    h_passive = Node(
+        passive_params,
+        head=True,
+        shutdown_at_exit=ray_start_cluster._shutdown_at_exit,
+        spawn_reaper=ray_start_cluster._shutdown_at_exit,
+    )
+    ray_start_cluster.worker_nodes.add(h_passive)
+
+    # 3. Test GCS specific endpoints on passive node
+    gcs_healthz_uri = f"http://localhost:{dashboard_port}/api/gcs_healthz"
+    gcs_readiness_uri = f"http://localhost:{dashboard_port}/api/gcs_readiness"
+
+    # GCS liveness check (/api/gcs_healthz) should still succeed because it doesn't verify leadership
+    wait_for_condition(lambda: requests.get(gcs_healthz_uri).status_code == 200)
+
+    # GCS readiness check (/api/gcs_readiness) should fail with 503 because GCS is passive
+    resp = requests.get(gcs_readiness_uri)
+    assert resp.status_code == 503
+
+    # 4. Test unified /api/healthz endpoint on passive node
+    unified_uri = f"http://{h_passive.node_ip_address}:{agent_port}/api/healthz"
+
+    # Unified liveness check (/api/healthz) should succeed
+    wait_for_condition(lambda: requests.get(unified_uri).status_code == 200)
+
+    # Unified readiness check (/api/healthz?readiness=true) should fail with 503
+    unified_readiness_uri = f"{unified_uri}?readiness=true"
+    resp = requests.get(unified_readiness_uri)
+    assert resp.status_code == 503
+    assert "gcs: GCS readiness check failed." in resp.text
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

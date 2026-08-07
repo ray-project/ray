@@ -178,6 +178,10 @@ int main(int argc, char *argv[]) {
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
 
+  if (RayConfig::instance().LEADER_ELECT()) {
+    gcs_server_config.ray_leader_elect_enabled = true;
+  }
+
   // Create individual metrics
   auto actor_by_state_gauge = ray::GetActorByStateGaugeMetric();
   auto gcs_actor_by_state_gauge = ray::gcs::GetGcsActorByStateGaugeMetric();

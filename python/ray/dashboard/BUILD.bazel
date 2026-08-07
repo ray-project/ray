@@ -48,7 +48,10 @@ py_test_run_all_subdirectory(
         "exclusive",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(

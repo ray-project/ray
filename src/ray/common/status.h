@@ -288,6 +288,9 @@ enum class StatusCode : char {
   // Indicates that the executing user does not have permissions to perform the
   // requested operation. A common example is filesystem permissions.
   PermissionDenied = 37,
+  // Indicates that the GCS server is unavailable to response the request as it is
+  // in passive (read-only) mode.
+  GcsPassive = 38,
   // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
@@ -379,6 +382,11 @@ class RAY_EXPORT Status {
 
   static Status NotFound(const std::string &msg) {
     return Status(StatusCode::NotFound, msg);
+  }
+
+  static Status GcsPassive(
+      const std::string &msg = "GCS server is in passive (read-only) mode.") {
+    return Status(StatusCode::GcsPassive, msg);
   }
 
   static Status Disconnected(const std::string &msg) {
@@ -473,6 +481,7 @@ class RAY_EXPORT Status {
     return code() == StatusCode::UnexpectedSystemExit;
   }
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
+  bool IsGcsPassive() const { return code() == StatusCode::GcsPassive; }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
   bool IsSchedulingCancelled() const { return code() == StatusCode::SchedulingCancelled; }
   bool IsAlreadyExists() const { return code() == StatusCode::AlreadyExists; }
