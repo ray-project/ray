@@ -57,11 +57,9 @@ class SandboxConfig:
             working directory is the only writable path in the sandbox. If not provided,
             the container's WORKDIR is used.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
-        labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode (default: True).
         network: Network mode for runsc ("none", "host", "sandbox") (default: "none").
-        resources: Custom logical resource requirements for the placement actor.
         readonly: If True, mount container image rootfs in read-only mode (default: True).
     """
 
@@ -71,11 +69,9 @@ class SandboxConfig:
     env: Dict[str, str] = field(default_factory=dict)
     workdir: Optional[str] = None
     ttl_seconds: Optional[int] = 3600
-    labels: Dict[str, str] = field(default_factory=dict)
     timeout_seconds: float = 30.0
     rootless: bool = True
     network: str = "none"
-    resources: Dict[str, float] = field(default_factory=dict)
     readonly: bool = True
 
     def __post_init__(self):

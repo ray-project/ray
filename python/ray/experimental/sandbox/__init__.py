@@ -26,7 +26,6 @@ def create(
     env: Optional[Dict[str, str]] = None,
     workdir: Optional[str] = None,
     ttl_seconds: Optional[int] = 3600,
-    labels: Optional[Dict[str, str]] = None,
     timeout_seconds: float = 30.0,
     rootless: bool = True,
     network: str = "none",
@@ -45,7 +44,6 @@ def create(
             working directory is the only writable path in the sandbox. If not provided,
             the container's WORKDIR is used.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
-        labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
@@ -73,11 +71,9 @@ def create(
         env=env,
         workdir=workdir,
         ttl_seconds=ttl_seconds,
-        labels=labels,
         timeout_seconds=timeout_seconds,
         rootless=rootless,
         network=network,
-        resources=resources,
         readonly=readonly,
         **kwargs,
     )
@@ -91,7 +87,6 @@ async def create_async(
     env: Optional[Dict[str, str]] = None,
     workdir: Optional[str] = None,
     ttl_seconds: Optional[int] = 3600,
-    labels: Optional[Dict[str, str]] = None,
     timeout_seconds: float = 30.0,
     rootless: bool = True,
     network: str = "none",
@@ -110,7 +105,6 @@ async def create_async(
             working directory is the only writable path in the sandbox. If not provided,
             the container's WORKDIR is used.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
-        labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
@@ -128,7 +122,6 @@ async def create_async(
         env=env,
         workdir=workdir,
         ttl_seconds=ttl_seconds,
-        labels=labels,
         timeout_seconds=timeout_seconds,
         rootless=rootless,
         network=network,
