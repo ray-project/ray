@@ -157,7 +157,10 @@ doc/source/_ext/llms_txt.py: doc doc_api
 doc/source/custom_directives.py: doc doc_api
 doc/source/api_autogen.py: doc doc_api
 doc/source/api_mock_imports.py: doc doc_api
-.buildkite/doc.rayci.yml: doc doc_api
+# doc.rayci.yml declares the redirect-validation step as well as the two API
+# checks, so it emits doc_redirects on top of doc and doc_api. An edit to a step
+# definition has to be able to select the step it edits.
+.buildkite/doc.rayci.yml: doc doc_api doc_redirects
 # api_sidebar.py sits under doc/source/_ext/ but carries `tools` on top of the
 # dir rule's tags, because //ci/pipeline:test_doc_api_rules_sync is a ci_unit
 # target and ci_unit is selected by `tools`. This case is what keeps the drift
@@ -192,6 +195,11 @@ doc/source/llms_txt_summary.txt: doc
 doc/test_myst_doc.py: core_doc
 python/deplocks/docs/docbuild_depset_py3.10.lock: doc doc_api python_dependencies
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
+# Redirect YAML selects the dedicated lightweight check and nothing else: no
+# docbuild, no API checks, no per-team doc tests. The README beside it is prose
+# and stays unrouted, which is what the second case locks in.
+doc/redirects/current.yaml: doc_redirects
+doc/redirects/README.md:
 
 # === Release ===
 
