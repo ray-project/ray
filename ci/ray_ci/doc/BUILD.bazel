@@ -125,7 +125,10 @@ py_test(
 py_test(
     name = "test_api_param_coverage",
     size = "small",
-    srcs = ["test_api_param_coverage.py"],
+    srcs = [
+        "cmd_check_api_param_coverage.py",
+        "test_api_param_coverage.py",
+    ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
