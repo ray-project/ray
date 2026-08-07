@@ -218,7 +218,8 @@ def _build_range_index(index, num_partitions):
     """
     ranges = np.zeros((num_partitions, 2), dtype=np.int64)
     for partition_id, frame_range in index.items():
-        ranges[partition_id] = frame_range[0]  # (offset, length); one frame per partition
+        # (offset, length); one frame per partition
+        ranges[partition_id] = frame_range[0]
     return ranges
 
 
@@ -630,9 +631,7 @@ def _fetch_from_file_server(
     while True:
         endpoint = _resolve()
         try:
-            _stream_members_flight(
-                endpoint, members, max_bytes_per_fetch, out_file_obj
-            )
+            _stream_members_flight(endpoint, members, max_bytes_per_fetch, out_file_obj)
             return
         except flight.FlightServerError:
             raise  # terminal: server alive, refused the request (see docstring)
