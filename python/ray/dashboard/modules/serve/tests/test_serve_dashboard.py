@@ -1329,5 +1329,110 @@ def test_get_serve_instance_details_external_scaler_enabled(ray_start_stop):
     assert serve_details.applications["app_default"].external_scaler_enabled is False
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_put_merge_first_deploy(ray_start_stop):
+    """A merge PUT as the very first deploy behaves like a normal deploy."""
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+
+    merge_config = {
+        "apply_strategy": "merge",
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": pizza_import_path,
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+    deploy_config_multi_app(merge_config, SERVE_HEAD_URL)
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+        == "4 pizzas please!",
+        timeout=15,
+    )
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/app2").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_put_merge_multi_app(ray_start_stop):
+    """A merge PUT upserts apps without deleting the ones already running."""
+    pizza_import_path = "ray.serve.tests.test_config_files.pizza.serve_dag"
+    world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
+
+    # Start with app1 only (default replace mode).
+    config1 = {
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": pizza_import_path,
+            },
+        ],
+    }
+    deploy_config_multi_app(config1, SERVE_HEAD_URL)
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+        == "4 pizzas please!",
+        timeout=15,
+    )
+
+    # Merge in app2 without listing app1, app1 must stay live.
+    merge_config = {
+        "apply_strategy": "merge",
+        "applications": [
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": world_import_path,
+            },
+        ],
+    }
+    deploy_config_multi_app(merge_config, SERVE_HEAD_URL)
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/app2").text == "wonderful world",
+        timeout=15,
+    )
+    # app1 was not in the merge config but must still be serving.
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).text
+        == "4 pizzas please!",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_put_merge_rejects_global_fields(ray_start_stop):
+    """A merge PUT carrying a cluster-wide top-level field is rejected (400)."""
+    config = {
+        "apply_strategy": "merge",
+        "http_options": {"host": "1.2.3.4"},
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "module.graph",
+            },
+        ],
+    }
+    put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
+    assert put_response.status_code == 400
+    assert "cannot be set when apply_strategy is 'merge'" in put_response.text
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

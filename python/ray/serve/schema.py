@@ -1003,6 +1003,14 @@ class HTTPOptionsSchema(BaseModel):
         return v
 
 
+@PublicAPI(stability="alpha")
+class ApplyStrategy(str, Enum):
+    """Strategy for how `serve deploy` applies the submitted config."""
+
+    REPLACE = "replace"
+    MERGE = "merge"
+
+
 @PublicAPI(stability="stable")
 class ServeDeploySchema(BaseModel):
     """
@@ -1046,6 +1054,15 @@ class ServeDeploySchema(BaseModel):
         ..., description="The set of applications to run on the Ray cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+    apply_strategy: ApplyStrategy = Field(
+        default=ApplyStrategy.REPLACE,
+        description=(
+            "Strategy for applying the config. 'replace' (default) treats the "
+            "config as the full goal state and deletes any declarative apps not "
+            "in the list. 'merge' upserts apps from the config and leaves all "
+            "other existing apps untouched."
+        ),
+    )
 
     @field_validator("applications")
     @classmethod
@@ -1104,6 +1121,19 @@ class ServeDeploySchema(BaseModel):
                     f"Port {app_config.port} is set in the config for application "
                     f"`{app_config.name}`. Please remove it and set port in the top "
                     "level deploy config only."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def merge_only_allows_applications(self):
+        # Merge disallows top level fields except apply_strategy and applications.
+        if self.apply_strategy == ApplyStrategy.MERGE:
+            disallowed = self.model_fields_set - {"applications", "apply_strategy"}
+            if disallowed:
+                raise ValueError(
+                    f"Top level fields: {sorted(disallowed)} cannot be set when "
+                    "apply_strategy is 'merge'. Use a 'replace' deploy to change "
+                    "these fields."
                 )
         return self
 

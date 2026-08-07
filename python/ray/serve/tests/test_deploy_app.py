@@ -1,6 +1,6 @@
 import sys
 import time
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import httpx
 import pytest
@@ -17,6 +17,7 @@ from ray.serve._private.test_utils import (
     check_running,
     get_application_url,
 )
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ApplicationStatus,
     ServeDeploySchema,
@@ -48,8 +49,8 @@ def get_test_config() -> Dict:
     return {"import_path": "ray.serve.tests.test_config_files.pizza.serve_dag"}
 
 
-def get_test_deploy_config() -> Dict:
-    return {
+def get_test_deploy_config(apply_strategy: Optional[str] = None) -> Dict:
+    config = {
         "applications": [
             {
                 "name": "app1",
@@ -77,6 +78,9 @@ def get_test_deploy_config() -> Dict:
             },
         ],
     }
+    if apply_strategy is not None:
+        config["apply_strategy"] = apply_strategy
+    return config
 
 
 def check_multi_app():
@@ -905,6 +909,473 @@ def test_get_app_handle(serve_instance):
     handle_2 = serve.get_app_handle("app2")
     assert handle_1.route.remote("ADD", 2).result() == "4 pizzas please!"
     assert handle_2.route.remote("ADD", 2).result() == "5 pizzas please!"
+
+
+def get_merge_deploy_config(applications: List[Dict]) -> Dict:
+    """Wraps a list of app configs with the merge apply strategy."""
+    return {"applications": applications, "apply_strategy": "merge"}
+
+
+def test_merge_in_first_deploy(serve_instance):
+    """
+    Tests that merge in first deploy behaves similar to the normal (replace) mode
+    """
+    client = serve_instance
+    config = ServeDeploySchema.model_validate(
+        get_test_deploy_config(apply_strategy="merge")
+    )
+    client.deploy_apps(config)
+    check_multi_app()
+
+
+def test_normal_deploy_then_merge(serve_instance):
+    """Tests a normal (replace) deploy followed by a merge of a new app."""
+    client = serve_instance
+    # Deploy app1 and app2 in default mode.
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+    # Merge deploy app3 only. app1 and app2 should survive.
+    merge_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app3",
+                    "route_prefix": "/app3",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                },
+            ],
+            "apply_strategy": "merge",
+        }
+    )
+    client.deploy_apps(merge_config)
+
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="app3",
+    )
+    # app1 and app2 should still be running.
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="app1",
+    )
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="5 pizzas please!",
+        app_name="app2",
+    )
+
+
+def test_merge_on_existing_app(serve_instance):
+    """Tests that a merge deploy on an existing app updates only that app."""
+    client = serve_instance
+    # Deploy app1 and app2 in default mode.
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+    # Redeploy app1 in merge mode by only modifying the deployment options.
+    merge_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                    "deployments": [
+                        {"name": "Adder", "user_config": {"increment": 5}},
+                    ],
+                },
+            ],
+            "apply_strategy": "merge",
+        }
+    )
+    client.deploy_apps(merge_config)
+
+    # app1's Adder now increments by 5
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="7 pizzas please!",
+        app_name="app1",
+    )
+    # app2 is not in the merge request, so it must be untouched.
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="5 pizzas please!",
+        app_name="app2",
+    )
+
+
+def test_merge_on_failed_app(serve_instance):
+    """Test that a merge deploy can recover an app that failed to deploy."""
+    client = serve_instance
+
+    # Deploy app1 with a deployment that fails.
+    bad_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "ray.serve.tests.test_config_files.fail.node",
+                }
+            ],
+        }
+    )
+    client.deploy_apps(bad_config)
+    wait_for_condition(
+        check_deploy_failed,
+        app_name="app1",
+        message="Failed to update the deployments",
+    )
+
+    # Merge-deploy a valid config for the same app.
+    merge_config = ServeDeploySchema.model_validate(
+        get_merge_deploy_config(
+            [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                },
+            ]
+        )
+    )
+    client.deploy_apps(merge_config)
+
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+
+
+def test_deploy_merge_then_replace(serve_instance):
+    """Test that merge upserts apps without deleting existing ones,
+    and a subsequent replace deletes apps not in the config."""
+    client = serve_instance
+
+    # Deploy app1 and app2 in default mode.
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+
+    # Merge deploy app3 only. app1 and app2 should survive.
+    merge_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app3",
+                    "route_prefix": "/app3",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                },
+            ],
+            "apply_strategy": "merge",
+        }
+    )
+    client.deploy_apps(merge_config)
+
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="app3",
+    )
+    # app1 and app2 should still be running.
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="app1",
+    )
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="5 pizzas please!",
+        app_name="app2",
+    )
+
+    # Verify all three apps show up in instance details.
+    details = ray.get(client._controller.get_serve_instance_details.remote())
+    assert "app1" in details["applications"]
+    assert "app2" in details["applications"]
+    assert "app3" in details["applications"]
+
+    # Replace deploy with app2 only. app1 and app3 should be deleted.
+    replace_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app2",
+                    "route_prefix": "/app2",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                    "deployments": [
+                        {
+                            "name": "Adder",
+                            "user_config": {"increment": 3},
+                        },
+                        {
+                            "name": "Multiplier",
+                            "user_config": {"factor": 4},
+                        },
+                    ],
+                },
+            ],
+        }
+    )
+    client.deploy_apps(replace_config)
+
+    def only_app2_remains():
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        return (
+            "app1" not in details["applications"]
+            and "app3" not in details["applications"]
+            and details["applications"]["app2"]["status"] == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(only_app2_remains)
+
+    # Confirm app2 still works.
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="5 pizzas please!",
+        app_name="app2",
+    )
+
+
+def test_merge_rejects_route_prefix_conflict(serve_instance):
+    """A merge deploy must reject a route_prefix already used by another live app."""
+    client = serve_instance
+
+    # Deploy app1 (/app1) and app2 (/app2) in default mode.
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+
+    # Merge-deploy app3 with a route_prefix already owned by app1.
+    merge_config = ServeDeploySchema.model_validate(
+        get_merge_deploy_config(
+            [
+                {
+                    "name": "app3",
+                    "route_prefix": "/app1",
+                    "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                },
+            ]
+        )
+    )
+    with pytest.raises(RayServeException, match="is being used by application"):
+        client.deploy_apps(merge_config)
+
+    # app1, app2 still serve and app3 was never created.
+    check_multi_app()
+    details = ray.get(client._controller.get_serve_instance_details.remote())
+    assert "app3" not in details["applications"]
+
+
+def test_merge_rejects_route_prefix_claimed_via_omission(serve_instance):
+    """Reject a merge where a submitted app omits its prefix and another claims it."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    # Deploy app1 (/app1) and app2 (/app2) in default mode.
+    config = ServeDeploySchema.model_validate(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+
+    # Merge: app1 omits route_prefix (keeps /app1); app2 claims /app1.
+    merge_config = ServeDeploySchema.model_validate(
+        get_merge_deploy_config(
+            [
+                {"name": "app1", "import_path": pizza},
+                {"name": "app2", "route_prefix": "/app1", "import_path": pizza},
+            ]
+        )
+    )
+    with pytest.raises(RayServeException, match="is being used by application"):
+        client.deploy_apps(merge_config)
+
+    # The deploy was rejected before any state changed.
+    check_multi_app()
+
+
+def test_merge_allows_route_prefix_swap(serve_instance):
+    """A merge that swaps two submitted apps' explicit prefixes is allowed."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    # Deploy app1 (/app1) and app2 (/app2)
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app1", "route_prefix": "/app1", "import_path": pizza},
+                {"name": "app2", "route_prefix": "/app2", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app2"
+    )
+
+    # Swap the prefixes
+    merge_config = ServeDeploySchema.model_validate(
+        get_merge_deploy_config(
+            [
+                {"name": "app1", "route_prefix": "/app2", "import_path": pizza},
+                {"name": "app2", "route_prefix": "/app1", "import_path": pizza},
+            ]
+        )
+    )
+    client.deploy_apps(merge_config)
+
+    def routes_swapped():
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        apps = details["applications"]
+        return (
+            apps["app1"]["route_prefix"] == "/app2"
+            and apps["app2"]["route_prefix"] == "/app1"
+        )
+
+    wait_for_condition(routes_swapped)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app2"
+    )
+
+
+def test_merge_rejects_new_app_claiming_root_prefix(serve_instance):
+    """A merge can't add a new app on "/" when a live app owns it."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    # Deploy a single app at the default "/" route.
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "root_app", "route_prefix": "/", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="root_app",
+    )
+
+    # A new app explicitly claims "/"
+    merge_config = ServeDeploySchema.model_validate(
+        get_merge_deploy_config(
+            [{"name": "new_app", "route_prefix": "/", "import_path": pizza}]
+        )
+    )
+    with pytest.raises(RayServeException, match="is being used by application"):
+        client.deploy_apps(merge_config)
+
+    # root_app still serves "/" and new app was never created.
+    wait_for_condition(
+        check_endpoint,
+        json=["ADD", 2],
+        expected="4 pizzas please!",
+        app_name="root_app",
+    )
+    details = ray.get(client._controller.get_serve_instance_details.remote())
+    assert "new_app" not in details["applications"]
+
+
+def test_replace_rejects_route_prefix_claimed_via_omission(serve_instance):
+    """Replace rejects a new app claiming a prefix preserved via omission."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    # Deploy app1 at /app1.
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app1", "route_prefix": "/app1", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+
+    # Replace deploy: app1 omits route_prefix, new app2 claims /app1.
+    collision_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app1", "import_path": pizza},
+                {"name": "app2", "route_prefix": "/app1", "import_path": pizza},
+            ],
+        }
+    )
+    with pytest.raises(RayServeException, match="is being used by application"):
+        client.deploy_apps(collision_config)
+
+    # app1 still serves /app1 and app2 was never created.
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+    details = ray.get(client._controller.get_serve_instance_details.remote())
+    assert "app2" not in details["applications"]
+
+
+def test_replace_allows_reassigning_dropped_app_prefix(serve_instance):
+    """Replace lets a new app take a prefix owned by a dropped app."""
+    client = serve_instance
+
+    pizza = "ray.serve.tests.test_config_files.pizza.serve_dag"
+
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app1", "route_prefix": "/app1", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app1"
+    )
+
+    # Replace deploy drops app1 and hands /app1 to app2.
+    handoff_config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {"name": "app2", "route_prefix": "/app1", "import_path": pizza},
+            ],
+        }
+    )
+    client.deploy_apps(handoff_config)
+
+    def app1_dropped_app2_owns_prefix():
+        details = ray.get(client._controller.get_serve_instance_details.remote())
+        apps = details["applications"]
+        return (
+            "app1" not in apps and apps.get("app2", {}).get("route_prefix") == "/app1"
+        )
+
+    wait_for_condition(app1_dropped_app2_owns_prefix)
+    wait_for_condition(
+        check_endpoint, json=["ADD", 2], expected="4 pizzas please!", app_name="app2"
+    )
 
 
 if __name__ == "__main__":
