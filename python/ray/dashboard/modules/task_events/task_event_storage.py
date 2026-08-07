@@ -235,6 +235,11 @@ class TaskEventStorage:
         GCS. The tasks are still failed so they don't linger as running, but without exit
         details and stamped with the current time instead of the worker's end time.
         """
+        # TODO(karticam): there are edge cases where _worker_index might not have all tasks
+        #  for the worker when we receive worker death notification since some task events
+        #  might not have reached us to populate the index. So we might not mark all tasks
+        #  as failed. Check the comment thread below for more details:
+        #  https://github.com/ray-project/ray/pull/65141#discussion_r3734119692
         attempts = self._worker_index.get(worker_id)
         if attempts is None:
             return
