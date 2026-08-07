@@ -119,7 +119,7 @@ curl -G "http://localhost:8265/worker/jax_profile" \
   --data-urlencode "duration=5"
 ```
 
-You can pass `ip=<WORKER_IP>` instead of `node_id=<NODE_ID_HEX>`. If you specified a custom port when initializing the profiler, pass `port=<PORT>` to override GCS auto-discovery.
+You can pass `ip=<WORKER_IP>` instead of `node_id=<NODE_ID_HEX>`. The Ray Dashboard discovers the profiler port from the GCS registry, including a custom port that you passed to `init_jax_profiler()` or set through the `JAX_PROFILER_PORT` environment variable. Pass `port=<PORT>` only to bypass that lookup, or when the endpoint reports that it couldn't discover the port.
 
 ### Expected endpoint response
 
@@ -169,7 +169,7 @@ kubectl cp <TPU_WORKER_POD>:/tmp/ray/session_latest/logs/profiles/ ./tensorboard
 
 ### Install TensorBoard and the profile plugin
 
-Install TensorBoard and the Google TPU profile plugin in your local Python environment:
+Install TensorBoard and the profile plugin in your local Python environment:
 
 ```bash
 pip install tensorboard tensorboard-plugin-profile
