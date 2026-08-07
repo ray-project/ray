@@ -92,9 +92,15 @@ Request finished with status code 200.
 
 ### Customizing the load shedding response
 
-By default, requests rejected due to backpressure return a `503` status code, the same status code returned when a deployment is unavailable (for example, because it failed to deploy). To let clients and infrastructure distinguish deliberate load shedding ("slow down and retry") from a service failure, you can configure the rejection response with the {mod}`BackpressureConfig <ray.serve.config.BackpressureConfig>` deployment option:
+By default, requests rejected due to backpressure return a `503` status code — the same status code returned when a deployment is unavailable (for example, because it failed to deploy) — so clients and infrastructure can't tell deliberate load shedding ("slow down and retry") from a service failure. Returning `429 Too Many Requests` instead makes that distinction machine-readable, which matters in three places:
 
-- `status_code`: The HTTP status code returned for requests rejected due to backpressure. Must be `503` (the default) or `429` (Too Many Requests). Requests rejected because the deployment is unavailable always return `503`. On the gRPC path, backpressure rejections always map to `RESOURCE_EXHAUSTED`, consistent with `429`.
+- **Monitoring and SLOs**: `5xx` responses count against availability SLOs and trigger error-rate alerts, so a deployment that sheds load to protect its latency looks like an outage. `429` keeps deliberate load shedding out of server error metrics.
+- **Load balancers and service meshes**: proxies such as Envoy and cloud load balancers can eject or mark backends unhealthy after consecutive `5xx` responses, and `retry_on: 5xx` policies blindly re-execute shed requests. Neither behavior is triggered by `429`.
+- **Clients**: common HTTP and LLM SDKs treat `429` with a `Retry-After` header as the standard "back off and retry later" signal and pace their retries accordingly. (On the gRPC path, Serve already returns `RESOURCE_EXHAUSTED`, the equivalent signal.)
+
+To configure the rejection response, use the {mod}`BackpressureConfig <ray.serve.config.BackpressureConfig>` deployment option:
+
+- `status_code`: The HTTP status code returned for requests rejected due to backpressure. Must be `503` (the default) or `429` (Too Many Requests). Requests rejected because the deployment is unavailable always return `503`.
 - `retry_after_s`: If set, rejected HTTP responses include a [`Retry-After` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After) with this value, rounded up to an integer number of seconds. Clients and SDKs that honor `Retry-After` use it to pace their retries. The header can be combined with either status code; it's valid on `503` as well as `429`.
 
 ```{literalinclude} ../doc_code/load_shedding.py
