@@ -1131,10 +1131,9 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     const int64_t object_index = item_index + i;
 
     // Unconsumed objects for a deleted generator can no longer be used.
-    // They should be freed immediately. Since the batch's lowest index is
-    // unconsumed and batches are contiguous, the whole reported batch is
-    // unconsumed. The objects were just created by the executor, so their only
-    // copy lives on the reporting worker's node.
+    // They should be freed immediately. Only already-consumed indices reported here are
+    // lineage-reconstruction retries of still-referenced returns and must still be
+    // handled.
     if (caller_deleted && !stream_it->second.IsObjectConsumed(object_index)) {
       if (returned_object.in_plasma()) {
         const NodeID worker_node_id = NodeID::FromBinary(request.worker_addr().node_id());
@@ -1182,16 +1181,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
   }
 
-  // Whether the caller has dropped the generator. Once dropped, it reads no
-  // further, so any index it has not already consumed is unwanted; only
-  // already-consumed indices reported here are lineage-reconstruction retries of
-  // still-referenced returns and must still be handled.
   if (backpressure_threshold != -1) {
     // If the whole batch is unconsumed (its lowest index is unconsumed, and a
     // batch is contiguous), tell the executor the stream is deleted so it stops
-    // backpressuring - there is no consumer left. A batch whose lowest index is
-    // already consumed is handled below; its unconsumed tail, if any, is skipped
-    // per-object.
+    // backpressuring - there is no consumer left.
     if (caller_deleted && !stream_it->second.IsObjectConsumed(item_index)) {
       execution_signal_callback(Status::NotFound("Stream is deleted."));
       return false;
