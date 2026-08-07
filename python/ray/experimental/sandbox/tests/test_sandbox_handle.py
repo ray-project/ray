@@ -1,10 +1,7 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 import ray
-from ray.experimental.sandbox import Sandbox, SandboxHandle
-from ray.experimental.sandbox.backend.base import ExecResult
+from ray.experimental.sandbox import Sandbox
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
@@ -49,51 +46,6 @@ def test_sandbox_actor_wrapper():
 
     ray.get(actor.delete.remote())
     ray.kill(actor)
-
-
-def test_sandbox_handle(tmp_path):
-    if not ray.is_initialized():
-        ray.init(ignore_reinit_error=True)
-
-    mock_actor = MagicMock()
-    mock_actor.get_instance_id.remote.return_value = ray.put("sb-handle-1")
-    mock_actor.exec.remote.return_value = ray.put(
-        ExecResult(
-            exit_code=0, stdout="handle output\n", stderr="", duration_seconds=0.1
-        )
-    )
-    mock_actor.read_file.remote.return_value = ray.put(b"remote content")
-    mock_actor.write_file.remote.return_value = ray.put(None)
-    mock_actor.upload_file.remote.return_value = ray.put(None)
-    mock_actor.download_file.remote.return_value = ray.put(None)
-    mock_actor.delete.remote.return_value = ray.put(None)
-
-    handle = SandboxHandle(actor_handle=mock_actor)
-
-    assert handle.instance_id == "sb-handle-1"
-    assert handle.sandbox_id == "sb-handle-1"
-    res = handle.exec("echo handle output")
-    assert res.exit_code == 0
-    assert res.stdout == "handle output\n"
-    assert res.duration_ms == 100.0
-
-    # Test upload_file
-    local_file = tmp_path / "upload.txt"
-    local_file.write_bytes(b"local upload content")
-    handle.upload_file(str(local_file), "/workspace/remote_upload.txt")
-    mock_actor.upload_file.remote.assert_called_with(
-        str(local_file), "/workspace/remote_upload.txt"
-    )
-
-    # Test download_file
-    download_target = tmp_path / "download.txt"
-    handle.download_file("/workspace/remote_file.txt", str(download_target))
-    mock_actor.download_file.remote.assert_called_with(
-        "/workspace/remote_file.txt", str(download_target)
-    )
-
-    handle.terminate()
-    mock_actor.delete.remote.assert_called_once()
 
 
 def test_custom_sandbox_actor_with_sandbox_runtime():

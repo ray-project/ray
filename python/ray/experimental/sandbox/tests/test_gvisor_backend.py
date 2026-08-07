@@ -2,7 +2,9 @@ import os
 
 import pytest
 
-from ray.experimental.sandbox import SandboxHandle, create
+import ray
+from ray.actor import ActorHandle
+from ray.experimental.sandbox import create
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import GVisorSandboxConfig
@@ -49,13 +51,15 @@ def test_gvisor_backend_not_found():
 
 
 def test_create_sandbox_helper():
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
     sb = create("busybox:latest", workdir="/workspace")
-    assert isinstance(sb, SandboxHandle)
-    res = sb.exec("echo 'Process isolation'")
+    assert isinstance(sb, ActorHandle)
+    res = ray.get(sb.exec.remote("echo 'Process isolation'"))
     assert res.exit_code == 0
     assert "Process isolation" in res.stdout
     assert res.duration_ms >= 0
-    sb.terminate()
+    ray.get(sb.terminate.remote())
 
 
 def test_gvisor_backend_container_image_support():
