@@ -38,7 +38,6 @@ class SystemException(Exception):
 class ExecutionTimeoutError(Exception):
     """Represents an Exception raised when a Dataset execution stops making
     progress for `DataContext.execution_no_progress_timeout_s`.
-
     This usually means a UDF is blocked, a task is stuck, or the cluster can
     no longer schedule work."""
 
