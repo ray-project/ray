@@ -27,15 +27,9 @@ _GCS_INFO_FETCH_TIMEOUT_S = 30
 
 
 class TaskEventManager:
-    """Owns the background upkeep of the in-memory task-event store.
-
-    This is where GcsTaskManager's non-RPC background work lands in the "task events out of
-    GCS" migration. It subscribes to GCS pubsub and, after a short delay that lets in-flight
-    FINISHED events land, marks a dead worker's / finished job's running tasks failed
-    (reading the dead worker's exit info from the GCS worker table), and periodically GCs the
-    store's per-job summaries. Kept out of the dashboard-head module so that file only defines
-    the external HTTP API; the head constructs a manager and calls ``start`` on its event
-    loop to register these loops.
+    """Reconciles the in-memory task-event store against GCS pubsub: marks a dead
+    worker's or finished job's running tasks failed, and periodically GCs per-job
+    summaries.
     """
 
     def __init__(
