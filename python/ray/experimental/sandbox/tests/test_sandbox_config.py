@@ -12,7 +12,7 @@ def test_default_sandbox_config():
     assert config.image == "python:3.10-slim"
     assert config.cpu == 0.0
     assert config.memory == 0
-    assert config.work_dir == "/workspace"
+    assert config.workdir is None
     assert config.ttl_seconds == 3600
     assert config.rootless is True
     assert config.network == "none"

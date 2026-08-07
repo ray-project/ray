@@ -53,15 +53,31 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
+
+            image_rootfs = self._pull_and_extract_image(config.image)
+            if not config.workdir:
+                config_json_path = os.path.join(image_rootfs, ".image_config.json")
+                if os.path.exists(config_json_path):
+                    with open(config_json_path, "r", encoding="utf-8") as f:
+                        try:
+                            image_cfg = json.load(f)
+                            config.workdir = image_cfg.get("config", {}).get(
+                                "WorkingDir"
+                            )
+                        except Exception:
+                            pass
+                if not config.workdir:
+                    config.workdir = "/"
+
             work_dir_path = os.path.abspath(
-                os.path.join(root_dir, config.work_dir.lstrip("/"))
+                os.path.join(root_dir, config.workdir.lstrip("/"))
             )
             if not (
                 work_dir_path == os.path.abspath(root_dir)
                 or work_dir_path.startswith(os.path.abspath(root_dir) + os.sep)
             ):
                 raise SandboxCreationError(
-                    f"Invalid work_dir '{config.work_dir}': Path traversal detected."
+                    f"Invalid workdir '{config.workdir}': Path traversal detected."
                 )
             os.makedirs(work_dir_path, mode=0o777, exist_ok=True)
         except Exception as err:
@@ -73,12 +89,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         self._prepare_oci_bundle(
             root_dir=root_dir,
             work_dir_path=work_dir_path,
-            container_cwd=config.work_dir,
+            container_cwd=config.workdir,
             image=config.image,
             env_dict=config.env,
             cpu=config.cpu,
             memory=config.memory,
             readonly=config.readonly,
+            image_rootfs=image_rootfs,
         )
         run_args = self._runsc_base_args(config)
         if config.network:
@@ -125,7 +142,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
-            "work_dir": work_dir_path,
+            "workdir": work_dir_path,
             "config": config,
             "proc": proc,
             "status": SandboxStatus.RUNNING,
@@ -178,7 +195,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if env:
             exec_env.update(env)
 
-        exec_cwd = cwd or config.work_dir
+        exec_cwd = cwd or config.workdir
 
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
@@ -308,6 +325,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
+        image_rootfs: Optional[str] = None,
     ) -> str:
         config_json_path = os.path.join(root_dir, "config.json")
         rootfs_dir = os.path.join(root_dir, "rootfs")
@@ -319,7 +337,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         with open(config_json_path, "r", encoding="utf-8") as f:
             spec = json.load(f)
 
-        image_rootfs = self._pull_and_extract_image(image)
+        if not image_rootfs:
+            image_rootfs = self._pull_and_extract_image(image)
         spec["root"]["path"] = image_rootfs
         spec["root"]["readonly"] = readonly
 
@@ -341,7 +360,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             (container_cwd, work_dir_path),
         ]
         for dest, src in default_binds:
-            if dest not in existing_dests and os.path.exists(src):
+            if dest != "/" and dest not in existing_dests and os.path.exists(src):
                 mounts.append(
                     {
                         "destination": dest,

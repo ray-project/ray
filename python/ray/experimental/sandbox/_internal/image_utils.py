@@ -349,6 +349,27 @@ def pull_and_extract_container_image(
                         ) as resp:
                             manifest_data = json.loads(resp.read().decode("utf-8"))
 
+                    # extract image config so we can reference metadata bout the image later.
+                    config_desc = manifest_data.get("config")
+                    if config_desc and "digest" in config_desc:
+                        config_digest = config_desc["digest"]
+                        config_url = (
+                            f"https://{registry}/v2/{repo}/blobs/{config_digest}"
+                        )
+                        config_req = urllib.request.Request(config_url, headers=headers)
+                        try:
+                            with urllib.request.urlopen(
+                                config_req, timeout=timeout_seconds
+                            ) as resp:
+                                config_bytes = resp.read()
+                                with open(
+                                    os.path.join(tmp_extract_dir, ".image_config.json"),
+                                    "wb",
+                                ) as f_cfg:
+                                    f_cfg.write(config_bytes)
+                        except Exception as e:
+                            logger.warning(f"Failed to fetch image config blob: {e}")
+
                     layers = manifest_data.get("layers", [])
                     if not layers:
                         raise SandboxCreationError(
