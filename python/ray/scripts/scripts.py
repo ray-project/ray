@@ -27,6 +27,7 @@ from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
+    maybe_enable_token_auth_if_token_available,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
@@ -1064,6 +1065,14 @@ def start(
                     "Please specify a different port using the `--port`"
                     " flag of `ray start` command."
                 )
+
+        # For a local head cluster, enable token authentication automatically if
+        # a token is available from any source (RAY_AUTH_TOKEN,
+        # RAY_AUTH_TOKEN_PATH, or the default ~/.ray/auth_token file), even when
+        # RAY_AUTH_MODE isn't set, and warn if it ends up disabled. This only
+        # affects local head clusters; worker nodes and remote clusters are
+        # unchanged.
+        maybe_enable_token_auth_if_token_available()
 
         # Ensure auth token is available if authentication mode is token
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
