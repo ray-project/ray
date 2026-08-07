@@ -1,14 +1,20 @@
 import warnings
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
+import pyarrow as pa
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    PreparedChunkedTensorTakePlan,
+    try_prepare_chunked_tensor_take,
+    try_take_prepared_chunked_tensor,
+)
 from ray.data._internal.util import get_total_obj_store_mem_on_node
+from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
 
@@ -22,6 +28,82 @@ SHUFFLE_BUFFER_COMPACTION_RATIO = 1.5
 # compaction (and re-shuffling of indices) is triggered. Experiments show 0.5
 # is a good trade-off between throughput and randomness.
 SHUFFLE_BUFFER_COMPACTION_THRESHOLD = 0.5
+
+
+def _prepare_local_shuffle_arrow_table(
+    table: pa.Table, *, max_output_rows: int
+) -> Tuple[pa.Table, Dict[int, PreparedChunkedTensorTakePlan]]:
+    """Prepare an Arrow table for repeated local-shuffle row takes.
+
+    Args:
+        table: Arrow shuffle buffer to prepare.
+        max_output_rows: Maximum rows produced by one take.
+
+    Returns:
+        A table with unsupported multi-chunk columns combined and a mapping of
+        column positions to reusable tensor take plans.
+    """
+
+    if not any(
+        column.num_chunks > 1 and _is_pa_extension_type(column.type)
+        for column in table.columns
+    ):
+        return (
+            transform_pyarrow.try_combine_chunked_columns(table, 1),
+            {},
+        )
+
+    prepared_plans = {}
+    for index, column in enumerate(table.columns):
+        if column.num_chunks <= 1:
+            continue
+        plan = try_prepare_chunked_tensor_take(
+            column,
+            max_output_rows=max_output_rows,
+        )
+        if plan is not None:
+            prepared_plans[index] = plan
+
+    if not prepared_plans:
+        return transform_pyarrow.try_combine_chunked_columns(table, 1), {}
+
+    columns = []
+    for index, column in enumerate(table.columns):
+        if index in prepared_plans or column.num_chunks <= 1:
+            columns.append(column)
+        else:
+            columns.append(transform_pyarrow.combine_chunked_array(column))
+    return pa.Table.from_arrays(columns, schema=table.schema), prepared_plans
+
+
+def _take_prepared_arrow_table(
+    table: pa.Table,
+    indices: np.ndarray,
+    prepared_plans: Dict[int, PreparedChunkedTensorTakePlan],
+) -> Optional[pa.Table]:
+    """Take one batch while reusing validated tensor source metadata.
+
+    Args:
+        table: Prepared Arrow shuffle buffer.
+        indices: Normalized row indices for this batch.
+        prepared_plans: Mapping of column positions to tensor take plans.
+
+    Returns:
+        The selected table, or ``None`` if a prepared tensor take is no longer
+        eligible and the caller must use the standard block take path.
+    """
+
+    columns = []
+    for index, column in enumerate(table.columns):
+        plan = prepared_plans.get(index)
+        if plan is None:
+            columns.append(column.take(indices))
+            continue
+        taken = try_take_prepared_chunked_tensor(plan, indices)
+        if taken is None:
+            return None
+        columns.append(taken)
+    return pa.Table.from_arrays(columns, schema=table.schema)
 
 
 class BatcherInterface:
@@ -231,6 +313,7 @@ class ShufflingBatcher(BatcherInterface):
         self._shuffled_indices: Optional[np.ndarray] = None
         self._batch_head = 0
         self._done_adding = False
+        self._prepared_tensor_take_plans = {}
 
         self._total_object_store_nbytes = get_total_obj_store_mem_on_node()
         self._total_num_rows_added = 0
@@ -341,20 +424,26 @@ class ShufflingBatcher(BatcherInterface):
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
         ):
-            if self._shuffle_buffer is not None and self._batch_head < len(
-                self._shuffled_indices
-            ):
-                remaining_indices = self._shuffled_indices[self._batch_head :]
-                remaining_block = BlockAccessor.for_block(self._shuffle_buffer).take(
-                    remaining_indices
-                )
-                self._builder.add_block(remaining_block)
+            self._prepared_tensor_take_plans = {}
+            if self._shuffle_buffer is not None:
+                assert self._shuffled_indices is not None
+                if self._batch_head < len(self._shuffled_indices):
+                    remaining_indices = self._shuffled_indices[self._batch_head :]
+                    remaining_block = BlockAccessor.for_block(
+                        self._shuffle_buffer
+                    ).take(remaining_indices)
+                    self._builder.add_block(remaining_block)
             self._shuffle_buffer = self._builder.build()
 
             accessor = BlockAccessor.for_block(self._shuffle_buffer)
+            prepared_plans = {}
             if isinstance(accessor, ArrowBlockAccessor):
-                self._shuffle_buffer = try_combine_chunked_columns(
-                    self._shuffle_buffer, min_chunks_to_combine=1
+                (
+                    self._shuffle_buffer,
+                    prepared_plans,
+                ) = _prepare_local_shuffle_arrow_table(
+                    self._shuffle_buffer,
+                    max_output_rows=min(self._batch_size, accessor.num_rows()),
                 )
                 accessor = BlockAccessor.for_block(self._shuffle_buffer)
 
@@ -363,6 +452,7 @@ class ShufflingBatcher(BatcherInterface):
 
             self._builder = DelegatingBlockBuilder()
             self._batch_head = 0
+            self._prepared_tensor_take_plans = prepared_plans
 
         assert self._shuffle_buffer is not None
         assert self._shuffled_indices is not None
@@ -372,4 +462,13 @@ class ShufflingBatcher(BatcherInterface):
             self._batch_head : self._batch_head + batch_size
         ]
         self._batch_head += batch_size
+
+        if self._prepared_tensor_take_plans:
+            batch = _take_prepared_arrow_table(
+                self._shuffle_buffer,
+                batch_indices,
+                self._prepared_tensor_take_plans,
+            )
+            if batch is not None:
+                return batch
         return BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)

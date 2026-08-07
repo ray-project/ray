@@ -15,6 +15,9 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    try_take_chunked_tensor,
+)
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 try:
@@ -186,6 +189,86 @@ def hash_partition(
     }
 
 
+def _try_normalize_take_indices(
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+    row_count: int,
+) -> Optional[np.ndarray]:
+    """Normalize supported row indices for the chunked tensor fast path.
+
+    Normalization converts a one-dimensional Python list, NumPy integer array,
+    or PyArrow integer array to a native-endian ``np.int64`` array. To preserve
+    the behavior and exception types of the existing Arrow take path, this
+    helper rejects nulls, masks, negative or out-of-range values, non-integer
+    values, non-native byte order, multidimensional arrays, and chunked Arrow
+    arrays instead of interpreting or validating them differently.
+
+    Args:
+        indices: Row indices accepted by ``take_table``.
+        row_count: Number of rows in the source table.
+
+    Returns:
+        Normalized indices when the input satisfies the fast-path contract.
+        Otherwise, ``None`` and the caller must preserve the standard fallback.
+    """
+    if isinstance(indices, (np.ma.MaskedArray, pyarrow.ChunkedArray)):
+        return None
+
+    if isinstance(indices, pyarrow.Array):
+        if indices.null_count > 0 or not pyarrow.types.is_integer(indices.type):
+            return None
+        try:
+            values = indices.to_numpy(zero_copy_only=False)
+        except (
+            pyarrow.ArrowInvalid,
+            pyarrow.ArrowNotImplementedError,
+            TypeError,
+            ValueError,
+        ):
+            return None
+    elif isinstance(indices, list):
+        try:
+            arrow_indices = pyarrow.array(indices)
+        except (
+            pyarrow.ArrowInvalid,
+            pyarrow.ArrowTypeError,
+            TypeError,
+            ValueError,
+            OverflowError,
+        ):
+            return None
+        if arrow_indices.null_count > 0 or not pyarrow.types.is_integer(
+            arrow_indices.type
+        ):
+            return None
+        try:
+            values = arrow_indices.to_numpy(zero_copy_only=False)
+        except (
+            pyarrow.ArrowInvalid,
+            pyarrow.ArrowNotImplementedError,
+            TypeError,
+            ValueError,
+        ):
+            return None
+    elif isinstance(indices, np.ndarray):
+        try:
+            values = np.asarray(indices)
+        except (TypeError, ValueError, OverflowError):
+            return None
+    else:
+        return None
+
+    if not values.dtype.isnative:
+        return None
+    if values.ndim != 1 or values.dtype.kind not in "iu":
+        return None
+    if values.size > 0:
+        if values.dtype.kind == "i" and np.any(values < 0):
+            return None
+        if np.any(values >= row_count):
+            return None
+    return values.astype(np.int64, copy=False)
+
+
 def take_table(
     table: "pyarrow.Table",
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
@@ -202,9 +285,21 @@ def take_table(
     )
 
     if any(_is_pa_extension_type(col.type) for col in table.columns):
+        normalized_indices = None
+        if any(
+            _is_pa_extension_type(col.type) and col.num_chunks > 1
+            for col in table.columns
+        ):
+            normalized_indices = _try_normalize_take_indices(indices, table.num_rows)
+
         new_cols = []
         for col in table.columns:
             if _is_pa_extension_type(col.type) and col.num_chunks > 1:
+                if normalized_indices is not None:
+                    taken = try_take_chunked_tensor(col, normalized_indices)
+                    if taken is not None:
+                        new_cols.append(taken)
+                        continue
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)
