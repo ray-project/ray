@@ -359,8 +359,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             except Exception:
                 pass
 
-        # user provided envs are appended to image envs and override duplicate keys
+        # user provided envs override image envs
         if env_dict:
+            filtered_envs = []
+            for e in envs:
+                key = e.split("=", 1)[0]
+                if key not in env_dict:
+                    filtered_envs.append(e)
+            envs = filtered_envs
             for k, v in env_dict.items():
                 envs.append(f"{k}={v}")
         spec["process"]["env"] = envs
