@@ -10,6 +10,9 @@ import pyarrow.fs as pafs
 from pyarrow.parquet import RowGroupMetaData
 
 import ray
+from ray.data._internal.datasource.parquet_datasource import (
+    _row_group_uncompressed_size,
+)
 from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
     FileChunks,
     RowGroupInfo,
@@ -104,16 +107,14 @@ class FooterReader:
         leaf_indices: Optional[List[int]],
         fully_matched: bool = True,
     ) -> RowGroupInfo:
-        if leaf_indices is None:
-            # total_byte_size is a single cheap accessor for the whole row group,
-            # so we avoid walking columns entirely on the no-projection path.
-            uncompressed = row_group.total_byte_size
-        else:
-            # Sum only the projected leaves so bin packing reflects the bytes the
-            # downstream reader will actually pull for this row group.
-            uncompressed = sum(
-                row_group.column(j).total_uncompressed_size for j in leaf_indices
-            )
+        # Sum per-column sizes on both paths -- with a projection, only the
+        # projected leaves, so bin packing reflects the bytes the reader will
+        # actually pull. Deliberately not ``row_group.total_byte_size``, which
+        # is one cheap accessor but can report the *compressed* size for some
+        # files (apache/arrow#48138); undersizing bins here overfills read
+        # tasks, which is the failure this whole path exists to avoid. Shares
+        # the V1 helper so the three call sites cannot drift.
+        uncompressed = _row_group_uncompressed_size(row_group, leaf_indices)
         return RowGroupInfo(
             rg_idx=rg_idx,
             uncompressed_size=uncompressed,
