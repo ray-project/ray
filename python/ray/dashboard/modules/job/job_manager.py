@@ -290,11 +290,12 @@ class JobManager:
                         )
                         if not status_updated:
                             logger.info(
-                                "Stopping monitoring for job %s because its job "
-                                "info was deleted or its status changed.",
+                                "Job %s changed while marking it failed for a "
+                                "startup timeout; retrying monitoring with the "
+                                "latest state.",
                                 job_id,
                             )
-                            return
+                            continue
                         logger.error(err_msg)
                         break
 
@@ -413,11 +414,11 @@ class JobManager:
                 )
                 if not status_updated:
                     logger.info(
-                        "Stopping monitoring for job %s because its job info was "
-                        "deleted or its status changed.",
+                        "Job %s changed while handling a monitor exception; "
+                        "retrying monitoring with the latest state.",
                         job_id,
                     )
-                    return
+                    continue
 
                 # Log error message to the job driver file for easy access.
                 if target_job_error_message:

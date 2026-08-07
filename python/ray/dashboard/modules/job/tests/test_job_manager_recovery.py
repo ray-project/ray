@@ -96,6 +96,48 @@ async def test_recovered_pending_monitor_preserves_new_terminal_status():
 
 
 @pytest.mark.asyncio
+async def test_recovered_pending_monitor_retries_when_timeout_update_loses_race():
+    manager = _make_job_manager()
+    manager._job_info_client.get_status.side_effect = [
+        JobStatus.PENDING,
+        JobStatus.RUNNING,
+        JobStatus.SUCCEEDED,
+    ]
+    manager._job_info_client.get_info.return_value = JobInfo(
+        entrypoint="echo hello", status=JobStatus.PENDING, start_time=0
+    )
+    manager._job_info_client.put_status.return_value = False
+    manager._timeout_check_timer.time.return_value = 1000
+    job_supervisor = MagicMock()
+    ping_ref = MagicMock()
+    job_supervisor.ping.options.return_value.remote.return_value = ping_ref
+
+    with (
+        patch.dict(
+            job_manager_module.os.environ,
+            {job_manager_module.RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR: "1"},
+        ),
+        patch.object(job_manager_module.ray, "wait", return_value=([], [])) as wait,
+        patch.object(job_manager_module.ray, "kill") as kill,
+    ):
+        await manager._monitor_job_internal("job-id", job_supervisor)
+
+    assert manager._job_info_client.get_status.await_args_list == [
+        call("job-id", timeout=None),
+        call("job-id", timeout=None),
+        call("job-id", timeout=None),
+    ]
+    manager._job_info_client.put_status.assert_awaited_once()
+    assert (
+        manager._job_info_client.put_status.await_args.kwargs["expected_status"]
+        == JobStatus.PENDING
+    )
+    job_supervisor.ping.options.return_value.remote.assert_called_once()
+    wait.assert_called_once_with([ping_ref], timeout=0)
+    kill.assert_not_called()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("latest_status", [None, JobStatus.SUCCEEDED])
 async def test_recovered_monitor_exception_does_not_rewrite_changed_job(
     latest_status,
@@ -122,7 +164,54 @@ async def test_recovered_monitor_exception_does_not_rewrite_changed_job(
 
 
 @pytest.mark.asyncio
-async def test_recovered_monitor_stops_when_guarded_status_update_loses_race():
+async def test_recovered_pending_monitor_retries_when_exception_update_loses_race():
+    manager = _make_job_manager()
+    manager._job_info_client.get_status.side_effect = [
+        JobStatus.PENDING,
+        JobStatus.PENDING,
+        JobStatus.RUNNING,
+        JobStatus.SUCCEEDED,
+    ]
+    manager._job_info_client.get_info.return_value = JobInfo(
+        entrypoint="echo hello", status=JobStatus.PENDING, start_time=1000
+    )
+    manager._job_info_client.put_status.return_value = False
+    manager._timeout_check_timer.time.return_value = 1
+    job_supervisor = MagicMock()
+    ping_ref = MagicMock()
+    job_supervisor.ping.options.return_value.remote.side_effect = [
+        RuntimeError("supervisor ping failed"),
+        ping_ref,
+    ]
+
+    with (
+        patch.dict(
+            job_manager_module.os.environ,
+            {job_manager_module.RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR: "1"},
+        ),
+        patch.object(job_manager_module.ray, "wait", return_value=([], [])) as wait,
+        patch.object(job_manager_module.ray, "kill") as kill,
+    ):
+        await manager._monitor_job_internal("job-id", job_supervisor)
+
+    assert manager._job_info_client.get_status.await_args_list == [
+        call("job-id", timeout=None),
+        call("job-id", timeout=None),
+        call("job-id", timeout=None),
+        call("job-id", timeout=None),
+    ]
+    manager._job_info_client.put_status.assert_awaited_once()
+    assert (
+        manager._job_info_client.put_status.await_args.kwargs["expected_status"]
+        == JobStatus.PENDING
+    )
+    assert job_supervisor.ping.options.return_value.remote.call_count == 2
+    wait.assert_called_once_with([ping_ref], timeout=0)
+    kill.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_recovered_monitor_stops_when_missing_supervisor_update_loses_race():
     manager = _make_job_manager()
     manager._job_info_client.get_status.return_value = JobStatus.RUNNING
     manager._job_info_client.put_status.return_value = False

@@ -365,6 +365,8 @@ class JobInfoStorageClient:
 
         Returns false without writing if ``jobinfo_must_exist`` is true and the
         record was deleted, or if its status no longer matches ``expected_status``.
+        These checks apply to the record read before the write; the underlying KV
+        update is not a compare-and-set operation.
         """
 
         old_info = await self.get_info(job_id, timeout=timeout)
