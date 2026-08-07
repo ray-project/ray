@@ -27,6 +27,14 @@ messages to it. Requires non-minimal Ray.
 logger = logging.getLogger(__name__)
 
 
+def select_start_method() -> str:
+    # Never `fork`, though the platform offers it: Ray's C bindings keep static state a
+    # forked child would inherit from whichever process called start_module().
+    if "forkserver" in multiprocessing.get_all_start_methods():
+        return "forkserver"
+    return "spawn"
+
+
 def filter_hop_by_hop_headers(
     headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]],
 ) -> dict[str, str]:
@@ -82,9 +90,36 @@ class SubprocessModuleHandle:
     - "max number of restarts"? (Now: infinite)
     """
 
-    # Class variable. Force using spawn because Ray C bindings have static variables
-    # that need to be re-initialized for a new process.
-    mp_context = multiprocessing.get_context("spawn")
+    # A module child is forked from the forkserver, so it inherits what the server
+    # imported rather than importing it again. That only stays safe while everything
+    # preloaded is inert at import time, starting no thread and opening no connection.
+    #
+    # Branch on a literal instead of passing select_start_method() to get_context(),
+    # which would widen the result to BaseContext and lose Process.
+    if select_start_method() == "forkserver":
+        mp_context = multiprocessing.get_context("forkserver")
+    else:
+        mp_context = multiprocessing.get_context("spawn")
+
+    @classmethod
+    def preload_in_forkserver(
+        cls, module_classes: list[type[SubprocessModule]]
+    ) -> None:
+        """Import what module children need once in the forkserver, not once each.
+
+        Must be called before the first ``start_module()``, since the forkserver caches
+        its preload list when it first launches. Every name has to import cleanly in a
+        bare interpreter: anything other than an ImportError kills the forkserver, and
+        with it every module.
+        """
+        if cls.mp_context.get_start_method() != "forkserver":
+            return
+        # `__main__` makes the forkserver import dashboard.py itself, which lets each
+        # child's `_fixup_main_from_path` return early instead of re-running it.
+        cls.mp_context.set_forkserver_preload(
+            ["__main__", "ray", SubprocessModule.__module__]
+            + sorted({module_cls.__module__ for module_cls in module_classes})
+        )
 
     def __init__(
         self,
