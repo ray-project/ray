@@ -131,7 +131,7 @@ PYTHONPATH="$(pwd)" python doc/source/api_autogen.py
 PYTHONPATH="$(pwd)" python ci/ray_ci/doc/cmd_check_api_discrepancy.py "$(pwd)" serve
 ```
 
-Pass a single team (`core`, `data`, `serve`, `train`, `tune`, `rllib`) to check one surface, or pass `ALL` or omit the argument to check every team. Two things only happen on the full pass. Every team after `core` depends on `core` running first, and the cross-team guard that catches annotated public subpackages no team's walk reaches runs at the end. Run without a team argument before you trust a green result.
+Pass a single team (`core`, `data`, `serve`, `train`, `tune`, `rllib`) to check one surface, or pass `ALL` or omit the argument to check every team. These team names don't line up with the docs example test steps above, so two cases need translating: the `ml` step covers `train` and `tune`, which the check treats as separate teams, and there's no `llm` team at all, because `ray.data.llm` is walked under `data` and `ray.serve.llm` under `serve`. Two things only happen on the full pass. Every team after `core` depends on `core` running first, and the cross-team guard that catches annotated public subpackages no team's walk reaches runs at the end. Run without a team argument before you trust a green result.
 
 A bare Ray wheel doesn't pull in `pandas`, so locally the check mocks it where CI walks it for real. Install `pandas` in the virtual environment when you're checking the `data` team.
 
