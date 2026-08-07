@@ -42,7 +42,9 @@ logger = logging.getLogger(__name__)
 _RECOVERY_SCAN_MAX_ATTEMPTS = 5
 _RECOVERY_SCAN_BASE_DELAY_S = 1
 _RECOVERY_SCAN_MAX_DELAY_S = 30
-_RECOVERY_SCAN_PER_ATTEMPT_TIMEOUT_S = 5
+_RECOVERY_SCAN_GCS_RPC_TIMEOUT_S = 5
+# get_all_jobs lists keys, then fetches job info in a second GCS phase.
+_RECOVERY_SCAN_PER_ATTEMPT_TIMEOUT_S = 2 * _RECOVERY_SCAN_GCS_RPC_TIMEOUT_S + 5
 _RECOVERY_SCAN_TOTAL_BUDGET_S = 45
 _RECOVERY_SUBMISSION_WAIT_TIMEOUT_S = 60
 _RECOVERY_SCAN_TASKS = set()
@@ -139,7 +141,7 @@ class JobManager:
                 try:
                     scan_task = asyncio.create_task(
                         self._job_info_client.get_all_jobs(
-                            timeout=_RECOVERY_SCAN_PER_ATTEMPT_TIMEOUT_S
+                            timeout=_RECOVERY_SCAN_GCS_RPC_TIMEOUT_S
                         )
                     )
                     _RECOVERY_SCAN_TASKS.add(scan_task)

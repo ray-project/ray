@@ -43,6 +43,8 @@ except AttributeError:
 logger = logging.getLogger(__name__)
 
 _ray_init_lock = threading.Lock()
+# ray.is_initialized() becomes true before ray.init() finishes its post-init hooks.
+_ray_connection_ready = threading.Event()
 
 DashboardHeadRouteTable = method_route_table_factory()
 DashboardAgentRouteTable = method_route_table_factory()
@@ -218,6 +220,7 @@ def init_ray_connection(address: str) -> None:
         if ray.is_initialized():
             return
 
+        _ray_connection_ready.clear()
         logger.info(f"Connecting to ray with address={address}")
         os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
             dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
@@ -236,6 +239,8 @@ def init_ray_connection(address: str) -> None:
             except Exception:
                 logger.exception("Failed to clean up after ray.init() failed.")
             raise
+        else:
+            _ray_connection_ready.set()
 
 
 def init_ray_and_catch_exceptions() -> Callable:
@@ -247,8 +252,11 @@ def init_ray_and_catch_exceptions() -> Callable:
             self: Union[DashboardAgentModule, DashboardHeadModule], *args, **kwargs
         ):
             try:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, init_ray_connection, self.gcs_address)
+                if not _ray_connection_ready.is_set() or not ray.is_initialized():
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        None, init_ray_connection, self.gcs_address
+                    )
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")

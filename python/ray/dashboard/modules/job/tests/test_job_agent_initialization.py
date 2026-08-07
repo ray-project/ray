@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -21,6 +22,14 @@ def _make_job_agent(*, is_head: bool) -> JobAgent:
     dashboard_agent.gcs_client = MagicMock()
     dashboard_agent.log_dir = "/tmp/ray/session_latest/logs"
     return JobAgent(dashboard_agent)
+
+
+class _DecoratedHandler:
+    gcs_address = "127.0.0.1:6379"
+
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def handle(self):
+        return "ok"
 
 
 @pytest.mark.asyncio
@@ -164,8 +173,10 @@ def test_init_ray_connection_is_idempotent():
 
 def test_init_ray_connection_uses_dashboard_settings(monkeypatch):
     monkeypatch.delenv("RAY_gcs_server_request_timeout_seconds", raising=False)
+    connection_ready = threading.Event()
 
     with (
+        patch.object(optional_utils, "_ray_connection_ready", connection_ready),
         patch.object(optional_utils.ray, "is_initialized", return_value=False),
         patch.object(optional_utils.ray, "init") as ray_init,
     ):
@@ -181,10 +192,15 @@ def test_init_ray_connection_uses_dashboard_settings(monkeypatch):
         namespace=optional_utils.RAY_INTERNAL_DASHBOARD_NAMESPACE,
         _skip_env_hook=True,
     )
+    assert connection_ready.is_set()
 
 
 def test_init_ray_connection_preserves_init_error_when_shutdown_fails():
+    connection_ready = threading.Event()
+    connection_ready.set()
+
     with (
+        patch.object(optional_utils, "_ray_connection_ready", connection_ready),
         patch.object(optional_utils.ray, "is_initialized", return_value=False),
         patch.object(
             optional_utils.ray,
@@ -201,6 +217,37 @@ def test_init_ray_connection_preserves_init_error_when_shutdown_fails():
             optional_utils.init_ray_connection("127.0.0.1:6379")
 
     ray_shutdown.assert_called_once_with()
+    assert not connection_ready.is_set()
+
+
+@pytest.mark.asyncio
+async def test_init_decorator_skips_executor_after_connection_is_ready():
+    connection_ready = threading.Event()
+    connection_ready.set()
+
+    with (
+        patch.object(optional_utils, "_ray_connection_ready", connection_ready),
+        patch.object(optional_utils.ray, "is_initialized", return_value=True),
+        patch.object(optional_utils, "init_ray_connection") as init_ray_connection,
+    ):
+        assert await _DecoratedHandler().handle() == "ok"
+
+    init_ray_connection.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_init_decorator_uses_executor_until_connection_is_ready():
+    connection_ready = threading.Event()
+
+    with (
+        patch.object(optional_utils, "_ray_connection_ready", connection_ready),
+        # ray.init() sets this before all of its post-init hooks have completed.
+        patch.object(optional_utils.ray, "is_initialized", return_value=True),
+        patch.object(optional_utils, "init_ray_connection") as init_ray_connection,
+    ):
+        assert await _DecoratedHandler().handle() == "ok"
+
+    init_ray_connection.assert_called_once_with("127.0.0.1:6379")
 
 
 @pytest.mark.asyncio
@@ -230,6 +277,37 @@ async def test_recovery_scan_retries_then_monitors_non_terminal_jobs():
         call(timeout=5),
     ]
     sleep.assert_awaited_once_with(1)
+    manager._monitor_job.assert_called_once_with("pending")
+    run_task.assert_called_once_with(manager._monitor_job.return_value)
+    assert manager._recover_running_jobs_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_recovery_scan_allows_two_gcs_timeout_phases():
+    pending_job = MagicMock(status=JobStatus.PENDING)
+    manager = MagicMock()
+
+    async def get_all_jobs(*, timeout):
+        assert timeout == 0.05
+        # get_all_jobs first lists keys, then fetches job info. Each phase can
+        # legitimately consume most of the per-RPC timeout.
+        await asyncio.sleep(0.04)
+        await asyncio.sleep(0.04)
+        return {"pending": pending_job}
+
+    manager._job_info_client.get_all_jobs = AsyncMock(side_effect=get_all_jobs)
+    manager._recover_running_jobs_event = asyncio.Event()
+    manager._monitor_job = MagicMock()
+
+    with (
+        patch.object(job_manager_module, "_RECOVERY_SCAN_GCS_RPC_TIMEOUT_S", 0.05),
+        patch.object(job_manager_module, "_RECOVERY_SCAN_PER_ATTEMPT_TIMEOUT_S", 1),
+        patch.object(job_manager_module, "_RECOVERY_SCAN_TOTAL_BUDGET_S", 2),
+        patch.object(job_manager_module, "run_background_task") as run_task,
+    ):
+        await JobManager._recover_running_jobs(manager)
+
+    manager._job_info_client.get_all_jobs.assert_awaited_once_with(timeout=0.05)
     manager._monitor_job.assert_called_once_with("pending")
     run_task.assert_called_once_with(manager._monitor_job.return_value)
     assert manager._recover_running_jobs_event.is_set()
