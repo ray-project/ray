@@ -96,7 +96,8 @@ class NoProgressGuard:
                 )
 
         lines.append(
-            "If your UDF is legitimately this slow, raise the timeout for this "
+            "If this is expected, for example a UDF that is legitimately this "
+            "slow or a long wait for cluster capacity, raise the timeout for this "
             "Dataset with `ds.context.execution_no_progress_timeout_s = <seconds>`, "
             "or set it to -1 to disable. To change the default, set "
             "`DataContext.get_current().execution_no_progress_timeout_s` before "
