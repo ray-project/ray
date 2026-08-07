@@ -97,7 +97,7 @@ class Sandbox:
 
     def get_config(self) -> SandboxConfig:
         """Get the sandbox configuration used by the runtime."""
-        return self.runtime._backend._sandbox_meta[self.instance_id]["config"]
+        return self.runtime._backend._sandbox_metadata[self.instance_id]["config"]
 
     def exec(
         self,

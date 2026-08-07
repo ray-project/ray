@@ -23,7 +23,7 @@ def test_gvisor_backend_local_lifecycle_and_file_ops():
 
     sandbox_id = backend.create_sandbox(config)
     assert sandbox_id.startswith("ray-sb-gvisor-")
-    assert sandbox_id in backend._sandbox_meta
+    assert sandbox_id in backend._sandbox_metadata
     assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
 
     # Test file write and read
@@ -39,7 +39,7 @@ def test_gvisor_backend_local_lifecycle_and_file_ops():
     # Test delete
     backend.delete_sandbox(sandbox_id)
     assert backend.get_status(sandbox_id) == SandboxStatus.TERMINATED
-    assert sandbox_id not in backend._sandbox_meta
+    assert sandbox_id not in backend._sandbox_metadata
 
 
 def test_gvisor_backend_not_found():

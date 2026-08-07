@@ -34,7 +34,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
     def __init__(self):
-        self._sandbox_meta: Dict[str, Dict] = {}
+        self._sandbox_metadata: Dict[str, Dict] = {}
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
@@ -45,7 +45,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
 
         sandbox_uuid = uuid.uuid4().hex[:12]
-        sandbox_id = f"ray-sb-gvisor-{sandbox_uuid}"
+        sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join("/tmp/ray/sandboxes", sandbox_id)
 
         try:
@@ -111,7 +111,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
             time.sleep(0.1)
 
-        self._sandbox_meta[sandbox_id] = {
+        self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
             "work_dir": work_dir_path,
             "config": config,
@@ -122,7 +122,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
-        meta = self._sandbox_meta.pop(sandbox_id, None)
+        meta = self._sandbox_metadata.pop(sandbox_id, None)
         if meta:
             root_dir = meta["root_dir"]
             config: SandboxConfig = meta["config"]
@@ -154,7 +154,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         env: Optional[Dict[str, str]] = None,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
-        meta = self._get_meta_or_raise(sandbox_id)
+        meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
 
@@ -219,7 +219,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         self, sandbox_id: str, path: str, content: Union[str, bytes]
     ) -> None:
         """Write content to a file inside the local gVisor sandbox directory."""
-        meta = self._get_meta_or_raise(sandbox_id)
+        meta = self._get_metadata_or_raise(sandbox_id)
         target_file = self._resolve_path(meta["root_dir"], path)
         parent_dir = os.path.dirname(target_file)
         os.makedirs(parent_dir, mode=0o755, exist_ok=True)
@@ -233,7 +233,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def read_file(self, sandbox_id: str, path: str) -> bytes:
         """Read binary content from a file inside the local gVisor sandbox directory."""
-        meta = self._get_meta_or_raise(sandbox_id)
+        meta = self._get_metadata_or_raise(sandbox_id)
         target_file = self._resolve_path(meta["root_dir"], path)
         if not os.path.exists(target_file):
             raise SandboxError(
@@ -244,7 +244,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def get_status(self, sandbox_id: str) -> SandboxStatus:
         """Get operational status of the gVisor sandbox."""
-        meta = self._sandbox_meta.get(sandbox_id)
+        meta = self._sandbox_metadata.get(sandbox_id)
         if meta and os.path.exists(meta["root_dir"]):
             return SandboxStatus.RUNNING
         return SandboxStatus.TERMINATED
@@ -261,10 +261,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         clean_path = relative_or_abs_path.lstrip("/")
         return os.path.join(root_dir, clean_path)
 
-    def _get_meta_or_raise(self, sandbox_id: str) -> Dict:
-        if sandbox_id not in self._sandbox_meta:
+    def _get_metadata_or_raise(self, sandbox_id: str) -> Dict:
+        if sandbox_id not in self._sandbox_metadata:
             raise SandboxNotFoundError(f"Sandbox ID '{sandbox_id}' not found.")
-        return self._sandbox_meta[sandbox_id]
+        return self._sandbox_metadata[sandbox_id]
 
     def _pull_and_extract_image(self, image: str) -> str:
         """Pull a container image and extract rootfs to local directory."""
