@@ -25,6 +25,10 @@ def sanitize_image_name(image: str) -> str:
     """Sanitize container image name into a safe directory and filename."""
     if not isinstance(image, str):
         raise TypeError(f"Expected image to be a string, got {type(image).__name__}")
+
+    if image.endswith(".tar"):
+        image = os.path.basename(image)[:-4]
+
     safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", image)
     safe = safe.lstrip(".")
     if not safe:

@@ -23,6 +23,10 @@ def test_sanitize_image_name():
         sanitize_image_name("quay.io/coreos/etcd@sha256:abcd")
         == "quay.io_coreos_etcd_sha256_abcd"
     )
+    assert (
+        sanitize_image_name("/tmp/ray/sandbox/images/ubuntu_22.04.tar")
+        == "ubuntu_22.04"
+    )
 
     with pytest.raises(ValueError, match="cannot be safely sanitized"):
         sanitize_image_name("")
@@ -147,9 +151,9 @@ def test_pull_and_extract_local_tar(tmp_path):
         str(local_tar), images_dir=str(images_dir)
     )
     assert os.path.exists(extracted_dir)
-    assert os.path.exists(os.path.join(extracted_dir, "hello.txt"))
+    assert os.path.exists(os.path.join(extracted_dir, "rootfs", "hello.txt"))
     assert (
-        open(os.path.join(extracted_dir, "hello.txt"), "rb").read()
+        open(os.path.join(extracted_dir, "rootfs", "hello.txt"), "rb").read()
         == b"hello from local tar"
     )
 
@@ -161,9 +165,9 @@ def test_pull_and_extract_remote_image(tmp_path):
     )
     assert os.path.exists(extracted_dir)
     assert os.path.exists(os.path.join(extracted_dir, ".extracted"))
-    assert os.path.exists(os.path.join(extracted_dir, "bin", "sh")) or os.path.exists(
-        os.path.join(extracted_dir, "bin", "busybox")
-    )
+    assert os.path.exists(
+        os.path.join(extracted_dir, "rootfs", "bin", "sh")
+    ) or os.path.exists(os.path.join(extracted_dir, "rootfs", "bin", "busybox"))
     assert os.path.exists(str(images_dir / "busybox_latest.tar"))
 
 
