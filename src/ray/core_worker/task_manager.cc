@@ -27,6 +27,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
+#include "ray/util/container_util.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -1121,11 +1122,70 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"));
     return false;
   }
+
+  bool caller_deleted = stream_it->second.IsCallerDeleted();
+  size_t num_objects_written = 0;
+  for (int64_t i = 0; i < request.returned_objects_size(); i++) {
+    const rpc::ReturnObject &returned_object = request.returned_objects(i);
+    const ObjectID object_id = ObjectID::FromBinary(returned_object.object_id());
+    const int64_t object_index = item_index + i;
+
+    // Unconsumed objects for a deleted generator can no longer be used.
+    // They should be freed immediately. Since the batch's lowest index is
+    // unconsumed and batches are contiguous, the whole reported batch is
+    // unconsumed. The objects were just created by the executor, so their only
+    // copy lives on the reporting worker's node.
+    if (caller_deleted && !stream_it->second.IsObjectConsumed(object_index)) {
+      if (returned_object.in_plasma()) {
+        const NodeID worker_node_id = NodeID::FromBinary(request.worker_addr().node_id());
+        if (!worker_node_id.IsNil()) {
+          const absl::flat_hash_set<NodeID> locations{worker_node_id};
+          RAY_LOG(DEBUG) << absl::StrFormat(
+              "Object %s for a deleted generator can no longer be used. They should be "
+              "freed immediately.",
+              object_id.Hex());
+          free_object_on_nodes_async_(object_id, locations);
+        }
+      }
+    } else {
+      RAY_LOG(DEBUG) << absl::StrFormat(
+          "Write an object %s to the object ref stream of id %s",
+          object_id.Hex(),
+          generator_id.Hex());
+      bool index_not_used_yet = stream_it->second.InsertToStream(object_id, object_index);
+
+      // If the ref was written to a stream, we should also
+      // own the dynamically generated task return.
+      // NOTE: If we call this method while holding a lock, it can deadlock.
+      if (index_not_used_yet) {
+        reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+        num_objects_written += 1;
+      }
+      // When an object is reported, the object is ready to be fetched.
+      reference_counter_.UpdateObjectPendingCreation(object_id, false);
+      StatusOr<bool> put_res =
+          HandleTaskReturn(object_id,
+                           returned_object,
+                           NodeID::FromBinary(request.worker_addr().node_id()),
+                           /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+      if (!put_res.ok()) {
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Failed to handle streaming dynamic return: " << put_res.status();
+      } else if (!put_res.value()) {
+        // HandleTaskReturn returns false when the object was stored in plasma
+        // (true means it was inlined into the in-memory store). Remember the
+        // plasma-backed reports so they can be failed if the generator task fails
+        // before its first completion records them on the task spec. Inline
+        // reports live in the owner's memory store and are not lost this way.
+        stream_it->second.MarkReportedInPlasma(object_id);
+      }
+    }
+  }
+
   // Whether the caller has dropped the generator. Once dropped, it reads no
   // further, so any index it has not already consumed is unwanted; only
   // already-consumed indices reported here are lineage-reconstruction retries of
   // still-referenced returns and must still be handled.
-  const bool caller_deleted = stream_it->second.IsCallerDeleted();
   if (backpressure_threshold != -1) {
     // If the whole batch is unconsumed (its lowest index is unconsumed, and a
     // batch is contiguous), tell the executor the stream is deleted so it stops
@@ -1141,58 +1201,12 @@ bool TaskManager::HandleReportGeneratorItemReturns(
           consumption_update_callback;
     }
   }
-  size_t num_objects_written = 0;
-
-  for (int64_t i = 0; i < request.returned_objects_size(); i++) {
-    const rpc::ReturnObject &returned_object = request.returned_objects(i);
-    const auto object_id = ObjectID::FromBinary(returned_object.object_id());
-    const auto object_index = item_index + i;
-
-    // A single report can batch multiple yields that straddle the consumed
-    // boundary (a consumed prefix followed by an unconsumed tail). If the caller
-    // has dropped the generator, skip storing the unconsumed tail: those refs
-    // would never be read and only need cleanup later. The consumed prefix is
-    // still handled below to re-materialize referenced returns.
-    if (caller_deleted && !stream_it->second.IsObjectConsumed(object_index)) {
-      continue;
-    }
-
-    RAY_LOG(DEBUG) << "Write an object " << object_id
-                   << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, object_index);
-
-    // If the ref was written to a stream, we should also
-    // own the dynamically generated task return.
-    // NOTE: If we call this method while holding a lock, it can deadlock.
-    if (index_not_used_yet) {
-      reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
-      num_objects_written += 1;
-    }
-    // When an object is reported, the object is ready to be fetched.
-    reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    StatusOr<bool> put_res =
-        HandleTaskReturn(object_id,
-                         returned_object,
-                         NodeID::FromBinary(request.worker_addr().node_id()),
-                         /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
-    if (!put_res.ok()) {
-      RAY_LOG(WARNING).WithField(object_id)
-          << "Failed to handle streaming dynamic return: " << put_res.status();
-    } else if (!put_res.value()) {
-      // HandleTaskReturn returns false when the object was stored in plasma
-      // (true means it was inlined into the in-memory store). Remember the
-      // plasma-backed reports so they can be failed if the generator task fails
-      // before its first completion records them on the task spec. Inline
-      // reports live in the owner's memory store and are not lost this way.
-      stream_it->second.MarkReportedInPlasma(object_id);
-    }
-  }
 
   // Handle backpressure if needed.
-  auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-  auto last_item_index = request.returned_objects_size() == 0
-                             ? item_index
-                             : item_index + request.returned_objects_size() - 1;
+  int64_t total_consumed = stream_it->second.TotalNumObjectConsumed();
+  int64_t last_item_index = request.returned_objects_size() == 0
+                                ? item_index
+                                : item_index + request.returned_objects_size() - 1;
 
   if (stream_it->second.IsObjectConsumed(last_item_index)) {
     execution_signal_callback(Status::OK());

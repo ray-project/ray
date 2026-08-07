@@ -555,6 +555,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             },
             "CoreWorker.SetDirectTransportMetadata");
       },
+      /*free_object_on_nodes_async=*/
+      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+        GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
+      },
       /*clock=*/clock_);
 
   auto on_excess_queueing = [this](const ActorID &actor_id,

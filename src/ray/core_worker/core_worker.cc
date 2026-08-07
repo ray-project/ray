@@ -3468,6 +3468,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
                        << "index: " << item_index;
         RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
+        waiter->OnObjectReportAccepted();
         if (!status.ok()) {
           // If the request fails, we should just resume until task finishes without
           // backpressure.
@@ -3475,9 +3476,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
               << status;
-        }
-        waiter->OnObjectReportAccepted();
-        if (!status.ok()) {
+
           waiter->OnObjectConsumed(waiter->TotalObjectGenerated());
           if (actor_metadata) {
             actor_metadata->Teardown();
@@ -5056,6 +5055,8 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
+  RAY_LOG(DEBUG) << absl::StrFormat("Freeing object %s asynchronously via request.",
+                                    object_id.Hex());
   rpc::FreeLocalObjectsRequest request;
   request.add_object_ids(object_id.Binary());
 
