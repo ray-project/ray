@@ -140,9 +140,7 @@ async def test_http_request_udf_with_retry(mock_response):
 
 @pytest.mark.asyncio
 async def test_http_request_udf_multipart(mock_session):
-    """A payload with file-like values is auto-detected and sent as an
-    aiohttp.FormData body, and does not set the Content-Type header manually
-    (aiohttp adds the boundary)."""
+    """File payloads use FormData and omit Content-Type."""
     udf = HttpRequestUDF(
         data_column="__data",
         expected_input_keys=["payload"],
@@ -199,16 +197,12 @@ async def test_http_request_udf_multipart(mock_session):
     ],
 )
 def test_is_multipart_payload(payload, expected):
-    """Multipart is auto-detected from the payload: a dict with a bytes value
-    or a nested dict with a 'content' key is a file upload; everything else is
-    sent as JSON."""
+    """Detect file fields without treating ordinary nested dicts as files."""
     assert HttpRequestUDF._is_multipart_payload(payload) is expected
 
 
 def test_http_request_udf_multipart_drops_user_content_type():
-    """A user-supplied Content-Type must be dropped from the multipart headers
-    so aiohttp can generate the multipart boundary itself, while the JSON
-    headers keep it."""
+    """Multipart drops a user Content-Type; JSON retains it."""
     udf = HttpRequestUDF(
         data_column="__data",
         expected_input_keys=["payload"],
@@ -226,8 +220,7 @@ def test_http_request_udf_multipart_drops_user_content_type():
 
 
 def test_http_request_udf_build_request_selects_encoding():
-    """_build_request returns a JSON string + JSON headers for plain payloads,
-    and an aiohttp.FormData body + multipart headers for file payloads."""
+    """Build JSON or multipart requests from the payload type."""
     udf = HttpRequestUDF(
         data_column="__data",
         expected_input_keys=["payload"],
@@ -249,9 +242,7 @@ def test_http_request_udf_build_request_selects_encoding():
 
 @pytest.mark.asyncio
 async def test_http_request_udf_with_error_rows(mock_session):
-    """When the batch contains error rows, the UDF only receives the normal
-    rows, but IDX_IN_BATCH_COLUMN still indexes into the original batch. The
-    payload lookup must handle indices that exceed the number of normal rows."""
+    """Handle normal rows whose original indexes skip error rows."""
     udf = HttpRequestUDF(
         data_column="__data",
         expected_input_keys=["payload"],
@@ -260,8 +251,7 @@ async def test_http_request_udf_with_error_rows(mock_session):
         session_factory=lambda: mock_session,  # noqa: E731
     )
 
-    # The middle row is an error row, so normal rows have original indices 0 and
-    # 2 -- index 2 is out of range for a list of length 2 (the bug this guards).
+    # The UDF receives rows 0 and 2; the error row is forwarded separately.
     batch = {
         "__data": [
             {"payload": {"text": "hello0"}},
@@ -284,14 +274,12 @@ async def test_http_request_udf_with_error_rows(mock_session):
 
 @pytest.mark.asyncio
 async def test_http_request_udf_retry_exhausted_with_error_rows(mock_response):
-    """When retries are exhausted for a row in a batch that also contains error
-    rows, the RuntimeError must look the payload up by IDX_IN_BATCH_COLUMN
-    rather than indexing the (error-row-filtered) batch list, which would raise
-    a masking IndexError."""
+    """Report retry failures with the payload at its original batch index."""
     session = AsyncMock()
     session.post.return_value.__aenter__.side_effect = [
-        mock_response,  # original index 0: success
-        asyncio.TimeoutError(),  # original index 2: fails, no retries left
+        # Row 0 succeeds; row 2 fails without a retry.
+        mock_response,
+        asyncio.TimeoutError(),
     ]
     session_cm = AsyncMock()
     session_cm.__aenter__.return_value = session
@@ -306,8 +294,6 @@ async def test_http_request_udf_retry_exhausted_with_error_rows(mock_response):
         session_factory=lambda: session_cm,  # noqa: E731
     )
 
-    # Index 1 is an error row, so the failing normal row keeps original index 2,
-    # which is out of range for the 2-element normal-rows batch.
     batch = {
         "__data": [
             {"payload": {"text": "ok"}},
@@ -323,7 +309,7 @@ async def test_http_request_udf_retry_exhausted_with_error_rows(mock_response):
 
 
 def test_build_form_data():
-    """_build_form_data maps payload entries to file and regular form fields."""
+    """Map file fields and scalar fields into FormData."""
     form = HttpRequestUDF._build_form_data(
         {
             "file": {
@@ -337,14 +323,13 @@ def test_build_form_data():
         }
     )
     assert isinstance(form, aiohttp.FormData)
-    # aiohttp stores fields as (content_disposition_options, headers, value).
+    # aiohttp stores (options, headers, value).
     fields = {opts["name"]: (opts, value) for opts, _headers, value in form._fields}
     assert set(fields) == {"file", "raw_bytes", "model", "temperature"}
     assert fields["file"][0]["filename"] == "audio.mp3"
     assert fields["file"][1] == b"audio-bytes"
     assert fields["raw_bytes"][0]["filename"] == "raw_bytes"
     assert fields["model"][1] == "whisper-1"
-    # Non-string scalars are JSON-encoded.
     assert fields["temperature"][1] == "0"
 
 
@@ -434,7 +419,7 @@ async def test_http_request_udf_with_numpy_payload_server(numpy_payload_server):
 
 @pytest.fixture
 async def multipart_server():
-    # Handler that parses the multipart form and verifies the uploaded file.
+    # Parse the multipart body to verify the uploaded file reaches the server.
     async def handler(request):
         reader = await request.multipart()
         fields = {}
@@ -459,8 +444,7 @@ async def multipart_server():
 
 @pytest.mark.asyncio
 async def test_http_request_udf_multipart_server(multipart_server):
-    """End-to-end test that file-upload payloads are auto-detected and reach the
-    server as multipart/form-data."""
+    """Run a file upload through the processor and multipart HTTP server."""
     data = [
         {
             "payload": {
