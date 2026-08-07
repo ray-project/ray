@@ -613,7 +613,7 @@ class DataContext:
             each operator.
         execution_no_progress_timeout_s: Maximum time in seconds that an execution may
             go without any operator producing or consuming an output before it fails
-            with `ExecutionTimeoutError`. Set to a negative value to disable.
+            with `ExecutionTimeoutError`. Set to -1 to disable.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to

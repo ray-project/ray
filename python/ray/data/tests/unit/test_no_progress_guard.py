@@ -89,7 +89,10 @@ def test_progress_resets_the_clock():
     # 6s elapsed overall without ever tripping the 3s timeout, because each
     # output restarted the stall clock. The clock restarted at the last check,
     # so a full `timeout_s` has to pass from there to trip it.
-    clock.advance(3.0)
+    clock.advance(2.0)
+    guard.check()
+
+    clock.advance(1.0)
     with pytest.raises(ExecutionTimeoutError):
         guard.check()
 

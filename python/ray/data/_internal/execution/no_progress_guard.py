@@ -8,6 +8,19 @@ from ray.data.exceptions import ExecutionTimeoutError
 
 
 class NoProgressGuard:
+    """
+    Raises an ExecutionTimeoutError when no operator makes progress for
+    DataContext.execution_no_progress_timeout_s.
+
+    Progress is defined as either an output was taken from an operator, or
+    blocks entered or left an operator's queues.
+
+    The clock measures time since the last progress, and
+    progress is checked at the end of each scheduling loop step.
+
+    A value of -1 disables the guard.
+    """
+
     def __init__(
         self,
         topology: Topology,
@@ -17,8 +30,8 @@ class NoProgressGuard:
     ):
         if timeout_s == 0:
             raise ValueError(
-                "execution_no_progress_timeout_s must be positive, or negative "
-                "to disable the timeout. Zero would fail every execution as "
+                "execution_no_progress_timeout_s must be positive, or -1 to "
+                "disable the timeout. Zero would fail every execution as "
                 f"soon as it started. Got: {timeout_s}"
             )
 
@@ -26,9 +39,8 @@ class NoProgressGuard:
         self._timeout_s = timeout_s
         self._clock = clock
 
-        self._last_check_time = clock()
+        self._last_progress_time = clock()
         self._last_progress_states = self._total_progress_states()
-        self._stalled_s = 0.0
 
     @property
     def enabled(self) -> bool:
@@ -40,27 +52,23 @@ class NoProgressGuard:
 
         current_time = self._clock()
         current_progress_states = self._total_progress_states()
-        interval = current_time - self._last_check_time
-        self._last_check_time = current_time
 
         execution_made_progress = current_progress_states != self._last_progress_states
         if execution_made_progress:
-            self._reset_stall(current_progress_states)
+            self._last_progress_states = current_progress_states
+            self._last_progress_time = current_time
             return
 
-        self._stalled_s += interval
-        if self._stalled_s >= self._timeout_s:
+        if current_time - self._last_progress_time >= self._timeout_s:
             raise ExecutionTimeoutError(self._error_message())
-
-    def _reset_stall(self, current_progress_states: tuple[int, int, int]) -> None:
-        self._last_progress_states = current_progress_states
-        self._stalled_s = 0.0
 
     def _total_progress_states(self) -> tuple[int, int, int]:
         outputs_taken = 0
         enqueued_input_blocks = 0
         enqueued_output_blocks = 0
 
+        # Since these counts can cancel each other out when summed,
+        # track them individually.
         for op, state in self._topology.items():
             outputs_taken += op.metrics.num_outputs_taken
             enqueued_input_blocks += state.total_enqueued_input_blocks()
@@ -68,9 +76,10 @@ class NoProgressGuard:
         return (outputs_taken, enqueued_input_blocks, enqueued_output_blocks)
 
     def _error_message(self) -> str:
+        stalled_s = self._clock() - self._last_progress_time
         lines = [
             f"Dataset execution made no progress for at least "
-            f"{self._stalled_s:.0f}s of scheduling time (timeout: "
+            f"{stalled_s:.0f}s of scheduling time (timeout: "
             f"{self._timeout_s:.0f}s). No output was taken and no blocks moved "
             f"through any operator's queues in that window."
         ]
