@@ -145,6 +145,14 @@ class StateDataSourceClient:
         self._client_session = aiohttp.ClientSession()
         self._dashboard_socket_dir = dashboard_socket_dir
         self._dashboard_session_name = dashboard_session_name
+        if _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD and (
+            dashboard_socket_dir is None or dashboard_session_name is None
+        ):
+            raise ValueError(
+                "Cannot read task events from the dashboard head: the dashboard "
+                "subprocess socket directory and session name were not provided to "
+                "StateDataSourceClient."
+            )
         self._task_events_head_session: Optional[aiohttp.ClientSession] = None
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
@@ -324,12 +332,6 @@ class StateDataSourceClient:
     async def _get_task_events_from_dashboard_head(
         self, request: GetTaskEventsRequest, timeout: int = None
     ) -> Optional[GetTaskEventsReply]:
-        if self._dashboard_socket_dir is None or self._dashboard_session_name is None:
-            raise ValueError(
-                "Cannot read task events from the dashboard head: the dashboard "
-                "subprocess socket directory and session name were not provided to "
-                "StateDataSourceClient."
-            )
         if self._task_events_head_session is None:
             from ray.dashboard.subprocesses.utils import get_http_session_to_module
 

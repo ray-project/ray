@@ -609,13 +609,8 @@ def test_list_get_tasks(shutdown_only):
     "TaskEventsHead subprocesses.",
 )
 def test_list_tasks_reads_from_dashboard_head(monkeypatch, shutdown_only):
-    """End-to-end reroute of ``ray list tasks`` from GCS to the dashboard head.
-
-    With ``RAY_enable_task_events_to_dashboard_head`` on, ``StateHead`` queries the
-    ``TaskEventsHead`` subprocess over its unix socket instead of GCS. This drives the
-    real socket hop that the ``get_all_task_info`` unit tests mock out: events flow
-    worker -> aggregator -> ``TaskEventsHead`` store, and the read comes back over the
-    socket.
+    """End-to-end: with ``RAY_enable_task_events_to_dashboard_head`` on, ``ray list
+    tasks`` reads from the ``TaskEventsHead`` subprocess over its unix socket, not GCS.
     """
     # Feed task events into the dashboard-head store via the aggregator, and read them
     # back from there instead of GCS. The single umbrella flag enables both the publish
