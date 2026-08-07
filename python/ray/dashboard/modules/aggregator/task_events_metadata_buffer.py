@@ -19,6 +19,7 @@ class TaskEventsMetadataBuffer:
         max_buffer_size: int = 1000,
         max_dropped_attempts_per_metadata_entry: int = 100,
         common_metric_tags: Optional[Dict[str, str]] = None,
+        metric_recorder: Optional[OpenTelemetryMetricRecorder] = None,
     ):
         self._buffer_maxlen = max(
             max_buffer_size - 1, 1
@@ -30,7 +31,12 @@ class TaskEventsMetadataBuffer:
         self._max_dropped_attempts = max_dropped_attempts_per_metadata_entry
 
         self._common_metric_tags = common_metric_tags or {}
-        self._metric_recorder = OpenTelemetryMetricRecorder()
+        # Share the caller's recorder when provided. The recorder dedupes registrations
+        # per-instance, so multiple buffers on their own recorders would each register
+        # the same observable counter on the process-global meter (a duplicate-instrument
+        # conflict). Sharing one recorder registers it once; callers distinguish their
+        # buffers' series via common_metric_tags.
+        self._metric_recorder = metric_recorder or OpenTelemetryMetricRecorder()
         self._dropped_metadata_count_metric_name = f"{AGGREGATOR_AGENT_METRIC_PREFIX}_task_metadata_buffer_dropped_attempts_total"
         self._metric_recorder.register_counter_metric(
             self._dropped_metadata_count_metric_name,

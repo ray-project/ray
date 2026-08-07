@@ -77,7 +77,7 @@ class TaskEventsHead(SubprocessModule):
         except Exception as e:
             logger.warning(f"Failed to deserialize task events request: {e}")
             return dashboard_optional_utils.rest_response(
-                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                status_code=dashboard_utils.HTTPStatusCode.BAD_REQUEST,
                 message=f"Failed to deserialize task events request: {e}",
             )
 
