@@ -601,6 +601,10 @@ RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
 /// this duration for in-flight gRPC calls to complete before stopping the io_service.
 RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
 
+/// Interval in milliseconds at which the dashboard-head task-event store trims each job's
+/// tracked dropped-attempt set (GcJobSummary).
+RAY_CONFIG(int64_t, task_events_gc_job_summary_interval_ms, 5 * 1000)
+
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS.
@@ -1119,6 +1123,12 @@ RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 // TODO(myan): #54515 Remove this flag after the task events are fully migrated to the
 // event aggregator.
 RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
+
+// Flag for the migration of task events from GCS to dashboard head. When true: the
+// aggregator publishes task events to the dashboard head, the TaskEventsHead module is
+// loaded, and the state API (list tasks / ray.timeline) reads task events from the
+// dashboard head instead of GCS.
+RAY_CONFIG(bool, enable_task_events_to_dashboard_head, false)
 
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
