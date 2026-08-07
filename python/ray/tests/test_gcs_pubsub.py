@@ -8,7 +8,7 @@ from typing import Dict, Tuple
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._private.gcs_pubsub import (
     GcsAioResourceUsageSubscriber,
 )
@@ -166,9 +166,11 @@ def _publisher_channel_stats(gcs_log_path: str) -> Dict[str, Tuple[int, int]]:
 
     Returns a dict mapping channel name to (current all-entity subscribers,
     current keyed subscription keys), taking the latest dumped block for each
-    channel.
+    channel. Returns an empty dict if the GCS log file doesn't exist yet.
     """
-    with open(gcs_log_path) as f:
+    if not os.path.exists(gcs_log_path):
+        return {}
+    with open(gcs_log_path, encoding="utf-8") as f:
         log = f.read()
     pattern = re.compile(
         r"(\w+_CHANNEL)\n"
@@ -205,17 +207,31 @@ def test_pubsub_subscriptions_bounded_for_regular_cluster(ray_start_cluster):
     through the performance impact of your change before modifying this.
     """
     num_nodes = 3
+    num_workers = 6
     cluster = ray_start_cluster
     cluster.wait_for_nodes()
 
-    # Spin some workers
+    # Spin up several workers. Each task blocks on the signal until all of them
+    # are running, so Ray is forced to start a distinct worker process per task
+    # instead of reusing a couple of them. This is what makes the assertions
+    # below meaningful: subscription counts must stay O(num_nodes) and must not
+    # grow with the number of workers.
+    signal = SignalActor.remote()
+
     @ray.remote(num_cpus=0.5)
-    def noop():
+    def wait_for_signal():
+        ray.get(signal.wait.remote())
         return os.getpid()
 
-    assert len(set(ray.get([noop.remote() for _ in range(12)]))) >= 4
+    refs = [wait_for_signal.remote() for _ in range(num_workers)]
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == num_workers, timeout=60
+    )
+    ray.get(signal.send.remote())
+    assert len(set(ray.get(refs))) == num_workers
 
-    # One backpressured generator actor: generator executor subscribes (keyed subscription) to the driver (owner) worker death channel.
+    # One backpressured generator actor: the generator executor takes out a
+    # keyed subscription on the worker death channel for the driver (its owner).
     @ray.remote(_actor_generator_backpressure_num_objects=2)
     class Gen:
         def f(self):

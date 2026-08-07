@@ -563,9 +563,7 @@ std::string Publisher::DebugString() const {
   // than the cumulative publish counters so channels that have subscribers
   // but no publishes yet are still reported.
   for (const auto &[channel_type, subscription_index] : subscription_index_map_) {
-    const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
-    const auto &channel_name = descriptor->FindValueByNumber(channel_type)->name();
-    result << "\n" << channel_name;
+    result << "\n" << rpc::ChannelType_Name(channel_type);
 
     auto message_count_it = cum_pub_message_count_.find(channel_type);
     result << "\n- cumulative published messages: "
