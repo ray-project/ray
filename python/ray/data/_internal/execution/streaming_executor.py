@@ -302,7 +302,7 @@ class StreamingExecutor(Executor, threading.Thread):
             timeout = -1
         else:
             timeout = self._data_context.execution_no_progress_timeout_s
-        # The clock starts on construction, so build the guard right before
+        # The clock starts on construction, so construct guard right before
         # the loop starts.
         self._no_progress_guard = NoProgressGuard(
             self._topology,
