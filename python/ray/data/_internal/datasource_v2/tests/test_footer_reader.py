@@ -98,6 +98,92 @@ class TestReadAndChunk:
         assert sum(rg.num_rows for rg in coalesced.row_groups) == 100
 
 
+class TestNullsAreNeverExactSurvivors:
+    """A null in a predicate column means ``num_rows`` is not an exact count.
+
+    Parquet min/max statistics are computed over non-null values only, so
+    bounds can never rule out nulls. Under three-valued logic a null row
+    satisfies neither ``filter`` nor ``~filter``, so the negation test alone
+    would mark such a group fully matched and limit push-down would stop early
+    and silently under-deliver.
+    """
+
+    @pytest.mark.parametrize(
+        "values,expected_survivors",
+        [
+            pytest.param([35, 40, 45, None], 3, id="one-null-rest-satisfy"),
+            pytest.param([35, None, None, None], 1, id="mostly-null"),
+            pytest.param([35, 40, 45, 50], 4, id="no-nulls-is-exact"),
+        ],
+    )
+    def test_never_over_counts(self, tmp_path, values, expected_survivors):
+        path, size = _write(
+            tmp_path / "n.parquet",
+            pa.table({"id": pa.array(values, pa.int64())}),
+            row_group_size=len(values),
+        )
+
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+
+        claimed = sum(rg.num_rows for rg in chunks.row_groups if rg.fully_matched)
+        assert claimed <= expected_survivors
+
+    def test_null_free_group_is_still_exact(self, tmp_path):
+        """The guard must not cost us the exact counts we legitimately have."""
+        path, size = _write(
+            tmp_path / "clean.parquet",
+            pa.table({"id": pa.array([35, 40, 45, 50], pa.int64())}),
+            row_group_size=4,
+        )
+
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+
+        assert all(rg.fully_matched for rg in chunks.row_groups)
+        assert sum(rg.num_rows for rg in chunks.row_groups) == 4
+
+    def test_survives_a_sharper_statistics_pruner(self, tmp_path):
+        """Correctness must not rest on PyArrow declining to prune.
+
+        PyArrow currently does not use ``null_count`` to sharpen the inverted
+        predicate, so ``~filter`` fails to prune and the negation test looks
+        safe. Pruning would be *semantically correct* here, though -- no row
+        satisfies ``id < 30``. This stands in for an engine that does prune, and
+        pins that the null check alone carries the invariant.
+        """
+        path, size = _write(
+            tmp_path / "adv.parquet",
+            pa.table({"id": pa.array([35, 40, 45, None], pa.int64())}),
+            row_group_size=4,
+        )
+        reader = _reader(filter_expr=col("id") >= 30)
+
+        class _PrunesInvertedPredicate:
+            def __init__(self, fragment, positive):
+                self._fragment, self._positive = fragment, positive
+
+            def __getattr__(self, name):
+                return getattr(self._fragment, name)
+
+            def split_by_row_group(self, expr):
+                if str(expr) != str(self._positive):
+                    return []
+                return self._fragment.split_by_row_group(expr)
+
+        class _Format:
+            def __init__(self, real, positive):
+                self._real, self._positive = real, positive
+
+            def make_fragment(self, *args, **kwargs):
+                return _PrunesInvertedPredicate(
+                    self._real.make_fragment(*args, **kwargs), self._positive
+                )
+
+        reader.file_format = _Format(reader.file_format, reader.filter)
+        chunks = reader._read_and_chunk(path, size)
+
+        assert not any(rg.fully_matched for rg in chunks.row_groups)
+
+
 class TestProjectedLeafIndices:
     def test_none_when_no_projection(self, four_row_groups):
         path, _ = four_row_groups

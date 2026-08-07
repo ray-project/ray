@@ -17,6 +17,9 @@ from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
 from ray.data._internal.datasource_v2.chunkers.parquet_row_group_coalescing import (
     coalesce_row_groups,
 )
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 
 if TYPE_CHECKING:
     import pyarrow.compute as pc
@@ -65,6 +68,13 @@ class FooterReader:
         self.filter: Optional["pc.Expression"] = (
             filter_expr.to_pyarrow() if filter_expr is not None else None
         )
+        # Top-level columns the predicate reads. A row group with a null in any
+        # of them cannot be an exact-survivor count -- see ``_has_filter_nulls``.
+        self.filter_columns: Set[str] = (
+            set(get_column_references(filter_expr))
+            if filter_expr is not None
+            else set()
+        )
         # Projection pushdown: when set, row-group byte sizes are accounted over
         # only these top-level columns, since the reader will only fetch those.
         self.projected_cols: Optional[Set[str]] = (
@@ -111,6 +121,27 @@ class FooterReader:
             fully_matched=fully_matched,
         )
 
+    def _has_filter_nulls(self, metadata, rg_idx: int) -> bool:
+        """Whether any predicate column has a null in this row group.
+
+        Parquet min/max statistics are computed over non-null values only, so
+        bounds alone can never rule out nulls. A null in a predicate column
+        means that row satisfies neither the filter nor its negation, so the
+        group's ``num_rows`` is not an exact survivor count.
+
+        Missing or null-count-less statistics are treated as "may contain
+        nulls", i.e. not fully matched -- the safe direction.
+        """
+        row_group = metadata.row_group(rg_idx)
+        for j in range(row_group.num_columns):
+            column = row_group.column(j)
+            if column.path_in_schema.split(".", 1)[0] not in self.filter_columns:
+                continue
+            stats = column.statistics
+            if stats is None or not stats.has_null_count or stats.null_count > 0:
+                return True
+        return False
+
     def _read_and_chunk(self, path: str, size: int) -> FileChunks:
         fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
         metadata = fragment.metadata  # reads + caches the footer on the fragment
@@ -133,7 +164,22 @@ class FooterReader:
                 }
             except Exception:
                 not_fully = set(rg_indices)
-            fully_by_idx: Optional[dict] = {i: i not in not_fully for i in rg_indices}
+            # The negation test alone is not sufficient under three-valued
+            # logic. A row whose filter column is null satisfies neither
+            # ``filter`` nor ``~filter``, so a group of [35, 40, 45, NULL] under
+            # ``id >= 30`` can have ``~filter`` prune it while one row did not
+            # actually survive -- ``num_rows`` would then over-count and limit
+            # push-down would stop early and under-deliver.
+            #
+            # PyArrow happens to decline that prune today (it does not use
+            # ``null_count`` to sharpen the inverted predicate), so the negation
+            # test is currently safe by accident. Do not rely on that: check
+            # ``null_count`` directly, which holds regardless of how clever the
+            # engine's statistics pruning gets.
+            fully_by_idx: Optional[dict] = {
+                i: i not in not_fully and not self._has_filter_nulls(metadata, i)
+                for i in rg_indices
+            }
         else:
             rg_indices = range(metadata.num_row_groups)
             fully_by_idx = None  # no predicate -> every group is fully matched
