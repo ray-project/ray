@@ -2041,6 +2041,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
+  /// Guards free_pending_ / free_in_flight_: FreeObjectOnNodesAsync runs on
+  /// arbitrary ReferenceCounter threads while the reply callback runs on
+  /// io_service_. Lock order is ReferenceCounter::mutex_ -> free_batch_mu_ (the
+  /// former is held when FreeObjectOnNodesAsync is called), so keep this a leaf:
+  /// never call back into ReferenceCounter while holding it.
   absl::Mutex free_batch_mu_;
   /// node id -> FIFO queue of object ids waiting to be freed on that node.
   absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_
