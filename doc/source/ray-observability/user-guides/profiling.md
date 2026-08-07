@@ -187,7 +187,7 @@ The best practice is to only specify the filename in output option.
 
 (profiling-tpu)=
 ## TPU profiling
-For TPU workloads, you can use the JAX profiler. Ray provides integration for dynamically triggering JAX profiling and viewing the traces in TensorBoard. For a complete guide on how to profile JAX on TPUs on Kubernetes, see {ref}`jax-tpu-profiling`.
+Profile TPU workloads with the JAX profiler. Trigger a JAX profile dynamically through the Ray Dashboard, then view the trace in TensorBoard. For the full walkthrough on Kubernetes, see {ref}`jax-tpu-profiling`.
 
 (profiling-timeline)=
 ## Ray Task or Actor timeline
