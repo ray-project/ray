@@ -28,7 +28,7 @@ class SandboxRuntime:
         rootless: bool = True,
         network: str = "none",
         readonly: bool = True,
-        _oci_spec_transforms: Optional[List[Callable[[Dict], Optional[Dict]]]] = None,
+        _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
@@ -48,7 +48,7 @@ class SandboxRuntime:
             readonly: If True, mount container image rootfs in read-only mode (default: True).
             _oci_spec_transforms: PRIVATE — development/testing only. Called with the fully-built OCI
                 spec dict before it is written; may mutate in place or return a new dict. Must be
-                cloudpickle-serializable. No stability guarantees. Accepts a list of transform functions.
+                cloudpickle-serializable. No stability guarantees. Accepts a transform function.
             **kwargs: Additional parameters.
 
         Returns:
