@@ -8,6 +8,8 @@ from dataclasses import asdict, field, fields
 from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+import yaml
+
 import ray.dashboard.utils as dashboard_utils
 
 # TODO(aguo): Instead of a version check, modify the below models
@@ -27,6 +29,7 @@ from ray._private.custom_types import (
     TypeWorkerType,
 )
 from ray._private.ray_constants import env_integer
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -317,6 +320,46 @@ class StateSchema(ABC):
                 except Exception as e:
                     logger.error(f"Failed to format {f.name}:{state[f.name]} with {e}")
         return state
+
+    @classmethod
+    def format_table_output(cls, state_data: List, detail: bool) -> str:
+        """Render state_data as a table string.
+
+        The table headers are ordered as defined in the dataclass. Subclasses
+        may override this for a custom (e.g. more concise) table layout.
+
+        Args:
+            state_data: A list of state data dicts.
+            detail: Whether to include columns marked as detail-only.
+
+        Returns:
+            The table formatted string.
+        """
+        time = datetime.datetime.now()
+        header = "=" * 8 + f" List: {time} " + "=" * 8
+        headers = []
+        table = []
+        cols = cls.list_columns(detail=detail)
+        for data in state_data:
+            for key, val in data.items():
+                if isinstance(val, dict):
+                    data[key] = yaml.dump(val, indent=2)
+            keys = set(data.keys())
+            headers = []
+            for col in cols:
+                if col in keys:
+                    headers.append(col.upper())
+            table.append([data[h.lower()] for h in headers])
+        return f"""
+{header}
+Stats:
+------------------------------
+Total: {len(state_data)}
+
+Table:
+------------------------------
+{tabulate(table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f")}
+"""
 
     @classmethod
     def list_columns(cls, detail: bool = True) -> List[str]:
@@ -616,6 +659,63 @@ class NodeState(StateSchema):
     end_time_ms: Optional[int] = state_column(
         filterable=False, detail=True, format_fn=Humanify.timestamp
     )
+
+    @classmethod
+    def format_table_output(cls, state_data: List, detail: bool) -> str:
+        """Concise single-line table for ``ray list nodes``.
+
+        When ``detail`` is False, render a compact table (trimmed node_id, no
+        row index, no wrapper) with CPU/GPU/MEMORY/OBJ_STORE promoted out of
+        ``resources_total``. When ``detail`` is True, fall back to the default
+        verbose table (full node_id, all columns, wrapper).
+
+        Note: ``resources_total["memory"]`` / ``["object_store_memory"]`` have
+        already been humanified into ``"X GiB"`` strings by
+        ``Humanify.node_resources`` in ``output_with_format`` before this method
+        is called, so they are taken as-is.
+        """
+        if detail:
+            # Use zero-arg super() so cls stays bound to NodeState; calling
+            # StateSchema.format_table_output directly would bind cls to the
+            # abstract base class and lose NodeState's field list.
+            return super().format_table_output(state_data, detail)
+
+        headers = [
+            "NODE_ID",
+            "NODE_IP",
+            "IS_HEAD_NODE",
+            "STATE",
+            "NODE_NAME",
+            "CPU",
+            "GPU",
+            "MEMORY",
+            "OBJ_STORE",
+        ]
+        table = []
+        for data in state_data:
+            resources = data.get("resources_total") or {}
+            node_id = data.get("node_id") or ""
+            node_id = (node_id[:8] + "...") if len(node_id) > 8 else node_id
+            table.append(
+                [
+                    node_id,
+                    data.get("node_ip"),
+                    data.get("is_head_node"),
+                    data.get("state"),
+                    data.get("node_name"),
+                    resources.get("CPU", 0),
+                    resources.get("GPU", 0),
+                    resources.get("memory", "0"),
+                    resources.get("object_store_memory", "0"),
+                ]
+            )
+        return tabulate(
+            table,
+            headers=headers,
+            showindex=False,
+            tablefmt="plain",
+            floatfmt=".3f",
+        )
 
 
 # NOTE: Declaring this as dataclass would make __init__ not being called properly.

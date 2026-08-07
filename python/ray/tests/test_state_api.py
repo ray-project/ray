@@ -78,7 +78,9 @@ from ray.util.state import (
 from ray.util.state.common import (
     ActorState,
     Humanify,
+    NodeState,
     ObjectState,
+    PlacementGroupState,
     RuntimeEnvState,
     StateResource,
     StateSchema,
@@ -92,6 +94,7 @@ from ray.util.state.state_cli import (
     _normalize_filter_keys,
     _parse_filter,
     format_list_api_output,
+    output_with_format,
     ray_get,
     ray_list,
     summary_state_cli_group,
@@ -599,6 +602,147 @@ def test_runtime_env_state_humanify_creation_time_ms():
     assert state["creation_time_ms"] == "0:00:36.639000"
 
 
+def test_default_table_output_preserves_wrapper_for_non_node_resources():
+    """Regression test: After moving the default table logic into
+    StateSchema.format_table_output, non-Node resources
+    (PlacementGroupState) should still render with the Stats/Table
+    wrapper and original columns."""
+    pg = {
+        "placement_group_id": "pg_abcdef0123456789",
+        "name": "test-pg",
+        "creator_job_id": "01000000",
+        "state": "CREATED",
+        "bundles": [{"CPU": 1.0}],
+        "is_detached": True,
+        "stats": {},
+        "topology_strategy": {},
+        "topology_assignments": {},
+    }
+    out = output_with_format(
+        [pg],
+        schema=PlacementGroupState,
+        format=AvailableFormat.DEFAULT,
+        detail=False,
+    )
+    assert "Stats:" in out
+    assert "Table:" in out
+    assert "PLACEMENT_GROUP_ID" in out
+    assert "CREATED" in out
+
+
+def _sample_node_state():
+    return {
+        "node_id": "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f",
+        "node_ip": "10.121.130.4",
+        "is_head_node": False,
+        "state": "ALIVE",
+        "state_message": None,
+        "node_name": "10.121.130.4",
+        "resources_total": {
+            "CPU": 4.0,
+            "GPU": 1.0,
+            "memory": 8589934592,
+            "object_store_memory": 51539607552,
+        },
+        "labels": {"ray.io/node-group": "worker-group"},
+        "start_time_ms": 123,
+        "end_time_ms": 0,
+    }
+
+
+def test_node_default_output_is_concise():
+    """The default `ray list nodes` output is a concise bare table:
+    truncated node_id, separate CPU/GPU/MEMORY/OBJ_STORE columns, no row
+    index, and no Stats/Table wrapper."""
+    out = output_with_format(
+        [_sample_node_state()],
+        schema=NodeState,
+        format=AvailableFormat.DEFAULT,
+        detail=False,
+    )
+    lines = out.splitlines()
+    # Bare table: no wrapper header.
+    assert "Stats:" not in out
+    assert "Table:" not in out
+    assert "List:" not in out
+    # First line is the header row and contains the new resource columns.
+    assert lines[0].startswith("NODE_ID")
+    for col in (
+        "NODE_IP",
+        "IS_HEAD_NODE",
+        "STATE",
+        "NODE_NAME",
+        "CPU",
+        "GPU",
+        "MEMORY",
+        "OBJ_STORE",
+    ):
+        assert col in lines[0]
+    # Verbose legacy columns are removed from the default output.
+    assert "STATE_MESSAGE" not in out
+    assert "LABELS" not in out
+    assert "RESOURCES_TOTAL" not in out
+    # node_id is truncated to the first 8 chars + "...".
+    assert "057ae870..." in out
+    # The full node_id does not appear in the default output (the untruncated
+    # part is absent).
+    full_id = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
+    assert full_id not in out
+    # The data row starts directly with the truncated id (no row index).
+    assert lines[1].startswith("057ae870...")
+    # memory / object_store_memory are humanified into readable units.
+    assert "8.000 GiB" in out
+    assert "48.000 GiB" in out
+
+
+def test_node_detail_output_delegates_to_base():
+    """`detail=True` delegates to the base class implementation: a full table
+    with the Stats/Table wrapper."""
+    out = NodeState.format_table_output([_sample_node_state()], detail=True)
+    assert "Stats:" in out
+    assert "Table:" in out
+    # detail=True delegates to the base: full node_id (untruncated) + the full
+    # RESOURCES_TOTAL column.
+    full_id = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
+    assert full_id in out
+    assert "RESOURCES_TOTAL" in out
+
+
+def test_node_json_yaml_unchanged():
+    """JSON/YAML output paths (with detail=False) remain byte-identical:
+    resources_total is complete (including CPU/GPU/memory/object_store_memory)
+    and node_id is untruncated."""
+    node = _sample_node_state()
+    # JSON
+    out_json = output_with_format(
+        [node], schema=NodeState, format=AvailableFormat.JSON, detail=False
+    )
+    data = json.loads(out_json)[0]
+    assert "resources_total" in data
+    assert "state_message" in data
+    assert "labels" in data
+    res = data["resources_total"]
+    for key in ("CPU", "GPU", "memory", "object_store_memory"):
+        assert key in res
+    full_id = "057ae8704b49ce135e8f6665d66f44c6a81572f7e9d6475cd507ab9f"
+    assert data["node_id"] == full_id
+    # YAML
+    out_yaml = output_with_format(
+        [_sample_node_state()],
+        schema=NodeState,
+        format=AvailableFormat.YAML,
+        detail=False,
+    )
+    ydata = yaml.safe_load(out_yaml)[0]
+    assert "resources_total" in ydata
+    assert "state_message" in ydata
+    assert "labels" in ydata
+    yres = ydata["resources_total"]
+    for key in ("CPU", "GPU", "memory", "object_store_memory"):
+        assert key in yres
+    assert ydata["node_id"] == full_id
+
+
 def is_hex(val):
     try:
         int_val = int(val, 16)
@@ -677,7 +821,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         lambda: verify_output(ray_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(ray_list, ["nodes"], ["Stats:", "Table:", "NODE_ID"])
+        lambda: verify_output(ray_list, ["nodes"], ["NODE_ID", "CPU", "OBJ_STORE"])
     )
     wait_for_condition(
         lambda: verify_output(
