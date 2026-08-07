@@ -71,8 +71,8 @@ class NoProgressGuard:
         lines = [
             f"Dataset execution made no progress for at least "
             f"{self._stalled_s:.0f}s of scheduling time (timeout: "
-            f"{self._timeout_s:.0f}s). No operator produced or consumed an output "
-            f"in that window."
+            f"{self._timeout_s:.0f}s). No output was taken and no blocks moved "
+            f"through any operator's queues in that window."
         ]
 
         stalled = [op for op in self._topology if not op.has_completed()]

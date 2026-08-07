@@ -32,16 +32,26 @@ def test_hanging_udf_fails_execution(
         ds.take(1)
 
 
+@pytest.mark.parametrize(
+    "make_dataset,expected_enabled",
+    [
+        (lambda: ray.data.range(10).map(lambda row: row), True),
+        (lambda: ray.data.range(10).sort("id"), False),
+    ],
+    ids=["map", "sort"],
+)
 def test_all_to_all_operator_disables_the_guard(
-    ray_start_regular, restore_data_context  # noqa: F811
+    make_dataset,
+    expected_enabled,
+    ray_start_regular,
+    restore_data_context,  # noqa: F811
 ):
-    DataContext.get_current().execution_no_progress_timeout_s = 1
+    DataContext.get_current().execution_no_progress_timeout_s = 600
 
-    ds = ray.data.range(10).sort("id")
-    bundles, _, executor = ds._execute_to_iterator()
+    bundles, _, executor = make_dataset()._execute_to_iterator()
     list(bundles)
 
-    assert not executor._no_progress_guard.enabled
+    assert executor._no_progress_guard.enabled is expected_enabled
 
 
 if __name__ == "__main__":

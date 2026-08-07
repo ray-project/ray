@@ -355,11 +355,7 @@ these from holding resources forever, Ray Data fails an execution that goes 30
 minutes without any operator producing or consuming an output, raising
 ``ExecutionTimeoutError`` with the names of the stalled operators.
 
-Time spent waiting on a slow consumer doesn't count against this, so a Dataset
-iterated by a slow training loop is never failed no matter how long each step
-takes.
-
-Time an operator spends between outputs also doesn't count, as long as it keeps
+Time an operator spends between outputs doesn't count, as long as it keeps
 reporting progress. A :meth:`~ray.data.Dataset.groupby`, join, or aggregate goes
 quiet while it finalizes, but that phase reports separately, so only a gap much
 longer than the whole finalize would trip the timeout.
