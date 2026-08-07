@@ -571,7 +571,6 @@ py_test_module_list(
         "test_reference_counting.py",
         "test_runtime_env_fork_process.py",
         "test_runtime_env_get_wheel_names.py",
-        "test_runtime_env_image_uri.py",
         "test_runtime_env_py_executable.py",
         "test_state_api_manager.py",
         "test_streaming_generator_regression.py",

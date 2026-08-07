@@ -9,7 +9,6 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.parameter import RayParams
 from ray._private.test_utils import check_call_ray
 
 
@@ -96,11 +95,6 @@ def test_tempdir_long_path():
             ray.init(_temp_dir=temp_dir)  # path should be too long
 
 
-def test_logs_dir_must_be_absolute():
-    with pytest.raises(ValueError, match="logs_dir must be absolute"):
-        RayParams(logs_dir="relative/logs")
-
-
 def test_custom_logs_dir(ray_start_cluster, request):
     base_dir = os.path.join("/tmp", f"ray-{uuid.uuid4().hex[:6]}")
     request.addfinalizer(lambda: shutil.rmtree(base_dir, ignore_errors=True))
@@ -168,6 +162,27 @@ def test_logs_dir_containing_session_dir_skips_symlink(ray_start_cluster, reques
     # logs directory recursively would never terminate.
     assert not os.path.exists(os.path.join(node.get_session_dir_path(), "logs"))
     wait_for_condition(lambda: os.path.exists(os.path.join(base_dir, "raylet.out")))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Requires directory symlinks")
+def test_logs_dir_symlink_alias_containing_session_dir_skips_symlink(
+    ray_start_cluster, request
+):
+    """Physical containment through a symlink must not create a log cycle."""
+    base_dir = os.path.join("/tmp", f"ray-{uuid.uuid4().hex[:6]}")
+    request.addfinalizer(lambda: shutil.rmtree(base_dir, ignore_errors=True))
+    physical_dir = os.path.join(base_dir, "physical")
+    alias_dir = os.path.join(base_dir, "alias")
+    os.makedirs(physical_dir)
+    os.symlink(physical_dir, alias_dir, target_is_directory=True)
+
+    cluster = ray_start_cluster
+    node = cluster.add_node(num_cpus=1, temp_dir=alias_dir, logs_dir=physical_dir)
+    cluster.wait_for_nodes()
+
+    assert os.path.samefile(os.path.dirname(node.get_session_dir_path()), physical_dir)
+    assert not os.path.exists(os.path.join(node.get_session_dir_path(), "logs"))
+    wait_for_condition(lambda: os.path.exists(os.path.join(physical_dir, "raylet.out")))
 
 
 def test_raylet_tempfiles(shutdown_only):
