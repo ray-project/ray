@@ -305,6 +305,88 @@ def test_multiple_callables_sorted_by_location():
     assert violations[0].lineno < violations[1].lineno
 
 
+def test_developer_api_method_of_public_class_ignored():
+    # Regression: a method of an @PublicAPI class that carries its own
+    # @DeveloperAPI is not part of the rendered public surface. Ray's
+    # Dataset.map_batches_internal (#64963) is the real-world case.
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            @DeveloperAPI
+            def method_internal(self, alpha, beta):
+                """Internal helper."""
+        '''
+    )
+    assert _check(base=None, head=head) == []
+
+
+def test_deprecated_method_of_public_class_ignored():
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            @Deprecated
+            def old_method(self, alpha):
+                """Old."""
+        '''
+    )
+    assert _check(base=None, head=head) == []
+
+
+def test_developer_api_call_form_on_method_ignored():
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            @DeveloperAPI(stability="alpha")
+            def method_internal(self, alpha):
+                """Internal helper."""
+        '''
+    )
+    assert _check(base=None, head=head) == []
+
+
+def test_explicit_public_api_on_method_wins_over_developer_api():
+    # An explicit @PublicAPI on the method keeps it in scope even alongside
+    # @DeveloperAPI, so the more specific public annotation is not lost.
+    head = _src(
+        '''
+        @PublicAPI
+        class C:
+            """Summary."""
+
+            @DeveloperAPI
+            @PublicAPI
+            def method(self, alpha):
+                """Does a thing."""
+        '''
+    )
+    violations = _check(base=None, head=head)
+    assert len(violations) == 1
+    assert violations[0].qualname == "C.method"
+    assert violations[0].params == ["alpha"]
+
+
+def test_developer_api_module_function_still_ignored():
+    # Module-level scope is decided by @PublicAPI presence, so a @DeveloperAPI
+    # function was already out of scope; guard against the filter regressing it.
+    head = _src(
+        '''
+        @DeveloperAPI
+        def helper(alpha):
+            """Helper."""
+        '''
+    )
+    assert _check(base=None, head=head) == []
+
+
 def test_syntax_error_source_yields_no_callables():
     assert public_callables("def broken(:", ClassIndex()) == {}
 

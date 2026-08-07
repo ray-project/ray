@@ -99,6 +99,31 @@ def has_publicapi_decorator(
     return False
 
 
+# Annotations that take a callable back out of the rendered public surface even
+# when it sits on an ``@PublicAPI`` class.
+_NON_PUBLIC_ANNOTATIONS = frozenset({"DeveloperAPI", "Deprecated"})
+
+
+def has_non_public_annotation(node: _FuncNode) -> bool:
+    """Whether a method carries its own non-public API annotation.
+
+    A method of an ``@PublicAPI`` class inherits public scope from the class, but
+    an explicit ``@DeveloperAPI`` or ``@Deprecated`` on the method overrides that:
+    the callable is not part of the rendered public API surface, so its
+    parameters are out of scope for this check.
+    """
+    for dec in node.decorator_list:
+        target = dec.func if isinstance(dec, ast.Call) else dec
+        name = None
+        if isinstance(target, ast.Name):
+            name = target.id
+        elif isinstance(target, ast.Attribute):
+            name = target.attr
+        if name in _NON_PUBLIC_ANNOTATIONS:
+            return True
+    return False
+
+
 def signature_params(func: _FuncNode) -> List[str]:
     """Return every named signature parameter, in order.
 
@@ -266,8 +291,9 @@ def public_callables(source: str, index: ClassIndex) -> Dict[str, Callable_]:
     """Map ``qualname -> Callable_`` for the public callables defined in ``source``.
 
     Public callables are module-level functions decorated ``@PublicAPI`` and the
-    methods of ``@PublicAPI`` classes. ``qualname`` is ``func`` for a
-    module-level function and ``Class.method`` for a method, which is a stable
+    methods of ``@PublicAPI`` classes, excluding methods that carry their own
+    ``@DeveloperAPI`` or ``@Deprecated`` annotation. ``qualname`` is ``func`` for
+    a module-level function and ``Class.method`` for a method, which is a stable
     key across revisions of the same file.
     """
     out: Dict[str, Callable_] = {}
@@ -285,6 +311,13 @@ def public_callables(source: str, index: ClassIndex) -> Dict[str, Callable_]:
         elif isinstance(node, ast.ClassDef) and has_publicapi_decorator(node):
             for sub in node.body:
                 if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    # A method inherits public scope from its class, but its own
+                    # @DeveloperAPI/@Deprecated takes it back out. An explicit
+                    # @PublicAPI on the method wins over both.
+                    if has_non_public_annotation(sub) and not has_publicapi_decorator(
+                        sub
+                    ):
+                        continue
                     c = _undocumented_for_func(
                         sub, f"{node.name}.{sub.name}", index, node
                     )
