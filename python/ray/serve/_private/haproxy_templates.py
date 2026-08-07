@@ -287,12 +287,7 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
-    # Servers in this backend. With observe enabled, live traffic marks a
-    # server DOWN after error-limit consecutive connect failures (without
-    # waiting for the checker), so redispatch reaches the backup even in a
-    # soft-stopped process whose checker/config state is frozen. The backup
-    # fallback below is deliberately NOT observed; router-path servers
-    # inherit this state via `track`.
+    # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
