@@ -111,6 +111,21 @@ rules:
     version_myst: ">=5.0,<6"
     notes: "Shared with rst-to-myst Hard rule 2."
 
+  - id: unknown-document
+    title: "{doc}/toctree reference to an unknown document"
+    tier: 3
+    safety: judgment
+    match: any
+    categories:
+      - ref.doc
+    signatures:
+      - "unknown document:"
+    cause: "A {doc} role, a :doc: reference, or a toctree entry points at a document path that does not resolve -- a renamed or moved page, a typo, or a relative path that is wrong from the referencing file. Distinct from toctree-nonexisting, which is the toctree-directive-specific wording."
+    fix: "Repoint to the correct document: a path relative to the referencing page, or an absolute path from doc/source with a leading slash. Remove the reference if the target is gone. Grep the bare stem across doc/ to find every caller."
+    target_extract: "unknown document: '?(?P<target>[^'\\s]+)"
+    version_sphinx: ">=8.0,<9"
+    notes: "Category ref.doc confirmed on real Ray RtD builds; the tag is sometimes absent on the first emission, so the signature carries the match."
+
   - id: toctree-nonexisting
     title: "toctree references a nonexisting document"
     tier: 2
@@ -164,6 +179,28 @@ rules:
     version_sphinx: ">=8.0,<9"
     notes: "Category ref.ref is a best-effort guess; signature carries the match."
 
+  - id: py-xref-target-not-found
+    title: "Python-domain reference target not found (meth/func/class/obj/exc)"
+    tier: 3
+    safety: judgment
+    match: any
+    categories:
+      - ref.meth
+      - ref.obj
+      - ref.func
+      - ref.class
+      - ref.exc
+      - ref.attr
+      - ref.mod
+      - ref.python
+    signatures:
+      - "py:\\w+ reference target not found:"
+    cause: "A Python-domain role ({meth}/{class}/{func}/{obj}/{exc}/:py:*:) points at an object not in the resolved API inventory. Two very different roots: (1) the object is documented elsewhere but its autosummary stub was not generated, or its module aborted import, so the inventory entry is missing -- these arrive as a large flood sharing an object prefix and are DOWNSTREAM symptoms, not separate defects; (2) the reference is genuinely wrong -- a renamed, moved, or mistyped target, or a stdlib/third-party name that needs intersphinx."
+    fix: "Check for a co-occurring tier-2 autosummary-stub-not-found or tier-1 import abort for the same module first. If present, fix that root (up to and including reverting an in-progress API-ref restructuring) and rebuild -- the flood clears at once. Only when the build is otherwise healthy is the reference itself wrong: repoint to the correct dotted path, or fix the intersphinx target for a stdlib/third-party name."
+    target_extract: "py:\\w+ reference target not found: (?P<target>\\S+)"
+    version_sphinx: ">=8.0,<9"
+    notes: "Categories confirmed on real Ray RtD builds (ref.meth, ref.obj, ref.func, ref.python); the signature carries the rest of the py domain (ref.exc, ref.attr). safety=judgment: both the correct target and the correct root (edit one reference vs revert a restructuring) need a human decision -- never auto-apply. A correlated flood sharing an object prefix with autosummary-stub-not-found warnings is that rule's masked downstream; triage the tier-2 root, not each reference."
+
   - id: image-not-readable
     title: "Image file not readable"
     tier: 3
@@ -179,6 +216,32 @@ rules:
     version_sphinx: ">=8.0,<9"
     notes: "Category image.not_readable is a best-effort guess; signature carries the match."
 
+  - id: docutils-inline-markup
+    title: "Unbalanced inline emphasis/strong markup"
+    tier: 3
+    safety: judgment
+    match: any
+    categories:
+      - docutils
+    signatures:
+      - "Inline .+ start-string without end-string"
+    cause: "A docstring or RST body has an unbalanced inline marker -- a lone * (emphasis) or ** (strong) with no closing marker. Common in API docstrings that write *args or **kwargs, or a bare asterisk, outside a code span. It surfaces from an <autosummary> generated stub at the docstring's location."
+    fix: "Balance or escape the marker in the source docstring, not in the generated stub: wrap literals in double backticks (``*args``, ``**kwargs``), or escape a standalone asterisk (\\*)."
+    version_sphinx: ">=8.0,<9"
+    notes: "Category docutils confirmed on real Ray RtD builds. No target extraction: the message does not carry the offending text, so locate the unbalanced marker at the cited docstring."
+
+  - id: intersphinx-inventory-unreachable
+    title: "intersphinx inventory not fetchable (network/transient)"
+    tier: 3
+    safety: judgment
+    match: any
+    signatures:
+      - "failed to reach any of the inventories"
+    cause: "Sphinx could not download an external intersphinx objects.inv (for example docs.python.org or spark.apache.org). On the RtD build network this is usually a transient connectivity failure, not a defect in the docs; with fail_on_warning it still fails the build."
+    fix: "Re-run the build first -- this is usually transient. If it persists, the inventory URL in intersphinx_mapping (conf.py) is unreachable or wrong: confirm the URL. This is not a per-page content fix."
+    version_sphinx: ">=8.0,<9"
+    notes: "Untagged (no [category]); signature-only. The URL and error detail sit on an unindented continuation line the parser does not capture as a warning record, so match on the WARNING line. safety=judgment: re-run vs investigate intersphinx_mapping is a human call."
+
   - id: literalinclude-out-of-range
     title: "literalinclude line/marker out of range"
     tier: 2
@@ -191,6 +254,19 @@ rules:
     fix: "Update the :lines: range or the :start-after:/:end-before: markers to match the current source file."
     version_sphinx: ">=8.0,<9"
     notes: "Signature-only pending [category] confirmation."
+
+  - id: autosummary-stub-not-found
+    title: "autosummary stub file not generated for a listed member"
+    tier: 2
+    safety: judgment
+    match: any
+    signatures:
+      - "autosummary: stub file not found '[^']+'\\. Check your autosummary_generate"
+    cause: "An autosummary directive lists a member whose stub .rst was never generated. A lone entry usually means the member was renamed or removed. A bulk failure across a whole module or API-ref page means autosummary could not introspect the module -- commonly the module failed to import under the build's autodoc_mock_imports set, or an in-progress API-ref restructuring moved or renamed the source. It is a tier-2 structural condition: the ungenerated stubs mask the py:* reference-target-not-found warnings for the same objects (see py-xref-target-not-found)."
+    fix: "Do not fix per entry when the failure is in bulk. Determine scope first: many missing stubs sharing a module prefix point at one root -- confirm the module imports under the build's mock set (autodoc_mock_imports) and that autosummary_generate is on; when an API-ref restructuring is in flight, the correct move may be to revert or repair the file moves rather than edit each entry. A lone missing stub means the member no longer exists -- update or drop the autosummary entry."
+    target_extract: "stub file not found '(?P<target>[^']+)'"
+    version_sphinx: ">=8.0,<9"
+    notes: "Untagged core-Sphinx warning (no [category]); signature-only. Seen at scale in a Ray API-ref rework where dozens of missing stubs masked hundreds of downstream py:ref failures. Fix this tier-2 root first, rebuild, and most of the py-xref-target-not-found flood clears."
 
 # Known-benign warning classes the build already suppresses or filters in
 # doc/source/conf.py. The engine segregates these into a not-actionable bucket

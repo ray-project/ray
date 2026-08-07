@@ -23,6 +23,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -56,6 +57,7 @@ from ray.data._internal.operator_schema_exporter import (
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.exceptions import UserCodeException
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
@@ -163,6 +165,12 @@ class StreamingExecutor(Executor, threading.Thread):
             description="Duration of the scheduling loop in seconds",
             tag_keys=("dataset",),
         )
+
+        # Resolves pulled (block_ref, meta_ref) pairs into emitted RefBundles.
+        # The threaded fetcher (default) fetches metadata on a background thread
+        # so the scheduling loop never blocks on ``ray.get(meta_refs)``; the
+        # inline fetcher reproduces the synchronous, master-identical path.
+        self._metadata_fetcher = make_metadata_fetcher()
 
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
@@ -299,9 +307,16 @@ class StreamingExecutor(Executor, threading.Thread):
 
             start = time.perf_counter()
 
-            status_detail = (
-                f"failed with {exception}" if exception else "completed successfully"
-            )
+            if exception is None:
+                status_detail = "completed successfully"
+            elif isinstance(exception, UserCodeException):
+                # For a user-code error, str(exception) is the (already-logged)
+                # user traceback, so interpolating it here just re-dumps the stack
+                # a third time. Log only the exception type. Genuine internal /
+                # system errors keep the full exception below for diagnostics.
+                status_detail = f"failed with {type(exception).__name__}"
+            else:
+                status_detail = f"failed with {exception}"
 
             logger.debug(
                 f"Shutting down executor for dataset {self._dataset_id} "
@@ -312,6 +327,9 @@ class StreamingExecutor(Executor, threading.Thread):
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
+            # Stop the metadata fetcher (after the loop thread that feeds it has
+            # been joined). No-op for the inline fetcher.
+            self._metadata_fetcher.stop()
             self._update_stats_metrics(
                 state=DatasetState.FINISHED.name
                 if exception is None
@@ -348,9 +366,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
 
             self._clear_topology_queues_post_shutdown(force, exception)
-            # Queues have been drained; any remaining Ray Core callbacks that fire
-            # after this point should be no-ops.
-            self._block_ref_counter.clear()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
@@ -408,6 +423,7 @@ class StreamingExecutor(Executor, threading.Thread):
         Results are returned via the output node's outqueue.
         """
         exc: Optional[Exception] = None
+        self._metadata_fetcher.start()
         try:
             # Run scheduling loop until complete.
             while True:
@@ -500,6 +516,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._backpressure_policies,
             self._max_errored_blocks,
             output_backpressure_guard=self._output_backpressure_guard,
+            metadata_fetcher=self._metadata_fetcher,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks

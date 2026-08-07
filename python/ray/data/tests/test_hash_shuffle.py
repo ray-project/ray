@@ -210,7 +210,7 @@ class JoinTestCase:
     ],
 )
 def test_join_aggregator_remote_args(
-    ray_start_regular,
+    ray_start_regular_shared,
     tc,
 ):
     """Test that join operator correctly estimates memory, CPU, and other resources
@@ -387,7 +387,7 @@ class HashOperatorTestCase:
     ],
 )
 def test_hash_aggregate_operator_remote_args(
-    ray_start_regular,
+    ray_start_regular_shared,
     tc,
 ):
     """Test that HashAggregateOperator correctly estimates memory, CPU, and other resources
@@ -559,7 +559,7 @@ def test_hash_aggregate_operator_remote_args(
     ],
 )
 def test_hash_shuffle_operator_remote_args(
-    ray_start_regular,
+    ray_start_regular_shared,
     tc,
 ):
     """Test that HashShuffleOperator correctly estimates memory, CPU, and other resources
@@ -610,7 +610,7 @@ def test_hash_shuffle_operator_remote_args(
 
 
 def test_aggregator_ray_remote_args_includes_context_label_selector(
-    ray_start_regular, restore_data_context
+    ray_start_regular_shared, restore_data_context
 ):
     """ExecutionOptions.label_selector should appear on aggregator actor args."""
     DataContext.get_current().execution_options.label_selector = {"subcluster": "train"}
@@ -645,7 +645,7 @@ def test_aggregator_ray_remote_args_includes_context_label_selector(
     assert pool._aggregator_ray_remote_args["label_selector"] == {"subcluster": "train"}
 
 
-def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
+def test_aggregator_ray_remote_args_partial_override(ray_start_regular_shared):
     """Test that partial override of aggregator_ray_remote_args retains default values.
 
     This tests the behavior where a user provides only some values (e.g., num_cpus)
@@ -699,7 +699,7 @@ def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
 
 
 def test_hash_shuffle_does_not_infer_metadata_for_memory_during_construction(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     logical_op_mock = MagicMock(LogicalOperator)
     logical_op_mock.infer_metadata.side_effect = AssertionError(
@@ -728,7 +728,7 @@ def test_hash_shuffle_does_not_infer_metadata_for_memory_during_construction(
 
 
 def test_hash_shuffle_buffers_inputs_to_estimate_memory_at_execution(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     logical_op_mock = MagicMock(LogicalOperator)
     logical_op_mock.estimated_num_outputs.return_value = 16
@@ -754,9 +754,12 @@ def test_hash_shuffle_buffers_inputs_to_estimate_memory_at_execution(
     second_bundle = _make_ref_bundle(200)
 
     mock_pool = MagicMock()
-    with patch.object(
-        op, "_create_aggregator_pool", return_value=mock_pool
-    ) as create_pool, patch.object(op, "_do_add_input_inner") as replay:
+    with (
+        patch.object(
+            op, "_create_aggregator_pool", return_value=mock_pool
+        ) as create_pool,
+        patch.object(op, "_do_add_input_inner") as replay,
+    ):
         op._add_input_inner(first_bundle, input_index=0)
         op._add_input_inner(second_bundle, input_index=0)
 
@@ -775,7 +778,7 @@ def test_hash_shuffle_buffers_inputs_to_estimate_memory_at_execution(
 
 
 def test_hash_shuffle_starts_from_empty_buffer_when_inputs_done(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     logical_op_mock = MagicMock(LogicalOperator)
     logical_op_mock.estimated_num_outputs.return_value = 16
@@ -840,15 +843,18 @@ def _make_shuffle_op(upstream_num_outputs):
 
 
 def test_hash_shuffle_sample_window_trips_on_max_bundles_when_count_unknown(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     # Upstream output count never materializes -> defer to MAX_BUNDLES.
     op, _ = _make_shuffle_op(upstream_num_outputs=None)
 
     mock_pool = MagicMock()
-    with patch.object(
-        op, "_create_aggregator_pool", return_value=mock_pool
-    ) as create_pool, patch.object(op, "_do_add_input_inner") as replay:
+    with (
+        patch.object(
+            op, "_create_aggregator_pool", return_value=mock_pool
+        ) as create_pool,
+        patch.object(op, "_do_add_input_inner") as replay,
+    ):
         # First MAX_BUNDLES - 1 bundles only buffer; none trip the window.
         for _ in range(op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES - 1):
             op._add_input_inner(_make_ref_bundle(10), input_index=0)
@@ -868,13 +874,16 @@ def test_hash_shuffle_sample_window_trips_on_max_bundles_when_count_unknown(
         assert not op._buffered_input_bundles[0]
 
 
-def test_hash_shuffle_sample_window_trips_on_byte_ceiling(ray_start_regular):
+def test_hash_shuffle_sample_window_trips_on_byte_ceiling(ray_start_regular_shared):
     op, _ = _make_shuffle_op(upstream_num_outputs=10_000)
 
     mock_pool = MagicMock()
-    with patch.object(
-        op, "_create_aggregator_pool", return_value=mock_pool
-    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+    with (
+        patch.object(
+            op, "_create_aggregator_pool", return_value=mock_pool
+        ) as create_pool,
+        patch.object(op, "_do_add_input_inner"),
+    ):
         # A single bundle at/above the byte ceiling trips the window
         # immediately, regardless of bundle count.
         op._add_input_inner(_make_ref_bundle(op._sample_byte_limit), input_index=0)
@@ -883,7 +892,7 @@ def test_hash_shuffle_sample_window_trips_on_byte_ceiling(ray_start_regular):
     create_pool.assert_called_once()
 
 
-def test_hash_shuffle_extrapolates_dataset_bytes_from_sample(ray_start_regular):
+def test_hash_shuffle_extrapolates_dataset_bytes_from_sample(ray_start_regular_shared):
     op, _ = _make_shuffle_op(upstream_num_outputs=100)
     # 8 bundles averaging 200 bytes, inputs still streaming.
     op._sample_bytes = 1600
@@ -894,7 +903,7 @@ def test_hash_shuffle_extrapolates_dataset_bytes_from_sample(ray_start_regular):
     assert op._extrapolate_dataset_bytes() == 20_000
 
 
-def test_hash_shuffle_extrapolation_never_below_observed(ray_start_regular):
+def test_hash_shuffle_extrapolation_never_below_observed(ray_start_regular_shared):
     # Upstream reports fewer bundles than we've already sampled -> use sample.
     op, _ = _make_shuffle_op(upstream_num_outputs=2)
     op._sample_bytes = 1000
@@ -906,7 +915,7 @@ def test_hash_shuffle_extrapolation_never_below_observed(ray_start_regular):
 
 
 def test_hash_shuffle_extrapolation_falls_back_to_logical_estimate(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     # Upstream count unknown (DataSource-V2-like) -> logical fallback.
     op, logical_op_mock = _make_shuffle_op(upstream_num_outputs=0)
@@ -924,7 +933,7 @@ def test_hash_shuffle_extrapolation_falls_back_to_logical_estimate(
 
 
 def test_hash_shuffle_extrapolation_modest_default_when_no_signal(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     # Upstream count unknown AND logical estimate unavailable, and nothing has
     # been buffered yet -> None, so the remote-args builder falls back to its
@@ -944,7 +953,7 @@ def test_hash_shuffle_extrapolation_modest_default_when_no_signal(
 
 
 def test_hash_shuffle_extrapolation_floors_at_observed_bytes_without_count(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     # Regression: the bounded sample window can trip before any upstream output
     # count materializes (e.g. DataSource V2), so neither the sampled-ratio nor
@@ -965,7 +974,7 @@ def test_hash_shuffle_extrapolation_floors_at_observed_bytes_without_count(
 
 
 def test_hash_shuffle_prefers_logical_estimate_when_sample_underestimates(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     # Regression: a shuffle fed by a read whose runtime output count is still a
     # large under-estimate when sampled. The accurate logical estimate must win
@@ -987,7 +996,7 @@ def test_hash_shuffle_prefers_logical_estimate_when_sample_underestimates(
 
 
 def test_hash_shuffle_floors_aggregator_memory_at_modest_default(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     # Regression: a tiny dataset estimate (e.g. a chained join whose upstream is
     # back-loaded and sampled at ~0 bytes) must not size aggregators below the
@@ -1006,15 +1015,18 @@ def test_hash_shuffle_floors_aggregator_memory_at_modest_default(
     assert args["memory"] == 1 * GiB
 
 
-def test_hash_shuffle_partition_size_hint_skips_sampling(ray_start_regular):
+def test_hash_shuffle_partition_size_hint_skips_sampling(ray_start_regular_shared):
     op, _ = _make_shuffle_op(upstream_num_outputs=10_000)
     # Simulate a partition-size hint (not exposed on HashShuffleOperator ctor).
     op._partition_size_hint = 1234
 
     mock_pool = MagicMock()
-    with patch.object(
-        op, "_create_aggregator_pool", return_value=mock_pool
-    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+    with (
+        patch.object(
+            op, "_create_aggregator_pool", return_value=mock_pool
+        ) as create_pool,
+        patch.object(op, "_do_add_input_inner"),
+    ):
         # The very first bundle trips the window since the estimate is exact.
         op._add_input_inner(_make_ref_bundle(10), input_index=0)
 
@@ -1024,14 +1036,17 @@ def test_hash_shuffle_partition_size_hint_skips_sampling(ray_start_regular):
     )
 
 
-def test_hash_shuffle_does_not_double_start(ray_start_regular):
+def test_hash_shuffle_does_not_double_start(ray_start_regular_shared):
     # Window trips mid-stream, then all_inputs_done fires: pool created once.
     op, _ = _make_shuffle_op(upstream_num_outputs=None)
 
     mock_pool = MagicMock()
-    with patch.object(
-        op, "_create_aggregator_pool", return_value=mock_pool
-    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+    with (
+        patch.object(
+            op, "_create_aggregator_pool", return_value=mock_pool
+        ) as create_pool,
+        patch.object(op, "_do_add_input_inner"),
+    ):
         for _ in range(op._MEMORY_ESTIMATION_SAMPLE_MAX_BUNDLES):
             op._add_input_inner(_make_ref_bundle(10), input_index=0)
         assert op._shuffle_started
@@ -1043,7 +1058,9 @@ def test_hash_shuffle_does_not_double_start(ray_start_regular):
     mock_pool.start.assert_called_once()
 
 
-def test_hash_shuffle_aggregate_sampling_across_input_sequences(ray_start_regular):
+def test_hash_shuffle_aggregate_sampling_across_input_sequences(
+    ray_start_regular_shared,
+):
     # Sampling is aggregated across input sequences (e.g. joins): the byte
     # ceiling accounts for bundles arriving on multiple input indices.
     def _join_input_mock():
@@ -1078,9 +1095,12 @@ def test_hash_shuffle_aggregate_sampling_across_input_sequences(ray_start_regula
 
     half = op._sample_byte_limit // 2
     mock_pool = MagicMock()
-    with patch.object(
-        op, "_create_aggregator_pool", return_value=mock_pool
-    ) as create_pool, patch.object(op, "_do_add_input_inner"):
+    with (
+        patch.object(
+            op, "_create_aggregator_pool", return_value=mock_pool
+        ) as create_pool,
+        patch.object(op, "_do_add_input_inner"),
+    ):
         op._add_input_inner(_make_ref_bundle(half), input_index=0)
         create_pool.assert_not_called()
         # A bundle on the *other* input sequence pushes the aggregate sample
@@ -1129,7 +1149,7 @@ def _make_join_op(left_num_outputs, right_num_outputs):
     return op
 
 
-def test_hash_shuffle_extrapolates_per_input_sequence(ray_start_regular):
+def test_hash_shuffle_extrapolates_per_input_sequence(ray_start_regular_shared):
     # Each input is extrapolated against its OWN output count using its OWN
     # sampled per-bundle average, so a sample dominated by one (light) input
     # doesn't drag down the estimate for the other (heavy) input.
@@ -1150,7 +1170,7 @@ def test_hash_shuffle_extrapolates_per_input_sequence(ray_start_regular):
 
 
 def test_hash_shuffle_unsampled_input_falls_back_to_global_average(
-    ray_start_regular,
+    ray_start_regular_shared,
 ):
     # An input with a known output count but no sampled bundles yet uses the
     # global average bundle size rather than being dropped from the estimate.
@@ -1168,7 +1188,7 @@ def test_hash_shuffle_unsampled_input_falls_back_to_global_average(
 
 
 def test_partial_aggregate_preserves_sort_after_builder_compaction(
-    ray_start_regular,
+    ray_start_regular_shared,
     monkeypatch,
 ):
     """Regression test for HashAggregate producing duplicate group rows when

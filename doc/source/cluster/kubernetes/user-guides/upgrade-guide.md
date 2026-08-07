@@ -4,8 +4,7 @@
 
 ## KubeRay / Ray compatibility
 
-KubeRay CI tests the nightly KubeRay against the three most recent major or minor releases of Ray, as well as against the nightly Ray build.
-For example, if the latest Ray release is 2.7.0, KubeRay CI tests the nightly KubeRay against Ray 2.7.0, 2.6.0, 2.5.0, and the nightly Ray build.
+KubeRay CI tests the nightly KubeRay against the three most recent major or minor releases of Ray, as well as against the nightly Ray build. For example, if the latest Ray release is 2.7.0, KubeRay CI tests the nightly KubeRay against Ray 2.7.0, 2.6.0, 2.5.0, and the nightly Ray build.
 
 ```{admonition} Don't use Ray versions between 2.11.0 and 2.37.0.
 The [commit](https://github.com/ray-project/ray/pull/44658) introduces a bug in Ray 2.11.0.
@@ -33,8 +32,7 @@ If you want to understand the reasoning behind the CRD versioning plan, see [ray
 
 ## Upgrade KubeRay
 
-Upgrading the KubeRay version is the best strategy if you have any issues with KubeRay.
-Due to reliability and security implications of webhooks, KubeRay doesn't support a conversion webhook to convert v1alpha1 to v1 APIs.
+Upgrading the KubeRay version is the best strategy if you have any issues with KubeRay. Due to reliability and security implications of webhooks, KubeRay doesn't support a conversion webhook to convert v1alpha1 to v1 APIs.
 
 To upgrade the KubeRay version, follow these steps in order:
 1. Upgrade the CRD manifest, containing new fields added to the v1 CRDs.

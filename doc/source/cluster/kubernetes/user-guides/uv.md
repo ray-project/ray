@@ -4,8 +4,7 @@
 
 [uv](https://github.com/astral-sh/uv) is a modern Python package manager written in Rust.
 
-Starting with Ray 2.45, the `rayproject/ray:2.45.0` image includes `uv` as one of its dependencies.
-This guide provides a simple example of using `uv` to manage Python dependencies on KubeRay.
+Starting with Ray 2.45, the `rayproject/ray:2.45.0` image includes `uv` as one of its dependencies. This guide provides a simple example of using `uv` to manage Python dependencies on KubeRay.
 
 To learn more about the `uv` integration in Ray, refer to:
 
@@ -69,5 +68,4 @@ kubectl exec -it $HEAD_POD -- /bin/bash -c "cd samples && uv run --with emoji /h
 ```
 
 > NOTE: Use `/bin/bash -c` to execute the command while changing the current directory to `/home/ray/samples`. By default, `working_dir` is set to the current directory.
-This prevents uploading all files under `/home/ray`, which can take a long time when executing `uv run`.
-Alternatively, you can use `ray job submit --runtime-env-json ...` to specify the `working_dir` manually.
+This prevents uploading all files under `/home/ray`, which can take a long time when executing `uv run`. Alternatively, you can use `ray job submit --runtime-env-json ...` to specify the `working_dir` manually.

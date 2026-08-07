@@ -678,6 +678,113 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
     client._check_ingress_deployments([built_app])
 
 
+def test_callable_uses_multiplexing_static():
+    """Detects `@serve.multiplexed` on a method/function statically (class input)."""
+    from ray.serve._private.utils import _callable_uses_multiplexing
+
+    class MultiplexedClass:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def load_model(self, model_id: str) -> str:
+            return model_id
+
+    @serve.multiplexed
+    async def standalone(model_id: str) -> str:
+        return model_id
+
+    class Plain:
+        async def __call__(self, request) -> str:
+            return "ok"
+
+    assert _callable_uses_multiplexing(MultiplexedClass)
+    assert _callable_uses_multiplexing(standalone)
+    assert not _callable_uses_multiplexing(Plain)
+
+
+def test_callable_uses_multiplexing_dynamic_instance():
+    """Detects multiplexing wired up dynamically at init (e.g. LLMServer LoRA).
+
+    This is only visible on a constructed instance, not on the class statically.
+    """
+    from ray.serve._private.utils import _callable_uses_multiplexing
+
+    class DynamicMultiplexed:
+        def __init__(self):
+            async def _load(model_id: str) -> str:
+                return model_id
+
+            self._load_model = serve.multiplexed(max_num_models_per_replica=2)(_load)
+
+    # Not detectable on the class (the wrapper only exists after construction)...
+    assert not _callable_uses_multiplexing(DynamicMultiplexed)
+    # ...but detectable on the constructed instance.
+    assert _callable_uses_multiplexing(DynamicMultiplexed())
+
+
+def test_callable_uses_multiplexing_ignores_handle_attrs():
+    """A composed ingress holding DeploymentHandles must not be flagged.
+
+    `DeploymentHandle.__getattr__` returns a (truthy) handle for any attribute name,
+    so the instance-attribute scan must check the marker by identity (`is True`) to
+    avoid false positives that would break every composed app under direct ingress.
+    """
+    from ray.serve._private.utils import _callable_uses_multiplexing
+
+    class FakeHandle:
+        # Mirrors DeploymentHandle: returns a truthy object for any attribute.
+        def __getattr__(self, name):
+            return self
+
+    class Ingress:
+        def __init__(self):
+            self._backend = FakeHandle()
+
+        async def __call__(self, request):
+            return await self._backend.remote()
+
+    assert not _callable_uses_multiplexing(Ingress())
+
+
+def test_callable_uses_multiplexing_does_not_initialize_handles():
+    """Probing must not invoke `__getattr__`, which initializes a handle's Router."""
+    from ray.serve._private.utils import _callable_uses_multiplexing
+
+    class FakeHandle:
+        # Mirrors DeploymentHandle: any attribute access builds an initialized handle.
+        getattr_calls = 0
+
+        def __getattr__(self, name):
+            FakeHandle.getattr_calls += 1
+            return FakeHandle()
+
+    class Ingress:
+        def __init__(self):
+            self._backend = FakeHandle()
+
+    assert not _callable_uses_multiplexing(Ingress())
+    assert FakeHandle.getattr_calls == 0, (
+        f"scan invoked __getattr__ {FakeHandle.getattr_calls} time(s), which "
+        f"initializes real DeploymentHandles as a side effect"
+    )
+
+    # No instance `__dict__`: `getattr(obj, "__dict__", {})` would hit `__getattr__`.
+    class SlottedIngress:
+        __slots__ = ("_backend",)
+        getattr_calls = 0
+
+        def __init__(self):
+            self._backend = None
+
+        def __getattr__(self, name):
+            SlottedIngress.getattr_calls += 1
+            return "side effect"
+
+    assert not _callable_uses_multiplexing(SlottedIngress())
+    assert SlottedIngress.getattr_calls == 0, (
+        f"scan invoked __getattr__ {SlottedIngress.getattr_calls} time(s) on a "
+        f"__slots__ callable"
+    )
+
+
 @pytest.mark.parametrize(
     "haproxy_enabled, request_router_class, rejected",
     [

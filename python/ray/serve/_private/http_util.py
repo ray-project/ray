@@ -24,12 +24,21 @@ import starlette
 import uvicorn
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
+from fastapi.routing import APIRoute, APIWebSocketRoute
 from packaging import version
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
+
+try:
+    # `_IncludedRouter` only exists on FastAPI >= 0.137, where routes registered
+    # via `include_router` are nested under it instead of being flattened into
+    # the parent's `routes` list. It is `None` on older versions.
+    from fastapi.routing import _IncludedRouter
+except ImportError:  # FastAPI < 0.137
+    _IncludedRouter = None
 
 from ray._common.network_utils import is_ipv6
 from ray.exceptions import RayActorError, RayTaskError
@@ -342,10 +351,10 @@ class ASGIReceiveProxy:
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
         # Lazy init the queue to ensure it is created in the user code event loop.
-        self._queue = None
+        self._queue: Optional[asyncio.Queue] = None
         self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
-        self._disconnect_message = None
+        self._disconnect_message: Optional[Message] = None
 
     def _get_default_disconnect_message(self) -> Message:
         """Return the appropriate disconnect message based on the connection type.
@@ -419,6 +428,33 @@ class ASGIReceiveProxy:
         return message
 
 
+def _walk_fastapi_routes(router, prefix: str = ""):
+    """Yield ``(route, parent_router, prefix)`` for every API route under ``router``.
+
+    Starting with FastAPI 0.137, ``include_router`` no longer flattens the
+    included routes into the parent's ``routes`` list. Instead it appends a
+    single ``_IncludedRouter`` node that holds a reference to the original
+    router (``route.original_router``) and resolves the child routes lazily at
+    request time. We recurse into those nodes so that routes registered via
+    ``include_router`` (e.g. vLLM's OpenAI-compatible endpoints) are still
+    discovered. On older FastAPI versions ``_IncludedRouter`` doesn't exist and
+    this simply iterates the flat ``routes`` list.
+
+    ``prefix`` is the URL prefix accumulated from the ``include_router(...,
+    prefix=...)`` calls above this route. When a prefix is supplied at include
+    time (rather than baked into an ``APIRouter(prefix=...)``), FastAPI >= 0.137
+    keeps it on the ``_IncludedRouter`` node instead of in the route's own
+    ``path``, so callers need it to reconstruct the absolute path.
+    """
+    for route in router.routes:
+        if isinstance(route, (APIRoute, APIWebSocketRoute)):
+            yield route, router, prefix
+        elif _IncludedRouter is not None and isinstance(route, _IncludedRouter):
+            yield from _walk_fastapi_routes(
+                route.original_router, prefix + route.include_context.prefix
+            )
+
+
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """Transform the `cls`'s methods and class annotations to FastAPI routes.
 
@@ -438,20 +474,21 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """
     # Delayed import to prevent ciruclar imports in workers.
     from fastapi import APIRouter, Depends
-    from fastapi.routing import APIRoute, APIWebSocketRoute
+    from starlette.routing import compile_path
 
     async def get_current_servable_instance():
         from ray import serve
 
         return serve.get_replica_context().servable_object
 
-    # Find all the class method routes
+    # Find all the class method routes. We walk the route tree recursively so
+    # that routes registered via `include_router` are discovered on FastAPI
+    # >= 0.137, where they are nested under `_IncludedRouter` nodes rather than
+    # flattened into `fastapi_app.routes`. Each entry keeps the parent router so
+    # the route can be removed from the correct list below.
     class_method_routes = [
-        route
-        for route in fastapi_app.routes
-        if
-        # User defined routes must all be APIRoute or APIWebSocketRoute.
-        isinstance(route, (APIRoute, APIWebSocketRoute))
+        (route, parent, prefix)
+        for route, parent, prefix in _walk_fastapi_routes(fastapi_app)
         # We want to find the route that's bound to the `cls`.
         # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
         # because the FastAPI supports different routes for the methods with
@@ -461,7 +498,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # the parent class (e.g., "ParentClass.method" not "ChildClass.method").
         # We use "ClassName." prefix matching (not substring) to avoid false
         # positives where class "A" would incorrectly match routes from "AA".
-        and any(
+        if any(
             route.endpoint.__qualname__.startswith(base.__qualname__ + ".")
             for base in cls.__mro__
             if base is not object
@@ -473,8 +510,20 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     # the laster fastapi_app.include_router to re-run the dependency analysis
     # for each routes.
     new_router = APIRouter()
-    for route in class_method_routes:
-        fastapi_app.routes.remove(route)
+    for route, parent, prefix in class_method_routes:
+        parent.routes.remove(route)
+
+        # Preserve the full URL path. When a route was registered via
+        # `include_router(..., prefix=...)`, FastAPI >= 0.137 keeps the prefix on
+        # the `_IncludedRouter` node rather than in `route.path`, so re-mounting
+        # the route on `new_router` (which has no prefix) would drop it. Fold the
+        # accumulated prefix back into the route's path before re-mounting.
+        if prefix:
+            full_path = prefix + route.path
+            route.path = full_path
+            route.path_regex, route.path_format, route.param_convertors = compile_path(
+                full_path
+            )
 
         # This block just adds a default values to the self parameters so that
         # FastAPI knows to inject the object when calling the route.
@@ -505,16 +554,13 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
 
-    routes_to_remove = list()
-    for route in fastapi_app.routes:
-        if not isinstance(route, (APIRoute, APIWebSocketRoute)):
-            continue
-
-        # Remove endpoints that belong to other class based views.
+    # Remove endpoints that belong to other class based views. We walk the tree
+    # recursively (see `_walk_fastapi_routes`) so that endpoints nested under
+    # `_IncludedRouter` nodes are also cleaned up on FastAPI >= 0.137.
+    for route, parent, _prefix in list(_walk_fastapi_routes(fastapi_app)):
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
-            routes_to_remove.append(route)
-    fastapi_app.routes[:] = [r for r in fastapi_app.routes if r not in routes_to_remove]
+            parent.routes.remove(route)
 
 
 def set_socket_reuse_port(sock: socket.socket) -> bool:
@@ -593,6 +639,7 @@ class ASGIAppReplicaWrapper:
     def docs_path(self) -> Optional[str]:
         if isinstance(self._asgi_app, FastAPI):
             return self._asgi_app.docs_url
+        return None
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
@@ -611,7 +658,7 @@ class ASGIAppReplicaWrapper:
         scope: Scope,
         receive: Receive,
         send: Send,
-    ) -> Optional[ASGIApp]:
+    ) -> None:
         """Calls into the wrapped ASGI app."""
         await self._asgi_app(
             scope,
@@ -635,7 +682,7 @@ class ASGIAppReplicaWrapper:
 
 def validate_http_proxy_callback_return(
     middlewares: Any,
-) -> [Middleware]:
+) -> List[Middleware]:
     """Validate the return value of HTTP proxy callback.
 
     Middlewares should be a list of Starlette middlewares. If it is None, we
@@ -907,7 +954,9 @@ def send_http_response_on_exception(
         return []
     return convert_object_to_asgi_messages(
         status.message,
-        status_code=status.code,
+        # `ResponseStatus.code` is a `Union` shared with gRPC, but on the HTTP
+        # path it's always an `int` status code.
+        status_code=status.code,  # type: ignore[arg-type]
     )
 
 

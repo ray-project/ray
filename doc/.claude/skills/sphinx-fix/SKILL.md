@@ -64,12 +64,13 @@ Stdlib-only — no install. It prefers PyYAML to read `rules.yaml` but falls bac
 
 ## Reading the output
 
-The report has four parts, in priority order:
+The report has five parts, in priority order:
 
 1. **Abort banner** (only if present) — a hard-broken build (a `conf.py`/extension error, a traceback, or `SEVERE:` with no completion summary) aborted before the warning pass. **Fix this first; the rest of the log is unreliable.** For an autosummary import abort, the banner adds a `hint:` — the named module is usually a decoy for an unrelated module whose import chain broke (often a dep mocked by `autodoc_mock_imports` but used at import time); trace it and make the eager import lazy.
-2. **Findings**, grouped by tier (1 → 2 → 3). Each row is `[T2] <rule-id> <path:line>` plus the warning message, the canonical `fix:` (with a `Suggested:` rewrite for mechanical rules), and a `safety:` flag. `judgment` findings need your decision.
-3. **Unclassified** — warnings no rule matched. **Never silently dropped.** Resolve each with the user, then file a skill-improvement ticket so `rules.yaml` gains a rule (see below).
-4. **Suppressed** — known-benign classes the build already filters; not actionable.
+2. **Root-cause groups** (only if present) — a single structural root (an ungenerated `autosummary` stub for a module or class) masks a flood of downstream `py:* reference target not found` warnings for the *same* objects. Rather than list the flood as N equal-looking rows, the report collapses it: `ROOT [T2] ... — <prefix>.* (N stubs not generated, masking M downstream references)`, the root's fix once, then the masked references collapsed under it (capped in the rendered view, with the dropped count shown). **Fix the root, rebuild, and the masked references clear together** — don't chase the individual references. The full flat list is always in `--json`.
+3. **Findings**, grouped by tier (1 → 2 → 3), for everything not absorbed into a root-cause group. Each row is `[T2] <rule-id> <path:line>` plus the warning message, the canonical `fix:` (with a `Suggested:` rewrite for mechanical rules), and a `safety:` flag. `judgment` findings need your decision.
+4. **Unclassified** — warnings no rule matched. **Never silently dropped.** Resolve each with the user, then file a skill-improvement ticket so `rules.yaml` gains a rule (see below).
+5. **Suppressed** — known-benign classes the build already filters; not actionable.
 
 ---
 

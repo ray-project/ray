@@ -307,6 +307,7 @@ For more information on saving data, read
     .. tab-item:: Parquet
 
         .. testcode::
+            :skipif: True
 
             import torch
             import ray
@@ -314,11 +315,12 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_parquet("local:///tmp/tensor")
+            ds.write_parquet("s3://my-bucket/tensor")
 
     .. tab-item:: Numpy
 
         .. testcode::
+            :skipif: True
 
             import torch
             import ray
@@ -326,7 +328,7 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_numpy("local:///tmp/tensor", column="tensor")
+            ds.write_numpy("s3://my-bucket/tensor", column="tensor")
 
 .. _migrate_pytorch:
 

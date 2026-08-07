@@ -37,6 +37,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
+    RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE,
     RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS,
@@ -77,6 +78,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     SERVE_SESSION_ID,
@@ -105,6 +107,26 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @functools.cache
+def _haproxy_fmt_literal(value: Any) -> str:
+    r"""Format a string as a double-quoted HAProxy log-format literal for a
+    `set-var-fmt` rule.
+
+    App, route, and deployment names can contain any character, so the value is
+    quoted and the characters that are special inside a HAProxy double-quoted
+    log-format string are escaped: `\` (escape), `"` (delimiter), `%`
+    (directive), and `$` (env var). HAProxy removes the escaping when it reads
+    the config, so the stored value is the original string.
+
+    Example: `a"b%c` becomes `"a\"b%%c"`.
+    """
+    s = str(value)
+    s = s.replace("\\", "\\\\")
+    s = s.replace('"', '\\"')
+    s = s.replace("%", "%%")
+    s = s.replace("$", "\\$")
+    return '"' + s + '"'
+
+
 def _load_lua_template() -> string.Template:
     path = Path(__file__).parent / "ingress_request_router.lua.tmpl"
     try:
@@ -117,13 +139,15 @@ def _load_lua_template() -> string.Template:
 
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
-) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router and replica map, restricted to backends with both.
+    local_host: "Optional[str]" = None,
+) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
+    """Per-backend router pool and replica map, restricted to backends with both.
 
-    Pick deterministically within each router pool to avoid the first-response
-    latency regression from cycling routers across requests.
+    Prefers routers co-located with this HAProxy so the /internal/route hop
+    stays on-node. Falls back to the lexicographically smallest router when none
+    is co-located.
     """
-    routers: Dict[str, ServerConfig] = {}
+    routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
@@ -133,21 +157,29 @@ def _routers_and_targets_by_backend(
         ]
         if not entries:
             continue
-        # Host-first so co-located routers sort adjacent in debug output.
-        routers[backend.name] = min(
-            backend.ingress_request_router_servers, key=lambda s: (s.host, s.port)
-        )
+        candidates = backend.ingress_request_router_servers
+        colocated = [s for s in candidates if s.host == local_host]
+        if colocated:
+            pool = sorted(colocated, key=lambda s: (s.host, s.port))
+        else:
+            pool = [min(candidates, key=lambda s: (s.host, s.port))]
+        routers[backend.name] = pool
         targets[backend.name] = entries
     return routers, targets
 
 
-def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
-    """Render {backend_name: ServerConfig} as a Lua table literal."""
+def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
+    """Render {backend_name: [ServerConfig, ...]} as a Lua table literal."""
+
+    def _server_lua(s: "ServerConfig") -> str:
+        return (
+            f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
+            f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
+        )
+
     body = ",\n".join(
-        f"    [{json.dumps(name)}] = "
-        f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
-        f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
-        for name, s in routers.items()
+        f"    [{json.dumps(name)}] = {{ {', '.join(_server_lua(s) for s in pool)} }}"
+        for name, pool in routers.items()
     )
     return "{\n" + body + "\n}"
 
@@ -493,6 +525,11 @@ class BackendConfig:
     # The app name for this backend.
     app_name: str = field(default_factory=str)
 
+    # Name of the app's ingress deployment. Rendered into the per-request HTTP
+    # metrics log line so HAProxy-emitted ingress metrics carry the deployment
+    # tag (matching what the Python proxy records). Empty when unknown.
+    ingress_deployment_name: str = field(default_factory=str)
+
     # Protocol of this backend. HTTP backends are path-routed and use HTTP/1.1;
     # gRPC backends are header-routed (by the `application` gRPC metadata) and
     # speak HTTP/2 cleartext to replica direct-ingress gRPC servers.
@@ -612,6 +649,8 @@ class HAProxyConfig:
     timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S
     timeout_http_request_s: Optional[int] = None
     hard_stop_after_s: Optional[int] = RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S
+    # See RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S.
+    close_spread_time_s: Optional[int] = RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
@@ -659,6 +698,14 @@ class HAProxyConfig:
     ingress_request_router_metrics_enabled: bool = (
         RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
     )
+
+    # Per-request HTTP ingress metrics (serve_num_http_requests, latency,
+    # errors) emitted from HAProxy log datagrams -- the metrics the Python proxy
+    # emits in non-HAProxy mode. On by default whenever HAProxy metrics are
+    # enabled. When set, the http_frontend renders a per-request RFC 5424 log
+    # line to metrics_socket_path. gRPC is intentionally excluded due to
+    # limitations in parsing trailers.
+    metrics_enabled: bool = RAY_SERVE_HAPROXY_METRICS_ENABLED
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
@@ -992,6 +1039,40 @@ class HAProxyApi(ProxyApi):
         }
         return len(expected ^ reported)
 
+    async def count_ongoing_http_requests(self) -> int:
+        """Total in-flight HTTP requests across this node's HTTP app backends.
+
+        Sums each HTTP backend's aggregate `scur` (current sessions), which
+        counts request streams actively being served. Unlike the frontend scur
+        it does not count idle keep-alive connections, and unlike server-connection
+        counts it is unaffected by `http-reuse`. The aggregate row also includes
+        requests queued waiting for a server. The `-via-ingress-request-router`
+        backends are included (a router request lives in exactly one backend).
+        """
+        suffix = "-via-ingress-request-router"
+        stats = self._parse_haproxy_csv_stats(
+            await self._send_socket_command("show stat")
+        )
+        total = 0
+        for backend_name, servers in stats.items():
+            # The via-router backend is rendered from its app's BackendConfig but
+            # under a suffixed name; strip it to look the config (and protocol) up.
+            base = (
+                backend_name[: -len(suffix)]
+                if backend_name.endswith(suffix)
+                else backend_name
+            )
+            backend_config = self.backend_configs.get(base)
+            if (
+                backend_config is None
+                or backend_config.protocol != RequestProtocol.HTTP
+            ):
+                continue
+            backend_row = servers.get("BACKEND")
+            if backend_row is not None:
+                total += backend_row.current_sessions
+        return total
+
     def _retire_log_files(self, proc: asyncio.subprocess.Process) -> None:
         """Move an exited proc's std-stream logs into the bounded debug ring,
         deleting the oldest pair once the ring exceeds its cap. Only call this
@@ -1116,7 +1197,6 @@ class HAProxyApi(ProxyApi):
     ) -> None:
         start_time = time.time()
 
-        # TODO: update this to use health checks
         while time.time() - start_time < timeout_s:
             if proc.returncode is not None:
                 # Both streams were redirected to files at spawn; tail them.
@@ -1151,7 +1231,9 @@ class HAProxyApi(ProxyApi):
         Returns the script path, or None if no backend has both ingress
         request routers AND replicas with replica IDs.
         """
-        routers, targets = _routers_and_targets_by_backend(backends)
+        routers, targets = _routers_and_targets_by_backend(
+            backends, local_host=get_localhost_ip()
+        )
         if not routers:
             return None
 
@@ -1200,6 +1282,8 @@ class HAProxyApi(ProxyApi):
         """Internal config generation without locking (for use within locked sections)."""
         try:
             env = Environment()
+            # Escapes names before they are rendered into set-var-fmt values.
+            env.filters["haproxy_fmt"] = _haproxy_fmt_literal
 
             # Backends are sorted in decreasing order of length of path prefix
             # to ensure that the longest path prefix match is taken first.
@@ -1304,7 +1388,11 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_forward_body": (
                         RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
                     ),
+                    "ingress_request_router_header_prefix": (
+                        SERVE_INGRESS_ROUTER_HEADER_PREFIX
+                    ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
+                    "metrics_enabled": self.cfg.metrics_enabled,
                     "metrics_socket_path": self.cfg.metrics_socket_path,
                     "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,
                     "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
@@ -1713,26 +1801,25 @@ class HAProxyManager(ProxyActorInterface):
 
             # The metrics collector owns all serve_haproxy_* metrics for this proxy.
             # It is constructed if haproxy metrics are enabled. start() always begins
-            # node-level polling and, when ingress-request-router metrics are enabled,
-            # also binds the per-request dgram reader and returns its bind task (which
+            # node-level polling and binds the per-request dgram reader (where
+            # HAProxy writes one line per request). It returns its bind task (which
             # ready() awaits to surface bind failures).
             self._metrics_collector = HAProxyMetricsCollector(
-                haproxy_api=self._haproxy, node_id=self._node_id
+                haproxy_api=self._haproxy,
+                node_id=self._node_id,
+                node_ip_address=self._node_ip_address,
             )
             try:
                 self._metrics_attach_task = self._metrics_collector.start(
                     self.event_loop,
                     poll_interval_s=RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
-                    enable_ingress_router_metrics=(
-                        self._haproxy.cfg.ingress_request_router_metrics_enabled
-                    ),
                     metrics_socket_path=self._haproxy.cfg.metrics_socket_path,
                 )
             except Exception:
                 logger.exception(
-                    "Failed to start the ingress-request-router datagram reader; "
-                    "per-request router metrics will not be emitted. Node-level "
-                    "metrics and HAProxy continue normally."
+                    "Failed to start the per-request metrics datagram reader; "
+                    "per-request metrics will not be emitted. Node-level metrics "
+                    "and HAProxy continue normally."
                 )
 
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
@@ -1990,6 +2077,7 @@ class HAProxyManager(ProxyActorInterface):
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
             app_name=target_group.app_name,
+            ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
             protocol=target_group.protocol,
         )

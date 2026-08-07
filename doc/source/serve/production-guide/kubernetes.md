@@ -8,14 +8,11 @@ This section should help you:
 - understand how to deploy a Ray Serve application using a [RayService].
 - understand how to monitor and update your application.
 
-Deploying Ray Serve on Kubernetes provides the scalable compute of Ray Serve and operational benefits of Kubernetes.
-This combination also allows you to integrate with existing applications that may be running on Kubernetes. When running on Kubernetes, use the [RayService] controller from [KubeRay].
+Deploying Ray Serve on Kubernetes provides the scalable compute of Ray Serve and operational benefits of Kubernetes. This combination also allows you to integrate with existing applications that may be running on Kubernetes. When running on Kubernetes, use the [RayService] controller from [KubeRay].
 
 > NOTE: [Anyscale](https://www.anyscale.com/get-started) is a managed Ray solution that provides high-availability, high-performance autoscaling, multi-cloud clusters, spot instance support, and more out of the box.
 
-A [RayService] CR encapsulates a multi-node Ray Cluster and a Serve application that runs on top of it into a single Kubernetes manifest.
-Deploying, upgrading, and getting the status of the application can be done using standard `kubectl` commands.
-This section walks through how to deploy, monitor, and upgrade the [Text ML example](serve-in-production-example) on Kubernetes.
+A [RayService] CR encapsulates a multi-node Ray Cluster and a Serve application that runs on top of it into a single Kubernetes manifest. Deploying, upgrading, and getting the status of the application can be done using standard `kubectl` commands. This section walks through how to deploy, monitor, and upgrade the [Text ML example](serve-in-production-example) on Kubernetes.
 
 (serve-installing-kuberay-operator)=
 
@@ -42,17 +39,12 @@ To enhance the reliability of your application, particularly when dealing with l
 (serve-deploy-app-on-kuberay)=
 ## Deploying a Serve application
 
-When the `RayService` is created, the `KubeRay` controller first creates a Ray cluster using the provided configuration.
-Then, once the cluster is running, it deploys the Serve application to the cluster using the [REST API](serve-in-production-deploying).
-The controller also creates a Kubernetes Service that can be used to route traffic to the Serve application.
+When the `RayService` is created, the `KubeRay` controller first creates a Ray cluster using the provided configuration. Then, once the cluster is running, it deploys the Serve application to the cluster using the [REST API](serve-in-production-deploying). The controller also creates a Kubernetes Service that can be used to route traffic to the Serve application.
 
-To see an example, deploy the [Text ML example](serve-in-production-example).
-The Serve config for the example is embedded into [this sample `RayService` CR](https://github.com/ray-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml).
-Save this CR locally to a file named `ray-service.text-ml.yaml`:
+To see an example, deploy the [Text ML example](serve-in-production-example). The Serve config for the example is embedded into [this sample `RayService` CR](https://github.com/ray-project/kuberay/blob/5b1a5a11f5df76db2d66ed332ff0802dc3bbff76/ray-operator/config/samples/ray-service.text-ml.yaml). Save this CR locally to a file named `ray-service.text-ml.yaml`:
 
 :::{note}
-- The example `RayService` uses very low `numCpus` values for demonstration purposes. In production, provide more resources to the Serve application.
-Learn more about how to configure KubeRay clusters [here](kuberay-config).
+- The example `RayService` uses very low `numCpus` values for demonstration purposes. In production, provide more resources to the Serve application. Learn more about how to configure KubeRay clusters [here](kuberay-config).
 - If you have dependencies that must be installed during deployment, you can add them to the `runtime_env` in the Deployment code. Learn more [here](serve-handling-dependencies)
 :::
 
@@ -60,8 +52,7 @@ Learn more about how to configure KubeRay clusters [here](kuberay-config).
 $ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/2ba0dd7bea387ac9df3681666bab3d622e89846c/ray-operator/config/samples/ray-service.text-ml.yaml
 ```
 
-To deploy the example, we simply `kubectl apply` the CR.
-This creates the underlying Ray cluster, consisting of a head and worker node pod (see [Ray Clusters Key Concepts](../../cluster/key-concepts.rst) for more details on Ray clusters), as well as the service that can be used to query our application:
+To deploy the example, we simply `kubectl apply` the CR. This creates the underlying Ray cluster, consisting of a head and worker node pod (see [Ray Clusters Key Concepts](../../cluster/key-concepts.rst) for more details on Ray clusters), as well as the service that can be used to query our application:
 
 ```console
 $ kubectl apply -f ray-service.text-ml.yaml
@@ -86,8 +77,7 @@ Note that the `rayservice-sample-serve-svc` above is the one that can be used to
 
 ## Querying the application
 
-Once the `RayService` is running, we can query it over HTTP using the service created by the KubeRay controller.
-This service can be queried directly from inside the cluster, but to access it from your laptop you'll need to configure a [Kubernetes ingress](kuberay-networking) or use port forwarding as below:
+Once the `RayService` is running, we can query it over HTTP using the service created by the KubeRay controller. This service can be queried directly from inside the cluster, but to access it from your laptop you'll need to configure a [Kubernetes ingress](kuberay-networking) or use port forwarding as below:
 
 ```console
 $ kubectl port-forward service/rayservice-sample-serve-svc 8000
@@ -98,9 +88,7 @@ C'était le meilleur des temps, c'était le pire des temps,
 (serve-getting-status-kubernetes)=
 ## Getting the status of the application
 
-As the `RayService` is running, the `KubeRay` controller continually monitors it and writes relevant status updates to the CR.
-You can view the status of the application using `kubectl describe`.
-This includes the status of the cluster, events such as health check failures or restarts, and the application-level statuses reported by [`serve status`](serve-in-production-inspecting).
+As the `RayService` is running, the `KubeRay` controller continually monitors it and writes relevant status updates to the CR. You can view the status of the application using `kubectl describe`. This includes the status of the cluster, events such as health check failures or restarts, and the application-level statuses reported by [`serve status`](serve-in-production-inspecting).
 
 ```console
 $ kubectl get rayservices
@@ -162,8 +150,7 @@ Events:
 
 ## Updating the application
 
-To update the `RayService`, modify the manifest and apply it use `kubectl apply`.
-There are two types of updates that can occur:
+To update the `RayService`, modify the manifest and apply it use `kubectl apply`. There are two types of updates that can occur:
 - *Application-level updates*: when only the Serve config options are changed, the update is applied _in-place_ on the same Ray cluster. This enables [lightweight updates](serve-in-production-lightweight-update) such as scaling a deployment up or down or modifying autoscaling parameters.
 - *Cluster-level updates*: when the `RayCluster` config options are changed, such as updating the container image for the cluster, it may result in a cluster-level update. In this case, a new cluster is started, and the application is deployed to it. Once the new cluster is ready, the Kubernetes service is updated to point to the new cluster and the previous cluster is terminated. There should not be any downtime for the application, but note that this requires the Kubernetes cluster to be large enough to schedule both Ray clusters.
 
@@ -202,8 +189,7 @@ es war die beste Zeit, es war die schlimmste Zeit,
 
 ### Updating the RayCluster config
 
-The process of updating the RayCluster config is the same as updating the Serve config.
-For example, we can update the number of worker nodes to 2 in the manifest:
+The process of updating the RayCluster config is the same as updating the Serve config. For example, we can update the number of worker nodes to 2 in the manifest:
 
 ```console
 workerGroupSpecs:
@@ -226,8 +212,7 @@ $ kubectl describe rayservice rayservice-sample
 ...
 ```
 
-In the status, you can see that the `RayService` is preparing a pending cluster.
-After the pending cluster is healthy, it becomes the active cluster and the previous cluster is terminated.
+In the status, you can see that the `RayService` is preparing a pending cluster. After the pending cluster is healthy, it becomes the active cluster and the previous cluster is terminated.
 
 ## Autoscaling
 You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. Learn more about the configuration options in the [Serve Autoscaling Guide](serve-autoscaling).

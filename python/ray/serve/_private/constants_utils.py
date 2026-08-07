@@ -1,6 +1,6 @@
 import os
 import warnings
-from typing import Callable, List, Optional, Type, TypeVar
+from typing import Callable, List, Optional, Type, TypeVar, Union, overload
 
 
 def str_to_list(s: str) -> List[str]:
@@ -103,6 +103,7 @@ def _get_env_value(
     """
     _validate_name(name)
 
+    raw: Union[str, T]
     explicitly_defined_value = os.environ.get(name)
     if explicitly_defined_value is None:
         if default is None:
@@ -114,7 +115,7 @@ def _get_env_value(
         raw = explicitly_defined_value
 
     try:
-        value = value_type(raw)
+        value = value_type(raw)  # type: ignore[call-arg]
     except ValueError as e:
         raise ValueError(
             f"Environment variable `{name}` value `{raw}` cannot be converted to `{value_type.__name__}`!"
@@ -127,6 +128,16 @@ def _get_env_value(
         )
 
     return value
+
+
+@overload
+def get_env_int(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int(name: str, default: None) -> Optional[int]:
+    ...
 
 
 def get_env_int(name: str, default: Optional[int]) -> Optional[int]:
@@ -145,6 +156,16 @@ def get_env_int(name: str, default: Optional[int]) -> Optional[int]:
     return _get_env_value(name, default, int)
 
 
+@overload
+def get_env_int_positive(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int_positive(name: str, default: None) -> Optional[int]:
+    ...
+
+
 def get_env_int_positive(name: str, default: Optional[int]) -> Optional[int]:
     """Get environment variable as a positive integer.
 
@@ -158,7 +179,24 @@ def get_env_int_positive(name: str, default: Optional[int]) -> Optional[int]:
     Raises:
         ValueError: If the value cannot be converted to an integer or is not positive.
     """
-    return _get_env_value(name, default, int, lambda x: x > 0, "positive")
+    return _get_env_value(
+        name,
+        default,
+        int,
+        # Only called on converted values, never the `None` default.
+        lambda x: x > 0,  # pyrefly: ignore[unsupported-operation]
+        "positive",
+    )
+
+
+@overload
+def get_env_int_non_negative(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int_non_negative(name: str, default: None) -> Optional[int]:
+    ...
 
 
 def get_env_int_non_negative(name: str, default: Optional[int]) -> Optional[int]:
@@ -174,7 +212,24 @@ def get_env_int_non_negative(name: str, default: Optional[int]) -> Optional[int]
     Raises:
         ValueError: If the value cannot be converted to an integer or is negative.
     """
-    return _get_env_value(name, default, int, lambda x: x >= 0, "non negative")
+    return _get_env_value(
+        name,
+        default,
+        int,
+        # Only called on converted values, never the `None` default.
+        lambda x: x >= 0,  # pyrefly: ignore[unsupported-operation]
+        "non negative",
+    )
+
+
+@overload
+def get_env_float(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float(name: str, default: None) -> Optional[float]:
+    ...
 
 
 def get_env_float(name: str, default: Optional[float]) -> Optional[float]:
@@ -193,6 +248,16 @@ def get_env_float(name: str, default: Optional[float]) -> Optional[float]:
     return _get_env_value(name, default, float)
 
 
+@overload
+def get_env_float_positive(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float_positive(name: str, default: None) -> Optional[float]:
+    ...
+
+
 def get_env_float_positive(name: str, default: Optional[float]) -> Optional[float]:
     """Get environment variable as a positive float.
 
@@ -206,7 +271,24 @@ def get_env_float_positive(name: str, default: Optional[float]) -> Optional[floa
     Raises:
         ValueError: If the value cannot be converted to a float or is not positive.
     """
-    return _get_env_value(name, default, float, lambda x: x > 0, "positive")
+    return _get_env_value(
+        name,
+        default,
+        float,
+        # Only called on converted values, never the `None` default.
+        lambda x: x > 0,  # pyrefly: ignore[unsupported-operation]
+        "positive",
+    )
+
+
+@overload
+def get_env_float_non_negative(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float_non_negative(name: str, default: None) -> Optional[float]:
+    ...
 
 
 def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[float]:
@@ -222,7 +304,24 @@ def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[
     Raises:
         ValueError: If the value cannot be converted to a float or is negative.
     """
-    return _get_env_value(name, default, float, lambda x: x >= 0, "non negative")
+    return _get_env_value(
+        name,
+        default,
+        float,
+        # Only called on converted values, never the `None` default.
+        lambda x: x >= 0,  # pyrefly: ignore[unsupported-operation]
+        "non negative",
+    )
+
+
+@overload
+def get_env_str(name: str, default: str) -> str:
+    ...
+
+
+@overload
+def get_env_str(name: str, default: None) -> Optional[str]:
+    ...
 
 
 def get_env_str(name: str, default: Optional[str]) -> Optional[str]:

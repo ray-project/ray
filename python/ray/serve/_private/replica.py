@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import errno
 import functools
+import gc
 import inspect
 import logging
 import math
@@ -38,7 +39,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 import ray
 from ray import cloudpickle
 from ray._common.filters import CoreContextFilter
+from ray._common.tls_utils import add_port_to_grpc_server
 from ray._common.utils import get_or_create_event_loop
+from ray._private.grpc_utils import create_grpc_server_with_interceptors
 from ray.actor import ActorClass, ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
@@ -66,6 +69,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_FREEZE_GC_ON_STARTUP,
+    RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
@@ -159,6 +165,7 @@ from ray.serve._private.tracing_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
+    _callable_uses_multiplexing,
     asyncio_grpc_exception_handler,
     check_obj_ref_ready_nowait,
     compress_metric_report,
@@ -505,7 +512,8 @@ class ReplicaMetricsManager:
             # gRPC ingress metrics are allocated lazily via
             # `enable_grpc_ingress_metrics()` once the gRPC config has been fetched from
             # the controller, which is not available at construction time.
-            self._add_ingress_metrics(RequestProtocol.HTTP)
+            if self._should_emit_request_ingress_metrics(RequestProtocol.HTTP):
+                self._add_ingress_metrics(RequestProtocol.HTTP)
 
             if self._cached_metrics_enabled:
                 # Mapping from protocol -> {request_tags -> value}.
@@ -525,6 +533,15 @@ class ReplicaMetricsManager:
     @property
     def _is_direct_ingress(self) -> bool:
         return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+    def _should_emit_request_ingress_metrics(self, protocol: RequestProtocol) -> bool:
+        # When HAProxy is enabled, http ingress request metrics are emitted by
+        # the HAProxyManager.
+        return self._is_direct_ingress and not (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and RAY_SERVE_HAPROXY_METRICS_ENABLED
+            and protocol == RequestProtocol.HTTP
+        )
 
     def _add_ingress_metrics(self, protocol: RequestProtocol):
         """Allocate metric objects and ongoing-request counter for a protocol."""
@@ -864,7 +881,7 @@ class ReplicaMetricsManager:
         status_code: str,
     ):
         """Record per-request metrics."""
-        if not self._is_direct_ingress:
+        if not self._should_emit_request_ingress_metrics(protocol):
             return
 
         if self._cached_metrics_enabled:
@@ -1114,14 +1131,17 @@ class Replica:
 
         self._rank: Optional[ReplicaRank] = None
 
-        # gRPC server for inter-deployment communication
-        self._server = grpc.aio.server(
+        # gRPC server for inter-deployment communication. Created via the shared
+        # helper so Ray's authentication interceptor is attached when token auth
+        # is enabled; without it this server would accept unauthenticated calls.
+        self._server = create_grpc_server_with_interceptors(
+            asynchronous=True,
             options=[
                 (
                     "grpc.max_receive_message_length",
                     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
                 )
-            ]
+            ],
         )
         # Silence spammy false positive errors from gRPC Python
         self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
@@ -1752,7 +1772,9 @@ class Replica:
 
         # Start the gRPC server for inter-deployment communication
         add_ASGIServiceServicer_to_server(self, self._server)
-        self._internal_grpc_port = self._server.add_insecure_port("[::]:0")
+        # Use the shared helper so RAY_USE_TLS is honored; binding the port
+        # directly would leave this server plaintext in a TLS-enabled cluster.
+        self._internal_grpc_port = add_port_to_grpc_server(self._server, "[::]:0")
         await self._server.start()
         logger.debug(
             f"Started inter-deployment gRPC server on port {self._internal_grpc_port}"
@@ -1762,6 +1784,25 @@ class Replica:
         # for the first time.
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - self._initialization_start_time
+
+    def _raise_if_multiplexing_with_direct_ingress(self):
+        """Reject model multiplexing on the ingress deployment under direct ingress.
+
+        Model multiplexing relies on the multiplexed model ID being propagated through
+        the proxy, which direct ingress bypasses (the model ID is never populated).
+
+        This runs after the user callable is initialized so it also catches
+        multiplexing that is wired up dynamically in the constructor (e.g.
+        `self._load_model = serve.multiplexed(...)(fn)`), which is invisible to the
+        static check performed at deploy time.
+        """
+        if self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
+                raise RuntimeError(
+                    "Model multiplexing (`@serve.multiplexed`) is not supported on the "
+                    "ingress deployment when direct ingress or HAProxy is enabled "
+                    "(RAY_SERVE_ENABLE_DIRECT_INGRESS)."
+                )
 
     async def initialize(
         self,
@@ -1781,10 +1822,12 @@ class Replica:
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
                 self._initialization_start_time = time.time()
-                if not self._user_callable_initialized:
+                is_first_init = not self._user_callable_initialized
+                if is_first_init:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
+                    self._raise_if_multiplexing_with_direct_ingress()
                     self._user_callable_wrapper.start_user_loop_watchdog(
                         self._event_loop
                     )
@@ -1825,6 +1868,16 @@ class Replica:
                         deployment_config.user_config,
                         rank=rank,
                     )
+
+                if is_first_init and RAY_SERVE_FREEZE_GC_ON_STARTUP:
+                    # User code initialization is complete, including the first
+                    # reconfigure call (if a user_config was provided). Collect
+                    # garbage and freeze the GC: startup objects are long-lived,
+                    # so excluding them from future GC scans reduces GC pauses
+                    # in the request path. Any allocations after this point
+                    # will be from user requests.
+                    gc.collect()
+                    gc.freeze()
 
             # A new replica should not be considered healthy until it passes
             # an initial health check. If an initial health check fails,
@@ -1934,6 +1987,36 @@ class Replica:
                 self._metrics_manager.dec_num_ongoing_requests(request_metadata)
         finally:
             self._semaphore.release()
+
+    @contextmanager
+    def _track_queued_request(self) -> Generator[Callable[[], None], None, None]:
+        """Count this request against max_queued_requests while it waits for a slot.
+
+        A direct-ingress request is queued from admission until it acquires an
+        ongoing-request slot. Use this as a `with` block around that wait.
+        Entering adds the request to the count. There are two ways it is removed.
+
+        1. The caller invokes the yielded callback once the slot is acquired, so
+           a running request does not keep occupying a queue slot.
+        2. The block exit removes it when the slot was never acquired, for
+           example a cancellation while the request is still queued.
+
+        The callback is idempotent, so both happening is safe and a cancelled
+        request cannot leak its count and wedge backpressure.
+        """
+        self._num_queued_requests += 1
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            if not released:
+                released = True
+                self._num_queued_requests -= 1
+
+        try:
+            yield release
+        finally:
+            release()
 
     async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
         """Wait until the minimum draining period has elapsed and no ongoing
@@ -2149,21 +2232,25 @@ class Replica:
             raise RuntimeError(err_msg)
 
         if self._ingress:
-            self._http_options, self._grpc_options = ray.get(
+            self._http_options, self._grpc_options, resolved_proxy_location = ray.get(
                 [
                     self._controller_handle.get_http_config.remote(),
                     self._controller_handle.get_grpc_config.remote(),
+                    self._controller_handle.get_proxy_location.remote(),
                 ]
             )
         else:
-            self._http_options = ray.get(
-                self._controller_handle.get_http_config.remote()
+            self._http_options, resolved_proxy_location = ray.get(
+                [
+                    self._controller_handle.get_http_config.remote(),
+                    self._controller_handle.get_proxy_location.remote(),
+                ]
             )
             self._grpc_options = None
 
         grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
-        # host=None normalizes to location Disabled in HTTPOptions.location_backfill_no_server.
-        http_enabled = self._http_options.location != ProxyLocation.Disabled
+        # HTTP ingress is enabled unless the resolved proxy placement is Disabled.
+        http_enabled = resolved_proxy_location != ProxyLocation.Disabled
 
         # Allocate and start HTTP server
         if http_enabled:
@@ -2536,10 +2623,13 @@ class Replica:
 
             result_gen = call_unary()
 
-        with self._wrap_request(request_metadata) as status_code_callback:
-            self._num_queued_requests += 1
+        with (
+            self._wrap_request(request_metadata) as status_code_callback,
+            self._track_queued_request() as release_queue_slot,
+        ):
             async with self._start_request(request_metadata):
-                self._num_queued_requests -= 1
+                # Acquired an ongoing-request slot, so it's running, not queued.
+                release_queue_slot()
 
                 # Use the generic disconnect/timeout detecting wrapper.
                 replica_response_generator = ReplicaResponseGenerator(
@@ -2794,7 +2884,7 @@ class Replica:
 
     def _determine_http_route(self, scope: Scope) -> str:
         # Default to route prefix for consistency with non-DI mode
-        route = self._route_prefix
+        route = self._route_prefix or ""
         if self._user_callable_asgi_app is not None:
             try:
                 matched_route = get_asgi_route_name(self._user_callable_asgi_app, scope)
@@ -2948,8 +3038,10 @@ class Replica:
         response_finished = False
         first_message_peeked = False
 
-        with self._wrap_request(request_metadata) as status_code_callback:
-            self._num_queued_requests += 1
+        with (
+            self._wrap_request(request_metadata) as status_code_callback,
+            self._track_queued_request() as release_queue_slot,
+        ):
 
             async def send_user_message(msg: Dict):
                 nonlocal response_started
@@ -2975,8 +3067,8 @@ class Replica:
 
             async def call_asgi():
                 async with self._start_request(request_metadata):
-                    self._num_queued_requests -= 1
-
+                    # Acquired an ongoing-request slot, so it's running, not queued.
+                    release_queue_slot()
                     if (
                         not self._user_callable_wrapper._run_user_code_in_separate_thread
                     ):
