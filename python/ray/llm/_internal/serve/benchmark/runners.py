@@ -562,6 +562,12 @@ async def run_rate_based_benchmark(
     stop_dispatching = asyncio.Event()
     all_done = asyncio.Event()
 
+    # The event loop only keeps a weak reference to a task, so a dispatched
+    # turn whose sole reference was the create_task() call below could be
+    # collected before it ever runs -- silently dropping that turn instead of
+    # raising, since `inflight` isn't incremented until the task starts.
+    _execute_turn_tasks: set[asyncio.Task] = set()
+
     total_slots = int(spec.request_rate * duration_s) if duration_s > 0 else 0
 
     # Two stacked progress bars: sent (top) chased by done (bottom).
@@ -751,7 +757,9 @@ async def run_rate_based_benchmark(
                 conv = _next_conv()
                 turn_idx = 0
 
-            asyncio.create_task(execute_turn(conv, turn_idx, http_session))
+            turn_task = asyncio.create_task(execute_turn(conv, turn_idx, http_session))
+            _execute_turn_tasks.add(turn_task)
+            turn_task.add_done_callback(_execute_turn_tasks.discard)
             pbar_sent.update(1)
             next_dispatch += interval_s
 
