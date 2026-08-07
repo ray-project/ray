@@ -1476,15 +1476,34 @@ async def test_dashboard_module_load(tmpdir):
     with pytest.raises(AssertionError):
         head._load_modules(modules_to_load=loaded_modules_expected)
 
+    # A requested-but-disabled subprocess module (is_enabled() is False, e.g. the
+    # flag-gated TaskEventsHead) is skipped, not treated as a load failure.
+    disabled_subprocess_modules = {
+        m.__name__
+        for m in dashboard_utils.get_all_modules(SubprocessModule)
+        if not m.is_enabled()
+    }
+    if disabled_subprocess_modules:
+        _, subprocess_module_handles = head._load_modules(
+            modules_to_load=disabled_subprocess_modules
+        )
+        assert len(subprocess_module_handles) == 0
+
     # Test the base case.
     # It is needed to pass assertion check from one of modules.
     gcs_client = MagicMock()
     _initialize_internal_kv(gcs_client)
+    # Mirror the loader, which skips modules whose is_enabled() is False (e.g. modules
+    # gated behind a feature flag such as TaskEventsHead / PlatformEventsHead).
     loaded_dashboard_head_modules_expected = {
-        m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
+        m.__name__
+        for m in dashboard_utils.get_all_modules(DashboardHeadModule)
+        if m.is_enabled()
     }
     loaded_subprocess_module_handles_expected = {
-        m.__name__ for m in dashboard_utils.get_all_modules(SubprocessModule)
+        m.__name__
+        for m in dashboard_utils.get_all_modules(SubprocessModule)
+        if m.is_enabled()
     }
     dashboard_head_modules, subprocess_module_handles = head._load_modules()
     assert {
