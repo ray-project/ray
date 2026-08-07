@@ -1,7 +1,14 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+import json
+import logging
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.train.v2._internal.constants import (
+    TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
+    TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
+)
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2._internal.util import requires_train_worker
 from ray.train.v2.api.context import TrainContext
@@ -10,13 +17,15 @@ from ray.train.v2.api.report_config import (
     CheckpointUploadMode,
 )
 from ray.train.v2.api.validation_config import ValidationTaskConfig
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
     from ray.train.v2.api.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="stable")
@@ -121,6 +130,34 @@ def report(
         )
         if validation:
             record_extra_usage_tag(TagKey.TRAIN_ASYNCHRONOUS_VALIDATION, "1")
+
+    # Emit a single rank-0 annotation marking this report on the Grafana train dashboards
+    try:
+        train_context = get_train_context()
+        if train_context.get_world_rank() == 0:
+            report_fields = {
+                "metrics": json.dumps(metrics, default=str),
+                "has_checkpoint": checkpoint is not None,
+                "validation": bool(validation),
+            }
+            if checkpoint is not None and checkpoint_dir_name is not None:
+                report_fields["checkpoint_dir_name"] = checkpoint_dir_name
+            if isinstance(validation, ValidationTaskConfig):
+                report_fields["validation_config"] = json.dumps(
+                    {
+                        "fn_kwargs": validation.fn_kwargs,
+                        "timeout_s": validation.timeout_s,
+                    },
+                    default=str,
+                )
+            train_context.annotation.annotate(
+                event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT, **report_fields
+            )
+    except Exception:
+        logger.info(
+            "Failed to emit `ray.train.report()` annotation. Continuing",
+            exc_info=True,
+        )
 
     get_train_fn_utils().report(
         metrics=metrics,
@@ -342,3 +379,84 @@ def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataItera
             world_rank=train_fn_utils.get_context().get_world_rank(),
         )
     )
+
+
+@DeveloperAPI
+@requires_train_worker(raise_in_tune_session=True)
+def annotate(
+    message: str,
+    severity: Literal["info", "warning", "error"] = "info",
+    rank_zero_only: bool = True,
+    **fields: Any,
+) -> None:
+    """Emit a custom annotation that can be visualized in Grafana.
+
+    This helps mark moments of interest (e.g. an evaluation completing, a
+    learning-rate change, or a phase transition) on the same timeline as your
+    training metrics. Rendering it as a point annotation on the Train Grafana
+    dashboard additionally requires the cluster operator to ship these log
+    lines to a log backend registered as a Grafana datasource, and to set
+    ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID`` and
+    ``RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR``.
+
+    You control what appears on the dashboard tooltip: the ``message`` is shown
+    as the annotation text and any ``**fields`` are shown together as a single
+    JSON tag. All custom annotations share one dashboard layer (they are emitted
+    under a fixed internal event name), colored by ``severity``.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray.train
+
+            def train_func(config):
+                for epoch in range(config["num_epochs"]):
+                    # Do training...
+                    ray.train.annotate(
+                        message=f"Finished epoch {epoch}",
+                        epoch=epoch,
+                        loss=loss,
+                    )
+
+    Args:
+        message: Human-readable description of the event, shown as the annotation
+            text/tooltip in Grafana. Emitted as the ``message`` field.
+        severity: Severity level for the event (``"info"``, ``"warning"``,
+            ``"error"``). Defaults to ``"info"``. This drives the annotation
+            color, since Grafana colors annotations per query/layer
+            (see :class:`Annotation`).
+        rank_zero_only: If ``True`` (the default), only the rank 0 worker emits
+            the annotation, producing a single point on the dashboard. If
+            ``False``, every worker emits its own annotation and carries
+            ``ray_train_worker_world_rank`` for LogQL to distinguish ranks.
+        **fields: Arbitrary additional key-value pairs to include in the emitted
+            JSON payload (e.g. ``epoch=3``, ``loss=0.1``). These are serialized
+            together into a single JSON string under the ``fields`` key, so they
+            are displayed as one JSON tag on the dashboard annotation. Because
+            ``fields`` parses as a single string label, individual keys within it
+            are not filterable in LogQL; filter on the reserved fields
+            (e.g. ``severity``) or the run/rank tags instead.
+    """
+    assert severity in ["info", "warning", "error"]
+
+    try:
+        train_context = get_train_context()
+        if rank_zero_only and train_context.get_world_rank() != 0:
+            return
+
+        annotation_fields = {"message": message}
+        if fields:
+            annotation_fields["fields"] = json.dumps(fields, default=str)
+
+        train_context.annotation.annotate(
+            event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
+            severity=severity,
+            **annotation_fields,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit the `ray.train.annotate()` annotation; continuing.",
+            exc_info=True,
+        )

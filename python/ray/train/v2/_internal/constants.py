@@ -162,3 +162,12 @@ def get_env_vars_to_propagate() -> Dict[str, str]:
         if env_set_by_user(env_var):
             env_vars[env_var] = os.environ[env_var]
     return env_vars
+
+
+# ---------------------------------
+# Ray Train Annotation constants
+# ---------------------------------
+TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
+TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE = "controller_state_change"
+TRAIN_ANNOTATION_RAY_TRAIN_REPORT = "ray.train.report"
+TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE = "ray.train.annotate"
