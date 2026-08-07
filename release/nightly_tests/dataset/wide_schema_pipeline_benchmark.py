@@ -2,7 +2,7 @@ import argparse
 from typing import Dict, Any
 
 import ray
-from benchmark import Benchmark
+from benchmark import Benchmark, collect_operator_metrics
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,6 +45,10 @@ def main(args: argparse.Namespace) -> None:
             "num_columns": actual_num_columns,
             "data_type": args.data_type,
             "input_path": input_path,
+            # Read-operator wall time + per-task USS/RSS (avg and worst task):
+            # isolates the parquet decode from downstream, and surfaces the
+            # per-worker memory the aggregate object-store peak can't see.
+            **collect_operator_metrics(ds),
         }
 
     # Run the timed benchmark
