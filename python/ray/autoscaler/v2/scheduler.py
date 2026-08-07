@@ -603,11 +603,8 @@ class SchedulingNode:
 
         # Sort the requests and try schedule them one by one.
         for r in requests:
-            if shape_keys is not None:
-                sk = shape_keys.get(id(r))
-                if sk is None:
-                    sk = r.SerializeToString(deterministic=True)
-            else:
+            sk = shape_keys.get(id(r)) if shape_keys is not None else None
+            if sk is None:
                 sk = r.SerializeToString(deterministic=True)
 
             if unfittable_cache.contains(sk):
