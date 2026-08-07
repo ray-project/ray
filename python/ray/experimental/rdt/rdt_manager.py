@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 # RDTMeta is a named tuple containing the source actor, tensor transport
 # backend, tensor metadata, and other information that needs to be recorded.
 # - The tensor transport backend is the backend used to transport the tensors.
@@ -262,6 +263,11 @@ class RDTManager:
                 self._monitor_failures_thread.join()
                 self._monitor_failures_shutdown_event.clear()
                 self._monitor_failures_thread = None
+        # NIC release is handled unconditionally in
+        # Worker.shutdown_rdt_manager (ray/_private/worker.py), not here:
+        # NIC acquisition can happen via NixlTensorTransport without ever
+        # creating an RDTManager, so hooking release to this class's
+        # lifecycle would miss that case.
 
     def start_monitor_thread_if_needed(self):
         with self._init_lock:
