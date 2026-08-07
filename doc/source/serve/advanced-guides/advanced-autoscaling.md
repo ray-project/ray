@@ -559,6 +559,41 @@ If you're using `@task_consumer` deployments for asynchronous inference, Ray Ser
 :::
 
 
+(serve-advanced-autoscaling-prometheus)=
+### Prometheus-based autoscaling
+
+To scale on a metric that already lives in Prometheus, such as queue depth, a custom application gauge, or request latency, mix [`PrometheusQueryMixin`](../api/doc/ray.serve.autoscaling_policy.PrometheusQueryMixin.rst) into a class-based policy. The mixin runs a background thread that evaluates your PromQL queries on a fixed interval and caches the scalar results. Your `__call__` reads `self.prometheus_metrics` and never blocks on the network. It returns the last cached values, or `None` when Prometheus is unset, unreachable, or the cache is stale.
+
+Configure the mixin through `policy_kwargs`:
+
+- `prometheus_address`: The Prometheus server as `host:port` or a full URL. Defaults to the `RAY_PROMETHEUS_HOST` environment variable, which Ray's dashboard and managed clusters already set, so the common case needs no address.
+- `prometheus_queries`: The PromQL expressions to evaluate. Each must resolve to a scalar or a single-sample instant vector.
+- `fetch_interval_s`: How often the background thread re-queries Prometheus. Defaults to `5.0`.
+- `cache_ttl_s`: How long a cached value stays valid. After this the read returns `None` until the next successful fetch. Defaults to `15.0`.
+
+`prometheus_autoscaling_policy.py` file:
+```{literalinclude} ../doc_code/prometheus_autoscaling_policy.py
+:language: python
+:start-after: __begin_prometheus_autoscaling_policy__
+:end-before: __end_prometheus_autoscaling_policy__
+```
+
+`main.py` file:
+```{literalinclude} ../doc_code/prometheus_autoscaling.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+:::{note}
+Step relative to `ctx.target_num_replicas`, not `ctx.current_num_replicas`. Serve compares the value your policy returns against the current target to pick a scaling direction, so stepping off the running count reads as a downscale while replicas are still starting up.
+:::
+
+:::{tip}
+For LLM deployments, Ray Serve LLM ships a built-in policy that uses this mixin to scale on vLLM's p99 time-to-first-token. See [Autoscaling on time-to-first-token](serve-llm-ttft-autoscaling).
+:::
+
+
 ### Application level autoscaling
 
 By default, each deployment in Ray Serve autoscales independently. When you have multiple deployments that need to scale in a coordinated way—such as deployments that share backend resources, have dependencies on each other, or need load-aware routing—you can define an **application-level autoscaling policy**. This policy makes scaling decisions for all deployments within an application simultaneously.

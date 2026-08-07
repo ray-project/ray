@@ -1,8 +1,14 @@
 import functools
+import json
 import logging
 import math
+import os
+import threading
 import time
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+import urllib.parse
+import urllib.request
+import weakref
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
@@ -357,3 +363,163 @@ def replica_queue_length_autoscaling_policy(
 
 
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
+
+
+# ---------------------------------------------------------------------------
+# Prometheus-backed autoscaling building blocks
+# ---------------------------------------------------------------------------
+
+DEFAULT_PROMETHEUS_FETCH_INTERVAL_S = 5.0
+DEFAULT_PROMETHEUS_CACHE_TTL_S = 15.0
+DEFAULT_PROMETHEUS_QUERY_TIMEOUT_S = 5.0
+
+
+def _normalize_query_url(address: str) -> str:
+    """Return the ``/api/v1/query`` URL for a Prometheus address.
+
+    Accepts ``host:port`` or ``http(s)://host:port``, and an address that
+    already ends in the query path.
+    """
+    address = address.rstrip("/")
+    if not address.startswith(("http://", "https://")):
+        address = f"http://{address}"
+    if address.endswith("/api/v1/query"):
+        return address
+    return f"{address}/api/v1/query"
+
+
+def _query_scalar(query_url: str, query: str, timeout_s: float) -> Optional[float]:
+    """Run one PromQL query and return its single finite scalar or None.
+
+    An autoscaling signal must resolve to one value, so only a single-sample
+    instant vector is accepted. Anything else is treated as no data.
+    """
+    url = query_url + "?" + urllib.parse.urlencode({"query": query})
+    with urllib.request.urlopen(url, timeout=timeout_s) as resp:
+        body = json.load(resp)
+    data = body.get("data", {})
+    result = data.get("result", [])
+    if data.get("resultType") != "vector" or len(result) != 1:
+        return None
+    value = float(result[0]["value"][1])
+    # Prometheus returns NaN or Inf for an empty range such as an idle
+    # histogram_quantile. Treat those as no data.
+    return value if math.isfinite(value) else None
+
+
+def _fetch_metrics(
+    address: str,
+    queries: List[str],
+    timeout_s: float = DEFAULT_PROMETHEUS_QUERY_TIMEOUT_S,
+) -> Dict[str, float]:
+    """Evaluate ``queries`` against ``address``, omitting no-data results.
+
+    Query or parse errors propagate to the caller (``_run_refresh``), which
+    logs and retries on the next interval, so the refresh thread survives.
+    """
+    query_url = _normalize_query_url(address)
+    out: Dict[str, float] = {}
+    for query in queries:
+        value = _query_scalar(query_url, query, timeout_s)
+        if value is not None:
+            out[query] = value
+    return out
+
+
+class _MetricCache:
+    """Shared state between a policy and its refresh thread.
+
+    Kept separate so the thread never holds a reference to the policy, which
+    lets the policy be garbage collected and its thread stopped on reconfig.
+    """
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.stop = threading.Event()
+        self.values: Optional[Dict[str, float]] = None
+        self.timestamp = 0.0
+
+
+def _run_refresh(
+    cache: _MetricCache, address: str, queries: List[str], interval_s: float
+) -> None:
+    while not cache.stop.is_set():
+        try:
+            values = _fetch_metrics(address, queries)
+            with cache.lock:
+                cache.values = values or None
+                cache.timestamp = time.monotonic()
+        except Exception:
+            logger.warning("Prometheus autoscaling fetch failed.", exc_info=True)
+        cache.stop.wait(interval_s)
+
+
+@PublicAPI(stability="alpha")
+class PrometheusQueryMixin:
+    """Keeps Prometheus query results fresh for an autoscaling policy.
+
+    Mix into a policy and read ``self.prometheus_metrics`` from ``__call__``.
+    The first read starts a daemon thread that evaluates the queries every
+    ``fetch_interval_s`` and caches the scalars. Reads never block on the
+    network and return ``None`` when Prometheus is unset, unreachable, or the
+    cache is older than ``cache_ttl_s``.
+
+    ``prometheus_address`` defaults to the ``RAY_PROMETHEUS_HOST`` environment
+    variable, which Ray's dashboard and managed clusters already set, so the
+    common case needs no address.
+    """
+
+    def __init__(
+        self,
+        *,
+        prometheus_address: Optional[str] = None,
+        prometheus_queries: Optional[List[str]] = None,
+        fetch_interval_s: float = DEFAULT_PROMETHEUS_FETCH_INTERVAL_S,
+        cache_ttl_s: float = DEFAULT_PROMETHEUS_CACHE_TTL_S,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self._prometheus_address = prometheus_address or os.environ.get(
+            "RAY_PROMETHEUS_HOST"
+        )
+        if isinstance(prometheus_queries, str):
+            prometheus_queries = [prometheus_queries]
+        self._prometheus_queries = list(prometheus_queries or [])
+        self._fetch_interval_s = fetch_interval_s
+        self._cache_ttl_s = cache_ttl_s
+        self._cache = _MetricCache()
+        self._started = False
+
+    def _ensure_refreshing(self) -> None:
+        if self._started:
+            return
+        self._started = True
+        if not (self._prometheus_address and self._prometheus_queries):
+            return
+        cache = self._cache
+        threading.Thread(
+            target=_run_refresh,
+            args=(
+                cache,
+                self._prometheus_address,
+                self._prometheus_queries,
+                self._fetch_interval_s,
+            ),
+            name="serve-prometheus-autoscaling-fetch",
+            daemon=True,
+        ).start()
+        # Stop the thread once this policy is garbage collected, e.g. when it
+        # is replaced on a config change.
+        weakref.finalize(self, cache.stop.set)
+
+    @property
+    def prometheus_metrics(self) -> Optional[Dict[str, float]]:
+        """Latest cached query results, or None if unavailable or stale."""
+        self._ensure_refreshing()
+        cache = self._cache
+        with cache.lock:
+            if cache.values is None:
+                return None
+            if time.monotonic() - cache.timestamp > self._cache_ttl_s:
+                return None
+            return dict(cache.values)
