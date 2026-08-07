@@ -38,6 +38,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/asio:periodical_runner",
+        "//src/ray/common/monitors:cpu_monitor_utils",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/raylet:worker",
         "//src/ray/raylet:worker_pool",
