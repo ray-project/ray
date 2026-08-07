@@ -65,6 +65,26 @@ logger = logging.getLogger(__name__)
 KILLED_PROCESS_REAP_TIMEOUT_SECONDS = 30
 
 
+def _is_path_within_resolved(path: str, directory: str) -> bool:
+    """Return whether an existing path is physically within a directory."""
+    path = os.path.realpath(path)
+    directory = os.path.realpath(directory)
+
+    while True:
+        try:
+            if os.path.samefile(path, directory):
+                return True
+        except (OSError, ValueError):
+            # Fall back for filesystems where samefile is unavailable. normcase
+            # handles case-insensitive path comparison on Windows.
+            return is_path_within(os.path.normcase(path), os.path.normcase(directory))
+
+        parent = os.path.dirname(path)
+        if parent == path:
+            return False
+        path = parent
+
+
 class Node:
     """An encapsulation of the Ray processes on a single node.
 
@@ -819,11 +839,24 @@ class Node:
 
         Args:
             default_logs_dir: The session_dir/logs path to create the symlink at.
+
+        Returns:
+            None.
         """
-        if is_path_within(self._session_dir, self._logs_dir):
+        if _is_path_within_resolved(self._session_dir, self._logs_dir):
             # The symlink would resolve to one of its own ancestors, so walking
             # the logs directory recursively would never terminate. Log
             # shippers commonly do exactly that.
+            if os.path.islink(default_logs_dir):
+                try:
+                    os.remove(default_logs_dir)
+                except OSError:
+                    logger.warning(
+                        "Failed to remove the existing %s compatibility symlink. "
+                        "It may remain self-referential.",
+                        default_logs_dir,
+                        exc_info=True,
+                    )
             logger.warning(
                 "Not creating the %s compatibility symlink because the "
                 "configured logs directory %s contains the session directory, "
