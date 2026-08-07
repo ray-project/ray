@@ -22,7 +22,7 @@ class SandboxRuntime:
         cpu: float = 0.0,
         memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
-        work_dir: str = "/workspace",
+        workdir: Optional[str] = None,
         ttl_seconds: Optional[int] = 3600,
         labels: Optional[Dict[str, str]] = None,
         timeout_seconds: float = 30.0,
@@ -39,8 +39,9 @@ class SandboxRuntime:
             cpu: Number of CPU cores allocated to the sandbox.
             memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
             env: Environment variables to inject into the sandbox.
-            work_dir: Default working directory inside the sandbox. Note that the
-                working directory is the only writable path in the sandbox.
+            workdir: Default working directory inside the sandbox. Note that the
+                working directory is the only writable path in the sandbox. If not provided,
+                the container's WORKDIR is used.
             ttl_seconds: Optional automatic cleanup time-to-live in seconds.
             labels: Optional key-value metadata labels for tracking.
             timeout_seconds: Timeout in seconds for sandbox creation.
@@ -58,7 +59,7 @@ class SandboxRuntime:
             cpu=cpu,
             memory=memory,
             env=env or {},
-            work_dir=work_dir,
+            workdir=workdir,
             ttl_seconds=ttl_seconds,
             labels=labels or {},
             timeout_seconds=timeout_seconds,

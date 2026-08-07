@@ -24,14 +24,12 @@ class ExecResult:
         stdout: Standard output text string.
         stderr: Standard error text string.
         duration_seconds: Command execution time in seconds.
-        truncated: True if stdout or stderr was truncated.
     """
 
     exit_code: int
     stdout: str
     stderr: str
     duration_seconds: float
-    truncated: bool = False
 
     @property
     def duration_ms(self) -> float:

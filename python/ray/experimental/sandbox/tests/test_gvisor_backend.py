@@ -16,13 +16,13 @@ def test_gvisor_backend_local_lifecycle_and_file_ops():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
         image="busybox:latest",
-        work_dir="/workspace",
+        workdir="/workspace",
         cpu=1.0,
         memory="512Mi",
     )
 
     sandbox_id = backend.create_sandbox(config)
-    assert sandbox_id.startswith("ray-sb-gvisor-")
+    assert sandbox_id.startswith("ray-sandbox-")
     assert sandbox_id in backend._sandbox_metadata
     assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
 
@@ -49,7 +49,7 @@ def test_gvisor_backend_not_found():
 
 
 def test_create_sandbox_helper():
-    sb = create("busybox:latest", work_dir="/workspace")
+    sb = create("busybox:latest", workdir="/workspace")
     assert isinstance(sb, SandboxHandle)
     res = sb.exec("echo 'Process isolation'")
     assert res.exit_code == 0
@@ -62,11 +62,11 @@ def test_gvisor_backend_container_image_support():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
         image="busybox:latest",
-        work_dir="/workspace",
+        workdir="/workspace",
     )
     sandbox_id = backend.create_sandbox(config)
     try:
-        assert sandbox_id.startswith("ray-sb-gvisor-")
+        assert sandbox_id.startswith("ray-sandbox-")
         assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
 
         extracted_dir = "/tmp/ray/sandbox/images/busybox_latest"
@@ -88,11 +88,11 @@ def test_gvisor_backend_image_required():
     with pytest.raises((TypeError, ValueError)):
         GVisorSandboxConfig(
             image=None,
-            work_dir="/workspace",
+            workdir="/workspace",
         )
     with pytest.raises((TypeError, ValueError)):
         GVisorSandboxConfig(
-            work_dir="/workspace",
+            workdir="/workspace",
         )
 
 
@@ -100,7 +100,7 @@ def test_gvisor_backend_invalid_image():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
         image="nonexistent_invalid_image_12345:latest",
-        work_dir="/workspace",
+        workdir="/workspace",
     )
     with pytest.raises(SandboxCreationError):
         backend.create_sandbox(config)
@@ -109,10 +109,10 @@ def test_gvisor_backend_invalid_image():
 def test_gvisor_backend_container_image_overlay_isolation():
     backend = GVisorSandboxBackend()
     cfg1 = GVisorSandboxConfig(
-        image="busybox:latest", work_dir="/workspace", readonly=False
+        image="busybox:latest", workdir="/workspace", readonly=False
     )
     cfg2 = GVisorSandboxConfig(
-        image="busybox:latest", work_dir="/workspace", readonly=False
+        image="busybox:latest", workdir="/workspace", readonly=False
     )
 
     sb1 = backend.create_sandbox(cfg1)
@@ -149,7 +149,7 @@ def test_gvisor_backend_container_image_overlay_isolation():
 
     # A newly created SB3 should not see /overlay_test.txt
     cfg3 = GVisorSandboxConfig(
-        image="busybox:latest", work_dir="/workspace", readonly=False
+        image="busybox:latest", workdir="/workspace", readonly=False
     )
     sb3 = backend.create_sandbox(cfg3)
     try:
@@ -164,7 +164,7 @@ def test_gvisor_backend_readonly_rootfs():
     # Default is readonly=True
     cfg = GVisorSandboxConfig(
         image="busybox:latest",
-        work_dir="/workspace",
+        workdir="/workspace",
     )
     assert cfg.readonly is True
     sandbox_id = backend.create_sandbox(cfg)

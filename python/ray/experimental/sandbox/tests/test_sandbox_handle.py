@@ -10,8 +10,8 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 
 def test_sandbox_runtime_interface(tmp_path):
     rt = SandboxRuntime()
-    instance_id = rt.create(image="busybox:latest", work_dir="/workspace")
-    assert instance_id.startswith("ray-sb-gvisor-")
+    instance_id = rt.create(image="busybox:latest", workdir="/workspace")
+    assert instance_id.startswith("ray-sandbox-")
 
     res = rt.exec(instance_id, "echo 'Hello world'")
     assert res.exit_code == 0
@@ -35,9 +35,9 @@ def test_sandbox_actor_wrapper():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
-    actor = Sandbox.remote(image="busybox:latest", work_dir="/workspace")
+    actor = Sandbox.remote(image="busybox:latest", workdir="/workspace")
     instance_id = ray.get(actor.get_instance_id.remote())
-    assert instance_id.startswith("ray-sb-gvisor-")
+    assert instance_id.startswith("ray-sandbox-")
 
     res = ray.get(actor.exec.remote("echo hi"))
     assert res.exit_code == 0
@@ -105,7 +105,7 @@ def test_custom_sandbox_actor_with_sandbox_runtime():
         def __init__(self):
             self.runtime = SandboxRuntime()
             self.instance_id = self.runtime.create(
-                image="busybox:latest", work_dir="/workspace"
+                image="busybox:latest", workdir="/workspace"
             )
 
         def exec(self, command, timeout=None, env=None):
@@ -133,9 +133,9 @@ def test_ray_remote_sandbox_runtime():
     rt_actor = remote_rt_cls.remote()
 
     instance_id = ray.get(
-        rt_actor.create.remote(image="busybox:latest", work_dir="/workspace")
+        rt_actor.create.remote(image="busybox:latest", workdir="/workspace")
     )
-    assert instance_id.startswith("ray-sb-gvisor-")
+    assert instance_id.startswith("ray-sandbox-")
 
     res = ray.get(rt_actor.exec.remote(instance_id, "echo 'Hello remote runtime'"))
     assert res.exit_code == 0
@@ -150,7 +150,7 @@ def test_sandbox_actor_resource_translation():
         ray.init(ignore_reinit_error=True)
 
     actor = Sandbox.options(num_cpus=2.0).remote(
-        image="busybox:latest", cpu=2.0, work_dir="/workspace"
+        image="busybox:latest", cpu=2.0, workdir="/workspace"
     )
 
     ret_config = ray.get(actor.get_config.remote())
@@ -164,15 +164,15 @@ def test_sandbox_runtime_create_variants():
     rt = SandboxRuntime()
 
     # Pass image as positional arg
-    id1 = rt.create("busybox:latest", work_dir="/workspace")
-    assert id1.startswith("ray-sb-gvisor-")
+    id1 = rt.create("busybox:latest", workdir="/workspace")
+    assert id1.startswith("ray-sandbox-")
     rt.delete(id1)
 
     # Pass image as keyword arg
-    id2 = rt.create(image="busybox:latest", work_dir="/workspace")
-    assert id2.startswith("ray-sb-gvisor-")
+    id2 = rt.create(image="busybox:latest", workdir="/workspace")
+    assert id2.startswith("ray-sandbox-")
     rt.delete(id2)
 
     # Missing image should raise TypeError
     with pytest.raises(TypeError):
-        rt.create(work_dir="/workspace", cpu=1.0)
+        rt.create(workdir="/workspace", cpu=1.0)
