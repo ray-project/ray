@@ -141,6 +141,37 @@ class TestNullsAreNeverExactSurvivors:
         assert all(rg.fully_matched for rg in chunks.row_groups)
         assert sum(rg.num_rows for rg in chunks.row_groups) == 4
 
+    @pytest.mark.parametrize(
+        "column", ["id", "sepal.length"], ids=["plain", "dotted-flat-name"]
+    )
+    def test_guard_applies_to_dotted_flat_column_names(self, tmp_path, column):
+        """A flat column's *name* may contain dots -- ``sepal.length`` is real.
+
+        Matching a leaf by its first dot-separated segment gets nested columns
+        right and this case silently wrong: the guard finds no matching leaf,
+        concludes "no nulls", and the group is marked fully matched.
+        """
+        path, size = _write(
+            tmp_path / "dotted.parquet",
+            pa.table({column: pa.array([35, 40, 45, None], pa.int64())}),
+            row_group_size=4,
+        )
+        reader = _reader(filter_expr=col(column) >= 30)
+
+        assert reader._has_filter_nulls(pq.ParquetFile(path).metadata, 0)
+
+    def test_unlocatable_predicate_column_fails_closed(self, tmp_path):
+        """Not finding a predicate column means unverified, not null-free."""
+        path, _ = _write(
+            tmp_path / "missing.parquet",
+            pa.table({"id": pa.array([35, 40, 45, 50], pa.int64())}),
+            row_group_size=4,
+        )
+        reader = _reader(filter_expr=col("id") >= 30)
+        reader.filter_columns = {"id", "not_in_this_file"}
+
+        assert reader._has_filter_nulls(pq.ParquetFile(path).metadata, 0)
+
     def test_survives_a_sharper_statistics_pruner(self, tmp_path):
         """Correctness must not rest on PyArrow declining to prune.
 

@@ -32,6 +32,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _leaf_matches(leaf_path: str, names: Set[str]) -> bool:
+    """Whether a Parquet leaf belongs to any of ``names``.
+
+    A leaf matches a name outright (a flat column, whose *name* may itself
+    contain dots -- ``sepal.length`` is a real one), or as a descendant of it
+    (``outer.a`` under ``outer``). Splitting the leaf on ``.`` and comparing the
+    first segment gets the nested case right and the dotted-flat-name case
+    silently wrong, so match the whole path first. Same rule as
+    ``_estimate_batch_size_from_metadata`` in ``parquet_file_reader``.
+    """
+    return any(leaf_path == name or leaf_path.startswith(f"{name}.") for name in names)
+
+
 class FooterReader:
     """Reads Parquet footers and chunks files into row-group runs.
 
@@ -64,7 +77,6 @@ class FooterReader:
         # Match Arrow's process-wide pools to the actor's IO concurrency so
         # nested S3/footer work isn't bottlenecked on the default 8 threads.
         pa.set_io_thread_count(io_concurrency)
-        pa.set_cpu_count(io_concurrency)
         # Lower the Ray Data predicate to a native PyArrow compute expression once
         # (per actor) so it can be pushed into split_by_row_group for row-group
         # pruning. ``None`` means "no predicate" -> keep every row group.
@@ -96,8 +108,7 @@ class FooterReader:
         return [
             j
             for j in range(row_group.num_columns)
-            if row_group.column(j).path_in_schema.split(".", 1)[0]
-            in self.projected_cols
+            if _leaf_matches(row_group.column(j).path_in_schema, self.projected_cols)
         ]
 
     def _row_group_info(
@@ -134,14 +145,25 @@ class FooterReader:
         nulls", i.e. not fully matched -- the safe direction.
         """
         row_group = metadata.row_group(rg_idx)
+        matched: Set[str] = set()
         for j in range(row_group.num_columns):
             column = row_group.column(j)
-            if column.path_in_schema.split(".", 1)[0] not in self.filter_columns:
+            if not _leaf_matches(column.path_in_schema, self.filter_columns):
                 continue
+            matched.update(
+                name
+                for name in self.filter_columns
+                if column.path_in_schema == name
+                or column.path_in_schema.startswith(f"{name}.")
+            )
             stats = column.statistics
             if stats is None or not stats.has_null_count or stats.null_count > 0:
                 return True
-        return False
+        # Fail closed on any predicate column we could not locate in the
+        # footer. "No leaf matched" means we did not verify it, not that it is
+        # null-free -- and treating it as null-free is what lets a partial
+        # survivor count as exact.
+        return matched != self.filter_columns
 
     def _read_and_chunk(self, path: str, size: int) -> FileChunks:
         fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
