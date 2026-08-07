@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import pytest
 
@@ -99,3 +100,7 @@ def test_image_uri_plugin_constructor_type_error_is_not_hidden():
             "/var/log/ray",
             logging.getLogger(__name__),
         )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

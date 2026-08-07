@@ -22,3 +22,7 @@ def test_link_default_logs_dir_removes_stale_symlink(tmp_path):
     node._link_default_logs_dir(str(default_logs_dir))
 
     assert not os.path.lexists(default_logs_dir)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-vv", __file__]))
