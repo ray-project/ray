@@ -82,9 +82,9 @@ Narrative documentation and images don't block premerge. A PR that changes only 
 
 Three lints run on every PR whatever you changed: a README check, a ban on newly added `.rst` files, since new pages must be MyST Markdown, and a documentation style linter.
 
-### Skipping example tests with the docs-go label
+### Skipping example tests with the `docs-go` label
 
-Adding the `docs-go` label skips the per-library docs example steps. It's for a content-only PR where executing the examples adds nothing.
+Adding the `docs-go` label skips the per-library docs example steps. It's optional. Reach for it on a content-only PR where executing the examples adds nothing and you don't want to wait on them. Like the `go` label, it requires write access, so an external contributor asks a reviewer to add it.
 
 A guard step, `lint: validate docs-go scope`, bounds what the label can skip. It runs whenever the label is present and fails unless the PR changes only content under `doc/`. So the label skips example tests on a prose change but never on a code, CI, or build change. The API surface checks ignore the label by design, since an API reference page edit is exactly the content-only change they need to cover.
 
@@ -131,7 +131,7 @@ PYTHONPATH="$(pwd)" python doc/source/api_autogen.py
 PYTHONPATH="$(pwd)" python ci/ray_ci/doc/cmd_check_api_discrepancy.py "$(pwd)" serve
 ```
 
-Pass a single team (`core`, `data`, `serve`, `train`, `tune`, `rllib`) to check one surface, or pass `ALL` or omit the argument to check every team. These team names don't line up with the docs example test steps above, so two cases need translating: the `ml` step covers `train` and `tune`, which the check treats as separate teams, and there's no `llm` team at all, because `ray.data.llm` is walked under `data` and `ray.serve.llm` under `serve`. Two things only happen on the full pass. Every team after `core` depends on `core` running first, and the cross-team guard that catches annotated public subpackages no team's walk reaches runs at the end. Run without a team argument before you trust a green result.
+Pass a single team (`core`, `data`, `serve`, `train`, `tune`, `rllib`) to check one surface, or pass `ALL` or omit the argument to check every team. These team names don't line up with the steps in [Per-library docs example tests](#per-library-docs-example-tests), so two cases need translating: the `ml` step covers `train` and `tune`, which the check treats as separate teams, and there's no `llm` team at all, since the check walks `ray.data.llm` under `data` and `ray.serve.llm` under `serve`. Two things only happen on the full pass. Every team after `core` depends on `core` running first, and the cross-team guard that catches annotated public subpackages no team's walk reaches runs at the end. Run without a team argument before you trust a green result.
 
 A bare Ray wheel doesn't pull in `pandas`, so locally the check mocks it where CI walks it for real. Install `pandas` in the virtual environment when you're checking the `data` team.
 
