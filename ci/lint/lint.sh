@@ -47,34 +47,6 @@ pre_commit() {
   done
 }
 
-# The subset of the pre_commit hooks above that reaches Markdown and
-# reStructuredText. Cross-referencing the `files` and `types` filters in
-# .pre-commit-config.yaml, exactly these three have no filter and so apply to
-# prose; every other hook in the list is scoped to Python, C++, BUILD files,
-# TS/TSX, or shell. (prettier is `files: doc/` but `types: [javascript, ts,
-# tsx, html, css]`, so it does not touch prose either.)
-#
-# This exists so a documentation-prose pull request keeps whitespace and
-# end-of-file checking without paying for the full pre_commit step. That step
-# runs 23 hooks serially, each with --all-files, which makes its cost
-# independent of the diff: it took 443s on a one-file Markdown change.
-#
-# Prose style linting is not here; `documentation_style` runs vale directly via
-# ci/lint/check-documentation-style.sh as its own step.
-pre_commit_docs() {
-  pip install -c python/requirements_compiled.txt pre-commit
-
-  HOOKS=(
-    trailing-whitespace
-    end-of-file-fixer
-    check-added-large-files
-  )
-
-  for HOOK in "${HOOKS[@]}"; do
-    pre-commit run "$HOOK" --all-files --show-diff-on-failure
-  done
-}
-
 pre_commit_pydoclint() {
   # Run pre-commit pydoclint on all files
   pip install -c python/requirements_compiled.txt pre-commit clang-format

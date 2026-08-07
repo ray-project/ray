@@ -6,6 +6,12 @@ group: lint
 steps:
   # Lint checks a Markdown or reStructuredText change can actually fail. These
   # keep `always`, so they run on every pull request.
+  #
+  # The pre-commit whitespace and end-of-file hooks are deliberately not here.
+  # `.pre-commit-config.yaml` excludes `doc/source/` globally, so those hooks
+  # cannot see the prose a documentation change actually touches; a step
+  # running them would be theater. Removing that exclude is worth doing, but
+  # it is a separate change with a large mechanical diff.
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small-prose
     tags:
@@ -20,7 +26,6 @@ steps:
       - doc_readme
       - documentation_style
       - doc_no_new_rst
-      - pre_commit_docs
 
   # Code-oriented lint checks. These carry `lint` without `always`, so they are
   # filtered out when every changed file is documentation prose. Selects and

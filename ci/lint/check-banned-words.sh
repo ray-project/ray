@@ -9,6 +9,10 @@
 # formats too. New pages under doc/source/ must be MyST Markdown (see
 # doc/test_no_new_rst.py), so .rst alone leaves the format most new prose is
 # written in unchecked.
+#
+# `git grep` rather than `grep -R`: it searches only tracked files, so it can't
+# be slowed down by `bazel-*` symlinks (which `-R`, unlike `-r`, follows) or
+# produce false positives from an untracked virtualenv in the working tree.
 
 set -uo pipefail
 
@@ -17,12 +21,7 @@ BANNED_WORDS="RLLib Rllib Kuberay"
 echo "Checking for common mis-spellings..."
 found=0
 for word in $BANNED_WORDS; do
-    if grep -R \
-        --include="*.py" \
-        --include="*.rst" \
-        --include="*.md" \
-        --include="*.ipynb" \
-        "$word" .; then
+    if git grep -I -n "$word" -- '*.py' '*.rst' '*.md' '*.ipynb'; then
         echo "******************************"
         echo "*** Misspelled word found! ***"
         echo "******************************"
