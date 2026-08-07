@@ -115,6 +115,9 @@ DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 # torchft lighthouse address
 TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
 
+# PyTorch flight recorder trace buffer size
+TORCH_NCCL_TRACE_BUFFER_SIZE_ENV_VAR = "TORCH_NCCL_TRACE_BUFFER_SIZE"
+
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
 ENV_VARS_TO_PROPAGATE = {
@@ -132,6 +135,7 @@ ENV_VARS_TO_PROPAGATE = {
     STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
     RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
     TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR,
+    TORCH_NCCL_TRACE_BUFFER_SIZE_ENV_VAR,
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     PREEMPTION_POLL_INTERVAL_S_ENV_VAR,
 }
@@ -143,6 +147,33 @@ ENV_VARS_TO_PROPAGATE = {
 
 # The environment variable to enable the Ray Train Metrics.
 METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
+
+# ------------------------------------------------------------
+# Nvidia Hang Detector
+# ------------------------------------------------------------
+
+# Opt-in feature flag for the NCCL RAS hang detector callback. Default-off
+ENABLE_NV_HANG_DETECTOR_ENV_VAR = "RAY_TRAIN_ENABLE_NV_HANG_DETECTOR"
+# Path to the `ncclras` client binary
+NCCLRAS_BINARY_PATH_ENV_VAR = "RAY_TRAIN_NCCLRAS_PATH"
+DEFAULT_NCCLRAS_BINARY_PATH = "ncclras"
+# NCCL's standard RAS listen address (``host:port``, default localhost:28028).
+NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
+
+# How frequently (seconds) to query the NCCL RAS subsystem on a worker
+NCCL_RAS_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_POLL_INTERVAL_S"
+DEFAULT_NCCL_RAS_POLL_INTERVAL_S: float = 15.0
+# How long (seconds of wall-clock time) a communicator must stay frozen before the detector acts.
+NCCL_RAS_CONFIRM_WINDOW_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_CONFIRM_WINDOW_S"
+DEFAULT_NCCL_RAS_CONFIRM_WINDOW_S: float = 600.0
+
+# Action to take on a confirmed hang.
+#  * "fail" captures diagnostics then raises a terminal (non-retryable) NCCLHangError.
+#  * "observe" only logs the confirmation and captures diagnostics without failing the run.
+NCCL_RAS_ACTION_ENV_VAR = "RAY_TRAIN_NCCL_RAS_ACTION"
+NCCL_RAS_ACTION_FAIL = "fail"
+NCCL_RAS_ACTION_OBSERVE = "observe"
+DEFAULT_NCCL_RAS_ACTION = NCCL_RAS_ACTION_OBSERVE
 
 
 def is_v2_enabled() -> bool:
