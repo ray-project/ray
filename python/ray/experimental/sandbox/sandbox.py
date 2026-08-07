@@ -223,5 +223,11 @@ class SandboxHandle:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.delete()
 
+    async def __aenter__(self) -> "SandboxHandle":
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.delete_async()
+
     def __repr__(self) -> str:
         return f"SandboxHandle(id='{self.instance_id}')"
