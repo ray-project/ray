@@ -4927,8 +4927,9 @@ void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
     }
     absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
         free_pending_.find(node_id);
-    if (it == free_pending_.end() || it->second.empty()) {
-      // Nothing queued for this node (an entry is erased as soon as it drains).
+    if (it == free_pending_.end()) {
+      // No queue for this node; an entry is erased as soon as its queue drains, so
+      // a present entry is always non-empty.
       return;
     }
     std::deque<ObjectID> &queue = it->second;
