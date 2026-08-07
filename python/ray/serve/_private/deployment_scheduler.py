@@ -1289,18 +1289,28 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         ordered_running_replicas_of_target_deployment: Dict[
             str, List[ReplicaID]
         ] = defaultdict(list)
-        for replica_id, replica_node_id in ordered_running_replicas:
+        # Rank each node by the most recently started replica of the target
+        # deployment it hosts (rank 0 = hosts the newest replica), so that
+        # nodes tied on the priorities below drain their recently scaled-up
+        # replicas first instead of older, better-placed ones.
+        node_newest_replica_rank: Dict[str, int] = {}
+        for rank, (replica_id, replica_node_id) in enumerate(ordered_running_replicas):
             ordered_running_replicas_of_target_deployment[replica_node_id].append(
                 replica_id
             )
+            if replica_node_id not in node_newest_replica_rank:
+                node_newest_replica_rank[replica_node_id] = rank
+
+        num_ordered_replicas = len(ordered_running_replicas)
 
         # Prioritize based on following priority:
         # 1. Prioritize replicas not on the head node because we can't relinquish the head node.
         # 2. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
         # 3. Prioritize replicas on nodes with fewer total replicas so we can relinquish them.
+        # 4. Break ties in favor of nodes hosting more recently started replicas.
         def scale_down_priority(
             node_and_replicas: Tuple[str, Set[ReplicaID]],
-        ) -> Tuple[int, int, int]:
+        ) -> Tuple[int, int, int, int]:
             node_id, all_replicas = node_and_replicas
             node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
             match_labels = not labels_to_check or any(
@@ -1308,7 +1318,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 for labels in labels_to_check
             )
             is_head_node = node_id == self._head_node_id
-            return int(is_head_node), int(match_labels), len(all_replicas)
+            return (
+                int(is_head_node),
+                int(match_labels),
+                len(all_replicas),
+                node_newest_replica_rank.get(node_id, num_ordered_replicas),
+            )
 
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=scale_down_priority
