@@ -2,16 +2,7 @@
 
 import logging
 
-import ray
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    DEFAULT_KV_INDEXER_THREADS,
-    KV_INDEXER_THREADS_KEY,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_actor import (
-    KV_ROUTER_ACTOR_NAME,
-    KVRouterActor,
-)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
@@ -19,7 +10,6 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve.config import DeploymentActorConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -30,8 +20,10 @@ def _maybe_setup_kv_aware_routing(
     """Set up KV-aware routing when the deployment's request router is a
     KVAwareRouter.
 
-    Attaches the KVRouterActor, which owns the deployment's global KV radix
-    tree, and enables the engine KV events that feed it.
+    The KVTokenTracker that owns the deployment's global KV radix tree is built
+    inside the LLMRouter ingress replica (see core/ingress/router.py and
+    kv_aware/kv_token_tracker.py), so nothing is attached here; this only enables
+    the engine KV events that feed it.
     """
     if not is_kv_aware(llm_config):
         if llm_config.engine_kwargs.get("kv_events_config") is not None:
@@ -47,20 +39,6 @@ def _maybe_setup_kv_aware_routing(
     # with the router resolved here from the merged deployment options.
     llm_config.deployment_config["request_router_config"] = deployment_options[
         "request_router_config"
-    ]
-
-    deployment_options["deployment_actors"] = [
-        *deployment_options.get("deployment_actors", []),
-        DeploymentActorConfig(
-            name=KV_ROUTER_ACTOR_NAME,
-            actor_class=ray.remote(KVRouterActor),
-            actor_options={"num_cpus": 0},
-            init_kwargs={
-                "indexer_threads": llm_config.experimental_configs.get(
-                    KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
-                ),
-            },
-        ),
     ]
 
     configure_kv_events_for_kv_routing(llm_config)

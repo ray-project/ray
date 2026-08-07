@@ -30,10 +30,7 @@ from ray.data.collate_fn import (
     DefaultCollateFn,
     NumpyBatchCollateFn,
     PandasBatchCollateFn,
-    TensorBatchReturnType,
-    TensorBatchType,
     _PinMemoryCollateFnWrapper,
-    is_tensor_batch_type,
 )
 from ray.data.context import DataContext
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
@@ -44,6 +41,7 @@ if TYPE_CHECKING:
     import torch
 
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.utils.torch_utils import FinalizeFn
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
@@ -526,7 +524,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over Torch Tensor batches.
         """
-        from torch import device as torch_device
+        import torch
 
         from ray.train.torch import get_device
         from ray.train.utils import _in_ray_train_worker
@@ -542,36 +540,14 @@ class DataIterator(abc.ABC):
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
-        device = torch_device(device)
-
-        from ray.data.util.torch_utils import (
-            move_tensors_to_device,
-        )
-
-        # The default finalize_fn handles the host to device data transfer.
-        # This is executed in a 1-thread pool separately from collate_fn
-        # to allow independent parallelism of these steps.
-        def default_finalize_fn(
-            batch: TensorBatchType,
-        ) -> Union[TensorBatchReturnType, Any]:
-            """Default finalize function for moving PyTorch tensors to device. If
-            batch is of type `TensorBatchType`, it will be automatically moved to the
-            target device. For other types, you must handle device transfer
-            manually in your training loop.
-
-            Args:
-                batch: Input batch to move to device.
-
-            Returns:
-                Batch with tensors moved to the target device.
-                - If input is TensorBatchType, returns tensors moved to device
-                - Otherwise returns the same type as input without moving tensors
-                to device.
-            """
-            if is_tensor_batch_type(batch):
-                return move_tensors_to_device(batch, device=device)
-            else:
-                return batch
+        device = torch.device(device)
+        if torch.cuda.is_available() and device.type == "cuda" and device.index is None:
+            # "cuda" without an index is thread-relative: it resolves to the
+            # calling thread's *current* CUDA device. finalize_fn runs on a
+            # background fetch thread, so the device on the finalize thread
+            # and consumer thread might be different. Pin the device to a
+            # concrete index here.
+            device = torch.device("cuda", torch.cuda.current_device())
 
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
@@ -622,8 +598,13 @@ class DataIterator(abc.ABC):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
-            _finalize_fn=default_finalize_fn,
+            _finalize_fn=self._get_finalize_fn(device=device),
         )
+
+    def _get_finalize_fn(self, *, device: "torch.device") -> "FinalizeFn":
+        from ray.data._internal.utils.torch_utils import DefaultFinalizeFn
+
+        return DefaultFinalizeFn(device)
 
     def iter_tf_batches(
         self,

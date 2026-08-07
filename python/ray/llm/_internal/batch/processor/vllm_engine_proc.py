@@ -201,7 +201,7 @@ def build_vllm_engine_processor(
 
     # Resolve and build ChatTemplateStage if enabled
     chat_template_stage_cfg = resolve_stage_config(
-        getattr(config, "chat_template_stage", config.apply_chat_template),
+        config.chat_template_stage,
         ChatTemplateStageConfig,
         processor_defaults,
     )
@@ -210,9 +210,7 @@ def build_vllm_engine_processor(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
                     model=chat_template_stage_cfg.model_source,
-                    chat_template=get_value_or_fallback(
-                        chat_template_stage_cfg.chat_template, config.chat_template
-                    ),
+                    chat_template=chat_template_stage_cfg.chat_template,
                     chat_template_kwargs=get_value_or_fallback(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
@@ -225,7 +223,7 @@ def build_vllm_engine_processor(
 
     # Resolve and build TokenizeStage if enabled
     tokenize_stage_cfg = resolve_stage_config(
-        getattr(config, "tokenize_stage", config.tokenize),
+        config.tokenize_stage,
         TokenizerStageConfig,
         processor_defaults,
     )
@@ -278,7 +276,7 @@ def build_vllm_engine_processor(
 
     # Resolve and build DetokenizeStage if enabled
     detokenize_stage_cfg = resolve_stage_config(
-        getattr(config, "detokenize_stage", config.detokenize),
+        config.detokenize_stage,
         DetokenizeStageConfig,
         processor_defaults,
     )
