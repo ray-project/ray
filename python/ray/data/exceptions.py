@@ -46,8 +46,6 @@ class ExecutionTimeoutError(TimeoutError):
     Data or Ray Core. Raise the timeout, or set it to a negative value to
     disable it, via `DataContext.execution_no_progress_timeout_s`."""
 
-    pass
-
 
 @DeveloperAPI
 def omit_traceback_stdout(fn: Callable) -> Callable:
