@@ -1,5 +1,4 @@
 import fcntl
-import hashlib
 import io
 import json
 import logging
@@ -28,9 +27,7 @@ def sanitize_image_name(image: str) -> str:
         raise TypeError(f"Expected image to be a string, got {type(image).__name__}")
 
     if image.endswith(".tar"):
-        # append a hash to avoid collisions with images from registries.
-        name_hash = hashlib.sha256(image.encode("utf-8")).hexdigest()[:12]
-        image = f"{os.path.basename(image)[:-4]}_{name_hash}"
+        image = os.path.basename(image)[:-4]
 
     safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", image)
     safe = safe.lstrip(".")
