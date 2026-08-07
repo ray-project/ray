@@ -309,6 +309,7 @@ async def test_worker_death_subscription_loop_reconciles(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_reconcile_dead_workers_on_startup(monkeypatch):
+    monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_WORKER_DEAD_DELAY_S", 0.0)
     head = _make_head()
     _add_stored_task(head, _task_id(1), worker=_WORKER)
     _add_stored_task(head, _task_id(2), worker=_WORKER_2)

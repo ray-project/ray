@@ -179,7 +179,12 @@ class TaskEventsHead(SubprocessModule):
         # AFTER subscribe() so a death between the snapshot and the subscription is still
         # delivered over pubsub.
         try:
-            worker_infos = await self._get_all_worker_info()
+            # Overlap the snapshot fetch with the same delay _on_worker_dead uses, so
+            # in-flight FINISHED events can land before we fail the tasks.
+            worker_infos, _ = await asyncio.gather(
+                self._get_all_worker_info(),
+                asyncio.sleep(_MARK_FAILED_ON_WORKER_DEAD_DELAY_S),
+            )
         except Exception:
             logger.exception("Failed to reconcile dead workers on startup.")
             return
