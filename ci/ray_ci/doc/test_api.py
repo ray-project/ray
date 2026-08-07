@@ -258,6 +258,8 @@ def test_introspect_annotation_type():
     # A hostile object whose attribute lookup raises (e.g. ValueError from metaclass __getattr__)
     class HostileMetaclass(type):
         def __getattr__(cls, name):
+            if name == "_annotated":
+                return "HostileClass"
             if name == "_annotated_type":
                 raise ValueError("Simulated metaclass getattr failure")
             raise AttributeError(name)
