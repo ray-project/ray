@@ -1740,8 +1740,14 @@ def to_numpy_backed(data: PandasData) -> PandasData:
         if not any(isinstance(dtype, pd.ArrowDtype) for dtype in data.dtypes):
             return data
 
-        converted = {column: to_numpy_backed(data[column]) for column in data.columns}
-        return pd.DataFrame(converted, index=data.index, columns=data.columns)
+        # Index positionally, not by name: with a duplicate column name,
+        # `data[name]` returns a `DataFrame` rather than a `Series` and the
+        # recursion never bottoms out. Integer keys keep the reassembled frame
+        # unambiguous, and the original names are restored afterwards.
+        converted = {i: to_numpy_backed(data.iloc[:, i]) for i in range(data.shape[1])}
+        frame = pd.DataFrame(converted, index=data.index, columns=list(converted))
+        frame.columns = data.columns
+        return frame
 
     if not isinstance(data.dtype, pd.ArrowDtype):
         return data

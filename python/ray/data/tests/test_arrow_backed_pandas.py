@@ -10,11 +10,12 @@ avoids a copy, but changes two things code downstream relied on:
   (``%``, ``divmod``; see https://github.com/pandas-dev/pandas/issues/58723), and
   ``to_numpy()`` degrades to ``dtype=object``.
 
-Two groups of tests live here. The first covers Ray's preprocessors, which handle
-``pd.NA`` explicitly and keep the Arrow-backed batch. The second covers the
-batch-format contract: pandas batches handed to *user* code are converted back to
-NumPy-backed pandas, because arbitrary user code cannot be audited for either
-problem above.
+Two groups of tests live here. The first covers preprocessors, which handle
+``pd.NA`` explicitly because ``transform_batch`` hands them a user-supplied frame
+without conversion. The second covers the batch-format contract: pandas batches
+handed to a transform function are converted back to NumPy-backed pandas, because
+that code cannot be audited for either problem above. ``Dataset.to_pandas`` is
+the one caller that keeps Arrow-backed dtypes.
 
 Every test builds its input with ``from_items``/``range`` rather than
 ``from_pandas``. This matters: ``from_pandas`` blocks never go through the
@@ -193,6 +194,26 @@ def test_to_numpy_backed_converts_a_partially_arrow_backed_frame():
     assert np.isnan(converted["arrow"][1])
     # The untouched column keeps its values and dtype.
     pd.testing.assert_series_equal(converted["numpy"], df["numpy"])
+
+
+def test_to_numpy_backed_handles_duplicate_column_names():
+    """Columns are indexed positionally, so repeated names don't recurse.
+
+    ``df[name]`` returns a ``DataFrame`` rather than a ``Series`` when the name
+    is duplicated, which would make the recursion in ``to_numpy_backed`` never
+    bottom out.
+    """
+    df = pa.table([pa.array([1, None]), pa.array([3, 4])], names=["a", "a"]).to_pandas(
+        types_mapper=pd.ArrowDtype
+    )
+
+    converted = to_numpy_backed(df)
+
+    assert converted.columns.tolist() == ["a", "a"]
+    # The first column widens (int64 with a null), the second stays integral.
+    assert converted.iloc[:, 0].tolist()[0] == 1.0
+    assert np.isnan(converted.iloc[:, 0][1])
+    assert converted.iloc[:, 1].tolist() == [3, 4]
 
 
 def test_to_numpy_backed_dataframe_converts_every_column():
