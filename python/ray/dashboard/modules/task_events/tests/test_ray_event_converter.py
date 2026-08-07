@@ -112,6 +112,29 @@ def test_convert_task_lifecycle_event():
     assert state.state_ts_ns[TaskStatus.RUNNING] == 5 * 10**9 + 123
 
 
+def test_convert_task_lifecycle_event_copies_set_task_log_info_fields():
+    # A start event reports the paths and start offsets; the end offsets arrive in a
+    # later event. Only the fields the event set should cross over, so the unset ones
+    # stay absent and a later merge can fill them without clobbering.
+    job, tid = _ids()
+    event = TaskLifecycleEvent(
+        task_id=tid.binary(), task_attempt=0, job_id=job.binary()
+    )
+    event.task_log_info.stdout_file = "/logs/out"
+    event.task_log_info.stderr_file = "/logs/err"
+    event.task_log_info.stdout_start = 10
+    event.task_log_info.stderr_start = 20
+
+    log_info = rec._convert_task_lifecycle_event(event).state_updates.task_log_info
+
+    assert log_info.stdout_file == "/logs/out"
+    assert log_info.stderr_file == "/logs/err"
+    assert log_info.stdout_start == 10
+    assert log_info.stderr_start == 20
+    assert not log_info.HasField("stdout_end")
+    assert not log_info.HasField("stderr_end")
+
+
 def test_convert_actor_task_definition_event():
     job, tid = _ids()
     event = ActorTaskDefinitionEvent(
