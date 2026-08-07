@@ -2464,13 +2464,226 @@
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 1500  # expected 1000 seconds
     script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
+
+# --------------------------------------------------------------------------
+# RLlib - Nightly learning tests (fast, single-GPU)
+# --------------------------------------------------------------------------
+- name: rllib_learning_tests_cartpole_ppo_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 900
+    script: python example_algorithms/ppo/cartpole_ppo.py --num-learners=1 --num-env-runners=4 --as-release-test
+
+- name: rllib_learning_tests_pendulum_ppo_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 900
+    script: python example_algorithms/ppo/pendulum_ppo.py --num-learners=1 --num-env-runners=4 --as-release-test
+
+- name: rllib_learning_tests_cartpole_appo_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 900
+    script: python example_algorithms/appo/cartpole_appo.py --num-learners=1 --num-env-runners=4 --as-release-test
+
+- name: rllib_learning_tests_pendulum_appo_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 900
+    script: python example_algorithms/appo/pendulum_appo.py --num-learners=1 --num-env-runners=4 --as-release-test
+
+- name: rllib_learning_tests_cartpole_impala_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 900
+    script: python example_algorithms/impala/cartpole_impala.py --num-learners=1 --num-env-runners=4 --as-release-test
+
+- name: rllib_learning_tests_cartpole_dqn_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 900
+    script: python example_algorithms/dqn/cartpole_dqn.py --num-learners=1 --as-release-test
+
+- name: rllib_learning_tests_pendulum_sac_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 1200
+    script: python example_algorithms/sac/pendulum_sac.py --num-learners=1 --as-release-test
+
+- name: rllib_learning_tests_pendulum_dreamerv3_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 1gpu_16cpus.yaml
+
+  run:
+    timeout: 1500
+    script: python example_algorithms/dreamerv3/pendulum_dreamerv3.py --num-learners=1 --as-release-test
+
+# --------------------------------------------------------------------------
+# RLlib - Weekly learning benchmarks
+# --------------------------------------------------------------------------
+- name: rllib_learning_tests_pong_ppo_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: weekly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 4gpus_48cpus.yaml
+
+  run:
+    timeout: 3600
+    script: python example_algorithms/ppo/atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=40 --stop-reward=20.0 --as-release-test
+
+- name: rllib_learning_tests_pong_impala_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: weekly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 4gpus_48cpus.yaml
+
+  run:
+    timeout: 3600
+    script: python example_algorithms/impala/pong_impala.py --num-learners=1 --num-env-runners=40 --stop-reward=19.0 --as-release-test
+
+- name: rllib_learning_tests_halfcheetah_sac_torch
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: weekly
+  team: rllib
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu
+      post_build_script: byod_rllib.sh
+    cluster_compute: 4gpus_48cpus.yaml
+
+  run:
+    timeout: 3600
+    script: python example_algorithms/sac/halfcheetah_sac.py --num-learners=4 --num-env-runners=8 --stop-reward=1000.0 --as-release-test
 
 ########################
 # Core Nightly Tests

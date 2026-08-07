@@ -56,13 +56,15 @@ void RayTaskEventRecorder::RecordDropped(size_t count) {
   dropped_events_counter_.Record(count, {{"Source", std::string(metric_source_)}});
 }
 
+bool RayTaskEventRecorder::Enabled() {
+  return RayConfig::instance().enable_ray_event() &&
+         RayConfig::instance().enable_ray_task_event_recorder();
+}
+
 void RayTaskEventRecorder::AddEvents(
     std::vector<std::unique_ptr<RayEventInterface>> &&data_list) {
   absl::MutexLock lock(&mutex_);
-  if (!enabled_) {
-    return;
-  }
-  if (!RayConfig::instance().enable_ray_event()) {
+  if (!enabled_ || !Enabled()) {
     return;
   }
   for (auto &event : data_list) {
