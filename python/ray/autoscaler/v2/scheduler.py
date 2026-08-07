@@ -126,40 +126,55 @@ class IResourceScheduler(ABC):
         pass
 
 
-def _compute_min_resource_demand(
+def _collect_unique_resource_shapes(
     requests: List["ResourceRequest"],
-) -> Dict[str, float]:
-    """Compute the minimum demand for each resource key across all requests.
+) -> List[Dict[str, float]]:
+    """Collect unique resource shapes from all requests for feasibility checks.
 
-    For each resource dimension, this returns the smallest non-zero value
-    requested by any single request. Used for quick feasibility pre-checks.
+    Returns a deduplicated list of resource bundles (shapes). Each shape is a
+    dict mapping resource names to their required amounts. Used by
+    _can_fit_any_request to perform per-shape AND checks.
     """
-    min_demand = {}
+    seen = set()
+    shapes = []
     for r in requests:
-        for k, v in r.resources_bundle.items():
-            if v > 0:
-                if k not in min_demand or v < min_demand[k]:
-                    min_demand[k] = v
-    return min_demand
+        bundle = {k: v for k, v in r.resources_bundle.items() if v > 0}
+        if not bundle:
+            continue
+        key = frozenset(bundle.items())
+        if key not in seen:
+            seen.add(key)
+            shapes.append(bundle)
+    return shapes
 
 
 def _can_fit_any_request(
     available: Dict[str, float],
-    min_resource_demand: Dict[str, float],
+    resource_shapes: List[Dict[str, float]],
 ) -> bool:
     """Quick pre-check: can this node possibly fit any pending request?
 
-    Returns False only when the node definitely cannot schedule any request,
-    i.e., every resource dimension is below the minimum demand. This is a
-    conservative check (no false negatives): if it returns True, the node
-    may or may not actually fit a request (try_schedule decides precisely).
+    Returns False only when the node definitely cannot schedule any request.
+    For each unique request shape, checks that ALL resource dimensions are
+    satisfied simultaneously (AND within a shape, OR across shapes).
 
-    Runs in O(D) where D is the number of resource dimensions (typically 2-4).
+    This is a conservative check (no false negatives): it ignores placement
+    constraints and labels, so if it returns True the node may or may not
+    actually fit a request (try_schedule decides precisely).
+
+    Runs in O(S * D) where S is the number of unique shapes (typically small)
+    and D is the number of resource dimensions per shape (typically 2-4).
     """
-    if not min_resource_demand:
+    if not resource_shapes:
         return True
-    for k, min_v in min_resource_demand.items():
-        if available.get(k, 0.0) >= min_v:
+    from ray._raylet import IMPLICIT_RESOURCE_PREFIX
+
+    for shape in resource_shapes:
+        if all(
+            available.get(k, 1.0 if k.startswith(IMPLICIT_RESOURCE_PREFIX) else 0.0)
+            >= v
+            for k, v in shape.items()
+        ):
             return True
     return False
 
@@ -1731,9 +1746,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             requests_to_sched, key=_sort_resource_request, reverse=True
         )
 
-        # Precompute the minimum resource demand across all requests for quick
-        # feasibility pre-checks.
-        min_resource_demand = _compute_min_resource_demand(requests_to_sched)
+        # Precompute unique resource shapes from all requests for quick
+        # feasibility pre-checks (AND within each shape, OR across shapes).
+        resource_shapes = _collect_unique_resource_shapes(requests_to_sched)
 
         existing_nodes = ctx.get_nodes()
         node_type_available = ctx.get_node_type_available()
@@ -1764,7 +1779,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 node.im_instance_status == Instance.RAY_RUNNING
                 and not _can_fit_any_request(
                     node.get_available_resources(resource_request_source),
-                    min_resource_demand,
+                    resource_shapes,
                 )
             ):
                 exhausted_nodes.append(node)
