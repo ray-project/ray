@@ -304,6 +304,49 @@ class TaskEventStorage:
     def job_summary(self, job_id: bytes) -> Optional[JobTaskSummary]:
         return self._job_task_summary.get(job_id)
 
+    def get_all_task_events(self) -> List[gcs_pb2.TaskEvents]:
+        """All stored task events, higher-priority tiers first, oldest-first within a tier."""
+        result: List[gcs_pb2.TaskEvents] = []
+        for tier in range(self._gc_policy.max_priority - 1, -1, -1):
+            result.extend(self._tiers[tier].values())
+        return result
+
+    def get_task_events_by_job(self, job_id: bytes) -> List[gcs_pb2.TaskEvents]:
+        """All stored task events for the given job."""
+        return self._events_for_attempts(self._job_index.get(job_id))
+
+    def get_task_events_by_tasks(
+        self, task_ids: Set[bytes]
+    ) -> List[gcs_pb2.TaskEvents]:
+        """All stored task events for the given task ids."""
+        attempts: Set[TaskAttempt] = set()
+        for task_id in task_ids:
+            attempts |= self._task_index.get(task_id, set())
+        return self._events_for_attempts(attempts)
+
+    def _events_for_attempts(
+        self, attempts: Optional[Set[TaskAttempt]]
+    ) -> List[gcs_pb2.TaskEvents]:
+        if not attempts:
+            return []
+        return [
+            self._tiers[self._primary_index[attempt]][attempt] for attempt in attempts
+        ]
+
+    def num_profile_events_dropped(self) -> int:
+        """Profile events dropped across all jobs (for read-path data-loss reporting)."""
+        return sum(
+            summary.num_profile_events_dropped
+            for summary in self._job_task_summary.values()
+        )
+
+    def num_task_attempts_dropped(self) -> int:
+        """Task attempts dropped across all jobs (for read-path data-loss reporting)."""
+        return sum(
+            summary.num_task_attempts_dropped
+            for summary in self._job_task_summary.values()
+        )
+
     def _summary(self, job_id: bytes) -> JobTaskSummary:
         summary = self._job_task_summary.get(job_id)
         if summary is None:
