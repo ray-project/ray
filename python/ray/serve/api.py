@@ -540,6 +540,8 @@ def deployment(
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
+    prefer_local_node_routing: Default[bool] = DEFAULT.VALUE,
+    prefer_local_az_routing: Default[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -620,6 +622,14 @@ def deployment(
         rolling_update_percentage: The fraction of replicas to update at a
             time during a rolling update. Must be in ``(0.0, 1.0]``.
             Defaults to ``0.2`` (20%).
+        prefer_local_node_routing: Feature flag to turn on node locality routing.
+            Applies to both proxy-to-replica and replica-to-replica routing.
+            Defaults to the value of ``RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING``
+            (on by default). Explicit deployment config overrides the env var.
+        prefer_local_az_routing: Feature flag to turn on AZ locality routing.
+            Applies to both proxy-to-replica and replica-to-replica routing.
+            Defaults to the value of ``RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING``
+            (on by default). Explicit deployment config overrides the env var.
 
     Returns:
         `Deployment`
@@ -702,6 +712,8 @@ def deployment(
         gang_scheduling_config=gang_scheduling_config,
         deployment_actors=deployment_actors,
         rolling_update_percentage=rolling_update_percentage,
+        prefer_local_node_routing=prefer_local_node_routing,
+        prefer_local_az_routing=prefer_local_az_routing,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

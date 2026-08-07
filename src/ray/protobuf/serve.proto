@@ -249,6 +249,12 @@ message DeploymentConfig {
   // rolling upgrade) is distinguishable from an explicit value. When unset,
   // the Python side falls back to DEFAULT_ROLLING_UPDATE_PERCENTAGE (0.2).
   optional double rolling_update_percentage = 23;
+
+  // Prefer routing requests to replicas on the same node as the caller.
+  optional bool prefer_local_node_routing = 24;
+
+  // Prefer routing requests to replicas in the same availability zone as the caller.
+  optional bool prefer_local_az_routing = 25;
 }
 
 // Deployment language.
