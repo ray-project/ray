@@ -67,8 +67,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                             )
                         except Exception:
                             pass
-                if not config.workdir:
-                    config.workdir = "/"
+                if not config.workdir or config.workdir == "/":
+                    config.workdir = "/workspace"
 
             work_dir_path = os.path.abspath(
                 os.path.join(root_dir, config.workdir.lstrip("/"))
