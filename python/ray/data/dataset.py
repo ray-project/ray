@@ -7283,6 +7283,7 @@ class Dataset:
             provides efficient distributed random access to records in the dataset
             by the specified key.
         """
+        from ray.util.annotations import RayDeprecationWarning
         warnings.warn(
             "`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
             RayDeprecationWarning,
