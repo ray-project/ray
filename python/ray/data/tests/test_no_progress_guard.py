@@ -27,7 +27,7 @@ def test_hanging_udf_fails_execution(
         time.sleep(10**6)
         return row
 
-    ds = ray.data.range(10, override_num_blocks=1).map(hang)
+    ds = ray.data.range(1).map(hang)
     with pytest.raises(ExecutionTimeoutError, match="made no progress"):
         ds.take(1)
 
