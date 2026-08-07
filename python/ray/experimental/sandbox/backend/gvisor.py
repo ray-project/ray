@@ -163,8 +163,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         else:
             cmd_str = command
 
-        exec_env = os.environ.copy()
-        exec_env.update(config.env)
+        exec_env = {}
         if env:
             exec_env.update(env)
 
