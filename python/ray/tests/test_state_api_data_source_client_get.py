@@ -1,3 +1,4 @@
+import asyncio
 import os
 import signal
 import sys
@@ -5,6 +6,7 @@ import uuid
 from collections import Counter
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 from click.testing import CliRunner
 
@@ -1595,6 +1597,28 @@ async def test_get_all_task_info_from_dashboard_head_non_2xx_raises(monkeypatch)
     )
     session = MagicMock()
     session.post = MagicMock(return_value=_FakeAsyncResponse(500))
+    client._task_events_head_session = session
+
+    with pytest.raises(DataSourceUnavailable):
+        await client.get_all_task_info()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transport_error", [aiohttp.ClientError("boom"), asyncio.TimeoutError()]
+)
+async def test_get_all_task_info_from_dashboard_head_unreachable_raises(
+    monkeypatch, transport_error
+):
+    monkeypatch.setattr(
+        "ray.util.state.state_manager._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
+    )
+    client = _task_info_client(
+        dashboard_socket_dir="/tmp/sock", dashboard_session_name="session-1"
+    )
+    session = MagicMock()
+    # An unreachable dashboard head raises a transport error, not an HTTP status.
+    session.post = MagicMock(side_effect=transport_error)
     client._task_events_head_session = session
 
     with pytest.raises(DataSourceUnavailable):

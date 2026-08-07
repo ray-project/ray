@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import inspect
 import json
@@ -341,19 +342,28 @@ class StateDataSourceClient:
                 self._dashboard_session_name,
             )
         client_timeout = aiohttp.ClientTimeout(total=timeout)
-        async with self._task_events_head_session.post(
-            "http://localhost/api/task_events/query",
-            data=request.SerializeToString(),
-            timeout=client_timeout,
-        ) as resp:
-            if 200 <= resp.status < 300:
-                reply = GetTaskEventsReply()
-                reply.ParseFromString(await resp.read())
-                return reply
+        try:
+            async with self._task_events_head_session.post(
+                "http://localhost/api/task_events/query",
+                data=request.SerializeToString(),
+                timeout=client_timeout,
+            ) as resp:
+                if 200 <= resp.status < 300:
+                    reply = GetTaskEventsReply()
+                    reply.ParseFromString(await resp.read())
+                    return reply
+                raise DataSourceUnavailable(
+                    "Failed to query task events from the dashboard head. "
+                    f"Response is {resp.status}, reason {resp.reason}"
+                )
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            # An unreachable dashboard head (connection refused, socket gone, timeout)
+            # must surface as DataSourceUnavailable so list_tasks shows the normal
+            # failure warning instead of a raw error, matching the GCS gRPC path.
             raise DataSourceUnavailable(
-                "Failed to query task events from the dashboard head. "
-                f"Response is {resp.status}, reason {resp.reason}"
-            )
+                "Failed to query task events from the dashboard head; it may be down "
+                "or unreachable."
+            ) from e
 
     @handle_grpc_network_errors
     async def get_all_placement_group_info(
