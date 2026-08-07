@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import os
 import time
@@ -9,7 +10,7 @@ from typing import Callable, Dict, List, Set, Tuple
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
-from ray._common.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop, is_path_within
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
@@ -43,6 +44,45 @@ default_logger = logging.getLogger(__name__)
 # TODO(edoakes): this is used for unit tests. We should replace it with a
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
+
+
+def _create_image_uri_plugin(
+    plugin_cls, temp_dir: str, logs_dir: str, logger: logging.Logger
+) -> RuntimeEnvPlugin:
+    """Instantiate an image URI plugin without breaking legacy constructors."""
+    accepts_logs_dir = False
+    try:
+        parameters = inspect.signature(plugin_cls).parameters.values()
+        accepts_logs_dir = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            or (
+                parameter.name == "logs_dir"
+                and parameter.kind
+                in (
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+            )
+            for parameter in parameters
+        )
+    except (TypeError, ValueError):
+        # Some extension types do not expose an inspectable signature. Preserve
+        # the legacy one-argument constructor for those plugins.
+        pass
+
+    if accepts_logs_dir:
+        return plugin_cls(temp_dir, logs_dir=logs_dir)
+
+    if not is_path_within(logs_dir, temp_dir):
+        logger.warning(
+            "Image URI plugin %s does not accept the logs_dir keyword. The "
+            "configured logs directory %s is outside the Ray temp directory "
+            "%s, so image workers may not be able to write logs there.",
+            plugin_cls,
+            logs_dir,
+            temp_dir,
+        )
+    return plugin_cls(temp_dir)
 
 
 @dataclass
@@ -233,9 +273,9 @@ class RuntimeEnvAgent:
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir, logs_dir)
         self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir, logs_dir)
-        # Pass logs_dir by keyword: get_image_uri_plugin_cls() is an extension
-        # point, and out-of-tree classes may not accept it positionally.
-        self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir, logs_dir=logs_dir)
+        self._image_uri_plugin = _create_image_uri_plugin(
+            get_image_uri_plugin_cls(), temp_dir, logs_dir, self._logger
+        )
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
