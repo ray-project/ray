@@ -18,6 +18,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -151,6 +152,23 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
+  // Fires the oldest pending UpdateRayletLabels callback with an OK reply carrying
+  // `resulting_labels` (the label set the raylet would report back).
+  bool ReplyUpdateRayletLabels(
+      const std::unordered_map<std::string, std::string> &resulting_labels = {}) {
+    if (update_raylet_labels_callbacks.empty()) {
+      return false;
+    }
+    UpdateRayletLabelsReply reply;
+    for (const auto &[key, value] : resulting_labels) {
+      (*reply.mutable_labels())[key] = value;
+    }
+    auto callback = update_raylet_labels_callbacks.front();
+    callback(Status::OK(), std::move(reply));
+    update_raylet_labels_callbacks.pop_front();
+    return true;
+  }
+
   bool ReplyResizeLocalResourceInstances(
       const absl::flat_hash_map<std::string, double> &total_resources,
       const Status &status = Status::OK()) {
@@ -278,6 +296,12 @@ class FakeRayletClient : public RayletClientInterface {
     drain_raylet_callbacks.push_back(callback);
   }
 
+  void UpdateRayletLabels(
+      google::protobuf::Map<std::string, std::string> labels,
+      const ClientCallback<UpdateRayletLabelsReply> &callback) override {
+    update_raylet_labels_callbacks.push_back(callback);
+  }
+
   void ResizeLocalResourceInstances(
       google::protobuf::Map<std::string, double> resources,
       const ClientCallback<ResizeLocalResourceInstancesReply> &callback) override {
@@ -335,6 +359,7 @@ class FakeRayletClient : public RayletClientInterface {
   std::vector<ActorID> killed_actors;
   absl::flat_hash_map<std::string, double> last_resize_local_resource_instances_request;
   std::list<ClientCallback<DrainRayletReply>> drain_raylet_callbacks = {};
+  std::list<ClientCallback<UpdateRayletLabelsReply>> update_raylet_labels_callbacks = {};
   std::list<ClientCallback<ResizeLocalResourceInstancesReply>>
       resize_local_resource_instances_callbacks = {};
   std::list<ClientCallback<RequestWorkerLeaseReply>> callbacks = {};

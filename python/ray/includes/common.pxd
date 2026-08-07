@@ -507,6 +507,11 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_vector[c_string] &drained_node_ids)
 
+        CRayStatus UpdateNodeLabels(
+            const CNodeID &node_id,
+            const unordered_map[c_string, c_string] &labels,
+            int64_t timeout_ms)
+
         CStatusOr[c_vector[CGcsNodeInfo]] GetAllNoCache(
             int64_t timeout_ms,
             optional[CGcsNodeState] state_filter,

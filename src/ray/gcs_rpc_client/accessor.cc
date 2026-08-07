@@ -261,6 +261,22 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
   return Status::OK();
 }
 
+Status NodeInfoAccessor::UpdateNodeLabels(
+    const NodeID &node_id,
+    const std::unordered_map<std::string, std::string> &labels,
+    int64_t timeout_ms) {
+  RAY_LOG(DEBUG).WithField(node_id) << "Updating node labels";
+  rpc::UpdateNodeLabelsRequest request;
+  rpc::UpdateNodeLabelsReply reply;
+  request.set_node_id(node_id.Binary());
+  for (const auto &[key, value] : labels) {
+    (*request.mutable_labels())[key] = value;
+  }
+  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncUpdateNodeLabels(
+      std::move(request), &reply, timeout_ms));
+  return Status::OK();
+}
+
 void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
     const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
     int64_t timeout_ms,

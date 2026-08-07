@@ -283,6 +283,18 @@ message CheckAliveReply {
   repeated bool raylet_alive = 3;
 }
 
+message UpdateNodeLabelsRequest {
+  // The hex-decoded id of the node whose labels are being updated.
+  bytes node_id = 1;
+  // The full set of user-defined labels to apply to the node (replace semantics).
+  // Reserved "ray.io/" labels are preserved by the raylet.
+  map<string, string> labels = 2;
+}
+
+message UpdateNodeLabelsReply {
+  GcsStatus status = 1;
+}
+
 message GetInternalConfigRequest {}
 
 message GetInternalConfigReply {
@@ -790,6 +802,12 @@ service NodeInfoGcsService {
       returns (GetAllNodeAddressAndLivenessReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
+  // Update a node's user-defined labels at runtime (replace semantics).
+  // GCS forwards the update to the target raylet (which owns its labels), and on
+  // success refreshes the stored GcsNodeInfo.labels and republishes it so that
+  // ray.nodes() and node-info subscribers observe the change. Reserved "ray.io/"
+  // labels are preserved.
+  rpc UpdateNodeLabels(UpdateNodeLabelsRequest) returns (UpdateNodeLabelsReply);
 }
 
 message AddTaskEventDataRequest {

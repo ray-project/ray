@@ -330,6 +330,37 @@ cdef class InnerGcsClient:
                 c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_str(status, move(results)))
 
+    def update_node_labels(
+        self,
+        node_id: bytes,
+        labels: dict,
+        timeout: Optional[int | float] = None,
+    ) -> None:
+        """Replace a node's user-defined labels at runtime (replace semantics).
+
+        Used by ``ray.experimental.update_node_labels``. Reserved ``ray.io/``
+        labels are preserved by the node. The update affects future scheduling
+        decisions only; already-scheduled tasks/actors are not moved.
+
+        Args:
+            node_id: Binary node ID of the target node.
+            labels: Mapping of label key -> value to apply. Replaces the node's
+                existing user labels. Keys/values must be validated by the caller.
+            timeout: Optional RPC timeout in seconds. ``None`` uses an unlimited
+                gRPC deadline.
+        """
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout is not None else -1
+            CNodeID c_node_id = <CNodeID>CUniqueID.FromBinary(node_id)
+            unordered_map[c_string, c_string] c_labels
+            CRayStatus status
+        for key, value in labels.items():
+            c_labels[key.encode()] = value.encode()
+        with nogil:
+            status = self.inner.get().Nodes().UpdateNodeLabels(
+                c_node_id, c_labels, timeout_ms)
+        check_status_timeout_as_rpc_error(status)
+
     def get_all_node_info(
         self, timeout: Optional[int | float] = None,
         node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,

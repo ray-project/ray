@@ -249,6 +249,46 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
       });
 }
 
+void GcsNodeManager::HandleUpdateNodeLabels(rpc::UpdateNodeLabelsRequest request,
+                                            rpc::UpdateNodeLabelsReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
+  const NodeID node_id = NodeID::FromBinary(request.node_id());
+  RAY_LOG(INFO).WithField(node_id)
+      << "HandleUpdateNodeLabels with " << request.labels_size() << " user label(s).";
+
+  auto maybe_node = GetAliveNode(node_id);
+  if (!maybe_node.has_value()) {
+    std::ostringstream stream;
+    stream << "Cannot update labels for node " << node_id.Hex()
+           << " because it is not alive.";
+    RAY_LOG(WARNING) << stream.str();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::NotFound(stream.str()));
+    return;
+  }
+
+  const auto &node = maybe_node.value();
+  auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node->node_manager_address(), node->node_manager_port());
+  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+  RAY_CHECK(raylet_client);
+
+  // The raylet owns the source of truth for its labels. Forward the update and only
+  // on success refresh the stored GcsNodeInfo labels (with the raylet's resulting
+  // label set) and republish so ray.nodes() and node-info subscribers stay consistent.
+  raylet_client->UpdateRayletLabels(
+      request.labels(),
+      [this, node_id, reply, send_reply_callback](
+          const Status &status, const rpc::UpdateRayletLabelsReply &raylet_reply) {
+        if (status.ok()) {
+          UpdateNodeLabelsInCache(node_id, raylet_reply.labels());
+        } else {
+          RAY_LOG(WARNING).WithField(node_id)
+              << "Failed to update node labels on the raylet: " << status;
+        }
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      });
+}
+
 void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
@@ -836,6 +876,12 @@ void GcsNodeManager::UpdateAliveNode(
   auto current_snapshot_state = new_node_info.state_snapshot().state();
   auto *snapshot = new_node_info.mutable_state_snapshot();
 
+  // Keep the cached labels in sync with the raylet's authoritative label set. This
+  // makes runtime label updates converge even if an UpdateNodeLabels raylet reply is
+  // delivered out of order (e.g. after a retry), and restores dynamic labels after a
+  // GCS restart re-registers the node with its startup labels.
+  *new_node_info.mutable_labels() = resource_view_sync_message.labels();
+
   if (resource_view_sync_message.idle_duration_ms() > 0) {
     snapshot->set_state(rpc::NodeSnapshot::IDLE);
     snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
@@ -859,6 +905,28 @@ void GcsNodeManager::UpdateAliveNode(
   // variables
   alive_nodes_[node_id] =
       std::make_shared<const rpc::GcsNodeInfo>(std::move(new_node_info));
+}
+
+void GcsNodeManager::UpdateNodeLabelsInCache(
+    const NodeID &node_id,
+    const ::google::protobuf::Map<std::string, std::string> &labels) {
+  rpc::GcsNodeInfo new_node_info;
+  {
+    absl::MutexLock lock(&mutex_);
+    auto maybe_node_info = GetAliveNodeFromCache(node_id);
+    if (maybe_node_info == absl::nullopt) {
+      return;
+    }
+    // Read/modify/write: stored values are const shared_ptr.
+    new_node_info = *maybe_node_info.value();
+    *new_node_info.mutable_labels() = labels;
+    alive_nodes_[node_id] = std::make_shared<const rpc::GcsNodeInfo>(new_node_info);
+  }
+  // Republish outside the lock so ray.nodes() and node-info subscribers observe the
+  // updated labels. Only the NodeInfo channel is published: labels are not part of the
+  // NodeAddressAndLiveness message and a relabel is not a liveness change, so
+  // republishing that channel would fan out a spurious no-op event to every node.
+  gcs_publisher_->PublishNodeInfo(node_id, new_node_info);
 }
 
 }  // namespace gcs

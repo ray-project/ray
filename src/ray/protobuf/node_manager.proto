@@ -362,6 +362,20 @@ message DrainRayletReply {
   string rejection_reason_message = 2;
 }
 
+message UpdateRayletLabelsRequest {
+  // The full set of user-defined labels to apply to this raylet's local node.
+  // Replaces the node's existing user labels; reserved "ray.io/" labels are
+  // preserved by the raylet.
+  map<string, string> labels = 1;
+}
+
+message UpdateRayletLabelsReply {
+  // The node's full resulting label set after the update (including preserved
+  // reserved "ray.io/" labels). GCS uses this to refresh the stored GcsNodeInfo
+  // labels so that ray.nodes() and node-info subscribers stay consistent.
+  map<string, string> labels = 1;
+}
+
 message RegisterMutableObjectRequest {
   bytes writer_object_id = 1;
   int64 num_readers = 2;
@@ -508,6 +522,11 @@ service NodeManagerService {
   // Failure: TODO: See above todo + gcs autoscaler manager will call this, think about
   // whether gcs -> raylet retry should stay at autoscaler level or move to gcs level.
   rpc DrainRaylet(DrainRayletRequest) returns (DrainRayletReply);
+  // Update the local node's user-defined labels at runtime (replace semantics).
+  // Reserved "ray.io/" labels are preserved by the raylet. Applying the labels
+  // triggers a resource-view broadcast so the new labels propagate to GCS and
+  // other raylets for future scheduling decisions.
+  rpc UpdateRayletLabels(UpdateRayletLabelsRequest) returns (UpdateRayletLabelsReply);
   // Request a raylet to lock resources for a bundle.
   // Failure: This is the first phase of 2PC protocol for atomic placement group creation.
   // We'll add back to pending queue if the request fails.
