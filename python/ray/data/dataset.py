@@ -7252,6 +7252,7 @@ class Dataset:
 
     @Deprecated(
         message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
+        warning=True
     )
     def to_random_access_dataset(
         self,
@@ -7283,12 +7284,6 @@ class Dataset:
             provides efficient distributed random access to records in the dataset
             by the specified key.
         """
-        from ray.util.annotations import RayDeprecationWarning
-        warnings.warn(
-            "`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
-            RayDeprecationWarning,
-            stacklevel=2,
-        )
         if num_workers is None:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
