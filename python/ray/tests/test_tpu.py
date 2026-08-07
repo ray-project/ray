@@ -19,6 +19,18 @@ from ray.util.tpu import (
 )
 
 
+@pytest.fixture(autouse=True)
+def mock_discover_tpu_node_coords():
+    # Prevent background tasks from crashing due to missing libtpu in CI.
+    # The tests mock ray.get to return fake discovery results, so the remote
+    # function's actual return value is ignored by the test.
+    with patch(
+        "ray.util.tpu._discover_tpu_node_coords",
+        new=lambda *a, **k: {"node_id": "dummy", "coords": []},
+    ):
+        yield
+
+
 def test_get_current_pod_name_smoke():
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
@@ -200,13 +212,13 @@ def ray_single_host_tpu_cluster(ray_start_cluster):
 
     cluster.add_node(
         num_cpus=2,
-        resources={"TPU": 4},
+        resources={"TPU": 8},
         env_vars={"TPU_NAME": "test-v7x-single-1", "TPU_ACCELERATOR_TYPE": pod_type},
         labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
     )
     cluster.add_node(
         num_cpus=2,
-        resources={"TPU": 4},
+        resources={"TPU": 8},
         env_vars={"TPU_NAME": "test-v7x-single-2", "TPU_ACCELERATOR_TYPE": pod_type},
         labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
     )
@@ -443,8 +455,8 @@ def test_single_host_slice_placement_group(ray_tpu_cluster):
         assert slice_placement_group.num_hosts == 2
         assert slice_placement_group.placement_group.bundle_count == 2
         assert slice_placement_group.placement_group.bundle_specs == [
-            {"TPU": 4, "CPU": 1.0},
-            {"TPU": 4, "CPU": 1.0},
+            {"TPU": 8, "CPU": 1.0},
+            {"TPU": 8, "CPU": 1.0},
         ]
 
 
