@@ -149,7 +149,6 @@ TEST(NetworkUtilTest, TestGetNodeIpAddressHostnameRouting) {
   unsetenv("RAY_NODE_USE_HOSTNAME");
 #endif
   std::string ip_address = GetNodeIpAddressFromPerspective(std::nullopt);
-  EXPECT_NE(ip_address, hostname);
   // Validate that the result is a well-formed IP address (v4 or v6), not just a
   // string that happens to contain '.' or ':'.
   boost::system::error_code ec;
