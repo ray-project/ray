@@ -81,6 +81,10 @@ class DeploymentAutoscalingState:
         # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
         self._total_pending_async_requests: int = 0
 
+        # Total-request aggregate from the most recent autoscaling decision, reused by
+        # the scale up/down log so it isn't recomputed within the same tick.
+        self._last_decision_total_num_requests: float = 0.0
+
         self._deployment_info: Optional[DeploymentInfo] = None
         # Set (non-None) by the first `update_config` call, which happens
         # before any of the methods that read it are called.
@@ -335,6 +339,8 @@ class DeploymentAutoscalingState:
         }
         self.autoscaling_decision_gauge.set(decision_num_replicas, tags=tags)
         self.autoscaling_total_requests_gauge.set(total_num_requests, tags=tags)
+        # Stash the decision's value for the scale up/down log to reuse.
+        self._last_decision_total_num_requests = total_num_requests
         self.autoscaling_policy_execution_time_gauge.set(
             policy_execution_time_ms, tags={**tags, "policy_scope": policy_scope}
         )
@@ -737,6 +743,14 @@ class DeploymentAutoscalingState:
         else:
             return self._calculate_total_requests_simple_mode()
 
+    def get_last_decision_total_num_requests(self) -> float:
+        """Aggregate from the most recent autoscaling decision, not recomputed.
+
+        Fresh only while ApplicationState.autoscale() stays synchronous (stash-on-decision,
+        read-by-log within one tick); an await between the two would reintroduce staleness.
+        """
+        return self._last_decision_total_num_requests
+
     def get_replica_metrics(self) -> Dict[str, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
         metric_values: Dict[str, List[TimeSeries]] = defaultdict(list)
@@ -1041,6 +1055,13 @@ class ApplicationAutoscalingState:
             deployment_id
         ].get_total_num_requests()
 
+    def get_last_decision_total_num_requests_for_deployment(
+        self, deployment_id: DeploymentID
+    ) -> float:
+        return self._deployment_autoscaling_states[
+            deployment_id
+        ].get_last_decision_total_num_requests()
+
     def get_replica_metrics_by_deployment_id(self, deployment_id: DeploymentID):
         return self._deployment_autoscaling_states[deployment_id].get_replica_metrics()
 
@@ -1233,6 +1254,16 @@ class AutoscalingStateManager:
             ].get_total_num_requests_for_deployment(deployment_id)
         else:
             return 0
+
+    def get_last_decision_total_num_requests_for_deployment(
+        self, deployment_id: DeploymentID
+    ) -> float:
+        if deployment_id.app_name in self._app_autoscaling_states:
+            return self._app_autoscaling_states[
+                deployment_id.app_name
+            ].get_last_decision_total_num_requests_for_deployment(deployment_id)
+        else:
+            return 0.0
 
     def is_within_bounds(
         self, deployment_id: DeploymentID, num_replicas_running_at_target_version: int
