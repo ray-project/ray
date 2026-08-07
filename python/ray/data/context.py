@@ -114,6 +114,10 @@ DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S = env_float(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S", 1800.0
 )
 
+DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
+    "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -261,6 +265,10 @@ DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
 
+DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS = env_integer(
+    "RAY_DATA_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS", 0
+)
+
 DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
 
 DEFAULT_MAX_MAP_RETRIES = 3
@@ -309,6 +317,8 @@ DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
+
+DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
 
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
 
@@ -630,12 +640,29 @@ class DataContext:
             retry. This follows same format as :ref:`retry_exceptions <task-retries>` in
             Ray Core. Default to `False` to not retry on any errors. Set to `True` to
             retry all errors, or set to a list of errors to retry.
-        actor_init_retry_on_errors: Whether to retry when actor initialization fails.
-            Default to `False` to not retry on any errors. Set to `True` to retry
-            all errors.
-        actor_init_max_retries: Maximum number of consecutive retries for actor
-            initialization failures. The counter resets when an actor successfully
-            initializes. Default is 3. Set to -1 for infinite retries.
+        actor_init_retry_on_errors: Whether to retry when the UDF constructor
+            raises during actor initialization. The retry happens in-process,
+            inside the same (still-alive) actor; contrast with
+            ``max_consecutive_actor_init_deaths``, which handles actors that
+            die during initialization. Default to `False` to not retry on any
+            errors. Set to `True` to retry all errors.
+        actor_init_max_retries: Maximum number of consecutive in-process UDF
+            constructor retries per actor (see ``actor_init_retry_on_errors``).
+            The counter resets when an actor successfully initializes. Default
+            is 3. Set to -1 for infinite retries.
+        max_consecutive_actor_init_deaths: Per-operator number of consecutive
+            actor deaths during initialization to tolerate by replacing the
+            dead actor with a fresh one (an actor dies when its process
+            crashes, e.g. OOM or segfault, or when any in-actor
+            ``actor_init_retry_on_errors`` retries are exhausted; Ray Core
+            doesn't restart actors whose creation task failed). The counter
+            resets whenever an actor of the operator initializes successfully,
+            so sporadic deaths in a progressing pipeline are tolerated while a
+            systemically broken UDF exhausts the budget. Default is 0, which
+            fails the job on the first death. Set to -1 for unlimited. When
+            the budget is exceeded, the last actor error is re-raised. Note:
+            an operator start gated by ``wait_for_min_actors_s`` still fails
+            fast on the first error.
         retried_map_errors: Controls which user exceptions are retried in map
             tasks. ``False`` (default) disables retries. ``True`` retries any user
             exception. A list of patterns retries only when the exception message
@@ -697,6 +724,16 @@ class DataContext:
             ``ray.get()`` each hash-shuffle reduce task to fetch a batch of
             its input shards. A non-positive value (``<= 0``) disables the
             timeout, fetching each batch in a single blocking call.
+        shuffle_input_batch_bytes: Target batch size in bytes for coalescing
+            shuffle input blocks before partitioning. Currently only applies
+            to the ``HASH_SHUFFLE_V2`` shuffle strategy; other shuffle
+            strategies ignore it. Input blocks are buffered per node and
+            processed as a batch once this size is reached; remaining
+            buffered blocks are flushed when input is exhausted. Lower values
+            increase shuffle parallelism (useful for CPU-intensive shuffles)
+            at the cost of more, smaller intermediate shard objects. Set to
+            ``0`` to disable batching, processing each input bundle
+            individually. Defaults to 1GiB.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -713,6 +750,7 @@ class DataContext:
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
         use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
+        use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
@@ -798,6 +836,11 @@ class DataContext:
     # logged and fails with GetTimeoutError. <= 0 disables.
     hash_shuffle_reduce_get_timeout_s: float = DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S
 
+    # Target batch size (bytes) for coalescing shuffle input blocks before
+    # partitioning (currently hash_shuffle_v2 only); blocks are buffered per
+    # node until this size is reached. 0 disables batching.
+    shuffle_input_batch_bytes: int = DEFAULT_SHUFFLE_INPUT_BATCH_BYTES
+
     # Max number of aggregators (actors) that could be provisioned
     # to perform aggregations on partitions produced during hash-shuffling
     #
@@ -854,6 +897,7 @@ class DataContext:
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
     use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
+    use_legacy_dataset_ids: bool = DEFAULT_USE_LEGACY_DATASET_IDS
     eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
@@ -894,6 +938,7 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
+    max_consecutive_actor_init_deaths: int = DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS
     retried_map_errors: Union[bool, List[str]] = DEFAULT_RETRIED_MAP_ERRORS
     max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION

@@ -309,6 +309,7 @@ class TaskEventBufferTestBatchSendDifferentDestination
   "task_events_max_num_profile_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 10,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -334,6 +335,7 @@ class TaskEventBufferTestLimitBufferDifferentDestination
   "task_events_max_num_profile_events_buffer_on_worker": 5,
   "task_events_send_batch_size": 10,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -352,7 +354,8 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_profile_events_per_task": 10,
   "task_events_max_num_profile_events_buffer_on_worker": 20,
-  "task_events_shutdown_flush_timeout_ms": 100
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": true
 }
   )");
   }
@@ -366,6 +369,8 @@ class TaskEventBufferTestDifferentDestination
     const auto [to_gcs, to_aggregator] = GetParam();
     std::string to_gcs_str = to_gcs ? "true" : "false";
     std::string to_aggregator_str = to_aggregator ? "true" : "false";
+    // Keep the recorder disabled so the buffer's own aggregator send path (exercised by
+    // to_aggregator) is not taken over by RayTaskEventRecorder.
     RayConfig::instance().initialize(
         R"(
 {
@@ -373,6 +378,7 @@ class TaskEventBufferTestDifferentDestination
   "task_events_max_num_status_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 100,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -398,6 +404,7 @@ class TaskEventBufferTestDroppedAttemptsOnly
   "task_events_send_batch_size": 1,
   "task_events_dropped_task_attempt_batch_size": 1,
   "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_task_event_to_gcs": )" +
         to_gcs_str + R"(,
   "enable_core_worker_ray_event_to_aggregator": )" +
@@ -1671,6 +1678,59 @@ TEST_P(TaskEventBufferTestDroppedAttemptsOnly,
   task_event_buffer_->FlushEvents(false);
   task_event_buffer_->FlushEvents(false);
 }
+
+// Manual-start fixture parameterized on whether the RayTaskEventRecorder is enabled. Each
+// test sets the flag combination before calling Start() so it can observe how the flag
+// flips the buffer's own aggregator send.
+class TaskEventBufferTestRecorderSwitch : public TaskEventBufferTest,
+                                          public ::testing::WithParamInterface<bool> {
+  void SetUp() override {}
+};
+
+// The recorder flag flips the buffer's legacy aggregator send: when the recorder takes
+// over (enable_ray_task_event_recorder + enable_ray_event), the buffer must NOT send to
+// the aggregator; when the recorder is off (with the buffer's own aggregator flag on),
+// the buffer DOES send.
+TEST_P(TaskEventBufferTestRecorderSwitch, TestRecorderTakesOverAggregatorSend) {
+  const bool recorder_enabled = GetParam();
+  std::string recorder_str = recorder_enabled ? "true" : "false";
+  RayConfig::instance().initialize(
+      R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 100,
+  "task_events_send_batch_size": 100,
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": false,
+  "enable_ray_event": )" +
+      recorder_str + R"(,
+  "enable_ray_task_event_recorder": )" +
+      recorder_str + R"(,
+  "enable_core_worker_ray_event_to_aggregator": true
+}
+  )");
+  RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush=*/false));
+
+  task_event_buffer_->AddTaskEvent(GenFullStatusTaskEvent(RandomTaskId(), 0));
+
+  // GCS send is off in both cases; only the aggregator send is being switched.
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+  EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _)).Times(0);
+
+  auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
+      task_event_buffer_->event_aggregator_client_.get());
+  // When the recorder is active it owns the aggregator send, so the buffer's own send is
+  // suppressed; otherwise the buffer's legacy aggregator send fires.
+  EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(recorder_enabled ? 0 : 1);
+
+  task_event_buffer_->FlushEvents(false);
+}
+
+INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
+                         TaskEventBufferTestRecorderSwitch,
+                         ::testing::Values(true, false));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestDifferentDestination,
