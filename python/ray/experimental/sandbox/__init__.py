@@ -1,4 +1,3 @@
-import asyncio
 from typing import Dict, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
@@ -120,8 +119,7 @@ async def create_async(
     Returns:
         A SandboxHandle instance.
     """
-    return await asyncio.to_thread(
-        create,
+    return create(
         image=image,
         cpu=cpu,
         memory=memory,

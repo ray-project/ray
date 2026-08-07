@@ -131,6 +131,11 @@ def extract_tar_layer(tar_bytes: bytes, dest_dir: str) -> None:
     with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:*") as tar:
         for member in tar.getmembers():
             name = member.name.lstrip("/")
+
+            # Prevent path traversal
+            if ".." in name.split(os.sep) or name.startswith(os.sep):
+                continue
+
             target_path = os.path.abspath(os.path.join(dest_dir, name))
             dest_abs = os.path.abspath(dest_dir)
             if not (
@@ -181,8 +186,42 @@ def extract_tar_layer(tar_bytes: bytes, dest_dir: str) -> None:
                             os.remove(target_path)
                     except OSError:
                         pass
+                else:
+                    # Clear out existing files/symlinks to avoid traversal via symlinks
+                    if not os.path.isdir(target_path) or os.path.islink(target_path):
+                        try:
+                            os.remove(target_path)
+                        except OSError:
+                            pass
 
-            tar.extract(member, path=dest_dir)
+            # Use safe extraction
+            member.name = name
+            if member.isreg():
+                os.makedirs(parent_dir, exist_ok=True)
+                with open(target_path, "wb") as f_out:
+                    f_in = tar.extractfile(member)
+                    if f_in:
+                        shutil.copyfileobj(f_in, f_out)
+                if member.mode:
+                    os.chmod(target_path, member.mode)
+            elif member.isdir():
+                os.makedirs(target_path, exist_ok=True)
+            elif member.issym():
+                os.makedirs(parent_dir, exist_ok=True)
+                try:
+                    os.symlink(member.linkname, target_path)
+                except OSError:
+                    pass
+            elif member.islnk():
+                os.makedirs(parent_dir, exist_ok=True)
+                link_target = os.path.abspath(
+                    os.path.join(dest_dir, member.linkname.lstrip("/"))
+                )
+                if link_target.startswith(dest_abs + os.sep):
+                    try:
+                        os.link(link_target, target_path)
+                    except OSError:
+                        pass
 
 
 def pull_and_extract_container_image(
@@ -210,7 +249,6 @@ def pull_and_extract_container_image(
     safe_name = sanitize_image_name(image)
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
-    tar_path = os.path.join(images_dir, f"{safe_name}.tar")
 
     with open(lock_path, "w", encoding="utf-8") as f_lock:
         try:
@@ -226,8 +264,8 @@ def pull_and_extract_container_image(
 
             if os.path.isfile(image):
                 try:
-                    with tarfile.open(image, "r:*") as tar:
-                        tar.extractall(tmp_extract_dir)
+                    with open(image, "rb") as f:
+                        extract_tar_layer(f.read(), tmp_extract_dir)
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                     raise SandboxCreationError(
@@ -285,29 +323,16 @@ def pull_and_extract_container_image(
                             f"No layers found in manifest for image '{image}'"
                         )
 
-                    combined_tar_tmp = tar_path + f".tmp.{uuid.uuid4().hex}"
-                    with tarfile.open(combined_tar_tmp, "w") as out_tar:
-                        for layer in layers:
-                            digest = layer["digest"]
-                            blob_url = f"https://{registry}/v2/{repo}/blobs/{digest}"
-                            blob_req = urllib.request.Request(blob_url, headers=headers)
-                            with urllib.request.urlopen(
-                                blob_req, timeout=timeout_seconds
-                            ) as blob_resp:
-                                layer_bytes = blob_resp.read()
+                    for layer in layers:
+                        digest = layer["digest"]
+                        blob_url = f"https://{registry}/v2/{repo}/blobs/{digest}"
+                        blob_req = urllib.request.Request(blob_url, headers=headers)
+                        with urllib.request.urlopen(
+                            blob_req, timeout=timeout_seconds
+                        ) as blob_resp:
+                            layer_bytes = blob_resp.read()
 
-                            extract_tar_layer(layer_bytes, tmp_extract_dir)
-
-                            ti = tarfile.TarInfo(name=f"{digest}.tar.gz")
-                            ti.size = len(layer_bytes)
-                            out_tar.addfile(ti, io.BytesIO(layer_bytes))
-
-                    if os.path.exists(tar_path):
-                        try:
-                            os.remove(tar_path)
-                        except OSError:
-                            pass
-                    os.replace(combined_tar_tmp, tar_path)
+                        extract_tar_layer(layer_bytes, tmp_extract_dir)
 
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)

@@ -156,7 +156,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
-        root_dir = meta["root_dir"]
 
         if isinstance(command, list):
             cmd_str = " ".join(command)
@@ -167,13 +166,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if env:
             exec_env.update(env)
 
-        raw_cwd = cwd or config.work_dir
-        resolved_cwd = self._resolve_path(root_dir, raw_cwd)
-        os.makedirs(resolved_cwd, exist_ok=True)
+        exec_cwd = cwd or config.work_dir
 
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", "-cwd", raw_cwd])
+        runsc_args.extend(["exec", "-cwd", exec_cwd])
         if env:
             for k, v in env.items():
                 runsc_args.extend(["-env", f"{k}={v}"])
@@ -219,27 +216,45 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     ) -> None:
         """Write content to a file inside the local gVisor sandbox directory."""
         meta = self._get_metadata_or_raise(sandbox_id)
-        target_file = self._resolve_path(meta["root_dir"], path)
-        parent_dir = os.path.dirname(target_file)
-        os.makedirs(parent_dir, mode=0o755, exist_ok=True)
+        config: SandboxConfig = meta["config"]
 
-        if isinstance(content, str):
-            with open(target_file, "w", encoding="utf-8") as f:
-                f.write(content)
-        else:
-            with open(target_file, "wb") as f:
-                f.write(content)
+        runsc_args = self._runsc_base_args(config)
+        runsc_args.extend(["exec", sandbox_id, "/bin/sh", "-c", f"cat > '{path}'"])
+
+        content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+
+        proc = subprocess.Popen(
+            runsc_args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        _, stderr_str = proc.communicate(input=content_bytes)
+        if proc.returncode != 0:
+            raise SandboxError(
+                f"Failed to write file '{path}': {stderr_str.decode('utf-8', errors='replace')}"
+            )
 
     def read_file(self, sandbox_id: str, path: str) -> bytes:
         """Read binary content from a file inside the local gVisor sandbox directory."""
         meta = self._get_metadata_or_raise(sandbox_id)
-        target_file = self._resolve_path(meta["root_dir"], path)
-        if not os.path.exists(target_file):
+        config: SandboxConfig = meta["config"]
+
+        runsc_args = self._runsc_base_args(config)
+        runsc_args.extend(["exec", sandbox_id, "cat", path])
+
+        proc = subprocess.Popen(
+            runsc_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stdout, stderr = proc.communicate()
+        if proc.returncode != 0:
+            err = stderr.decode("utf-8", errors="replace")
             raise SandboxError(
-                f"File not found: '{path}' inside sandbox '{sandbox_id}'"
+                f"File not found or read error '{path}' inside sandbox '{sandbox_id}': {err}"
             )
-        with open(target_file, "rb") as f:
-            return f.read()
+        return stdout
 
     def get_status(self, sandbox_id: str) -> SandboxStatus:
         """Get operational status of the gVisor sandbox."""
