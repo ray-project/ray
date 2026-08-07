@@ -616,7 +616,7 @@ def _resolve_root(
 def _build_lerobot_read_task(
     segments: List[tuple],
     roots: List[_LeRobotRoot],
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
     episodes: List[pa.Table],
     max_block_bytes: int,
     per_task_row_limit: Optional[int] = None,
@@ -626,10 +626,16 @@ def _build_lerobot_read_task(
 
     Each ``segment`` is a ``(root_index, start, end)`` triple over a contiguous
     row range within one root. ``roots`` (slim per-root constants) is used here
-    to compute BlockMetadata; ``roots_ref`` carries it to workers, where the read
-    function fetches it once. ``episodes`` is the driver-side list of projected
-    episode tables, used here only to cut each segment's slice -- it is NOT
-    shipped; only the per-segment slice travels with the task.
+    to compute BlockMetadata; ``root_refs`` holds one object ref per root, of
+    which the task captures refs for **only the roots its segments touch** --
+    the read function fetches just those. Handing every task a single ref to
+    the full list would make each task deserialize all N per-root bundles
+    (pickled filesystem, schema, stats) to use one: O(tasks x roots) work that
+    degrades quadratically when many roots are read together. Roots split
+    across several tasks still share one object. ``episodes`` is the
+    driver-side list of projected episode tables, used here only to cut each
+    segment's slice -- it is NOT shipped; only the per-segment slice travels
+    with the task.
     """
     total_rows = 0
     size_bytes = 0
@@ -656,23 +662,31 @@ def _build_lerobot_read_task(
         input_files=all_input_files,
         exec_stats=None,
     )
+    needed_root_indices = sorted({root_idx for root_idx, _, _ in segments})
+    task_root_refs = [root_refs[root_idx] for root_idx in needed_root_indices]
     read_fn = functools.partial(
-        _read_lerobot_task, roots_ref, resolved, max_block_bytes
+        _read_lerobot_task,
+        task_root_refs,
+        needed_root_indices,
+        resolved,
+        max_block_bytes,
     )
     return ReadTask(read_fn, block_metadata, schema, per_task_row_limit)
 
 
 def _read_lerobot_task(
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
+    root_indices: List[int],
     segments_resolved: List[tuple],
     max_block_bytes: int,
 ) -> Iterator[pa.Table]:
     """Stream decoded rows as Arrow tables, iterating over all segments.
 
-    Runs on a worker: fetches the shared slim per-root state once, then reads
-    each pre-resolved segment.
+    Runs on a worker: fetches the slim per-root state for **this task's roots
+    only** (``root_refs[i]`` is the bundle for root ``root_indices[i]``), then
+    reads each pre-resolved segment.
     """
-    roots: List[_LeRobotRoot] = ray.get(roots_ref)
+    roots: Dict[int, _LeRobotRoot] = dict(zip(root_indices, ray.get(root_refs)))
     for root_idx, start, end, parquet_segs, ep_slice in segments_resolved:
         yield from _read_lerobot_segment(
             roots[root_idx],
@@ -1764,13 +1778,20 @@ class LeRobotDatasource(Datasource):
 
         task_plan = [self._merge_segments(group) for group in groups]
 
-        roots_ref = ray.put(self.distilled_metas)
+        # One object per root -- NOT one object holding every root. Each read
+        # task then captures refs for only the roots it reads, so a task
+        # deserializes O(its roots) bundles instead of all N (with N roots and
+        # ~N tasks, a single shared list is O(N^2) deserialization work
+        # cluster-wide). Put count scales with the number of roots, which
+        # driver-side resolution already bounds; a root spanning many tasks is
+        # still stored once and shared via its ref.
+        root_refs = [ray.put(root) for root in self.distilled_metas]
         max_block_bytes = self._max_block_bytes(data_context)
         return [
             _build_lerobot_read_task(
                 segments,
                 self.distilled_metas,
-                roots_ref,
+                root_refs,
                 self._episodes,
                 max_block_bytes,
                 per_task_row_limit,
