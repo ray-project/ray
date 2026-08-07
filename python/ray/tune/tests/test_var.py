@@ -367,6 +367,34 @@ class VariantGeneratorTest(unittest.TestCase):
             )
         assert "`lst/0`" in str(cm.exception)
 
+    def testPresetVariantUntraversablePathRaisesValueError(self):
+        for config, point, expected in (
+            ({"a": 1}, {"a": {"b": 2}}, "`a/b`"),
+            ({"lst": []}, {"lst": {"typo": 1}}, "`lst/typo`"),
+            ({"s": "hi"}, {"s": {"b": 2}}, "`s/b`"),
+        ):
+            with self.assertRaises(ValueError) as cm:
+                list(
+                    _get_preset_variants(
+                        {"run": MOCK_TRAINABLE_NAME, "config": config}, point
+                    )
+                )
+            assert expected in str(cm.exception), (config, point)
+
+    def testPresetVariantGridSearchErrorIsNotReportedAsAMissingKey(self):
+        # Categorical() raises TypeError on a non-iterable grid_search value.
+        # That is not a bad path, so it must not be relabelled as one.
+        with self.assertRaises(TypeError):
+            list(
+                _get_preset_variants(
+                    {
+                        "run": MOCK_TRAINABLE_NAME,
+                        "config": {"a": {"grid_search": 5}},
+                    },
+                    {"a": 1},
+                )
+            )
+
     def testPresetVariantInsideListOnlyWarns(self):
         with self.assertLogs(
             "ray.tune.search.variant_generator", level="WARNING"

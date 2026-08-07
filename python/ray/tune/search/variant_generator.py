@@ -316,19 +316,20 @@ def _get_preset_variants(
         path_str = "/".join(str(key) for key in path)
         try:
             domain = _get_value(spec["config"], path)
-            if isinstance(domain, dict):
-                if "grid_search" in domain:
-                    domain = Categorical(domain["grid_search"])
-                else:
-                    # If users want to overwrite an entire subdict,
-                    # let them do it.
-                    domain = None
-        except (KeyError, IndexError) as exc:
+        except (KeyError, IndexError, TypeError) as exc:
             raise ValueError(
                 f"Pre-set config key `{path_str}` does not correspond "
                 f"to a valid key in the search space definition. Please add "
                 f"this path to the `param_space` variable passed to `tune.Tuner()`."
             ) from exc
+
+        if isinstance(domain, dict):
+            if "grid_search" in domain:
+                domain = Categorical(domain["grid_search"])
+            else:
+                # If users want to overwrite an entire subdict,
+                # let them do it.
+                domain = None
 
         if domain:
             if isinstance(domain, Domain):
