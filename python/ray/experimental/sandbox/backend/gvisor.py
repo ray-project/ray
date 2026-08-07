@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import time
 import uuid
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.image_utils import (
     pull_and_extract_container_image,
@@ -97,6 +97,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             memory=config.memory,
             readonly=config.readonly,
             image_rootfs=image_rootfs,
+            _oci_spec_transforms=config._oci_spec_transforms,
         )
         run_args = self._runsc_base_args(config)
         if config.network:
@@ -322,11 +323,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         work_dir_path: str,
         container_cwd: str,
         image: str,
+        image_rootfs: str,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
-        image_rootfs: Optional[str] = None,
+        _oci_spec_transforms: Optional[List[Callable[[Dict], Optional[Dict]]]] = None,
     ) -> str:
         config_json_path = os.path.join(root_dir, "config.json")
         rootfs_dir = os.path.join(root_dir, "rootfs")
@@ -338,12 +340,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         with open(config_json_path, "r", encoding="utf-8") as f:
             spec = json.load(f)
 
-        if not image_rootfs:
-            image_dir = self._pull_and_extract_image(image)
-            image_rootfs = os.path.join(image_dir, "rootfs")
         spec["root"]["path"] = image_rootfs
         spec["root"]["readonly"] = readonly
-
         spec["process"]["args"] = ["sleep", "infinity"]
         spec["process"]["cwd"] = container_cwd
 
@@ -389,6 +387,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if parsed_mem is not None and parsed_mem > 0:
             mem_res = resources.setdefault("memory", {})
             mem_res["limit"] = parsed_mem
+
+        if _oci_spec_transforms:
+            for transform in _oci_spec_transforms:
+                result = transform(spec)
+                if result is not None:
+                    spec = result
 
         config_json_str = json.dumps(spec, indent=2)
         with open(config_json_path, "w", encoding="utf-8") as f:

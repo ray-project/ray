@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 
 def parse_memory_bytes(memory: Optional[Union[str, int, float]]) -> Optional[int]:
@@ -73,6 +73,9 @@ class SandboxConfig:
     rootless: bool = True
     network: str = "none"
     readonly: bool = True
+    _oci_spec_transforms: Optional[List[Callable[[Dict], Optional[Dict]]]] = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self):
         if not self.image or not isinstance(self.image, str) or not self.image.strip():

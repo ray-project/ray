@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
@@ -28,6 +28,7 @@ class SandboxRuntime:
         rootless: bool = True,
         network: str = "none",
         readonly: bool = True,
+        _oci_spec_transforms: Optional[List[Callable[[Dict], Optional[Dict]]]] = None,
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
@@ -45,6 +46,9 @@ class SandboxRuntime:
             rootless: If True, run gVisor in rootless mode.
             network: Network mode for runsc.
             readonly: If True, mount container image rootfs in read-only mode (default: True).
+            _oci_spec_transforms: PRIVATE — development/testing only. Called with the fully-built OCI
+                spec dict before it is written; may mutate in place or return a new dict. Must be
+                cloudpickle-serializable. No stability guarantees. Accepts a list of transform functions.
             **kwargs: Additional parameters.
 
         Returns:
@@ -61,6 +65,7 @@ class SandboxRuntime:
             rootless=rootless,
             network=network,
             readonly=readonly,
+            _oci_spec_transforms=_oci_spec_transforms,
             **kwargs,
         )
         return self._backend.create_sandbox(cfg)
