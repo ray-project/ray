@@ -196,6 +196,13 @@ class RedisContext {
   /// existing RedisAsyncContext object so in-flight requests stay valid.
   Status ReconnectAsyncContext();
 
+  /// Point resolved_ip_/port_ at whichever node Sentinel currently calls the
+  /// primary. No-op when this context was not reached through a Sentinel.
+  Status RefreshPrimaryFromSentinel();
+
+  /// Re-resolve address_, in case the name now points somewhere else.
+  Status RefreshResolvedAddress();
+
   /// Run an arbitrary Redis command synchronously.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -228,6 +235,13 @@ class RedisContext {
   bool enable_ssl_ = false;
   /// The resolved address actually connected to. Reused on reconnect.
   std::string resolved_ip_;
+  /// The address Connect() was originally called with. For a Sentinel setup
+  /// this is the Sentinel itself, which is the only address that stays valid
+  /// across a failover.
+  std::string origin_address_;
+  int origin_port_ = 0;
+  /// Whether the primary behind this context was discovered through Sentinel.
+  bool via_sentinel_ = false;
 
   /// The reconnect state below runs on the io_service thread; Connect() and
   /// Disconnect() touch it only while no reconnect work is scheduled.
