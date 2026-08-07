@@ -330,6 +330,30 @@ async def test_reconcile_dead_workers_on_startup(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_reconcile_finished_jobs_on_startup(monkeypatch):
+    monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_JOB_DONE_DELAY_S", 0.0)
+    head = _make_head()
+    finished_job = JobID.from_int(1).binary()
+    running_job = JobID.from_int(2).binary()
+    _add_stored_task(head, _task_id(1), job=finished_job)
+    _add_stored_task(head, _task_id(2), job=running_job)
+
+    async def fake_get_all():
+        return [
+            gcs_pb2.JobTableData(job_id=finished_job, is_dead=True),
+            gcs_pb2.JobTableData(job_id=running_job, is_dead=False),
+        ]
+
+    monkeypatch.setattr(head, "_get_all_job_info", fake_get_all)
+
+    await head._reconcile_finished_jobs_on_startup()
+
+    # The finished job's task is failed; the running job's task is left alone.
+    assert _is_failed(head, _task_id(1))
+    assert not _is_failed(head, _task_id(2))
+
+
+@pytest.mark.asyncio
 async def test_job_subscription_loop_reconciles_only_finished(monkeypatch):
     monkeypatch.setattr(f"{_HEAD}._MARK_FAILED_ON_JOB_DONE_DELAY_S", 0.0)
     head = _make_head()
