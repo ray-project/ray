@@ -581,6 +581,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
+  /// True while at least one destination below is live. Owns whether events are
+  /// recorded; enabled_ owns the io thread and GCS client lifecycle, so Stop() still
+  /// tears them down when nothing is being recorded.
+  std::atomic<bool> recording_enabled_ = false;
+
   /// Circular buffered task status events.
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_
       ABSL_GUARDED_BY(mutex_);
