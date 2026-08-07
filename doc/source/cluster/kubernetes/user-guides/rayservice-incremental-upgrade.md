@@ -390,15 +390,15 @@ When you modify `rayClusterConfig` in the `RayService` spec during an upgrade, t
 
 **Case 1: `C == A` (reverting to the original spec)**
 
-The controller cancels the upgrade and gradually shifts traffic back to the original cluster, scaling its `targetCapacity` back to 100% while scaling the pending cluster down to 0%, then deletes the pending cluster.
+The controller cancels the upgrade and gradually shifts traffic back to the original cluster, moving `stepSizePercent` of traffic every `intervalSeconds`. In step with the traffic shift, it scales the original cluster's `targetCapacity` back up to 100% and the pending cluster's down to 0%, `maxSurgePercent` at a time, then deletes the pending cluster.
 
 Pipeline: `A -> B -> A`
 
-**Case 2: `C == B` (reverting to the upgraded spec)**
+**Case 2: `C == B` (canceling the rollback and resuming the upgrade)**
 
-The controller treats the upgrade as on track and keeps migrating traffic toward `B`. If a rollback is already in progress, the controller cancels the rollback and resumes the upgrade from the current traffic split.
+If a rollback is in progress, the controller cancels it and resumes migrating traffic toward `B` from the current traffic split. If no rollback has started, the upgrade is on track and continues unchanged.
 
-Pipeline: `A -> B -> A -> B`, where the trailing `A -> B` is the resumed upgrade after a canceled rollback.
+Pipeline: `A -> B -> A -> B`, where the trailing `A -> B` is the resumed upgrade.
 
 **Case 3: `C != A` and `C != B` (submitting a new spec)**
 
@@ -466,7 +466,7 @@ These conditions track the state machine that drives an incremental upgrade and 
 | Condition | Description |
 | :--- | :--- |
 | `UpgradeInProgress` | `True` while both an active and a pending `RayCluster` exist for the `RayService`. KubeRay sets this condition to `False` with reason `NoPendingCluster` after it promotes the pending cluster, or after a rollback finishes and it deletes the pending cluster. |
-| `RollbackInProgress` | `True` while KubeRay is rolling an in-progress incremental upgrade back to the original active cluster, with reason `DesiredClusterSpecChanged`. KubeRay removes this condition when the rollback completes, or when you revert the spec back to the pending cluster's spec to cancel the rollback. |
+| `RollbackInProgress` | `True` while KubeRay is rolling an in-progress incremental upgrade back to the original active cluster, with reason `DesiredClusterSpecChanged`. KubeRay removes this condition when the rollback completes, that is, when the active cluster is back at 100% `trafficRoutedPercent` and KubeRay has deleted the pending cluster, or when you revert the spec back to the pending cluster's spec to cancel the rollback. |
 
 #### Next steps:
 * See [Deploy on Kubernetes](https://docs.ray.io/en/latest/serve/production-guide/kubernetes.html) for more information about deploying Ray Serve with KubeRay.
