@@ -42,6 +42,12 @@ logger = logging.getLogger(__name__)
 # ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id).
 _SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_external"
 
+# Endpoint resolution polls while the actor restarts (Ray raises
+# ActorUnavailableError): the poll interval, and the warn cadence (in polls) so
+# a stuck fetch stays visible.
+_ENDPOINT_POLL_INTERVAL_S = 2.0
+_ENDPOINT_POLL_WARN_EVERY = 15  # ~30s at the interval above
+
 # Materialized handle metadata per reduce resolve batch.
 _DEFAULT_HANDLE_BATCH_BYTES = 64 * MiB
 
@@ -535,14 +541,26 @@ def _fetch_from_file_server(
     """Stream every member's shards into ``out_file_obj`` over ONE Flight
     client, batched into DoAction requests of ≤ ``max_bytes_per_fetch``.
 
-    Only a Flight *transport* fault is retryable; everything else is terminal:
-      * ``flight.FlightServerError`` -- a server-side error (missing/unreadable
-        shuffle file, server-side OSError). Retrying can't recreate the file.
-      * sink ``OSError`` (disk full), ``pa.lib.ArrowInvalid`` (a corrupt / short
-        frame), or ``_resolve``'s ``ShuffleFileServerAnomalyError`` (dead /
-        unschedulable / unregistered actor) -- all propagate as-is.
-      * other ``flight.FlightError`` (server unavailable / timeout / cancelled /
-        internal) -- retried by the policy below.
+    Retry only transport faults; propagate everything else. The retriable errors
+    are all FlightError and share the single ``except flight.FlightError`` (so
+    ``FlightTimedOutError`` and friends need no clause of their own); the terminal
+    ones are either split out ahead of it or are not a FlightError at all.
+
+    Retried (transport faults, caught by ``except flight.FlightError``):
+      * ``FlightUnavailableError`` -- server down / restarting.
+      * ``FlightTimedOutError`` -- hung.
+      * ``FlightCancelledError`` -- dropped mid-call.
+      * ``FlightInternalError`` and any other transport ``FlightError``.
+
+    Terminal (propagate without retry):
+      * ``flight.FlightServerError`` -- server alive but refused the request
+        (missing/unreadable file, server-side OSError, or bug). It IS a
+        FlightError, so it is re-raised ahead of the broad catch.
+      * ``pa.lib.ArrowInvalid`` / ``ArrowKeyError`` -- corrupt / short frame, or a
+        server-side ValueError / KeyError. Not a FlightError; propagates as-is.
+      * sink ``OSError`` (local write failed, e.g. disk full or I/O error) and
+        ``_resolve``'s ``ShuffleFileServerAnomalyError`` (dead / unschedulable /
+        unregistered actor). Propagate as-is.
 
     On a transport fault, re-resolve and compare incarnations (not host:port -- a
     restart can rebind the port). A changed incarnation means the server restarted:
@@ -581,13 +599,13 @@ def _fetch_from_file_server(
                 break
             except ActorUnavailableError:
                 poll_count += 1
-                # Surface a warning every ~30s so a stuck fetch is visible.
-                if poll_count % 15 == 0:
+                if poll_count % _ENDPOINT_POLL_WARN_EVERY == 0:
                     logger.warning(
                         f"ShuffleFileServer on node {node_id} unavailable "
-                        f"(~{poll_count * 2}s), still polling..."
+                        f"(~{poll_count * _ENDPOINT_POLL_INTERVAL_S:.0f}s), "
+                        f"still polling..."
                     )
-                time.sleep(2.0)
+                time.sleep(_ENDPOINT_POLL_INTERVAL_S)
             except ActorDiedError as e:
                 # With max_restarts=-1, Ray auto-restarts on mid-life death and
                 # surfaces ActorUnavailableError during the restart. So an
@@ -617,9 +635,9 @@ def _fetch_from_file_server(
             )
             return
         except flight.FlightServerError:
-            raise  # server-side error, terminal (see docstring)
+            raise  # terminal: server alive, refused the request (see docstring)
         except flight.FlightError as e:
-            # Transport fault: retry per the policy in the docstring.
+            # any other FlightError is a transport fault (see docstring)
             out_file_obj.reset()
             with _ENDPOINT_CACHE_LOCK:
                 _ENDPOINT_CACHE.pop(key, None)
