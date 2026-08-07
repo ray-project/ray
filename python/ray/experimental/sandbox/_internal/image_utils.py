@@ -273,12 +273,15 @@ def pull_and_extract_container_image(
             )
             os.makedirs(tmp_extract_dir, mode=0o755, exist_ok=True)
 
+            tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
+            os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
+
             tar_path = os.path.join(images_dir, f"{safe_name}.tar")
 
             if os.path.isfile(image):
                 try:
                     with open(image, "rb") as f:
-                        extract_tar_layer(f.read(), tmp_extract_dir)
+                        extract_tar_layer(f.read(), tmp_rootfs_dir)
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                     raise SandboxCreationError(
@@ -385,7 +388,7 @@ def pull_and_extract_container_image(
                         ) as blob_resp:
                             layer_bytes = blob_resp.read()
 
-                        extract_tar_layer(layer_bytes, tmp_extract_dir)
+                        extract_tar_layer(layer_bytes, tmp_rootfs_dir)
 
                     with tarfile.open(tar_path, "w") as tar:
                         tar.add(tmp_extract_dir, arcname=".")

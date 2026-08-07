@@ -54,9 +54,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
-            image_rootfs = self._pull_and_extract_image(config.image)
+            image_dir = self._pull_and_extract_image(config.image)
+            image_rootfs = os.path.join(image_dir, "rootfs")
             if not config.workdir:
-                config_json_path = os.path.join(image_rootfs, ".image_config.json")
+                config_json_path = os.path.join(image_dir, ".image_config.json")
                 if os.path.exists(config_json_path):
                     with open(config_json_path, "r", encoding="utf-8") as f:
                         try:
@@ -338,7 +339,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             spec = json.load(f)
 
         if not image_rootfs:
-            image_rootfs = self._pull_and_extract_image(image)
+            image_dir = self._pull_and_extract_image(image)
+            image_rootfs = os.path.join(image_dir, "rootfs")
         spec["root"]["path"] = image_rootfs
         spec["root"]["readonly"] = readonly
 
