@@ -384,13 +384,16 @@ class MARWILConfig(AlgorithmConfig):
 
         return pipeline
 
+    def _validate_beta(self) -> None:
+        if self.beta < 0.0 or self.beta > 1.0:
+            self._value_error("`beta` must be within 0.0 and 1.0!")
+
     @override(AlgorithmConfig)
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
 
-        if self.beta < 0.0 or self.beta > 1.0:
-            self._value_error("`beta` must be within 0.0 and 1.0!")
+        self._validate_beta()
 
         if self.postprocess_inputs is False and self.beta > 0.0:
             self._value_error(
