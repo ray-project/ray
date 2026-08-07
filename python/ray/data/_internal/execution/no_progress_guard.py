@@ -2,162 +2,70 @@ import time
 from typing import Callable
 
 from ray.data._internal.execution.streaming_executor_state import (
-    WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
     Topology,
 )
 from ray.data.exceptions import ExecutionTimeoutError
 
-# Most a single interval between checks can add to the stall clock. A spinning
-# scheduling loop turns over every `WAIT_FOR_TASK_COMPLETION_TIMEOUT_S`, so an
-# interval an order of magnitude past that came from the loop blocking on work
-# inside one step rather than from spinning. Erring low only makes the guard
-# slower to fire, so the multiple is deliberately close to a normal step.
-DEFAULT_MAX_STALL_INTERVAL_S = 10 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S
-
 
 class NoProgressGuard:
-    """Fails an execution that stops making progress.
-
-    Progress is the sum of ``num_outputs_taken`` across the topology, which
-    ticks whenever data moves anywhere in the pipeline.
-
-    Hash-based operators keep their finalize phase in a separate metrics object
-    exposed through ``extra_metrics``, so that phase is counted too. Even then
-    it only reports once a whole partition lands, and the gap in between grows
-    with the data, so the clock also pauses while one of those phases has a
-    task in flight. That gives up detecting a hang inside a finalize, which no
-    counter here could distinguish from work anyway, and the pause is
-    topology-wide, so a hang elsewhere goes undetected until it completes.
-
-    Progress also freezes when the consumer is the bottleneck, since a slow
-    loop between iterations backpressures every operator upstream. Failing
-    those executions would be worse than the hang this guards against, so the
-    stall clock advances only while the pipeline is the one holding things up.
-
-    The clock measures time the scheduling loop spent spinning rather than
-    wall-clock time, so an operator that blocks the loop for a long stretch of
-    real work doesn't count against the timeout. Two consequences: where a step
-    itself outlasts ``max_stall_interval_s``, the timeout fires late by roughly
-    ``step_duration / max_stall_interval_s``; and a loop wedged inside a
-    blocking call never reaches a check, so it never fires at all.
-
-    Args:
-        topology: The topology being executed, read for progress counters.
-        timeout_s: Seconds without progress before failing. Negative disables
-            the guard.
-        clock: Monotonic time source, injectable for testing.
-        max_stall_interval_s: Most a single interval between checks can add to
-            the stall clock.
-
-    Raises:
-        ValueError: If ``timeout_s`` is zero, which would fail every execution
-            on its first check.
-    """
-
     def __init__(
         self,
         topology: Topology,
         timeout_s: float,
         *,
         clock: Callable[[], float] = time.monotonic,
-        max_stall_interval_s: float = DEFAULT_MAX_STALL_INTERVAL_S,
     ):
         if timeout_s == 0:
             raise ValueError(
                 "execution_no_progress_timeout_s must be positive, or negative "
                 "to disable the timeout. Zero would fail every execution as "
-                "soon as it started."
+                f"soon as it started. Got: {timeout_s}"
             )
 
         self._topology = topology
         self._timeout_s = timeout_s
         self._clock = clock
-        self._max_stall_interval_s = max_stall_interval_s
 
         self._last_check_time = clock()
-        self._last_progress_count = self._total_progress_count(
-            [op.metrics for op in topology]
-        )
+        self._last_progress_states = self._total_progress_states()
         self._stalled_s = 0.0
 
     @property
     def enabled(self) -> bool:
         return self._timeout_s > 0
 
-    def check(self, consumer_ready: bool) -> None:
-        """Record progress since the last call, and fail if there was none.
-
-        Args:
-            consumer_ready: Whether a consumer is blocked on an empty output
-                queue. When False the caller is the bottleneck, so the stall
-                clock resets.
-        """
+    def check(self) -> None:
         if not self.enabled:
             return
 
         current_time = self._clock()
-        # Read each operator's metrics once: on a hash-based operator the
-        # property rebuilds its finalize snapshot on every access.
-        snapshots = [op.metrics for op in self._topology]
-        current_progress_count = self._total_progress_count(snapshots)
+        current_progress_states = self._total_progress_states()
         interval = current_time - self._last_check_time
         self._last_check_time = current_time
 
-        # Each of these is a reason the silence isn't a stall. Resetting on
-        # progress alone would let time accumulate while something else held
-        # the pipeline back, then fail the moment it caught up.
-        execution_made_progress = current_progress_count > self._last_progress_count
+        execution_made_progress = current_progress_states != self._last_progress_states
         if execution_made_progress:
-            self._reset_stall(current_progress_count)
+            self._reset_stall(current_progress_states)
             return
 
-        if not consumer_ready:
-            self._reset_stall(current_progress_count)
-            return
-
-        if self._finalize_task_is_running(snapshots):
-            self._reset_stall(current_progress_count)
-            return
-
-        # A stalled loop keeps spinning at the `ray.wait` timeout, so its stall
-        # builds out of many short intervals. A single long interval means the
-        # loop blocked running work inside one step instead, which the progress
-        # counters only reflect on the step after -- an all-to-all `bulk_fn`
-        # runs a whole sort that way. Capping rather than skipping keeps every
-        # interval counting for something.
-        self._stalled_s += min(interval, self._max_stall_interval_s)
+        self._stalled_s += interval
         if self._stalled_s >= self._timeout_s:
             raise ExecutionTimeoutError(self._error_message())
 
-    def _reset_stall(self, current_progress_count: int) -> None:
-        self._last_progress_count = current_progress_count
+    def _reset_stall(self, current_progress_states: tuple[int, int, int]) -> None:
+        self._last_progress_states = current_progress_states
         self._stalled_s = 0.0
 
-    def _finalize_task_is_running(self, snapshots) -> bool:
-        """Whether a phase reported under ``extra_metrics`` has a task running.
+    def _total_progress_states(self) -> tuple[int, int, int]:
+        outputs_taken = 0
+        enqueued_input_blocks = 0
+        enqueued_output_blocks = 0
 
-        Those phases only report once a whole partition completes, so between
-        two reports they're indistinguishable from a stall on the counters
-        alone.
-        """
-        return any(
-            extra.get("num_tasks_running", 0) > 0
-            for metrics in snapshots
-            for extra in metrics.extra_metrics.values()
-            if isinstance(extra, dict)
-        )
-
-    def _total_progress_count(self, snapshots) -> int:
-        total = 0
-        for metrics in snapshots:
-            total += metrics.num_outputs_taken
-            # A hash shuffle, join or aggregate reports its finalize phase
-            # under `extra_metrics`; `metrics` itself only covers the shuffle
-            # phase, and would look frozen for as long as finalizing runs.
-            for extra in metrics.extra_metrics.values():
-                if isinstance(extra, dict) and "num_outputs_taken" in extra:
-                    total += extra["num_outputs_taken"]
-        return total
+        for op, state in self._topology.items():
+            outputs_taken += op.metrics.num_outputs_taken
+            enqueued_input_blocks += state.total_enqueued_input_blocks()
+            enqueued_output_blocks += state.total_enqueued_output_blocks()
+        return (outputs_taken, enqueued_input_blocks, enqueued_output_blocks)
 
     def _error_message(self) -> str:
         lines = [

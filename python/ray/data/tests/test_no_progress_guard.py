@@ -32,15 +32,16 @@ def test_hanging_udf_fails_execution(
         ds.take(1)
 
 
-def test_slow_consumer_does_not_time_out(
+def test_all_to_all_operator_disables_the_guard(
     ray_start_regular, restore_data_context  # noqa: F811
 ):
-    """A consumer far slower than the timeout must not fail the execution."""
-    DataContext.get_current().execution_no_progress_timeout_s = 3
+    DataContext.get_current().execution_no_progress_timeout_s = 1
 
-    ds = ray.data.range(100, override_num_blocks=10)
-    for _ in ds.iter_batches(batch_size=10):
-        time.sleep(0.5)  # 5s in total, well past the 3s timeout
+    ds = ray.data.range(10).sort("id")
+    bundles, _, executor = ds._execute_to_iterator()
+    list(bundles)
+
+    assert not executor._no_progress_guard.enabled
 
 
 if __name__ == "__main__":

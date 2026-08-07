@@ -35,16 +35,8 @@ class SystemException(Exception):
 
 
 @DeveloperAPI
-class ExecutionTimeoutError(TimeoutError):
-    """Represents an Exception raised when a Ray Data execution has made no
-    progress for `DataContext.execution_no_progress_timeout_s` seconds while
-    the consumer was waiting on the pipeline.
-
-    The cause is often outside Ray Data: a UDF blocked on an external call, a
-    cluster that can no longer schedule tasks after preemption, or a UDF that
-    is simply slower than the timeout. It can also indicate a deadlock in Ray
-    Data or Ray Core. Raise the timeout, or set it to a negative value to
-    disable it, via `DataContext.execution_no_progress_timeout_s`."""
+class ExecutionTimeoutError(Exception):
+    pass
 
 
 @DeveloperAPI

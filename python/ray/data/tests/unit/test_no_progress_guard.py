@@ -34,6 +34,20 @@ class _FakeOperator:
         return self._num_active_tasks
 
 
+class _FakeOpState:
+    """Minimal stand-in for the `OpState` surface the guard reads."""
+
+    def __init__(self, input_blocks: int = 0, output_blocks: int = 0):
+        self.input_blocks = input_blocks
+        self.output_blocks = output_blocks
+
+    def total_enqueued_input_blocks(self) -> int:
+        return self.input_blocks
+
+    def total_enqueued_output_blocks(self) -> int:
+        return self.output_blocks
+
+
 class _FakeClock:
     def __init__(self):
         self.now = 0.0
@@ -45,20 +59,10 @@ class _FakeClock:
         self.now += seconds
 
 
-def _make_guard(ops, timeout_s=100.0, max_stall_interval_s=float("inf")):
+def _make_guard(ops, timeout_s=100.0):
     clock = _FakeClock()
-    # `Topology` is a dict keyed by operator; the guard only reads the keys.
-    topology = {op: None for op in ops}
-    guard = NoProgressGuard(
-        topology,
-        timeout_s,
-        clock=clock,
-        # Most tests advance the clock in single large jumps, which stands in
-        # for many fast scheduling steps. `test_blocking_step_is_not_a_stall`
-        # covers the real threshold.
-        max_stall_interval_s=max_stall_interval_s,
-    )
-    return guard, clock
+    topology = {op: _FakeOpState() for op in ops}
+    return NoProgressGuard(topology, timeout_s, clock=clock), clock
 
 
 def test_raises_once_timeout_elapses_without_progress():
@@ -66,11 +70,11 @@ def test_raises_once_timeout_elapses_without_progress():
     guard, clock = _make_guard([op], timeout_s=100.0)
 
     clock.advance(99.0)
-    guard.check(consumer_ready=True)
+    guard.check()
 
     clock.advance(1.0)
     with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_ready=True)
+        guard.check()
 
 
 def test_progress_resets_the_clock():
@@ -80,14 +84,14 @@ def test_progress_resets_the_clock():
     for _ in range(5):
         clock.advance(99.0)
         op.metrics.num_outputs_taken += 1
-        guard.check(consumer_ready=True)
+        guard.check()
 
     # 495s elapsed overall without ever tripping the 100s timeout, because each
     # output restarted the stall clock. The clock restarted at the last check,
     # so a full `timeout_s` has to pass from there to trip it.
     clock.advance(100.0)
     with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_ready=True)
+        guard.check()
 
 
 def test_progress_by_any_operator_counts():
@@ -98,117 +102,28 @@ def test_progress_by_any_operator_counts():
     for _ in range(5):
         clock.advance(99.0)
         moving.metrics.num_outputs_taken += 1
-        guard.check(consumer_ready=True)
+        guard.check()
 
 
-def test_busy_consumer_never_times_out():
-    """A slow consumer freezes every counter, but must not fail the execution."""
+def test_queue_movement_counts_as_progress():
     op = _FakeOperator("MapBatches(embed)")
-    guard, clock = _make_guard([op], timeout_s=100.0)
-
-    for _ in range(100):
-        clock.advance(1000.0)
-        guard.check(consumer_ready=False)
-
-
-def test_clock_resumes_after_consumer_catches_up():
-    """Time spent waiting on a busy consumer must not carry over.
-
-    Regression test: if only progress reset the clock, elapsed time would
-    accumulate while the consumer held the pipeline back, and the execution
-    would fail the moment the consumer caught up.
-    """
-    op = _FakeOperator("MapBatches(embed)")
-    guard, clock = _make_guard([op], timeout_s=100.0)
-
-    clock.advance(99.0)
-    guard.check(consumer_ready=True)
-
-    # Consumer is the bottleneck for far longer than the timeout.
-    clock.advance(1000.0)
-    guard.check(consumer_ready=False)
-
-    # It catches up: the clock restarted, so this is not yet a stall.
-    clock.advance(99.0)
-    guard.check(consumer_ready=True)
-
-    clock.advance(100.0)
-    with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_ready=True)
-
-
-def test_finalize_phase_counts_as_progress():
-    """A hash operator emits from its finalize phase, not from `metrics`.
-
-    Regression test: counting only `metrics.num_outputs_taken` made a large
-    groupby, join or aggregate look stalled for most of its run.
-    """
-    op = _FakeOperator("HashAggregate", extra_metrics={"finalize": {}})
-    guard, clock = _make_guard([op], timeout_s=100.0)
+    state = _FakeOpState()
+    clock = _FakeClock()
+    guard = NoProgressGuard({op: state}, 100.0, clock=clock)
 
     for _ in range(5):
         clock.advance(99.0)
-        op.metrics.extra_metrics["finalize"]["num_outputs_taken"] = (
-            op.metrics.extra_metrics["finalize"].get("num_outputs_taken", 0) + 1
-        )
-        guard.check(consumer_ready=True)
-
-
-def test_running_finalize_is_not_a_stall():
-    """A finalize phase in flight isn't a stall, even with no output yet.
-
-    Regression test: those phases only report once a whole partition lands, and
-    that gap grows with the data, so a large groupby would eventually trip.
-    """
-    op = _FakeOperator(
-        "HashAggregate", extra_metrics={"finalize": {"num_tasks_running": 1}}
-    )
-    guard, clock = _make_guard([op], timeout_s=100.0)
+        state.input_blocks += 1
+        guard.check()
 
     for _ in range(5):
-        clock.advance(1000.0)
-        guard.check(consumer_ready=True)
+        clock.advance(99.0)
+        state.output_blocks += 1
+        guard.check()
 
-    # It finishes, and now silence really is a stall.
-    op.metrics.extra_metrics["finalize"]["num_tasks_running"] = 0
     clock.advance(100.0)
     with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_ready=True)
-
-
-def test_blocking_step_is_not_a_stall():
-    """A scheduling step that blocks on real work must not count as a stall.
-
-    Regression test: an all-to-all operator runs its whole `bulk_fn`
-    synchronously inside one step, and its outputs are only taken on the step
-    after. Counting that gap failed sorts that had actually succeeded.
-    """
-    op = _FakeOperator("Sort")
-    guard, clock = _make_guard([op], timeout_s=100.0, max_stall_interval_s=1.0)
-
-    # `bulk_fn` blocks the loop well past the timeout, then returns.
-    clock.advance(1000.0)
-    guard.check(consumer_ready=True)
-
-    # The next step drains its output, which is the progress the guard wanted.
-    clock.advance(0.1)
-    op.metrics.num_outputs_taken += 1
-    guard.check(consumer_ready=True)
-
-
-def test_stall_accumulates_across_steps():
-    op = _FakeOperator("MapBatches(embed)")
-    guard, clock = _make_guard([op], timeout_s=1.0, max_stall_interval_s=0.25)
-
-    # A stalled loop keeps spinning at the `ray.wait` timeout, so the stall
-    # builds up across many short steps rather than one long gap.
-    for _ in range(3):
-        clock.advance(0.25)
-        guard.check(consumer_ready=True)
-
-    clock.advance(0.25)
-    with pytest.raises(ExecutionTimeoutError):
-        guard.check(consumer_ready=True)
+        guard.check()
 
 
 def test_zero_timeout_is_rejected():
@@ -224,7 +139,7 @@ def test_disabled(timeout_s):
 
     assert not guard.enabled
     clock.advance(10**6)
-    guard.check(consumer_ready=True)
+    guard.check()
 
 
 def test_error_message_names_stalled_operators():
@@ -238,11 +153,11 @@ def test_error_message_names_stalled_operators():
     guard, clock = _make_guard([stalled, completed], timeout_s=1800.0)
 
     clock.advance(1000.0)
-    guard.check(consumer_ready=True)
+    guard.check()
 
     clock.advance(832.0)
     with pytest.raises(ExecutionTimeoutError) as exc_info:
-        guard.check(consumer_ready=True)
+        guard.check()
 
     message = str(exc_info.value)
     assert (

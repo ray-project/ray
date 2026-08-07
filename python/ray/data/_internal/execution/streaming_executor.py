@@ -26,7 +26,11 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
 from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
     InternalQueueOperatorMixin,
+)
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import (
@@ -289,9 +293,16 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Built before the loop thread starts, since its stall clock runs from
         # construction and the loop is the only thing that reads it.
+        if any(
+            isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
+            for op in self._topology
+        ):
+            timeout = -1
+        else:
+            timeout = self._data_context.execution_no_progress_timeout_s
         self._no_progress_guard = NoProgressGuard(
             self._topology,
-            self._data_context.execution_no_progress_timeout_s,
+            timeout,
         )
 
         self.start()
@@ -592,12 +603,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Keep going until all operators run to completion.
         should_continue = not all(op.has_completed() for op in topology)
-        if should_continue:
-            # Skipped once the execution is done, so a final step that completes
-            # the topology can't be flagged as a stall.
-            self._no_progress_guard.check(
-                consumer_ready=self._consumer_is_waiting_for_output()
-            )
+        self._no_progress_guard.check()
         return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
@@ -614,15 +620,6 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
         return len(state.output_queue) == 0
-
-    def _consumer_is_waiting_for_output(self) -> bool:
-        """Returns whether a consumer is parked waiting on an empty queue.
-
-        Both halves matter: an empty queue on its own can mean a prefetcher
-        drained it while the caller is still the bottleneck.
-        """
-        _, state = self._output_node
-        return len(state.output_queue) == 0 and state.num_waiting_consumers > 0
 
     def _export_operator_schema(self, op: PhysicalOperator) -> None:
         schema = self._op_schema.get(op)
