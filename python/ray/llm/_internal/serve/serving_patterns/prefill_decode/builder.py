@@ -3,7 +3,6 @@
 3-tier graph: ingress -> PDDecodeServer (decode config + engine) -> PDPrefillServer.
 """
 
-import warnings
 from typing import Any, Optional, Union
 
 from pydantic import Field, field_validator, model_validator
@@ -21,7 +20,6 @@ from ray.llm._internal.serve.core.ingress.builder import (
     _build_direct_streaming_llm_deployment,
     _build_openai_ingress_request_router,
     _validate_direct_streaming_ingress_config,
-    load_class,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
@@ -36,65 +34,20 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     DPPDPrefillServer,
     PDDecodeServer,
     PDPrefillServer,
-    PDProxyServer,  # TODO(Kourosh): Deprecate, remove in Ray 2.58.
 )
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# Deprecated: ProxyClsConfig
-# TODO(Kourosh): Deprecate, remove in Ray 2.58.
-# ---------------------------------------------------------------------------
-
-
-class ProxyClsConfig(BaseModelExtended):
-    """Deprecated. Unused proxy configuration kept for backwards compatibility."""
-
-    proxy_cls: Union[str, type] = Field(
-        default=PDProxyServer,
-        description="Deprecated.",
-    )
-
-    proxy_extra_kwargs: Optional[dict] = Field(
-        default_factory=dict,
-        description="Deprecated.",
-    )
-
-    @field_validator("proxy_cls")
-    @classmethod
-    def validate_class(cls, value):
-        if isinstance(value, str):
-            return load_class(value)
-        return value
-
-
-# ---------------------------------------------------------------------------
-# PDServingArgs
-# ---------------------------------------------------------------------------
 
 
 class PDServingArgs(BaseModelExtended):
     """Schema for P/D serving args.
 
     Defines the prefill and decode LLMConfigs plus ingress options.
-    The deprecated ``proxy_cls_config`` and ``proxy_deployment_config``
-    fields are accepted for backwards compatibility but ignored.
     """
 
     prefill_config: Union[str, dict, LLMConfig]
     decode_config: Union[str, dict, LLMConfig]
-
-    # TODO(Kourosh): Deprecated, remove in Ray 2.58.
-    # Deprecated proxy fields — accepted for backwards compat, ignored at build time.
-    proxy_cls_config: Optional[Union[dict, ProxyClsConfig]] = Field(
-        default=None,
-        description="Deprecated. Accepted but ignored.",
-    )
-    proxy_deployment_config: Optional[dict] = Field(
-        default=None,
-        description="Deprecated. Accepted but ignored.",
-    )
 
     ingress_cls_config: Union[dict, IngressClsConfig] = Field(
         default_factory=IngressClsConfig,
@@ -116,38 +69,6 @@ class PDServingArgs(BaseModelExtended):
             return value
         else:
             raise TypeError(f"Invalid LLMConfig type: {type(value)}")
-
-    @field_validator("proxy_cls_config")
-    @classmethod
-    def _validate_proxy_cls_config(
-        cls, value: Optional[Union[dict, ProxyClsConfig]]
-    ) -> Optional[ProxyClsConfig]:
-        if value is not None:
-            warnings.warn(
-                "proxy_cls_config is deprecated and ignored. "
-                "The proxy has been replaced by PDDecodeServer which "
-                "orchestrates prefill and decode directly. "
-                "See PDDecodeServer and PDPrefillServer.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if isinstance(value, dict):
-                return ProxyClsConfig.model_validate(value)
-        return value
-
-    @field_validator("proxy_deployment_config")
-    @classmethod
-    def _validate_proxy_deployment_config(cls, value: Optional[dict]) -> Optional[dict]:
-        if value is not None:
-            warnings.warn(
-                "proxy_deployment_config is deprecated and ignored. "
-                "The proxy has been replaced by PDDecodeServer which "
-                "orchestrates prefill and decode directly. "
-                "See PDDecodeServer and PDPrefillServer.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        return value
 
     @field_validator("ingress_cls_config")
     @classmethod
@@ -180,6 +101,36 @@ class PDServingArgs(BaseModelExtended):
         """Shift decode's NIXL base off prefill's default (20000) so colocated replicas don't collide."""
         self.decode_config.experimental_configs.setdefault(
             "NIXL_SIDE_CHANNEL_PORT_BASE", 22000
+        )
+        return self
+
+    @model_validator(mode="after")
+    def _default_decode_moriio_port_base(self):
+        """Shift decode's MoRIIO handshake/notify bases off prefill's defaults.
+
+        Mirrors ``_default_decode_nixl_port_base``: a colocated P+D pair on one
+        node would otherwise share MoRIIO's default handshake/notify ports. Only
+        applies when the decode config uses the MoRIIO connector. The +1000
+        stride is well above any realistic tp_size*pp_size offset added on top.
+        """
+        kv_transfer_config = (
+            self.decode_config.engine_kwargs.get("kv_transfer_config") or {}
+        )
+        if kv_transfer_config.get("kv_connector") != "MoRIIOConnector":
+            return self
+
+        from ray.llm._internal.serve.engines.vllm.kv_transfer.moriio import (
+            DEFAULT_HANDSHAKE_PORT_BASE,
+            DEFAULT_NOTIFY_PORT_BASE,
+            HANDSHAKE_PORT_BASE_KEY,
+            NOTIFY_PORT_BASE_KEY,
+        )
+
+        self.decode_config.experimental_configs.setdefault(
+            HANDSHAKE_PORT_BASE_KEY, DEFAULT_HANDSHAKE_PORT_BASE + 1000
+        )
+        self.decode_config.experimental_configs.setdefault(
+            NOTIFY_PORT_BASE_KEY, DEFAULT_NOTIFY_PORT_BASE + 1000
         )
         return self
 
@@ -235,7 +186,9 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             f"{decode_cls.__name__}=ingress, LLMRouter=ingress_request_router"
         )
         return decode_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(server=decode_deployment)
+            _build_openai_ingress_request_router(
+                server=decode_deployment, llm_config=pd_config.decode_config
+            )
         )
 
     decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment

@@ -39,7 +39,7 @@ class CommandRunnerInterface:
             port_forward: List of (local, remote) ports to forward, or
                 a single tuple.
             with_output: Whether to return output.
-            environment_variables (Dict[str, str | int | Dict[str, str]):
+            environment_variables:
                 Environment variables that `cmd` should be run with.
             run_env: Options: docker/host/auto. Used in
                 DockerCommandRunner to determine the run environment.
@@ -47,6 +47,10 @@ class CommandRunnerInterface:
                 SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
             shutdown_after_run: if provided, shutdowns down the machine
                 after executing the command with `sudo shutdown -h now`.
+
+        Returns:
+            The command output, if `with_output` is True; otherwise an empty
+            string.
         """
         raise NotImplementedError
 
@@ -58,6 +62,7 @@ class CommandRunnerInterface:
         Args:
             source: The (local) source directory or file.
             target: The (remote) destination path.
+            options: Optional rsync options.
         """
         raise NotImplementedError
 
@@ -69,6 +74,7 @@ class CommandRunnerInterface:
         Args:
             source: The (remote) source directory or file.
             target: The (local) destination path.
+            options: Optional rsync options.
         """
         raise NotImplementedError
 

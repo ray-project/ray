@@ -12,6 +12,10 @@ from ray.serve._private.config import DeploymentConfig
 def get_random_dict_combos(d: Dict, n: int) -> List[Dict]:
     """Gets n random combinations of dictionary d.
 
+    Args:
+        d: The source dictionary to draw combinations from.
+        n: The maximum number of combinations to return.
+
     Returns:
         List of dictionary combinations of lengths from 0 to len(d). List
         contains n random combinations of d's elements.

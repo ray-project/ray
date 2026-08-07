@@ -90,8 +90,7 @@ kubectl describe rayservices.ray.io rayservice-sample
 
 #### Kubernetes Events
 
-KubeRay creates Kubernetes events for every interaction between the KubeRay operator and the Kubernetes API server, such as creating a Kubernetes service, updating a RayCluster, and deleting a RayCluster.
-In addition, if the validation of the custom resource fails, KubeRay also creates a Kubernetes event.
+KubeRay creates Kubernetes events for every interaction between the KubeRay operator and the Kubernetes API server, such as creating a Kubernetes service, updating a RayCluster, and deleting a RayCluster. In addition, if the validation of the custom resource fails, KubeRay also creates a Kubernetes event.
 
 ```sh
 # Example:

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray usage-stats collection policy: what data is gathered, how to opt out, and how the reporting mechanism works.
+
 .. _ref-usage-stats:
 
 Usage Stats Collection

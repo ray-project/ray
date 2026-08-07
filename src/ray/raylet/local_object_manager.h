@@ -27,7 +27,6 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/observability/metric_interface.h"
-#include "ray/pubsub/subscriber_interface.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/worker_pool.h"
@@ -47,8 +46,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
  public:
   LocalObjectManager(
       const NodeID &node_id,
-      std::string self_node_address,
-      int self_node_port,
       instrumented_io_context &io_service,
       size_t free_objects_batch_size,
       int64_t free_objects_period_ms,
@@ -59,14 +56,11 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory,
       ray::observability::MetricInterface &object_store_memory_gauge,
       ray::raylet::SpillManagerMetrics &spill_manager_metrics,
       ClockInterface &clock)
       : self_node_id_(node_id),
-        self_node_address_(std::move(self_node_address)),
-        self_node_port_(self_node_port),
         io_service_(io_service),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
@@ -82,7 +76,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
-        core_worker_subscriber_(core_worker_subscriber),
         object_directory_(object_directory),
         object_store_memory_gauge_(object_store_memory_gauge),
         spill_manager_metrics_(spill_manager_metrics),
@@ -209,6 +202,17 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// filesystem.
   bool HasLocallySpilledObjects() const override;
 
+  /// Release an object that has been freed by its owner. For primary copies
+  /// this updates the pin/spill bookkeeping; for secondary copies the
+  /// bookkeeping step is skipped. In both cases the id is enqueued for the
+  /// next FlushFreeObjects batch so plasma can drop the local entry.
+  void ReleaseFreedLocalObject(const ObjectID &object_id) override;
+
+  std::vector<ObjectID> GetLocalObjectsOwnedBy(const WorkerID &worker_id) const override;
+
+  std::vector<ObjectID> GetLocalObjectsOwnedByOwnersOn(
+      const NodeID &node_id) const override;
+
   std::string DebugString() const override;
 
  private:
@@ -247,9 +251,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
 
-  /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
-
   /// Do operations that are needed after spilling objects such as
   /// 1. Unpin the pending spilling object.
   /// 2. Update the spilled URL to the owner.
@@ -267,8 +268,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
                             int64_t num_retries = kDefaultSpilledObjectDeleteRetries);
 
   const NodeID self_node_id_;
-  const std::string self_node_address_;
-  const int self_node_port_;
 
   /// The io_service/thread this class runs in.
   instrumented_io_context &io_service_;
@@ -373,10 +372,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// The next total bytes for an error-level spill log, or zero to disable.
   /// This is doubled each time a message is logged.
   int64_t next_spill_error_log_bytes_;
-
-  /// The raylet client to initiate the pubsub to core workers (owners).
-  /// It is used to subscribe objects to evict.
-  pubsub::SubscriberInterface *core_worker_subscriber_;
 
   /// The object directory interface to access object information.
   IObjectDirectory *object_directory_;

@@ -49,12 +49,6 @@ class FakeObjectManagerClient : public ObjectManagerClientInterface {
     pull_callbacks.push_back(callback);
   }
 
-  void FreeObjects(const FreeObjectsRequest &request,
-                   const ClientCallback<FreeObjectsReply> &callback) override {
-    num_free_objects_requests++;
-    free_objects_callbacks.push_back(callback);
-  }
-
   bool ReplyPush(const Status &status = Status::OK()) {
     if (push_callbacks.empty()) {
       return false;
@@ -77,28 +71,15 @@ class FakeObjectManagerClient : public ObjectManagerClientInterface {
     return true;
   }
 
-  bool ReplyFreeObjects(const Status &status = Status::OK()) {
-    if (free_objects_callbacks.empty()) {
-      return false;
-    }
-    FreeObjectsReply reply;
-    auto callback = free_objects_callbacks.front();
-    free_objects_callbacks.pop_front();
-    callback(status, std::move(reply));
-    return true;
-  }
-
   const std::string &GetAddress() const { return address_; }
 
   int GetPort() const { return port_; }
 
   uint32_t num_push_requests = 0;
   uint32_t num_pull_requests = 0;
-  uint32_t num_free_objects_requests = 0;
 
   std::list<ClientCallback<PushReply>> push_callbacks;
   std::list<ClientCallback<PullReply>> pull_callbacks;
-  std::list<ClientCallback<FreeObjectsReply>> free_objects_callbacks;
 
   std::string address_;
   int port_;

@@ -68,16 +68,6 @@ class ObjectManagerClient : public ObjectManagerClientInterface {
                          /*method_timeout_ms*/ -1,
                          override)
 
-  /// Tell remote object manager to free objects
-  ///
-  /// \param request The request message
-  /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(ObjectManagerService,
-                         FreeObjects,
-                         grpc_client_manager_->GetGrpcClient(),
-                         /*method_timeout_ms*/ -1,
-                         override)
-
  private:
   std::unique_ptr<GrpcClientManager<ObjectManagerService>> grpc_client_manager_;
 };

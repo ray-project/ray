@@ -56,6 +56,7 @@ from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
     DataContext,
 )
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.test_executor_resource_management import SMALL_STR
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import (
@@ -964,7 +965,7 @@ def test_setting_initial_size_for_actor_pool():
         ray_remote_args={"num_cpus": 1},
     )
 
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op._actor_pool.get_actor_info() == ActorPoolInfo(
         running=0,
@@ -1005,7 +1006,7 @@ def test_internal_input_queue_is_empty_after_early_completion(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     # Complete init sequence by completing pending metadata tasks (performed
     # by the executor)
     run_op_tasks_sync(op)
@@ -1062,7 +1063,7 @@ def test_actor_pool_input_queue_draining(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     # Finalize operator initialization sequence and make it schedulable
     run_op_tasks_sync(op, only_existing=True)
@@ -1284,7 +1285,9 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     downstream_op = IdentityOperator(
         "Downstream", input_dependencies=[actor_pool_map_op], data_context=data_context
     )
-    topology = build_streaming_topology(downstream_op, ExecutionOptions())
+    topology = build_streaming_topology(
+        downstream_op, ExecutionOptions(), noop_counter()
+    )
 
     # SETUP: Add a bundle to the upstream operator's external output queue. This is
     # necessary to reproduce the bug where the actor pool operator wouldn't complete if
@@ -1490,6 +1493,152 @@ def test_actor_init_failure_retry(
             ).take_all()
 
 
+def _make_flaky_init_mapper(num_init_failures: int):
+    """Returns a map_batches UDF class whose first `num_init_failures`
+    __init__ attempts raise, counted across all actor processes (including
+    replacements) and in-actor retries (via a counter actor)."""
+
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def increment(self):
+            self._count += 1
+            return self._count
+
+    init_counter = Counter.remote()
+
+    class FlakyInitMapper:
+        def __init__(self):
+            if ray.get(init_counter.increment.remote()) <= num_init_failures:
+                raise ValueError("init_failed")
+
+        def __call__(self, batch):
+            return batch
+
+    return FlakyInitMapper
+
+
+@pytest.mark.parametrize(
+    "budget,num_failures,should_succeed",
+    [
+        # Budget covers both deaths: replaced actors, job succeeds.
+        (2, 2, True),
+        # Budget exceeded on the second death: job fails.
+        (1, 2, False),
+        # Unlimited budget: job succeeds.
+        (-1, 2, True),
+    ],
+)
+def test_actor_init_death_budget(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    budget,
+    num_failures,
+    should_succeed,
+):
+    """Tests that actor deaths during initialization are tolerated (by
+    replacing the dead actor) up to
+    DataContext.max_consecutive_actor_init_deaths, and that the original
+    ActorDiedError propagates once the budget is exceeded.
+    """
+    from ray.exceptions import ActorDiedError
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_consecutive_actor_init_deaths = budget
+    # Set to 0 so actors start asynchronously
+    ctx.wait_for_min_actors_s = 0
+
+    # With actor_init_retry_on_errors disabled (default), each init attempt
+    # corresponds to one actor process.
+    mapper = _make_flaky_init_mapper(num_failures)
+    ds = ray.data.range(10).map_batches(mapper, batch_size=1, concurrency=1)
+    if should_succeed:
+        assert len(ds.take_all()) == 10
+    else:
+        with pytest.raises(ActorDiedError, match="init_failed"):
+            ds.take_all()
+
+
+def test_actor_init_death_budget_with_in_actor_retries(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Tests that the pool-level death budget counts dead actor processes,
+    not in-actor init retry attempts (actor_init_retry_on_errors runs first).
+
+    actor_init_max_retries=1 gives each actor process 2 init attempts, so the
+    first 3 init failures play out as:
+
+    T1: actor process 1 fails once and retries in-process.
+    T2: actor process 1 fails again, exhausts its retry, and dies.
+    T3: the death is charged to the pool budget
+        (max_consecutive_actor_init_deaths=1, so this one is tolerated) and
+        actor process 2 is started as a replacement.
+    T4: actor process 2 fails once and retries in-process.
+    T5: actor process 2 succeeds.
+
+    The budget is never exceeded because only one actor process died, even
+    though init failed 3 times overall.
+    """
+    ctx = ray.data.DataContext.get_current()
+    ctx.actor_init_retry_on_errors = True
+    ctx.actor_init_max_retries = 1
+    ctx.max_consecutive_actor_init_deaths = 1
+    # Set to 0 so actors start asynchronously
+    ctx.wait_for_min_actors_s = 0
+
+    # Fail the first 3 init attempts; see the timeline above.
+    mapper = _make_flaky_init_mapper(3)
+    result = ray.data.range(10).map_batches(mapper, batch_size=1, concurrency=1)
+    assert len(result.take_all()) == 10
+
+
+def test_on_actor_init_death_unit(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Unit test for ActorPoolMapOperator._on_actor_init_death: raise timing
+    against the consecutive-death budget, reset-on-success, and re-raise
+    identity.
+    """
+    from ray.exceptions import RayActorError
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_consecutive_actor_init_deaths = 2
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(2)])
+    )
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(lambda block_iter: block_iter),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=ActorPoolStrategy(min_size=1),
+    )
+
+    error = RayActorError()
+
+    # Failures within the budget are tolerated; a successful actor start (which
+    # zeroes the counter) restores the full budget.
+    op._on_actor_init_death(error)
+    op._on_actor_init_death(error)
+    op._consecutive_actor_init_deaths = 0  # What _task_done_callback does.
+    op._on_actor_init_death(error)
+    op._on_actor_init_death(error)
+    # The third consecutive failure exceeds the budget.
+    with pytest.raises(RayActorError) as exc_info:
+        op._on_actor_init_death(error)
+    # The original error object is re-raised unchanged.
+    assert exc_info.value is error
+
+    # With an unlimited budget, failures never raise.
+    ctx.max_consecutive_actor_init_deaths = -1
+    op._consecutive_actor_init_deaths = 0
+    for _ in range(10):
+        op._on_actor_init_death(error)
+
+
 def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_override):
     """Tests that ActorPoolMapOperator runs init_fn on start."""
 
@@ -1518,7 +1667,7 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared, data_context_ove
     )
 
     with pytest.raises(RayActorError, match=r"init_failed"):
-        op.start(ExecutionOptions())
+        op.start(ExecutionOptions(), noop_counter())
 
 
 @pytest.mark.parametrize(
@@ -1571,7 +1720,7 @@ def test_actor_pool_map_operator_should_add_input(
         ray_remote_args={"max_concurrency": max_concurrency},
     )
 
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     # Cannot add input until actor has started.
     assert not op.can_add_input()
@@ -1614,7 +1763,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     actor_pool = op._actor_pool
 
     # Wait for the op to scale up to the min size.
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     run_op_tasks_sync(op)
     assert actor_pool.num_running_actors() == num_actors
     assert op.num_active_tasks() == 0

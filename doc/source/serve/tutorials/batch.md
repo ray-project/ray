@@ -6,15 +6,13 @@ orphan: true
 
 # Serve a Text Generator with Request Batching
 
-This tutorial shows how to deploy a text generator that processes multiple queries simultaneously using batching. 
-Learn how to:
+This tutorial shows how to deploy a text generator that processes multiple queries simultaneously using batching. Learn how to:
 
 - Implement a Ray Serve deployment that handles batched requests
 - Configure and optimize batch processing
 - Query the model from HTTP and Python
 
-Batching can significantly improve performance when your model supports parallel processing like GPU acceleration or vectorized operations.
-It increases both throughput and hardware utilization by processing multiple requests together.
+Batching can significantly improve performance when your model supports parallel processing like GPU acceleration or vectorized operations. It increases both throughput and hardware utilization by processing multiple requests together.
 
 :::{note}
 This tutorial focuses on online serving with batching. For offline batch processing of large datasets, see [batch inference with Ray Data](batch_inference_home).
@@ -34,8 +32,7 @@ Open a new Python file called `tutorial_batch.py`. First, import Ray Serve and s
 :start-after: __doc_import_begin__
 ```
 
-Ray Serve provides the `@serve.batch` decorator to automatically batch individual requests to
-a function or class method.
+Ray Serve provides the `@serve.batch` decorator to automatically batch individual requests to a function or class method.
 
 The decorated method:
 - Must be `async def` to handle concurrent requests
@@ -52,9 +49,7 @@ async def my_batch_handler(self, requests: List):
     return results
 ```
 
-You can call the batch handler from another `async def` method in your deployment.
-Ray Serve batches and executes these calls together, but returns individual results just like
-normal function calls:
+You can call the batch handler from another `async def` method in your deployment. Ray Serve batches and executes these calls together, but returns individual results just like normal function calls:
 
 ```python
 class BatchingDeployment:
@@ -70,24 +65,17 @@ class BatchingDeployment:
 ```
 
 :::{note}
-Ray Serve uses *opportunistic batching* by default - executing requests as 
-soon as they arrive without waiting for a full batch. You can adjust this behavior using 
-`batch_wait_timeout_s` in the `@serve.batch` decorator to trade increased latency
-for increased throughput (defaults to 0). Increasing this value may improve throughput
-at the cost of latency under low load.
+Ray Serve uses *opportunistic batching* by default - executing requests as soon as they arrive without waiting for a full batch. You can adjust this behavior using `batch_wait_timeout_s` in the `@serve.batch` decorator to trade increased latency for increased throughput (defaults to 0). Increasing this value may improve throughput at the cost of latency under low load.
 :::
 
-Next, define a deployment that takes in a list of input strings and runs 
-vectorized text generation on the inputs.
+Next, define a deployment that takes in a list of input strings and runs vectorized text generation on the inputs.
 
 ```{literalinclude} ../doc_code/tutorial_batch.py
 :end-before: __doc_define_servable_end__
 :start-after: __doc_define_servable_begin__
 ```
 
-Next, prepare to deploy the deployment. Note that in the `@serve.batch` decorator, you
-are specifying the maximum batch size with `max_batch_size=4`. This option limits
-the maximum possible batch size that Ray Serve executes at once.
+Next, prepare to deploy the deployment. Note that in the `@serve.batch` decorator, you are specifying the maximum batch size with `max_batch_size=4`. This option limits the maximum possible batch size that Ray Serve executes at once.
 
 ```{literalinclude} ../doc_code/tutorial_batch.py
 :end-before: __doc_deploy_end__
@@ -105,8 +93,7 @@ $ serve run tutorial_batch:generator --name "Text-Completion-App"
 
 ### Option 2: Deploying with the Python API
 
-Alternatively, you can deploy the app using the Python API using the `serve.run` function. 
-This command returns a handle that you can use to query the deployment.
+Alternatively, you can deploy the app using the Python API using the `serve.run` function. This command returns a handle that you can use to query the deployment.
 
 ```python
 from ray.serve.handle import DeploymentHandle

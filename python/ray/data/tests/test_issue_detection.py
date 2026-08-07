@@ -29,6 +29,7 @@ from ray.data._internal.issue_detection.detectors.hanging_detector import (
 from ray.data._internal.issue_detection.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
 )
+from ray.data._internal.util import GiB
 from ray.data.block import BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
@@ -205,12 +206,12 @@ class TestHangingExecutionIssueDetector:
     "configured_memory, actual_memory, should_return_issue",
     [
         # User has appropriately configured memory, so no issue.
-        (4 * 1024**3, 4 * 1024**3, False),
+        (8 * GiB, 8 * GiB, False),
         # User hasn't configured memory correctly and memory use is high, so issue.
-        (None, 4 * 1024**3, True),
-        (1, 4 * 1024**3, True),
+        (None, 8 * GiB, True),
+        (1 * GiB, 8 * GiB, True),
         # User hasn't configured memory correctly but memory use is low, so no issue.
-        (None, 4 * 1024**3 - 1, False),
+        (None, 1 * GiB, False),
     ],
 )
 def test_high_memory_detection(

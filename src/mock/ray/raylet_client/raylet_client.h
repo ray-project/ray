@@ -164,6 +164,10 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const rpc::CancelLocalTaskRequest &request,
                const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              FreeLocalObjects,
+              (const rpc::FreeLocalObjectsRequest &request),
+              (override));
 };
 
 }  // namespace ray

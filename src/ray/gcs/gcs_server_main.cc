@@ -205,6 +205,10 @@ int main(int argc, char *argv[]) {
       ray::gcs::GetHealthCheckRpcLatencyMsHistogramMetric();
   auto scheduler_placement_time_ms_histogram =
       ray::GetSchedulerPlacementTimeMsHistogramMetric();
+  auto io_context_monitor_latency_ms_gauge =
+      ray::gcs::GetIoContextMonitorLatencyMsGaugeMetric();
+  auto io_context_monitor_unhealthy_counter =
+      ray::gcs::GetIoContextMonitorUnhealthyCountMetric();
 
   // Create the metrics struct
   ray::gcs::GcsServerMetrics gcs_server_metrics{
@@ -229,6 +233,8 @@ int main(int argc, char *argv[]) {
       resource_usage_gauge,
       scheduler_placement_time_ms_histogram,
       health_check_rpc_latency_ms_histogram,
+      /*io_context_monitor_latency_ms_gauge=*/io_context_monitor_latency_ms_gauge,
+      /*io_context_monitor_unhealthy_counter=*/io_context_monitor_unhealthy_counter,
   };
 
   ray::gcs::GcsServer gcs_server(gcs_server_config, gcs_server_metrics, main_service);

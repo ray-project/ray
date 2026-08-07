@@ -377,7 +377,9 @@ def test_split_hints(ray_start_regular_shared_2_cpus):
         def __init__(self):
             pass
 
-    def assert_split_assignment(block_node_ids, actor_node_ids, expected_split_result):
+    def assert_split_assignment(
+        block_node_ids: list, actor_node_ids: list, expected_split_result: list
+    ):
         """Helper function to setup split hints test.
 
         Args:

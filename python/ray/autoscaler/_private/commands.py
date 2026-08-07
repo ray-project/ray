@@ -118,7 +118,10 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
 
 
 def debug_status(
-    status, error, verbose: bool = False, address: Optional[str] = None
+    status: bytes,
+    error: bytes,
+    verbose: bool = False,
+    address: Optional[str] = None,
 ) -> str:
     """
     Return a debug string for the autoscaler.
@@ -130,7 +133,7 @@ def debug_status(
         address: The address of the cluster (gcs address).
 
     Returns:
-        str: A debug string for the cluster's status.
+        A debug string for the cluster's status.
     """
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
@@ -139,10 +142,10 @@ def debug_status(
         from ray.autoscaler.v2.utils import ClusterStatusFormatter
 
         cluster_status = get_cluster_status(address)
-        status = ClusterStatusFormatter.format(cluster_status, verbose=verbose)
+        status_str = ClusterStatusFormatter.format(cluster_status, verbose=verbose)
     elif status:
-        status = status.decode("utf-8")
-        status_dict = json.loads(status)
+        decoded_status = status.decode("utf-8")
+        status_dict = json.loads(decoded_status)
         lm_summary_dict = status_dict.get("load_metrics_report")
         autoscaler_summary_dict = status_dict.get("autoscaler_report")
         timestamp = status_dict.get("time")
@@ -161,7 +164,7 @@ def debug_status(
                 **autoscaler_summary_dict,
             )
             report_time = datetime.datetime.fromtimestamp(timestamp)
-            status = format_info_string(
+            status_str = format_info_string(
                 lm_summary,
                 autoscaler_summary,
                 time=report_time,
@@ -170,21 +173,21 @@ def debug_status(
                 verbose=verbose,
             )
         else:
-            status = (
+            status_str = (
                 "No cluster status. It may take a few seconds "
                 "for the Ray internal services to start up."
             )
     else:
-        status = (
+        status_str = (
             "No cluster status. It may take a few seconds "
             "for the Ray internal services to start up."
         )
 
     if error:
-        status += "\n"
-        status += error.decode("utf-8")
+        status_str += "\n"
+        status_str += error.decode("utf-8")
 
-    return status
+    return status_str
 
 
 def request_resources(
@@ -206,12 +209,12 @@ def request_resources(
         num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made.
-        bundles (List[ResourceDict]): Scale the cluster to ensure this set of
-            resource shapes can fit. This request is persistent until another
-            call to request_resources() is made.
-        bundle_label_selectors (List[Dict[str,str]]): Optional label selectors
-            that new nodes must satisfy. (e.g. [{"accelerator-type": "A100"}])
-            The elements in the bundle_label_selectors should be one-to-one mapping
+        bundles: Scale the cluster to ensure this set of resource shapes can
+            fit. This request is persistent until another call to
+            request_resources() is made.
+        bundle_label_selectors: Optional label selectors that new nodes
+            must satisfy (e.g. [{"accelerator-type": "A100"}]). The elements
+            in the bundle_label_selectors should be one-to-one mapping
             to the elements in bundles.
     """
     if not ray.is_initialized():
@@ -1009,12 +1012,13 @@ def _should_create_new_head(
         node's node_type.
 
     Args:
-        head_node_id (Optional[str]): head node id if a head exists, else None
+        head_node_id: head node id if a head exists, else None
         new_launch_hash: hash of current user-submitted head config
         new_head_node_type: current user-submitted head node-type key
+        provider: Node provider used to read tags on the existing head.
 
     Returns:
-        bool: True if a new Ray head node should be launched, False otherwise
+        True if a new Ray head node should be launched, False otherwise
     """
     if not head_node_id:
         # No head node exists, need to create it.
@@ -1134,7 +1138,7 @@ def attach_cluster(
         override_cluster_name: set the name of the cluster
         no_config_cache: whether to skip the config cache
         new: whether to force a new screen
-        port_forward ( (int,int) or list[(int,int)] ): port(s) to forward
+        port_forward: port(s) to forward
         node_ip: IP address of the node to attach to
     """
 
@@ -1205,6 +1209,9 @@ def exec_cluster(
             node.
         extra_screen_args: optional custom additional args to screen command
         node_ip: IP address of the node to execute on
+
+    Returns:
+        The command output if ``with_output`` is True, otherwise an empty string.
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(RUN_ENV_TYPES)
@@ -1386,12 +1393,13 @@ def rsync(
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
-        ip_address: Address of node. Raise Exception
-            if both ip_address and 'all_nodes' are provided.
-        use_internal_ip: Whether the provided ip_address is
-            public or private.
+        ip_address: Address of node. Raise Exception if both ip_address
+            and 'all_nodes' are provided.
+        use_internal_ip: Whether the provided ip_address is public or private.
+        no_config_cache: whether to skip the config cache when bootstrapping.
         all_nodes: whether to sync worker nodes in addition to the head node
         should_bootstrap: whether to bootstrap cluster config before syncing
+        _runner: subprocess-like module used to invoke rsync. Mainly for testing.
     """
     if bool(source) != bool(target):
         cli_logger.abort("Expected either both a source and a target, or neither.")
@@ -1532,8 +1540,9 @@ def _get_running_head_node(
     _allow_uninitialized_state: bool = False,
 ) -> str:
     """Get a valid, running head node.
+
     Args:
-        config (Dict[str, Any]): Cluster Config dictionary
+        config: Cluster Config dictionary
         printable_config_file: Used for printing formatted CLI commands.
         override_cluster_name: Passed to `get_or_create_head_node` to
             override the cluster name present in `config`.
@@ -1543,6 +1552,8 @@ def _get_running_head_node(
             is not 'UP TO DATE'. This is used to allow `ray attach` and
             `ray exec` to debug a cluster in a bad state.
 
+    Returns:
+        The node id of the running head node.
     """
     provider = _provider or _get_node_provider(
         config["provider"], config["cluster_name"]

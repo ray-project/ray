@@ -1,3 +1,6 @@
+.. meta::
+   :description: Alphabetical definitions of key Ray terminology, from tasks, actors, and objects to reinforcement learning terms.
+
 .. _ray_glossary:
 
 Ray Glossary

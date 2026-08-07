@@ -4,168 +4,45 @@ alwaysApply: true
 path: doc/**/*
 ---
 
-# Ray Documentation Style Guide
+# Ray documentation style
 
-These rules apply ONLY to documentation files in the `/doc` directory for the Ray project, not to the codebase. They're based on Google Developer Documentation Style Guide with Ray-specific adaptations for Sphinx/reStructuredText.
+The full style and grammar standard for Ray docs is `doc/source/ray-contribute/writing-style.md`. Read it before writing or editing any file under `doc/`. It's the source of truth and supersedes prior style guidance. It builds on the Google developer documentation style guide as a fallback.
 
-## Voice and Grammar
+The rules below are the highest-frequency corrections. The full guide covers word choice, sentence structure, links, admonitions, tables, and human-writing patterns in depth.
 
-### Use active voice
-- ✅ "The system retries failed tasks"
-- ✅ "Ray Serve supports only synchronous handlers"
-- ✅ "You can configure the adapter"
-- ❌ "Failed tasks are retried by the system"
-- ❌ "Synchronous handlers are supported"
-- ❌ "The adapter can be configured"
+## Voice
 
-### Always use contractions
-Use contractions to create a conversational tone:
-- don't (not "do not")
-- doesn't (not "does not")
-- can't (not "cannot")
-- won't (not "will not")
-- isn't (not "is not")
-- aren't (not "are not")
-- it's (not "it is" when meaning "it is")
+- Active voice with a named actor: "The scheduler retries failed tasks," not "Failed tasks are retried."
+- Present tense, second person ("you"), imperative for instructions.
+- No first-person plural. Rewrite to remove "we" and "our." Use "The Ray project" only when a subject is unavoidable.
 
-**Exception**: Don't use contractions in formal warnings or error messages.
+## Word choice
 
-### Avoid timeless writing pitfalls
-- Remove "currently," "now," "recently," "at this time"
-- ✅ "Ray Serve supports only synchronous handlers"
-- ❌ "Ray Serve currently supports only synchronous handlers"
+- Use contractions (don't, isn't, can't), except in warnings and error messages.
+- "such as," not "like," for examples.
+- Cut filler: simply, just, basically, actually, really, very.
+- Plain words: "use" (not utilize or leverage), "to" (not in order to), "through" (not via), "before" (not prior to).
+- "ID," not "id," in prose.
+- No time-relative words: currently, now, recently, new.
+- Angle-bracket placeholders (`<head-node-ip>`), not UPPERCASE.
 
-## Headings and Structure
+## Headings
 
-### Use sentence case for all headings
-- ✅ `## Dead letter queues (DLQs)`
-- ✅ `## Why asynchronous inference?`
-- ✅ `## End-to-end example: Document indexing`
-- ❌ `## Dead Letter Queues (DLQs)`
-- ❌ `## Why Asynchronous Inference?`
+- Sentence case: "Configure the runtime environment," not "Configure the Runtime Environment."
+- Imperative for task headings, questions for conceptual headings.
 
-### Use imperative mood for procedural headings
-- ✅ `## Configure authentication`
-- ✅ `## Submit tasks from outside Serve`
-- ❌ `## Configuring authentication`
-- ❌ `## How to submit tasks`
+## Structure and formatting
 
-## Code Examples
+- Short sentences. No dashes, parentheticals, or semicolons in prose. A colon only introduces a list or code block.
+- List items that are complete sentences or contain verbs get periods. Lead-ins are complete sentences ending in a colon.
+- MyST admonitions (`:::{note}`, `:::{warning}`), not bold inline labels.
+- Tag code blocks with a language. No `$` shell prompt. Code comments start capitalized and use the imperative.
+- Reserve bold for UI elements, admonition labels, and definition-list terms. Italicize a term on first use.
 
-### Use complete sentences for code lead-ins
-Replace generic "Example:" with complete descriptive sentences:
-- ✅ "The following example shows how to configure the Celery adapter:"
-- ✅ "The following code creates a task consumer:"
-- ✅ "This example demonstrates how to enqueue tasks from external code:"
-- ✅ "The following is an example Celery adapter configuration:"
-- ❌ "Example:"
-- ❌ "To configure the Celery adapter:"
-- ❌ "Here's how to create a task consumer:"
+## Cross-references
 
-### Keep code comments concise and clear
-- Start comments with capital letters
-- Use imperative mood in comments
-- ✅ `# Configure the task processor`
-- ✅ `# Your implementation`
-- ❌ `# this configures the task processor`
-- ❌ `# you should implement this`
+- `{doc}` for whole pages (required when the target's source is `.rst`), `{ref}` for labeled targets, `[text](page.md)` between `.md` pages.
 
-## Word Choice
+## Never fabricate technical details
 
-### Never use "like" for examples
-- ✅ "such as Celery"
-- ✅ "for example, video processing"
-- ✅ "including Redis and RabbitMQ"
-- ❌ "like Celery"
-- ❌ "e.g., video processing"
-
-### Use "ID" not "id" or "identity" in prose
-- ✅ "task ID"
-- ✅ "returns TaskResult with ID"
-- ❌ "task id"
-- ❌ "task identity"
-
-### Prefer simple prepositions
-- ✅ "through" (not "via")
-- ✅ "with" (not "using" when possible)
-- ✅ "for" (not "in order to")
-
-## Lists and Punctuation
-
-### End list items with periods when they're sentences or contain verbs
-- Complete sentences always get periods.
-- Fragments with verbs get periods.
-- Brief noun phrases don't need periods
-
-### Use colons correctly for lists
-When introducing a list with a complete sentence, use a colon:
-- ✅ "Dead letter queues handle two types of problematic tasks:"
-- ✅ "Recommendations:"
-
-## Ray-Specific Conventions
-
-### Component capitalization
-- Ray Serve (always capitalized)
-- Ray Data
-- Ray Train
-- Ray Core
-
-### Use Sphinx directives (not Markdown)
-Since Ray uses Sphinx with reStructuredText:
-- Use `:::{note}` instead of Markdown blockquotes
-- Use `:::{warning}` for warnings
-- Use `:doc:` and `:ref:` for cross-references
-
-### Technical terms
-These are valid technical terms (not typos):
-- Transcoding
-- Pluggable
-- enqueues/enqueue
-- Unprocessable
-- DLQ/DLQs (after first defining "Dead letter queues")
-- broker (lowercase)
-- adapter (lowercase)
-
-## Examples and Descriptions
-
-### Write clear, scannable introductions
-Start sections with what the feature/component does:
-- ✅ "Configuration for the Celery adapter, including broker and backend URLs and worker settings."
-- ❌ "This is the configuration for the Celery adapter."
-
-### Focus on user actions
-Frame documentation around what users can do:
-- ✅ "You can enqueue tasks from external producers"
-- ✅ "To manage concurrency, configure..."
-- ❌ "Tasks can be enqueued from external producers"
-- ❌ "Concurrency is managed by configuring..."
-
-## Common Patterns to Apply
-
-### When describing system behavior
-- Use "the system" as the actor for automated processes
-- ✅ "The system routes failed tasks to the DLQ"
-- ❌ "Failed tasks are routed to the DLQ"
-
-### When describing user capabilities
-- Use "you" directly
-- ✅ "You can configure multiple adapters"
-- ❌ "Multiple adapters can be configured"
-- ❌ "Users can configure multiple adapters"
-
-### When describing features
-- State what Ray Serve does, not what it supports
-- ✅ "Ray Serve processes tasks asynchronously"
-- ❌ "Asynchronous task processing is supported"
-
-## Quick Checklist
-
-Before committing documentation:
-- [ ] All headings use sentence case
-- [ ] Contractions used throughout (except warnings)
-- [ ] No passive voice constructions
-- [ ] Code examples have action-oriented lead-ins
-- [ ] No "currently" or other time-sensitive words
-- [ ] "such as" used instead of "like" for examples
-- [ ] Active voice with clear actors (you, the system, Ray Serve)
-- [ ] Technical terms are used consistently
+Every technical claim needs a verifiable source: the existing docs, the source code, or a config file. When you can't verify a detail, leave it out.

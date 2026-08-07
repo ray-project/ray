@@ -1,0 +1,137 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "ray/raylet/scheduling/policy/topology_bundle_scheduling_policy.h"
+
+namespace ray {
+namespace raylet_scheduling_policy {
+
+bool TopologySchedulingPolicyInterface::IsRequestFeasible(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) const {
+  // Check that each bundle is individually feasible on at least one node.
+  for (const ResourceRequest *const &request : resource_request_list) {
+    bool bundle_feasible = std::any_of(
+        candidate_nodes.begin(),
+        candidate_nodes.end(),
+        [&](const scheduling::NodeID &node_id) {
+          return cluster_resource_manager_.HasFeasibleResources(node_id, *request);
+        });
+    if (!bundle_feasible) {
+      return false;
+    }
+  }
+
+  // Check that aggregate demand does not exceed aggregate capacity.
+  ResourceSet aggregate_demand;
+  for (const ResourceRequest *request : resource_request_list) {
+    aggregate_demand += request->GetResourceSet();
+  }
+  for (auto resource_id : aggregate_demand.ResourceIds()) {
+    FixedPoint total_capacity;
+    for (const auto &node_id : candidate_nodes) {
+      total_capacity +=
+          cluster_resource_manager_.GetNodeTotalResources(node_id, resource_id);
+    }
+    if (total_capacity < aggregate_demand.Get(resource_id)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+SchedulingResult TopologyStrictPackSchedulingPolicy::Schedule(
+    const std::vector<const ResourceRequest *> &resource_request_list,
+    const SchedulingOptions &options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes,
+    NodeScheduleFn node_schedule_fn) {
+  RAY_CHECK(!resource_request_list.empty());
+
+  const std::string &label_key = options.target_topology_assignment_.first;
+  RAY_CHECK(!label_key.empty());
+
+  // If a target topology value is specified (partial failure rescheduling),
+  // prune to only nodes with that value and use the node-level scheduling callback to
+  // schedule the bundles.
+  if (options.target_topology_assignment_.second.has_value()) {
+    const std::string &target = *options.target_topology_assignment_.second;
+    for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
+      const auto &labels = cluster_resource_manager_.GetNodeLabels(*it);
+      auto label_it = labels.find(label_key);
+      if (label_it == labels.end() || label_it->second != target) {
+        candidate_nodes.erase(it++);
+      } else {
+        ++it;
+      }
+    }
+    if (!IsRequestFeasible(resource_request_list, candidate_nodes)) {
+      RAY_LOG(DEBUG) << "Target topology value '" << target
+                     << "' has insufficient resources; infeasible.";
+      return SchedulingResult::Infeasible();
+    }
+    SchedulingResult result =
+        node_schedule_fn(resource_request_list, options, std::move(candidate_nodes));
+    if (result.status.IsSuccess()) {
+      result.selected_topology_assignment =
+          std::make_pair(label_key, std::string(target));
+    }
+    return result;
+  }
+
+  // Group candidate nodes by their topology value.
+  absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>>
+      topology_groups;
+  for (const auto &node_id : candidate_nodes) {
+    const auto &labels = cluster_resource_manager_.GetNodeLabels(node_id);
+    auto it = labels.find(label_key);
+    if (it != labels.end() && !it->second.empty()) {
+      topology_groups[it->second].insert(node_id);
+    }
+  }
+
+  if (topology_groups.empty()) {
+    RAY_LOG(DEBUG) << "No candidate nodes have a " << label_key
+                   << " label; topology strategy scheduling infeasible.";
+    return SchedulingResult::Infeasible();
+  }
+
+  // Try each feasible group: call node-level scheduling and return on first success.
+  bool all_infeasible = true;
+  for (auto &[topology_value, topology_nodes] : topology_groups) {
+    if (!IsRequestFeasible(resource_request_list, topology_nodes)) {
+      continue;
+    }
+    SchedulingResult result =
+        node_schedule_fn(resource_request_list, options, std::move(topology_nodes));
+    if (result.status.IsSuccess()) {
+      result.selected_topology_assignment = std::make_pair(label_key, topology_value);
+      return result;
+    }
+    if (!result.status.IsInfeasible()) {
+      all_infeasible = false;
+    }
+  }
+
+  if (all_infeasible) {
+    RAY_LOG(DEBUG) << "No topology value has sufficient total resources; infeasible.";
+    return SchedulingResult::Infeasible();
+  } else {
+    RAY_LOG(DEBUG) << "No topology value has sufficient available resources; failed";
+    return SchedulingResult::Failed();
+  }
+}
+
+}  // namespace raylet_scheduling_policy
+}  // namespace ray

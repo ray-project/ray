@@ -3,7 +3,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -132,6 +132,11 @@ class DashboardHead:
         self.ip = node_ip_address
         self.pid = os.getpid()
         self.dashboard_proc = psutil.Process()
+        # pid -> psutil.Process, reused across record cycles: cpu_percent()
+        # measures against the previous call on the same object and reads 0.0
+        # on the first one. The reporter agent caches handles for the same
+        # reason, see https://github.com/ray-project/ray/issues/29848
+        self._subprocess_module_procs: Dict[int, psutil.Process] = {}
         self.proxy_server_url = proxy_server_url
 
         # If the dashboard is started as non-minimal version, http server should
@@ -221,8 +226,11 @@ class DashboardHead:
         """Load `DashboardHeadModule`s.
 
         Args:
-            modules: A list of module names to load. By default (None),
+            modules_to_load: A set of module names to load. By default (None),
                 it loads all modules.
+
+        Returns:
+            A tuple of ``(loaded_modules, skipped_module_names)``.
         """
         modules = []
         skipped_modules = set()
@@ -263,13 +271,18 @@ class DashboardHead:
     def _load_subprocess_module_handles(
         self, modules_to_load: Optional[Set[str]] = None
     ) -> List["SubprocessModuleHandle"]:
-        """
+        """Load ``SubprocessModule`` handles.
+
         If minimal, return an empty list.
         If non-minimal, load `SubprocessModule`s by creating Handles to them.
 
         Args:
-            modules: A list of module names to load. By default (None),
+            modules_to_load: A set of module names to load. By default (None),
                 it loads all modules.
+
+        Returns:
+            A list of ``SubprocessModuleHandle`` instances, or an empty list in
+            minimal mode.
         """
         if self.minimal:
             logger.info("Subprocess modules not loaded in minimal mode.")
@@ -361,12 +374,24 @@ class DashboardHead:
         }
         assert "dashboard" in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
         self._record_cpu_mem_metrics_for_proc(self.dashboard_proc)
+        live_pids = set()
         for subprocess_module_handle in subprocess_module_handles:
             assert subprocess_module_handle.process is not None
-            proc = psutil.Process(subprocess_module_handle.process.pid)
-            self._record_cpu_mem_metrics_for_proc(
-                proc, subprocess_module_handle.module_cls.__name__
-            )
+            pid = subprocess_module_handle.process.pid
+            live_pids.add(pid)
+            try:
+                self._record_cpu_mem_metrics_for_proc(
+                    self._get_subprocess_module_proc(pid),
+                    subprocess_module_handle.module_cls.__name__,
+                )
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # A module can exit between a health check and this cycle.
+                # Letting that escape would cost every later module in this
+                # loop its metrics too.
+                continue
+        # A restarted module comes back under a new pid, leaving its old handle here.
+        for stale_pid in self._subprocess_module_procs.keys() - live_pids:
+            del self._subprocess_module_procs[stale_pid]
 
         loop = ray._common.utils.get_or_create_event_loop()
 
@@ -380,6 +405,24 @@ class DashboardHead:
                 float(self._event_loop_lag_s_max)
             )
             self._event_loop_lag_s_max = None
+
+    def _get_subprocess_module_proc(self, pid: int) -> psutil.Process:
+        """Return the cached psutil.Process for pid, creating it if needed.
+
+        Reusing the handle is what gives cpu_percent() a baseline to measure
+        against. See the comment on self._subprocess_module_procs.
+
+        Raises psutil.NoSuchProcess or psutil.AccessDenied if the module's
+        process is gone or inaccessible.
+        """
+        proc = self._subprocess_module_procs.get(pid)
+        # is_running() is False when the process is gone, and when its pid has
+        # been reused by something else, where the cached baseline would belong
+        # to a different process.
+        if proc is None or not proc.is_running():
+            proc = psutil.Process(pid)
+            self._subprocess_module_procs[pid] = proc
+        return proc
 
     def _record_cpu_mem_metrics_for_proc(
         self, proc: psutil.Process, module_name: str = ""
@@ -398,11 +441,17 @@ class DashboardHead:
         # memory_full_info is None on Mac due to the permission issue
         # (https://github.com/giampaolo/psutil/issues/883)
         if proc_attrs.get("memory_full_info") is not None:
-            self.metrics.metrics_dashboard_mem_uss.labels(**labels).set(
+            self.metrics.metrics_dashboard_mem_uss_mb.labels(**labels).set(
                 float(proc_attrs.get("memory_full_info").uss) / 1.0e6
             )
-            self.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
+            self.metrics.metrics_dashboard_mem_uss_bytes.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").uss)
+            )
+            self.metrics.metrics_dashboard_mem_rss_mb.labels(**labels).set(
                 float(proc_attrs.get("memory_full_info").rss) / 1.0e6
+            )
+            self.metrics.metrics_dashboard_mem_rss_bytes.labels(**labels).set(
+                float(proc_attrs.get("memory_full_info").rss)
             )
 
     async def run(self):

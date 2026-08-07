@@ -192,6 +192,12 @@ class EnvRunnerGroup:
             init_id=1,
         )
 
+        # Total number of remote EnvRunner responses dropped due to a
+        # `timeout_seconds`-bounded `foreach_env_runner` call (typically
+        # `sample_timeout_s` during synchronous sampling). This counter is
+        # cumulative over the lifetime of the group.
+        self._num_env_runners_dropped_lifetime: int = 0
+
         if _setup:
             try:
                 self._setup(
@@ -368,6 +374,146 @@ class EnvRunnerGroup:
         """Total number of times managed remote workers have been restarted."""
         return self._worker_manager.total_num_restarts()
 
+    def _merge_env_runner_connector_states(
+        self,
+        *,
+        config: "AlgorithmConfig",
+        connector_states: Optional[List[Dict[str, Any]]],
+        from_worker: Optional[EnvRunner],
+        env_to_module,
+        module_to_env,
+        merge: bool,
+    ) -> Dict[str, Any]:
+        """Gathers and merges the EnvRunners' ConnectorV2 states into one dict.
+
+        Shared by `sync_env_runner_states` and `get_merged_env_runner_state`.
+        """
+        # Use (merged) states from all remote EnvRunners.
+        if merge:
+            if connector_states == []:
+                env_runner_states = {}
+            else:
+                if connector_states is None:
+                    connector_states = self.foreach_env_runner(
+                        lambda w: w.get_state(
+                            components=[
+                                COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                                COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                            ]
+                        ),
+                        local_env_runner=False,
+                        timeout_seconds=(
+                            config.sync_filters_on_rollout_workers_timeout_s
+                        ),
+                    )
+                env_to_module_states = [
+                    s[COMPONENT_ENV_TO_MODULE_CONNECTOR]
+                    for s in connector_states
+                    if COMPONENT_ENV_TO_MODULE_CONNECTOR in s
+                ]
+                module_to_env_states = [
+                    s[COMPONENT_MODULE_TO_ENV_CONNECTOR]
+                    for s in connector_states
+                    if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
+                ]
+
+                if self.local_env_runner is not None and hasattr(
+                    self.local_env_runner, "_env_to_module"
+                ):
+                    assert env_to_module is None
+                    env_to_module = self.local_env_runner._env_to_module
+
+                if self.local_env_runner is not None and hasattr(
+                    self.local_env_runner, "_module_to_env"
+                ):
+                    assert module_to_env is None
+                    module_to_env = self.local_env_runner._module_to_env
+
+                env_runner_states = {}
+                if env_to_module_states:
+                    env_runner_states.update(
+                        {
+                            COMPONENT_ENV_TO_MODULE_CONNECTOR: (
+                                env_to_module.merge_states(env_to_module_states)
+                            ),
+                        }
+                    )
+                if module_to_env_states:
+                    env_runner_states.update(
+                        {
+                            COMPONENT_MODULE_TO_ENV_CONNECTOR: (
+                                module_to_env.merge_states(module_to_env_states)
+                            ),
+                        }
+                    )
+        # Ignore states from remote EnvRunners (use the current `from_worker` states
+        # only).
+        else:
+            if from_worker is None:
+                env_runner_states = {
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR: env_to_module.get_state(),
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR: module_to_env.get_state(),
+                }
+            else:
+                env_runner_states = from_worker.get_state(
+                    components=[
+                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                    ]
+                )
+
+        return env_runner_states
+
+    def get_merged_env_runner_state(
+        self,
+        *,
+        config: "AlgorithmConfig",
+        rl_module_state: Dict[str, Any],
+        connector_states: Optional[List[Dict[str, Any]]] = None,
+        env_steps_sampled: Optional[int] = None,
+        env_to_module=None,
+        module_to_env=None,
+    ) -> Dict[str, Any]:
+        """Builds the merged EnvRunner state to push to an `EnvRunnerStateServer`.
+
+        Merges the connector states with `rl_module_state` (weights + `WEIGHTS_SEQ_NO`)
+        and the env-steps counter into a single state dict, without touching any remote
+        EnvRunner.
+        """
+        if WEIGHTS_SEQ_NO not in rl_module_state:
+            raise ValueError(
+                "`get_merged_env_runner_state` needs `rl_module_state` to carry a "
+                f"`WEIGHTS_SEQ_NO` (got keys: {list(rl_module_state.keys())}); without "
+                "it the pushed state could never be pulled by EnvRunners (they "
+                "version-gate via `pull_if_newer`), making the `EnvRunnerStateServer` "
+                "useless."
+            )
+        # New API stack only, so just the new-stack half of the `merge` predicate.
+        merge = config.merge_env_runner_states is True or (
+            config.merge_env_runner_states == "training_only"
+            and not config.in_evaluation
+        )
+        env_runner_states = self._merge_env_runner_connector_states(
+            config=config,
+            connector_states=connector_states,
+            from_worker=self.local_env_runner,
+            env_to_module=env_to_module,
+            module_to_env=module_to_env,
+            merge=merge,
+        )
+        if env_steps_sampled is not None:
+            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = int(env_steps_sampled)
+        # Add the model weights (a `ray.ObjectRef`) and `WEIGHTS_SEQ_NO` (= version).
+        env_runner_states.update(rl_module_state)
+        return env_runner_states
+
+    def num_env_runners_dropped_lifetime(self) -> int:
+        """Cumulative count of remote EnvRunner responses dropped due to a
+        positive ``timeout_seconds``-bounded :py:meth:`foreach_env_runner`
+        call.
+        """
+        return self._num_env_runners_dropped_lifetime
+
     def sync_env_runner_states(
         self,
         *,
@@ -447,77 +593,15 @@ class EnvRunnerGroup:
         if not merge and not broadcast:
             return
 
-        # Use states from all remote EnvRunners.
-        if merge:
-            if connector_states == []:
-                env_runner_states = {}
-            else:
-                if connector_states is None:
-                    connector_states = self.foreach_env_runner(
-                        lambda w: w.get_state(
-                            components=[
-                                COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                                COMPONENT_MODULE_TO_ENV_CONNECTOR,
-                            ]
-                        ),
-                        local_env_runner=False,
-                        timeout_seconds=(
-                            config.sync_filters_on_rollout_workers_timeout_s
-                        ),
-                    )
-                env_to_module_states = [
-                    s[COMPONENT_ENV_TO_MODULE_CONNECTOR]
-                    for s in connector_states
-                    if COMPONENT_ENV_TO_MODULE_CONNECTOR in s
-                ]
-                module_to_env_states = [
-                    s[COMPONENT_MODULE_TO_ENV_CONNECTOR]
-                    for s in connector_states
-                    if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
-                ]
-
-                if (
-                    self.local_env_runner is not None
-                    and hasattr(self.local_env_runner, "_env_to_module")
-                    and hasattr(self.local_env_runner, "_module_to_env")
-                ):
-                    assert env_to_module is None
-                    env_to_module = self.local_env_runner._env_to_module
-                    assert module_to_env is None
-                    module_to_env = self.local_env_runner._module_to_env
-
-                env_runner_states = {}
-                if env_to_module_states:
-                    env_runner_states.update(
-                        {
-                            COMPONENT_ENV_TO_MODULE_CONNECTOR: (
-                                env_to_module.merge_states(env_to_module_states)
-                            ),
-                        }
-                    )
-                if module_to_env_states:
-                    env_runner_states.update(
-                        {
-                            COMPONENT_MODULE_TO_ENV_CONNECTOR: (
-                                module_to_env.merge_states(module_to_env_states)
-                            ),
-                        }
-                    )
-        # Ignore states from remote EnvRunners (use the current `from_worker` states
-        # only).
-        else:
-            if from_worker is None:
-                env_runner_states = {
-                    COMPONENT_ENV_TO_MODULE_CONNECTOR: env_to_module.get_state(),
-                    COMPONENT_MODULE_TO_ENV_CONNECTOR: module_to_env.get_state(),
-                }
-            else:
-                env_runner_states = from_worker.get_state(
-                    components=[
-                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
-                    ]
-                )
+        # Gather + merge the remote EnvRunners' connector states.
+        env_runner_states = self._merge_env_runner_connector_states(
+            config=config,
+            connector_states=connector_states,
+            from_worker=from_worker,
+            env_to_module=env_to_module,
+            module_to_env=module_to_env,
+            merge=merge,
+        )
 
         # Update the global number of environment steps, if necessary.
         if env_steps_sampled is not None:
@@ -883,6 +967,19 @@ class EnvRunnerGroup:
         if not self._worker_manager.actor_ids():
             return local_result
 
+        # Snapshot the dispatch size so we can detect EnvRunners dropped due
+        # to a timeout (see ``num_env_runners_dropped_lifetime``).
+        num_dispatched: Optional[int] = None
+        if timeout_seconds is not None and timeout_seconds > 0:
+            if healthy_only:
+                candidate_ids = self._worker_manager.healthy_actor_ids()
+            else:
+                candidate_ids = self._worker_manager.actor_ids()
+            if remote_worker_ids is not None:
+                requested = set(remote_worker_ids)
+                candidate_ids = [i for i in candidate_ids if i in requested]
+            num_dispatched = len(candidate_ids)
+
         remote_results = self._worker_manager.foreach_actor(
             func,
             kwargs=kwargs,
@@ -896,6 +993,12 @@ class EnvRunnerGroup:
         FaultTolerantActorManager.handle_remote_call_result_errors(
             remote_results, ignore_ray_errors=self._ignore_ray_errors_on_env_runners
         )
+
+        if num_dispatched is not None:
+            num_responses_received = len(remote_results)
+            dropped = num_dispatched - num_responses_received
+            if dropped > 0:
+                self._num_env_runners_dropped_lifetime += dropped
 
         # With application errors handled, return good results.
         remote_results = [r.get() for r in remote_results.ignore_errors()]

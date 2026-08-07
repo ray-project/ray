@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 from collections import deque
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import grpc
 from grpc import aio as aiogrpc
@@ -195,8 +195,11 @@ class GcsAioResourceUsageSubscriber(_AioSubscriber):
             pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL, worker_id, address, channel
         )
 
-    async def poll(self, timeout=None) -> Tuple[bytes, str]:
+    async def poll(self, timeout: Optional[float] = None) -> Tuple[bytes, str]:
         """Polls for new resource usage message.
+
+        Args:
+            timeout: Optional timeout in seconds for the poll request.
 
         Returns:
             A tuple of string reporter ID and resource usage json string.
@@ -226,9 +229,13 @@ class GcsAioActorSubscriber(_AioSubscriber):
         return len(self._queue)
 
     async def poll(
-        self, batch_size, timeout=None
+        self, batch_size: int, timeout: Optional[float] = None
     ) -> List[Tuple[bytes, gcs_pb2.ActorTableData]]:
         """Polls for new actor message.
+
+        Args:
+            batch_size: Maximum number of messages to return.
+            timeout: Optional timeout in seconds for the poll request.
 
         Returns:
             A list of tuples of binary actor ID and actor table data.
@@ -259,9 +266,13 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
         super().__init__(pubsub_pb2.GCS_NODE_INFO_CHANNEL, worker_id, address, channel)
 
     async def poll(
-        self, batch_size, timeout=None
+        self, batch_size: int, timeout: Optional[float] = None
     ) -> List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]:
         """Polls for new node info message.
+
+        Args:
+            batch_size: Maximum number of messages to return.
+            timeout: Optional timeout in seconds for the poll request.
 
         Returns:
             A list of tuples of (node_id, GcsNodeInfo).

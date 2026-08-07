@@ -26,7 +26,6 @@ from ray.data._internal.logical.operators import (
     Repartition,
     Sort,
 )
-from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.rules import (
@@ -253,85 +252,6 @@ def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
         ds_named.sort(invalid_col_name).take_all()
 
 
-def test_inherit_batch_format_rule():
-    if (
-        DataContext.get_current().batch_to_block_arrow_format
-    ):  # Skip the test if batch_to_block_arrow_format is True as rule is disabled
-        pytest.skip(
-            "Skipping inherit batch format rule test as batch_to_block_arrow_format is True"
-        )
-
-    from ray.data._internal.logical.rules import (
-        InheritBatchFormatRule,
-    )
-
-    ctx = DataContext.get_current()
-
-    operator1 = get_parquet_read_logical_op()
-    operator2 = MapBatches(
-        fn=lambda g: g, batch_format="pandas", input_dependencies=[operator1]
-    )
-    sort_key = SortKey("number", descending=True)
-    operator3 = Sort(sort_key, input_dependencies=[operator2])
-    original_plan = LogicalPlan(dag=operator3, context=ctx)
-
-    rule = InheritBatchFormatRule()
-    optimized_plan = rule.apply(original_plan)
-    assert optimized_plan.dag.batch_format == "pandas"
-
-
-def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):
-    """Checks that the Sort op can inherit batch_format from upstream ops correctly."""
-    ds = ray.data.from_items(
-        [
-            {"col1": 1, "col2": 2},
-            {"col1": 1, "col2": 4},
-            {"col1": 5, "col2": 6},
-            {"col1": 7, "col2": 8},
-        ]
-    )
-    df_expected = pd.DataFrame(
-        {
-            "col1": [7, 5, 1, 1],
-            "col2": [8, 6, 4, 2],
-        }
-    )
-    df_actual = (
-        ds.groupby("col1")
-        .map_groups(lambda g: g, batch_format="pandas")
-        .sort("col2", descending=True)
-        .to_pandas()
-    )
-    df_expected = df_expected.astype(df_actual.dtypes.to_dict())
-    pd.testing.assert_frame_equal(df_actual, df_expected)
-
-
-def test_batch_format_on_aggregate(ray_start_regular_shared_2_cpus):
-    """Checks that the Aggregate op can inherit batch_format
-    from upstream ops correctly."""
-    from ray.data.aggregate import AggregateFn
-
-    ds = ray.data.from_items(
-        [
-            {"col1": 1, "col2": 2},
-            {"col1": 1, "col2": 4},
-            {"col1": 5, "col2": 6},
-            {"col1": 7, "col2": 8},
-        ]
-    )
-    aggregation = AggregateFn(
-        init=lambda column: 1,
-        accumulate_row=lambda a, row: a * row["col2"],
-        merge=lambda a1, a2: a1 * a2,
-        name="prod",
-    )
-    assert (
-        ds.groupby("col1")
-        .map_groups(lambda g: g, batch_format="pandas")
-        .aggregate(aggregation)
-    ) == {"prod": 384}
-
-
 def test_aggregate_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.groupby("id").count()
@@ -382,7 +302,7 @@ def test_zip_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op1 = get_parquet_read_logical_op()
     read_op2 = get_parquet_read_logical_op()
-    op = Zip(read_op1, read_op2)
+    op = Zip([read_op1, read_op2])
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
     physical_op = physical_plan.dag
@@ -475,12 +395,12 @@ def test_schema_partial_execution(
     # entire Dataset.
     assert not ds._has_computed_output()
     if ray.data.DataContext.get_current().use_datasource_v2:
-        assert ds._plan._logical_plan.dag.dag_str == (
+        assert ds._logical_plan.dag.dag_str == (
             "ListFiles[ListFiles] -> ReadFiles[ReadFilesParquetV2] -> "
             "MapBatches[MapBatches(<lambda>)]"
         )
     else:
-        assert ds._plan._logical_plan.dag.dag_str == (
+        assert ds._logical_plan.dag.dag_str == (
             "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
         )
 

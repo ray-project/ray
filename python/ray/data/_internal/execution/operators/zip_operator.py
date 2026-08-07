@@ -49,7 +49,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         """Create a ZipOperator.
 
         Args:
-            input_ops: Operators generating input data for this operator to zip.
+            data_context: The :class:`DataContext` to use for this operator.
+            *input_ops: Operators generating input data for this operator to zip.
         """
         assert len(input_ops) >= 2
         self._input_buffers: List[FIFOBundleQueue] = [
@@ -121,8 +122,12 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 refs = input_buffer.get_next()
                 self._metrics.on_input_dequeued(refs, input_index=idx)
 
-        # Mark outputs as ready
+        # Zipping creates new blocks; register them for memory tracking.
         for ref in self._output_buffer:
+            for entry in ref.blocks:
+                self._block_ref_counter.on_block_produced(
+                    entry.ref, entry.metadata.size_bytes or 0, self.id
+                )
             self._metrics.on_output_queued(ref)
 
         super().all_inputs_done()

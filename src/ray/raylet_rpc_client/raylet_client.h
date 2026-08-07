@@ -176,6 +176,8 @@ class RayletClient : public RayletClientInterface {
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) override;
 
+  void FreeLocalObjects(const rpc::FreeLocalObjectsRequest &request) override;
+
  protected:
   /// gRPC client to the NodeManagerService.
   std::shared_ptr<rpc::GrpcClient<rpc::NodeManagerService>> grpc_client_;

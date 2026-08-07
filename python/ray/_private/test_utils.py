@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Hashable
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
 from urllib.parse import quote, urlparse
 
 import requests
@@ -31,8 +31,11 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import (
+    DEFAULT_DRIVER_TIMEOUT_SECONDS,
+    KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS,
     MetricSamplePattern,
     PrometheusTimeseries,
+    _detach_process,
     fetch_prometheus_metric_timeseries,
     fetch_prometheus_timeseries,
     wait_for_condition,
@@ -79,6 +82,21 @@ def make_global_state_accessor(ray_context):
 
 def external_redis_test_enabled():
     return os.environ.get("TEST_EXTERNAL_REDIS") == "1"
+
+
+def rocksdb_gcs_test_enabled():
+    """True when the test suite should run against the RocksDB GCS backend
+    (REP-64). Set by the buildkite ":ray: core: rocksdb tests" job.
+    """
+    return os.environ.get("TEST_GCS_ROCKSDB") == "1"
+
+
+def persistent_gcs_test_enabled():
+    """True when the GCS backend under test persists state across restart
+    (external Redis or RocksDB). Use this — not external_redis_test_enabled —
+    to branch test assertions on "is GCS state durable across restart?".
+    """
+    return external_redis_test_enabled() or rocksdb_gcs_test_enabled()
 
 
 def redis_replicas():
@@ -182,10 +200,10 @@ def start_redis_instance(
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
     enable_tls: bool = False,
-    replica_of=None,
-    leader_id=None,
-    db_dir=None,
-    free_port=0,
+    replica_of: Optional[int] = None,
+    leader_id: Optional[bytes] = None,
+    db_dir: Optional[str] = None,
+    free_port: int = 0,
 ):
     """Start a single Redis server.
 
@@ -208,12 +226,21 @@ def start_redis_instance(
             no redirection should happen, then this should be None.
         password: Prevents external clients without the password
             from connecting to Redis if provided.
+        fate_share: If True, the Redis process is bound to the parent's job
+            on Windows so it terminates with the parent.
         port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
         listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
         enable_tls: Enable the TLS/SSL in Redis or not
+        replica_of: When set, configure this server as a replica of the
+            given primary Redis port.
+        leader_id: Cluster node id of the leader to replicate when running
+            with multiple replicas.
+        db_dir: Directory passed to ``--dir`` so Redis persists data here.
+        free_port: Plaintext port used alongside ``--tls-port`` when TLS is
+            enabled.
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -314,7 +341,7 @@ def start_redis_instance(
     return node_id, process_info
 
 
-def _pid_alive(pid):
+def _pid_alive(pid: int):
     """Check if the process with this PID is alive or not.
 
     Args:
@@ -518,16 +545,26 @@ def kill_processes(process_infos: List[ProcessInfo]):
 
 
 def run_string_as_driver_stdout_stderr(
-    driver_script: str, env: Dict = None, encode: str = "utf-8"
+    driver_script: str,
+    env: Dict = None,
+    encode: str = "utf-8",
+    timeout: Optional[float] = DEFAULT_DRIVER_TIMEOUT_SECONDS,
 ) -> Tuple[str, str]:
     """Run a driver as a separate process.
 
     Args:
         driver_script: A string to run as a Python script.
         env: The environment variables for the driver.
+        encode: Text encoding used to send the script to the subprocess and
+            decode its stdout/stderr.
+        timeout: Seconds to wait for the driver to exit before killing it and
+            raising. Pass None to wait forever.
 
     Returns:
         The script's stdout and stderr.
+
+    Raises:
+        subprocess.TimeoutExpired: If the driver did not exit within ``timeout``.
     """
     proc = subprocess.Popen(
         [sys.executable, "-"],
@@ -537,7 +574,27 @@ def run_string_as_driver_stdout_stderr(
         env=env,
     )
     with proc:
-        outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
+        try:
+            outputs_bytes = proc.communicate(
+                driver_script.encode(encoding=encode), timeout=timeout
+            )
+        except subprocess.TimeoutExpired as e:
+            proc.kill()
+            try:
+                outputs_bytes = proc.communicate(
+                    timeout=KILLED_DRIVER_DRAIN_TIMEOUT_SECONDS
+                )
+            except subprocess.TimeoutExpired:
+                # The driver did not die on SIGKILL either, so take whatever
+                # was captured before the first timeout and stop waiting on it.
+                outputs_bytes = (e.stdout or b"", e.stderr or b"")
+                _detach_process(proc)
+            logger.error(
+                "Driver did not exit within %ss; killed it. Output so far:\n%s",
+                timeout,
+                outputs_bytes,
+            )
+            raise
         out_str, err_str = [
             ray._common.utils.decode(output, encode_type=encode)
             for output in outputs_bytes
@@ -551,11 +608,12 @@ def run_string_as_driver_stdout_stderr(
         return out_str, err_str
 
 
-def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
+def run_string_as_driver_nonblocking(driver_script: str, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
     Args:
         driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
 
     Returns:
         A handle to the driver process.
@@ -704,7 +762,12 @@ def get_metric_check_condition(
 
 
 def wait_until_succeeded_without_exception(
-    func, exceptions, *args, timeout_ms=1000, retry_interval_ms=100, raise_last_ex=False
+    func: Callable,
+    exceptions: Tuple[Type[BaseException], ...],
+    *args,
+    timeout_ms: int = 1000,
+    retry_interval_ms: int = 100,
+    raise_last_ex: bool = False,
 ):
     """A helper function that waits until a given function
         completes without exceptions.
@@ -712,13 +775,13 @@ def wait_until_succeeded_without_exception(
     Args:
         func: A function to run.
         exceptions: Exceptions that are supposed to occur.
-        args: arguments to pass for a given func
+        *args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
         raise_last_ex: Raise the last exception when timeout.
 
-    Return:
-        Whether exception occurs within a timeout.
+    Returns:
+        Whether ``func`` succeeded within the timeout.
     """
     if isinstance(type(exceptions), tuple):
         raise Exception("exceptions arguments should be given as a tuple")
@@ -1088,6 +1151,16 @@ class BatchQueue(Queue):
         """Gets batch of items from the queue and returns them in a
         list in order.
 
+        Args:
+            batch_size: Max number of items to return. ``None`` means drain
+                everything currently in the queue (subject to the timeouts).
+            total_timeout: Total time, in seconds, to wait for the entire batch.
+            first_timeout: Time, in seconds, to wait for the first item before
+                raising ``Empty``.
+
+        Returns:
+            List of items pulled off the queue, in arrival order.
+
         Raises:
             Empty: if the queue does not contain the desired number of items
         """
@@ -1179,8 +1252,11 @@ def monitor_memory_usage(
 
     The monitor will run on the same node as this function is called.
 
-    Params:
-        interval_s: The interval memory usage information is printed
+    Args:
+        print_interval_s: How often, in seconds, memory usage information is
+            logged.
+        record_interval_s: How often, in seconds, the monitor samples and
+            records memory usage between log lines.
         warning_threshold: The threshold where the
             memory usage warning is printed.
 

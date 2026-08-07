@@ -47,7 +47,7 @@ class RuntimeEnvPlugin(ABC):
     async def create(
         self,
         uri: Optional[str],
-        runtime_env,
+        runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
         logger: logging.Logger,
     ) -> float:
@@ -206,7 +206,7 @@ class RuntimeEnvPluginManager:
         """Create a URI cache for a plugin.
 
         Args:
-            plugin_name: The name of the plugin.
+            plugin: The plugin instance whose URIs the cache will manage.
 
         Returns:
             The created URI cache for the plugin.

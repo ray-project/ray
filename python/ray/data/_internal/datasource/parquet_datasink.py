@@ -1,8 +1,10 @@
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray._common.retry import call_with_retry
+from ray._private.utils import INT32_MAX
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     reorder_columns_by_schema,
 )
@@ -38,12 +40,18 @@ def choose_row_group_limits(
     min_rows_per_file: Optional[int],
     max_rows_per_file: Optional[int],
 ) -> tuple[Optional[int], Optional[int], Optional[int]]:
-    """
-    Configure `min_rows_per_group`, `max_rows_per_group`, `max_rows_per_file` parameters of Pyarrow's `write_dataset` API based on Ray Data's configuration
+    """Configure row-group limits for Pyarrow's ``write_dataset`` API.
 
-    Returns
-    -------
-    (min_rows_per_group, max_rows_per_group, max_rows_per_file)
+    Configures the ``min_rows_per_group``, ``max_rows_per_group``, and
+    ``max_rows_per_file`` parameters based on Ray Data's configuration.
+
+    Args:
+        row_group_size: The requested row-group size.
+        min_rows_per_file: The minimum number of rows per file.
+        max_rows_per_file: The maximum number of rows per file.
+
+    Returns:
+        A tuple of (min_rows_per_group, max_rows_per_group, max_rows_per_file).
     """
 
     if (
@@ -93,6 +101,72 @@ def choose_row_group_limits(
             min_rows_per_file, min(row_group_size, max_rows_per_file)
         )
         return clamped_group_size, clamped_group_size, max_rows_per_file
+
+
+def _widen_offset_overflowing_columns(
+    tables: List["pyarrow.Table"], schema: "pyarrow.Schema"
+) -> "pyarrow.Schema":
+    """Promote `string`/`binary` columns to 64-bit-offset variants when needed.
+
+    Arrow addresses the data of `string` and `binary` columns with int32
+    offsets, so a single contiguous array can hold at most `INT32_MAX` bytes.
+    When the writer coalesces blocks into a large row group (e.g. because
+    `min_rows_per_file` set `min_rows_per_group`), pyarrow must materialize each
+    column of that row group as one contiguous array. If a `string`/`binary`
+    column's combined size across the blocks in this write exceeds the int32
+    limit, `write_dataset` fails with an offset-overflow error that surfaces as
+    a column-length mismatch (the column is truncated to what fits).
+
+    Promoting such columns to `large_string`/`large_binary` (int64 offsets)
+    removes the ceiling. The promotion is invisible on disk -- parquet stores
+    both as `BYTE_ARRAY` -- so only the in-memory Arrow type changes.
+
+    Only top-level `string`/`binary` columns are promoted. Other int32-offset
+    types are not handled: `string`/`binary` nested inside `list`/`struct`/`map`
+    (whose inner offsets carry the same byte ceiling) and `list`/`map` columns
+    themselves (which overflow on cumulative child-element count rather than
+    bytes). These require recursive type rewriting and are far rarer in practice.
+
+    Args:
+        tables: The blocks about to be written together in one task.
+        schema: The unified output schema for those blocks.
+
+    Returns:
+        ``schema`` unchanged when no column overflows, otherwise a copy with the
+        overflowing variable-width columns promoted to their ``large_*`` type.
+    """
+    import pyarrow as pa
+
+    candidate_types = {}
+    for field in schema:
+        if pa.types.is_string(field.type):
+            candidate_types[field.name] = pa.large_string()
+        elif pa.types.is_binary(field.type):
+            candidate_types[field.name] = pa.large_binary()
+    if not candidate_types:
+        return schema
+
+    # `.nbytes` is O(1) buffer metadata, so summing across blocks is cheap.
+    overflowing: set = set()
+    combined_nbytes: Dict[str, int] = defaultdict(int)
+    for table in tables:
+        for name in candidate_types:
+            idx = table.schema.get_field_index(name)
+            if idx != -1:
+                combined_nbytes[name] += table.column(idx).nbytes
+                if combined_nbytes[name] > INT32_MAX:
+                    overflowing.add(name)
+
+    if not overflowing:
+        return schema
+
+    new_fields = [
+        field.with_type(candidate_types[field.name])
+        if field.name in overflowing
+        else field
+        for field in schema
+    ]
+    return pa.schema(new_fields, metadata=schema.metadata)
 
 
 class ParquetDatasink(_FileDatasink):
@@ -199,6 +273,11 @@ class ParquetDatasink(_FileDatasink):
             tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
             if user_schema is None:
                 output_schema = pa.unify_schemas([table.schema for table in tables])
+                # Coalescing many blocks into one row group can push a
+                # `string`/`binary` column past Arrow's 2 GiB int32-offset
+                # limit; promote such columns to their `large_*` variant so the
+                # contiguous row-group array can address all of its bytes.
+                output_schema = _widen_offset_overflowing_columns(tables, output_schema)
             else:
                 output_schema = user_schema
 

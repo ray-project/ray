@@ -46,7 +46,7 @@ uvicorn
 prometheus_client>=0.7.1
 pandas>=2.2.3
 tensorboardX
-aiohttp>=3.13.3
+aiohttp>=3.14.1
 starlette>=1.0.1
 typer
 fsspec
@@ -59,3 +59,4 @@ pyOpenSSL
 celery
 taskiq
 mmh3
+ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'

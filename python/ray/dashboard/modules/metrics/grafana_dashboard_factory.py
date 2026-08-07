@@ -27,6 +27,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels 
 from ray.dashboard.modules.metrics.dashboards.serve_llm_dashboard_panels import (
     serve_llm_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.serve_llm_sglang_dashboard_panels import (
+    serve_llm_sglang_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
     train_dashboard_config,
 )
@@ -50,9 +53,12 @@ ROW_HEIGHT = 1  # Height of row container
 def _read_configs_for_dashboard(
     dashboard_config: DashboardConfig,
 ) -> Tuple[str, List[str], str]:
-    """
-    Reads environment variable configs for overriding uid, global_filters,
-    and the log link URL for a given dashboard.
+    """Reads environment variable configs for overriding uid, global_filters, and the log link URL for a given dashboard.
+
+    Args:
+        dashboard_config: The dashboard whose env-var overrides are read.
+            ``dashboard_config.name`` selects the env-var suffix and
+            ``default_uid`` is used as a fallback.
 
     Returns:
       Tuple with format uid, global_filters, log_link_url
@@ -134,6 +140,17 @@ def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(serve_llm_dashboard_config)
 
 
+def generate_serve_llm_sglang_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the SGLang Serve LLM dashboard and returns both the content
+    and the uid.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(serve_llm_sglang_dashboard_config)
+
+
 def generate_data_grafana_dashboard() -> Tuple[str, str]:
     """
     Generates the dashboard output for the data dashboard and returns
@@ -172,7 +189,12 @@ def generate_train_grafana_dashboard() -> Tuple[str, str]:
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
-    """
+    """Render the Grafana dashboard JSON for the given config.
+
+    Args:
+        dashboard_config: Configuration describing the panels and base
+            template JSON file to use for rendering.
+
     Returns:
       Tuple with format dashboard_content, uid
     """

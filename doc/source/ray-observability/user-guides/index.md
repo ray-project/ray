@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How-to guides for monitoring and debugging Ray apps: state queries, logging, profiling, custom metrics, tracing, and event export."
+---
+
 (observability-user-guides)=
 
 # User Guides

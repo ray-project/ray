@@ -97,7 +97,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   std::optional<pid_t> GetSavedProcessGroupId() const override;
   void SetSavedProcessGroupId(pid_t pgid) override;
 
-  void ActorCallArgWaitComplete(int64_t tag) override;
+  void ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) override;
 
   const BundleID &GetBundleId() const override;
   void SetBundleId(const BundleID &bundle_id) override;
@@ -154,15 +154,6 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   };
 
   bool IsRegistered() override { return rpc_client_ != nullptr; }
-
-  bool IsAvailableForScheduling() const override {
-    return !IsDead()  // Not dead
-           && !GetGrantedLeaseId()
-                   .IsNil()  // Has assigned lease. This is intentionally incorrect since
-                             // Ray Data relies on this for GC #56155
-           && !IsBlocked()   // Not blocked
-           && GetActorId().IsNil();  // No assigned actor
-  }
 
   rpc::CoreWorkerClientInterface *rpc_client() override {
     RAY_CHECK(IsRegistered());

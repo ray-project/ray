@@ -157,7 +157,7 @@ class HttpRequestUDF(StatefulStageUDF):
             batch: A list of rows to send.
 
         Yields:
-            A generator of rows of the response of the HTTP request.
+            Dict[str, Any]: A generator of rows of the response of the HTTP request.
         """
         # Keep the raw payload per row so the request body can be (re)built on
         # demand. This is required for multipart requests because an aiohttp

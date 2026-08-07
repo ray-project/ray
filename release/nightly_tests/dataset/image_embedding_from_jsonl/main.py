@@ -35,6 +35,16 @@ INPUT_PREFIX = "s3://ray-benchmark-data-internal-us-west-2/10TiB-jsonl-images"
 OUTPUT_PREFIX = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 BATCH_SIZE = 1024
+# Ray Data can't prevent OOMs if you don't set `memory` for high-memory operations like
+# this one. We chose 3 GiB because it was the max USS we observed in Ray 2.56 weekly
+# test runs.
+READ_MEMORY = 3 * 1024**3
+
+# Fake-GPU emulation: sleep instead of running the real ViT forward pass so the
+# benchmark can run on CPU nodes carrying a custom GPU:1 resource (sidesteps real
+# GPU capacity limits). 2.5 s/batch of 1024 is the measured ViT-base inference
+# time on an A10G (g5.4xlarge) from original GPU based test
+GPU_SECONDS_PER_IMAGE = 2.5 / 1024
 
 PROCESSOR = ViTImageProcessor(
     do_convert_rgb=None,
@@ -67,6 +77,14 @@ def parse_args():
         help=(
             "Whether to enable chaos. If set, this script terminates one worker node "
             "every minute with a grace period."
+        ),
+    )
+    parser.add_argument(
+        "--fake-gpu",
+        action="store_true",
+        help=(
+            "Use fake gpu mode if set. In this mode, Infer uses CPU nodes and sleeps "
+            "for the time GPU based Infer takes to process one batch"
         ),
     )
     return parser.parse_args()
@@ -182,6 +200,24 @@ class Infer:
         return result
 
 
+class FakeInfer:
+    """Fake-GPU Infer: sleeps for the measured per-batch inference time instead
+    of running the real ViT forward pass, so the benchmark can run on CPU nodes
+    carrying a custom GPU:1 resource (see GPU_SECONDS_PER_IMAGE)."""
+
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        n = len(batch["original_url"])
+        # Emulate the GPU forward pass: sleep for the batch's inference time.
+        time.sleep(GPU_SECONDS_PER_IMAGE * n)
+        return {
+            "original_url": batch["original_url"],
+            "original_width": batch["original_width"],
+            "original_height": batch["original_height"],
+            # Real Infer returns model(...).logits, shape (n, 1000) float32.
+            "output": np.zeros((n, 1000), dtype=np.float32),
+        }
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -193,11 +229,16 @@ def main(args: argparse.Namespace, profiling: Profiling):
     if args.chaos:
         start_chaos()
 
+    infer_cls = FakeInfer if args.fake_gpu else Infer
     infer_kwargs = {
         "batch_size": BATCH_SIZE,
         "num_gpus": 1,
         "concurrency": tuple(args.inference_concurrency),
     }
+    if args.fake_gpu:
+        # Fake-GPU nodes are CPU nodes whose GPU:1 is a custom resource, so the
+        # actor must also claim a real CPU for its sleep "compute".
+        infer_kwargs["num_cpus"] = 1
 
     nsys_env = profiling.nsys_runtime_env()
     if nsys_env:
@@ -206,12 +247,17 @@ def main(args: argparse.Namespace, profiling: Profiling):
     num_gpus = max(args.inference_concurrency)
 
     def benchmark_fn():
+        # `default_map_logical_memory_enabled` is a best practice that's required for
+        # Ray Data to prevent OOMs. It's not enabled by default in Ray 2.56, but we
+        # intend to enable it by default in a future release.
+        ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
+
         ds = (
-            ray.data.read_json(INPUT_PREFIX, lines=True)
+            ray.data.read_json(INPUT_PREFIX, lines=True, memory=READ_MEMORY)
             .flat_map(decode)
             .map(preprocess)
             .map_batches(
-                Infer,
+                infer_cls,
                 **infer_kwargs,
             )
         )

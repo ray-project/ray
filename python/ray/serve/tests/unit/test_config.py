@@ -11,7 +11,6 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     _proto_to_dict,
-    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
@@ -1159,79 +1158,35 @@ def test_config_schemas_forward_compatible():
 
 def test_http_options():
     HTTPOptions()
-    HTTPOptions(host="8.8.8.8", middlewares=[object()])
+
+    # `middlewares` is removed: a non-empty list raises, but an empty list is
+    # a no-op (matches the prior warn-on-non-empty behavior) so internal
+    # normalization via model_copy/defaults does not break.
+    HTTPOptions(middlewares=[])
+    with pytest.raises(ValueError, match="`middlewares` in HTTPOptions"):
+        HTTPOptions(host="8.8.8.8", middlewares=[object()])
+
+    # `num_cpus` is removed: a non-zero value raises; 0 (the old default) is
+    # a no-op so default construction is unaffected.
+    HTTPOptions(num_cpus=0)
+    with pytest.raises(ValueError, match="`num_cpus` in HTTPOptions"):
+        HTTPOptions(num_cpus=2)
 
     # Test configs ignoring unknown keys (required for forward-compatibility)
     HTTPOptions(new_version_config_key="this config is from newer version of Ray")
 
+    # `location` is deprecated; it defaults to None (proxy_location is the
+    # authority). host=None still disables. Setting a non-None location warns;
+    # location=None is a no-op (internal model_dump roundtrips pass it) and must
+    # NOT warn.
+    assert HTTPOptions().location is None
     assert HTTPOptions(host=None).location == ProxyLocation.Disabled
-    assert HTTPOptions(location=None).location == ProxyLocation.Disabled
-    assert HTTPOptions(location=ProxyLocation.EveryNode).location == "EveryNode"
-
-
-def test_prepare_imperative_http_options():
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options=None,
-    ) == HTTPOptions(location=ProxyLocation.EveryNode)
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options={},
-    ) == HTTPOptions(location=ProxyLocation.EveryNode)
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options=HTTPOptions(**{}),
-    ) == HTTPOptions(
-        location=ProxyLocation.HeadOnly
-    )  # in this case we can't know whether location was provided or not
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options=HTTPOptions(),
-    ) == HTTPOptions(location=ProxyLocation.HeadOnly)
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options={"test": "test"},
-    ) == HTTPOptions(location=ProxyLocation.EveryNode)
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options={"host": "0.0.0.0"},
-    ) == HTTPOptions(location=ProxyLocation.EveryNode, host="0.0.0.0")
-
-    assert prepare_imperative_http_options(
-        proxy_location=None,
-        http_options={"location": "NoServer"},
-    ) == HTTPOptions(location=ProxyLocation.Disabled)
-
-    assert prepare_imperative_http_options(
-        proxy_location=ProxyLocation.Disabled,
-        http_options=None,
-    ) == HTTPOptions(location=ProxyLocation.Disabled)
-
-    assert prepare_imperative_http_options(
-        proxy_location=ProxyLocation.HeadOnly,
-        http_options={"host": "0.0.0.0"},
-    ) == HTTPOptions(location=ProxyLocation.HeadOnly, host="0.0.0.0")
-
-    assert prepare_imperative_http_options(
-        proxy_location=ProxyLocation.HeadOnly,
-        http_options={"location": "NoServer"},
-    ) == HTTPOptions(location=ProxyLocation.HeadOnly)
-
-    with pytest.raises(ValueError, match="not a valid ProxyLocation"):
-        prepare_imperative_http_options(proxy_location="wrong", http_options=None)
-
-    with pytest.raises(ValidationError, match="not a valid ProxyLocation"):
-        prepare_imperative_http_options(
-            proxy_location=None, http_options={"location": "123"}
-        )
-
-    with pytest.raises(ValueError, match="Unexpected type"):
-        prepare_imperative_http_options(proxy_location=None, http_options="wrong")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert HTTPOptions(location=None).location is None
+    assert not any("`location` in HTTPOptions" in str(w.message) for w in caught)
+    with pytest.warns(DeprecationWarning, match="`location` in HTTPOptions"):
+        assert HTTPOptions(location=ProxyLocation.EveryNode).location == "EveryNode"
 
 
 def test_with_proto():

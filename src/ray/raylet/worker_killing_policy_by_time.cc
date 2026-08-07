@@ -25,7 +25,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 #include "ray/util/compat.h"
 
 namespace ray {
@@ -130,6 +130,13 @@ TimeBasedWorkerKillingPolicy::Policy(
           }
           if (!left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
               right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+            return false;
+          }
+
+          if (left->GetActorId().IsNil() && !right->GetActorId().IsNil()) {
+            return true;
+          }
+          if (!left->GetActorId().IsNil() && right->GetActorId().IsNil()) {
             return false;
           }
 
@@ -257,7 +264,7 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
         used_memory_gb));
   }
 
-  result << absl::StrJoin(worker_debug_strings, ", ");
+  result << absl::StrJoin(worker_debug_strings, "\n");
   return result.str();
 }
 
