@@ -2,7 +2,7 @@ import io
 import tarfile
 import time
 import uuid
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import pyarrow
 
@@ -19,7 +19,7 @@ class WebDatasetDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,
-        encoder: Optional[Union[bool, str, callable, list]] = True,
+        encoder: Optional[Union[bool, str, Callable, list]] = True,
         *,
         file_format: str = "tar",
         **file_datasink_kwargs,

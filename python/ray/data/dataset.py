@@ -5324,29 +5324,19 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
-        encoder: Optional[Union[bool, str, callable, list]] = True,
+        encoder: Optional[Union[bool, str, Callable, list]] = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
         """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
-        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
-        records, with one Example record for each row in the dataset.
-
-        .. warning::
-            tf.train.Feature only natively stores ints, floats, and bytes,
-            so this function only supports datasets with these data types,
-            and will error if the dataset contains unsupported types.
+        Each row in the dataset is encoded as a WebDataset sample and written
+        to a tar archive. Sample keys default to random hex strings; values
+        are stored as ``{key}.{field}`` entries inside the tar.
 
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
-
-        Unless a custom filename provider is given, the format of the output
-        files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
-        for the dataset.
 
         Examples:
 
@@ -5361,8 +5351,8 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where tfrecords
-                files are written to.
+            path: The path to the destination root directory, where WebDataset
+                tar files are written to.
             filesystem: The filesystem implementation to write to.
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
