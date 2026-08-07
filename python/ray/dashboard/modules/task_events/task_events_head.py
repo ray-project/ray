@@ -34,8 +34,8 @@ _MARK_FAILED_ON_WORKER_DEAD_DELAY_S = (
 _MARK_FAILED_ON_JOB_DONE_DELAY_S = (
     ray._config.gcs_mark_task_failed_on_job_done_delay_ms() / 1000
 )
-# Timeout for the worker-table fetches used to reconcile dead workers.
-_WORKER_INFO_FETCH_TIMEOUT_S = 30
+# Timeout for the GCS table fetches used to reconcile dead workers and finished jobs.
+_GCS_INFO_FETCH_TIMEOUT_S = 30
 
 
 class TaskEventsHead(SubprocessModule):
@@ -52,6 +52,7 @@ class TaskEventsHead(SubprocessModule):
         self._store = TaskEventStorage()
         self._background_tasks: Set[asyncio.Task] = set()
         self._worker_info_stub = None
+        self._job_info_stub = None
 
     @classmethod
     def is_enabled(cls) -> bool:
@@ -150,7 +151,7 @@ class TaskEventsHead(SubprocessModule):
         try:
             reply = await self._worker_info_stub.GetWorkerInfo(
                 gcs_service_pb2.GetWorkerInfoRequest(worker_id=worker_id),
-                timeout=_WORKER_INFO_FETCH_TIMEOUT_S,
+                timeout=_GCS_INFO_FETCH_TIMEOUT_S,
             )
         except Exception as e:
             # A transient GCS/RPC failure must not sink the reconciliation task; treat it
@@ -169,9 +170,21 @@ class TaskEventsHead(SubprocessModule):
         # Empty request → GCS returns every worker (no limit);
         reply = await self._worker_info_stub.GetAllWorkerInfo(
             gcs_service_pb2.GetAllWorkerInfoRequest(),
-            timeout=_WORKER_INFO_FETCH_TIMEOUT_S,
+            timeout=_GCS_INFO_FETCH_TIMEOUT_S,
         )
         return reply.worker_table_data
+
+    async def _get_all_job_info(self) -> List[gcs_pb2.JobTableData]:
+        if self._job_info_stub is None:
+            self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
+                self.aiogrpc_gcs_channel
+            )
+        # Empty request → GCS returns every job (no limit).
+        reply = await self._job_info_stub.GetAllJobInfo(
+            gcs_service_pb2.GetAllJobInfoRequest(),
+            timeout=_GCS_INFO_FETCH_TIMEOUT_S,
+        )
+        return reply.job_info_list
 
     async def _reconcile_dead_workers_on_startup(self) -> None:
         # GCS pubsub does not replay worker deaths from before we subscribed, so snapshot
@@ -194,6 +207,28 @@ class TaskEventsHead(SubprocessModule):
                     worker_table_data.worker_address.worker_id, worker_table_data
                 )
 
+    async def _reconcile_finished_jobs_on_startup(self) -> None:
+        # GCS pubsub does not replay job finishes from before we subscribed, so snapshot
+        # the job table once and fail tasks for any already-finished job. This must run
+        # AFTER subscribe() so a finish between the snapshot and the subscription is still
+        # delivered over pubsub.
+        try:
+            # Overlap the snapshot fetch with the same delay _on_job_finished uses, so
+            # in-flight FINISHED events can land before we fail the tasks.
+            job_infos, _ = await asyncio.gather(
+                self._get_all_job_info(),
+                asyncio.sleep(_MARK_FAILED_ON_JOB_DONE_DELAY_S),
+            )
+        except Exception:
+            logger.exception("Failed to reconcile finished jobs on startup.")
+            return
+        for job_data in job_infos:
+            if job_data.is_dead:
+                self._store.mark_tasks_failed_on_job_ends(
+                    job_data.job_id, job_data.end_time * 10**6
+                )
+                self._store.update_job_summary_on_job_done(job_data.job_id)
+
     async def _subscribe_for_worker_deaths(self) -> None:
         subscriber = GcsAioWorkerDeltaSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
@@ -214,6 +249,10 @@ class TaskEventsHead(SubprocessModule):
     async def _subscribe_for_finished_jobs(self) -> None:
         subscriber = GcsAioJobSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
+        # Backfill finishes from before the subscription (pubsub won't replay them).
+        # Spawn it (unlike the worker path) so the 15s job-done delay doesn't stall the
+        # poll loop; a finish also seen via pubsub is fine since marking is idempotent.
+        self._spawn(self._reconcile_finished_jobs_on_startup())
         while True:
             try:
                 for _, job_data in await subscriber.poll(
