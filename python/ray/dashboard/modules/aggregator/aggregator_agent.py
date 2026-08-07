@@ -13,10 +13,7 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2,
     events_event_aggregator_service_pb2_grpc,
 )
-from ray.dashboard.modules.aggregator.constants import (
-    AGGREGATOR_AGENT_METRIC_PREFIX,
-    CONSUMER_TAG_KEY,
-)
+from ray.dashboard.modules.aggregator.constants import AGGREGATOR_AGENT_METRIC_PREFIX
 from ray.dashboard.modules.aggregator.multi_consumer_event_buffer import (
     MultiConsumerEventBuffer,
 )
@@ -119,24 +116,17 @@ class AggregatorAgent(
             thread_name_prefix="aggregator_agent_executor",
         )
 
-        self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
-
         # Task metadata buffers accumulate dropped task attempts to publish. Each
         # publisher needs its own buffer because reads are destructive
         # (TaskEventsMetadataBuffer.get() pops), so a shared buffer would split the
-        # dropped attempts across publishers instead of delivering them to both. They
-        # share one recorder (so the dropped-attempts counter registers once) and each
-        # tags its series with its consumer so the two buffers don't collide.
+        # dropped attempts across publishers instead of delivering them to both.
         self._task_metadata_buffer = TaskEventsMetadataBuffer(
-            common_metric_tags={**self._common_tags, CONSUMER_TAG_KEY: "ray_gcs"},
-            metric_recorder=self._open_telemetry_metric_recorder,
+            common_metric_tags=self._common_tags,
+            publisher_name="ray_gcs",
         )
         self._dashboard_head_task_metadata_buffer = TaskEventsMetadataBuffer(
-            common_metric_tags={
-                **self._common_tags,
-                CONSUMER_TAG_KEY: "dashboard_head",
-            },
-            metric_recorder=self._open_telemetry_metric_recorder,
+            common_metric_tags=self._common_tags,
+            publisher_name="dashboard_head",
         )
 
         self._events_export_addr = (
@@ -200,6 +190,9 @@ class AggregatorAgent(
         else:
             logger.info("Publishing events to the dashboard head is disabled")
             self._dashboard_head_publisher = NoopPublisher()
+
+        # Metrics
+        self._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
 
         # Register counter metrics
         self._events_received_metric_name = (
