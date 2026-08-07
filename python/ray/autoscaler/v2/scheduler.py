@@ -604,7 +604,9 @@ class SchedulingNode:
         # Sort the requests and try schedule them one by one.
         for r in requests:
             if shape_keys is not None:
-                sk = shape_keys[id(r)]
+                sk = shape_keys.get(id(r))
+                if sk is None:
+                    sk = r.SerializeToString(deterministic=True)
             else:
                 sk = r.SerializeToString(deterministic=True)
 
@@ -1954,6 +1956,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             recoverable_resource_availabilities: The recoverable cloud resource availability
                 score. Similar to cloud_resource_availabilities, but it will recover from
                 0.0 to 1.0 linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
+            shape_keys: Precomputed {id(request): serialized_bytes} mapping. Avoids
+                redundant SerializeToString calls inside try_schedule. If None, keys
+                are computed on the fly (fallback for tests and external callers).
 
         Returns:
             best_node: The best node to schedule the requests.
