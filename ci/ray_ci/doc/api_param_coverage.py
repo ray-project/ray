@@ -142,9 +142,15 @@ def signature_params(func: _FuncNode) -> List[str]:
 
 
 def _base_names(classdef: ast.ClassDef) -> List[str]:
-    """Simple names of a class's declared bases."""
+    """Simple names of a class's declared bases.
+
+    Unwraps subscripted bases so a generic parent (``class C(Base[T])``) still
+    resolves for docstring inheritance.
+    """
     names = []
     for b in classdef.bases:
+        if isinstance(b, ast.Subscript):
+            b = b.value
         if isinstance(b, ast.Name):
             names.append(b.id)
         elif isinstance(b, ast.Attribute):

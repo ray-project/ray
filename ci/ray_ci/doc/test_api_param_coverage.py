@@ -4,6 +4,7 @@ from typing import List
 
 import pytest
 
+from ci.ray_ci.doc import cmd_check_api_param_coverage as cmd
 from ci.ray_ci.doc.api_param_coverage import (
     ClassIndex,
     Violation,
@@ -385,6 +386,101 @@ def test_developer_api_module_function_still_ignored():
         '''
     )
     assert _check(base=None, head=head) == []
+
+
+def test_inherited_docstring_through_subscripted_base():
+    # A generic base (`class Impl(Base[T])`) must still resolve for docstring
+    # inheritance; otherwise the override is flagged for a documented param.
+    base_class_file = (
+        "python/ray/base_mod.py",
+        _src(
+            '''
+            class Base:
+                """Base.
+
+                Args:
+                    alpha: The alpha param.
+                """
+
+                def method(self, alpha):
+                    """Base method.
+
+                    Args:
+                        alpha: The alpha param.
+                    """
+            '''
+        ),
+    )
+    head = _src(
+        '''
+        @PublicAPI
+        class Impl(Base[T]):
+            """Impl."""
+
+            def method(self, alpha):
+                pass
+        '''
+    )
+    violations = _check(base=None, head=head, extra_files=[base_class_file])
+    assert violations == []
+
+
+# --- changed-file listing (rename detection) ----------------------------------
+
+
+def _fake_git(monkeypatch, output: str) -> None:
+    monkeypatch.setattr(cmd, "_git", lambda *a, **k: output)
+
+
+def test_changed_files_maps_rename_to_old_path(monkeypatch):
+    # A rename must compare against the old path's content. Treating it as a new
+    # file would report every pre-existing gap in it as new debt.
+    _fake_git(
+        monkeypatch,
+        "R100\tpython/ray/old_mod.py\tpython/ray/new_mod.py\n"
+        "M\tpython/ray/other.py\n",
+    )
+    assert cmd._changed_python_files("/repo", "base") == [
+        ("python/ray/new_mod.py", "python/ray/old_mod.py"),
+        ("python/ray/other.py", "python/ray/other.py"),
+    ]
+
+
+def test_changed_files_maps_copy_to_source_path(monkeypatch):
+    _fake_git(monkeypatch, "C75\tpython/ray/src.py\tpython/ray/copy.py\n")
+    assert cmd._changed_python_files("/repo", "base") == [
+        ("python/ray/copy.py", "python/ray/src.py")
+    ]
+
+
+def test_changed_files_added_and_modified_use_same_path(monkeypatch):
+    _fake_git(monkeypatch, "A\tpython/ray/added.py\nM\tpython/ray/mod.py\n")
+    assert cmd._changed_python_files("/repo", "base") == [
+        ("python/ray/added.py", "python/ray/added.py"),
+        ("python/ray/mod.py", "python/ray/mod.py"),
+    ]
+
+
+def test_changed_files_filters_out_of_scope_paths(monkeypatch):
+    _fake_git(
+        monkeypatch,
+        "M\tpython/ray/tests/test_thing.py\n"
+        "M\tpython/ray/mod.txt\n"
+        "M\tdoc/source/index.md\n"
+        "M\tpython/ray/keep.py\n",
+    )
+    assert cmd._changed_python_files("/repo", "base") == [
+        ("python/ray/keep.py", "python/ray/keep.py")
+    ]
+
+
+def test_changed_files_rename_out_of_scope_destination_skipped(monkeypatch):
+    # Scope is decided by the head path: a file renamed into tests/ drops out.
+    _fake_git(
+        monkeypatch,
+        "R100\tpython/ray/mod.py\tpython/ray/tests/test_mod.py\n",
+    )
+    assert cmd._changed_python_files("/repo", "base") == []
 
 
 def test_syntax_error_source_yields_no_callables():

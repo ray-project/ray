@@ -23,9 +23,16 @@ _SKIP_SEGMENTS = (
 
 
 def _git(checkout_dir: str, *args: str) -> str:
+    # Decode as UTF-8 explicitly rather than relying on the locale default, so
+    # non-ASCII paths in git output survive on any platform.
     return subprocess.check_output(
-        ["git", "-C", checkout_dir, *args], text=True, stderr=subprocess.DEVNULL
+        ["git", "-C", checkout_dir, *args], encoding="utf-8", stderr=subprocess.DEVNULL
     )
+
+
+def _repo_rel(path: str, checkout_dir: str) -> str:
+    """Checkout-relative path with forward slashes, matching git's output."""
+    return os.path.relpath(path, checkout_dir).replace(os.sep, "/")
 
 
 def _merge_base(checkout_dir: str, base_ref: str) -> Optional[str]:
@@ -35,28 +42,49 @@ def _merge_base(checkout_dir: str, base_ref: str) -> Optional[str]:
         return None
 
 
-def _changed_python_files(checkout_dir: str, base: str) -> List[str]:
-    """Repo-root-relative ``python/ray`` source files changed since ``base``.
+def _in_scope(path: str) -> bool:
+    """Whether a repo-relative path is a ``python/ray`` API source file."""
+    return (
+        path.endswith(".py")
+        and path.startswith(f"{_SOURCE_ROOT}/")
+        and not any(seg in f"/{path}" for seg in _SKIP_SEGMENTS)
+    )
+
+
+def _changed_python_files(checkout_dir: str, base: str) -> List[Tuple[str, str]]:
+    """``(head_path, base_path)`` for ``python/ray`` sources changed since ``base``.
 
     Skips deleted files (no head content to check) and the non-API paths in
-    ``_SKIP_SEGMENTS``.
+    ``_SKIP_SEGMENTS``. Rename detection is on (``-M``): for a renamed or copied
+    file the two paths differ, so the base content is read from the old path
+    rather than being treated as a new file. Without this a rename would report
+    every pre-existing gap in the file as new debt.
     """
     try:
         out = _git(
-            checkout_dir, "diff", "--name-only", "--diff-filter=d", f"{base}...HEAD"
+            checkout_dir,
+            "diff",
+            "--name-status",
+            "-M",
+            "--diff-filter=d",
+            f"{base}...HEAD",
         )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"could not list changed files: {e}")
     files = []
     for line in out.splitlines():
-        path = line.strip()
-        if not path.endswith(".py"):
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) < 2:
             continue
-        if not path.startswith(f"{_SOURCE_ROOT}/"):
+        status = fields[0]
+        # Rename/copy entries carry both paths: "R100\told\tnew".
+        if status[:1] in ("R", "C") and len(fields) >= 3:
+            base_path, head_path = fields[1], fields[2]
+        else:
+            base_path = head_path = fields[1]
+        if not _in_scope(head_path):
             continue
-        if any(seg in f"/{path}" for seg in _SKIP_SEGMENTS):
-            continue
-        files.append(path)
+        files.append((head_path, base_path))
     return files
 
 
@@ -75,14 +103,14 @@ def _iter_source_files(checkout_dir: str):
         # Match skip segments against the repo-relative path, not the absolute
         # one: a checkout dir that itself contains a skip segment (e.g. a path
         # under ".../test/...") would otherwise skip every file.
-        rel_dirpath = os.path.relpath(dirpath, checkout_dir)
+        rel_dirpath = _repo_rel(dirpath, checkout_dir)
         if any(seg in f"/{rel_dirpath}" for seg in _SKIP_SEGMENTS):
             continue
         for fn in filenames:
             if not fn.endswith(".py"):
                 continue
             abspath = os.path.join(dirpath, fn)
-            rel = os.path.relpath(abspath, checkout_dir)
+            rel = _repo_rel(abspath, checkout_dir)
             try:
                 with open(abspath, encoding="utf-8") as f:
                     yield rel, f.read()
@@ -108,9 +136,11 @@ def find_violations(checkout_dir: str, base_ref: str) -> Tuple[List[Violation], 
         return [], base
 
     # Base content of the changed files, fetched once and reused for both the
-    # base index and the per-file comparison.
+    # base index and the per-file comparison. Keyed by head path, but read from
+    # the base path so a renamed file still compares against its old content.
     base_sources: Dict[str, Optional[str]] = {
-        path: _base_content(checkout_dir, base, path) for path in changed
+        head_path: _base_content(checkout_dir, base, base_path)
+        for head_path, base_path in changed
     }
 
     # Head index: the working tree. Base index: the working tree with the
@@ -118,7 +148,7 @@ def find_violations(checkout_dir: str, base_ref: str) -> Tuple[List[Violation], 
     # the changed files differ between the two trees, so this reconstructs the
     # base tree accurately without a second checkout.
     head_files = list(_iter_source_files(checkout_dir))
-    changed_set = set(changed)
+    changed_set = {head_path for head_path, _ in changed}
     base_files = []
     for rel, source in head_files:
         if rel in changed_set:
@@ -133,7 +163,7 @@ def find_violations(checkout_dir: str, base_ref: str) -> Tuple[List[Violation], 
 
     head_by_path = dict(head_files)
     violations: List[Violation] = []
-    for path in changed:
+    for path, _base_path in changed:
         head_source = head_by_path.get(path)
         if head_source is None:
             continue
