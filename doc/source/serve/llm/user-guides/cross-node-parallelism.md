@@ -1,11 +1,11 @@
 (cross-node-parallelism)=
 # Cross-node parallelism
 
-Ray Serve LLM supports cross-node tensor parallelism (TP) and pipeline parallelism (PP), allowing you to distribute model inference across multiple GPUs and nodes. This capability enables you to:
+Ray Serve LLM supports cross-node tensor parallelism (TP) and pipeline parallelism (PP), which distribute model inference across multiple GPUs and nodes. Use cross-node parallelism to:
 
 - Deploy models that don't fit on a single GPU or node.
 - Scale model serving across your cluster's available resources.
-- Leverage Ray's placement group strategies to control worker placement for performance or fault tolerance.
+- Use Ray's placement group strategies to control worker placement for performance or fault tolerance.
 
 ::::{note}
 By default, Ray Serve LLM uses the `PACK` placement strategy, which tries to place workers on as few nodes as possible. If workers can't fit on a single node, they automatically spill to other nodes. This enables cross-node deployments when single-node resources are insufficient.
@@ -77,7 +77,7 @@ You can customize how Ray places vLLM engine workers across nodes using `placeme
 
 ### Basic configuration with bundle_per_worker
 
-The `bundle_per_worker` option inside `placement_group_config` lets you specify resources for each worker without manually creating the full bundle list. Ray automatically replicates this bundle based on `tensor_parallel_size * pipeline_parallel_size`. This field is mutually exclusive with `bundles`.
+Use the `bundle_per_worker` option inside `placement_group_config` to specify resources for each worker without manually creating the full bundle list. Ray automatically replicates this bundle based on `tensor_parallel_size * pipeline_parallel_size`. This field is mutually exclusive with `bundles`.
 
 :::{note}
 In each bundle dict, `CPU` and `GPU` are numeric amounts. If you omit either key, it is treated as **0** — set both explicitly when your workers need CPUs and GPUs (there is no implicit default GPU when you only specify CPU, or vice versa).

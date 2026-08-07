@@ -1,3 +1,5 @@
+import operator
+
 import pytest
 
 import ray
@@ -11,6 +13,7 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import run_op_tasks_sync
 
@@ -206,7 +209,7 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
     )
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
@@ -251,7 +254,7 @@ def test_task_pool_resource_reporting_with_dynamic_remote_args(
         ray_remote_args={"num_cpus": 1},
         ray_remote_args_fn=lambda: {"memory": 500},
     )
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
 
@@ -278,7 +281,7 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         compute_strategy=TaskPoolStrategy(),
         min_rows_per_bundle=3,
     )
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
@@ -338,7 +341,7 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
     )
 
     # NOTE: This is blocking, until actors are fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
@@ -459,7 +462,7 @@ def test_actor_pool_resource_reporting_with_dynamic_remote_args(
     )
 
     # Blocking until actors are fully started
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
     run_op_tasks_sync(op, only_existing=True)
 
     # Should reflect dynamic resources: 2 actors * (1 cpu, 500 memory)
@@ -489,7 +492,7 @@ def test_actor_pool_scheduling_with_bundling(
     )
 
     # NOTE: This is blocking, until actor pool is fully started up
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     min_resource_usage, _ = op.min_max_resource_requirements()
     assert min_resource_usage == ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
@@ -639,7 +642,7 @@ def test_limit_resource_reporting(ray_start_10_cpus_shared):
         make_ref_bundles([[SMALL_STR, SMALL_STR] for i in range(2)]),
     )  # Two two-row bundles
     op = LimitOperator(3, input_op, DataContext.get_current())
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=0, memory=0
@@ -672,7 +675,7 @@ def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
         data_context=DataContext.get_current(),
         locality_hints=["0", "1"],
     )
-    op.start(ExecutionOptions(actor_locality_enabled=True))
+    op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
 
     assert op.current_logical_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=0, memory=0
@@ -709,39 +712,41 @@ def test_execution_resources_to_resource_dict():
     }
 
 
-def test_execution_resources_init_preserves_fractional_cpu():
-    # ExecutionResources no longer quantizes inputs in __init__; the boundary
-    # (to_resource_dict) does that.
-    raw_cpu = 0.5 / 3  # 0.16666666666666666...
-    r = ExecutionResources(cpu=raw_cpu)
-    assert r._cpu == raw_cpu
-    assert r.cpu == raw_cpu
-    # to_resource_dict() quantizes for Ray Core: cpu/gpu to 5 digits.
-    assert r.to_resource_dict()["CPU"] == round(raw_cpu, 5)
+def test_execution_resources_combine_sum_empty_reuses_zero():
+    # An empty fold returns the shared zero singleton instead of allocating.
+    assert ExecutionResources.combine_sum([]) is ExecutionResources.zero()
+    # Works for a one-shot generator (can't be len()'d or re-iterated).
+    assert ExecutionResources.combine_sum(iter([])) is ExecutionResources.zero()
 
 
-def test_execution_resources_to_resource_dict_rounds_memory_to_int():
-    # Internal arithmetic can leave fractional bytes; to_resource_dict()
-    # rounds them to integer bytes for Ray Core.
-    r = ExecutionResources(memory=112.5, object_store_memory=257.5)
-    d = r.to_resource_dict()
-    # Python round() uses banker's rounding (round-half-to-even).
-    assert d["memory"] == round(112.5, 0)
-    assert d["object_store_memory"] == round(257.5, 0)
+def test_execution_resources_combine_sum():
+    rs = [
+        ExecutionResources(cpu=1, gpu=2, object_store_memory=3, memory=4),
+        ExecutionResources(cpu=10, gpu=20, object_store_memory=30, memory=40),
+    ]
+    expected = ExecutionResources(cpu=11, gpu=22, object_store_memory=33, memory=44)
+    assert ExecutionResources.combine_sum(rs) == expected
+    # Same result from a one-shot generator.
+    assert ExecutionResources.combine_sum(r for r in rs) == expected
 
 
-def test_execution_resources_is_zero_under_drift():
-    # 1M add/subtract pairs of mixed magnitudes should leave is_zero() True
-    # despite any accumulated float drift.
-    acc = ExecutionResources.zero()
-    delta = ExecutionResources(
-        cpu=1.0 / 7, gpu=1.0 / 9, memory=12345.6789, object_store_memory=98765.4321
+def test_execution_resources_combine():
+    rs = [
+        ExecutionResources(cpu=1, gpu=5, object_store_memory=3, memory=40),
+        ExecutionResources(cpu=10, gpu=2, object_store_memory=30, memory=4),
+    ]
+    # Per-dimension fold with an arbitrary float op.
+    assert ExecutionResources.combine(rs, operator.add) == ExecutionResources(
+        11, 7, 33, 44
     )
-    for _ in range(1_000_000):
-        acc = acc.add(delta).subtract(delta)
-    assert acc.is_zero()
-    assert acc == ExecutionResources.zero()
-    assert acc.is_non_negative()
+    assert ExecutionResources.combine(rs, max) == ExecutionResources(10, 5, 30, 40)
+    assert ExecutionResources.combine(rs, min) == ExecutionResources(1, 2, 3, 4)
+    # Single-pass over a one-shot generator.
+    assert ExecutionResources.combine((r for r in rs), max) == ExecutionResources(
+        10, 5, 30, 40
+    )
+    # Empty -> None (no identity to seed a general fn with).
+    assert ExecutionResources.combine([], operator.add) is None
 
 
 if __name__ == "__main__":

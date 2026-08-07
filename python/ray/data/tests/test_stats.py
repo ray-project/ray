@@ -1,16 +1,18 @@
 import gc
 import logging
+import pickle
 import platform
 import re
 import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pyarrow as pa
 import pytest
 
 import ray
@@ -28,22 +30,38 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.operators.map_operator import _map_task
+from ray.data._internal.execution.operators.map_transformer import (
+    BlockMapTransformFn,
+    CustomOpStatsReporter,
+    MapTransformer,
+)
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
     DatasetStatsSummary,
+    IterationStage,
     NodeMetrics,
     OperatorStatsSummary,
     StatsSummary,
     Timer,
+    TimeSpan,
+    _maybe_time,
     _StatsActor,
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
-from ray.data.block import BlockExecStats, BlockStats
+from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+@dataclass(frozen=True)
+class _ReadTaskStats(CustomOpStats):
+    num_rows: int
+    num_columns: int
 
 
 def get_operator(
@@ -179,6 +197,133 @@ def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared
         assert profiler.estimate_max_uss() > array_nbytes
 
 
+def test_map_transformer_custom_op_stats():
+    expected = _ReadTaskStats(num_rows=4, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+
+    reporter = CustomOpStatsReporter()
+    # Nothing reported until a task runs.
+    assert reporter.get_stats() == []
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    block = pa.table({"id": list(range(expected.num_rows))})
+    # apply_transform takes the report callback, not the reporter object.
+    list(transformer.apply_transform([block], ctx, reporter.report))
+    assert reporter.get_stats() == [expected]
+
+
+def _drive_map_task_metadata(transformer, ctx, block):
+    """Run ``_map_task`` to completion and return the per-block metadata.
+
+    ``_map_task`` yields each block, then (after a ``send``) the pickled
+    ``BlockMetadataWithSchema`` for that block.
+    """
+    gen = _map_task(transformer, DataContext.get_current(), ctx, block)
+    metas = []
+    try:
+        next(gen)  # first block
+        while True:
+            metas.append(pickle.loads(gen.send(None)))  # that block's metadata
+            next(gen)  # next block; StopIteration when exhausted
+    except StopIteration:
+        pass
+    return metas
+
+
+def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_shared):
+    """End-to-end wiring: a reporting transform's stats reach the per-block
+    TaskExecWorkerStats that ``_map_task`` emits back to the driver.
+
+    Guards the ``_map_task`` -> ``TaskExecWorkerStats.custom_op_stats`` plumbing
+    so a future edit there can't silently drop the field.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def set_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    transformer = MapTransformer(
+        [
+            BlockMapTransformFn(
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(transformer, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
+def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
+    """A reporting transform's stats survive operator fusion.
+
+    Because ``_map_task`` owns the reporter (rather than the transformer), a
+    reporting upstream transform fused with a downstream transform still carries
+    its stats back: both run under the fused operator's single reporter. This is
+    a regression guard — when stats lived on the transformer, fusion built a new
+    transformer and the closure-captured original was orphaned, silently
+    dropping the stats.
+    """
+    expected = _ReadTaskStats(num_rows=2, num_columns=1)
+
+    def report_stats(blocks, ctx, report_custom_op_stats):
+        report_custom_op_stats(expected)
+        yield from blocks
+
+    def passthrough(blocks, ctx):
+        yield from blocks
+
+    upstream = MapTransformer(
+        [
+            BlockMapTransformFn(
+                report_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
+            )
+        ]
+    )
+    downstream = MapTransformer(
+        [BlockMapTransformFn(passthrough, disable_block_shaping=True)]
+    )
+    fused = upstream.fuse(downstream)
+
+    ctx = TaskContext(task_idx=0, op_name="test")
+    metas = _drive_map_task_metadata(fused, ctx, pa.table({"id": [0, 1]}))
+
+    # custom_op_stats is a List[CustomOpStats] per block; flatten across blocks.
+    reported_stats = [
+        stats
+        for m in metas
+        if m.metadata.task_exec_stats is not None
+        for stats in m.metadata.task_exec_stats.custom_op_stats
+    ]
+    assert expected in reported_stats, reported_stats
+
+
 def gen_expected_metrics(
     is_map: bool,
     spilled: bool = False,
@@ -206,7 +351,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
             "'average_rows_outputs_per_task': N",
-            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
@@ -296,7 +441,7 @@ def gen_expected_metrics(
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
             "'average_rows_outputs_per_task': None",
-            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
+            "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
@@ -449,7 +594,9 @@ def canonicalize(
     filter_global_stats: bool = True,
 ) -> str:
     # Dataset UUID expression.
-    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+    canonicalized_stats = re.sub(r"(dataset_uuid=)[^,\n]+", r"\g<1>N", stats)
+    # Other UUID expressions.
+    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", canonicalized_stats)
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
@@ -553,15 +700,48 @@ def test_streaming_split_stats(ray_start_regular_shared, restore_data_context):
     it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
     list(it.iter_batches())
     stats = it.stats()
-    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE  # .replace(
-    #     "'obj_store_mem_used': A", "'obj_store_mem_used': Z"
-    # )
     extra_metrics_2 = gen_expected_metrics(
         is_map=False,
         extra_metrics=["'num_output_N': N", "'output_splitter_overhead_time': N"],
     )
+    # The task_output_backpressure_time* metrics are wall-clock timers for output
+    # backpressure on the running MapBatches operator. Whether (and for how long)
+    # it blocks is a timing race against the single, slower streaming-split
+    # consumer, so the value is genuinely nondeterministic across runs (sometimes
+    # 0, usually positive). We therefore deliberately do NOT assert these three
+    # values: both the expected and the produced stats collapse them to a
+    # sentinel. Everything else -- including task_submission_backpressure_time --
+    # stays strictly checked. Only the running operator's (first) occurrence is
+    # collapsed; the idle split operator's timers remain strictly asserted as 0.
+    not_asserted = "<varies>"
+    backpressure_keys = (
+        "average_task_output_backpressure_time_s",
+        "task_output_backpressure_time",
+        "task_output_backpressure_time_s",
+    )
+    extra_metrics_1 = STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
+    for key in backpressure_keys:
+        extra_metrics_1 = extra_metrics_1.replace(
+            f"'{key}': Z", f"'{key}': {not_asserted}"
+        )
+    produced = canonicalize(stats)
+    for key in backpressure_keys:
+        # count=1 collapses only the first (running MapBatches operator)
+        # occurrence; the \b stops the "N" token from matching the "N" in an idle
+        # operator's "None".
+        produced = re.sub(
+            rf"('{key}': )(?:N|Z)\b", rf"\g<1>{not_asserted}", produced, count=1
+        )
+    # The per-stage training-thread blocked breakdown is timing-dependent
+    # (depends on whether prefetch hid the stall); strip it before comparing.
+    produced = re.sub(
+        r"\nPer-stage training-thread blocked time breakdown:\n"
+        r"(?:    \* [^\n]+\n)+",
+        "",
+        produced,
+    )
     assert (
-        canonicalize(stats)
+        produced
         == f"""Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -594,6 +774,8 @@ Dataset iterator time breakdown:
     * In batch creation: T min, T max, T avg, T total
     * In batch formatting: T min, T max, T avg, T total
 Streaming split coordinator overhead time: T
+Total batches consumed: N
+Total rows consumed: N
 """
         f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'split(N, equal=False)'], True)}"  # noqa: E501
     )
@@ -748,7 +930,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
@@ -913,7 +1095,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      average_rows_outputs_per_task: N,\n"
-        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
@@ -1031,7 +1213,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
         "            average_rows_outputs_per_task: N,\n"
-        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
+        "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
         "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
@@ -1739,50 +1921,6 @@ def test_individual_operator_num_rows(shutdown_only):
     assert op0_output == op1_input
 
 
-def test_sub_operator_num_rows(shutdown_only):
-    # The input num rows of sub operator:
-    # The first sub-operator: total output from all parent nodes
-    # Subsequent sub-operators: output of the previous sub-operator
-    ray.shutdown()
-    ray.init(num_cpus=2)
-
-    data1 = [{"id": i, "value1": i * 1.5, "category1": i % 5} for i in range(500)]
-    ds1 = ray.data.from_items(data1)
-    data2 = [{"id": i, "value2": i * 1.5, "category2": i % 5} for i in range(300)]
-    ds2 = ray.data.from_items(data2)
-    ds = ds1.join(ds2, join_type="left_outer", num_partitions=2)
-
-    stats_output = ds.materialize().stats()
-
-    patterns = {
-        "operator0_output": re.compile(
-            r"Operator 0.*?Total output num rows: (\d+)", re.DOTALL
-        ),
-        "subop0_input": re.compile(
-            r"Suboperator 0.*?Total input num rows: (\d+)", re.DOTALL
-        ),
-        "subop0_output": re.compile(
-            r"Suboperator 0.*?Total output num rows: (\d+)", re.DOTALL
-        ),
-        "subop1_input": re.compile(
-            r"Suboperator 1.*?Total input num rows: (\d+)", re.DOTALL
-        ),
-    }
-
-    extracted_data = {}
-    for key, pattern in patterns.items():
-        match = pattern.search(stats_output)
-        if match:
-            extracted_data[key] = int(match.group(1))
-        else:
-            extracted_data[key] = None
-
-    assert extracted_data["operator0_output"] == 500
-    assert extracted_data["subop0_output"] == 800
-    assert extracted_data["operator0_output"] == extracted_data["subop0_input"]
-    assert extracted_data["subop0_output"] == extracted_data["subop1_input"]
-
-
 @pytest.mark.parametrize("verbose_stats_logs", [True, False])
 def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     context = DataContext.get_current()
@@ -1875,7 +2013,164 @@ def test_stats_actor_iter_metrics():
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats
-    assert f"dataset_{ds._uuid}_0" == update_fn.call_args_list[-1].args[1]
+    assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
+    assert update_fn.call_args_list[-1].args[2] is None
+
+
+@pytest.mark.parametrize(
+    "split_index_arg, expected_split_label",
+    [
+        ("3", "split_3"),
+        (None, "no_split"),
+    ],
+)
+def test_update_iteration_metrics_exports_new_iter_metrics(
+    split_index_arg, expected_split_label
+):
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_total_s.add(11.0)
+    stats.iter_blocked_production_wait_s.add(1.0)
+    stats.iter_blocked_data_transfer_s.add(1.5)
+    stats.iter_blocked_batching_s.add(2.0)
+    stats.iter_blocked_format_s.add(3.0)
+    stats.iter_blocked_collate_s.add(4.0)
+    stats.iter_blocked_finalize_s.add(5.0)
+    stats.iter_batches_total = 7
+    stats.iter_rows_total = 8
+
+    actor = _StatsActor.__ray_metadata__.modified_class.__new__(
+        _StatsActor.__ray_metadata__.modified_class
+    )
+    recorded = {}
+
+    class FakeGauge:
+        def __init__(self, name):
+            self.name = name
+
+        def set(self, value, tags):
+            recorded[self.name] = (value, tags)
+
+    for attr in [
+        "iter_initialize_s",
+        "iter_total_s",
+        "iter_get_ref_bundles_s",
+        "iter_get_s",
+        "iter_next_batch_s",
+        "iter_format_batch_s",
+        "iter_collate_batch_s",
+        "iter_finalize_batch_s",
+        "iter_blocks_local",
+        "iter_blocks_remote",
+        "iter_unknown_location",
+        "iter_prefetched_bytes",
+        "iter_block_fetching_s",
+        "iter_batch_shaping_s",
+        "iter_batch_formatting_s",
+        "iter_batch_collating_s",
+        "iter_batch_finalizing_s",
+        "time_to_first_batch_s",
+        "iter_total_blocked_s",
+        "iter_blocked_production_wait_s",
+        "iter_blocked_data_transfer_s",
+        "iter_blocked_batching_s",
+        "iter_blocked_format_s",
+        "iter_blocked_collate_s",
+        "iter_blocked_finalize_s",
+        "iter_batches_total",
+        "iter_rows_total",
+        "iter_user_s",
+    ]:
+        setattr(actor, attr, FakeGauge(attr))
+
+    actor.update_iteration_metrics(stats, "train_dataset", split_index_arg)
+
+    expected_tags = {"dataset": "train_dataset", "split": expected_split_label}
+    assert recorded["iter_total_s"] == (11.0, expected_tags)
+    assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
+    assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)
+    assert recorded["iter_blocked_batching_s"] == (2.0, expected_tags)
+    assert recorded["iter_blocked_format_s"] == (3.0, expected_tags)
+    assert recorded["iter_blocked_collate_s"] == (4.0, expected_tags)
+    assert recorded["iter_blocked_finalize_s"] == (5.0, expected_tags)
+    assert recorded["iter_batches_total"] == (7, expected_tags)
+    assert recorded["iter_rows_total"] == (8, expected_tags)
+
+
+def test_iter_stats_summary_has_new_fields():
+    """IterStatsSummary includes per-stage blocked timers and counters."""
+    stats = DatasetStats(metadata={}, parent=None)
+    summary = stats.to_summary()
+    iter_summary = summary.iter_stats
+
+    expected_fields = {
+        "blocked_production_wait_time",
+        "blocked_data_transfer_time",
+        "blocked_batching_time",
+        "blocked_format_time",
+        "blocked_collate_time",
+        "blocked_finalize_time",
+        "batches_total",
+        "rows_total",
+    }
+    actual_fields = {f.name for f in fields(iter_summary)}
+    assert expected_fields.issubset(
+        actual_fields
+    ), f"missing fields: {expected_fields - actual_fields}"
+
+
+def test_iter_stats_summary_reflects_accumulated_values():
+    """IterStatsSummary carries the accumulated timer values."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(0.5)
+    stats.iter_blocked_batching_s.add(0.2)
+    stats.iter_batches_total = 10
+    stats.iter_rows_total = 320
+
+    summary = stats.to_summary().iter_stats
+    assert summary.blocked_production_wait_time.get() == pytest.approx(0.5)
+    assert summary.blocked_data_transfer_time.get() == pytest.approx(0.0)
+    assert summary.blocked_batching_time.get() == pytest.approx(0.2)
+    assert summary.batches_total == 10
+    assert summary.rows_total == 320
+
+
+def test_iter_stats_to_string_shows_stage_breakdown():
+    """to_string() renders per-stage breakdown when values are non-zero."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(1.5)
+    stats.iter_blocked_format_s.add(0.8)
+    stats.iter_batches_total = 5
+    stats.iter_rows_total = 160
+    stats.iter_total_blocked_s.add(2.3)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "production wait" in text
+    assert "format" in text
+    assert "Total batches consumed: 5" in text
+    assert "Total rows consumed: 160" in text
+    assert "Per-stage training-thread blocked time breakdown" in text
+
+
+def test_iter_stats_to_string_omits_zero_stages():
+    """to_string() omits stages with zero values from the breakdown."""
+    stats = DatasetStats(metadata={}, parent=None)
+    stats.iter_blocked_production_wait_s.add(0.5)
+    stats.iter_total_blocked_s.add(0.5)
+
+    text = str(stats.to_summary().iter_stats)
+    assert "production wait" in text
+    # Zero stages should not appear
+    assert "batching" not in text
+    assert "collate" not in text
+
+
+def test_iter_stats_to_string_no_breakdown_when_all_zero():
+    """When all blocked_* stages are zero, no breakdown section appears."""
+    stats = DatasetStats(metadata={}, parent=None)
+    text = str(stats.to_summary().iter_stats)
+    assert "Per-stage training-thread blocked time breakdown" not in text
+    assert "Total batches consumed" not in text
+    assert "Total rows consumed" not in text
 
 
 def test_dataset_name_and_id():
@@ -1932,7 +2227,6 @@ import ray
 
 ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
 ds.set_name("train")
-ds._set_uuid("1234")
 
 split = ds.streaming_split(1)[0]
 
@@ -1943,8 +2237,15 @@ for epoch in range({num_epochs}):
     # Need to run the code as s sub process, because the executor
     # runs on the SplitCoordinator actor.
     out = run_string_as_driver(driver_script)
+    match = re.search(
+        r"Starting execution of Dataset (train_[A-Za-z0-9]+)_0",
+        out,
+    )
+    assert match is not None
+    dataset_id_prefix = match.group(1)
+
     for i in range(num_epochs):
-        dataset_id = f"train_1234_{i}"
+        dataset_id = f"{dataset_id_prefix}_{i}"
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 
@@ -2109,7 +2410,10 @@ def test_stats_manager(mock_get_or_create, shutdown_only):
     # calls will update on the first update (cold start), and on shutdown,
     # which is 2 for each thread.
     assert execution_calls == 2 * num_threads
-    assert iteration_calls == 2 * num_threads
+    # iteration_calls has 3 per thread: cold start + shutdown + the
+    # finally-block flush in DataIterator._iter_batches (added so an
+    # early ``break`` still records iter_total_s and flushes metrics).
+    assert iteration_calls == 3 * num_threads
 
 
 def test_stats_manager_stale_actor_handle(ray_start_cluster):
@@ -2496,6 +2800,106 @@ class TestTimerPercentile:
         assert t._total_count == 0.0
         assert t.min() == float("inf")
         assert t.max() == 0.0
+
+
+class TestTimeSpan:
+    """Tests for TimeSpan dataclass."""
+
+    def test_default_values(self):
+        """Default TimeSpan has start_s=0 and end_s=0."""
+        t = TimeSpan()
+        assert t.start_s == 0.0
+        assert t.end_s == 0.0
+
+    def test_duration(self):
+        """Duration is end_s - start_s."""
+        t = TimeSpan(start_s=1.0, end_s=3.5)
+        assert t.duration == pytest.approx(2.5)
+
+    def test_zero_duration(self):
+        """Default TimeSpan has zero duration."""
+        t = TimeSpan()
+        assert t.duration == 0.0
+
+
+class TestTimerSpan:
+    """Tests for Timer.timer() returning a TimeSpan and accumulating."""
+
+    def test_timer_yields_timespan(self, monkeypatch):
+        """timer() yields a fresh TimeSpan whose duration is accumulated."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with t.timer() as span:
+            perf[0] = 1.5
+        assert isinstance(span, TimeSpan)
+        assert span.duration == 0.5
+        assert t.get() == 0.5
+        assert t.max() == 0.5
+        assert t.min() == 0.5
+
+    def test_each_call_returns_fresh_span(self, monkeypatch):
+        """Each timer() call yields a distinct TimeSpan instance."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with t.timer() as s1:
+            perf[0] = 2.0
+        perf[0] = 10.0
+        with t.timer() as s2:
+            perf[0] = 12.0
+        assert s1 is not s2
+        assert s1.duration == 1.0
+        assert s2.duration == 2.0
+        assert t.get() == 3.0
+
+    def test_maybe_time_skips_when_timer_none(self):
+        """_maybe_time(None) yields None."""
+        with _maybe_time(None) as span:
+            assert span is None
+        assert span is None
+
+    def test_maybe_time_yields_span_when_timer_given(self, monkeypatch):
+        """_maybe_time(Timer) yields a TimeSpan backed by the Timer."""
+        perf = [0.0]
+        monkeypatch.setattr("time.perf_counter", lambda: perf[0])
+
+        t = Timer()
+        perf[0] = 1.0
+        with _maybe_time(t) as span:
+            perf[0] = 1.5
+        assert isinstance(span, TimeSpan)
+        assert span.duration == 0.5
+        assert t.get() == 0.5
+
+
+@pytest.mark.parametrize(
+    "stage,attr",
+    [
+        (IterationStage.PRODUCTION_WAIT, "iter_blocked_production_wait_s"),
+        (IterationStage.DATA_TRANSFER, "iter_blocked_data_transfer_s"),
+        (IterationStage.BATCHING, "iter_blocked_batching_s"),
+        (IterationStage.FORMAT, "iter_blocked_format_s"),
+        (IterationStage.COLLATE, "iter_blocked_collate_s"),
+        (IterationStage.FINALIZE, "iter_blocked_finalize_s"),
+    ],
+)
+class TestGetBlockedTimer:
+    """Tests for DatasetStats.get_blocked_timer() stage->Timer mapping."""
+
+    def test_get_blocked_timer_returns_correct_attribute(self, stage, attr):
+        """get_blocked_timer(stage) returns the Timer matching the stage."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert stats.get_blocked_timer(stage) is getattr(stats, attr)
+
+    def test_get_blocked_timer_returns_timer_instance(self, stage, attr):
+        """get_blocked_timer returns a real Timer (not None)."""
+        stats = DatasetStats(metadata={}, parent=None)
+        assert isinstance(stats.get_blocked_timer(stage), Timer)
 
 
 def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared):

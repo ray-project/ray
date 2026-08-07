@@ -1,10 +1,10 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
 import ray
 from ray._common.utils import binary_to_hex
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S, SERVE_LOGGER_NAME
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -15,10 +15,10 @@ class ClusterNodeInfoCache(ABC):
 
     def __init__(self, gcs_client: GcsClient):
         self._gcs_client = gcs_client
-        self._cached_alive_nodes = None
-        self._cached_node_labels = dict()
-        self._cached_total_resources_per_node = dict()
-        self._cached_available_resources_per_node = dict()
+        self._cached_alive_nodes: Optional[List[Tuple[str, str, str]]] = None
+        self._cached_node_labels: Dict[str, Dict[str, str]] = dict()
+        self._cached_total_resources_per_node: Dict[str, Dict] = dict()
+        self._cached_available_resources_per_node: Dict[str, Dict[str, float]] = dict()
         # Track alive node IDs to detect cluster membership changes and skip
         # rebuilding labels / total resources when nothing changed.
         self._alive_node_id_set: FrozenSet[str] = frozenset()
@@ -35,7 +35,10 @@ class ClusterNodeInfoCache(ABC):
         alive_nodes = [
             (node_id.hex(), node.node_name, node.instance_id)
             for (node_id, node) in nodes.items()
-            if node.state == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
+            # `ray.core.generated` is a compiled-proto package that only exists
+            # in built environments.
+            if node.state
+            == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE  # pyrefly: ignore[missing-attribute]
         ]
 
         # Sort on NodeID to ensure the ordering is deterministic across the cluster.
@@ -93,7 +96,7 @@ class ClusterNodeInfoCache(ABC):
         Returns a list of (node_id: str, node_ip: str, instance_id: str).
         The node_id can be passed into the Ray SchedulingPolicy API.
         """
-        return self._cached_alive_nodes
+        return self._cached_alive_nodes  # type: ignore[return-value]
 
     def get_total_resources_per_node(self) -> Dict[str, Dict]:
         """Get total resources for alive nodes."""
@@ -120,7 +123,7 @@ class ClusterNodeInfoCache(ABC):
         """
         return self.get_alive_node_ids() - set(self.get_draining_nodes())
 
-    def get_available_resources_per_node(self) -> Dict[str, Union[float, Dict]]:
+    def get_available_resources_per_node(self) -> Dict[str, Dict[str, float]]:
         """Get available resources per node.
 
         Returns a map from (node_id -> Dict of resources).

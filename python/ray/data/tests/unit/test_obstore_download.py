@@ -1,22 +1,28 @@
 import asyncio
 import os
-import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, cast
 from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pyarrow.fs as pafs
 import pytest
+from freezegun import freeze_time
+from freezegun.api import FrozenDateTimeFactory
 
 from ray.data._internal.planner._obstore_download import (
+    _BUCKET_REGION_CACHE,
     _FILE_SIZE_COLUMN_PREFIX,
+    StoreRegistry,
+    _discover_aws_bucket_region,
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _native_s3_obstore_kwargs,
     _obstore_filesystem_requires_threaded_download,
     _plan_obstore_routing,
     _S3FSSessionCredentialProvider,
+    _split_obstore_uri,
     download_bytes_async,
 )
 from ray.data._internal.planner.plan_download_op import (
@@ -58,6 +64,256 @@ def test_split_uri(uri, expected_store_url, expected_path):
     assert path == expected_path
 
 
+# TestSplitObstoreUri — AWS path-style HTTPS URLs must be rewritten to s3://
+# so obstore's S3Store keys off the bucket (with region discovery) instead of
+# off the regional host endpoint (which pins region and fails with
+# BareRedirect on cross-region buckets).
+@pytest.mark.parametrize(
+    "uri, expected_store_url, expected_path",
+    [
+        # Path-style regional: must rewrite to s3://<bucket>.
+        (
+            "https://s3.us-east-1.amazonaws.com/ray-example-data/imagenet/foo.jpg",
+            "s3://ray-example-data",
+            "imagenet/foo.jpg",
+        ),
+        # Path-style legacy global endpoint: also rewrite.
+        (
+            "https://s3.amazonaws.com/my-bucket/key.bin",
+            "s3://my-bucket",
+            "key.bin",
+        ),
+        # Virtual-host style: bucket already in netloc, leave alone.
+        (
+            "https://my-bucket.s3.us-west-2.amazonaws.com/key.bin",
+            "https://my-bucket.s3.us-west-2.amazonaws.com",
+            "key.bin",
+        ),
+        # Native s3:// URIs: no change.
+        (
+            "s3://my-bucket/prefix/key.jpg",
+            "s3://my-bucket",
+            "prefix/key.jpg",
+        ),
+        # Pre-signed URLs (any query string): signature is bound to host +
+        # path + query, so rewriting would invalidate it. Pass through.
+        (
+            "https://s3.us-east-1.amazonaws.com/bucket/key?X-Amz-Signature=abc",
+            "https://s3.us-east-1.amazonaws.com",
+            "bucket/key?X-Amz-Signature=abc",
+        ),
+        # Non-AWS HTTPS (MinIO, R2 custom domain, generic file server):
+        # leave alone — only AWS S3 needs the region-discovery rewrite.
+        (
+            "https://files.example.com/bucket/key.bin",
+            "https://files.example.com",
+            "bucket/key.bin",
+        ),
+        # Other clouds: untouched.
+        ("gs://bucket/path", "gs://bucket", "path"),
+        # Path-style with nested key.
+        (
+            "https://s3.eu-central-1.amazonaws.com/bucket/a/b/c.parquet",
+            "s3://bucket",
+            "a/b/c.parquet",
+        ),
+        # Path-style with only a bucket (no key): bucket is preserved, key
+        # is empty. Edge case; downstream obstore call would fail but that's
+        # the caller's problem.
+        (
+            "https://s3.amazonaws.com/just-a-bucket",
+            "s3://just-a-bucket",
+            "",
+        ),
+    ],
+)
+def test_split_obstore_uri(uri, expected_store_url, expected_path):
+    store_url, path = _split_obstore_uri(uri)
+    assert store_url == expected_store_url
+    assert path == expected_path
+
+
+# TestBucketRegionDiscovery — exercise the region-discovery path used by
+# StoreRegistry to find the real region of cross-region S3 buckets. Region
+# resolution is delegated to ``pyarrow.fs.resolve_s3_region``; these tests
+# patch it to avoid real network calls.
+class TestBucketRegionDiscovery:
+    @staticmethod
+    def _clear_cache():
+        _BUCKET_REGION_CACHE.clear()
+
+    def test_resolved_region_is_returned(self):
+        # Whether the bucket is same-region (200 OK) or cross-region (301
+        # PermanentRedirect), PyArrow reads x-amz-bucket-region and returns it.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", return_value="us-west-2"):
+            assert _discover_aws_bucket_region("cross-region-bucket") == "us-west-2"
+
+    def test_cache_hit_avoids_second_probe(self):
+        # First call probes; second call must not invoke resolve_s3_region.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", return_value="eu-west-1") as resolve:
+            _discover_aws_bucket_region("euro-bucket")
+            _discover_aws_bucket_region("euro-bucket")
+            assert resolve.call_count == 1
+
+    def test_failure_returns_none_and_caches(self):
+        # On resolution failure (network error, non-AWS endpoint) return None
+        # so StoreRegistry leaves obstore's defaults intact for MinIO/R2/etc.
+        # Cache the negative result so we don't keep probing.
+        self._clear_cache()
+        with patch(
+            "pyarrow.fs.resolve_s3_region", side_effect=OSError("nope")
+        ) as resolve:
+            assert _discover_aws_bucket_region("unreachable") is None
+            assert _discover_aws_bucket_region("unreachable") is None
+            assert resolve.call_count == 1
+
+    def test_missing_resolve_s3_region_returns_none(self):
+        # PyArrow builds compiled without S3 support lack resolve_s3_region,
+        # so the attribute access raises AttributeError; discovery must degrade
+        # to None rather than propagate it.
+        self._clear_cache()
+        with patch("pyarrow.fs.resolve_s3_region", side_effect=AttributeError("no S3")):
+            assert _discover_aws_bucket_region("no-s3-support") is None
+
+    def test_none_result_does_not_overwrite_cached_region(self):
+        # Race: this thread probes (outside the lock) and gets None, while a
+        # concurrent thread resolves and caches the real region. The failed
+        # probe must not clobber the cached region, otherwise later
+        # StoreRegistry.get calls skip region injection and cross-region
+        # downloads fail intermittently.
+        self._clear_cache()
+
+        def resolve_then_simulate_concurrent_win(bucket):
+            # Stand in for another thread caching the real region mid-probe.
+            _BUCKET_REGION_CACHE[bucket] = "us-west-2"
+            return None
+
+        with patch(
+            "pyarrow.fs.resolve_s3_region",
+            side_effect=resolve_then_simulate_concurrent_win,
+        ):
+            assert _discover_aws_bucket_region("racy-bucket") == "us-west-2"
+        assert _BUCKET_REGION_CACHE["racy-bucket"] == "us-west-2"
+
+
+# TestStoreRegistryRegionInjection — verify region discovery happens at
+# store-construction time for s3:// URLs without an explicit region, and is
+# correctly skipped when the caller has already configured one.
+class TestStoreRegistryRegionInjection:
+    @staticmethod
+    def _make_registry_capturing_kwargs():
+        _BUCKET_REGION_CACHE.clear()
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["store_url"] = url
+            captured["kwargs"] = kwargs
+            return MagicMock(name="fake-store")
+
+        reg = StoreRegistry()
+        reg._from_url = fake_from_url
+        return reg, captured
+
+    def test_s3_url_injects_discovered_region(self):
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ):
+            reg.get("s3://ray-example-data")
+        assert captured["kwargs"].get("region") == "us-west-2"
+
+    def test_s3a_url_also_injects_region(self):
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ):
+            reg.get("s3a://some-bucket")
+        assert captured["kwargs"].get("region") == "us-west-2"
+
+    def test_explicit_region_not_overridden(self):
+        # Caller (e.g., creds extracted from PyArrow S3FileSystem) already
+        # supplied region; do not probe and do not override.
+        reg = StoreRegistry(region="eu-central-1")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg._from_url = fake_from_url
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("s3://bucket")
+        probe.assert_not_called()
+        assert captured["kwargs"]["region"] == "eu-central-1"
+
+    def test_custom_endpoint_skips_probe(self):
+        # MinIO / R2 / localstack: caller configured a custom endpoint, so
+        # the AWS region probe would be both wrong and wasteful.
+        reg = StoreRegistry(endpoint="http://localhost:9000")
+        reg._from_url = lambda *a, **k: MagicMock()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("s3://bucket")
+        probe.assert_not_called()
+
+    def test_https_url_does_not_probe(self):
+        # Virtual-hosted-style or presigned HTTPS URLs reach get() unchanged
+        # (after _split_obstore_uri). obstore parses the region from the
+        # netloc directly, so probing would be redundant.
+        reg, captured = self._make_registry_capturing_kwargs()
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region"
+        ) as probe:
+            reg.get("https://bucket.s3.us-east-1.amazonaws.com")
+        probe.assert_not_called()
+
+
+# TestResolveSizeRewrite — the HEAD size probe must apply the same path-style
+# -> s3:// rewrite as the download paths. Otherwise a cross-region path-style
+# URL keeps the regional HTTPS store, hits BareRedirect, returns size 0, and
+# wrongly skips ranged downloads even when a whole-file GET would succeed.
+class TestResolveSizeRewrite:
+    def test_resolve_size_rewrites_path_style_uri(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            _ObstoreFileSizeProvider,
+        )
+
+        _BUCKET_REGION_CACHE.clear()
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["store_url"] = url
+            return MagicMock(name="store")
+
+        registry = StoreRegistry()
+        registry._from_url = fake_from_url
+
+        async def fake_head_async(store, path):
+            captured["path"] = path
+            return {"size": 4096}
+
+        provider = _ObstoreFileSizeProvider(registry, MagicMock())
+        with patch(
+            "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
+            return_value="us-west-2",
+        ), patch("obstore.head_async", side_effect=fake_head_async):
+            sizes = provider.get_file_sizes(
+                ["https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin"]
+            )
+
+        # Rewritten to s3://<bucket> so region discovery applies; HEAD succeeds.
+        assert sizes == [4096]
+        assert captured["store_url"] == "s3://cross-region-bucket"
+        assert captured["path"] == "key.bin"
+
+
 # TestDownloadHelpers
 class TestDownloadHelpers:
     """Unit tests for credential extraction and URL-scheme detection."""
@@ -81,72 +337,80 @@ class TestDownloadHelpers:
         retrying = RetryingPyFileSystem.wrap(inner, retryable_errors=[])
         assert _extract_credentials_from_filesystem(retrying) is None
 
-    def test_extract_credentials_unwraps_retrying_fs_over_s3(self):
-        # Even when an S3FileSystem is wrapped, credentials must still be
-        # extracted from the inner filesystem after unwrapping.
-        mock_fs = MagicMock()
-        mock_fs.region = "eu-west-1"
-        mock_fs.access_key = None
-        mock_fs.secret_key = None
-        mock_fs.session_token = None
-        mock_fs.endpoint_override = None
-        mock_fs.anonymous = False
-
-        mock_retrying = MagicMock(spec=RetryingPyFileSystem)
-        mock_retrying.unwrap.return_value = mock_fs
-
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_retrying)
-
-        assert result is not None
-        assert result.get("region") == "eu-west-1"
-
-    # _extract_credentials_from_filesystem with S3
-    def test_extract_credentials_s3_region_real(self):
-        # PyArrow's S3FileSystem C extension only exposes `region` as a Python
-        # attribute; credential fields are not accessible. This test documents
-        # that boundary with a real filesystem object.
+    # Native S3FileSystem is translated to obstore kwargs from its pickle state
+    # so the fast obstore path is kept. Anonymous, explicit static keys, and the
+    # default credential chain are all statically representable.
+    @pytest.mark.parametrize(
+        "kwargs, expected",
+        [
+            (
+                {"anonymous": True, "region": "us-west-2"},
+                {"region": "us-west-2", "skip_signature": True},
+            ),
+            (
+                {"region": "us-west-2"},
+                {"region": "us-west-2"},
+            ),
+            (
+                {"access_key": "AKID", "secret_key": "SECRET", "region": "us-west-2"},
+                {
+                    "region": "us-west-2",
+                    "access_key_id": "AKID",
+                    "secret_access_key": "SECRET",
+                },
+            ),
+        ],
+    )
+    def test_native_s3_translates_to_obstore(self, kwargs, expected):
         try:
-            fs = pafs.S3FileSystem(region="us-west-2")
+            fs = pafs.S3FileSystem(**kwargs)
         except Exception:
             pytest.skip("Cannot instantiate S3FileSystem in this environment")
-        result = _extract_credentials_from_filesystem(fs)
-        assert result is not None
-        assert result.get("region") == "us-west-2"
-        assert "access_key_id" not in result
-        assert "skip_signature" not in result
+        assert _extract_credentials_from_filesystem(fs) == expected
+        assert _plan_obstore_routing(fs) == (True, expected)
 
-    def test_extract_credentials_s3_anonymous_mock(self):
-        # We patch pyarrow.fs.S3FileSystem so isinstance() recognises the mock.
-        mock_fs = MagicMock()
-        mock_fs.anonymous = True
-        mock_fs.access_key = None
-        mock_fs.secret_key = None
-        mock_fs.session_token = None
-        mock_fs.endpoint_override = None
-        mock_fs.region = None
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_fs)
-        assert result is not None
-        assert result.get("skip_signature") is True
-        assert "access_key_id" not in result
+    def test_native_s3_unwrapped_from_retrying_wrapper(self):
+        # RetryingPyFileSystem is unwrapped before the S3 check, so a wrapped
+        # native S3FileSystem is translated to obstore kwargs just the same.
+        try:
+            fs = pafs.S3FileSystem(anonymous=True, region="us-west-2")
+        except Exception:
+            pytest.skip("Cannot instantiate S3FileSystem in this environment")
+        retrying = RetryingPyFileSystem.wrap(fs, retryable_errors=[])
+        assert _extract_credentials_from_filesystem(retrying) == {
+            "region": "us-west-2",
+            "skip_signature": True,
+        }
 
-    def test_extract_credentials_s3_with_keys_mock(self):
-        mock_fs = MagicMock()
-        mock_fs.anonymous = False
-        mock_fs.access_key = "AKID"
-        mock_fs.secret_key = "SECRET"
-        mock_fs.session_token = "TOKEN"
-        mock_fs.endpoint_override = "https://custom-endpoint.com"
-        mock_fs.region = "us-west-2"
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_fs)
-        assert result is not None
-        assert result["access_key_id"] == "AKID"
-        assert result["secret_access_key"] == "SECRET"
-        assert result["session_token"] == "TOKEN"
-        assert result["endpoint"] == "https://custom-endpoint.com"
-        assert result["region"] == "us-west-2"
+    def test_native_s3_assume_role_falls_back_to_threaded(self):
+        # Assume-role creds rotate; a static obstore snapshot would go stale, so
+        # the translation declines (None) and the caller uses the threaded path.
+        # Driven through the pickle state to avoid constructing a real
+        # assume-role filesystem (which may attempt STS).
+        class _Stub:
+            def __reduce__(self):
+                return (
+                    object,
+                    (
+                        {
+                            "role_arn": "arn:aws:iam::123456789012:role/test",
+                            "anonymous": False,
+                            "access_key": None,
+                            "region": "us-west-2",
+                        },
+                    ),
+                )
+
+        assert _native_s3_obstore_kwargs(_Stub()) is None
+
+    def test_native_s3_unreadable_pickle_state_falls_back_to_threaded(self):
+        # If the pickle state can't be introspected (e.g. a future PyArrow
+        # changes its serialization), fail safe to the threaded path.
+        class _Stub:
+            def __reduce__(self):
+                raise RuntimeError("unexpected serialization")
+
+        assert _native_s3_obstore_kwargs(_Stub()) is None
 
     # _extract_credentials_from_filesystem with GCS
     @pytest.mark.parametrize(
@@ -357,14 +621,13 @@ class TestS3FSSessionCredentialProvider:
 
     def test_refreshes_after_expiry(self):
         # Once expires_at passes, the next call must re-enter the session so
-        # rotated keys propagate to obstore. Use a tiny TTL to test quickly.
+        # rotated keys propagate to obstore.
         session = _sync_session("AKIA")
-        provider = _S3FSSessionCredentialProvider(
-            session, ttl=timedelta(microseconds=1)
-        )
-        asyncio.run(provider())
-        time.sleep(0.005)
-        asyncio.run(provider())
+        provider = _S3FSSessionCredentialProvider(session, ttl=timedelta(minutes=30))
+        with freeze_time() as frozen:
+            asyncio.run(provider())
+            cast(FrozenDateTimeFactory, frozen).tick(timedelta(minutes=31))
+            asyncio.run(provider())
         assert session.get_credentials.call_count == 2
 
     def test_uses_session_expiry_time(self):
@@ -539,6 +802,107 @@ class TestPlanObstoreRouting:
                     ["file:///tmp/x.bin"], "uri", filesystem=pafs.LocalFileSystem()
                 )
             )
+
+
+class TestAsyncPartitionActorExactPartitioning:
+    def test_exact_size_columns_mark_every_row(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        block = pa.table({"uri": ["s3://bucket/a", "s3://bucket/b", "s3://bucket/c"]})
+
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = actor._annotate_file_size_columns(block, {"uri": [10, 20, 30]})
+
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        assert out.column(size_col).to_pylist() == [10, 20, 30]
+
+    def test_exact_partition_fetches_metadata_for_all_uris_in_block(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+            _ExactDownloadPartitioner,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        actor._size_provider = MagicMock()
+        actor._size_provider.get_file_sizes.side_effect = lambda uris: [10] * len(uris)
+        actor._partitioner = _ExactDownloadPartitioner(
+            ["uri"],
+            10_000,
+            actor._size_provider,
+            annotate_sizes=actor._annotate_file_size_columns,
+        )
+
+        block = pa.table({"uri": [f"s3://bucket/{i}" for i in range(100)]})
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = next(actor(block))
+
+        headed_uris = actor._size_provider.get_file_sizes.call_args.args[0]
+        assert len(headed_uris) == 100
+
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        sizes = out.column(size_col).to_pylist()
+        assert sizes == [10] * 100
+
+    def test_target_none_keeps_block_and_attaches_exact_sizes(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+            _ExactDownloadPartitioner,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        actor._size_provider = MagicMock()
+        actor._size_provider.get_file_sizes.return_value = [10, 20, 30]
+        actor._partitioner = _ExactDownloadPartitioner(
+            ["uri"],
+            None,
+            actor._size_provider,
+            annotate_sizes=actor._annotate_file_size_columns,
+            fetch_metadata_without_target=actor._should_annotate_file_size_columns,
+        )
+
+        block = pa.table({"uri": ["s3://bucket/a", "s3://bucket/b", "s3://bucket/c"]})
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = list(actor(block))
+
+        assert [partition.num_rows for partition in out] == [3]
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        assert out[0].column(size_col).to_pylist() == [10, 20, 30]
 
 
 # TestThreadedDownloadPreResolve
@@ -897,8 +1261,9 @@ class TestObstoreRangeSplitDownload:
             )
         assert results == [content]
 
-    def test_range_split_with_unknown_size_falls_back_to_head(self, tmp_path):
-        # file_sizes=None → should HEAD to discover size, then range-split.
+    def test_range_split_with_unknown_size_uses_whole_file_get(self, tmp_path):
+        # file_sizes=None means unknown size. The downloader should avoid a
+        # full HEAD pass and use a simple GET.
         chunk_size = 512
         content = os.urandom(chunk_size * 4)
         (tmp_path / "big2.bin").write_bytes(content)
@@ -914,9 +1279,21 @@ class TestObstoreRangeSplitDownload:
                 chunk_size,
             ),
         ):
-            results = asyncio.run(
-                _download_uris_with_obstore([uri], "uri", file_sizes=None)
-            )
+            import obstore as obs
+
+            async def _unexpected_head(*args, **kwargs):
+                raise AssertionError("HEAD should not be called for unknown sizes")
+
+            async def _unexpected_range(*args, **kwargs):
+                raise AssertionError("range GET requires a known size")
+
+            with (
+                patch.object(obs, "head_async", side_effect=_unexpected_head),
+                patch.object(obs, "get_range_async", side_effect=_unexpected_range),
+            ):
+                results = asyncio.run(
+                    _download_uris_with_obstore([uri], "uri", file_sizes=None)
+                )
         assert results == [content]
 
     def test_range_split_disabled_uses_whole_file_get(self, tmp_path):
@@ -1124,9 +1501,9 @@ class TestObstoreRangeSplitDownload:
         # Explicitly verify ranged path was NOT taken.
         assert len(range_calls) == 0
 
-    def test_partial_unknown_sizes_head_only_for_unknowns(self, tmp_path):
-        # In a batch where some sizes are known and others are 0,
-        # HEAD should only be issued for the unknowns.
+    def test_partial_unknown_sizes_do_not_trigger_head(self, tmp_path):
+        # Known large sizes can still use range GET, but unknown entries should
+        # not trigger another metadata pass over the batch.
         chunk_size = 256
         large_content = os.urandom(chunk_size * 5)
         small_content = b"small"
@@ -1155,20 +1532,18 @@ class TestObstoreRangeSplitDownload:
         ):
             import obstore as obs
 
-            original_head = obs.head_async
             head_calls = []
 
             async def _tracking_head(*args, **kwargs):
                 head_calls.append(args)
-                return await original_head(*args, **kwargs)
+                raise AssertionError("HEAD should not be called for unknown sizes")
 
             with patch.object(obs, "head_async", side_effect=_tracking_head):
                 results = asyncio.run(
                     _download_uris_with_obstore(uris, "uri", file_sizes=file_sizes)
                 )
 
-        # Only the unknown (index 2) should trigger a HEAD request.
-        assert len(head_calls) == 1
+        assert len(head_calls) == 0
         assert results == [large_content, small_content, unknown_content]
 
     def test_file_size_at_exact_threshold_uses_simple_get(self, tmp_path):

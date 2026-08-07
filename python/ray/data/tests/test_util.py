@@ -14,10 +14,6 @@ from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators import Read
-from ray.data._internal.logical.util import (
-    _recorded_operators,
-    _recorded_operators_lock,
-)
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
@@ -25,6 +21,10 @@ from ray.data._internal.memory_tracing import (
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
+from ray.data._internal.usage.util import (
+    _recorded_operators,
+    _recorded_operators_lock,
+)
 from ray.data._internal.util import (
     NULL_SENTINEL,
     find_partition_index,

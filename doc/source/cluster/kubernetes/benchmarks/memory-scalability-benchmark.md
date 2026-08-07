@@ -10,15 +10,11 @@ This architecture is not a good practice, but it can fulfill the current require
 
 ## Preparation
 
-Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch.
-This tutorial requires several files in the repository.
+Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and checkout the `master` branch. This tutorial requires several files in the repository.
 
 ## Step 1: Create a new Kubernetes cluster
 
-Create a GKE cluster with autoscaling enabled.
-The following command creates a Kubernetes cluster named `kuberay-benchmark-cluster` on Google GKE.
-The cluster can scale up to 16 nodes, and each node of type `e2-highcpu-16` has 16 CPUs and 16 GB of memory.
-The following experiments may create up to ~150 Pods in the Kubernetes cluster, and each Ray Pod requires 1 CPU and 1 GB of memory.
+Create a GKE cluster with autoscaling enabled. The following command creates a Kubernetes cluster named `kuberay-benchmark-cluster` on Google GKE. The cluster can scale up to 16 nodes, and each node of type `e2-highcpu-16` has 16 CPUs and 16 GB of memory. The following experiments may create up to ~150 Pods in the Kubernetes cluster, and each Ray Pod requires 1 CPU and 1 GB of memory.
 
 ```sh
 gcloud container clusters create kuberay-benchmark-cluster \
@@ -81,9 +77,5 @@ Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, th
   # The output image `benchmark_result.png` will be stored in `scripts/`.
   ```
 
-* As shown in the figure, the memory usage of the KubeRay operator Pod is highly and positively correlated to the number of Pods in the Kubernetes cluster.
-In addition, the number of custom resources in the Kubernetes cluster does not have a significant impact on the memory usage.
-* Note that the x-axis "Number of Pods" is the number of Pods that are created rather than running.
-If the Kubernetes cluster does not have enough computing resources, the GKE Autopilot adds a new Kubernetes node into the cluster.
-This process may take a few minutes, so some Pods may be pending in the process.
-This lag may can explain why the memory usage is somewhat throttled.
+* As shown in the figure, the memory usage of the KubeRay operator Pod is highly and positively correlated to the number of Pods in the Kubernetes cluster. In addition, the number of custom resources in the Kubernetes cluster does not have a significant impact on the memory usage.
+* Note that the x-axis "Number of Pods" is the number of Pods that are created rather than running. If the Kubernetes cluster does not have enough computing resources, the GKE Autopilot adds a new Kubernetes node into the cluster. This process may take a few minutes, so some Pods may be pending in the process. This lag may can explain why the memory usage is somewhat throttled.

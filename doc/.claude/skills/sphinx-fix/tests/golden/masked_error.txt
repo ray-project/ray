@@ -1,0 +1,19 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 2 warnings.
+
+Findings (2):
+  Tier 2 — structural/parse (fix first; these mask warnings beneath them):
+    [T2] toctree-nonexisting  doc/source/ray-contribute/index.md:8
+          msg:    toctree contains reference to nonexisting document 'ray-contribute/fixme'
+          fix:    Fix the toctree entry (entries are extensionless) to the current document name, or remove it.
+          safety: mechanical
+  Tier 3 — warnings:
+    [T3] myst-xref-missing-cross-extension  doc/source/ray-contribute/getting-involved.md:40
+          msg:    'myst' cross-reference target not found: 'development.rst'
+          fix:    Rewrite as a {doc} role so it resolves to the document and is never ambiguous; drop the extension on the target.  Suggested: {doc}`text <development>`
+          safety: mechanical
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: fix Tier 2 first (it masks others), then rebuild and re-run — do not assume one pass is complete.

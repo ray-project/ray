@@ -91,23 +91,28 @@ def count_required_parameters(fn: Callable) -> int:
 
     NOTE: *args counts as 1 required parameter.
 
-    Examples
-    --------
+    Args:
+        fn: The function whose required parameters should be counted.
 
-    >>> def fn(a, b, /, c, *args, d=1, e=2, **kwargs):
-    ...    pass
-    >>> count_required_parameters(fn)
-    4
+    Returns:
+        The number of required parameters of ``fn``.
 
-    >>> fn = lambda: 1
-    >>> count_required_parameters(fn)
-    0
+    Examples:
 
-    >>> def fn(config, a, b=1, c=2):
-    ...     pass
-    >>> from functools import partial
-    >>> count_required_parameters(partial(fn, a=0))
-    1
+        >>> def fn(a, b, /, c, *args, d=1, e=2, **kwargs):
+        ...    pass
+        >>> count_required_parameters(fn)
+        4
+
+        >>> fn = lambda: 1
+        >>> count_required_parameters(fn)
+        0
+
+        >>> def fn(config, a, b=1, c=2):
+        ...     pass
+        >>> from functools import partial
+        >>> count_required_parameters(partial(fn, a=0))
+        1
     """
     params = inspect.signature(fn).parameters.values()
 

@@ -53,5 +53,4 @@ resp = requests.get(f"http://127.0.0.1:8000/imagine?prompt={input}")
 with open("output.png", 'wb') as f:
     f.write(resp.content)
 ```
-The app saves the `output.png` file locally. The following is an example of an output image.
-![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/stable_diffusion_output.png)
+The app saves the `output.png` file locally. The following is an example of an output image. ![image](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/stable_diffusion_output.png)

@@ -24,28 +24,36 @@ namespace ray {
 // IOContextMonitor
 // ---------------------------------------------------------------------------
 
-IOContextMonitor::IOContextMonitor(
-    std::string component_name,
-    std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
-    observability::MetricInterface &latency_gauge,
-    observability::MetricInterface &health_gauge,
-    absl::Duration healthy_deadline,
-    std::shared_ptr<ClockInterface> clock)
-    : component_name_(std::move(component_name)),
-      healthy_deadline_(healthy_deadline),
+IOContextMonitor::IOContextMonitor(std::vector<MonitoredIOContext> io_contexts,
+                                   observability::MetricInterface &latency_gauge,
+                                   observability::MetricInterface &unhealthy_counter,
+                                   absl::Duration healthy_deadline,
+                                   absl::Duration latency_window,
+                                   std::shared_ptr<ClockInterface> clock)
+    : healthy_deadline_(healthy_deadline),
       clock_(std::move(clock)),
       latency_gauge_(latency_gauge),
-      health_gauge_(health_gauge) {
-  for (auto &[name, io_context] : io_contexts) {
+      unhealthy_counter_(unhealthy_counter) {
+  for (auto &io_context : io_contexts) {
+    RAY_CHECK(io_context.io_context != nullptr)
+        << "MonitoredIOContext '" << io_context.name
+        << "' has a null io_context pointer.";
     probe_states_.push_back(
-        std::make_shared<ProbeState>(std::move(name), *io_context, clock_));
+        std::make_shared<ProbeState>(std::move(io_context.name),
+                                     *io_context.io_context,
+                                     io_context.include_in_health_check,
+                                     clock_,
+                                     latency_window));
   }
 }
 
 bool IOContextMonitor::Tick() {
   bool all_healthy = true;
   for (auto &probe : probe_states_) {
-    if (!ProcessProbe(probe)) {
+    // Probe and record metrics for every io_context, but only consider those with
+    // `include_in_health_check=true` for the aggregate health.
+    bool healthy = ProcessProbe(probe);
+    if (probe->include_in_health_check && !healthy) {
       all_healthy = false;
     }
   }
@@ -64,23 +72,34 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
   bool has_active_probe = probe->probe_post_time != absl::InfinitePast();
 
   // Check if the probe has exceeded the deadline, whether or not it has finished.
+  // The deadline_warning_logged guard ensures each probe is counted at most once.
   if (has_active_probe && elapsed >= healthy_deadline_ &&
       !probe->deadline_warning_logged) {
-    RAY_LOG(WARNING) << "[" << component_name_ << "] io_context '" << probe->name
-                     << "' exceeded probe deadline ("
+    RAY_LOG(WARNING) << "io_context '" << probe->name
+                     << "' exceeded probe deadline and will be marked unhealthy ("
                      << absl::ToInt64Milliseconds(elapsed) << "ms)";
     probe->healthy = false;
     probe->deadline_warning_logged = true;
+    unhealthy_counter_.Record(1, {{"Name", probe->name}});
   }
 
   // A new probe will only be started once the existing one completes.
   if (probe->last_probe_completed) {
     // Record latency and health status from the completed probe, then post a new one.
     if (has_active_probe) {
-      latency_gauge_.Record(absl::ToDoubleMilliseconds(elapsed), {{"Name", probe->name}});
+      // Feed the completed probe's latency into the sliding window and export the
+      // windowed max.
+      double windowed_max_ms =
+          probe->latency_window.Observe(now, absl::ToDoubleMilliseconds(elapsed));
+      latency_gauge_.Record(windowed_max_ms, {{"Name", probe->name}});
 
       // Only mark healthy if the probe's actual lag was within the deadline.
       if (elapsed < healthy_deadline_) {
+        if (!probe->healthy) {
+          RAY_LOG(INFO) << "io_context '" << probe->name
+                        << "' recovered and will be marked healthy (probe latency "
+                        << absl::ToInt64Milliseconds(elapsed) << "ms)";
+        }
         probe->healthy = true;
       }
     }
@@ -95,7 +114,6 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
                            "io_context_monitor_probe");
   }
 
-  health_gauge_.Record(probe->healthy ? 1 : 0, {{"Name", probe->name}});
   return probe->healthy;
 }
 
@@ -145,8 +163,7 @@ void IOContextMonitorThread::Run() {
   SetThreadName("io_context_monitor");
 
   while (true) {
-    bool healthy = monitor_->Tick();
-    health_callback_(healthy);
+    health_callback_(monitor_->Tick());
 
     absl::MutexLock lock(&mutex_);
     mutex_.AwaitWithTimeout(absl::Condition(

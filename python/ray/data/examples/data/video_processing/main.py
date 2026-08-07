@@ -132,7 +132,7 @@ def run_dataset_pipeline(model_path: str) -> None:
             "enforce_eager": True,
             "limit_mm_per_prompt": {"image": 10},
         },
-        apply_chat_template=True,
+        chat_template_stage=True,
     )
     decode_udf = DecodeFramesUDF()
     ds_decoded = ds.map_batches(decode_udf, batch_format="pyarrow", batch_size=1)

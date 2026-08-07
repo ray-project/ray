@@ -29,8 +29,7 @@ kind create cluster --image=kindest/node:v1.26.0
 
 ## Step 2: Install the KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
-Note that the YAML file in this example uses `serveConfigV2` to specify a multi-application Serve configuration, available starting from KubeRay v0.6.0.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository. Note that the YAML file in this example uses `serveConfigV2` to specify a multi-application Serve configuration, available starting from KubeRay v0.6.0.
 
 ## Step 3: Install a RayService
 
@@ -105,9 +104,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 kubectl port-forward svc/rayservice-sample-head-svc 8265:8265
 ```
 
-* Refer to [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.
-Below is a screenshot example of the Serve page in the Ray dashboard.
-  ![Ray Serve Dashboard](../images/dashboard_serve.png)
+* Refer to [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability. Below is a screenshot example of the Serve page in the Ray dashboard. ![Ray Serve Dashboard](../images/dashboard_serve.png)
 
 ## Step 6: Send requests to the Serve applications by the Kubernetes serve service
 
@@ -142,5 +139,4 @@ kubectl delete pod curl
 
 * See [RayService](kuberay-rayservice) document for the full list of RayService features, including in-place update, zero downtime upgrade, and high-availability.
 * See [RayService troubleshooting guide](kuberay-raysvc-troubleshoot) if you encounter any issues.
-* See [Examples](kuberay-examples) for more RayService examples.
-The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it doesn't require GPUs and is easy to run on a local machine.
+* See [Examples](kuberay-examples) for more RayService examples. The [MobileNet example](kuberay-mobilenet-rayservice-example) is a good example to start with because it doesn't require GPUs and is easy to run on a local machine.

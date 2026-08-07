@@ -22,7 +22,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ProcessorConfig(_ProcessorConfig):
     """The processor configuration.
 
@@ -32,9 +32,6 @@ class ProcessorConfig(_ProcessorConfig):
             On the other hand, small batch sizes are more fault-tolerant and could
             reduce bubbles in the data pipeline. You can tune the batch size to balance
             the throughput and fault-tolerance based on your use case.
-        resources_per_bundle: The resource bundles for placement groups.
-            You can specify a custom device label e.g. {'NPU': 1}.
-            The default resource bundle for LLM Stage is always a GPU resource i.e. {'GPU': 1}.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -48,8 +45,8 @@ class ProcessorConfig(_ProcessorConfig):
     pass
 
 
-@PublicAPI(stability="beta")
-class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
+@PublicAPI(stability="stable")
+class HttpRequestProcessorConfig(_HttpRequestProcessorConfig, ProcessorConfig):
     """The configuration for the HTTP request processor.
 
     Args:
@@ -100,8 +97,8 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
     pass
 
 
-@PublicAPI(stability="beta")
-class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
+@PublicAPI(stability="stable")
+class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig, ProcessorConfig):
     """The configuration for the vLLM engine processor.
 
     Args:
@@ -155,17 +152,13 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             (``PACK``/``STRICT_PACK``/``SPREAD``/``STRICT_SPREAD``).
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``apply_chat_template`` and ``chat_template`` fields are deprecated but
-            still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``tokenize`` field is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``detokenize`` field is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         prepare_multimodal_stage: Multimodal preprocessing stage config
             (bool | dict | PrepareMultimodalStageConfig). Defaults to False.
             Use nested config for per-stage control over batch_size, concurrency,
@@ -234,8 +227,8 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     pass
 
 
-@PublicAPI(stability="beta")
-class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
+@PublicAPI(stability="stable")
+class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig):
     """The configuration for the SGLang engine processor.
 
     Args:
@@ -268,16 +261,13 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
             env var.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, and memory. Legacy ``apply_chat_template``
-            and ``chat_template`` fields are deprecated but still supported.
+            concurrency, runtime_env, num_cpus, and memory.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``tokenize`` field is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
-            concurrency, runtime_env, num_cpus, memory, and model_source. Legacy
-            ``detokenize`` field is deprecated but still supported.
+            concurrency, runtime_env, num_cpus, memory, and model_source.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
@@ -328,8 +318,8 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
     pass
 
 
-@PublicAPI(stability="beta")
-class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
+@PublicAPI(stability="stable")
+class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig, ProcessorConfig):
     """The configuration for the serve deployment processor.
 
     This processor enables sharing serve deployments across multiple processors. This is useful
@@ -434,7 +424,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     """The configuration for the chat template stage.
 
@@ -463,7 +453,7 @@ class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class DetokenizeStageConfig(_DetokenizeStageConfig):
     """The configuration for the detokenize stage.
 
@@ -488,7 +478,7 @@ class DetokenizeStageConfig(_DetokenizeStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     """The configuration for the prepare multimodal stage.
 
@@ -520,7 +510,7 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class TokenizerStageConfig(_TokenizerStageConfig):
     """The configuration for the tokenizer stage.
 
@@ -545,7 +535,7 @@ class TokenizerStageConfig(_TokenizerStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class HttpRequestStageConfig(_HttpRequestStageConfig):
     """The configuration for the http request stage.
 
@@ -568,7 +558,7 @@ class HttpRequestStageConfig(_HttpRequestStageConfig):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 def build_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
@@ -583,9 +573,7 @@ def build_processor(
         config: The processor config. Supports nested stage configs for per-stage
             control over batch_size, concurrency, runtime_env, num_cpus, and memory
             (e.g., ``chat_template_stage=ChatTemplateStageConfig(batch_size=128)``
-            or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``). Legacy
-            boolean flags (``apply_chat_template``, ``tokenize``, ``detokenize``)
-            are deprecated but still supported with deprecation warnings.
+            or ``tokenize_stage={"batch_size": 256, "concurrency": 2}``).
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
             required fields for the following processing stages. Each row

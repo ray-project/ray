@@ -7,13 +7,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
+from ray._common.runtime_env_uri import parse_uri
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import (
     EventLogType,
     check_export_api_enabled,
     get_export_event_logger,
 )
-from ray._private.runtime_env.packaging import parse_uri
 from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
@@ -373,7 +373,10 @@ class JobInfoStorageClient:
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
-                assert False, "Attempted to change job status from a terminal state."
+                raise RuntimeError(
+                    f"Attempted to change job status from a terminal state: "
+                    f"{old_info.status} -> {status}"
+                )
             new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(

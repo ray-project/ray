@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/common/test_utils.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -48,10 +49,12 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   int unhandled_count = 0;
 
   InstrumentedIOContextWithThread io_context("TestReportUnhandledErrors");
+  Clock clock;
 
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(
           io_context.GetIoService(),
+          clock,
           /*reference_counting_enabled=*/true,
           nullptr,
           nullptr,
@@ -94,7 +97,9 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
   InstrumentedIOContextWithThread io_context("TestMemoryStoreStats");
-  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  Clock clock;
+  auto memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock);
 
   // Iterate through the memory store and compare the values that are obtained by
   // GetMemoryStoreStatisticalData.
@@ -206,9 +211,11 @@ TEST(TestMemoryStore, TestObjectAllocator) {
                                             /*copy_data=*/true);
   };
   InstrumentedIOContextWithThread io_context("TestObjectAllocator");
+  Clock clock;
 
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(),
+                                              clock,
                                               /*reference_counting_enabled=*/true,
                                               nullptr,
                                               nullptr,
@@ -229,6 +236,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
 class TestMemoryStoreWait : public ::testing::Test {
  public:
   InstrumentedIOContextWithThread io_context;
+  Clock clock;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store;
   WorkerContext ctx;
   std::string buffer;
@@ -239,7 +247,8 @@ class TestMemoryStoreWait : public ::testing::Test {
  protected:
   TestMemoryStoreWait()
       : io_context("TestWait"),
-        memory_store(std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService())),
+        memory_store(
+            std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(), clock)),
         ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1)),
         buffer("hello"),
         memory_store_object(

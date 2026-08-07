@@ -14,6 +14,7 @@
 
 #include "ray/raylet/lease_dependency_manager.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -370,8 +371,45 @@ std::string LeaseDependencyManager::DebugString() const {
   return result.str();
 }
 
+void LeaseDependencyManager::RecordWaitingLeaseState(const TaskMetricsKey &key,
+                                                     int64_t num_total) {
+  // Of the waiting tasks of this name, some fraction may be inactive (blocked on
+  // object store memory availability). Get this breakdown by querying the pull
+  // manager.
+  int64_t num_inactive =
+      std::min(num_total, object_manager_.PullManagerNumInactivePullsByTaskName(key));
+  // Offset the metric values recorded from the owner process.
+  task_by_state_counter_.Record(
+      -num_total,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+       {"Name", key.first},
+       {"IsRetry", key.second ? "1" : "0"},
+       {"Source", "dependency_manager"}});
+  task_by_state_counter_.Record(
+      num_total - num_inactive,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+       {"Name", key.first},
+       {"IsRetry", key.second ? "1" : "0"},
+       {"Source", "dependency_manager"}});
+  task_by_state_counter_.Record(
+      num_inactive,
+      {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
+       {"Name", key.first},
+       {"IsRetry", key.second ? "1" : "0"},
+       {"Source", "dependency_manager"}});
+}
+
 void LeaseDependencyManager::RecordMetrics() {
+  // Re-assert every live waiting-lease entry each tick, not just transitions: the
+  // metrics backend clears gauge observations after each export (#56405), so these
+  // gauge values would otherwise drop out between transitions. FlushOnChangeCallbacks
+  // still emits the final 0 for keys that just dropped to zero (erased from the
+  // counter, so ForEachEntry won't visit them).
   waiting_leases_counter_.FlushOnChangeCallbacks();
+  waiting_leases_counter_.ForEachEntry(
+      [this](const TaskMetricsKey &key, int64_t num_total) {
+        RecordWaitingLeaseState(key, num_total);
+      });
 }
 
 }  // namespace raylet

@@ -16,8 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <deque>
 #include <functional>
+#include <list>
 #include <memory>
 #include <queue>
 #include <string>
@@ -31,6 +31,7 @@
 #include "ray/common/id.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
@@ -48,7 +49,9 @@ class EntityState {
    * @brief Construct a new EntityState.
    *
    * @param max_message_size_bytes Maximum size of a single message.
-   * @param max_buffered_bytes Maximum bytes to buffer. Set to -1 to disable buffering.
+   * @param max_buffered_bytes -1 unlimited; >0 drop oldest when buffer would
+   *        exceed this size. WorkerObjectLocationsPubMessage coalescing is
+   *        keyed by message type, not by this value.
    */
   EntityState(int64_t max_message_size_bytes, int64_t max_buffered_bytes)
       : max_message_size_bytes_(max_message_size_bytes),
@@ -236,15 +239,15 @@ struct LongPollConnection {
 class SubscriberState {
  public:
   SubscriberState(UniqueID subscriber_id,
-                  std::function<double()> get_time_ms,
+                  ClockInterface &clock,
                   uint64_t connection_timeout_ms,
                   int64_t publish_batch_size,
                   UniqueID publisher_id)
       : subscriber_id_(subscriber_id),
-        get_time_ms_(std::move(get_time_ms)),
+        clock_(clock),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        last_connection_update_time_ms_(get_time_ms_()),
+        last_connection_update_time_ms_(clock_.SteadyNowMillis()),
         publisher_id_binary_(publisher_id.Binary()) {}
 
   ~SubscriberState() {
@@ -280,6 +283,16 @@ class SubscriberState {
   void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
 
   /**
+   * @brief Queue a WorkerObjectLocationsPubMessage, replacing any prior
+   *        in-flight locations message for the same key_id. Appends at
+   *        the end so global sequence_id order is preserved (gaps ok,
+   *        out-of-order not).
+   *
+   * @param pub_message The WorkerObjectLocationsPubMessage to queue.
+   */
+  void QueueObjectLocationsMessage(const std::shared_ptr<rpc::PubMessage> &pub_message);
+
+  /**
    * @brief Publish all queued messages if possible.
    *
    * @param force_noop If true, reply to the subscriber with an empty message,
@@ -296,6 +309,13 @@ class SubscriberState {
    * @return true if no metadata remains (no leaks), false otherwise.
    */
   bool CheckNoLeaks() const;
+
+  /**
+   * @brief Returns the number of messages currently queued for this subscriber.
+   *
+   * @return The mailbox size.
+   */
+  size_t MailboxSize() const { return mailbox_.size(); }
 
   /**
    * @brief Checks if there is an active long polling connection.
@@ -323,10 +343,15 @@ class SubscriberState {
   const UniqueID subscriber_id_;
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
-  /// Queued messages to publish.
-  std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
-  /// Callback to get the current time.
-  const std::function<double()> get_time_ms_;
+  /// Queued messages to publish, in sequence_id order.
+  std::list<std::shared_ptr<rpc::PubMessage>> mailbox_;
+  /// In-flight WorkerObjectLocationsPubMessage: key_id -> mailbox node.
+  /// Lets us replace the prior locations message for a key without
+  /// tombstones/scanning.
+  absl::flat_hash_map<std::string, std::list<std::shared_ptr<rpc::PubMessage>>::iterator>
+      object_locations_message_index_;
+  /// Clock used to read the current time.
+  ClockInterface &clock_;
   /// The time in which the connection is considered as timed out.
   uint64_t connection_timeout_ms_;
   /// The maximum number of objects to publish for each publish calls.
@@ -361,7 +386,7 @@ class Publisher : public PublisherInterface {
    * @param channels Channels where publishing and subscribing are accepted.
    * @param periodical_runner Periodic runner used to periodically run
    *                          CheckDeadSubscribers.
-   * @param get_time_ms Callback to get the current time in milliseconds.
+   * @param clock Clock used to read the current time.
    * @param subscriber_timeout_ms The subscriber timeout in milliseconds.
    *                              See CheckDeadSubscribers() for more details.
    * @param publish_batch_size The batch size of published messages.
@@ -369,12 +394,12 @@ class Publisher : public PublisherInterface {
    */
   Publisher(const std::vector<rpc::ChannelType> &channels,
             PeriodicalRunnerInterface &periodical_runner,
-            std::function<double()> get_time_ms,
+            ClockInterface &clock,
             const uint64_t subscriber_timeout_ms,
             int64_t publish_batch_size,
             UniqueID publisher_id = NodeID::FromRandom())
       : periodical_runner_(&periodical_runner),
-        get_time_ms_(std::move(get_time_ms)),
+        clock_(clock),
         subscriber_timeout_ms_(subscriber_timeout_ms),
         publish_batch_size_(publish_batch_size),
         publisher_id_(publisher_id) {
@@ -452,8 +477,16 @@ class Publisher : public PublisherInterface {
   friend class MockPublisher;
   friend class FakePublisher;
 
-  /// Testing only.
-  Publisher() : publish_batch_size_(-1) {}
+  /// Testing only. Binds clock_ to a process-wide real clock; subclasses that use
+  /// this ctor (mocks/fakes) do not read the clock.
+  Publisher() : clock_(TestOnlyDefaultClock()), publish_batch_size_(-1) {}
+
+  /// Testing only. A shared real clock used solely to satisfy the clock_ reference
+  /// in the default constructor.
+  static ClockInterface &TestOnlyDefaultClock() {
+    static Clock clock;
+    return clock;
+  }
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
@@ -470,8 +503,8 @@ class Publisher : public PublisherInterface {
   // Nonnull in production, may be nullptr in tests.
   PeriodicalRunnerInterface *periodical_runner_;
 
-  /// Callback to get the current time.
-  std::function<double()> get_time_ms_;
+  /// Clock used to read the current time.
+  ClockInterface &clock_;
 
   /// The timeout where subscriber is considered as dead.
   uint64_t subscriber_timeout_ms_;

@@ -82,6 +82,8 @@ from ray.util.state.common import (
     RuntimeEnvState,
     StateResource,
     StateSchema,
+    TaskState,
+    filter_fields,
     state_column,
 )
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
@@ -141,8 +143,8 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
 def generate_pg_data(
     id,
     name="abc",
-    label_domain_key="",
-    label_domain_assignments=None,
+    topology_strategy=None,
+    topology_assignments=None,
 ):
     return PlacementGroupTableData(
         placement_group_id=id,
@@ -150,8 +152,8 @@ def generate_pg_data(
         name=name,
         creator_job_dead=True,
         creator_actor_dead=False,
-        label_domain_key=label_domain_key,
-        label_domain_assignments=label_domain_assignments or {},
+        topology_strategy=topology_strategy or {},
+        topology_assignments=topology_assignments or {},
     )
 
 
@@ -321,6 +323,15 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # localhost string
     _, gcs_port = parse_address(gcs_address)
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
+
+
+def test_filter_fields_preserves_schema_column_order():
+    """filter_fields must emit columns in StateSchema order, not set order."""
+    data = {col: None for col in reversed(TaskState.list_columns(detail=True))}
+
+    for detail in (True, False):
+        expected = TaskState.list_columns(detail=detail)
+        assert list(filter_fields(data, TaskState, detail=detail).keys()) == expected
 
 
 def test_state_schema():
@@ -580,6 +591,12 @@ def test_humanify():
     timestamp = 1610000000
     assert "1970-01" in Humanify.timestamp(timestamp)
     assert Humanify.duration(timestamp) == "18 days, 15:13:20"
+
+
+def test_runtime_env_state_humanify_creation_time_ms():
+    state = {"creation_time_ms": 36639}
+    RuntimeEnvState.humanify(state)
+    assert state["creation_time_ms"] == "0:00:36.639000"
 
 
 def is_hex(val):

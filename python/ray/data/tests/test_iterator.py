@@ -95,6 +95,34 @@ def test_iter_batches_early_exit_shuts_down_executor(ray_start_regular_shared):
     assert executor._shutdown is True
 
 
+def test_iter_batches_early_break_flushes_metrics(ray_start_regular_shared):
+    """Tests that an early ``break`` in the training loop still records
+    ``iter_total_s`` and flushes metrics via ``update_iteration_metrics``."""
+
+    from ray.data._internal.stats import _StatsManager
+
+    ds = ray.data.range(100, override_num_blocks=5)
+    it = ds.iterator()
+
+    captured_stats = []
+    orig = _StatsManager.update_iteration_metrics
+
+    def spy(stats, dataset_tag, split_index):
+        captured_stats.append(stats)
+        return orig(stats, dataset_tag, split_index)
+
+    with patch.object(_StatsManager, "update_iteration_metrics", spy):
+        for i, _ in enumerate(it.iter_batches(batch_size=10)):
+            if i == 0:
+                break
+
+    # finally block should have called update_iteration_metrics
+    assert len(captured_stats) > 0
+    # iter_total_s was recorded even on early break
+    assert captured_stats[-1].iter_total_s.get() > 0
+    assert captured_stats[-1].iter_batches_total > 0
+
+
 def test_iter_batches_full_iteration_shuts_down_executor(ray_start_regular_shared):
     """Tests that fully iterating ``iter_batches`` shuts down the
     streaming executor (regression guard for the early-exit cleanup
@@ -248,12 +276,14 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
-    with pytest.raises(ValueError):
-        for batch in it.iter_torch_batches(collate_fn=collate_fn, device="cpu"):
-            assert isinstance(batch, torch.Tensor)
-            assert batch.tolist() == list(range(5, 10))
+    # collate_fn can be used together with an explicit device.
+    for batch in it.iter_torch_batches(collate_fn=collate_fn, device="cpu"):
+        assert isinstance(batch, torch.Tensor)
+        assert batch.device.type == "cpu"
+        assert batch.tolist() == list(range(5, 10))
 
-    # Test that we don't automatically set device if collate_fn is specified.
+    # Test that outside a Ray Train worker, the "auto" device resolves to CPU
+    # even if collate_fn is specified.
     with patch("ray.train.torch.get_device", lambda: torch.device("cuda")):
         devices = ray.train.torch.get_device()
         assert devices.type == "cuda"

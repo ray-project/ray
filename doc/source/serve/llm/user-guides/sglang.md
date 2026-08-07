@@ -18,13 +18,14 @@ Community SGLang support is in early development. Track progress and provide fee
 ## Prerequisites
 
 ```bash
-pip install ray[serve,llm] "sglang[all,ray]"
+pip install "ray[llm]" "sglang[all,ray]"
 ```
 
 Set the following environment variable before running any example:
 
 - **CUDA:** `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0`
 - **ROCm:** `RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=0`
+- **Intel GPU:** `RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK=0`
 
 ## Online serving (single node)
 
@@ -90,7 +91,9 @@ RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_example:app
 
 Deploy a large model across multiple nodes using tensor parallelism (TP=4) and pipeline parallelism (PP=2). This requires 2 nodes with 4 GPUs each (8 GPUs total).
 
-The `placement_group_strategy: "PACK"` fills GPUs on each node before moving to the next, so with 2 nodes (4 GPUs each) each node gets one pipeline stage. The `SGLangServer.get_deployment_options()` method constructs placement groups from the `placement_group_config`.
+For single-node deployments, `SGLangServer` auto-generates a placement group with one bundle holding all local GPUs and a `STRICT_PACK` strategy — you don't need to pass `placement_group_config`.
+
+For multi-node deployments, you **must** supply `placement_group_config` explicitly with **one bundle per node**, where each bundle holds that node's full GPU allocation (e.g. `{"CPU": 1, "GPU": 4}` for a 4-GPU node). This is required because `SGLangServer` uses sglang's `RayEngine` backend, which indexes the placement group by node — every tp/pp rank assigned to a given node reuses the same bundle index, so a single bundle must contain that node's entire GPU set. The number of bundles in `placement_group_bundles` equals the number of nodes the deployment spans.
 
 ::::{tab-set}
 
@@ -109,7 +112,7 @@ The `placement_group_strategy: "PACK"` fills GPUs on each node before moving to 
 **Run:**
 
 ```bash
-RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_multinode_example:app
+RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run sglang_multinode_example:app
 ```
 
 ## Limitations
