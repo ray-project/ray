@@ -11,12 +11,19 @@ from ray import ObjectRef
 from ray._common.network_utils import build_address
 from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
-from ray.exceptions import ActorUnschedulableError, GetTimeoutError, RayActorError
+from ray.exceptions import (
+    ActorHandleNotFoundError,
+    ActorUnschedulableError,
+    GetTimeoutError,
+    RayActorError,
+    RayError,
+)
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import NodeId, RequestProtocol
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     PROXY_DRAIN_CHECK_PERIOD_S,
+    PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     PROXY_HEALTH_CHECK_PERIOD_S,
     PROXY_HEALTH_CHECK_TIMEOUT_S,
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -322,11 +329,40 @@ class ActorProxyWrapper(ProxyWrapper):
         if self.is_shutdown():
             return
 
-        shutdown_ref = self._actor_handle.shutdown.remote()
-        ray.get(shutdown_ref, timeout=5)
+        try:
+            shutdown_ref = self._actor_handle.shutdown.remote()
+            ray.get(shutdown_ref, timeout=PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S)
+        except (ActorUnschedulableError, RayActorError) as e:
+            # The actor is dead or was never scheduled because its target node died
+            # while creation was pending. Skip graceful shutdown.
+            logger.info(
+                f"Proxy actor on {self._node_id} is unschedulable or dead ({e}); "
+                "skipping graceful shutdown."
+            )
+        except GetTimeoutError:
+            logger.warning(
+                f"Graceful shutdown of proxy actor on {self._node_id} timed out after "
+                f"{PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S}s; force killing."
+            )
+        except RayError:
+            logger.exception(
+                f"Graceful shutdown of proxy actor on {self._node_id} failed."
+            )
 
-        # Shutdown completed successfully, now kill the actor
-        ray.kill(self._actor_handle, no_restart=True)
+        # Force kill regardless of whether graceful shutdown succeeded.
+        try:
+            ray.kill(self._actor_handle, no_restart=True)
+        except ActorHandleNotFoundError:
+            logger.info(
+                f"Proxy actor on {self._node_id} belongs to an older session; already gone."
+            )
+        except RayError as e:
+            # Catch RayError so unexpected force-kill errors do not crash the controller.
+            logger.warning(
+                f"Force kill of proxy actor on {self._node_id} failed ({e}); "
+                "actor may already be dead.",
+                exc_info=True,
+            )
 
 
 class ProxyState:
