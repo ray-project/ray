@@ -17,7 +17,7 @@ from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_IMAGES_DIR = "/tmp/ray/sandboxes/images"
+DEFAULT_IMAGES_DIR = "/tmp/ray/sandbox/images"
 _USER_AGENT = "ray-sandbox/1.0 (python-urllib)"
 
 
@@ -26,7 +26,10 @@ def sanitize_image_name(image: str) -> str:
     if not isinstance(image, str):
         raise TypeError(f"Expected image to be a string, got {type(image).__name__}")
     safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", image)
-    return safe.lstrip(".")
+    safe = safe.lstrip(".")
+    if not safe:
+        raise ValueError(f"Invalid image name '{image}': cannot be safely sanitized.")
+    return safe
 
 
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
@@ -138,14 +141,22 @@ def extract_tar_layer(tar_bytes: bytes, dest_dir: str) -> None:
 
             target_path = os.path.abspath(os.path.join(dest_dir, name))
             dest_abs = os.path.abspath(dest_dir)
+
+            # Prevent symlink traversal
+            dirname = os.path.dirname(name)
+            parent_dir = os.path.abspath(os.path.join(dest_dir, dirname))
+            real_parent_dir = os.path.realpath(parent_dir)
+            dest_real = os.path.realpath(dest_dir)
+
             if not (
                 target_path == dest_abs or target_path.startswith(dest_abs + os.sep)
+            ) or not (
+                real_parent_dir == dest_real
+                or real_parent_dir.startswith(dest_real + os.sep)
             ):
                 continue
 
             basename = os.path.basename(name)
-            dirname = os.path.dirname(name)
-            parent_dir = os.path.abspath(os.path.join(dest_dir, dirname))
 
             # Handle OCI opaque whiteout (.wh..wh..opq)
             if basename == ".wh..wh..opq":
@@ -262,6 +273,8 @@ def pull_and_extract_container_image(
             )
             os.makedirs(tmp_extract_dir, mode=0o755, exist_ok=True)
 
+            tar_path = os.path.join(images_dir, f"{safe_name}.tar")
+
             if os.path.isfile(image):
                 try:
                     with open(image, "rb") as f:
@@ -271,7 +284,26 @@ def pull_and_extract_container_image(
                     raise SandboxCreationError(
                         f"Failed to extract local image archive '{image}': {err}"
                     ) from err
+            elif os.path.isfile(tar_path):
+                try:
+                    with open(tar_path, "rb") as f:
+                        extract_tar_layer(f.read(), tmp_extract_dir)
+                except Exception as err:
+                    shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                    raise SandboxCreationError(
+                        f"Failed to extract cached image archive '{tar_path}': {err}"
+                    ) from err
             else:
+                if (
+                    image.endswith(".tar")
+                    or image.startswith("/")
+                    or image.startswith("./")
+                    or image.startswith("../")
+                ):
+                    shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                    raise SandboxCreationError(
+                        f"Local image archive '{image}' not found."
+                    )
                 try:
                     registry, repo, reference = parse_image_ref(image)
                     auth_headers = get_registry_auth_headers(
@@ -334,8 +366,16 @@ def pull_and_extract_container_image(
 
                         extract_tar_layer(layer_bytes, tmp_extract_dir)
 
+                    with tarfile.open(tar_path, "w") as tar:
+                        tar.add(tmp_extract_dir, arcname=".")
+
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                    if os.path.exists(tar_path):
+                        try:
+                            os.remove(tar_path)
+                        except OSError:
+                            pass
                     if isinstance(err, SandboxCreationError):
                         raise
                     raise SandboxCreationError(

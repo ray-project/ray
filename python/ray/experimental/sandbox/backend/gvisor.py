@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # sandbox must agree on this, otherwise the container cannot be looked up.
 _RUNSC_ROOT = "/tmp/runsc"
 
+# Directory to store sandbox states, container images and overlay filesystem.
+_RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
+
 
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
@@ -46,11 +49,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
-        root_dir = os.path.join("/tmp/ray/sandboxes", sandbox_id)
+        root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
 
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
-            work_dir_path = os.path.join(root_dir, config.work_dir.lstrip("/"))
+            work_dir_path = os.path.abspath(
+                os.path.join(root_dir, config.work_dir.lstrip("/"))
+            )
+            if not (
+                work_dir_path == os.path.abspath(root_dir)
+                or work_dir_path.startswith(os.path.abspath(root_dir) + os.sep)
+            ):
+                raise SandboxCreationError(
+                    f"Invalid work_dir '{config.work_dir}': Path traversal detected."
+                )
             os.makedirs(work_dir_path, mode=0o777, exist_ok=True)
         except Exception as err:
             raise SandboxCreationError(
@@ -219,7 +231,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig = meta["config"]
 
         runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", sandbox_id, "/bin/sh", "-c", f"cat > '{path}'"])
+        runsc_args.extend(
+            ["exec", sandbox_id, "/bin/sh", "-c", 'cat > "$1"', "--", path]
+        )
 
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
 
@@ -241,7 +255,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig = meta["config"]
 
         runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", sandbox_id, "cat", path])
+        runsc_args.extend(["exec", sandbox_id, "cat", "--", path])
 
         proc = subprocess.Popen(
             runsc_args,

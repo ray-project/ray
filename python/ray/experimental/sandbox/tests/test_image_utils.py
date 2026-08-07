@@ -24,6 +24,11 @@ def test_sanitize_image_name():
         == "quay.io_coreos_etcd_sha256_abcd"
     )
 
+    with pytest.raises(ValueError, match="cannot be safely sanitized"):
+        sanitize_image_name("")
+    with pytest.raises(ValueError, match="cannot be safely sanitized"):
+        sanitize_image_name("...")
+
 
 def test_parse_image_ref():
     assert parse_image_ref("busybox") == (
@@ -167,6 +172,16 @@ def test_pull_nonexistent_image(tmp_path):
     with pytest.raises(SandboxCreationError):
         pull_and_extract_container_image(
             "nonexistent_image_12345_xyz:latest",
+            images_dir=str(images_dir),
+            timeout_seconds=5.0,
+        )
+
+
+def test_pull_nonexistent_local_tar(tmp_path):
+    images_dir = tmp_path / "images"
+    with pytest.raises(SandboxCreationError, match="not found"):
+        pull_and_extract_container_image(
+            "/tmp/nonexistent_image.tar",
             images_dir=str(images_dir),
             timeout_seconds=5.0,
         )
