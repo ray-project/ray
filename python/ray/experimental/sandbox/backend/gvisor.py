@@ -345,13 +345,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         spec["process"]["args"] = ["sleep", "infinity"]
         spec["process"]["cwd"] = container_cwd
 
-        env_list = [
-            "PATH=/home/ray/anaconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-        ]
+        # inherit Env from image config by default
+        envs = []
+        image_dir = os.path.dirname(image_rootfs)
+        image_config_path = os.path.join(image_dir, ".image_config.json")
+        if os.path.exists(image_config_path):
+            try:
+                with open(image_config_path, "r", encoding="utf-8") as f:
+                    image_cfg = json.load(f)
+                    image_env = image_cfg.get("config", {}).get("Env")
+                    if image_env:
+                        envs = image_env
+            except Exception:
+                pass
+
+        # user provided envs are appended to image envs and override duplicate keys
         if env_dict:
             for k, v in env_dict.items():
-                env_list.append(f"{k}={v}")
-        spec["process"]["env"] = env_list
+                envs.append(f"{k}={v}")
+        spec["process"]["env"] = envs
 
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
