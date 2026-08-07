@@ -291,8 +291,10 @@ class StreamingExecutor(Executor, threading.Thread):
         for callback in self._callbacks:
             callback.before_execution_starts(self)
 
-        # Built before the loop thread starts, since its stall clock runs from
-        # construction and the loop is the only thing that reads it.
+        # AllToAllOperator blocks the execution loop inside bulk_fn.
+        # Hash shuffle does not show its finalization metrics,
+        # and it will be deprecated in 2.60
+        # Neither is distinguishable from a stall, so we disable the guard.
         if any(
             isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
             for op in self._topology
@@ -601,7 +603,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
 
-        # Keep going until all operators run to completion.
+        # Check until all oprators have completed.
         should_continue = not all(op.has_completed() for op in topology)
         self._no_progress_guard.check()
         return should_continue
