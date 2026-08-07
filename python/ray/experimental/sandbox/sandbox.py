@@ -22,11 +22,9 @@ class Sandbox:
             working directory is the only writable path in the sandbox. If not provided,
             the container's WORKDIR is used.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
-        labels: Optional key-value metadata labels for tracking.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
-        resources: Custom logical resource requirements.
         readonly: If True, mount container image rootfs in read-only mode (default: True).
         **kwargs: Additional parameters passed to runtime.
     """
@@ -39,19 +37,15 @@ class Sandbox:
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
         ttl_seconds: Optional[int] = 3600,
-        labels: Optional[Dict[str, str]] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
-        resources: Optional[Dict[str, float]] = None,
         readonly: bool = True,
         **kwargs,
     ):
         env = env or {}
-        labels = labels or {}
-        resources = resources or {}
 
-        # Translate resources assigned to this Ray actor into runtime config resources
+        # Extract CPU and memory from Ray assigned resources to use in the runtime config
         try:
             assigned = ray.get_runtime_context().get_assigned_resources()
             if "CPU" in assigned and assigned["CPU"] > 0:
@@ -59,19 +53,6 @@ class Sandbox:
 
             if "memory" in assigned and assigned["memory"] > 0:
                 memory = int(assigned["memory"])
-
-            custom_resources = {}
-            for k, v in assigned.items():
-                if (
-                    k not in ("CPU", "memory")
-                    and not k.startswith("node:")
-                    and k != "object_store_memory"
-                    and v > 0
-                ):
-                    custom_resources[k] = float(v)
-
-            if custom_resources:
-                resources.update(custom_resources)
         except Exception:
             pass
 
@@ -83,11 +64,9 @@ class Sandbox:
             env=env,
             workdir=workdir,
             ttl_seconds=ttl_seconds,
-            labels=labels,
             timeout_seconds=timeout_seconds,
             rootless=rootless,
             network=network,
-            resources=resources,
             readonly=readonly,
             **kwargs,
         )

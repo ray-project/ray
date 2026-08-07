@@ -24,11 +24,9 @@ class SandboxRuntime:
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
         ttl_seconds: Optional[int] = 3600,
-        labels: Optional[Dict[str, str]] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
-        resources: Optional[Dict[str, float]] = None,
         readonly: bool = True,
         **kwargs,
     ) -> str:
@@ -43,11 +41,9 @@ class SandboxRuntime:
                 working directory is the only writable path in the sandbox. If not provided,
                 the container's WORKDIR is used.
             ttl_seconds: Optional automatic cleanup time-to-live in seconds.
-            labels: Optional key-value metadata labels for tracking.
             timeout_seconds: Timeout in seconds for sandbox creation.
             rootless: If True, run gVisor in rootless mode.
             network: Network mode for runsc.
-            resources: Custom logical resource requirements.
             readonly: If True, mount container image rootfs in read-only mode (default: True).
             **kwargs: Additional parameters.
 
@@ -61,11 +57,9 @@ class SandboxRuntime:
             env=env or {},
             workdir=workdir,
             ttl_seconds=ttl_seconds,
-            labels=labels or {},
             timeout_seconds=timeout_seconds,
             rootless=rootless,
             network=network,
-            resources=resources or {},
             readonly=readonly,
             **kwargs,
         )

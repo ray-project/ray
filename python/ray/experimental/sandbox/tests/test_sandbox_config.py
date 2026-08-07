@@ -16,7 +16,6 @@ def test_default_sandbox_config():
     assert config.ttl_seconds == 3600
     assert config.rootless is True
     assert config.network == "none"
-    assert config.resources == {}
     assert config.readonly is True
 
     # SandboxConfig requires image
@@ -36,14 +35,12 @@ def test_gvisor_sandbox_config():
         cpu=2.0,
         memory="4Gi",
         env={"TEST_VAR": "value"},
-        resources={"custom_res": 1.0},
         readonly=False,
     )
     assert config.image == "ubuntu:22.04"
     assert config.cpu == 2.0
     assert config.memory == "4Gi"
     assert config.env == {"TEST_VAR": "value"}
-    assert config.resources == {"custom_res": 1.0}
     assert config.readonly is False
 
 
