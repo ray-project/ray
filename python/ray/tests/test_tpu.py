@@ -2718,6 +2718,12 @@ def test_normalize_torchtpu_topology():
     assert normalize_tpu_accelerator_type("tpuv7x-16") == "v7x-16"
     assert normalize_tpu_accelerator_type("v4-8") == "v4-8"
     assert normalize_tpu_accelerator_type("tpu7x") == "v7x"
+    assert get_tpu_cores_per_chip("TPU-V6E") == 1
+    assert get_tpu_cores_per_chip("tpu-v6e-16") == 1
+    from ray._private.accelerators.tpu import get_total_chips_from_accelerator_type
+
+    assert get_total_chips_from_accelerator_type("tpu-v6e-16") == 16
+    assert get_total_chips_from_accelerator_type("TPU-V6E-16") == 16
 
 
 def test_get_torchtpu_env_vars():

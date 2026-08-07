@@ -240,10 +240,10 @@ def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
     """Return the default chips-per-VM for *topology* on *accelerator_version*
     (single-host v5e/v6e topologies pack up to 8 chips on one VM).
     """
-    accel_lower = accelerator_version.strip().lower()
+    norm_accel = normalize_tpu_accelerator_type(accelerator_version)
 
     # Single-host: return total chips in topology
-    if accel_lower in TPU_8_CHIPS_PER_HOST_TYPES:
+    if any(norm_accel.startswith(t) for t in TPU_8_CHIPS_PER_HOST_TYPES):
         total_chips = get_num_chips_from_topology(topology)
         if total_chips <= 8:
             return total_chips
@@ -284,25 +284,27 @@ def _accelerator_type_check(accelerator_type: str):
 
 def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
     """Calculates total chips from a GCP accelerator ("pod") type string (e.g. "v6e-16")."""
-    _accelerator_type_check(accelerator_type)
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
 
-    parts = accelerator_type.split("-")
+    parts = norm_type.split("-")
     if len(parts) < 2:
         raise ValueError(
             f"Accelerator type must include size (e.g. 'v6e-8'), got: {accelerator_type}"
         )
 
     num_cores = int(parts[1])
-    cores_per_chip = get_tpu_cores_per_chip(accelerator_type)
+    cores_per_chip = get_tpu_cores_per_chip(norm_type)
 
     return num_cores // cores_per_chip
 
 
 def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
-    _accelerator_type_check(accelerator_type)
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
 
-    if accelerator_type.startswith(TPU_8_CHIPS_PER_HOST_TYPES):
-        total_chips = get_total_chips_from_accelerator_type(accelerator_type)
+    if norm_type.startswith(TPU_8_CHIPS_PER_HOST_TYPES):
+        total_chips = get_total_chips_from_accelerator_type(norm_type)
 
         # Sub/single-host topologies return their exact chip count
         if total_chips <= 8:
@@ -313,8 +315,9 @@ def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
 
 
 def get_tpu_cores_per_chip(accelerator_type: str) -> int:
-    _accelerator_type_check(accelerator_type)
-    if accelerator_type.startswith(SINGLE_CORE_TPU_TYPES):
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
+    if norm_type.startswith(SINGLE_CORE_TPU_TYPES):
         return 1
 
     return DEFAULT_TPU_NUM_CORES_PER_CHIP
@@ -384,8 +387,9 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     total_chips = get_num_chips_from_topology(topology)
 
     # Check for 8-chip host types (v5litepod, v6e) for single host setups
+    norm_accel = normalize_tpu_accelerator_type(accelerator_version)
     if (
-        accelerator_version.strip().lower() in TPU_8_CHIPS_PER_HOST_TYPES
+        any(norm_accel.startswith(t) for t in TPU_8_CHIPS_PER_HOST_TYPES)
         and topology.strip().lower() in TPU_SINGLE_HOST_TOPOLOGIES
     ):
         return total_chips
