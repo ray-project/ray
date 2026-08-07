@@ -97,21 +97,18 @@ By default, requests rejected due to backpressure return a `503` status code, th
 - `status_code`: The HTTP status code returned for requests rejected due to backpressure. Must be `503` (the default) or `429` (Too Many Requests). Requests rejected because the deployment is unavailable always return `503`. On the gRPC path, backpressure rejections always map to `RESOURCE_EXHAUSTED`, consistent with `429`.
 - `retry_after_s`: If set, rejected HTTP responses include a [`Retry-After` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Retry-After) with this value, rounded up to an integer number of seconds. Clients and SDKs that honor `Retry-After` use it to pace their retries. The header can be combined with either status code; it's valid on `503` as well as `429`.
 
-```python
-from ray.serve.config import BackpressureConfig
+```{literalinclude} ../doc_code/load_shedding.py
+:start-after: __custom_response_deployment_start__
+:end-before: __custom_response_deployment_end__
+:language: python
+```
 
-@serve.deployment(
-    max_ongoing_requests=2,
-    max_queued_requests=2,
-    # Return "429 Too Many Requests" instead of "503 Service Unavailable"
-    # when shedding load, with a suggested retry delay of 5 seconds.
-    backpressure_config=BackpressureConfig(
-        status_code=429,
-        retry_after_s=5,
-    ),
-)
-class SlowDeployment:
-    ...
+Rejected requests now return `429` with the `Retry-After` header set:
+
+```{literalinclude} ../doc_code/load_shedding.py
+:start-after: __custom_response_test_start__
+:end-before: __custom_response_test_end__
+:language: python
 ```
 
 :::{note}
