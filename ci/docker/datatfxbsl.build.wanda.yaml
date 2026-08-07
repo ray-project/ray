@@ -1,9 +1,0 @@
-name: "datatfxbslbuild-py$PYTHON"
-froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
-dockerfile: ci/docker/data-tfxbsl.build.Dockerfile
-srcs:
-  - python/deplocks/ci/data-tfxbsl-ci_depset_py$PYTHON.lock
-build_args:
-  - PYTHON
-tags:
-  - cr.ray.io/rayproject/datatfxbslbuild-py$PYTHON

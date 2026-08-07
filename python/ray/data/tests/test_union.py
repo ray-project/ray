@@ -19,7 +19,15 @@ def test_union_schema(ray_start_10_cpus_shared):
 
 def test_union_repr(ray_start_10_cpus_shared):
     ds = ray.data.range(1).union(ray.data.range(1))
-    assert repr(ds) == "Union\n+- Dataset(num_rows=?, schema=Unknown schema)"
+    assert repr(ds) == (
+        "shape: (?, 1)\n"
+        "╭───────╮\n"
+        "│ id    │\n"
+        "│ ---   │\n"
+        "│ int64 │\n"
+        "╰───────╯\n"
+        "(Dataset isn't materialized)"
+    )
 
 
 def test_union_with_preserve_order(ray_start_10_cpus_shared, restore_data_context):

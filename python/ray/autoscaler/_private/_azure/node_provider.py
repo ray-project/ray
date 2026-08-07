@@ -5,7 +5,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from threading import RLock
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 from azure.common.credentials import get_cli_profile
@@ -297,13 +297,19 @@ class AzureNodeProvider(NodeProvider):
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
         return [k for k, v in nodes.items() if v["status"].startswith("deallocat")]
 
-    def non_terminated_nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
 
         This list must not include terminated nodes. For performance reasons,
         providers are allowed to cache the result of a call to nodes() to
         serve single-node queries (e.g. is_running(node_id)). This means that
         nodes() must be called again to refresh results.
+
+        Args:
+            tag_filters: Tags to filter nodes by.
+
+        Returns:
+            List of non-terminated node ids matching the tag filters.
 
         Examples:
             >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND

@@ -3537,10 +3537,19 @@ class AutoscalingTest(unittest.TestCase):
             request_resources(bundles="bar")
         with self.assertRaises(TypeError):
             request_resources(bundles=["foo"])
+        # Non-numerical bundle values are rejected.
         with self.assertRaises(TypeError):
             request_resources(bundles=[{"foo": "bar"}])
         with self.assertRaises(TypeError):
             request_resources(bundles=[{"foo": 1}, {"bar": "baz"}])
+        # bool is a subclass of int but is not a meaningful resource value.
+        with self.assertRaises(TypeError):
+            request_resources(bundles=[{"CPU": True}])
+
+        with patch("ray.autoscaler.sdk.sdk.commands.request_resources") as mock_cmd:
+            request_resources(bundles=[{"CPU": 0.1}])
+            request_resources(bundles=[{"CPU": 1, "GPU": 0.5}])
+            assert mock_cmd.call_count == 2
 
     def test_autoscaler_status_log(self):
         self._test_autoscaler_status_log(status_log_enabled_env=1)

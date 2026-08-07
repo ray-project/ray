@@ -129,6 +129,8 @@ class NodeTypeConfig:
     max_worker_nodes: int
     # Idle timeout seconds for worker nodes of this node type.
     idle_timeout_s: Optional[float] = None
+    # The priority of the worker group. Higher value means the group will be scaled up first if everything else is equal.
+    priority: int = 0
     # The total resources on the node.
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
@@ -160,11 +162,12 @@ class AutoscalingConfig:
         configs: Dict[str, Any],
         skip_content_hash: bool = False,
     ) -> None:
-        """
+        """Initialize the autoscaling config.
+
         Args:
-            configs : The raw configs dict.
-            skip_content_hash :
-                Whether to skip file mounts/ray command hash calculation.
+            configs: The raw configs dict.
+            skip_content_hash: Whether to skip file mounts/ray command hash
+                calculation.
         """
         self._sync_continuously = False
         self.update_configs(configs, skip_content_hash)
@@ -350,6 +353,7 @@ class AutoscalingConfig:
                 min_worker_nodes=node_config.get("min_workers", 0),
                 max_worker_nodes=max_workers_nodes,
                 idle_timeout_s=node_config.get("idle_timeout_s", None),
+                priority=node_config.get("priority", 0),
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
@@ -452,10 +456,11 @@ class FileConfigReader(IConfigReader):
     """A class that reads cluster config from a yaml file."""
 
     def __init__(self, config_file: str, skip_content_hash: bool = True) -> None:
-        """
+        """Initialize the file config reader.
+
         Args:
             config_file: The path to the config file.
-            skip_content_hash:  Whether to skip file mounts/ray command
+            skip_content_hash: Whether to skip file mounts/ray command
                 hash calculation. Default to True.
         """
         self._config_file_path = Path(config_file).resolve()

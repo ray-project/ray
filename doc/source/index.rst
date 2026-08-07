@@ -18,6 +18,7 @@
    Ray Serve <serve/index>
    Ray RLlib <rllib/index>
    More Libraries <ray-more-libs/index>
+   APIs <apis/index>
    Ray Clusters <cluster/getting-started>
    Monitoring and Debugging <ray-observability/index>
    Developer Guides <ray-contribute/index>

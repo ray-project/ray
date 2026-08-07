@@ -245,7 +245,7 @@ class TestVisualizationAscii:
     """Tests for the visualize_ascii method of compiled DAGs."""
 
     @staticmethod
-    def parse_ascii_visualization(ascii_visualization):
+    def parse_ascii_visualization(ascii_visualization: str):
         """
         Parses the ASCII visualization output to extract node names and edge pairs.
 

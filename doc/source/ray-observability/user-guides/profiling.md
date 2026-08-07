@@ -1,7 +1,6 @@
 (profiling)=
 # Profiling
-Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues.
-Here is a list of common profiling tools you may use when debugging Ray applications. 
+Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues. Here is a list of common profiling tools you may use when debugging Ray applications.
 - CPU profiling
     - py-spy
 - Memory profiling

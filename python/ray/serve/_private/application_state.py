@@ -13,7 +13,11 @@ from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
-from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.build_app import (
+    CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    BuiltApplication,
+    build_app,
+)
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -26,6 +30,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
@@ -43,6 +48,7 @@ from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    _callable_uses_multiplexing,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
@@ -426,6 +432,16 @@ class ApplicationState:
             external_scaler_enabled=external_scaler_enabled,
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
+
+        if (
+            ingress_request_router_deployment_name is not None
+            and ingress_request_router_deployment_name
+            != self._ingress_request_router_deployment_name
+        ):
+            logger.info(
+                f"Application '{self._name}' has ingress request router "
+                f"deployment '{ingress_request_router_deployment_name}' configured."
+            )
 
         self._ingress_deployment_name = ingress_deployment_name
         self._ingress_request_router_deployment_name = (
@@ -1011,12 +1027,15 @@ class ApplicationState:
                 or target_state_changed
             )
 
-        # Delete outdated deployments
-        for deployment_name in self._get_live_deployments():
-            if deployment_name not in self.target_deployments:
-                target_state_changed = (
-                    self._delete_deployment(deployment_name) or target_state_changed
-                )
+        # Delete outdated deployments. Skipped during a full instance
+        # shutdown, as it would bypass DeploymentStateManager's own tiered
+        # shutdown order.
+        if not self._deployment_state_manager.is_shutting_down():
+            for deployment_name in self._get_live_deployments():
+                if deployment_name not in self.target_deployments:
+                    target_state_changed = (
+                        self._delete_deployment(deployment_name) or target_state_changed
+                    )
 
         return target_state_changed
 
@@ -1309,7 +1328,7 @@ class ApplicationStateManager:
 
         Args:
             name: application name
-            deployment_args_list: arguments for deploying a list of deployments.
+            deployment_args: arguments for deploying a list of deployments.
             application_args: application arguments.
         """
         self.deploy_apps({name: deployment_args}, {name: application_args})
@@ -1680,6 +1699,9 @@ def build_serve_application(
                     serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                     serialized_deployment_actors=serialized_deployment_actors,
+                    uses_multiplexing=_callable_uses_multiplexing(
+                        deployment.func_or_class
+                    ),
                 )
             )
 
@@ -1729,7 +1751,6 @@ def override_deployment_info(
     """Override deployment infos with options from app config.
 
     Args:
-        app_name: application name
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
@@ -1739,7 +1760,8 @@ def override_deployment_info(
             to {actor_name: serialized_actor_class_bytes} for each deployment
             actor, produced by the build task
 
-    Returns: the updated deployment infos.
+    Returns:
+        The updated deployment infos.
 
     Raises:
         ValueError: If config options have invalid values.
@@ -1839,10 +1861,14 @@ def override_deployment_info(
         ):
             ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.record("1")
 
-        merged_env = override_runtime_envs_except_env_vars(
-            app_runtime_env, override_actor_options.get("runtime_env", {})
-        )
-        override_actor_options.update({"runtime_env": merged_env})
+        child_runtime_env = override_actor_options.get("runtime_env", {})
+        # Avoid materializing an empty runtime_env; it changes the actor options
+        # hash and causes an unnecessary rolling update.
+        if app_runtime_env or child_runtime_env:
+            merged_env = override_runtime_envs_except_env_vars(
+                app_runtime_env, child_runtime_env
+            )
+            override_actor_options.update({"runtime_env": merged_env})
 
         replica_config.update(
             ray_actor_options=override_actor_options,
@@ -1881,13 +1907,23 @@ def override_deployment_info(
                         **request_router_config
                     )
 
+        # _serialized_actor_class is a PrivateAttr dropped by model_dump() above;
+        # carry it over so it survives the DeploymentConfig reconstruction.
+        serialized_actors = {
+            cfg.name: cfg._serialized_actor_class
+            for cfg in (info.deployment_config.deployment_actors or [])
+            if cfg._serialized_actor_class
+        }
+
         if (
             deployment_to_serialized_deployment_actors
             and deployment_name in deployment_to_serialized_deployment_actors
         ):
-            serialized_actors = deployment_to_serialized_deployment_actors[
+            serialized_actors |= deployment_to_serialized_deployment_actors[
                 deployment_name
             ]
+
+        if serialized_actors:
             actors_list = options.get(
                 "deployment_actors",
                 original_options.get("deployment_actors"),
@@ -1931,5 +1967,15 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
+
+    # build_app cannot see config overrides, so re-check the post-override
+    # ingress router here.
+    if RAY_SERVE_ENABLE_HA_PROXY and not any(
+        info.ingress_request_router for info in deployment_infos.values()
+    ):
+        for info in deployment_infos.values():
+            request_router_config = info.deployment_config.request_router_config
+            if info.ingress and not request_router_config.is_default_request_router():
+                raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 
     return deployment_infos

@@ -15,7 +15,7 @@ from typing import FrozenSet, List, Optional
 import mmh3
 
 from ray.serve._private.common import ReplicaID
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME, SERVE_SESSION_ID
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.request_router.request_router import RequestRouter
@@ -50,6 +50,57 @@ class ConsistentHashRouter(RequestRouter):
     replica is a pure function of session ID and ring state. Mixing in queue-depth,
     locality, or multiplexed model signals breaks determinism and therefore breaks
     affinity.
+
+    Kwargs (passed via ``RequestRouterConfig.request_router_kwargs``):
+
+    - ``num_virtual_nodes`` (int, default ``100``): vnodes per replica on
+      the hash ring. Higher values spread sessions more evenly across
+      replicas at the cost of a larger ring.
+    - ``num_fallback_replicas`` (int, default ``2``): number of clockwise
+      successor replicas tried after the primary if it rejects (e.g.
+      backpressure). Set to ``0`` for strict affinity (no fallback).
+
+    Session affinity:
+        The routing key is ``RequestMetadata.session_id`` — populated upstream
+        from the HTTP header named by ``SERVE_SESSION_ID`` (set via env var
+        ``RAY_SERVE_SESSION_ID_HEADER_KEY``; default ``x-session-id``).
+        Requests without that header fall back to ``internal_request_id``
+        (a fresh UUID per request) and therefore distribute uniformly across
+        replicas — same code path, no affinity. See
+        ``ray.serve._private.constants.SERVE_SESSION_ID``.
+
+    Usage (Ray Serve LLM):
+
+    .. code-block:: python
+
+        from ray.serve.config import RequestRouterConfig
+        from ray.serve.llm import LLMConfig, ModelLoadingConfig
+
+        LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="Qwen/Qwen3-0.6B-FP8",
+                model_source="Qwen/Qwen3-0.6B-FP8",
+            ),
+            deployment_config=dict(
+                request_router_config=RequestRouterConfig(
+                    request_router_class=(
+                        "ray.serve.experimental.consistent_hash_router."
+                        "ConsistentHashRouter"
+                    ),
+                    request_router_kwargs={
+                        "num_virtual_nodes": 100,
+                        "num_fallback_replicas": 2,
+                    },
+                ),
+            ),
+        )
+
+    The session header itself is set globally on the cluster:
+
+    .. code-block:: bash
+
+        # Clients sending sessions on x-correlation-id (e.g. aiperf):
+        export RAY_SERVE_SESSION_ID_HEADER_KEY=x-correlation-id
     """
 
     def __init__(self, *args, **kwargs):
@@ -85,6 +136,14 @@ class ConsistentHashRouter(RequestRouter):
 
         self._num_virtual_nodes = num_virtual_nodes
         self._num_fallback_replicas = num_fallback_replicas
+
+        logger.info(
+            f"ConsistentHashRouter initialized for {self._deployment_id}: "
+            f"num_virtual_nodes={self._num_virtual_nodes}, "
+            f"num_fallback_replicas={self._num_fallback_replicas}, "
+            f"session_id_header={SERVE_SESSION_ID!r} "
+            "(set via RAY_SERVE_SESSION_ID_HEADER_KEY)."
+        )
 
     def update_replicas(self, replicas: List[RunningReplica]) -> None:
         """

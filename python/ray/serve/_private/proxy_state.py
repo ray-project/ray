@@ -2,7 +2,6 @@ import asyncio
 import concurrent.futures
 import json
 import logging
-import os
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Dict, List, Optional, Set, Tuple, Type
@@ -12,7 +11,7 @@ from ray import ObjectRef
 from ray._common.network_utils import build_address
 from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import ActorUnschedulableError, GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import NodeId, RequestProtocol
 from ray.serve._private.constants import (
@@ -35,7 +34,7 @@ from ray.serve._private.utils import (
     format_actor_name,
     is_grpc_enabled,
 )
-from ray.serve.config import DeploymentMode, HTTPOptions, gRPCOptions
+from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.schema import (
     LoggingConfig,
     ProxyDetails,
@@ -285,12 +284,16 @@ class ActorProxyWrapper(ProxyWrapper):
     def is_shutdown(self) -> bool:
         """Return whether the proxy actor is shutdown.
 
-        If the actor is dead, the health check will return RayActorError.
+        If the actor is dead, the health check raises RayActorError. If the
+        actor is permanently unschedulable (e.g. hard-pinned to a node that no
+        longer exists), it raises ActorUnschedulableError. Both cases mean the
+        actor is ready for shutdown.
         """
         try:
             ray.get(self._actor_handle.check_health.remote(), timeout=0)
-        except RayActorError:
-            # The actor is dead, so it's ready for shutdown.
+        except (RayActorError, ActorUnschedulableError):
+            # The actor is dead or permanently unschedulable (e.g. hard-pinned
+            # to a node that no longer exists), so it's ready for shutdown.
             return True
         except GetTimeoutError:
             pass
@@ -599,6 +602,7 @@ class ProxyStateManager:
         cluster_node_info_cache: ClusterNodeInfoCache,
         logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
+        proxy_location: Optional[ProxyLocation] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
@@ -607,6 +611,7 @@ class ProxyStateManager:
         self.logging_config = logging_config
         self._http_options = http_options or HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
+        self._proxy_location = proxy_location
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
         self._proxy_restart_counts: Dict[NodeId, int] = dict()
         self._head_node_id: str = head_node_id
@@ -658,6 +663,18 @@ class ProxyStateManager:
 
     def get_grpc_config(self) -> gRPCOptions:
         return self._grpc_options
+
+    def _resolved_proxy_location(self) -> ProxyLocation:
+        # `location` on HTTPOptions is a deprecated override; `proxy_location`
+        # is the authority. Default to EveryNode when neither is set.
+        return (
+            self._http_options.location
+            or self._proxy_location
+            or ProxyLocation.EveryNode
+        )
+
+    def get_proxy_location(self) -> ProxyLocation:
+        return self._resolved_proxy_location()
 
     def get_proxy_handles(self) -> Dict[str, ActorHandle]:
         handles = {
@@ -726,6 +743,9 @@ class ProxyStateManager:
 
         Args:
             protocol: Either "http" or "grpc"
+
+        Returns:
+            One ``Target`` per healthy proxy reachable on the requested protocol.
         """
         targets = []
         if protocol == RequestProtocol.HTTP:
@@ -784,9 +804,9 @@ class ProxyStateManager:
     def _get_target_nodes(self, proxy_nodes) -> List[Tuple[str, str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP and gRPC servers
         on."""
-        location = self._http_options.location
+        location = self._resolved_proxy_location()
 
-        if location == DeploymentMode.NoServer:
+        if location == ProxyLocation.Disabled:
             return []
 
         target_nodes = [
@@ -795,7 +815,7 @@ class ProxyStateManager:
             if node_id in proxy_nodes
         ]
 
-        if location == DeploymentMode.HeadOnly:
+        if location == ProxyLocation.HeadOnly:
             nodes = [
                 (node_id, ip_address, instance_id)
                 for node_id, ip_address, instance_id in target_nodes
@@ -823,35 +843,11 @@ class ProxyStateManager:
     ) -> ProxyWrapper:
         """Helper to start or reuse existing proxy and wrap in the proxy actor wrapper.
 
-        Compute the HTTP port based on `TEST_WORKER_NODE_HTTP_PORT` env var and gRPC
-        port based on `TEST_WORKER_NODE_GRPC_PORT` env var. Passed all the required
-        variables into the proxy actor wrapper class and return the proxy actor wrapper.
+        Pass all the required variables into the proxy actor wrapper class and return
+        the proxy actor wrapper.
         """
         http_options = http_options or self._http_options
         grpc_options = grpc_options or self._grpc_options
-
-        if (
-            node_id != self._head_node_id
-            and os.getenv("TEST_WORKER_NODE_HTTP_PORT") is not None
-        ):
-            logger.warning(
-                f"`TEST_WORKER_NODE_HTTP_PORT` env var is set. "
-                f"Using it for worker node {node_id}."
-            )
-            http_options = deepcopy(http_options)
-            http_options.port = int(os.getenv("TEST_WORKER_NODE_HTTP_PORT"))
-
-        if (
-            node_id != self._head_node_id
-            and os.getenv("TEST_WORKER_NODE_GRPC_PORT") is not None
-        ):
-            logger.warning(
-                f"`TEST_WORKER_NODE_GRPC_PORT` env var is set. "
-                f"Using it for worker node {node_id}."
-                f"{int(os.getenv('TEST_WORKER_NODE_GRPC_PORT'))}"
-            )
-            grpc_options = deepcopy(grpc_options)
-            grpc_options.port = int(os.getenv("TEST_WORKER_NODE_GRPC_PORT"))
 
         return self._actor_proxy_wrapper_class(
             logging_config=self.logging_config,

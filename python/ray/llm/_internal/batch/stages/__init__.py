@@ -21,7 +21,6 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
-    PrepareImageStageConfig,
     PrepareMultimodalStageConfig,
     TokenizerStageConfig,
 )
@@ -33,7 +32,6 @@ from ray.llm._internal.batch.stages.configs import (
 _LAZY_ATTRS = {
     "ChatTemplateStage": ("chat_template_stage", "ChatTemplateStage"),
     "HttpRequestStage": ("http_request_stage", "HttpRequestStage"),
-    "PrepareImageStage": ("prepare_image_stage", "PrepareImageStage"),
     "PrepareMultimodalStage": ("prepare_multimodal_stage", "PrepareMultimodalStage"),
     "ServeDeploymentStage": ("serve_deployment_stage", "ServeDeploymentStage"),
     "SGLangEngineStage": ("sglang_engine_stage", "SGLangEngineStage"),
@@ -73,9 +71,6 @@ if TYPE_CHECKING:
     from ray.llm._internal.batch.stages.http_request_stage import (  # noqa: F401
         HttpRequestStage,
     )
-    from ray.llm._internal.batch.stages.prepare_image_stage import (  # noqa: F401
-        PrepareImageStage,
-    )
     from ray.llm._internal.batch.stages.prepare_multimodal_stage import (  # noqa: F401
         PrepareMultimodalStage,
     )
@@ -106,10 +101,8 @@ __all__ = [
     "ServeDeploymentStage",
     "wrap_preprocess",
     "wrap_postprocess",
-    "PrepareImageStage",
     "ChatTemplateStageConfig",
     "DetokenizeStageConfig",
-    "PrepareImageStageConfig",
     "PrepareMultimodalStageConfig",
     "TokenizerStageConfig",
 ]

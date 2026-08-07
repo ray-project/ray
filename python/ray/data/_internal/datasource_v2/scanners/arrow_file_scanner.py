@@ -3,7 +3,6 @@ from dataclasses import dataclass, replace
 from typing import List, Optional, Set, Tuple
 
 import pyarrow as pa
-from pyarrow import compute as pc
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
@@ -46,7 +45,7 @@ class ArrowFileScanner(
     schema: pa.Schema
     batch_size: Optional[int] = None
     columns: Optional[Tuple[str, ...]] = None
-    predicate: Optional[pc.Expression] = None
+    predicate: Optional[Expr] = None
     partition_predicate: Optional[Expr] = None
     limit: Optional[int] = None
     filesystem: Optional[FileSystem] = None
@@ -87,9 +86,10 @@ class ArrowFileScanner(
     ) -> Tuple["ArrowFileScanner", Optional["Expr"]]:
         """Push filter predicate down to the scanner.
 
-        Converts the Ray Data expression to a PyArrow expression and ANDs it
-        with any existing predicate. PyArrow applies the filter at scan time
-        for all supported formats.
+        ANDs the predicate with any existing predicate. The Ray ``Expr`` is
+        retained as the source of truth so the reader can introspect filter
+        columns; conversion to a PyArrow expression happens at the
+        scanner-kwargs boundary in :class:`FileReader`.
 
         This method handles data-column predicates only. Partition predicates
         should be pushed via :meth:`prune_partitions` instead; the optimizer
@@ -103,14 +103,16 @@ class ArrowFileScanner(
             merged into its PyArrow filter. ``residual`` is ``None`` because
             PyArrow handles the full filter at scan time.
         """
-        pa_predicate = predicate.to_pyarrow()
-
         if self.predicate is not None:
-            combined = self.predicate & pa_predicate
+            combined = self.predicate & predicate
         else:
-            combined = pa_predicate
+            combined = predicate
 
         return replace(self, predicate=combined), None
+
+    @override
+    def pushed_predicate(self) -> Optional["Expr"]:
+        return self.predicate
 
     @override
     def prune_columns(self, columns: List[str]) -> "ArrowFileScanner":
@@ -145,6 +147,10 @@ class ArrowFileScanner(
         current = self.limit
         new_limit = min(current, limit) if current is not None else limit
         return replace(self, limit=new_limit)
+
+    @override
+    def pushed_limit(self) -> Optional[int]:
+        return self.limit
 
     @override
     def prune_partitions(self, predicate: "Expr") -> "ArrowFileScanner":

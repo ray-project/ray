@@ -3,7 +3,7 @@ import logging
 import math
 import time
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -38,6 +38,9 @@ from ray.serve.autoscaling_policy import (
 )
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 from ray.util import metrics
+
+if TYPE_CHECKING:
+    from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -78,8 +81,10 @@ class DeploymentAutoscalingState:
         # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
         self._total_pending_async_requests: int = 0
 
-        self._deployment_info = None
-        self._config = None
+        self._deployment_info: Optional[DeploymentInfo] = None
+        # Set (non-None) by the first `update_config` call, which happens
+        # before any of the methods that read it are called.
+        self._config: "AutoscalingConfig" = None  # type: ignore[assignment]
         self._policy: Optional[
             Callable[
                 [AutoscalingContext], Tuple[Union[int, float], Optional[Dict[str, Any]]]
@@ -530,7 +535,9 @@ class DeploymentAutoscalingState:
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
                 merged_timeseries,
-                aggregation_function=self._config.aggregation_function,
+                # The field is declared `Union[str, AggregationFunction]`, but a
+                # pydantic validator coerces it to `AggregationFunction`.
+                aggregation_function=self._config.aggregation_function,  # type: ignore[arg-type]
                 last_window_s=last_window_s,
                 window_start=window_start,
             )
@@ -678,7 +685,7 @@ class DeploymentAutoscalingState:
         Returns:
             Total number of requests (running + queued) across all replicas/handles.
         """
-        total_requests = 0
+        total_requests: float = 0
 
         # Iterate over _replica_metrics but only count running replicas. Stale metrics from
         # stopped replicas can remain until on_replica_stopped runs; filtering avoids inflation.
@@ -730,9 +737,9 @@ class DeploymentAutoscalingState:
         else:
             return self._calculate_total_requests_simple_mode()
 
-    def get_replica_metrics(self) -> Dict[ReplicaID, List[TimeSeries]]:
+    def get_replica_metrics(self) -> Dict[str, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
-        metric_values = defaultdict(list)
+        metric_values: Dict[str, List[TimeSeries]] = defaultdict(list)
         for id in self._running_replicas:
             if id in self._replica_metrics and self._replica_metrics[id].metrics:
                 for k, v in self._replica_metrics[id].metrics.items():
@@ -770,7 +777,7 @@ class DeploymentAutoscalingState:
         Returns:
             Dict mapping metric name to dict of replica ID to aggregated metric value.
         """
-        aggregated_metrics = defaultdict(dict)
+        aggregated_metrics: Dict[str, Dict[ReplicaID, float]] = defaultdict(dict)
 
         for replica_id in self._running_replicas:
             replica_metric_report = self._replica_metrics.get(replica_id)
@@ -792,7 +799,7 @@ class DeploymentAutoscalingState:
         Returns:
             Dict mapping metric name to dict of replica ID to raw metric timeseries.
         """
-        raw_metrics = defaultdict(dict)
+        raw_metrics: Dict[str, Dict[ReplicaID, TimeSeries]] = defaultdict(dict)
 
         for replica_id in self._running_replicas:
             replica_metric_report = self._replica_metrics.get(replica_id)
@@ -846,7 +853,7 @@ class ApplicationAutoscalingState:
             autoscaling_policy: The autoscaling policy to register.
         """
         # Apply default autoscaling config to the policy
-        self._policy = _apply_app_level_autoscaling_config(
+        self._policy = _apply_app_level_autoscaling_config(  # type: ignore[assignment]
             _resolve_policy_callable(autoscaling_policy)
         )
         self._policy_state = {}
@@ -951,7 +958,10 @@ class ApplicationAutoscalingState:
             start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
             # policy state: {deployment_id -> Dict}
-            decisions, returned_policy_state = self._policy(autoscaling_contexts)
+            # `self._policy` is non-None here (guarded by `has_policy()` above).
+            decisions, returned_policy_state = self._policy(  # type: ignore[misc]
+                autoscaling_contexts
+            )
             policy_execution_time_ms = (time.time() - start_time) * 1000
             # Validate returned policy_state
             self._validate_policy_state(returned_policy_state)
@@ -977,7 +987,7 @@ class ApplicationAutoscalingState:
                     deployment_id
                 ]
                 deployment_autoscaling_state.record_autoscaling_metrics(
-                    num_replicas,
+                    num_replicas,  # type: ignore[arg-type]
                     autoscaling_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
                     "application",
@@ -1206,7 +1216,7 @@ class AutoscalingStateManager:
 
     def get_metrics_for_deployment(
         self, deployment_id: DeploymentID
-    ) -> Dict[ReplicaID, List[TimeSeries]]:
+    ) -> Dict[str, List[TimeSeries]]:
         if deployment_id.app_name in self._app_autoscaling_states:
             return self._app_autoscaling_states[
                 deployment_id.app_name

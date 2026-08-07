@@ -21,20 +21,172 @@ def test_autodetect_num_tpus_accel(mock_glob):
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
+@patch("os.path.isdir")
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_accel_ignores_blackwell_directory(
+    mock_list, mock_glob, mock_isdir
+):
+    # NVIDIA drivers 570.x (Blackwell-class GPUs, e.g. RTX 5090) create
+    # /dev/accel as a directory containing /dev/accel/accel0. The non-recursive
+    # glob matches the directory entry; filtering directories out keeps real
+    # TPU chips (character devices at /dev/accel0..N) while rejecting the
+    # NVIDIA false positive.
+    mock_glob.return_value = ["/dev/accel"]
+    mock_isdir.side_effect = lambda p: p == "/dev/accel"
+    mock_list.side_effect = FileNotFoundError
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
 @patch("glob.glob")
 @patch("os.listdir")
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
-    mock_list.return_value = [f"{i}" for i in range(4)]
-    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
+    # Four VFIO groups. Each group is backed by a single Google TPU PCI device
+    # (vendor 0x1ae0) at /sys/kernel/iommu_groups/<n>/devices/<bdf>/vendor.
+    listdir_results = {"/dev/vfio": [f"{i}" for i in range(4)]}
+    listdir_results.update(
+        {f"/sys/kernel/iommu_groups/{i}/devices": [f"0000:00:0{i}.0"] for i in range(4)}
+    )
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch(
+        "builtins.open",
+        mock.mock_open(read_data="0x1ae0\n"),
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
 @patch("glob.glob")
 @patch("os.listdir")
-def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
-    mock_list.side_effect = FileNotFoundError
+def test_autodetect_num_tpus_vfio_ignores_non_tpu_vendor(mock_list, mock_glob):
+    # NVIDIA BlueField-3's SoC Management Interface is bound to vfio-pci by
+    # RShim and surfaces as /dev/vfio/96. The underlying device is vendor
+    # 0x15b3 (Mellanox), not Google (0x1ae0). Ray must NOT count it as a TPU,
+    # otherwise NVIDIA GPUs on the same node would fail to register.
     mock_glob.return_value = []
+    listdir_results = {
+        "/dev/vfio": ["vfio", "96"],
+        "/sys/kernel/iommu_groups/96/devices": ["0016:03:00.2"],
+    }
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch(
+        "builtins.open",
+        mock.mock_open(read_data="0x15b3\n"),
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_mixed_groups(mock_list, mock_glob):
+    # Two VFIO groups: one is a Google TPU (vendor 0x1ae0), the other is the
+    # BlueField-3 SoC (vendor 0x15b3). Only the TPU-backed group is counted.
+    mock_glob.return_value = []
+    listdir_results = {
+        "/dev/vfio": ["vfio", "10", "96"],
+        "/sys/kernel/iommu_groups/10/devices": ["0000:01:00.0"],
+        "/sys/kernel/iommu_groups/96/devices": ["0016:03:00.2"],
+    }
+    # Build keys with os.path.join so they match production path construction
+    # on both POSIX and Windows (where join inserts backslashes).
+    vendor_results = {
+        os.path.join(
+            "/sys/kernel/iommu_groups/10/devices", "0000:01:00.0", "vendor"
+        ): "0x1ae0\n",
+        os.path.join(
+            "/sys/kernel/iommu_groups/96/devices", "0016:03:00.2", "vendor"
+        ): "0x15b3\n",
+    }
+
+    def fake_listdir(path):
+        try:
+            return listdir_results[path]
+        except KeyError:
+            raise AssertionError(f"unexpected listdir: {path}")
+
+    def fake_open(path, *args, **kwargs):
+        try:
+            return mock.mock_open(read_data=vendor_results[path])()
+        except KeyError:
+            raise AssertionError(f"unexpected open: {path}")
+
+    mock_list.side_effect = fake_listdir
+    with patch("builtins.open", side_effect=fake_open):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(FileNotFoundError(), id="missing"),
+        pytest.param(PermissionError(13, "Permission denied"), id="permission"),
+        pytest.param(OSError(5, "Input/output error"), id="eio"),
+    ],
+)
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_vfio_sysfs_error_fails_closed(mock_list, mock_glob, error):
+    mock_glob.return_value = []
+
+    def fake_listdir(path):
+        if path == "/dev/vfio":
+            return ["vfio", "96"]
+        if path == "/sys/kernel/iommu_groups/96/devices":
+            raise error
+        raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
+
+
+@patch("os.listdir", return_value=["0000:c2:00.0"])
+def test_is_vfio_group_a_tpu_unicode_decode_error_fails_closed(mock_list):
+    open_mock = mock.mock_open()
+    open_mock.return_value.__enter__.return_value.read.side_effect = UnicodeDecodeError(
+        "ascii", b"\xff", 0, 1, "invalid byte"
+    )
+    with patch("builtins.open", open_mock):
+        assert tpu._is_vfio_group_a_tpu(96) is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(FileNotFoundError(), id="missing"),
+        pytest.param(PermissionError(13, "Permission denied"), id="permission"),
+        pytest.param(OSError(5, "Input/output error"), id="eio"),
+    ],
+)
+@patch("glob.glob")
+@patch("os.listdir")
+def test_autodetect_num_tpus_without_devices(mock_list, mock_glob, error):
+    mock_glob.return_value = []
+
+    def fake_listdir(path):
+        if path == "/dev/vfio":
+            raise error
+        raise AssertionError(f"unexpected listdir: {path}")
+
+    mock_list.side_effect = fake_listdir
     TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
@@ -322,6 +474,142 @@ def test_get_num_tpu_visible_chips_per_host():
     # Other TPU generations default to 4
     assert tpu.get_num_tpu_visible_chips_per_host("v4-8") == 4
     assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
+
+
+# Subslice topology test helpers
+
+
+def test_parse_topology_dims():
+    """Test topology string parsing."""
+    assert tpu._parse_topology_dims("2x4") == (2, 4)
+    assert tpu._parse_topology_dims("16x16") == (16, 16)
+    assert tpu._parse_topology_dims("2x2x2") == (2, 2, 2)
+    assert tpu._parse_topology_dims("4x8x16") == (4, 8, 16)
+
+
+def test_get_worker_dims_2d():
+    """Test worker dimension lookup for 2D topologies."""
+    assert tpu._get_worker_dims_for_topology("2x4") == (1, 2)
+    assert tpu._get_worker_dims_for_topology("4x4") == (2, 2)
+    assert tpu._get_worker_dims_for_topology("8x16") == (4, 8)
+
+
+def test_get_worker_dims_3d():
+    """Test worker dimension lookup for 3D topologies."""
+    assert tpu._get_worker_dims_for_topology("2x2x2") == (1, 1, 2)
+    assert tpu._get_worker_dims_for_topology("4x4x4") == (2, 2, 4)
+
+
+def test_get_worker_dims_unknown():
+    """Test that unknown topologies raise ValueError."""
+    with pytest.raises(ValueError, match="Unknown 2D topology"):
+        tpu._get_worker_dims_for_topology("99x99")
+
+
+def test_get_default_chips_per_vm():
+    """Test default chips per VM."""
+    # v6e single-host: total chips
+    assert tpu._get_default_chips_per_vm("2x4", "v6e") == 8
+    assert tpu._get_default_chips_per_vm("2x2", "v6e") == 4
+    assert tpu._get_default_chips_per_vm("1x1", "v6e") == 1
+    # v6e multi-host: 4 chips
+    assert tpu._get_default_chips_per_vm("4x8", "v6e") == 4
+    # v4/v5p: always 4
+    assert tpu._get_default_chips_per_vm("2x2x2", "v4") == 4
+
+
+@pytest.mark.parametrize(
+    "physical_worker_id, parent_topology, expected_labels",
+    [
+        # 4x4 parent, 4 workers at positions (0,0), (1,0), (0,1), (1,1)
+        (0, "4x4", {"ray.io/tpu-subslice-2x2": "0", "ray.io/tpu-subslice-2x4": "0"}),
+        (1, "4x4", {"ray.io/tpu-subslice-2x2": "1", "ray.io/tpu-subslice-2x4": "0"}),
+        (2, "4x4", {"ray.io/tpu-subslice-2x2": "2", "ray.io/tpu-subslice-2x4": "1"}),
+        (3, "4x4", {"ray.io/tpu-subslice-2x2": "3", "ray.io/tpu-subslice-2x4": "1"}),
+    ],
+)
+def test_build_subslice_labels_2d(physical_worker_id, parent_topology, expected_labels):
+    """Test subslice label computation for 2D topologies."""
+    labels = tpu._build_subslice_labels(physical_worker_id, parent_topology)
+    for key, value in expected_labels.items():
+        assert labels[key] == value
+
+
+def test_build_subslice_labels_3d():
+    """Test subslice label computation for 3D."""
+    # 4x4x4 parent, 16 workers: (z,y,x)
+    # Worker 0 → (0,0,0)
+    labels = tpu._build_subslice_labels(0, "4x4x4")
+    assert labels["ray.io/tpu-subslice-2x2x1"] == "0"
+    assert labels["ray.io/tpu-subslice-2x2x2"] == "0"
+
+    # Worker 8 → (1,0,0): z=1, y=0, x=0
+    labels = tpu._build_subslice_labels(8, "4x4x4")
+    assert labels["ray.io/tpu-subslice-2x2x1"] == "8"
+    assert labels["ray.io/tpu-subslice-2x2x2"] == "4"
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology, expected_worker_id",
+    [
+        # 4x4 v6e — 4 workers in a 2×2 mesh
+        ([[0, 0], [0, 1], [1, 0], [1, 1]], "4x4", 0),
+        ([[2, 0], [2, 1], [3, 0], [3, 1]], "4x4", 1),
+        ([[0, 2], [0, 3], [1, 2], [1, 3]], "4x4", 2),
+        ([[2, 2], [2, 3], [3, 2], [3, 3]], "4x4", 3),
+        # 2x4 single-host v6e (8 chips on one VM — worker at the origin)
+        (
+            [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0], [1, 1], [1, 2], [1, 3]],
+            "2x4",
+            0,
+        ),
+    ],
+)
+def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
+    """Test physical worker ID computation from 2D chip coordinates."""
+    assert (
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+        == expected_worker_id
+    )
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology, expected_worker_id",
+    [
+        # 4x4x4: worker grid (z,y,x)=(2,2,4); each worker owns 1 chip in x,
+        # 2 in y, 2 in z. Coords are [x, y, z].
+        # Worker 0: x=0, y in {0,1}, z in {0,1}.
+        ([[0, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 1]], "4x4x4", 0),
+        # Worker 1: wx=1 (x=1).
+        ([[1, 0, 0], [1, 1, 0], [1, 0, 1], [1, 1, 1]], "4x4x4", 1),
+        # Worker 8: wz=1 (z in {2,3}) → linear = wz*(dy*dx) = 1*(2*4) = 8.
+        ([[0, 0, 2], [0, 1, 2], [0, 0, 3], [0, 1, 3]], "4x4x4", 8),
+    ],
+)
+def test_get_physical_worker_id_3d(coords, parent_topology, expected_worker_id):
+    """Test physical worker ID computation from 3D chip coordinates."""
+    assert (
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+        == expected_worker_id
+    )
+
+
+@pytest.mark.parametrize(
+    "coords, parent_topology",
+    [
+        # 2D: x coordinate far outside the 4x4 chip grid → wx out of bounds.
+        ([[99, 0], [99, 1]], "4x4"),
+        # 3D: z coordinate outside the 4x4x4 grid → wz out of bounds.
+        ([[0, 0, 99], [1, 0, 99]], "4x4x4"),
+    ],
+)
+def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
+    """Bad/partial libtpu coordinates that map outside the worker mesh raise
+    ValueError in both the 2D and 3D branches, rather than silently producing
+    an incorrect subslice label.
+    """
+    with pytest.raises(ValueError, match="out of bounds"):
+        tpu._get_physical_worker_id_from_coords(coords, parent_topology)
 
 
 if __name__ == "__main__":

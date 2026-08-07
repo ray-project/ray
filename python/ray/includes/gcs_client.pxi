@@ -638,7 +638,8 @@ cdef class InnerGcsClient:
             node_id: c_string,
             reason: int32_t,
             reason_message: c_string,
-            deadline_timestamp_ms: int64_t):
+            deadline_timestamp_ms: int64_t,
+            timeout: Optional[int | float] = None):
         """Send a DrainNode request to GCS to gracefully terminate a node.
 
         Used by the `ray drain-node` CLI command and by autoscaler v2's
@@ -654,6 +655,10 @@ cdef class InnerGcsClient:
             deadline_timestamp_ms: Timestamp (ms) when the node will be
                 force-killed. Used as a hint so workloads can drain
                 before the deadline.
+            timeout: Optional RPC timeout in seconds. ``None`` (the default)
+                uses an unlimited gRPC deadline; latency-sensitive callers
+                (e.g. draining on SIGTERM before shutdown) should bound this
+                so a hung or unreachable GCS cannot block indefinitely.
 
         Returns:
             Tuple of (is_accepted, rejection_reason_message). When
@@ -661,7 +666,7 @@ cdef class InnerGcsClient:
             why the raylet rejected the request.
         """
         cdef:
-            int64_t timeout_ms = -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool is_accepted = False
             c_string rejection_reason_message
         with nogil:

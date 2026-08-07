@@ -1,3 +1,6 @@
+.. meta::
+   :description: Core Ray Tune abstractions: Trainables (Function and Class APIs), search spaces, search algorithms, schedulers, Tuner configuration, trials, and ResultGrid.
+
 .. _tune-60-seconds:
 
 ========================

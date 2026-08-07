@@ -22,6 +22,11 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/scheduling/label_selector.h"
+#include "ray/observability/ray_actor_task_definition_event.h"
+#include "ray/observability/ray_task_definition_event.h"
+#include "ray/observability/ray_task_event_recorder.h"
+#include "ray/observability/ray_task_lifecycle_event.h"
+#include "ray/observability/ray_task_profile_event.h"
 #include "ray/util/graceful_shutdown.h"
 
 namespace ray {
@@ -267,6 +272,9 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
     definition_event_data.set_task_type(task_spec_->GetMessage().type());
     definition_event_data.set_task_name(task_spec_->GetName());
   }
+  if (task_spec_->IsDetachedActor()) {
+    definition_event_data.set_is_detached_actor(true);
+  }
 }
 
 void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
@@ -382,6 +390,36 @@ void TaskStatusEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   PopulateRpcRayTaskLifecycleEvent(*task_lifecycle_event, timestamp);
 }
 
+std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
+TaskStatusEvent::ToRayEventInterfaces() {
+  std::vector<std::unique_ptr<ray::observability::RayEventInterface>> events;
+  google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(timestamp_);
+
+  // Definition event (static metadata): only when the task spec is attached.
+  // The recorder de-dups definition events per attempt via no-op merge.
+  if (task_spec_) {
+    if (is_actor_task_event_) {
+      rpc::events::ActorTaskDefinitionEvent definition_event_data;
+      PopulateRpcRayTaskDefinitionEvent(definition_event_data);
+      events.push_back(std::make_unique<ray::observability::RayActorTaskDefinitionEvent>(
+          std::move(definition_event_data), session_name_, timestamp_));
+    } else {
+      rpc::events::TaskDefinitionEvent definition_event_data;
+      PopulateRpcRayTaskDefinitionEvent(definition_event_data);
+      events.push_back(std::make_unique<ray::observability::RayTaskDefinitionEvent>(
+          std::move(definition_event_data), session_name_, timestamp_));
+    }
+  }
+
+  // Lifecycle event (dynamic state transition): always produced.
+  rpc::events::TaskLifecycleEvent lifecycle_event_data;
+  PopulateRpcRayTaskLifecycleEvent(lifecycle_event_data, timestamp);
+  events.push_back(std::make_unique<ray::observability::RayTaskLifecycleEvent>(
+      std::move(lifecycle_event_data), session_name_, timestamp_));
+
+  return events;
+}
+
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   // Rate limit on the number of profiling events from the task. This is especially the
   // case if a driver has many profiling events when submitting tasks
@@ -463,6 +501,30 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   event_entry->set_extra_data(std::move(extra_data_));
 }
 
+std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
+TaskProfileEvent::ToRayEventInterfaces() {
+  rpc::events::TaskProfileEvents task_profile_events;
+  task_profile_events.set_task_id(task_id_.Binary());
+  task_profile_events.set_job_id(job_id_.Binary());
+  task_profile_events.set_attempt_number(attempt_number_);
+  auto *profile_events = task_profile_events.mutable_profile_events();
+  profile_events->set_component_type(component_type_);
+  profile_events->set_component_id(component_id_);
+  profile_events->set_node_ip_address(node_ip_address_);
+  auto *event_entry = profile_events->add_events();
+  event_entry->set_event_name(event_name_);
+  event_entry->set_start_time(start_time_);
+  event_entry->set_end_time(end_time_);
+  // Copy (not move): the same TaskProfileEvent may also be flushed to GCS/export via the
+  // buffer after this recorder-path conversion runs.
+  event_entry->set_extra_data(extra_data_);
+
+  std::vector<std::unique_ptr<ray::observability::RayEventInterface>> events;
+  events.push_back(std::make_unique<ray::observability::RayTaskProfileEvent>(
+      std::move(task_profile_events), session_name_, start_time_));
+  return events;
+}
+
 bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
     const TaskID &task_id,
     const JobID &job_id,
@@ -483,7 +545,7 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
       job_id,
       attempt_number,
       status,
-      /* timestamp */ absl::GetCurrentTimeNanos(),
+      /* timestamp */ clock_.NowUnixNanos(),
       /*is_actor_task_event=*/spec.IsActorTask(),
       session_name_,
       node_id_,
@@ -494,17 +556,52 @@ bool TaskEventBufferImpl::RecordTaskStatusEventIfNeeded(
   return true;
 }
 
+void RecordTaskStatusEventToRecorderIfNeeded(
+    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t attempt_number,
+    const TaskSpecification &spec,
+    rpc::TaskStatus status,
+    int64_t timestamp,
+    const std::string &session_name,
+    const NodeID &node_id,
+    bool include_task_info,
+    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
+  // Skip building the event objects when the recorder path is disabled.
+  if (!observability::RayTaskEventRecorder::Enabled()) {
+    return;
+  }
+  if (!spec.EnableTaskEvents()) {
+    return;
+  }
+  TaskStatusEvent event(
+      task_id,
+      job_id,
+      attempt_number,
+      status,
+      /*timestamp=*/timestamp,
+      /*is_actor_task_event=*/spec.IsActorTask(),
+      session_name,
+      node_id,
+      include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
+      std::move(state_update));
+  ray_task_event_recorder.AddEvents(event.ToRayEventInterfaces());
+}
+
 TaskEventBufferImpl::TaskEventBufferImpl(
     std::unique_ptr<gcs::GcsClient> gcs_client,
     std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
     std::string session_name,
-    const NodeID &node_id)
+    const NodeID &node_id,
+    ClockInterface &clock)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       event_aggregator_client_(std::move(event_aggregator_client)),
       session_name_(session_name),
-      node_id_(node_id) {}
+      node_id_(node_id),
+      clock_(clock) {}
 
 TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
@@ -512,14 +609,23 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
   send_task_events_to_gcs_enabled_ =
       RayConfig::instance().enable_core_worker_task_event_to_gcs();
-  send_ray_events_to_aggregator_enabled_ =
+  // The RayTaskEventRecorder takes over the aggregator send when it is active
+  // (needs both enable_ray_task_event_recorder and enable_ray_event)
+  // When active, disable the task_event_buffer to aggregator path to avoid double
+  // reporting.
+  const bool ray_task_event_recorder_enabled =
+      observability::RayTaskEventRecorder::Enabled();
+  task_event_buffer_to_aggregator_enabled_ =
+      !ray_task_event_recorder_enabled &&
       RayConfig::instance().enable_core_worker_ray_event_to_aggregator();
 
   // We want to make sure that only one of the event export mechanism is enabled. And
   // if both are enabled, we will use the event aggregator instead of the export API.
   // This code will be removed when we deprecate the export API implementation.
-  export_event_write_enabled_ = !send_ray_events_to_aggregator_enabled_ &&
-                                TaskEventBufferImpl::IsExportAPIEnabledTask();
+  const bool task_events_sent_to_aggregator =
+      ray_task_event_recorder_enabled || task_event_buffer_to_aggregator_enabled_;
+  export_event_write_enabled_ =
+      !task_events_sent_to_aggregator && TaskEventBufferImpl::IsExportAPIEnabledTask();
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
@@ -585,7 +691,7 @@ void TaskEventBufferImpl::Stop() {
 
     bool WaitUntilIdle(absl::Duration timeout) override {
       absl::MutexLock lock(&buffer_->grpc_completion_mutex_);
-      auto deadline = absl::Now() + timeout;
+      auto deadline = buffer_->clock_.Now() + timeout;
       while (buffer_->gcs_grpc_in_progress_.load() > 0 ||
              buffer_->event_aggregator_grpc_in_progress_.load() > 0) {
         if (buffer_->grpc_completion_cv_.WaitWithDeadline(
@@ -798,7 +904,7 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
           event->ToRpcTaskEvents(&(itr_task_events->second));
         }
 
-        if (send_ray_events_to_aggregator_enabled_) {
+        if (task_event_buffer_to_aggregator_enabled_) {
           auto [itr_ray_events, _] = agg_ray_events.try_emplace(event->GetTaskAttempt());
           event->ToRpcRayEvents(itr_ray_events->second);
         }
@@ -820,7 +926,7 @@ TaskEventBuffer::TaskEventDataToSend TaskEventBufferImpl::CreateDataToSend(
   }
 
   // Convert to rpc::events::RayEventsData
-  if (send_ray_events_to_aggregator_enabled_) {
+  if (task_event_buffer_to_aggregator_enabled_) {
     auto ray_events_data = CreateRayEventsDataToSend(std::move(agg_ray_events),
                                                      dropped_task_attempts_to_send);
     data_to_send.ray_events_data = std::move(ray_events_data);
@@ -1019,7 +1125,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       data.ray_events_data &&
       (data.ray_events_data->events_size() > 0 ||
        data.ray_events_data->task_events_metadata().dropped_task_attempts_size() > 0);
-  if (send_ray_events_to_aggregator_enabled_ && has_aggregator_payload) {
+  if (task_event_buffer_to_aggregator_enabled_ && has_aggregator_payload) {
     SendRayEventsToAggregator(std::move(data.ray_events_data));
   }
 }

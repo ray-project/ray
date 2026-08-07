@@ -1,8 +1,13 @@
 import abc
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-ResourceDict = Dict[str, float]
+ResourceType = str
+ResourceDict = Dict[ResourceType, float]
+RequesterId = str
+LabelKey = str
+LabelValue = str
+LabelSelector = Dict[LabelKey, LabelValue]
 
 
 class ResourceRequestPriority(Enum):
@@ -21,6 +26,7 @@ class AutoscalingCoordinator(abc.ABC):
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
+        label_selectors: Optional[List[LabelSelector]] = None,
     ) -> None:
         """Request cluster resources.
 
@@ -33,9 +39,12 @@ class AutoscalingCoordinator(abc.ABC):
             expire_after_s: Time in seconds after which this request will expire.
                 The requester is responsible for periodically sending new requests
                 to avoid the request being purged.
-            request_remaining: If true, after allocating requested resources to each
-                requester, remaining resources will also be allocated to this requester.
+            request_remaining: If true, after reserving requested resources to each
+                requester, remaining resources will also be reserved to this requester.
             priority: The priority of the request. Higher value means higher priority.
+            label_selectors: Optional per-bundle label selectors, one per entry in
+                ``resources``. Forwarded to the autoscaler as
+                ``bundle_label_selectors``.
         """
         ...
 
@@ -45,10 +54,10 @@ class AutoscalingCoordinator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_allocated_resources(self) -> List[ResourceDict]:
-        """Get the allocated resources for the requester.
+    def get_reserved_resources(self) -> List[ResourceDict]:
+        """Get the reserved resources for the requester.
 
         Returns:
-            A list of dictionaries representing the allocated resources bundles.
+            A list of dictionaries representing the reserved resources bundles.
         """
         ...

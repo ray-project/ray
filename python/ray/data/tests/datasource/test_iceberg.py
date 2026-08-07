@@ -599,12 +599,15 @@ def test_projection_and_predicate_pushdown(
             pyi_expr.GreaterThanOrEqual("col_c", 5),
             {"col_a", "col_b"},
         ),
-        # Test 7: Rename + Select + Filter (all three together)
+        # Test 7: Rename + Select + Filter (all three together).
+        # Filter references a selected column (the renamed ``column_a``);
+        # filtering on a column the select dropped is not a valid plan
+        # after projection pushdown.
         (
             {"col_a": "column_a", "col_b": "column_b"},
             ["column_a", "column_b"],
-            col("col_c") >= 5,
-            pyi_expr.GreaterThanOrEqual("col_c", 5),
+            col("column_a") >= 50,
+            pyi_expr.GreaterThanOrEqual("col_a", 50),
             {"column_a", "column_b"},
         ),
         # Test 8: Complex rename + select with multiple renames
@@ -654,15 +657,23 @@ def test_rename_select_filter_combinations(
     logical_plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
-    # Both Filter and Project should be pushed down (when applicable)
+    # Filter, when present, should always be pushed into the scan.
     if filter_expr is not None:
         assert not _has_operator_type(
             optimized_plan, Filter
         ), f"Filter should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
-    if select_cols is not None or rename_map is not None:
+
+    # Pure column selection (no renames) is subsumed by the scan's column
+    # pruning, so no ``Project`` remains. Renames stay as a ``Project`` of
+    # ``AliasExpr``s above the pruned scan after filter pushdown.
+    if rename_map is not None:
+        assert _has_operator_type(
+            optimized_plan, Project
+        ), f"Renames should remain as a Project above the scan, got operators: {_get_operator_types(optimized_plan)}"
+    elif select_cols is not None:
         assert not _has_operator_type(
             optimized_plan, Project
-        ), f"Projection should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
+        ), f"Pure column selection should be pushed into the scan, got operators: {_get_operator_types(optimized_plan)}"
 
     # Verify the results
     result = ds.to_pandas()
@@ -1297,6 +1308,367 @@ class TestUpsertMode:
         result = _read_from_iceberg(sort_by="col_a")
         expected = _create_typed_dataframe(
             {"col_a": [1, 2, 3], "col_b": ["a", "b", "c"], "col_c": [10, 20, 30]}
+        )
+        assert rows_same(result, expected)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestUpsertScanMerge:
+    """Test the scan-merge upsert algorithm for correctness.
+
+    See ``IcebergDatasink._commit_upsert_scan_merge`` for algorithm details.
+    """
+
+    def test_upsert_preserves_rows_sparse_keys(self, clean_table):
+        """Sparse upsert keys leave intermediate rows that must be preserved
+        after the rewrite."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": list(range(1, 11)),
+                "col_b": [f"seed_{i}" for i in range(1, 11)],
+                "col_c": [1] * 10,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 10],
+                "col_b": ["updated_1", "updated_10"],
+                "col_c": [1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": list(range(1, 11)),
+                "col_b": ["updated_1"]
+                + [f"seed_{i}" for i in range(2, 10)]
+                + ["updated_10"],
+                "col_c": [1] * 10,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_across_multiple_files(self, clean_table):
+        """Two separate seed writes produce at least two data files. A sparse
+        upsert that spans both files must preserve non-upsert rows in each."""
+        from ray.data import SaveMode
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {
+                    "col_a": [1, 2, 3],
+                    "col_b": ["seed_1", "seed_2", "seed_3"],
+                    "col_c": [1, 1, 1],
+                }
+            )
+        )
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {
+                    "col_a": [10, 11, 12],
+                    "col_b": ["seed_10", "seed_11", "seed_12"],
+                    "col_c": [1, 1, 1],
+                }
+            )
+        )
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 12],
+                "col_b": ["updated_1", "updated_12"],
+                "col_c": [1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 10, 11, 12],
+                "col_b": [
+                    "updated_1",
+                    "seed_2",
+                    "seed_3",
+                    "seed_10",
+                    "seed_11",
+                    "updated_12",
+                ],
+                "col_c": [1] * 6,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_whole_file_delete_when_all_keys_match(self, clean_table):
+        """When every seed row in the coarse range is in the upsert batch, the
+        original file is wholly deleted and only upsert rows remain — no
+        duplicates."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["seed_1", "seed_2", "seed_3", "seed_4", "seed_5"],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": [f"updated_{i}" for i in range(1, 6)],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": [f"updated_{i}" for i in range(1, 6)],
+                "col_c": [1] * 5,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_pure_insert_short_circuit(self, clean_table):
+        """Upsert keys outside the seed's coarse range hit zero candidate
+        files; the new rows must still be appended."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3],
+                "col_b": ["seed_1", "seed_2", "seed_3"],
+                "col_c": [1, 1, 1],
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [100, 101],
+                "col_b": ["new_100", "new_101"],
+                "col_c": [1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 100, 101],
+                "col_b": ["seed_1", "seed_2", "seed_3", "new_100", "new_101"],
+                "col_c": [1] * 5,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_composite_key_preserves_rows(self, clean_table):
+        """Composite-key anti-join must match on all join columns; rows that
+        share one column with an upsert key but not the full composite must be
+        preserved."""
+        from ray.data import SaveMode
+
+        composites = [(a, b) for a in [1, 2, 3] for b in ["x", "y", "z"]]
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [a for a, _ in composites],
+                "col_b": [b for _, b in composites],
+                "col_c": [1] * len(composites),
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 3],
+                "col_b": ["x", "z"],
+                "col_c": [99, 99],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a", "col_b"]},
+        )
+
+        result = _read_from_iceberg(sort_by=["col_a", "col_b"])
+        expected_col_c = [
+            99 if (a, b) in {(1, "x"), (3, "z")} else 1 for a, b in sorted(composites)
+        ]
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [a for a, _ in sorted(composites)],
+                "col_b": [b for _, b in sorted(composites)],
+                "col_c": expected_col_c,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_string_key(self, clean_table):
+        """String join column exercises the type-cast path in
+        _rewrite_iceberg_file that aligns utf8 / large_utf8 between the file
+        batch and the upsert-keys table."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["a", "b", "c", "d", "e"],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [10, 20],
+                "col_b": ["a", "e"],
+                "col_c": [1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_b"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_b")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [10, 2, 3, 4, 20],
+                "col_b": ["a", "b", "c", "d", "e"],
+                "col_c": [1] * 5,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_case_insensitive_join_cols(self, clean_table):
+        """``case_sensitive=False`` should let join_cols match table columns
+        whose casing differs from the supplied names."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5],
+                "col_b": ["seed_1", "seed_2", "seed_3", "seed_4", "seed_5"],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 5, 6],
+                "col_b": ["updated_1", "updated_5", "new_6"],
+                "col_c": [1, 1, 1],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["COL_A"], "case_sensitive": False},
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5, 6],
+                "col_b": [
+                    "updated_1",
+                    "seed_2",
+                    "seed_3",
+                    "seed_4",
+                    "updated_5",
+                    "new_6",
+                ],
+                "col_c": [1] * 6,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_with_new_column(self, clean_table):
+        """Upsert that introduces a new column must evolve the table schema,
+        populate the new column for upserted rows, and leave NULLs for
+        untouched seed rows (including preserved rows rewritten during upsert)."""
+        from ray.data import SaveMode
+
+        seed = _create_typed_dataframe(
+            {
+                "col_a": list(range(1, 6)),
+                "col_b": [f"seed_{i}" for i in range(1, 6)],
+                "col_c": [1] * 5,
+            }
+        )
+        _write_to_iceberg(seed)
+
+        # Upsert touches col_a=1 and col_a=5 (preserved rows at 2, 3, 4 in the
+        # same file) and introduces a new column ``col_d``.
+        upsert_data = _create_typed_dataframe(
+            {
+                "col_a": [1, 5, 6],
+                "col_b": ["updated_1", "updated_5", "new_6"],
+                "col_c": [1, 1, 1],
+                "col_d": ["d_1", "d_5", "d_6"],
+            }
+        )
+        _write_to_iceberg(
+            upsert_data,
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+                "col_d": pyi_types.StringType,
+            }
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4, 5, 6],
+                "col_b": [
+                    "updated_1",
+                    "seed_2",
+                    "seed_3",
+                    "seed_4",
+                    "updated_5",
+                    "new_6",
+                ],
+                "col_c": [1] * 6,
+                "col_d": ["d_1", None, None, None, "d_5", "d_6"],
+            }
         )
         assert rows_same(result, expected)
 

@@ -1,6 +1,18 @@
 [project]
 requires-python = ">=3.10"
 
+[tool.mypy]
+# No global settings here: flags come from the pre-commit hook invocations.
+# This table must exist for the per-module overrides below to be read.
+
+[[tool.mypy.overrides]]
+module = ["ray.serve.generated.*", "ray.core.generated.*"]
+# Generated protobuf modules have no static names; treat them as `Any`
+# whether or not the generated files exist in the checkout (parity with
+# `replace-imports-with-any` in pyrefly.toml).
+follow_imports = "skip"
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 88
 extend-exclude = [

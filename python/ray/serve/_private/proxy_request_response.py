@@ -164,7 +164,7 @@ class gRPCProxyRequest(ProxyRequest):
         service_method: str,
         stream: bool,
         *,
-        streaming_type: gRPCStreamingType = None,
+        streaming_type: Optional[gRPCStreamingType] = None,
         request_iterator: Optional[AsyncIterator[Any]] = None,
     ):
         self._request_proto = request_proto

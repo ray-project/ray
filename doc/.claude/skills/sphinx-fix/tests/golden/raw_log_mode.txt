@@ -1,0 +1,14 @@
+Build: build finished with problems, 1 warning.
+
+Findings (1):
+  Tier 3 — warnings:
+    [T3] image-not-readable  doc/source/data/api.md:55
+          msg:    image file not readable: images/missing.png
+          fix:    Fix the image path (relative to the referencing page, or an absolute /_static-style path).
+          safety: mechanical
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: apply the fixes above, then rebuild and re-run to confirm clean.

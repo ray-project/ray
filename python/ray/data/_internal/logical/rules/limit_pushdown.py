@@ -1,7 +1,7 @@
 import copy
 import logging
 from dataclasses import is_dataclass, replace
-from typing import List
+from typing import List, Type
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators import (
@@ -9,6 +9,7 @@ from ray.data._internal.logical.operators import (
     AbstractOneToOne,
     Download,
     Limit,
+    Project,
     Read,
     ReadFiles,
     Union,
@@ -41,6 +42,27 @@ class LimitPushdownRule(Rule):
     In addition, we also fuse consecutive Limit operators into a single
     Limit operator, i.e. `Limit[n] -> Limit[m]` becomes `Limit[min(n, m)]`.
     """
+
+    @classmethod
+    def dependencies(cls) -> List[Type["Rule"]]:
+        # Run ProjectionPushdown and PredicatePushdown first. A `Project`
+        # (from `select_columns`, and from `read_parquet(columns=...)` which is
+        # rewired to it) or a `Filter` sits directly above the read. If limit
+        # pushdown runs first it slides the `Limit` in between that operator and
+        # the read, after which projection/predicate pushdown can no longer
+        # reach the read -- the column selection / filter is stranded above the
+        # `Limit` and the reader reads every column / every row. Applying those
+        # pushdowns first lets the selection and predicate be absorbed into the
+        # read while still adjacent, so the reader prunes columns and filters
+        # rows; the `Limit` then pushes down past the already-pruned read.
+        from ray.data._internal.logical.rules.predicate_pushdown import (
+            PredicatePushdown,
+        )
+        from ray.data._internal.logical.rules.projection_pushdown import (
+            ProjectionPushdown,
+        )
+
+        return [ProjectionPushdown, PredicatePushdown]
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         # The DAG's root is the most downstream operator.
@@ -140,7 +162,7 @@ class LimitPushdownRule(Rule):
                 pushed_tail = self._push_limit_down(raw_limit)
             branch_tails.append(pushed_tail)
 
-        new_union = Union(*branch_tails)
+        new_union = Union(branch_tails)
         return Limit(limit_op.limit, input_dependencies=[new_union])
 
     def _push_limit_down(self, limit_op: Limit) -> LogicalOperator:
@@ -156,6 +178,12 @@ class LimitPushdownRule(Rule):
             isinstance(current_op, AbstractOneToOne)
             and not current_op.can_modify_num_rows
         ):
+            if isinstance(current_op, Project) and not current_op.is_idempotent():
+                # Do not push the limit past a projection producing a non-idempotent
+                # column (e.g. monotonically_increasing_id): its value depends on row
+                # position / cardinality, which a reordered limit would change.
+                break
+
             if isinstance(current_op, AbstractMap):
                 min_rows = current_op.min_rows_per_bundled_input
                 if min_rows is not None and min_rows > limit_op.limit:
@@ -168,8 +196,18 @@ class LimitPushdownRule(Rule):
             num_rows_preserving_ops.append(current_op)
             current_op = current_op.input_dependencies[0]
 
-        # If we couldn't push through any operators, return original
+        # If we couldn't push through any operators, the Limit sits directly on
+        # its input. For a V2 ``ReadFiles`` source we still push a per-block limit
+        # into it (and mirror the limit onto the upstream ``ListFiles`` so a
+        # footer-based indexer can stop listing early), keeping the ``Limit`` on
+        # top for exact enforcement. Other ops are left untouched.
         if not num_rows_preserving_ops:
+            if isinstance(current_op, ReadFiles):
+                limit_input = self._apply_per_block_limit_if_supported(
+                    current_op, limit_op.limit
+                )
+                if limit_input is not current_op:
+                    return Limit(limit_op.limit, input_dependencies=[limit_input])
             return limit_op
         # Apply per-block limit to the deepest operator if it supports it
         limit_input = self._apply_per_block_limit_if_supported(
@@ -207,11 +245,12 @@ class LimitPushdownRule(Rule):
                     )
 
                     if isinstance(op.scanner, SupportsLimitPushdown):
-                        return replace(
-                            op,
-                            input_op=op.input_dependency,
-                            scanner=op.scanner.push_limit(limit),
-                        )
+                        # The pushed limit reaches the upstream ``ListFiles`` --
+                        # letting a footer-based indexer stop listing early once
+                        # enough exact-survivor rows are found -- via
+                        # ``DeriveListFilesPushdown``, which reads it off the
+                        # scanner once the plan is final.
+                        return replace(op, scanner=op.scanner.push_limit(limit))
                     return op
                 assert len(op.input_dependencies) == 1, len(op.input_dependencies)
                 return replace(

@@ -1,5 +1,6 @@
 """The SGLang engine processor."""
 
+import hashlib
 import logging
 from typing import Any, Dict, Optional
 
@@ -136,9 +137,7 @@ def build_sglang_engine_processor(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
                     model=chat_template_stage_cfg.model_source,
-                    chat_template=get_value_or_fallback(
-                        chat_template_stage_cfg.chat_template, config.chat_template
-                    ),
+                    chat_template=chat_template_stage_cfg.chat_template,
                     chat_template_kwargs=get_value_or_fallback(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
@@ -151,7 +150,7 @@ def build_sglang_engine_processor(
 
     # Resolve and build TokenizeStage if enabled
     tokenize_stage_cfg = resolve_stage_config(
-        getattr(config, "tokenize_stage", config.tokenize),
+        config.tokenize_stage,
         TokenizerStageConfig,
         processor_defaults,
     )
@@ -197,7 +196,7 @@ def build_sglang_engine_processor(
 
     # Resolve and build DetokenizeStage if enabled
     detokenize_stage_cfg = resolve_stage_config(
-        getattr(config, "detokenize_stage", config.detokenize),
+        config.detokenize_stage,
         DetokenizeStageConfig,
         processor_defaults,
     )
@@ -250,6 +249,9 @@ def build_sglang_engine_processor(
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
         BatchModelTelemetry(
+            model_id_hash=hashlib.sha256(
+                config.model_source.encode("utf-8")
+            ).hexdigest(),
             processor_config_name=type(config).__name__,
             model_architecture=architecture,
             batch_size=config.batch_size,

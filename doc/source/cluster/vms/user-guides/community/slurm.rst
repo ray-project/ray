@@ -262,3 +262,20 @@ Here are some community-contributed templates for using SLURM with Ray:
 .. _`YASPI`: https://github.com/albanie/yaspi
 
 .. _`Convenient python interface`: https://github.com/pengzhenghao/use-ray-with-slurm
+
+
+Troubleshooting
+---------------
+
+.. _ray-slurm-docker-init:
+
+Zombie processes in Docker containers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Running Ray on Slurm inside a Docker container can produce zombie processes. See `this comment
+<https://github.com/ray-project/ray/pull/62591#issuecomment-4396615458>`_ for details.
+
+Two recommended fixes:
+
+1. Use ``docker run --init`` (`Docker CLI docs <https://docs.docker.com/reference/cli/docker/container/run/#init>`_).
+2. Set ``init: true`` in ``docker-compose.yaml`` (`Docker Compose docs <https://docs.docker.com/reference/compose-file/services/#init>`_).

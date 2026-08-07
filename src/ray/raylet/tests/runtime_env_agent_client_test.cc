@@ -33,6 +33,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/util/clock.h"
 #include "ray/util/env.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
@@ -192,6 +193,7 @@ delay_after(instrumented_io_context &ioc) {
 }
 
 auto dummy_shutdown_raylet_gracefully = [](const rpc::NodeDeathInfo &) {};
+Clock clock;
 
 TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
@@ -228,6 +230,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
                                             port,
                                             delay_after(ioc),
                                             dummy_shutdown_raylet_gracefully,
+                                            clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
@@ -282,6 +285,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
                                             port,
                                             delay_after(ioc),
                                             dummy_shutdown_raylet_gracefully,
+                                            clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
@@ -341,6 +345,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
       dummy_shutdown_raylet_gracefully,
+      clock,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
@@ -402,6 +407,7 @@ TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
                                             port,
                                             delay_after(ioc),
                                             dummy_shutdown_raylet_gracefully,
+                                            clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -461,6 +467,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
                                             port,
                                             delay_after(ioc),
                                             dummy_shutdown_raylet_gracefully,
+                                            clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -505,6 +512,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
                                             port,
                                             delay_after(ioc),
                                             dummy_shutdown_raylet_gracefully,
+                                            clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -554,6 +562,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
       dummy_shutdown_raylet_gracefully,
+      clock,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
 
@@ -653,6 +662,7 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
                                             port,
                                             delay_after(ioc),
                                             dummy_shutdown_raylet_gracefully,
+                                            clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 

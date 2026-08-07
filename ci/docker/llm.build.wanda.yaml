@@ -7,6 +7,7 @@ srcs:
   - ci/suppress_output
   - python/deplocks/llm/rayllm_test_py312_cpu.lock
   - python/deplocks/llm/rayllm_test_py312_cu130.lock
+  - python/requirements/llm/patches/vllm-device-aware-compile-cache.patch
 tags:
   - cr.ray.io/rayproject/llm$BUILD_VARIANT
 build_args:

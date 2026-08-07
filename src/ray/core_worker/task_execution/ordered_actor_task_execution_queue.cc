@@ -26,14 +26,20 @@ OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     instrumented_io_context &task_execution_service,
     ActorTaskExecutionArgWaiterInterface &waiter,
     worker::TaskEventBuffer &task_event_buffer,
+    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-    int64_t reorder_wait_seconds)
+    int64_t reorder_wait_seconds,
+    ExecuteTaskCallback execute_task,
+    CancelTaskCallback cancel_task)
     : task_execution_service_(task_execution_service),
       reorder_wait_seconds_(reorder_wait_seconds),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
-      pool_manager_(std::move(pool_manager)) {}
+      ray_task_event_recorder_(ray_task_event_recorder),
+      pool_manager_(std::move(pool_manager)),
+      execute_task_(std::move(execute_task)),
+      cancel_task_(std::move(cancel_task)) {}
 
 void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg) {
   absl::MutexLock lock(&mu_);
@@ -44,7 +50,7 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
     // Cancel queued ordered tasks.
     while (!group_state.pending_tasks.empty()) {
       auto head = group_state.pending_tasks.begin();
-      head->second.Cancel(status);
+      cancel_task_(head->second, status);
       pending_task_id_to_is_canceled.erase(head->second.TaskID());
       group_state.pending_tasks.erase(head);
     }
@@ -52,7 +58,7 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
     // Cancel queued retry tasks.
     while (!group_state.pending_retry_tasks.empty()) {
       auto &req = group_state.pending_retry_tasks.front();
-      req.Cancel(status);
+      cancel_task_(req, status);
       pending_task_id_to_is_canceled.erase(req.TaskID());
       group_state.pending_retry_tasks.pop_front();
     }
@@ -90,8 +96,8 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
       << "Enqueuing in order actor task, seq_no=" << seq_no
       << ", next_seq_no_=" << group_state.next_seq_no << ", group='" << group << "'";
 
-  const auto dependencies = task_spec.GetDependencies();
   const bool is_retry = task_spec.IsRetry();
+
   TaskToExecute *retry_task = nullptr;
   if (is_retry) {
     retry_task = &group_state.pending_retry_tasks.emplace_back(std::move(task));
@@ -107,7 +113,11 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
     pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
   }
 
-  if (!dependencies.empty()) {
+  // Set the OnArgsReady callback. In the general case, this should be called
+  // before MarkReady is called on the waiter for the same (task_id,
+  // attempt_number). But in the other case, the callback is executed
+  // immediately.
+  if (!task_spec.GetDependencies().empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -115,37 +125,61 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task, group]() {
-      TaskToExecute *ready_task = nullptr;
-      if (is_retry) {
-        // retry_task is guaranteed to be a valid pointer for retries
-        // because it won't be erased from the retry list until its
-        // dependencies are fetched and ExecuteRequest happens.
-        ready_task = retry_task;
-      } else {
-        auto &group_state_in = group_states_.at(group);
-        auto it = group_state_in.pending_tasks.find(seq_no);
-        if (it != group_state_in.pending_tasks.end()) {
-          // For non-retry tasks, we need to check if the task is
-          // still in the map because it can be erased due to being
-          // canceled via a higher `client_processed_up_to`.
-          ready_task = &it->second;
-        }
-      }
+    worker::RecordTaskStatusEventToRecorderIfNeeded(
+        ray_task_event_recorder_,
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
+        task_event_buffer_.GetCurrentTimestampNanos(),
+        task_event_buffer_.GetSessionName(),
+        task_event_buffer_.GetNodeID(),
+        /*include_task_info=*/false);
+    waiter_.OnArgsReady(
+        TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()},
+        [this, seq_no, is_retry, retry_task, group]() {
+          TaskToExecute *ready_task = nullptr;
+          if (is_retry) {
+            // retry_task is guaranteed to be a valid pointer for retries
+            // because it won't be erased from the retry list until its
+            // dependencies are fetched and ExecuteRequest happens.
+            ready_task = retry_task;
+          } else {
+            auto &group_state_in = group_states_.at(group);
+            auto it = group_state_in.pending_tasks.find(seq_no);
+            if (it != group_state_in.pending_tasks.end()) {
+              // For non-retry tasks, we need to check if the task is
+              // still in the map because it can be erased due to being
+              // canceled via a higher `client_processed_up_to`.
+              ready_task = &it->second;
+            }
+          }
 
-      if (ready_task != nullptr) {
-        const auto &ready_task_spec = ready_task->TaskSpec();
-        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            ready_task_spec.TaskId(),
-            ready_task_spec.JobId(),
-            ready_task_spec.AttemptNumber(),
-            ready_task_spec,
-            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-            /* include_task_info */ false));
-        ready_task->MarkDependenciesResolved();
-        ExecuteQueuedTasks();
-      }
-    });
+          if (ready_task != nullptr) {
+            const auto &ready_task_spec = ready_task->TaskSpec();
+            RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+                ready_task_spec.TaskId(),
+                ready_task_spec.JobId(),
+                ready_task_spec.AttemptNumber(),
+                ready_task_spec,
+                rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                /* include_task_info */ false));
+            worker::RecordTaskStatusEventToRecorderIfNeeded(
+                ray_task_event_recorder_,
+                ready_task_spec.TaskId(),
+                ready_task_spec.JobId(),
+                ready_task_spec.AttemptNumber(),
+                ready_task_spec,
+                rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                task_event_buffer_.GetCurrentTimestampNanos(),
+                task_event_buffer_.GetSessionName(),
+                task_event_buffer_.GetNodeID(),
+                /*include_task_info=*/false);
+            ready_task->MarkDependenciesResolved();
+            ExecuteQueuedTasks();
+          }
+        });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
@@ -154,6 +188,17 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
         /* include_task_info */ false));
+    worker::RecordTaskStatusEventToRecorderIfNeeded(
+        ray_task_event_recorder_,
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+        task_event_buffer_.GetCurrentTimestampNanos(),
+        task_event_buffer_.GetSessionName(),
+        task_event_buffer_.GetNodeID(),
+        /*include_task_info=*/false);
   }
 
   ExecuteQueuedTasks();
@@ -183,7 +228,8 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
       auto head = group_state.pending_tasks.begin();
       RAY_LOG(ERROR) << "Cancelling stale RPC with seqno " << head->first << " < "
                      << group_state.next_seq_no << " in group '" << group_name << "'";
-      head->second.Cancel(
+      cancel_task_(
+          head->second,
           Status::Invalid("Task canceled due to stale sequence number. The client "
                           "intentionally discarded this task."));
       {
@@ -267,7 +313,7 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
             for (auto &[_, group_state_in] : group_states_) {
               while (!group_state_in.pending_tasks.empty()) {
                 auto head = group_state_in.pending_tasks.begin();
-                head->second.Cancel(invalid_status);
+                cancel_task_(head->second, invalid_status);
                 group_state_in.next_seq_no =
                     std::max(group_state_in.next_seq_no, head->first + 1);
                 {
@@ -312,10 +358,10 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
 
   // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
-    request.Cancel(
-        Status::SchedulingCancelled("Task is canceled before it is scheduled."));
+    cancel_task_(request,
+                 Status::SchedulingCancelled("Task is canceled before it is scheduled."));
   } else {
-    request.Execute();
+    execute_task_(request);
   }
 
   absl::MutexLock lock(&mu_);

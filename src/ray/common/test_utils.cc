@@ -14,9 +14,12 @@
 
 #include "ray/common/test_utils.h"
 
+#include <boost/asio.hpp>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <functional>
+#include <thread>
 #ifndef _WIN32
 #include <sys/socket.h>
 #else
@@ -24,6 +27,7 @@
 #endif
 
 #include "absl/strings/escaping.h"
+#include "gtest/gtest.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_util.h"
@@ -36,6 +40,48 @@
 #include "ray/util/time.h"
 
 namespace ray {
+
+namespace {
+
+/// How long to wait for a spawned Redis to start serving before giving up.
+constexpr int kRedisStartupTimeoutMs = 30000;
+
+/// Poll until something accepts a TCP connection on `port`.
+///
+/// `Process::Spawn` only reports that the binary launched; the server may not
+/// have bound and listened yet. Callers that connect immediately afterwards
+/// would then hit a closed port, so wait for the socket to actually answer.
+///
+/// \param port The localhost TCP port to probe.
+/// \param timeout_ms How long to keep polling before giving up.
+/// \return True if the port accepted a connection before the timeout expired.
+bool WaitForPortAcceptingConnections(int port, int timeout_ms) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  boost::asio::io_context io_context;
+  const boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address_v4::loopback(),
+                                                static_cast<unsigned short>(port));
+
+  while (true) {
+    boost::asio::ip::tcp::socket socket(io_context);
+    boost::system::error_code ec;
+    socket.connect(endpoint, ec);
+    // Non-throwing overload: the connect above routinely fails while the
+    // server is still coming up, and close() must not turn that into an
+    // exception that escapes the helper.
+    boost::system::error_code ignored;
+    socket.close(ignored);
+    if (!ec) {
+      return true;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+
+}  // namespace
 
 static void InitRedisPathsFromEnv() {
   auto init_from_env = [](std::string &path, const char *env_name) {
@@ -92,7 +138,9 @@ int TestSetupUtil::StartUpRedisServer(int port, bool save) {
   auto [proc, ec] = Process::Spawn(cmdargs, true);
   RAY_CHECK(!ec) << "Failed to start redis because process failed to spawn: "
                  << ec.message();
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  RAY_CHECK(WaitForPortAcceptingConnections(actual_port, kRedisStartupTimeoutMs))
+      << "Redis on port " << actual_port << " did not accept connections within "
+      << kRedisStartupTimeoutMs << "ms.";
   return actual_port;
 }
 

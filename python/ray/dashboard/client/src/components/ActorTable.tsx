@@ -18,8 +18,9 @@ import Autocomplete from "@mui/material/Autocomplete";
 import { orange } from "@mui/material/colors";
 import Pagination from "@mui/material/Pagination";
 import _ from "lodash";
-import React, { useMemo, useState } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
+import { GlobalContext } from "../App";
 import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
 import { DurationText, getDurationVal } from "../common/DurationText";
 import { ActorLink, generateNodeLink } from "../common/links";
@@ -30,8 +31,14 @@ import {
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
-import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
-import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
+import {
+  getSumAcceleratorUtilization,
+  WorkerAcceleratorRow,
+} from "../pages/node/AcceleratorColumn";
+import {
+  getSumAcceleratorMemoryUsage,
+  WorkerAcceleratorMemory,
+} from "../pages/node/AcceleratorMemoryColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -51,6 +58,7 @@ export type ActorTableProps = {
   filterToActorId?: string;
   onFilterChange?: () => void;
   detailPathPrefix?: string;
+  showAcceleratorColumns?: boolean;
 };
 
 const SEQUENCE = {
@@ -82,6 +90,7 @@ const ActorTable = ({
   filterToActorId,
   onFilterChange,
   detailPathPrefix = "",
+  showAcceleratorColumns: showAcceleratorColumnsProp,
 }: ActorTableProps) => {
   const [pageNo, setPageNo] = useState(1);
   const { changeFilter, filterFunc } = useFilter<string>({
@@ -93,6 +102,11 @@ const ActorTable = ({
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState<number | undefined>(10);
+  const { showAcceleratorColumns: globalShowAcceleratorColumns } =
+    useContext(GlobalContext);
+
+  const effectiveShowAcceleratorColumns =
+    showAcceleratorColumnsProp ?? globalShowAcceleratorColumns;
 
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
@@ -131,13 +145,18 @@ const ActorTable = ({
             // so multiply by -1
             return uptime * -1 * descMultiplier;
           case gpuUtilizationSorterKey:
-            const sumGpuUtilization = getSumGpuUtilization(
+            const sumGpuUtilization = getSumAcceleratorUtilization(
               actor.pid,
               actor.gpus,
+              actor.tpus,
             );
             return sumGpuUtilization * descMultiplier;
           case gramUsageSorterKey:
-            const sumGRAMUsage = getSumGRAMUsage(actor.pid, actor.gpus);
+            const sumGRAMUsage = getSumAcceleratorMemoryUsage(
+              actor.pid,
+              actor.gpus,
+              actor.tpus,
+            );
             return sumGRAMUsage * descMultiplier;
           default:
             return 0;
@@ -534,10 +553,12 @@ const ActorTable = ({
               ["processStats.memoryInfo.rss", "Used Memory"],
               ["mem[0]", "Total Memory"],
               ["processStats.cpuPercent", "CPU"],
-              // Fake attribute key used when sorting by GPU utilization and
-              // GRAM usage because aggregate function required on actor key before sorting.
-              [gpuUtilizationSorterKey, "GPU Utilization"],
-              [gramUsageSorterKey, "GRAM Usage"],
+              ...(effectiveShowAcceleratorColumns
+                ? ([
+                    [gpuUtilizationSorterKey, "GPU Utilization"],
+                    [gramUsageSorterKey, "GRAM Usage"],
+                  ] as [string, string][])
+                : []),
             ]}
             onChange={(val) => setSortKey(val)}
             showAllOption={false}
@@ -565,20 +586,26 @@ const ActorTable = ({
         <Table>
           <TableHead>
             <TableRow>
-              {columns.map(({ label, helpInfo }) => (
-                <TableCell align="center" key={label}>
-                  <Box
-                    display="flex"
-                    justifyContent="center"
-                    alignItems="center"
-                  >
-                    {label}
-                    {helpInfo && (
-                      <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
-                    )}
-                  </Box>
-                </TableCell>
-              ))}
+              {columns
+                .filter(
+                  (col) =>
+                    effectiveShowAcceleratorColumns ||
+                    (col.label !== "GPU" && col.label !== "GRAM"),
+                )
+                .map(({ label, helpInfo }) => (
+                  <TableCell align="center" key={label}>
+                    <Box
+                      display="flex"
+                      justifyContent="center"
+                      alignItems="center"
+                    >
+                      {label}
+                      {helpInfo && (
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
+                      )}
+                    </Box>
+                  </TableCell>
+                ))}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -599,6 +626,7 @@ const ActorTable = ({
                 exitDetail,
                 requiredResources,
                 gpus,
+                tpus,
                 processStats,
                 mem,
                 labelSelector,
@@ -747,12 +775,24 @@ const ActorTable = ({
                       </PercentageBar>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
-                  </TableCell>
-                  <TableCell>
-                    <WorkerGRAM workerPID={pid} gpus={gpus} />
-                  </TableCell>
+                  {effectiveShowAcceleratorColumns && (
+                    <TableCell>
+                      <WorkerAcceleratorRow
+                        workerPID={pid}
+                        gpus={gpus}
+                        tpus={tpus}
+                      />
+                    </TableCell>
+                  )}
+                  {effectiveShowAcceleratorColumns && (
+                    <TableCell>
+                      <WorkerAcceleratorMemory
+                        workerPID={pid}
+                        gpus={gpus}
+                        tpus={tpus}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell
                     align="center"
                     style={{
