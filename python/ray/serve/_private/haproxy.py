@@ -62,6 +62,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
     RAY_SERVE_HAPROXY_NBTHREAD,
+    RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT,
+    RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED,
     RAY_SERVE_HAPROXY_RETRIES,
     RAY_SERVE_HAPROXY_RETRY_ON,
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
@@ -651,6 +653,9 @@ class HAProxyConfig:
     hard_stop_after_s: Optional[int] = RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S
     # See RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S.
     close_spread_time_s: Optional[int] = RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S
+    # See RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED.
+    observe_mark_down_enabled: bool = RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED
+    observe_error_limit: int = RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False

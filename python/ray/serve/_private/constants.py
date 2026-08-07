@@ -896,6 +896,21 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
     "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
 )
 
+# Adds `observe layer4 error-limit <N> on-error mark-down` to replica servers:
+# live traffic marks a dead server DOWN (no health checker needed) and
+# redispatch + the `backup` fallback take over. Health checks revive a false
+# positive in ~0.5s. Backup/fallback servers are never observed.
+RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED = get_env_bool(
+    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "0"
+)
+
+# Consecutive observed layer4 errors before a server is marked DOWN. Only
+# used when RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED is set; a successful
+# connection resets the counter.
+RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT = get_env_int_positive(
+    "RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT", 3
+)
+
 # The balancing algorithm to use in HAProxy backends. Default is leastconn.
 RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
     "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
