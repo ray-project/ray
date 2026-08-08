@@ -111,6 +111,11 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
     core_worker->object_freed_callback_thread_.join();
   }
 
+  core_worker->object_free_rpc_service_.stop();
+  if (core_worker->object_free_rpc_thread_.joinable()) {
+    core_worker->object_free_rpc_thread_.join();
+  }
+
   core_worker->core_worker_server_->Shutdown();
 
   // GCS client is safe to disconnect now that io_service has stopped.
