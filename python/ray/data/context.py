@@ -281,6 +281,25 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
 
+# An operator is denied additional shared object-store budget once its usage
+# exceeds this multiple of its total reservation. The >1x headroom absorbs the
+# legitimate overshoot from downstream buffers being attributed back to upstream
+# under steady load; only clearly runaway ops are throttled. Defaults to None
+# (feature disabled -- preserves legacy behavior); only engages when explicitly
+# set by the user or via the env var.
+DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO = env_float(
+    "RAY_DATA_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO", None
+)
+
+# The overshoot throttle above only engages once the global object store is at
+# least this fraction of its limit. Below it the pool isn't under pressure, so a
+# single op running over its per-op slice isn't compounding toward collapse and
+# throttling it would only slow the pipeline. Defaults to None (no pressure gate:
+# the overshoot ratio alone decides).
+DEFAULT_OBJECT_STORE_POOL_PRESSURE_FRACTION = env_float(
+    "RAY_DATA_OBJECT_STORE_POOL_PRESSURE_FRACTION", None
+)
+
 DEFAULT_MAX_ERRORED_BLOCKS = 0
 
 # Use this to prefix important warning messages for the user.
@@ -675,6 +694,17 @@ class DataContext:
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        object_store_reservation_overshoot_ratio: An operator is denied additional
+            shared object-store budget once its usage exceeds this multiple of its
+            total reservation. The headroom above 1x absorbs the legitimate overshoot
+            from downstream buffers attributed back to upstream under steady load.
+            Defaults to None, which disables the throttle (legacy behavior); only
+            engages when set.
+        object_store_pool_pressure_fraction: The overshoot throttle only engages once
+            the global object store is above this fraction of its limit. Below it the
+            pool isn't under pressure and throttling would only slow the pipeline.
+            Defaults to None, which skips the pressure gate so the overshoot ratio
+            alone decides.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
@@ -943,6 +973,12 @@ class DataContext:
     max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+    object_store_reservation_overshoot_ratio: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO
+    object_store_pool_pressure_fraction: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_POOL_PRESSURE_FRACTION
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
     log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION

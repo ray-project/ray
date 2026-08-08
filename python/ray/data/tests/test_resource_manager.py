@@ -3,7 +3,7 @@ import time
 from collections import defaultdict
 from datetime import timedelta
 from typing import Any, Dict, Optional
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from freezegun import freeze_time
@@ -129,6 +129,30 @@ def _resource_manager_for_limits_only_test(
         DataContext.get_current(),
         BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
     )
+
+
+def _build_reservation_allocator(num_map_ops, ctx=None):
+    """Build a real ``ResourceManager`` over a linear chain of ``num_map_ops`` map
+    operators fed by an ``InputDataBuffer``.
+
+    Returns ``(resource_manager, topo, map_ops)``, where ``map_ops`` is ordered
+    upstream -> downstream and excludes the input buffer.
+    """
+    ctx = ctx or DataContext.get_current()
+    op = InputDataBuffer(ctx, [])
+    map_ops = []
+    for _ in range(num_map_ops):
+        op = mock_map_op(op)
+        map_ops.append(op)
+    topo = build_streaming_topology(op, ExecutionOptions(), noop_counter())
+    resource_manager = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(),
+        ctx,
+        BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+    )
+    return resource_manager, topo, map_ops
 
 
 class TestResourceManager:
@@ -820,6 +844,75 @@ class TestOutputBackpressureGuard:
         topo[o3].total_enqueued_input_blocks = MagicMock(return_value=0)
         assert guard.should_unblock(o2) is True
 
+    def test_no_unblock_when_downstream_blocked_on_object_store(
+        self, restore_data_context
+    ):
+        """Case 1 must NOT relax output backpressure when the downstream op
+        can't schedule because its object-store *output* budget is exhausted.
+
+        Relaxing lets upstream produce more output, pushing object-store usage
+        further past the limit while downstream still can't run (the steady-state
+        overshoot). It should keep backpressure and fall back to the idle
+        detector. When downstream is blocked on CPU/GPU instead, relaxing frees
+        upstream resources and the original liveness behavior is preserved.
+        """
+        resource_manager, topo, (o2, o3) = _build_reservation_allocator(2)
+        guard = OutputBackpressureGuard(topo, resource_manager)
+        o3.num_active_tasks = MagicMock(return_value=0)
+        guard._idle_detector.detect_idle = MagicMock(return_value=False)
+
+        # Downstream cannot submit a new task.
+        resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+            return_value=False
+        )
+
+        # ...because its object-store output budget is exhausted -> keep
+        # backpressure (fall back to idle detector, which returns False here).
+        resource_manager.op_resource_allocator.is_task_submission_blocked_on_object_store = MagicMock(  # noqa: E501
+            return_value=True
+        )
+        assert guard.should_unblock(o2) is False
+
+        # ...because of CPU/GPU (not object store) -> relax to free upstream
+        # resources, preserving the original deadlock-prevention behavior.
+        resource_manager.op_resource_allocator.is_task_submission_blocked_on_object_store = MagicMock(  # noqa: E501
+            return_value=False
+        )
+        assert guard.should_unblock(o2) is True
+
+    def test_is_task_submission_blocked_on_object_store(self, restore_data_context):
+        """The allocator predicate reports True only when the op's object-store
+        output budget is below its per-task pending output estimate."""
+        resource_manager, _, map_ops = _build_reservation_allocator(2)
+        o3 = map_ops[-1]
+        alloc = resource_manager.op_resource_allocator
+
+        alloc._op_budgets[o3] = ExecutionResources(object_store_memory=100)
+
+        # ``obj_store_mem_max_pending_output_per_task`` is a read-only property
+        # on OpRuntimeMetrics, so patch it at the class level.
+        with patch.object(
+            type(o3.metrics),
+            "obj_store_mem_max_pending_output_per_task",
+            new_callable=PropertyMock,
+        ) as mock_metric:
+            # budget (100) >= per-task pending output (50) -> not blocked.
+            mock_metric.return_value = 50
+            assert alloc.is_task_submission_blocked_on_object_store(o3) is False
+
+            # budget (100) < per-task pending output (150) -> blocked.
+            mock_metric.return_value = 150
+            assert alloc.is_task_submission_blocked_on_object_store(o3) is True
+
+            # No output produced yet -> estimate is None -> threshold 0 -> not
+            # blocked (matches can_submit_new_task's ``... or 0`` semantics).
+            mock_metric.return_value = None
+            assert alloc.is_task_submission_blocked_on_object_store(o3) is False
+
+        # Op has no budget entry (unlimited budget) -> not blocked.
+        del alloc._op_budgets[o3]
+        assert alloc.is_task_submission_blocked_on_object_store(o3) is False
+
     def test_unblock_backpressure_fallback_to_idle_detector(self, restore_data_context):
         """When unblock conditions not met, falls back to idle detector result."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -915,6 +1008,113 @@ class TestIdleDetector:
             # After output, wait for interval with no new output - returns True (idle again)
             frozen.tick(timedelta(seconds=idle_detector.DETECTION_INTERVAL_S + 1))
             assert idle_detector.detect_idle(op) is True
+
+
+class TestReservationOpResourceAllocator:
+    """Tests for ReservationOpResourceAllocator's object-store budget throttle."""
+
+    def test_is_op_over_reserved_on_object_store(self, restore_data_context):
+        """The shared-pool throttle denies additional object store memory to an
+        operator only when both the per-op overshoot ratio AND global pool
+        pressure conditions are met."""
+        resource_manager, _, map_ops = _build_reservation_allocator(2)
+        o2 = map_ops[0]
+        alloc = resource_manager.op_resource_allocator
+
+        # Setup: give o2 a reservation of 100 bytes object store memory.
+        alloc._op_reserved[o2] = ExecutionResources(
+            cpu=1, gpu=0, object_store_memory=80
+        )
+        alloc._reserved_for_op_outputs[o2] = 20.0
+
+        # --- Feature off (default None) → always False ---
+        assert alloc._object_store_reservation_overshoot_ratio is None
+        resource_manager._op_usages[o2] = ExecutionResources(object_store_memory=300)
+        assert not alloc._is_op_over_reserved_on_object_store(o2)
+
+        # --- Enable ratio=1.5 only, pressure=None → feature still off ---
+        alloc._object_store_reservation_overshoot_ratio = 1.5
+        alloc._object_store_pool_pressure_fraction = None
+
+        # Both thresholds must be set for the throttle to engage.
+        resource_manager._op_usages[o2] = ExecutionResources(object_store_memory=200)
+        assert not alloc._is_op_over_reserved_on_object_store(o2)
+
+        # --- Enable pressure gate (fraction=0.8) → both thresholds set ---
+        alloc._object_store_pool_pressure_fraction = 0.8
+
+        # Usage 120 ≤ 1.5 * 100 → not over reserved (ratio not exceeded).
+        resource_manager._op_usages[o2] = ExecutionResources(object_store_memory=120)
+        resource_manager._global_limits = ExecutionResources(object_store_memory=1000)
+        resource_manager._global_limits_last_update_time = time.time()
+        resource_manager._global_usage = ExecutionResources(object_store_memory=900)
+        assert not alloc._is_op_over_reserved_on_object_store(o2)
+
+        # Usage 200 > 1.5 * 100, but pool NOT under pressure (5%) → False.
+        resource_manager._op_usages[o2] = ExecutionResources(object_store_memory=200)
+        resource_manager._global_usage = ExecutionResources(object_store_memory=50)
+        assert not alloc._is_op_over_reserved_on_object_store(o2)
+
+        # Pool IS under pressure (usage 900 / limit 1000 = 90% > 80%) → True.
+        resource_manager._global_usage = ExecutionResources(object_store_memory=900)
+        assert alloc._is_op_over_reserved_on_object_store(o2)
+
+        # Global limit unknown (<=0): pressure can't be measured, so the guard
+        # short-circuits to throttling the already-over-ratio op.
+        resource_manager._global_limits = ExecutionResources(object_store_memory=0)
+        resource_manager._global_limits_last_update_time = time.time()
+        assert alloc._is_op_over_reserved_on_object_store(o2)
+
+        # --- Edge case: total_reserved_os == 0 → never penalize ---
+        alloc._op_reserved[o2] = ExecutionResources(cpu=1, gpu=0, object_store_memory=0)
+        alloc._reserved_for_op_outputs[o2] = 0.0
+        resource_manager._op_usages[o2] = ExecutionResources(object_store_memory=9999)
+        assert not alloc._is_op_over_reserved_on_object_store(o2)
+
+    def test_update_budgets_splits_shared_evenly_when_op_over_reserved(
+        self, restore_data_context
+    ):
+        """Regression: when an op is filtered out as over-reserved, the remaining
+        shared pool must be split *evenly* among the surviving ops. A prior
+        version skipped over-reserved ops with ``continue`` inside the allocation
+        loop, leaving the sliding-fraction divisor misaligned so upstream ops
+        received a disproportionately larger share.
+        """
+        resource_manager, _, (o2, o3, o4) = _build_reservation_allocator(3)
+        alloc = resource_manager.op_resource_allocator
+        eligible = [o2, o3, o4]
+
+        # Drive the shared-allocation loop directly: bypass reservation
+        # recomputation and give every op an equal, generous reservation so no
+        # borrow/cap fires. Zero usage keeps ``remaining_shared == _total_shared``.
+        alloc._update_reservation = MagicMock(return_value=ExecutionResources.zero())
+        alloc._get_eligible_ops = MagicMock(return_value=eligible)
+        alloc._total_shared = ExecutionResources(object_store_memory=900)
+        resource_manager.get_mem_op_internal = MagicMock(return_value=0)
+        resource_manager.get_mem_op_outputs = MagicMock(return_value=0)
+        resource_manager.get_op_usage = MagicMock(
+            return_value=ExecutionResources.zero()
+        )
+        for op in eligible:
+            alloc._op_reserved[op] = ExecutionResources(object_store_memory=100)
+            alloc._reserved_for_op_outputs[op] = 0.0
+            op.min_scheduling_resources = MagicMock(
+                return_value=ExecutionResources.zero()
+            )
+
+        # The middle op is over its reservation → excluded from the shared split.
+        alloc._is_op_over_reserved_on_object_store = MagicMock(
+            side_effect=lambda op: op is o3
+        )
+
+        alloc.update_budgets(limits=ExecutionResources.zero())
+
+        # The two survivors split the 900 pool evenly (450 each on top of their
+        # 100 reservation); a skewed divisor would give upstream o2 more than o4.
+        assert alloc._op_budgets[o2].object_store_memory == 550
+        assert alloc._op_budgets[o4].object_store_memory == 550
+        # The over-reserved op keeps only its reservation, no shared bump.
+        assert alloc._op_budgets[o3].object_store_memory == 100
 
 
 if __name__ == "__main__":

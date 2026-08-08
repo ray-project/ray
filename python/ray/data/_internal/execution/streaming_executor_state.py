@@ -177,7 +177,18 @@ class OutputBackpressureGuard:
                 #
                 # In this case by relaxing output backpressure we allow upstream
                 # operator's task to complete sooner to free up resources.
+                #
+                # The exception is when downstream can't schedule specifically
+                # because its object-store *output* budget is exhausted.
+                # Relaxing frees the resources upstream *holds* (CPU/GPU/slots),
+                # but upstream completing only writes more output into the
+                # already-full store -- so it wouldn't unblock downstream and
+                # would push object-store usage further past the limit. In that
+                # case we keep backpressure and rely on the idle detector below
+                # as the bounded safety net for a genuine deadlock.
                 if not self._can_submit_new_task(downstream_op):
+                    if self._is_blocked_on_object_store(downstream_op):
+                        continue
                     return True
 
                 # Case 2: Downstream operator
@@ -204,6 +215,18 @@ class OutputBackpressureGuard:
         if not self._resource_manager.op_resource_allocator_enabled():
             return True
         return self._resource_manager.op_resource_allocator.can_submit_new_task(op)
+
+    def _is_blocked_on_object_store(self, op: PhysicalOperator) -> bool:
+        """Whether ``op`` can't submit a new task because its object-store
+        output budget is exhausted (rather than CPU/GPU or other resources).
+
+        Returns False when no op-level resource allocator is enabled -- there is
+        no object-store budget to be blocked on in that case.
+        """
+        if not self._resource_manager.op_resource_allocator_enabled():
+            return False
+        allocator = self._resource_manager.op_resource_allocator
+        return allocator.is_task_submission_blocked_on_object_store(op)
 
 
 class OpBufferQueue:
