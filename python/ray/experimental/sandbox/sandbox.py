@@ -6,6 +6,7 @@ from ray.experimental.sandbox.backend.base import (
     SandboxStatus,
 )
 from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.exceptions import SandboxNotFoundError
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
@@ -45,13 +46,13 @@ class Sandbox:
     ):
         env = env or {}
 
-        # Extract CPU and memory from Ray assigned resources to use in the runtime config
+        # Extract CPU and memory from Ray assigned resources if not explicitly provided
         try:
             assigned = ray.get_runtime_context().get_assigned_resources()
-            if "CPU" in assigned and assigned["CPU"] > 0:
+            if cpu <= 0 and "CPU" in assigned and assigned["CPU"] > 0:
                 cpu = float(assigned["CPU"])
 
-            if "memory" in assigned and assigned["memory"] > 0:
+            if (memory <= 0) and "memory" in assigned and assigned["memory"] > 0:
                 memory = int(assigned["memory"])
         except Exception:
             pass
@@ -91,7 +92,12 @@ class Sandbox:
 
     def get_config(self) -> SandboxConfig:
         """Get the sandbox configuration used by the runtime."""
-        return self.runtime._backend._sandbox_metadata[self.instance_id]["config"]
+        meta = self.runtime._backend._sandbox_metadata.get(self.instance_id)
+        if not meta:
+            raise SandboxNotFoundError(
+                f"Sandbox '{self.instance_id}' not found or already deleted."
+            )
+        return meta["config"]
 
     def exec(
         self,
@@ -127,6 +133,9 @@ class Sandbox:
 
     def delete(self) -> None:
         """Clean up and terminate the sandbox instance."""
+        if self._ttl_timer:
+            self._ttl_timer.cancel()
+            self._ttl_timer = None
         self.runtime.delete(self.instance_id)
 
     def terminate(self) -> None:

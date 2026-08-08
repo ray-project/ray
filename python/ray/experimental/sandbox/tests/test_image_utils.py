@@ -189,3 +189,48 @@ def test_pull_nonexistent_local_tar(tmp_path):
             images_dir=str(images_dir),
             timeout_seconds=5.0,
         )
+
+
+def test_extract_tar_layer_usr_merge(tmp_path):
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+
+    # Layer 1: create usr/bin directory and bin -> usr/bin symlink
+    buf1 = io.BytesIO()
+    with tarfile.open(fileobj=buf1, mode="w:gz") as tar:
+        t_usr_bin = tarfile.TarInfo("usr/bin")
+        t_usr_bin.type = tarfile.DIRTYPE
+        tar.addfile(t_usr_bin)
+
+        t_link = tarfile.TarInfo("bin")
+        t_link.type = tarfile.SYMTYPE
+        t_link.linkname = "usr/bin"
+        tar.addfile(t_link)
+
+        d1 = b"base_binary"
+        t1 = tarfile.TarInfo("usr/bin/base")
+        t1.size = len(d1)
+        tar.addfile(t1, io.BytesIO(d1))
+
+    extract_tar_layer(buf1.getvalue(), str(dest))
+    assert (dest / "bin").is_symlink()
+    assert (dest / "bin" / "base").read_bytes() == b"base_binary"
+
+    # Layer 2: contains a directory entry for bin/ and a new binary bin/app
+    buf2 = io.BytesIO()
+    with tarfile.open(fileobj=buf2, mode="w:gz") as tar:
+        t_bin = tarfile.TarInfo("bin")
+        t_bin.type = tarfile.DIRTYPE
+        tar.addfile(t_bin)
+
+        d2 = b"app_binary"
+        t2 = tarfile.TarInfo("bin/app")
+        t2.size = len(d2)
+        tar.addfile(t2, io.BytesIO(d2))
+
+    extract_tar_layer(buf2.getvalue(), str(dest))
+    # bin should remain a symlink to usr/bin and both binaries should be present
+    assert (dest / "bin").is_symlink()
+    assert (dest / "bin" / "base").read_bytes() == b"base_binary"
+    assert (dest / "usr" / "bin" / "app").read_bytes() == b"app_binary"
+    assert (dest / "bin" / "app").read_bytes() == b"app_binary"
