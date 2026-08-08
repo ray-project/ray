@@ -23,7 +23,16 @@ RUN <<EOF
 
 set -euo pipefail
 
-apt-get update -qq && apt-get upgrade -qq
+apt-get update -qq
+# Pin CUDA packages before upgrading. The base image ships a consistent CUDA
+# toolkit, but a blanket 'apt-get upgrade' pulls whatever cuda-compat / toolkit
+# version NVIDIA's mutable apt index currently advertises. That (a) 404s
+# transiently mid-rebuild when NVIDIA rotates a .deb, and (b) churns the
+# container's effective CUDA driver version (via cuda-compat forward-compat),
+# which can flip on NCCL's cuMem host path and break multi-GPU collectives on
+# non-P2P GPUs (CUDA error 217). See NVIDIA/nccl#1838.
+dpkg-query -W -f='${Package}\n' 'cuda-*' 2>/dev/null | xargs -r apt-mark hold || true
+apt-get upgrade -qq
 apt-get install -y -qq \
     curl python-is-python3 git build-essential \
     sudo zip unzip unrar apt-utils dialog tzdata wget rsync \
