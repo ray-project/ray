@@ -267,6 +267,73 @@ def test_construction_options_survive_pushdown(tmp_path, version: Optional[int])
     assert len(_paths(indexer, path, predicate=col("val") > lit(0))) == expected
 
 
+# ---------------------------------------------------------------------------
+# Add-action path resolution
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "table_uri,logged_path,expected,description",
+    [
+        (
+            "/tmp/tbl",
+            "part-0.parquet",
+            "/tmp/tbl/part-0.parquet",
+            "relative path joins onto the table root",
+        ),
+        (
+            "/tmp/tbl/",
+            "part-0.parquet",
+            "/tmp/tbl/part-0.parquet",
+            "a trailing slash on the root does not double up",
+        ),
+        (
+            "/tmp/tbl",
+            "grp=e%253Df/part-0.parquet",
+            "/tmp/tbl/grp=e%3Df/part-0.parquet",
+            "the log's encoding is undone exactly once",
+        ),
+        (
+            "/tmp/tbl",
+            "key=a%3Ab/part-0.parquet",
+            "/tmp/tbl/key=a:b/part-0.parquet",
+            "a colon inside a partition value is not a URI scheme",
+        ),
+        (
+            "s3://bucket/tbl",
+            "part-0.parquet",
+            "s3://bucket/tbl/part-0.parquet",
+            "relative path under a remote root",
+        ),
+        (
+            "/tmp/tbl",
+            "s3://other/key/part-0.parquet",
+            "s3://other/key/part-0.parquet",
+            "absolute URI stands alone rather than being prefixed",
+        ),
+        (
+            "/tmp/tbl",
+            "/mnt/other/part-0.parquet",
+            "/mnt/other/part-0.parquet",
+            "absolute filesystem path stands alone",
+        ),
+    ],
+)
+def test_resolve_file_uri(table_uri, logged_path, expected, description):
+    """Add-action paths are usually relative, but need not be.
+
+    The Delta protocol permits an absolute URI or path -- shallow clones and
+    externally managed files use that form. Joining ``s3://other/key`` onto a
+    local root produced ``/tmp/tbl/s3://other/key``, i.e. a file that does not
+    exist, so those are returned unchanged.
+    """
+    from ray.data._internal.datasource_v2.listing.delta_file_indexer import (
+        _resolve_file_uri,
+    )
+
+    assert _resolve_file_uri(table_uri, logged_path) == expected, description
+
+
 if __name__ == "__main__":
     import sys
 

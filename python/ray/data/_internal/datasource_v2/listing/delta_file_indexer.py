@@ -3,7 +3,7 @@
 import logging
 import posixpath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     FileChunker,
@@ -213,13 +213,36 @@ class DeltaFileIndexer(FileIndexer):
                 )
 
 
-def _resolve_file_uri(table_uri: str, relative_path: str) -> str:
-    """Join a log-recorded relative path onto the table URI.
+def _resolve_file_uri(table_uri: str, logged_path: str) -> str:
+    """Resolve a log-recorded add-action path against the table URI.
 
     Add actions store the path URL-encoded, while the object it names is not:
     a partition value of ``e=f`` is written to a directory called
     ``grp=e%3Df`` but recorded as ``grp=e%253Df``. Joining the raw value would
     produce a path that doesn't exist, so decode exactly once first. This
     reproduces ``DeltaTable.file_uris()`` without asking for a second listing.
+
+    The decoded path is usually relative to the table root, but the Delta
+    protocol also permits an absolute URI or absolute path -- shallow clones
+    and externally managed files use that form. Joining one of those onto the
+    root would either prefix it (``/table`` + ``s3://bucket/key``) or silently
+    drop the root, so absolute paths are returned as-is.
     """
-    return posixpath.join(table_uri.rstrip("/"), unquote(relative_path))
+    decoded = unquote(logged_path)
+    if _is_absolute_path(decoded):
+        return decoded
+    return posixpath.join(table_uri.rstrip("/"), decoded)
+
+
+def _is_absolute_path(path: str) -> bool:
+    """Whether a decoded add-action path stands on its own.
+
+    True for a POSIX absolute path and for anything carrying a URI scheme.
+    The scheme must be longer than one character so a Windows drive letter
+    (``C:/data``) is not mistaken for one; a relative Delta path can contain a
+    colon inside a partition value (``key=a:b/part-0.parquet``), but the text
+    before it is not a valid scheme, so ``urlparse`` reports none.
+    """
+    if path.startswith("/"):
+        return True
+    return len(urlparse(path).scheme) > 1
