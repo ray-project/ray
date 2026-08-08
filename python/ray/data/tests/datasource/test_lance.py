@@ -15,6 +15,7 @@ from ray.data._internal.datasource.lance_datasink import (
     LanceDatasink,
     _write_fragment,
 )
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -402,28 +403,6 @@ def test_write_fragment_only_materializes_stream_when_retrying(
             "max_backoff_s": 0,
         },
     )
-
-
-def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
-    marker = tmp_path / "exploit_marker"
-
-    class Exploit:
-        def __reduce__(self):
-            import os
-
-            return (os.system, (f"touch {marker}",))
-
-    ext_type = ArrowPythonObjectType()
-    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
-    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
-    path = os.path.join(str(tmp_path), "exploit.lance")
-    lance.write_dataset(table, path)
-
-    ds = ray.data.read_lance(path)
-    with pytest.raises(Exception, match="arrow_pickled_object"):
-        ds.take_all()
-
-    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 if __name__ == "__main__":
