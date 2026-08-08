@@ -15,7 +15,6 @@
 #pragma once
 
 #include <cstdint>
-#include <iterator>
 #include <optional>
 #include <type_traits>
 
@@ -47,9 +46,8 @@ void PopulateTaskDefinitionEvent(const TaskSpecification &task_spec,
   // Common fields
   definition_event_data.set_language(task_spec.GetLanguage());
   const auto &required_resources = task_spec.GetRequiredResources().GetResourceMap();
-  definition_event_data.mutable_required_resources()->insert(
-      std::make_move_iterator(required_resources.begin()),
-      std::make_move_iterator(required_resources.end()));
+  definition_event_data.mutable_required_resources()->insert(required_resources.begin(),
+                                                             required_resources.end());
   definition_event_data.set_serialized_runtime_env(
       task_spec.RuntimeEnvInfo().serialized_runtime_env());
   definition_event_data.set_job_id(job_id.Binary());
