@@ -5,6 +5,8 @@ from collections import defaultdict
 from threading import Lock
 from typing import Dict, List, Optional
 
+import requests
+
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import binary_to_hex, decode, hex_to_binary
@@ -41,8 +43,6 @@ class TaskEventsHeadClient:
     """
 
     def __init__(self, accessor: GlobalStateAccessor):
-        import requests
-
         self._accessor = accessor
         self._session = requests.Session()
         self._endpoint = None
@@ -70,8 +70,6 @@ class TaskEventsHeadClient:
         No ``limit`` is set, so the head returns everything in its store, matching the
         unbounded GCS ``GetAllTaskEvents`` path this replaces.
         """
-        import requests
-
         from ray._private.authentication.http_token_authentication import (
             format_authentication_http_error,
             get_auth_headers_if_auth_enabled,
