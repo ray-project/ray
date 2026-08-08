@@ -177,21 +177,60 @@ _LOGGED_NATIVE_ACTIVE = False
 # bytes (not a fixed row count) keeps the transient working set flat across
 # schemas: a wide file gets few rows/batch, a narrow file gets many. Kept far
 # below ``target_block_size`` so the decode transient is bounded while output
-# blocks are still coalesced to the normal Ray block size. Default 2 MiB: the
-# standalone benchmark found budget is the *floor* knob (it moves peak only ~12 MB
-# across its range; the S3 fetch window is the real lever), and 2 MiB is the lowest
-# that holds throughput — so we take the smaller working set. Swept on the Linux/S3
-# run to confirm it holds under real integration (Agents.md §7.1).
-# Tuning: raise toward 8–32 MiB only if per-batch overhead shows up on very
-# wide/stringy schemas; lowering below 2 MiB buys ~no memory (the fetch
-# window / block buffer dominate peak) and costs throughput.
+# blocks are still coalesced to the normal Ray block size.
+#
+# Default 32 MiB, raised from 2 MiB after the 2026-08-07 Linux + real-S3 sweep
+# (arrow_rs_docs/regression_testing.md §8.2). The old default came from the
+# standalone benchmark, where the budget looked like a pure floor knob — it moved
+# peak RSS only ~12 MB across its range, so the smallest value that still held
+# throughput was the obvious pick. **Inside Ray that reasoning inverts.** Sweeping
+# the budget on ``write_parquet`` over S3, per-task USS and wall time as a ratio of
+# PyArrow's:
+#
+#     budget    avg USS    max USS    wall
+#      2 MiB      1.00x      1.47x    0.99x   <- the old default, worst on 2 of 3
+#     32 MiB      0.83x      1.03x    0.87x   <- better on all three
+#    128 MiB      0.90x      1.29x    1.28x
+#
+# 32 / 64 / 128 MiB agree within 4% on memory, so 32 is a knee and not a sharp
+# optimum; it also wins on the local-disk arm (0.81 / 0.81 / 0.93).
+#
+# Why small batches cost *more* is NOT established. The leading suspect is that
+# handing Ray's block builder many sub-block batches forces an accumulate-then-
+# concatenate that needs inputs and output alive together — but the sweep that
+# would show it (exp6 phase B) ran with a write fused onto the read, and the writer
+# was holding 589 MiB, so it could not have seen an effect this size (§8.9.1). The
+# default change rests on the measurement above, not on that explanation.
+#
+# Note the 2048-row floor below can void this knob entirely: it only binds below
+# ~1 KiB/row (2 MiB / 2048 rows). At 32 MiB it binds up to ~16 KiB/row, so this
+# also widens the range of schemas over which the knob does anything at all.
+# Tuning: 32-128 MiB are within noise of each other on memory; go below 8 MiB only
+# to reproduce the pre-2026-08 behaviour.
 _ARROW_RS_DECODE_BUDGET_BYTES = env_integer(
-    "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES", 2 * MiB
+    "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES", 32 * MiB
 )
 
 # Floor on the estimated decode batch size (rows), so a very wide schema can't
 # collapse the batch to a handful of rows and starve throughput.
 _ARROW_RS_MIN_DECODE_BATCH_ROWS = 2048
+
+# Was ``RAY_DATA_READ_FILES_NUM_THREADS`` set explicitly? This reader defaults the
+# fragment pool to 1 (see ``_num_fragment_read_threads``), but an explicit value
+# must still win — and ``env_integer`` cannot distinguish "4 because the user asked
+# for 4" from "4 because that is the fallback". Read once at import so that mutating
+# the environment after import has no effect, matching how the base reader's own
+# module-level knobs behave.
+#
+# The base no longer reads this variable at all: the footer-chunking path deleted
+# ``_DEFAULT_NUM_THREADS`` and goes one-worker-per-fragment, unbounded. So deferring
+# to ``super()`` would silently *ignore* an explicit setting rather than honour it,
+# which would also break the benchmark harness, whose thread sweep sets exactly this
+# variable. We therefore resolve the value here instead of delegating.
+_READ_FILES_NUM_THREADS_IS_EXPLICIT = "RAY_DATA_READ_FILES_NUM_THREADS" in os.environ
+_READ_FILES_NUM_THREADS_EXPLICIT_VALUE = env_integer(
+    "RAY_DATA_READ_FILES_NUM_THREADS", 1
+)
 
 # Knob ``arrow_rs_k`` — crate arg ``k``.
 # Intra-fragment parallelism: when a fragment is a *single* row group larger than
@@ -692,9 +731,61 @@ class ArrowRsParquetFileReader(ParquetFileReader):
     """Parquet reader that decodes each fragment via the arrow-rs extension.
 
     See the module docstring for the design. Only :meth:`_iter_fragment_tables`,
-    :meth:`_resolve_batch_size`, and :meth:`_on_batch_read` are overridden; the
-    rest of the read pipeline is inherited from :class:`ParquetFileReader`.
+    :meth:`_resolve_batch_size`, :meth:`_num_fragment_read_threads`, and
+    :meth:`_on_batch_read` are overridden; the rest of the read pipeline is
+    inherited from :class:`ParquetFileReader`.
     """
+
+    @override
+    def _num_fragment_read_threads(self, num_fragments: int) -> int:
+        """One. This reader already parallelises *inside* a fragment.
+
+        Ray decodes fragments concurrently per read task to overlap
+        remote-filesystem latency — one worker per fragment, unbounded, on the
+        footer-chunking base path (it was ``RAY_DATA_READ_FILES_NUM_THREADS``,
+        default 4, before that env var and its cap were deleted upstream). That is
+        the right default for the PyArrow reader, whose per-fragment decode gives a
+        task no parallelism of its own. The arrow-rs path already overlaps fetch
+        with decode inside a single fragment — via the byte-budgeted prefetch loop
+        on S3, and ``k`` row-range workers on a lone big row group — so the pool
+        adds no throughput and multiplies the working set by the number of
+        fragments it holds in flight.
+
+        Measured 2026-08-07 (arrow_rs_docs/regression_testing.md §8.6, §8.9.4),
+        per-task USS at threads=1 vs threads=4:
+
+            transport   thr=1    thr=4    saved   wall cost
+            local        213 MiB  309 MiB   96 MiB    0.95x
+            s3           837 MiB  880 MiB   44 MiB    0.98x
+
+        Serial is free on time — 0.95-1.02x across every read-task size tried,
+        including tasks holding 49 fragments — so this is not a memory/throughput
+        trade. The PyArrow arm is the control and moves the other way (it *gains*
+        18 MiB from serialising on S3), which is what establishes that the cost is
+        the crate's per-in-flight-fragment retention rather than Ray's queueing.
+
+        Note this returns a value that changes the code *path*, not just the worker
+        count: ``_dispatch_fragment_reads`` takes the sequential branch on
+        ``num_workers <= 1`` and never constructs ``make_async_gen``. That is also
+        why the saving is not linear in threads — most of the 96 MiB arrives when
+        going from one worker to two, because the second worker buys a concurrent
+        decode and the whole queue apparatus at once.
+
+        An explicit ``RAY_DATA_READ_FILES_NUM_THREADS`` still wins: a user who set
+        it meant it, and the benchmark harness sweeps it.
+
+        **The comparison basis moved and this number has not been re-measured.**
+        The table above is 1 against 4. The base is now one worker per fragment,
+        *unbounded*, so on a bin holding many fragments the gap this override closes
+        is larger than 96 MiB and its wall-time cost is no longer bounded by the
+        4-thread result. Re-measure before treating 1 as settled — the direction is
+        very likely still right (the mechanism is per-in-flight-fragment retention,
+        which unbounded threads make worse, not better) but the magnitude is unknown.
+        Tracked as TODO 1t.
+        """
+        if _READ_FILES_NUM_THREADS_IS_EXPLICIT:
+            return _READ_FILES_NUM_THREADS_EXPLICIT_VALUE
+        return 1
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:

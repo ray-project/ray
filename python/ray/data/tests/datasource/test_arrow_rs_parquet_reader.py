@@ -2637,6 +2637,140 @@ def test_unified_only_column_not_dropped_natively(tmp_path, monkeypatch):
     assert rs.sort_by("id").equals(pa_tbl.sort_by("id"))
 
 
+def _dispatch_two_fragments(reader, monkeypatch):
+    """Run ``_dispatch_fragment_reads`` over two stub fragments, reporting whether
+    the concurrent path was taken.
+
+    Asserting on ``_num_fragment_read_threads()`` alone would be too weak: the
+    value it returns changes the code *path*, because ``num_workers <= 1`` returns
+    early into ``_read_fragments_sequential`` and ``make_async_gen`` is never
+    constructed. A future refactor could keep the number and lose the branch. So
+    spy on ``make_async_gen`` at the module where it is looked up.
+    """
+    from ray.data._internal.datasource_v2.readers import file_reader as fr_mod
+
+    used = {"async": False}
+    orig = fr_mod.make_async_gen
+
+    def spy(*a, **k):
+        used["async"] = True
+        return orig(*a, **k)
+
+    monkeypatch.setattr(fr_mod, "make_async_gen", spy)
+    # Two fragments, so min(threads, len(fragments)) cannot clamp the pool to 1
+    # for the unrelated reason that there was nothing to parallelise.
+    monkeypatch.setattr(
+        type(reader),
+        "_iter_fragment_tables",
+        lambda self, frag, kwargs: iter([pa.table({"id": [1]})]),
+        raising=True,
+    )
+
+    class _Frag:
+        path = "stub.parquet"
+
+    tables = list(reader._dispatch_fragment_reads([(_Frag(), 0), (_Frag(), 1)], {}))
+    return used["async"], tables
+
+
+def test_arrow_rs_defaults_one_fragment_thread(monkeypatch):
+    """The arrow-rs reader decodes fragments SEQUENTIALLY by default; the PyArrow
+    reader still uses the pool.
+
+    Ray decodes fragments concurrently per read task to hide remote-filesystem
+    latency — one worker per fragment, unbounded, on the footer-chunking base path.
+    The arrow-rs path already overlaps fetch with decode inside one fragment, so the
+    pool buys no throughput and multiplies the working set: measured 2026-08-07,
+    threads=1 saved 96 MiB per task on local disk and 44 MiB on S3 at 0.95-1.02x wall
+    against the then-current 4-thread cap
+    (arrow_rs_docs/regression_testing.md §8.6, §8.9.4). The PyArrow arm is the
+    control and must be unaffected — this is a per-reader default, not a change to
+    Ray's.
+
+    The assertion on the PyArrow arm is deliberately ``>= len(fragments)`` rather
+    than a literal: the base is now unbounded, so pinning a number here would fail
+    the moment the fragment count changes and would also have hidden the regression
+    this test exists to catch (a cap leaking back onto the base path).
+    """
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
+        ArrowRsParquetFileReader,
+    )
+    from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
+        ParquetFileReader,
+    )
+
+    kwargs = dict(filesystem=LocalFileSystem(), target_block_size=128 * 1024 * 1024)
+
+    rs_reader = ArrowRsParquetFileReader(**kwargs)
+    assert rs_reader._num_fragment_read_threads(2) == 1
+    used_async, tables = _dispatch_two_fragments(rs_reader, monkeypatch)
+    assert not used_async, "arrow-rs took the concurrent path; the pool is back"
+    assert len(tables) == 2, "sequential path dropped fragments"
+
+    pa_reader = ParquetFileReader(**kwargs)
+    # Unbounded on the base path: one worker per fragment.
+    assert pa_reader._num_fragment_read_threads(2) == 2
+    assert pa_reader._num_fragment_read_threads(17) == 17
+    used_async, tables = _dispatch_two_fragments(pa_reader, monkeypatch)
+    assert used_async, "the PyArrow reader lost its fragment pool"
+    assert len(tables) == 2
+
+
+def test_explicit_num_threads_env_overrides_arrow_rs_default(monkeypatch):
+    """An explicitly set ``RAY_DATA_READ_FILES_NUM_THREADS`` beats the per-reader
+    default of 1 — a user who set it meant it, and the benchmark harness sweeps it.
+
+    Both the env read and the "was it explicit?" flag happen at import time, so this
+    patches the two module attributes rather than ``os.environ``.
+
+    This reader resolves the value itself rather than delegating to ``super()``. It
+    has to: the footer-chunking base path deleted ``_DEFAULT_NUM_THREADS`` and no
+    longer reads ``RAY_DATA_READ_FILES_NUM_THREADS`` at all, so delegating would
+    silently ignore an explicit setting — and the benchmark harness's thread sweep
+    sets exactly this variable, so that failure would be invisible and would corrupt
+    a whole sweep into flat lines.
+    """
+    from pyarrow.fs import LocalFileSystem
+
+    from ray.data._internal.datasource_v2.readers import (
+        arrow_rs_parquet_file_reader as rs_mod,
+    )
+
+    monkeypatch.setattr(rs_mod, "_READ_FILES_NUM_THREADS_IS_EXPLICIT", True)
+    monkeypatch.setattr(rs_mod, "_READ_FILES_NUM_THREADS_EXPLICIT_VALUE", 4)
+
+    reader = rs_mod.ArrowRsParquetFileReader(
+        filesystem=LocalFileSystem(), target_block_size=128 * 1024 * 1024
+    )
+    # 4 regardless of the fragment count — an explicit setting is a cap, and it must
+    # not be widened by the base's unbounded default.
+    assert reader._num_fragment_read_threads(2) == 4
+    assert reader._num_fragment_read_threads(64) == 4
+
+
+def test_arrow_rs_decode_budget_default_is_32_mib():
+    """Pin the default. It moved 2 -> 32 MiB on measurement
+    (arrow_rs_docs/regression_testing.md §8.2: 0.83x avg USS / 1.03x max / 0.87x
+    wall against PyArrow, where 2 MiB gave 1.00x / 1.47x / 0.99x), and 2 MiB is
+    also below the 2048-row batch floor for any schema wider than ~1 KiB/row, which
+    made the knob inert exactly where memory matters most. A silent revert would
+    reintroduce the regression with no test failing.
+    """
+    from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
+        _ARROW_RS_DECODE_BUDGET_BYTES,
+        _ARROW_RS_MIN_DECODE_BATCH_ROWS,
+    )
+
+    if "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES" in os.environ:
+        pytest.skip("default overridden in the environment")
+    assert _ARROW_RS_DECODE_BUDGET_BYTES == 32 * 1024 * 1024
+    # The budget only binds below budget/floor bytes per row; at 32 MiB that is
+    # ~16 KiB/row instead of 2 MiB's ~1 KiB/row.
+    assert _ARROW_RS_DECODE_BUDGET_BYTES / _ARROW_RS_MIN_DECODE_BATCH_ROWS > 8 * 1024
+
+
 if __name__ == "__main__":
     import sys
 

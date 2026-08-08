@@ -452,6 +452,29 @@ class FileReader(Reader[FileManifest]):
         fragments_with_offsets = self._get_fragments_to_read(dataset, manifest)
         yield from self._dispatch_fragment_reads(fragments_with_offsets, scanner_kwargs)
 
+    def _num_fragment_read_threads(self, num_fragments: int) -> int:
+        """How many fragments this reader decodes concurrently within one read task.
+
+        Overridable because the right answer is reader-specific rather than a
+        property of the file format. PyArrow's per-fragment decode gives a read
+        task no intra-task parallelism of its own, so this pool is the only source
+        of it; a reader that already parallelises *inside* a fragment gets nothing
+        from the pool but still pays for every fragment it keeps in flight. See
+        ``ArrowRsParquetFileReader._num_fragment_read_threads``.
+
+        Returning 1 is not merely "less concurrency": ``_dispatch_fragment_reads``
+        takes the sequential branch and ``make_async_gen`` is never constructed at
+        all.
+
+        The base returns ``num_fragments`` — one worker per fragment, unbounded —
+        which is exactly what the footer-chunking base path does inline. It takes
+        the count as an argument for that reason: "unbounded" is not expressible as
+        a constant, and the previous ``_DEFAULT_NUM_THREADS`` (4) no longer exists
+        upstream. Hard-coding any cap here would quietly throttle the PyArrow path
+        below its own default and bias every A/B against it.
+        """
+        return num_fragments
+
     def _dispatch_fragment_reads(
         self,
         fragments_with_offsets: List[Tuple[pds.Fragment, int]],
@@ -470,7 +493,10 @@ class FileReader(Reader[FileManifest]):
             return
 
         ctx = DataContext.get_current()
-        num_workers = len(fragments_with_offsets)
+        num_workers = min(
+            self._num_fragment_read_threads(len(fragments_with_offsets)),
+            len(fragments_with_offsets),
+        )
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
                 iter(fragments_with_offsets), scanner_kwargs
