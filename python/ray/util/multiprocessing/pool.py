@@ -8,6 +8,7 @@ import queue
 import sys
 import threading
 import time
+import weakref
 from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
@@ -16,11 +17,15 @@ from ray._common.usage import usage_lib
 from ray.util import log_once
 
 try:
-    from joblib._parallel_backends import SafeFunction
     from joblib.parallel import BatchedCalls, parallel_backend
 except ImportError:
     BatchedCalls = None
     parallel_backend = None
+
+try:
+    from joblib._parallel_backends import SafeFunction
+except ImportError:
+    # SafeFunction is a legacy compatibility wrapper removed in Joblib 1.5.
     SafeFunction = None
 
 
@@ -214,7 +219,9 @@ class ResultThread(threading.Thread):
         self._single_result = single_result
         self._callback = callback
         self._error_callback = error_callback
-        self._total_object_refs = total_object_refs or len(object_refs)
+        self._total_object_refs = (
+            len(object_refs) if total_object_refs is None else total_object_refs
+        )
         self._indices = {}
         # Thread-safe queue used to add ObjectRefs to fetch after creating
         # this thread (used to lazily submit for imap and imap_unordered).
@@ -229,6 +236,12 @@ class ResultThread(threading.Thread):
 
     def add_object_ref(self, object_ref):
         self._new_object_refs.put(object_ref)
+
+    def finish(self, total_object_refs):
+        self._total_object_refs = total_object_refs
+        # Wake the thread if it is waiting for its first dynamically submitted
+        # ObjectRef (including the empty-iterable case).
+        self._new_object_refs.put(self.END_SENTINEL)
 
     def run(self):
         unready = copy.copy(self._object_refs)
@@ -247,8 +260,12 @@ class ResultThread(threading.Thread):
                     new_object_ref = self._new_object_refs.get(block=block)
                     if new_object_ref is self.END_SENTINEL:
                         # Receiving the END_SENTINEL object is the signal to stop.
-                        # Store the total number of objects.
-                        self._total_object_refs = len(self._object_refs)
+                        # Store the total number of objects unless the producer
+                        # already supplied it before all refs were dispatched.
+                        if self._total_object_refs == float("inf"):
+                            self._total_object_refs = len(self._object_refs)
+                        if self._num_ready >= self._total_object_refs:
+                            return
                     else:
                         self._add_object_ref(new_object_ref)
                         unready.append(new_object_ref)
@@ -330,13 +347,33 @@ class AsyncResult:
     """
 
     def __init__(
-        self, chunk_object_refs, callback=None, error_callback=None, single_result=False
+        self,
+        chunk_object_refs,
+        callback=None,
+        error_callback=None,
+        single_result=False,
+        total_object_refs=None,
+        pool=None,
     ):
         self._single_result = single_result
+        # Hold a strong reference to the pool so it cannot be garbage
+        # collected while submitted work is still in flight. Submission is
+        # asynchronous (a dispatcher thread hands batches to actors), so
+        # without this a pattern like ``Pool(2).apply_async(f, (x,)).get()``
+        # could drop the pool before the dispatcher drains its queue, silently
+        # abandoning the work. Released once the result is ready in ``get``.
+        self._pool = pool
         self._result_thread = ResultThread(
-            chunk_object_refs, single_result, callback, error_callback
+            chunk_object_refs,
+            single_result,
+            callback,
+            error_callback,
+            total_object_refs=total_object_refs,
         )
         self._result_thread.start()
+
+    def add_object_ref(self, object_ref):
+        self._result_thread.add_object_ref(object_ref)
 
     def wait(self, timeout: Optional[float] = None):
         """
@@ -353,6 +390,10 @@ class AsyncResult:
         self.wait(timeout)
         if self._result_thread.is_alive():
             raise TimeoutError
+
+        # The result is ready, so the submitted work no longer needs the pool
+        # to be kept alive; release the reference held for it.
+        self._pool = None
 
         results = []
         for batch in self._result_thread.results():
@@ -421,7 +462,6 @@ class IMapIterator:
         if self._finished_iterating:
             return
 
-        actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
         chunk_iterator = itertools.islice(self._iterator, self._chunksize)
 
         # Check whether we have run out of samples.
@@ -431,19 +471,25 @@ class IMapIterator:
             # Reached end of self._iterator
             self._finished_iterating = True
             if len(chunk_list) == 0:
+                self._result_thread.finish(len(self._submitted_chunks))
                 # Nothing to do, return.
                 return
         chunk_iterator = iter(chunk_list)
 
-        new_chunk_id = self._pool._submit_chunk(
-            self._func, chunk_iterator, self._chunksize, actor_index
+        final_chunk = self._finished_iterating
+
+        def add_object_ref(object_ref):
+            self._result_thread.add_object_ref(object_ref)
+            if final_chunk:
+                self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
+
+        self._pool._submit_chunk(
+            self._func,
+            chunk_iterator,
+            self._chunksize,
+            add_object_ref=add_object_ref,
         )
         self._submitted_chunks.append(False)
-        # Wait for the result
-        self._result_thread.add_object_ref(new_chunk_id)
-        # If we submitted the final chunk, notify the result thread
-        if self._finished_iterating:
-            self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
 
     def __iter__(self):
         return self
@@ -573,6 +619,24 @@ class Pool:
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
             the pool. See :func:`ray.remote` for details.
+        min_size: minimum number of actors to keep alive. Defaults to 0 (reap
+            all idle actors). Supplying this argument enables autoscaling.
+        max_size: maximum number of actors. Defaults to ``processes`` when it
+            is given, otherwise the number of cluster CPUs. May exceed the
+            current cluster CPUs; pending actors surface demand to the
+            autoscaler. Supplying this argument enables autoscaling.
+        initial_size: number of actors to pre-warm at startup. Defaults to 0
+            (fully lazy). Supplying this argument enables autoscaling.
+        idle_timeout_s: seconds an actor may be idle before being reaped.
+            Defaults to 60. Supplying this argument enables autoscaling.
+
+    By default the pool eagerly creates a fixed number of actors
+    (``processes``). Supplying any of ``min_size``, ``max_size``,
+    ``initial_size``, or ``idle_timeout_s`` instead creates an autoscaling
+    pool: actors request ``num_cpus=1`` so pending placements drive the
+    autoscaler, the pool grows on demand up to ``max_size``, and idle actors
+    are reaped down to ``min_size`` after ``idle_timeout_s``. Actors that
+    crash are replaced automatically in both modes.
     """
 
     def __init__(
@@ -584,6 +648,15 @@ class Pool:
         context: Any = None,
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        # Autoscaling (experimental). Supplying any of these four arguments
+        # enables autoscaling: the pool keeps warm actors and grows on demand
+        # (capped at max_size) instead of eagerly creating a fixed pool with
+        # a readiness barrier. Idle actors are reaped after idle_timeout_s
+        # down to min_size, so the cluster can scale back down.
+        min_size: Optional[int] = None,
+        max_size: Optional[int] = None,
+        initial_size: Optional[int] = None,
+        idle_timeout_s: Optional[float] = None,
     ):
         usage_lib.record_library_usage("util.multiprocessing.Pool")
 
@@ -594,9 +667,30 @@ class Pool:
         self._actor_deletion_ids = []
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []
         self._registry_hashable: Dict[Hashable, ray.ObjectRef] = {}
-        self._current_index = 0
         self._ray_remote_args = ray_remote_args or {}
         self._pool_actor = None
+
+        # Autoscaling is enabled when any size argument is supplied. The flag
+        # only gates construction-time behavior (num_cpus default, readiness
+        # barrier, validation); submission and actor lifecycle are identical
+        # in both modes. A fixed pool is simply an autoscaling pool with
+        # min_size == max_size == processes.
+        self._autoscale = any(
+            v is not None for v in (min_size, max_size, initial_size, idle_timeout_s)
+        )
+        self._min_size = 0 if min_size is None else min_size
+        self._idle_timeout_s = 60.0 if idle_timeout_s is None else idle_timeout_s
+        self._pool_lock = threading.Lock()
+        self._last_used: List[float] = []
+        self._ready_actor_indices = collections.deque()
+        self._starting_actor_refs = {}
+        self._running_actor_refs = {}
+        self._batch_queue = queue.Queue()
+        self._dispatcher_wakeup = threading.Event()
+        self._dispatcher_terminate = threading.Event()
+        self._dispatcher_thread: Optional[threading.Thread] = None
+        # Consecutive actor-startup failure budget; see _start_actor_pool.
+        self._startup_failures = 0
 
         if context and log_once("context_argument_warning"):
             logger.warning(
@@ -605,8 +699,39 @@ class Pool:
                 "to control ray initialization."
             )
 
-        processes = self._init_ray(processes, ray_address)
-        self._start_actor_pool(processes)
+        if self._autoscale:
+            # Resource-bearing actors so pending placements drive the
+            # autoscaler (num_cpus=0 actors surface no CPU demand).
+            self._ray_remote_args.setdefault("num_cpus", 1)
+
+        processes, ray_cpus = self._init_ray(processes, ray_address)
+
+        if self._autoscale:
+            if max_size is not None:
+                self._max_size = max_size
+            elif processes is not None:
+                self._max_size = processes
+            else:
+                self._max_size = ray_cpus
+            self._initial_size = 0 if initial_size is None else initial_size
+            if self._max_size <= 0:
+                raise ValueError("max_size must be greater than 0.")
+            if not 0 <= self._min_size <= self._max_size:
+                raise ValueError("min_size must be between 0 and max_size.")
+            if not 0 <= self._initial_size <= self._max_size:
+                raise ValueError("initial_size must be between 0 and max_size.")
+            if self._idle_timeout_s < 0:
+                raise ValueError("idle_timeout_s must be greater than or equal to 0.")
+        else:
+            # A fixed pool is an autoscaling pool with
+            # min_size == max_size == initial_size == processes: the desired
+            # size is always `processes`, so actors are never reaped and a
+            # crashed actor is always replaced.
+            self._min_size = processes
+            self._max_size = processes
+            self._initial_size = processes
+
+        self._start_actor_pool()
 
     def _init_ray(self, processes=None, ray_address=None):
         # Initialize ray. If ray is already initialized, we do nothing.
@@ -631,24 +756,63 @@ class Pool:
             else:
                 ray.init(num_cpus=processes)
 
-        ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
-        if processes is None:
-            processes = ray_cpus
-        if processes <= 0:
-            raise ValueError("Processes in the pool must be >0.")
-        if ray_cpus < processes:
-            raise ValueError(
-                "Tried to start a pool with {} processes on an "
-                "existing ray cluster, but there are only {} "
-                "CPUs in the ray cluster.".format(processes, ray_cpus)
-            )
+        ray_cpus = int(ray.cluster_resources().get("CPU", 0))
+        if not self._autoscale:
+            if processes is None:
+                processes = ray_cpus
+            if processes <= 0:
+                raise ValueError("Processes in the pool must be >0.")
+            # A fixed pool must fit the current cluster. An autoscaling pool
+            # may exceed it: pending num_cpus=1 actors drive the autoscaler.
+            if ray_cpus < processes:
+                raise ValueError(
+                    "Tried to start a pool with {} processes on an "
+                    "existing ray cluster, but there are only {} "
+                    "CPUs in the ray cluster.".format(processes, ray_cpus)
+                )
 
-        return processes
+        return processes, ray_cpus
 
-    def _start_actor_pool(self, processes):
-        self._pool_actor = None
-        self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
-        ray.get([actor.ping.remote() for actor, _ in self._actor_pool])
+    def _start_actor_pool(self):
+        # Validate actor options synchronously even when no actors are
+        # initially created. Dispatcher failures must not strand results.
+        self._pool_actor = PoolActor.options(**self._ray_remote_args)
+        # Start the startup-failure budget at its cap: until the first actor
+        # becomes ready (_mark_ready resets it to 0), the first startup
+        # failure aborts the pool instead of retrying; afterwards it bounds
+        # the retry of failed replacements.
+        self._startup_failures = self._max_size
+        # Fixed-length slot list. A slot is None until its actor is created:
+        # autoscaling pools create actors lazily on demand, while fixed pools
+        # create all of them below. Lazy creation lets pending num_cpus=1
+        # actors drive the autoscaler instead of deadlocking construction
+        # (the #22048 deadlock lever).
+        target = self._max_size
+        self._actor_pool: List[Optional[Tuple[Any, int]]] = [None] * target
+        self._last_used = [0.0] * target
+        for i in range(self._initial_size):
+            self._start_actor(i, demand=False)
+
+        if not self._autoscale:
+            # Fixed pools preserve the blocking readiness barrier: the
+            # constructor does not return until every actor has passed ping
+            # (initializers have run). Runs before the dispatcher starts, so
+            # the completed ping refs are simply moved to the ready queue by
+            # the dispatcher's first state update.
+            try:
+                ray.get(list(self._starting_actor_refs))
+            except Exception:
+                self._stop_pool_actors(force=True)
+                raise
+
+        wakeup = self._dispatcher_wakeup
+        pool_ref = weakref.ref(self, lambda _: wakeup.set())
+        self._dispatcher_thread = threading.Thread(
+            target=Pool._dispatch_batches,
+            args=(pool_ref,),
+            daemon=True,
+        )
+        self._dispatcher_thread.start()
 
     def _wait_for_stopping_actors(self, timeout=None):
         if len(self._actor_deletion_ids) == 0:
@@ -668,35 +832,336 @@ class Pool:
         self._wait_for_stopping_actors(timeout=0.0)
         # The deletion task will block until the actor has finished executing
         # all pending tasks.
-        self._actor_deletion_ids.append(actor.__ray_terminate__.remote())
+        try:
+            self._actor_deletion_ids.append(actor.__ray_terminate__.remote())
+        except ray.exceptions.RayActorError:
+            # The actor is already dead; there is nothing to stop gracefully.
+            pass
+
+    def _clear_slot(self, actor_index):
+        # Forget the actor in this slot. Used by every transition that removes
+        # an actor from the pool (startup failure, death, retirement, reap).
+        self._actor_pool[actor_index] = None
+        self._last_used[actor_index] = 0.0
+
+    def _mark_ready(self, actor_index, now):
+        # Transition an actor into the ready state: it can receive batches,
+        # and a successful startup resets the startup-failure budget.
+        self._last_used[actor_index] = now
+        self._startup_failures = 0
+        self._ready_actor_indices.append(actor_index)
 
     def _new_actor_entry(self):
         # NOTE(edoakes): The initializer function can't currently be used to
         # modify the global namespace (e.g., import packages or set globals)
         # due to a limitation in cloudpickle.
-        # Cache the PoolActor with options
-        if not self._pool_actor:
-            self._pool_actor = PoolActor.options(**self._ray_remote_args)
         return (self._pool_actor.remote(self._initializer, self._initargs), 0)
 
-    def _next_actor_index(self):
-        if self._current_index == len(self._actor_pool) - 1:
-            self._current_index = 0
-        else:
-            self._current_index += 1
-        return self._current_index
+    def _start_actor(self, actor_index, demand=True):
+        entry = self._new_actor_entry()
+        self._actor_pool[actor_index] = entry
+        self._last_used[actor_index] = time.monotonic()
+        actor, _ = entry
+        try:
+            object_ref = actor.ping.remote()
+        except Exception:
+            # The readiness ping could not be submitted (for example, the
+            # actor handle is already unusable). Clear the slot so it is not
+            # left as an untracked entry, kill the actor, and re-raise so the
+            # caller decides how to handle the failure.
+            self._clear_slot(actor_index)
+            ray.kill(actor)
+            raise
+        self._starting_actor_refs[object_ref] = (actor_index, demand)
+        self._wake_dispatcher_when_ready(object_ref)
 
-    # Batch should be a list of tuples: (args, kwargs).
-    def _run_batch(self, actor_index, func, batch):
-        actor, count = self._actor_pool[actor_index]
-        object_ref = actor.run_batch.remote(func, batch)
-        count += 1
-        assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
-        if count == self._maxtasksperchild:
-            self._stop_actor(actor)
-            actor, count = self._new_actor_entry()
-        self._actor_pool[actor_index] = (actor, count)
-        return object_ref
+    def _enqueue_batch(self, func, batch, add_object_ref):
+        with self._pool_lock:
+            if self._closed:
+                if self._dispatcher_terminate.is_set():
+                    error = RuntimeError("Pool was terminated")
+                else:
+                    error = ValueError("Pool not running")
+            else:
+                self._batch_queue.put((func, batch, add_object_ref))
+                self._dispatcher_wakeup.set()
+                return
+        add_object_ref(ray.put([PoolTaskError(error)]))
+
+    def _wake_dispatcher_when_ready(self, object_ref):
+        # ObjectRef callbacks may run on a core-worker thread. They only wake
+        # the dispatcher; all pool state remains owned by the dispatcher.
+        # Capture the Event rather than the Pool so the callback does not
+        # extend the Pool's lifetime.
+        wakeup = self._dispatcher_wakeup
+        object_ref._on_completed(lambda _: wakeup.set())
+
+    def _drain_batch_queue(self, pending):
+        while True:
+            try:
+                pending.append(self._batch_queue.get_nowait())
+            except queue.Empty:
+                return
+
+    def _update_actor_states(self):
+        refs = list(self._starting_actor_refs) + list(self._running_actor_refs)
+        if not refs:
+            return
+        ready, _ = ray.wait(refs, num_returns=len(refs), timeout=0)
+        now = time.monotonic()
+        startup_error = None
+        for object_ref in ready:
+            if object_ref in self._starting_actor_refs:
+                actor_index, _ = self._starting_actor_refs.pop(object_ref)
+                try:
+                    ray.get(object_ref)
+                except ray.exceptions.RayError as error:
+                    self._clear_slot(actor_index)
+                    # Remember the first failure but keep processing the other
+                    # ready refs: other actors in this batch may have started
+                    # successfully and can serve work, so whether to fail fast
+                    # is decided only after the whole batch is handled.
+                    if startup_error is None:
+                        startup_error = error
+                    continue
+                self._mark_ready(actor_index, now)
+            else:
+                actor_index, retire = self._running_actor_refs.pop(object_ref)
+                try:
+                    ray.get(object_ref)
+                except ray.exceptions.RayActorError:
+                    # The actor died while running the batch. The batch's error
+                    # is surfaced to the caller through the ResultThread; drop
+                    # the slot here so the resize step replaces the actor.
+                    self._clear_slot(actor_index)
+                    continue
+                except Exception:
+                    # The batch failed without killing the actor (for example,
+                    # an unserializable return value raises RayTaskError). The
+                    # error is surfaced to the caller through the ResultThread;
+                    # the actor is still usable, so handle it like any other
+                    # completed batch below. Swallowing the exception here is
+                    # required: an exception escaping would kill the dispatcher
+                    # thread and hang the pool.
+                    pass
+                if retire:
+                    actor, _ = self._actor_pool[actor_index]
+                    self._stop_actor(actor)
+                    self._clear_slot(actor_index)
+                else:
+                    self._mark_ready(actor_index, now)
+
+        if startup_error is None:
+            return None
+        # _startup_failures starts at its cap, so until the first actor
+        # becomes ready (which resets it to 0) the first startup failure
+        # aborts the pool instead of retrying. After that it bounds the retry
+        # of failed replacements so a pool whose actors persistently fail to
+        # start fails fast instead of churning forever.
+        self._startup_failures += 1
+        if self._startup_failures > self._max_size:
+            return startup_error
+        return None
+
+    def _resize_actor_pool(self, desired):
+        live = sum(slot is not None for slot in self._actor_pool)
+        while live < desired:
+            actor_index = self._actor_pool.index(None)
+            try:
+                self._start_actor(actor_index)
+            except Exception as error:
+                # _start_actor already cleared the slot and killed the actor.
+                # Fail fast only when nothing else can serve work or generate
+                # a completion wakeup to retry: actors still starting complete
+                # their pings and wake the dispatcher (their results are then
+                # handled by _update_actor_states), and live actors do the
+                # same when their batches finish.
+                if not self._starting_actor_refs and live == 0:
+                    return error
+                break
+            live += 1
+
+        # Pending actors created for backlog are only demand signals. Remove
+        # excess ones once the backlog shrinks; initial warm actors are left
+        # for normal idle-timeout reaping.
+        if live > desired:
+            for object_ref, (actor_index, demand) in list(
+                self._starting_actor_refs.items()
+            ):
+                if live <= desired:
+                    break
+                if demand:
+                    actor, _ = self._actor_pool[actor_index]
+                    self._starting_actor_refs.pop(object_ref)
+                    self._clear_slot(actor_index)
+                    ray.kill(actor)
+                    live -= 1
+        return None
+
+    def _dispatch_ready_batches(self, pending):
+        """Hand queued batches to ready actors.
+
+        Returns True if a dead actor's slot was dropped while dispatching,
+        so the caller can top the pool back up.
+        """
+        dropped = False
+        while pending and self._ready_actor_indices:
+            func, batch, add_object_ref = pending[0]
+            actor_index = self._ready_actor_indices.popleft()
+            actor, count = self._actor_pool[actor_index]
+            try:
+                object_ref = actor.run_batch.remote(func, batch)
+            except ray.exceptions.RayActorError:
+                # The actor died after it became ready; once the death is
+                # known, submitting to its handle raises synchronously. Drop
+                # the slot (the resize step replaces the actor) and retry the
+                # batch, which is still at the front of the queue, on another
+                # ready actor or the replacement.
+                self._clear_slot(actor_index)
+                dropped = True
+                continue
+            except Exception as error:
+                # Submission may fail synchronously (for example, when func or
+                # batch contains an unserializable value). Fail only this
+                # batch and keep the dispatcher and actor available for later
+                # work, matching multiprocessing.Pool's asynchronous errors.
+                add_object_ref(ray.put([PoolTaskError(error)]))
+                pending.popleft()
+                self._ready_actor_indices.append(actor_index)
+                continue
+
+            add_object_ref(object_ref)
+            pending.popleft()
+            count += 1
+            assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
+            retire = count == self._maxtasksperchild
+            self._actor_pool[actor_index] = (actor, count)
+            self._running_actor_refs[object_ref] = (actor_index, retire)
+            self._wake_dispatcher_when_ready(object_ref)
+        return dropped
+
+    def _reap_idle_actors(self):
+        now = time.monotonic()
+        live = sum(slot is not None for slot in self._actor_pool)
+        for actor_index in list(self._ready_actor_indices):
+            if live <= self._min_size:
+                break
+            if now - self._last_used[actor_index] > self._idle_timeout_s:
+                actor, _ = self._actor_pool[actor_index]
+                self._ready_actor_indices.remove(actor_index)
+                self._clear_slot(actor_index)
+                self._stop_actor(actor)
+                live -= 1
+
+    def _fail_pending_batches(self, pending, error):
+        self._drain_batch_queue(pending)
+        while pending:
+            _, _, add_object_ref = pending.popleft()
+            add_object_ref(ray.put([PoolTaskError(error)]))
+
+    def _stop_pool_actors(self, force=False):
+        starting = {
+            actor_index for actor_index, _ in self._starting_actor_refs.values()
+        }
+        for actor_index, slot in enumerate(self._actor_pool):
+            if slot is None:
+                continue
+            actor, _ = slot
+            if force or actor_index in starting:
+                ray.kill(actor)
+            else:
+                self._stop_actor(actor)
+
+    def _abort_dispatch(self, pending, error):
+        # Poison the pool when actors cannot be started or replaced: fail
+        # every batch that has not been dispatched and stop all actors.
+        # Called under the pool lock.
+        self._closed = True
+        self._fail_pending_batches(pending, error)
+        self._stop_pool_actors(force=True)
+
+    def _next_idle_timeout(self):
+        live = sum(slot is not None for slot in self._actor_pool)
+        if live <= self._min_size or not self._ready_actor_indices:
+            return None
+        next_deadline = min(
+            self._last_used[actor_index] + self._idle_timeout_s
+            for actor_index in self._ready_actor_indices
+        )
+        return max(0.0, next_deadline - time.monotonic())
+
+    @staticmethod
+    def _dispatch_batches(pool_ref):
+        # State-machine invariants:
+        # - only this thread mutates actor lifecycle and scheduling state;
+        # - starting actors carry resource demand but never receive batches;
+        # - ready actors have no in-flight batch;
+        # - running actors have exactly one ObjectRef in _running_actor_refs;
+        # - completion callbacks only set _dispatcher_wakeup.
+        pending = collections.deque()
+        while True:
+            pool = pool_ref()
+            if pool is None:
+                return
+
+            # Clear before checking queues and refs. A callback racing after
+            # this point leaves the Event set, so the following wait cannot
+            # lose a completion notification.
+            pool._dispatcher_wakeup.clear()
+            pool._drain_batch_queue(pending)
+
+            with pool._pool_lock:
+                if pool._dispatcher_terminate.is_set():
+                    # Dispatch queued batches to the actors that are ready and
+                    # then let terminate() kill the actors, so that batches
+                    # already accepted by the pool fail with the actors (a
+                    # RayError) rather than a submission error. This matches the
+                    # previous eager pool, which had submitted every batch to an
+                    # actor before terminate() could run. Batches that cannot be
+                    # dispatched are failed as terminated.
+                    pool._update_actor_states()
+                    pool._dispatch_ready_batches(pending)
+                    pool._fail_pending_batches(
+                        pending, RuntimeError("Pool was terminated")
+                    )
+                    return
+
+                error = pool._update_actor_states()
+                if error is None:
+                    desired = min(
+                        pool._max_size,
+                        max(
+                            pool._min_size,
+                            len(pending) + len(pool._running_actor_refs),
+                        ),
+                    )
+                    error = pool._resize_actor_pool(desired)
+                    if error is None:
+                        dropped = pool._dispatch_ready_batches(pending)
+                        if dropped:
+                            # Dispatching dropped a dead slot; top the pool
+                            # back up so still-pending work is not stranded
+                            # waiting for a wakeup nothing would generate.
+                            error = pool._resize_actor_pool(desired)
+                if error is not None:
+                    pool._abort_dispatch(pending, error)
+                    return
+                pool._reap_idle_actors()
+
+                if pool._closed and not pending and pool._batch_queue.empty():
+                    pool._stop_pool_actors()
+                    return
+
+                idle_timeout = pool._next_idle_timeout()
+
+            wakeup = pool._dispatcher_wakeup
+            if (
+                not pending
+                and not pool._running_actor_refs
+                and pool._batch_queue.empty()
+            ):
+                pool = None
+            wakeup.wait(timeout=idle_timeout)
 
     def apply(
         self,
@@ -745,8 +1210,16 @@ class Pool:
 
         self._check_running()
         func = self._convert_to_ray_batched_calls_if_needed(func)
-        object_ref = self._run_batch(self._next_actor_index(), func, [(args, kwargs)])
-        return AsyncResult([object_ref], callback, error_callback, single_result=True)
+        result = AsyncResult(
+            [],
+            callback,
+            error_callback,
+            single_result=True,
+            total_object_refs=1,
+            pool=self,
+        )
+        self._enqueue_batch(func, [(args, kwargs)], result.add_object_ref)
+        return result
 
     def _convert_to_ray_batched_calls_if_needed(self, func: Callable) -> Callable:
         """Convert joblib's BatchedCalls to RayBatchedCalls for ObjectRef caching.
@@ -768,7 +1241,7 @@ class Pool:
         orginal_func = func
         # SafeFunction is a Python 2 leftover and can be
         # safely removed.
-        if isinstance(func, SafeFunction):
+        if SafeFunction is not None and isinstance(func, SafeFunction):
             func = func.func
         if isinstance(func, BatchedCalls):
             func = RayBatchedCalls(
@@ -790,7 +1263,14 @@ class Pool:
             chunksize += 1
         return chunksize
 
-    def _submit_chunk(self, func, iterator, chunksize, actor_index, unpack_args=False):
+    def _submit_chunk(
+        self,
+        func,
+        iterator,
+        chunksize,
+        unpack_args=False,
+        add_object_ref=None,
+    ):
         chunk = []
         while len(chunk) < chunksize:
             try:
@@ -804,26 +1284,34 @@ class Pool:
         # Nothing to submit. The caller should prevent this.
         assert len(chunk) > 0
 
-        return self._run_batch(actor_index, func, chunk)
+        self._enqueue_batch(func, chunk, add_object_ref)
 
-    def _chunk_and_run(self, func, iterable, chunksize=None, unpack_args=False):
+    def _chunk_and_run(
+        self, func, iterable, chunksize, unpack_args, callback, error_callback
+    ):
         if not hasattr(iterable, "__len__"):
             iterable = list(iterable)
-
         if chunksize is None:
             chunksize = self._calculate_chunksize(iterable)
 
+        num_chunks = 0 if len(iterable) == 0 else div_round_up(len(iterable), chunksize)
+        result = AsyncResult(
+            [],
+            callback,
+            error_callback,
+            total_object_refs=num_chunks,
+            pool=self,
+        )
         iterator = iter(iterable)
-        chunk_object_refs = []
-        while len(chunk_object_refs) * chunksize < len(iterable):
-            actor_index = len(chunk_object_refs) % len(self._actor_pool)
-            chunk_object_refs.append(
-                self._submit_chunk(
-                    func, iterator, chunksize, actor_index, unpack_args=unpack_args
-                )
+        for _ in range(num_chunks):
+            self._submit_chunk(
+                func,
+                iterator,
+                chunksize,
+                unpack_args=unpack_args,
+                add_object_ref=result.add_object_ref,
             )
-
-        return chunk_object_refs
+        return result
 
     def _map_async(
         self,
@@ -835,14 +1323,13 @@ class Pool:
         error_callback=None,
     ):
         self._check_running()
-        object_refs = self._chunk_and_run(
-            func, iterable, chunksize=chunksize, unpack_args=unpack_args
+        return self._chunk_and_run(
+            func, iterable, chunksize, unpack_args, callback, error_callback
         )
-        return AsyncResult(object_refs, callback, error_callback)
 
     def map(self, func: Callable, iterable: Iterable, chunksize: Optional[int] = None):
-        """Run the given function on each element in the iterable round-robin
-        on the actor processes and return the results synchronously.
+        """Run the given function on each element in the iterable using the
+        actor processes and return the results synchronously.
 
         Args:
             func: function to run.
@@ -867,9 +1354,8 @@ class Pool:
         callback: Callable[[List], None] = None,
         error_callback: Callable[[Exception], None] = None,
     ):
-        """Run the given function on each element in the iterable round-robin
-        on the actor processes and return an asynchronous interface to the
-        results.
+        """Run the given function on each element in the iterable using the
+        actor processes and return an asynchronous interface to the results.
 
         Args:
             func: function to run.
@@ -990,9 +1476,9 @@ class Pool:
 
         self._registry.clear()
         self._registry_hashable.clear()
-        for actor, _ in self._actor_pool:
-            self._stop_actor(actor)
-        self._closed = True
+        with self._pool_lock:
+            self._closed = True
+        self._dispatcher_wakeup.set()
         gc.collect()
 
     def terminate(self):
@@ -1002,10 +1488,17 @@ class Pool:
         outstanding work.
         """
 
-        if not self._closed:
-            self.close()
-        for actor, _ in self._actor_pool:
-            ray.kill(actor)
+        self._registry.clear()
+        self._registry_hashable.clear()
+        with self._pool_lock:
+            self._closed = True
+            self._dispatcher_terminate.set()
+        self._dispatcher_wakeup.set()
+        if self._dispatcher_thread is not None:
+            self._dispatcher_thread.join()
+        with self._pool_lock:
+            self._stop_pool_actors(force=True)
+        gc.collect()
 
     def join(self):
         """Wait for the actors in a closed pool to exit.
@@ -1018,4 +1511,6 @@ class Pool:
 
         if not self._closed:
             raise ValueError("Pool is still running")
+        if self._dispatcher_thread is not None:
+            self._dispatcher_thread.join()
         self._wait_for_stopping_actors()

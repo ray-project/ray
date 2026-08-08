@@ -80,3 +80,34 @@ configuration options) before calling ``with joblib.parallel_backend('ray')``.
 
     If you do not set the ``RAY_ADDRESS`` environment variable and do not provide
     ``address`` in ``ray.init(address=<address>)`` then scikit-learn will run on a SINGLE node!
+
+Experimental autoscaling
+------------------------
+
+.. note::
+
+    Pool autoscaling is experimental and may change in future releases.
+
+By default the ``"ray"`` backend eagerly creates a fixed pool of ``n_jobs``
+actors. Supplying any of ``min_size``, ``max_size``, ``initial_size``, or
+``idle_timeout_s`` grows and shrinks the pool on demand instead:
+
+.. code-block:: python
+
+  import joblib
+  from ray.util.joblib import register_ray
+  register_ray()
+  with joblib.parallel_backend("ray", n_jobs=8, max_size=8):
+      search.fit(digits.data, digits.target)
+
+Actors request ``num_cpus=1`` so pending placements drive the Ray autoscaler to
+grow the cluster, and idle actors are reaped after ``idle_timeout_s`` so workers
+can scale back down. See :class:`ray.util.multiprocessing.pool.Pool` for the
+full set of options (``min_size``, ``max_size``, ``initial_size``,
+``idle_timeout_s``).
+
+``n_jobs`` remains joblib's concurrency limit; ``max_size`` can lower but not
+raise that limit. Set ``n_jobs`` to the desired scale-up target. That target may
+exceed the cluster's current or maximum CPU capacity: pending actors surface
+resource demand, but batches are submitted only to ready actors, so available
+actors continue making progress even if some actors remain pending.
