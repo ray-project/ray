@@ -3197,6 +3197,14 @@ cdef class GcsClient:
         # For other RpcError (UNAVAILABLE, UNKNOWN): retries indefinitely until it
         # thinks GCS is down and kills the whole process.
         timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
+        if cluster_id is None:
+            # Node-level cache: the spawning node exports the cluster ID to the
+            # processes it starts (see start_ray_process env_updates), sparing
+            # each of them a GetClusterId RPC that can time out while a large
+            # cluster brings up. Unset (e.g. drivers, external tools) falls
+            # back to fetching from the GCS.
+            cluster_id = os.environ.get(
+                ray_constants.RAY_CLUSTER_ID_ENVIRONMENT_VARIABLE) or None
         self.inner = InnerGcsClient.standalone(address, cluster_id, timeout_ms)
 
     def __getattr__(self, name):

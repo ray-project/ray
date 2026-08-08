@@ -1154,6 +1154,18 @@ def start_reaper(fate_share: Optional[bool] = None):
     return process_info
 
 
+def _cluster_id_env_updates(cluster_id_hex: Optional[str]) -> Optional[dict]:
+    """Exports the cluster ID to a spawned process's environment.
+
+    GcsClient falls back to this variable when constructed without a cluster
+    ID, so the spawned process skips the GetClusterId RPC that can time out
+    while a large cluster brings up.
+    """
+    if not cluster_id_hex:
+        return None
+    return {ray_constants.RAY_CLUSTER_ID_ENVIRONMENT_VARIABLE: cluster_id_hex}
+
+
 def start_log_monitor(
     session_dir: str,
     logs_dir: str,
@@ -1164,6 +1176,7 @@ def start_log_monitor(
     backup_count: int = 0,
     stdout_filepath: Optional[str] = None,
     stderr_filepath: Optional[str] = None,
+    cluster_id_hex: Optional[str] = None,
 ):
     """Start a log monitor process.
 
@@ -1182,6 +1195,9 @@ def start_log_monitor(
             If None, stdout is not redirected.
         stderr_filepath: The file path to dump log monitor stderr.
             If None, stderr is not redirected.
+        cluster_id_hex: The cluster ID (hex string) this node belongs to,
+            exported to the log monitor's environment so it doesn't fetch it
+            from the GCS on startup.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1224,6 +1240,7 @@ def start_log_monitor(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
+        env_updates=_cluster_id_env_updates(cluster_id_hex),
     )
     return process_info
 
@@ -2346,6 +2363,7 @@ def start_monitor(
     backup_count: int = 0,
     monitor_ip: Optional[str] = None,
     autoscaler_v2: bool = False,
+    cluster_id_hex: Optional[str] = None,
 ):
     """Run a process to monitor the other processes.
 
@@ -2366,6 +2384,8 @@ def start_monitor(
         monitor_ip: IP address of the machine that the monitor will be
             run on. Can be excluded, but required for autoscaler metrics.
         autoscaler_v2: If True, use the v2 autoscaler entrypoint.
+        cluster_id_hex: The cluster ID (hex string), exported to the monitor's
+            environment so it doesn't fetch it from the GCS on startup.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -2414,6 +2434,7 @@ def start_monitor(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
+        env_updates=_cluster_id_env_updates(cluster_id_hex),
     )
     return process_info
 
