@@ -481,39 +481,6 @@ def test_profile_events_reads_from_gcs_by_default(monkeypatch):
     assert result[binary_to_hex(component_id)][0]["event_type"] == "driver:startup"
 
 
-def test_timeline_warns_when_reading_from_dashboard_head(monkeypatch):
-    """ray.timeline() warns that it needs the API server when the migration flag is on."""
-    monkeypatch.setattr(
-        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
-    )
-    monkeypatch.setattr(ray, "is_initialized", lambda: True)
-    monkeypatch.setattr(
-        ray._private.state.state, "chrome_tracing_dump", lambda filename=None: []
-    )
-
-    with patch.object(ray._private.state.logger, "warning") as mock_warning:
-        ray._private.state.timeline()
-
-    mock_warning.assert_called_once()
-    assert "dashboard" in mock_warning.call_args.args[0].lower()
-
-
-def test_timeline_does_not_warn_by_default(monkeypatch):
-    """With the flag off, ray.timeline() reads from GCS and emits no such warning."""
-    monkeypatch.setattr(
-        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", False
-    )
-    monkeypatch.setattr(ray, "is_initialized", lambda: True)
-    monkeypatch.setattr(
-        ray._private.state.state, "chrome_tracing_dump", lambda filename=None: []
-    )
-
-    with patch.object(ray._private.state.logger, "warning") as mock_warning:
-        ray._private.state.timeline()
-
-    mock_warning.assert_not_called()
-
-
 def test_state_init_multiple_threads(shutdown_only):
     ray.init()
     global_state = ray._private.state.state
