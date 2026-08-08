@@ -25,7 +25,7 @@ def test_sanitize_image_name():
     )
     assert (
         sanitize_image_name("/tmp/ray/sandbox/images/ubuntu_22.04.tar")
-        == "ubuntu_22.04_a045dfc4b5a7"
+        == "ubuntu_22.04"
     )
 
     with pytest.raises(ValueError, match="cannot be safely sanitized"):

@@ -107,40 +107,54 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         run_args.append(f"--overlay2=root:dir={overlay_dir}")
         run_args.extend(["run", "--bundle", root_dir, sandbox_id])
 
+        import tempfile
+
+        stderr_file = tempfile.TemporaryFile()
         proc = subprocess.Popen(
             run_args,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_file,
         )
         start_time = time.time()
         timeout = config.timeout_seconds
         state_args = self._runsc_base_args(config) + ["state", sandbox_id]
 
-        while True:
-            if proc.poll() is not None:
-                _, stderr_str = proc.communicate()
-                raise SandboxCreationError(
-                    f"gVisor container failed to start: {stderr_str.decode('utf-8', errors='replace')}"
-                )
+        try:
+            while True:
+                if proc.poll() is not None:
+                    stderr_file.seek(0)
+                    stderr_str = stderr_file.read()
+                    raise SandboxCreationError(
+                        f"gVisor container failed to start: {stderr_str.decode('utf-8', errors='replace')}"
+                    )
 
-            res = subprocess.run(state_args, capture_output=True, text=True)
-            if res.returncode == 0:
-                try:
-                    state_data = json.loads(res.stdout)
-                    if state_data.get("status") == "running":
-                        break
-                except Exception:
-                    pass
+                res = subprocess.run(state_args, capture_output=True, text=True)
+                if res.returncode == 0:
+                    try:
+                        state_data = json.loads(res.stdout)
+                        status = state_data.get("status")
+                        if status == "running":
+                            break
+                        elif status in ("stopped", "error"):
+                            raise SandboxCreationError(
+                                f"gVisor container stopped unexpectedly during initialization (status: {status})."
+                            )
+                    except Exception as e:
+                        if isinstance(e, SandboxCreationError):
+                            raise
+                        pass
 
-            if time.time() - start_time > timeout:
-                proc.kill()
-                proc.communicate()
-                raise SandboxTimeoutError(
-                    f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
-                )
+                if time.time() - start_time > timeout:
+                    proc.kill()
+                    proc.communicate()
+                    raise SandboxTimeoutError(
+                        f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
+                    )
 
-            time.sleep(0.1)
+                time.sleep(0.1)
+        finally:
+            stderr_file.close()
 
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
@@ -161,7 +175,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
             kill_args = self._runsc_base_args(config)
             kill_args.extend(["kill", sandbox_id, "SIGKILL"])
-            subprocess.run(kill_args, capture_output=True)
+            try:
+                subprocess.run(kill_args, capture_output=True, timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
 
             if proc and proc.poll() is None:
                 proc.terminate()
@@ -219,7 +236,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                env=exec_env,
             )
             stdout_str, stderr_str = proc.communicate(timeout=timeout)
             duration = time.time() - start_time
@@ -251,7 +267,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         runsc_args = self._runsc_base_args(config)
         runsc_args.extend(
-            ["exec", sandbox_id, "/bin/sh", "-c", 'cat > "$1"', "--", path]
+            [
+                "exec",
+                sandbox_id,
+                "/bin/sh",
+                "-c",
+                'mkdir -p "$(dirname "$1")" && cat > "$1"',
+                "--",
+                path,
+            ]
         )
 
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
@@ -278,6 +302,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         proc = subprocess.Popen(
             runsc_args,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )

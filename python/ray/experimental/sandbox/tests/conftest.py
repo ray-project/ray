@@ -1,4 +1,5 @@
 import os
+import platform
 import shutil
 import stat
 import tempfile
@@ -22,9 +23,12 @@ def ensure_runsc():
     if not shutil.which("runsc"):
         temp_bin = tempfile.mkdtemp()
         runsc_path = os.path.join(temp_bin, "runsc")
-        url = (
-            "https://storage.googleapis.com/gvisor/releases/release/latest/x86_64/runsc"
+        arch = (
+            "aarch64"
+            if platform.machine().lower() in ("aarch64", "arm64")
+            else "x86_64"
         )
+        url = f"https://storage.googleapis.com/gvisor/releases/release/latest/{arch}/runsc"
         try:
             urllib.request.urlretrieve(url, runsc_path)
             os.chmod(runsc_path, os.stat(runsc_path).st_mode | stat.S_IEXEC)
