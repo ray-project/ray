@@ -263,6 +263,20 @@ py_test(
 )
 
 py_test(
+    name = "test_arrow_backed_pandas",
+    size = "medium",
+    srcs = ["tests/test_arrow_backed_pandas.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_arrow_block",
     size = "medium",
     srcs = ["tests/test_arrow_block.py"],

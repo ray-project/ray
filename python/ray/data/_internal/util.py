@@ -1657,9 +1657,22 @@ def is_nan(value) -> bool:
 
 
 def is_null(value: Any) -> bool:
-    """This generalization of ``is_nan`` util qualifying both None and np.nan
-    as null values"""
-    return value is None or is_nan(value)
+    """This generalization of ``is_nan`` util qualifying ``None``, ``np.nan`` and
+    pandas' missing-value sentinels (``pd.NA``, ``pd.NaT``) as null values.
+
+    ``pd.NA`` reaches callers whenever a block is converted to an Arrow-backed
+    pandas DataFrame (see
+    ``DataContext.enable_arrow_backed_pandas_conversion``), which represents
+    missing values with ``pd.NA`` rather than ``np.nan``. Unlike ``np.nan``,
+    ``pd.NA`` is not a float, so ``is_nan`` does not recognize it.
+    """
+    if value is None or is_nan(value):
+        return True
+    # `pd.NA` and `pd.NaT` are singletons, so identity checks are both cheap and
+    # exact. `pd.isna` is deliberately avoided here because it returns an array
+    # for array-like input, and callers may pass lists (see
+    # `ray.data.preprocessors.encoder.unique_post_fn`).
+    return value is pd.NA or value is pd.NaT
 
 
 def keys_equal(keys1, keys2):
@@ -1669,6 +1682,83 @@ def keys_equal(keys1, keys2):
         if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
             return False
     return True
+
+
+# Constrained rather than bound so that the return type matches the argument
+# exactly: a `Series` in gives a `Series` out, a `DataFrame` gives a `DataFrame`.
+PandasData = TypeVar("PandasData", pd.Series, pd.DataFrame)
+
+
+def to_numpy_backed(data: PandasData) -> PandasData:
+    """Convert Arrow-backed pandas columns to NumPy-backed ones.
+
+    Blocks are converted to Arrow-backed pandas DataFrames when
+    ``DataContext.enable_arrow_backed_pandas_conversion`` is enabled (the default
+    since Ray 2.56). Arrow-backed columns represent missing values with ``pd.NA``
+    instead of ``np.nan``, and ``pd.NA`` breaks NumPy-style code in two ways:
+
+    * ``series >= 0`` yields a three-valued ``bool[pyarrow]`` mask, which cannot
+      be used to index a NumPy array.
+    * ``series.to_numpy()`` falls back to ``dtype=object``, because ``pd.NA``
+      cannot be stored in a numeric array.
+
+    Separately, pandas' Arrow backend does not implement every operator that its
+    NumPy backend does -- ``%`` and ``divmod`` raise ``NotImplementedError`` (see
+    https://github.com/pandas-dev/pandas/issues/58723). Code that hands a pandas
+    batch to an arbitrary caller should convert first for that reason alone,
+    independent of whether any value is missing.
+
+    Input that is already fully NumPy-backed is returned as-is -- the same
+    object, not a copy -- so this is safe to apply unconditionally. That matters
+    because ``_format_batch`` calls it on every pandas batch: rebuilding a
+    ``DataFrame`` from its columns copies the data, so the early return below
+    keeps the common case free.
+
+    The conversion is the same one pandas performs when Arrow-backing is
+    disabled, so the result matches the pre-2.56 representation exactly. That
+    representation is lossy in ways the Arrow-backed one is not, and callers
+    should expect all of it:
+
+    * ``int64`` with nulls widens to ``float64``, because a NumPy integer array
+      cannot hold a missing value. Integers above ``2**53`` lose exactness.
+    * ``pd.NA`` becomes ``np.nan``, so a float column no longer distinguishes
+      "missing" from "not a number".
+    * ``bool`` with nulls, strings, decimals and nested (list/struct) columns
+      become ``object``, holding Python objects rather than a typed buffer.
+    * Timestamps narrow to ``datetime64[ns]``, which cannot represent dates
+      outside roughly 1677-2262.
+
+    This is deliberate: it is the representation NumPy-assuming code requires,
+    and the one Ray returned in every release before 2.56. Callers that need
+    exact types should stay on Arrow -- ``Dataset.to_pandas`` and
+    ``batch_format="pyarrow"`` do not go through this function.
+    """
+    if isinstance(data, pd.DataFrame):
+        # Reconstructing a `DataFrame` from a dict of columns copies the data, so
+        # check the dtypes first and hand the frame straight back if there is
+        # nothing to convert.
+        if not any(isinstance(dtype, pd.ArrowDtype) for dtype in data.dtypes):
+            return data
+
+        # Index positionally, not by name: with a duplicate column name,
+        # `data[name]` returns a `DataFrame` rather than a `Series` and the
+        # recursion never bottoms out. Integer keys keep the reassembled frame
+        # unambiguous, and the original names are restored afterwards.
+        converted = {i: to_numpy_backed(data.iloc[:, i]) for i in range(data.shape[1])}
+        frame = pd.DataFrame(converted, index=data.index, columns=list(converted))
+        frame.columns = data.columns
+        return frame
+
+    if not isinstance(data.dtype, pd.ArrowDtype):
+        return data
+
+    # `__arrow_array__` is the Arrow protocol method implemented by pandas'
+    # `ArrowExtensionArray`; converting through pyarrow reuses pandas' default
+    # (non-Arrow-backed) conversion rather than reimplementing the type mapping.
+    converted = data.array.__arrow_array__().to_pandas()
+    converted.index = data.index
+    converted.name = data.name
+    return converted
 
 
 def get_total_obj_store_mem_on_node() -> int:

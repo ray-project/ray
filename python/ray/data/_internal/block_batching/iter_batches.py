@@ -123,6 +123,9 @@ class BatchIterator:
         shuffle_seed: The seed to use for the local random shuffle.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
+        arrow_backed_pandas: Whether to keep pandas batches Arrow-backed rather
+            than converting them to NumPy-backed pandas. Internal-only; False for
+            user-facing callers.
         prefetch_batches: The number of batches to fetch ahead of the current batch to
             process. If set to greater than 0, a separate thread will be used to fetch
             the specified amount of formatted batches from blocks. This improves
@@ -154,6 +157,7 @@ class BatchIterator:
         shuffle_buffer_min_size: Optional[int] = None,
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
+        arrow_backed_pandas: bool = False,
         prefetch_batches: int = 1,
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
         preserve_order: bool = False,
@@ -169,6 +173,7 @@ class BatchIterator:
         self._shuffle_buffer_min_size = shuffle_buffer_min_size
         self._shuffle_seed = shuffle_seed
         self._ensure_copy = ensure_copy
+        self._arrow_backed_pandas = arrow_backed_pandas
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
         self._preserve_order = preserve_order
@@ -232,6 +237,7 @@ class BatchIterator:
             collate_fn=self._collate_fn,
             num_threadpool_workers=num_threadpool_workers,
             ensure_copy=self._ensure_copy,
+            arrow_backed_pandas=self._arrow_backed_pandas,
         )
 
     def _finalize_batches(
@@ -409,6 +415,7 @@ def _format_in_threadpool(
     collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
     ensure_copy: bool = False,
+    arrow_backed_pandas: bool = False,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
 
@@ -425,6 +432,9 @@ def _format_in_threadpool(
         num_threadpool_workers: The number of threads to use in the threadpool.
         ensure_copy: Whether batches are always copied from the underlying base
             blocks (not zero-copy views).
+        arrow_backed_pandas: Whether to keep pandas batches Arrow-backed rather
+            than converting them to NumPy-backed pandas. Internal-only; False for
+            user-facing callers.
 
     Returns:
         An iterator over batches with formatting and collation applied.
@@ -435,7 +445,11 @@ def _format_in_threadpool(
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
         formatted_batch_iter = format_batches(
-            batch_iter, batch_format=batch_format, stats=stats, ensure_copy=ensure_copy
+            batch_iter,
+            batch_format=batch_format,
+            stats=stats,
+            ensure_copy=ensure_copy,
+            arrow_backed_pandas=arrow_backed_pandas,
         )
 
         # Step 4b: Apply the collate function if applicable.

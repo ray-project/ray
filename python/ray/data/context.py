@@ -772,9 +772,12 @@ class DataContext:
         enable_arrow_backed_pandas_conversion: Whether ``BlockAccessor.to_pandas``
             maps standard Arrow types to pandas Arrow-backed dtypes
             (``pd.ArrowDtype``). When ``False``, standard Arrow types convert to
-            numpy dtypes (the pre-2.56 behavior). Set to ``False`` if pandas UDFs
-            assign multi-dimensional arrays into columns or rely on numpy-only
-            operations (e.g. ``%``) that Arrow-backed columns do not implement.
+            numpy dtypes (the pre-2.56 behavior). This affects blocks, not the
+            pandas batches handed to transform functions: ``map_batches``,
+            ``iter_batches`` and preprocessors convert those to NumPy-backed
+            pandas regardless, so operations Arrow-backed columns do not
+            implement (e.g. ``%``) work either way. Set this to ``False`` only to
+            also change what ``Dataset.to_pandas`` returns.
         batch_to_block_arrow_format: Whether to convert Pandas batches to Arrow blocks by default when calling `BlockAccessor.batch_to_block`.
         gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
             to total GPUs available in the cluster.

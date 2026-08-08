@@ -31,6 +31,7 @@ from ray.data._internal.block_batching.interfaces import (
     ResolvedBlock,
 )
 from ray.data._internal.stats import DatasetStats, TimeSpan, _maybe_time
+from ray.data._internal.util import to_numpy_backed
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.types import ObjectRef
 
@@ -372,11 +373,23 @@ def _format_batch(
     batch_format: Optional[str],
     stats: Optional[DatasetStats],
     ensure_copy: bool = False,
+    arrow_backed_pandas: bool = False,
 ) -> Batch:
+    import pandas as pd
+
     with _maybe_time(stats.iter_format_batch_s if stats else None) as span:
         formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
             batch_format
         )
+        # Unless the caller opted in to Arrow-backing, hand back the conventional
+        # NumPy-backed pandas. Callers that asked for pandas expect it: pandas'
+        # Arrow backend leaves some operators unimplemented (`%`, `divmod`) and
+        # degrades `to_numpy()` to `dtype=object`. `Dataset.to_pandas` is the only
+        # caller that opts in, because it returns a result to the driver rather
+        # than feeding it to a function. See
+        # `ray.data._internal.util.to_numpy_backed`.
+        if not arrow_backed_pandas and isinstance(formatted_data, pd.DataFrame):
+            formatted_data = to_numpy_backed(formatted_data)
         if ensure_copy:
             formatted_data = _copy_batch(formatted_data)
     batch.metadata.stage_timings.format = span
@@ -409,6 +422,7 @@ def format_batches(
     batch_format: Optional[str],
     stats: Optional[DatasetStats] = None,
     ensure_copy: bool = False,
+    arrow_backed_pandas: bool = False,
 ) -> Iterator[Batch]:
     """Given an iterator of batches, returns an iterator of formatted batches."""
     return _MappingIterator(
@@ -418,6 +432,7 @@ def format_batches(
             batch_format=batch_format,
             stats=stats,
             ensure_copy=ensure_copy,
+            arrow_backed_pandas=arrow_backed_pandas,
         ),
     )
 

@@ -3,8 +3,13 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from ray.data._internal.util import to_numpy_backed
 from ray.data.preprocessor import SerializablePreprocessorBase
-from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
+from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
+    migrate_private_fields,
+)
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
@@ -91,6 +96,14 @@ class PowerTransformer(SerializablePreprocessorBase):
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_power_transformer(s: pd.Series):
+            # Materialize as NumPy up front. An Arrow-backed column represents
+            # missing values with `pd.NA`, which makes `s >= 0` below a
+            # three-valued `bool[pyarrow]` mask that cannot index `result`.
+            # `transform` converts batches before calling this, but
+            # `transform_batch` hands a user-supplied frame straight through, so
+            # the conversion has to happen here too.
+            s = to_numpy_backed(s)
+
             if self._method == "yeo-johnson":
                 result = np.zeros_like(s, dtype=np.float64)
                 pos = s >= 0  # binary mask
