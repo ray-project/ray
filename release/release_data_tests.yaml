@@ -7,6 +7,11 @@
 
   cluster:
     byod:
+      # TESTING COMMIT ONLY (revert before opening the PR): build + install the
+      # Rust ray_data_arrow_rs crate into every data-test image so the flipped
+      # use_arrow_rs_parquet_reader default (context.py) has a crate to load.
+      # Inherited by every test that does not define its own byod.post_build_script.
+      post_build_script: byod_arrow_rs_parquet.sh
       runtime_env:
         # Enable verbose stats for resource manager (to troubleshoot autoscaling)
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
