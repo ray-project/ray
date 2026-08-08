@@ -30,22 +30,22 @@ namespace observability {
 struct TaskStateUpdate {
   TaskStateUpdate() = default;
 
-  explicit TaskStateUpdate(const std::optional<const rpc::RayErrorInfo> &error_info)
-      : error_info(error_info) {}
+  explicit TaskStateUpdate(const std::optional<const rpc::RayErrorInfo> &error_info_arg)
+      : error_info(error_info_arg) {}
 
-  TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
-      : node_id(node_id), worker_id(worker_id) {}
+  TaskStateUpdate(const NodeID &node_id_arg, const WorkerID &worker_id_arg)
+      : node_id(node_id_arg), worker_id(worker_id_arg) {}
 
-  explicit TaskStateUpdate(rpc::TaskLogInfo task_log_info)
-      : task_log_info(std::move(task_log_info)) {}
+  explicit TaskStateUpdate(rpc::TaskLogInfo task_log_info_arg)
+      : task_log_info(std::move(task_log_info_arg)) {}
 
-  TaskStateUpdate(std::string actor_repr_name, uint32_t pid)
-      : actor_repr_name(std::move(actor_repr_name)), pid(pid) {}
+  TaskStateUpdate(std::string actor_repr_name_arg, uint32_t pid_arg)
+      : actor_repr_name(std::move(actor_repr_name_arg)), pid(pid_arg) {}
 
-  explicit TaskStateUpdate(uint32_t pid) : pid(pid) {}
+  explicit TaskStateUpdate(uint32_t pid_arg) : pid(pid_arg) {}
 
-  explicit TaskStateUpdate(bool is_debugger_paused)
-      : is_debugger_paused(is_debugger_paused) {}
+  explicit TaskStateUpdate(bool is_debugger_paused_arg)
+      : is_debugger_paused(is_debugger_paused_arg) {}
 
   /// Node id if it's a SUBMITTED_TO_WORKER status change.
   std::optional<NodeID> node_id = std::nullopt;
