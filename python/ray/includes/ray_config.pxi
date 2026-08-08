@@ -160,3 +160,11 @@ cdef class Config:
     @staticmethod
     def task_events_gc_job_summary_interval_ms():
         return RayConfig.instance().task_events_gc_job_summary_interval_ms()
+
+    @staticmethod
+    def gcs_mark_task_failed_on_worker_dead_delay_ms():
+        return RayConfig.instance().gcs_mark_task_failed_on_worker_dead_delay_ms()
+
+    @staticmethod
+    def gcs_mark_task_failed_on_job_done_delay_ms():
+        return RayConfig.instance().gcs_mark_task_failed_on_job_done_delay_ms()
