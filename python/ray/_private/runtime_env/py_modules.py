@@ -11,12 +11,16 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
+    get_path_from_local_dir_uri,
     get_uri_for_directory,
     get_uri_for_file,
     get_uri_for_package,
     install_wheel_package,
+    is_local_dir_uri,
+    is_local_dir_uri_or_raise,
     is_whl_uri,
     package_exists,
+    raise_if_local_dir_uri_missing,
     upload_package_if_needed,
     upload_package_to_gcs,
 )
@@ -31,6 +35,9 @@ default_logger = logging.getLogger(__name__)
 
 
 def _check_is_uri(s: str) -> bool:
+    if is_local_dir_uri_or_raise(s):
+        return True
+
     try:
         protocol, path = parse_uri(s)
     except ValueError:
@@ -181,6 +188,8 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         try_to_create_directory(self._resources_dir)
 
     def _get_local_dir_from_uri(self, uri: str):
+        if is_local_dir_uri(uri):
+            return get_path_from_local_dir_uri(uri)
         return get_local_dir_from_uri(uri, self._resources_dir)
 
     def delete_uri(
@@ -188,6 +197,14 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete pymodule URI %s", uri)
+        if is_local_dir_uri(uri):
+            # Ray does not own this directory; never delete it.
+            logger.info(
+                "Skipping deletion of in-place py_module URI %s: it is not "
+                "managed by Ray.",
+                uri,
+            )
+            return 0
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
@@ -208,6 +225,18 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
+
+        if is_local_dir_uri(uri):
+            if is_whl_uri(uri):
+                raise ValueError(
+                    f"py_modules entry {uri} points to a wheel. A 'local://' "
+                    "py_module must be a directory that already exists on every "
+                    "node."
+                )
+            module_dir = get_path_from_local_dir_uri(uri)
+            raise_if_local_dir_uri_missing(module_dir, uri, "py_modules entry")
+            logger.info("Using in place py_module '%s'.", module_dir)
+            return 0
 
         module_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_client, logger=logger
@@ -232,7 +261,9 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         module_dirs = []
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)
-            if not module_dir.exists():
+            if is_local_dir_uri(uri):
+                raise_if_local_dir_uri_missing(module_dir, uri, "py_modules entry")
+            elif not module_dir.exists():
                 raise ValueError(
                     f"Local directory {module_dir} for URI {uri} does "
                     "not exist on the cluster. Something may have gone wrong while "

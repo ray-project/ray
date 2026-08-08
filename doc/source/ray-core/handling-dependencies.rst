@@ -490,14 +490,16 @@ API Reference
 
 The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>` including one or more of the following fields:
 
-- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) a local existing directory with total size at most 500 MiB, (2) a local existing archive file (``.zip``, ``.tar.gz``, or ``.tgz``) with total uncompressed size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored archive (``.zip``, ``.tar.gz``, or ``.tgz``) containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
-  The specified directory is downloaded to each node on the cluster, and Ray workers start in their node's copy of this directory.
+- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) a local existing directory with total size at most 500 MiB, (2) a local existing archive file (``.zip``, ``.tar.gz``, or ``.tgz``) with total uncompressed size at most 500 MiB (Note: ``excludes`` has no effect), (3) a URI to a remotely-stored archive (``.zip``, ``.tar.gz``, or ``.tgz``) containing the working directory for your job (no file size limit is enforced by Ray), or (4) a ``local://`` URI naming a directory that already exists on every node, such as one baked into your container image. See :ref:`remote-uris` for details.
+  In cases (1)-(3) the specified directory is downloaded to each node on the cluster, and Ray workers start in their node's copy of this directory. In case (4) nothing is uploaded or downloaded and the workers start directly in that directory. See :ref:`in-image-working-dir`.
 
   - Examples
 
     - ``"."  # cwd``
 
     - ``"/src/my_project"``
+
+    - ``"local:///app"``
 
     - ``"/src/my_project.zip"``
 
@@ -514,7 +516,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   Note: If the local directory contains symbolic links, Ray follows the links and the files they point to are uploaded to the cluster.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
-  Each entry must be either (1) a path to a local file or directory, (2) a URI to a remote archive (``.zip``, ``.tar.gz``, ``.tgz``) or wheel (``.whl``) file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local ``.whl`` file.
+  Each entry must be either (1) a path to a local file or directory, (2) a URI to a remote archive (``.zip``, ``.tar.gz``, ``.tgz``) or wheel (``.whl``) file (see :ref:`remote-uris` for details), (3) a Python module object, (4) a path to a local ``.whl`` file, or (5) a ``local://`` URI naming a directory that already exists on every node (see :ref:`in-image-working-dir`).
 
   - Examples of entries in the list:
 
@@ -799,6 +801,45 @@ My ``runtime_env`` was installed, but when I log into the node I can't import th
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 The runtime environment is only active for the Ray worker processes; it does not install any packages "globally" on the node.
+
+.. _in-image-working-dir:
+
+Directories already present on every node
+-----------------------------------------
+
+Your code may already be on every node. It might be baked into a container image, laid
+down by a node setup script, or sitting on a shared filesystem. In that case, point
+``working_dir`` or ``py_modules`` at it in place with a ``local://`` URI instead of
+uploading a copy:
+
+.. code-block:: python
+
+  runtime_env = {"working_dir": "local:///app"}
+  runtime_env = {"py_modules": ["local:///app/lib"]}
+
+The path must be absolute: ``local:///app``, not ``local://app``. On Windows, write the
+drive where the path goes: ``local://C:/app``.
+
+Ray uses the directory in place. Workers start in it and it is first on their
+``PYTHONPATH``, exactly as with a downloaded ``working_dir``. Nothing is packaged,
+uploaded, downloaded, or unpacked; the directory is never counted against Ray's URI
+cache or evicted from it, and Ray never deletes it.
+
+.. warning::
+
+  Ray cannot tell when the contents of a ``local://`` directory change. When Ray uploads
+  a ``working_dir``, it hashes the contents, so editing a file produces a different URI.
+  A ``local://`` URI names a path rather than a snapshot, so it resolves to whatever is
+  on disk when each worker starts. Two nodes can therefore run different code under the
+  same URI, as can one node over time. Keep the contents identical on every node, and
+  treat any change to them as a new deployment.
+
+Other things to know:
+
+- The directory must exist on every node that runs your tasks or actors. If it doesn't,
+  runtime environment setup fails with an error naming the missing path.
+- ``excludes`` has no effect, because nothing is packaged.
+- A ``local://`` entry in ``py_modules`` must be a directory, not a ``.whl`` file.
 
 .. _remote-uris:
 

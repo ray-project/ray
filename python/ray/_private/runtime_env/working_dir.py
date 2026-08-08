@@ -1,5 +1,7 @@
 import logging
 import os
+import shlex
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -12,8 +14,12 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
+    get_path_from_local_dir_uri,
     get_uri_for_directory,
     get_uri_for_package,
+    is_local_dir_uri,
+    is_local_dir_uri_or_raise,
+    raise_if_local_dir_uri_missing,
     upload_package_if_needed,
     upload_package_to_gcs,
 )
@@ -59,6 +65,9 @@ def upload_working_dir_if_needed(
 
     if isinstance(working_dir, Path):
         working_dir = str(working_dir)
+
+    if is_local_dir_uri_or_raise(working_dir):
+        return runtime_env
 
     # working_dir is already a URI -- just pass it through.
     try:
@@ -178,11 +187,42 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         self._gcs_client = gcs_client
         try_to_create_directory(self._resources_dir)
 
+    def _get_directory_on_node(self, uri: str) -> Path:
+        """Returns the directory this working_dir URI resolves to on this node.
+
+        For `local://` URIs that is the path itself. For every other protocol
+        it is the directory Ray downloaded and unpacked.
+        """
+        if is_local_dir_uri(uri):
+            return get_path_from_local_dir_uri(uri)
+        return get_local_dir_from_uri(uri, self._resources_dir)
+
+    @staticmethod
+    def _raise_if_missing(local_dir: Path, uri: str) -> None:
+        if is_local_dir_uri(uri):
+            raise_if_local_dir_uri_missing(local_dir, uri, "working_dir")
+            return
+
+        if not local_dir.exists():
+            raise ValueError(
+                f"Local directory {local_dir} for URI {uri} does "
+                "not exist on the cluster. Something may have gone wrong while "
+                "downloading or unpacking the working_dir."
+            )
+
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete working dir URI %s", uri)
+        if is_local_dir_uri(uri):
+            # Ray does not own this directory, it belongs to the image.
+            logger.info(
+                "Skipping deletion of in place working dir URI %s: it is not "
+                "managed by Ray.",
+                uri,
+            )
+            return 0
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
@@ -206,6 +246,16 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
+        if uri is not None and is_local_dir_uri(uri):
+            # The directory is already on this node. Validate it eagerly so the
+            # failure is reported early as a runtime_env setup error
+            local_dir = get_path_from_local_dir_uri(uri)
+            self._raise_if_missing(local_dir, uri)
+            logger.info("Using in place working dir '%s'.", local_dir)
+            # This directory is not part of Ray's URI cache, so it
+            # must never be counted against the cache size or evicted.
+            return 0
+
         local_dir = await download_and_unpack_package(
             uri,
             self._resources_dir,
@@ -227,19 +277,15 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
         # WorkingDirPlugin uses a single URI.
         uri = uris[0]
-        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
-        if not local_dir.exists():
-            raise ValueError(
-                f"Local directory {local_dir} for URI {uri} does "
-                "not exist on the cluster. Something may have gone wrong while "
-                "downloading or unpacking the working_dir."
-            )
+        local_dir = self._get_directory_on_node(uri)
+        self._raise_if_missing(local_dir, uri)
 
         if not _WIN32:
-            context.command_prefix += ["cd", str(local_dir), "&&"]
+            context.command_prefix += ["cd", shlex.quote(str(local_dir)), "&&"]
         else:
             # Include '/d' incase temp folder is on different drive than Ray install.
-            context.command_prefix += ["cd", "/d", f"{local_dir}", "&&"]
+            quoted = subprocess.list2cmdline([str(local_dir)])
+            context.command_prefix += ["cd", "/d", quoted, "&&"]
         set_pythonpath_in_context(python_path=str(local_dir), context=context)
 
     @contextmanager
@@ -255,13 +301,8 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         if uri is None:
             yield
         else:
-            local_dir = get_local_dir_from_uri(uri, self._resources_dir)
-            if not local_dir.exists():
-                raise ValueError(
-                    f"Local directory {local_dir} for URI {uri} does "
-                    "not exist on the cluster. Something may have gone wrong while "
-                    "downloading or unpacking the working_dir."
-                )
+            local_dir = self._get_directory_on_node(uri)
+            self._raise_if_missing(local_dir, uri)
             key = ray_constants.RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR
             prev = os.environ.get(key)
             # Windows backslash paths are weird. When it's passed to the env var, and
