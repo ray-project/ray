@@ -15,6 +15,7 @@ user-guides/upgrade-guide
 user-guides/k8s-cluster-setup
 user-guides/storage
 user-guides/config
+user-guides/scheduling
 user-guides/configuring-autoscaling
 user-guides/configuring-ippr
 user-guides/label-based-scheduling
@@ -56,6 +57,7 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-k8s-setup`
 * {ref}`kuberay-storage`
 * {ref}`kuberay-config`
+* {ref}`kuberay-scheduling`
 * {ref}`kuberay-autoscaling`
 * {ref}`kuberay-gpu`
 * {ref}`kuberay-tpu`
