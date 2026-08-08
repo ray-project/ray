@@ -366,7 +366,11 @@ class JobSupervisor:
                 # Job finished and log file was already cleaned up.
                 return
 
-    async def _wait_for_rotation_to_finish(self, timeout: float = 30) -> None:
+    async def _wait_for_rotation_to_finish(
+        self,
+        rotation_future: Optional[concurrent.futures.Future],
+        timeout: float = 30,
+    ) -> None:
         """Wait for an in-flight log rotation to genuinely finish.
 
         Cancelling the asyncio task running _rotate_driver_log_if_needed
@@ -376,6 +380,17 @@ class JobSupervisor:
         directly, which is unaffected by that cancellation, so callers can
         be sure rotation has actually stopped touching the log file before
         reading it, e.g. for a job failure message.
+
+        rotation_future must be captured by the caller from
+        self._log_rotation_future BEFORE cancelling the rotation task, not
+        read fresh from self._log_rotation_future afterward.
+        _rotate_driver_log_if_needed clears that attribute to None in a
+        finally block as part of its own cancellation cleanup, and that
+        finally can run synchronously enough that the attribute is
+        already None by the time a caller reads it post-cancel, silently
+        skipping the wait below and defeating this method's entire
+        purpose. Verified this race empirically before adding this
+        parameter, see PR #64528 discussion.
 
         Note on test coverage: this method is not covered by a local unit
         test. JobSupervisor's constructor builds a real GcsClient against
@@ -388,7 +403,7 @@ class JobSupervisor:
         before writing this method. End-to-end coverage comes from the
         existing test_job_driver_log_rotation integration test in CI.
         """
-        if self._log_rotation_future is None or self._log_rotation_future.done():
+        if rotation_future is None or rotation_future.done():
             return
         self._logger.info(
             f"Job {self._job_id} waiting for in-flight log "
@@ -396,7 +411,7 @@ class JobSupervisor:
         )
         try:
             await asyncio.wait_for(
-                asyncio.wrap_future(self._log_rotation_future), timeout=timeout
+                asyncio.wrap_future(rotation_future), timeout=timeout
             )
         except asyncio.TimeoutError:
             self._logger.warning(
@@ -495,8 +510,19 @@ class JobSupervisor:
                 [polling_task, create_task(self._stop_event.wait())],
                 return_when=FIRST_COMPLETED,
             )
+            # Capture the raw future reference before cancelling.
+            # _rotate_driver_log_if_needed clears self._log_rotation_future
+            # to None in a finally block as part of its own cancellation
+            # cleanup, and that finally can run synchronously enough that
+            # self._log_rotation_future is already None by the time we
+            # would otherwise read it here, silently defeating the wait
+            # below. Capturing our own reference first avoids depending
+            # on that attribute surviving cancellation. Verified this
+            # race and the fix empirically, see PR #64528 discussion on
+            # Cursor's "Rotation wait can cancel job completion" comment.
+            rotation_future = self._log_rotation_future
             log_rotation_task.cancel()
-            await self._wait_for_rotation_to_finish()
+            await self._wait_for_rotation_to_finish(rotation_future)
 
             if self._stop_event.is_set():
                 polling_task.cancel()
