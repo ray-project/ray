@@ -172,6 +172,11 @@ class FileBasedDatasource(Datasource):
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
+        # Initialize projection state. Subclasses that opt into projection
+        # pushdown (``supports_projection_pushdown() -> True``) receive an
+        # active projection map via ``apply_projection``; otherwise this
+        # stays ``None`` and read paths fall back to all-columns semantics.
+        self._projection_map: Optional[Dict[str, str]] = None
         # Need this property for lineage tracking. We should not directly assign paths
         # to self since it is captured every read_task_fn during serialization and
         # causing this data being duplicated and excessive object store spilling.
@@ -282,6 +287,17 @@ class FileBasedDatasource(Datasource):
                 if partitioning is not None:
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
+                # When projection pushdown is active, retain only parsed
+                # partition columns that are actually requested. This
+                # ensures a pure ``select_columns`` Project eliminated by the
+                # optimizer does not leak unrequested synthetic partition
+                # columns downstream.
+                if self._projection_map is not None and partitions:
+                    partitions = {
+                        k: v
+                        for k, v in partitions.items()
+                        if k in self._projection_map
+                    }
 
                 with RetryingContextManager(
                     self._open_input_source(fs, read_path, **open_stream_args),
@@ -294,9 +310,43 @@ class FileBasedDatasource(Datasource):
                     ):
                         if partitions:
                             block = _add_partitions(block, partitions)
-                        if self._include_paths:
+                        # When projection pushdown is active, only fill the
+                        # synthetic ``path`` column if it is requested. When
+                        # ``_projection_map is None`` (no projection), fall
+                        # back to the legacy behavior of always filling
+                        # ``path`` whenever ``include_paths`` was set.
+                        if self._include_paths and (
+                            self._projection_map is None
+                            or "path" in self._projection_map
+                        ):
                             block_accessor = BlockAccessor.for_block(block)
                             block = block_accessor.fill_column("path", read_path)
+                        # When projection pushdown is active, finalize the
+                        # block by selecting exactly the requested columns
+                        # in their requested order. PyArrow readers return
+                        # schema order, not request order, so reordering
+                        # here is required for projection pushdown to match
+                        # ``select_columns`` semantics after the pure
+                        # Project has been removed by the optimizer. Names
+                        # not present in the block (e.g. unrequested
+                        # partition keys parsed from sibling files, or per-
+                        # file schema divergence) are dropped before
+                        # ``BlockAccessor.select`` to avoid a ``KeyError``
+                        # from the underlying ``pa.Table.select``. Empty
+                        # projections are routed through the
+                        # ``__bsp_stub`` row-preserving path automatically.
+                        if self._projection_map is not None:
+                            block_columns = set(
+                                BlockAccessor.for_block(block).column_names()
+                            )
+                            requested = [
+                                name
+                                for name in self._projection_map
+                                if name in block_columns
+                            ]
+                            block = BlockAccessor.for_block(block).select(
+                                requested
+                            )
                         yield block
 
         def create_read_task_fn(read_paths, num_threads):
