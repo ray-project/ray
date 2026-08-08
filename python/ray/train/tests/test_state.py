@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.data import DataContext
 from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.state.schema import (
     ActorStatusEnum,
@@ -294,7 +295,13 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
         dataset = datasets[dataset_info.name]
         # DataConfig will automatically set the dataset_name to the key of the dataset dict.
         assert dataset_info.dataset_name == dataset_info.name
-        assert dataset_info.dataset_uuid == dataset._uuid
+        assert dataset_info.dataset_uuid
+        if DataContext.get_current().use_legacy_dataset_ids:
+            assert dataset_info.dataset_uuid == dataset._uuid
+        else:
+            # Dataset ULIDs are regenerated when a Dataset is deserialized into
+            # the Train process, so the state reports the runtime dataset ID.
+            assert dataset_info.dataset_uuid != dataset._uuid
 
 
 @pytest.mark.parametrize("raise_error", [True, False])
