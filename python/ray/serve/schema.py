@@ -34,6 +34,8 @@ from ray.serve._private.constants import (
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
+    RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+    RAY_SERVE_TRACING_SAMPLING_RATIO,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -238,22 +240,27 @@ class TracingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = Field(
-        default=False,
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH != "",
         description=(
-            "Whether tracing is enabled. Defaults to False. "
+            "Whether tracing is enabled. Defaults to True when the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable is set. "
             "When enabled, spans will be exported using the configured exporter."
         ),
     )
     exporter_import_path: str = Field(
-        default="",
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
         description=(
-            "Import path to a custom tracing exporter function. "
+            "Import path to a custom tracing exporter function. Defaults to the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable. "
             "If empty and tracing is enabled, the default file-based exporter is used."
         ),
     )
     sampling_ratio: float = Field(
-        default=0.01,
-        description=("Sampling ratio for traces (0.0 to 1.0). Defaults to 0.01 (1%)."),
+        default_factory=lambda: RAY_SERVE_TRACING_SAMPLING_RATIO,
+        description=(
+            "Sampling ratio for traces (0.0 to 1.0). Defaults to the "
+            "RAY_SERVE_TRACING_SAMPLING_RATIO environment variable (0.01, i.e. 1%)."
+        ),
     )
 
     @field_validator("sampling_ratio")
