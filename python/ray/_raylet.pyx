@@ -3794,6 +3794,23 @@ cdef class CoreWorker:
 
         return result
 
+    def get_local_queued_generator_resubmit_task_ids(self):
+        cdef:
+            c_vector[CTaskID] task_ids
+            c_vector[CTaskID].iterator it
+
+        with nogil:
+            task_ids = (CCoreWorkerProcess.GetCoreWorker().
+                        GetLocalQueuedGeneratorResubmitTaskIds())
+
+        result = []
+        it = task_ids.begin()
+        while it != task_ids.end():
+            result.append(TaskID(dereference(it).Binary()))
+            postincrement(it)
+
+        return result
+
     def get_local_object_locations(self, object_refs):
         cdef:
             c_vector[optional[CObjectLocation]] results
