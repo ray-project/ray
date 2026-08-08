@@ -81,6 +81,10 @@ class LimitOperator(OneToOneOperator):
                 )
                 out_blocks.append(block)
                 metadata = ray.get(metadata_ref)
+                # Slicing creates a new block; register it for memory tracking.
+                self._block_ref_counter.on_block_produced(
+                    block, metadata.size_bytes or 0, self.id
+                )
                 out_metadata.append(metadata)
                 self._output_blocks_stats.append(metadata.to_stats())
                 self._consumed_rows = self._limit

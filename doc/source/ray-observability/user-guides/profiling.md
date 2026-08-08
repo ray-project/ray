@@ -1,7 +1,6 @@
 (profiling)=
 # Profiling
-Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues.
-Here is a list of common profiling tools you may use when debugging Ray applications. 
+Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues. Here is a list of common profiling tools you may use when debugging Ray applications.
 - CPU profiling
     - py-spy
 - Memory profiling
@@ -9,6 +8,8 @@ Here is a list of common profiling tools you may use when debugging Ray applicat
 - GPU profiling
     - PyTorch Profiler
     - Nsight System
+- TPU profiling
+    - JAX Profiler
 - Ray Task / Actor timeline
 
 If Ray doesn't work with certain profiling tools, try running them without Ray to debug the issues.
@@ -183,6 +184,10 @@ To visualize the results, install the [Nsight System GUI](https://developer.nvid
 ```
 The best practice is to only specify the filename in output option.
 
+
+(profiling-tpu)=
+## TPU profiling
+For TPU workloads, you can use the JAX profiler. Ray provides integration for dynamically triggering JAX profiling and viewing the traces in TensorBoard. For a complete guide on how to profile JAX on TPUs on Kubernetes, see {ref}`jax-tpu-profiling`.
 
 (profiling-timeline)=
 ## Ray Task or Actor timeline

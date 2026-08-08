@@ -256,6 +256,42 @@ class MapBatches(AbstractUDFMap):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
+        self._wrap_torch_inference()
+
+    def _wrap_torch_inference(self) -> None:
+        """Detect a ``TorchInference`` UDF and wrap it in the managed
+        callable that drives collate/transfer/process/finalize.
+        """
+        from ray.data._internal.utils.torch_inference import (
+            is_torch_inference_class,
+            is_torch_inference_instance,
+            validate_torch_inference_op,
+        )
+
+        if is_torch_inference_instance(self.fn):
+            raise ValueError(
+                "Pass the `TorchInference` subclass to `map_batches`, "
+                "not an instance of it."
+            )
+        if not is_torch_inference_class(self.fn):
+            return
+
+        validate_torch_inference_op(
+            self.fn,
+            self.fn_args,
+            self.fn_kwargs,
+            self.compute,
+            self.ray_remote_args,
+        )
+        self._set_torch_inference_udf()
+
+    def _set_torch_inference_udf(self) -> None:
+        """Replace ``fn`` with the managed serial wrapper."""
+        from ray.data._internal.utils.torch_inference import (
+            make_torch_inference_callable,
+        )
+
+        object.__setattr__(self, "fn", make_torch_inference_callable(self.fn))
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -413,6 +449,10 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
     def has_star_expr(self) -> bool:
         return self.get_star_expr() is not None
+
+    def is_idempotent(self) -> bool:
+        """Return whether every output expression of this projection is idempotent."""
+        return all(expr.is_idempotent() for expr in self.exprs)
 
     def get_star_expr(self) -> Optional[StarExpr]:
         """Check if this projection contains a star() expression."""

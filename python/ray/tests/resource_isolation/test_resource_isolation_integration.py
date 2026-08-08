@@ -86,6 +86,8 @@ _EXPECTED_DASHBOARD_MODULES = [
     "ray.dashboard.modules.state.state_head.StateHead",
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
+# TaskEventsHead is intentionally omitted: it is gated off by default
+# (RAY_enable_task_events_to_dashboard_head) and so does not run as a subprocess here.
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'

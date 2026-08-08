@@ -50,7 +50,7 @@ Follow the instructions in [KubeRay operator](kuberay-operator-deploy) to instal
 Install the Custom Resource Definitions (CRDs), controllers, and extensions from the official Agent Sandbox release.
 
 ```bash
-export VERSION="v0.4.6"
+export VERSION="v0.5.0"
 
 kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/manifest.yaml
 kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/extensions.yaml
@@ -106,7 +106,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 The following resources are created:
 - **`SandboxTemplate`**: defines the per-sandbox podSpec. The Pod is configured to use gVisor, sets `automountServiceAccountToken: false` so untrusted code inside the sandbox cannot read a Kubernetes ServiceAccount token, and sets `networkPolicyManagement: Unmanaged` because the NetworkPolicy below is stricter than the controller's Secure Default. The template also labels every sandbox pod with `app: python-runtime-pool` so other selectors (the NetworkPolicy podSelector, your own `kubectl get` queries) can target them by a stable, human-readable label.
 - **`SandboxWarmPool`** (`python-runtime-pool`) — keeps 6 pre-booted sandbox pods ready so the Ray actors' claims complete in under 200ms.
-- **`NetworkPolicy`** (`ray-native-pool-restrict-egress`) — default-denies egress for every sandbox pod except DNS. This is what makes the demo's containment claims in Step 7 concrete: the `lateral_internal_probe.py` and `reverse_shell_attempt.py` snippets hit TCP timeouts because the CNI drops their packets at the node, not because of any cluster-default policy you may or may not have.
+- **`NetworkPolicy`** (`python-runtime-pool-restrict-egress`) — default-denies egress for every sandbox pod except DNS. This is what provides concrete containment, ensuring packets are dropped by the CNI at the node rather than relying on cluster-default policies.
 
 Verify the warm pool pods are running:
 
@@ -148,7 +148,7 @@ kubectl get pods -l job-name=agent-sandbox-code-execution-demo
 kubectl logs -f -l job-name=agent-sandbox-code-execution-demo
 ```
 
-Once the job starts, three `SandboxExecutor` Ray actors each claim one pod from `ray-native-pool` (the SDK reports per-actor adoption latency — sub-200ms when the warm pool is healthy). Every Python snippet that follows runs **inside the sandbox pod, never on the Ray worker**: gVisor isolates the syscall surface, the `ray-native-pool-restrict-egress` NetworkPolicy applied in Step 5 default-denies all egress except DNS, and `sandbox.commands.run(..., timeout=5)` bounds wall-clock blast radius per call. 
+Once the job starts, two `SandboxExecutor` Ray actors each claim one pod from `python-runtime-pool` (the SDK reports per-actor adoption latency — sub-200ms when the warm pool is healthy). Every Python snippet that follows runs **inside the sandbox pod, never on the Ray worker**: gVisor isolates the syscall surface, the `python-runtime-pool-restrict-egress` NetworkPolicy applied in Step 5 default-denies all egress except DNS, and `sandbox.commands.run(..., timeout=5)` bounds wall-clock blast radius per call. 
 
 Expected output (abridged):
 

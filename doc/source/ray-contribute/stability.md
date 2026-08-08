@@ -6,17 +6,17 @@ myst:
 
 (api-stability)=
 
-# API Stability
+# API stability
 
 Ray provides stability guarantees for its public APIs in Ray core and libraries, which are decorated/labeled accordingly.
 
 An API can be labeled:
 
 * {ref}`PublicAPI <public-api-def>`, which means the API is exposed to end users. PublicAPI has three sub-levels (alpha, beta, stable), as described below.
-* {ref}`DeveloperAPI <developer-api-def>`, which means the API is explicitly exposed to *advanced* Ray users and library developers
+* {ref}`DeveloperAPI <developer-api-def>`, which means the API is explicitly exposed to *advanced* Ray users and library developers.
 * {ref}`Deprecated <deprecated-api-def>`, which may be removed in future releases of Ray.
 
-Ray's PublicAPI stability definitions are based off the [Google stability level guidelines](https://google.aip.dev/181), with minor differences:
+Ray's PublicAPI stability definitions are based on the [Google stability level guidelines](https://google.aip.dev/181), with minor differences:
 
 (api-stability-alpha)=
 

@@ -232,13 +232,17 @@ def test_deployment_scheduling_info():
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=RequestedResources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 1}),
         placement_group_bundles=[
-            RequestedResources({"CPU": 100}),
-            RequestedResources({"GPU": 100}),
+            # Bundle 0 hosts the actor's CPU plus the CPU+GPU for a child
+            # task/actor captured into the PG.
+            RequestedResources({"CPU": 2, "GPU": 1}),
+            RequestedResources({"CPU": 1, "GPU": 1}),
         ],
         placement_group_strategy="PACK",
     )
+    # Actor is pinned as a subset of bundle 0, so required_resources is
+    # bundle 0's full reservation, not just actor_resources.
     assert info.required_resources == RequestedResources({"CPU": 2, "GPU": 1})
     assert info.is_non_strict_pack_pg()
 
@@ -562,6 +566,51 @@ def test_best_fit_node():
         Resources.CUSTOM_PRIORITY = original
 
 
+def test_best_fit_node_tie_break_key():
+    """Test that _best_fit_node uses tie_break_key only to break ties."""
+
+    scheduler = default_impl.create_deployment_scheduler(
+        MockClusterNodeInfoCache(),
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+
+    required_resources = RequestedResources(CPU=1)
+    tie_break_key = {"node1": 5, "node2": 1, "node3": 3}.get
+
+    # All nodes leave identical remaining space, so the smallest key wins.
+    assert "node2" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(CPU=3),
+            "node3": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=tie_break_key,
+    )
+
+    # Best fit dominates: node1 leaves less space and wins despite the largest key.
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=2),
+            "node2": AvailableNodeResources(CPU=3),
+            "node3": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=tie_break_key,
+    )
+
+    # An equal key keeps the first node seen; the tie break only wins if strictly smaller.
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=lambda node_id: 0,
+    )
+
+
 def test_schedule_replica():
     """Test DeploymentScheduler._schedule_replica()"""
 
@@ -706,6 +755,31 @@ def test_schedule_replica():
         "num_cpus": 1,
         "resources": {"my_rs": 1},
     }
+
+    # target_node_id set on the request pins with hard node affinity. The
+    # ingress request router uses this so a replica lands on its proxy node or
+    # not at all, unlike the soft param path above.
+    r5_id = ReplicaID(unique_id="r5", deployment_id=d_id)
+    node_id_2 = NodeID.from_random().hex()
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r5_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r5"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+        target_node_id=node_id_2,
+    )
+    scheduler._pending_replicas[d_id][r5_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+    )
+    assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+    assert scheduling_strategy.node_id == node_id_2
+    assert scheduling_strategy.soft is False
+    assert scheduling_strategy._spill_on_unavailable is False
 
 
 def test_downscale_multiple_deployments():
@@ -1009,6 +1083,37 @@ def test_schedule_passes_placement_group_options():
 
     # bundle_label_selector should be passed to request.
     assert pg_request.bundle_label_selector == test_labels
+
+
+def test_schedule_pins_actor_to_bundle_0():
+    """Replicas with a placement group are scheduled with placement_group_bundle_index=0."""
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=lambda request: MockPlacementGroup(request),
+    )
+
+    dep_id = DeploymentID(name="pin_test")
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+
+    captured_handles = []
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r1"},
+        actor_init_args=(),
+        on_scheduled=lambda handle, **kwargs: captured_handles.append(handle),
+        placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+        placement_group_strategy="PACK",
+    )
+    scheduler.schedule(upscales={dep_id: [req]}, downscales={})
+
+    assert len(captured_handles) == 1
+    strategy = captured_handles[0]._options["scheduling_strategy"]
+    assert isinstance(strategy, PlacementGroupSchedulingStrategy)
+    assert strategy.placement_group_bundle_index == 0
 
 
 def test_filter_nodes_by_label_selector():

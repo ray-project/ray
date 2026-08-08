@@ -706,7 +706,7 @@ def method(*args: Any, **kwargs: Any):
                 method
             ) or inspect.isasyncgenfunction(method)
             ray_option_utils.validate_num_returns(
-                is_generator_callable, kwargs["num_returns"]
+                is_generator_callable, kwargs["num_returns"], stacklevel=3
             )
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
@@ -969,6 +969,11 @@ class ActorMethod:
                 "call. Use @ray.method(_num_objects_per_yield=...) instead."
             )
 
+        if "num_returns" in options:
+            ray_option_utils.validate_num_returns(
+                self._is_generator, options["num_returns"], stacklevel=3
+            )
+
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
             from ray.experimental.rdt.util import (
@@ -999,6 +1004,9 @@ class ActorMethod:
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
         )
+
+        if num_returns is None:
+            num_returns = self._num_returns
 
         # TODO(sang): unify option passing
         options = {
@@ -2630,7 +2638,7 @@ class ActorHandle(Generic[T]):
 
         if not self._ray_is_cross_language:
             raise AttributeError(
-                f"'{type(self).__name__}' object has " f"no attribute '{item}'"
+                f"'{type(self).__name__}' object has no attribute '{item}'"
             )
         if item in ["__ray_terminate__"]:
 
@@ -2829,7 +2837,69 @@ def _modify_class(cls):
         def __ray_ready__(self):
             return True
 
-        def __ray_call__(self, fn, *args, **kwargs):
+        @DeveloperAPI
+        def __ray_call__(
+            self, fn: "Callable[..., Any]", *args: Any, **kwargs: Any
+        ) -> Any:
+            """Run a closure remotely on this actor instance.
+
+            Provides a standard way to execute an arbitrary callable on a remote
+            actor without pre-defining a dedicated method. The callable receives
+            the actor instance as its first argument, followed by any additional
+            positional and keyword arguments passed to ``__ray_call__``.
+
+            This is useful when you want to:
+
+            * Access or modify actor state without defining a getter/setter method.
+            * Run ad-hoc operations on an actor for debugging or testing.
+            * Integrate with libraries that produce callables dynamically
+            (e.g., vLLM's worker dispatch pattern).
+
+            Args:
+                fn: A callable that accepts the actor instance as its first
+                    argument. The callable is serialized with cloudpickle and
+                    executed on the remote actor process.
+                *args: Additional positional arguments forwarded to ``fn``
+                    after the actor instance.
+                **kwargs: Additional keyword arguments forwarded to ``fn``.
+
+            Returns:
+                The return value of ``fn(self, *args, **kwargs)``.
+
+            Examples:
+                .. testcode::
+
+                    import ray
+
+                    @ray.remote
+                    class Counter:
+                        def __init__(self):
+                            self.count = 0
+
+                        def increment(self):
+                            self.count += 1
+
+                    counter = Counter.remote()
+                    ray.get(counter.increment.remote())
+
+                    # Access state without a dedicated getter method
+                    value = ray.get(counter.__ray_call__.remote(
+                        lambda self: self.count
+                    ))
+                    assert value == 1
+
+                    # Pass extra arguments to the closure
+                    result = ray.get(counter.__ray_call__.remote(
+                        lambda self, x: self.count + x, 10
+                    ))
+                    assert result == 11
+
+            .. note::
+
+                ``fn`` must be serializable by cloudpickle. Lambda functions
+                and top-level functions are typically supported. Closures over
+                large objects may incur serialization overhead.
+            """
             return fn(self, *args, **kwargs)
 
         def __ray_terminate__(self):
@@ -2877,12 +2947,14 @@ def exit_actor():
     This API can be used only inside an actor. Use ray.kill
     API if you'd like to kill an actor using actor handle.
 
-    When this API is called, an exception is raised and the actor
-    will exit immediately. For asyncio actors, there may be a short
-    delay before the actor exits if the API is called from a background
-    task.
-    Any queued methods will fail. Any ``atexit``
-    handlers installed in the actor will be run.
+    When this API is called, an exception is raised in the calling task and the
+    actor is scheduled to exit. The caller of the task that calls this API
+    observes the actor's death rather than a return value, and methods that have
+    not started executing fail with ``RayActorError``.
+
+    Tasks queued for execution will fail with ``RayActorError``. For concurrent and async actors, tasks currently executing will run to completion before the actor exits.
+
+    Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:
         TypeError: An exception is raised if this is a driver or this

@@ -190,13 +190,13 @@ If you're writing a longer example, or if object representations aren't relevant
 
 ### When to use *literalinclude*
 
-If you're writing an end-to-end examples and your examples doesn't contain outputs, use *literalinclude*.
+If you're writing an end-to-end example and your example doesn't contain outputs, use *literalinclude*.
 
 ## How to handle hard-to-test examples
 
 ### When is it okay to not test an example?
 
-You don't need to test examples that depend on external systems like Weights and Biases.
+You don't need to test examples that depend on external systems such as Weights and Biases.
 
 ### Skipping *doctest-style* examples
 
@@ -225,9 +225,9 @@ To skip a *code-output-style* example, add `:skipif: True` to the `testcode` blo
     )
 ```
 
-## How to handle long or non-determnistic outputs
+## How to handle long or non-deterministic outputs
 
-If your Python code is non-deterministic, or if your output is excessively long, you may want to skip all or part of an output.
+If your Python code is non-deterministic, or if your output is excessively long, you can skip all or part of the output.
 
 ### Ignoring *doctest-style* outputs
 
@@ -257,7 +257,7 @@ If parts of your output are long or non-deterministic, replace problematic secti
     Dataset(num_rows=..., schema=...)
 ```
 
-If your output is nondeterministic and you want to display a sample output, add `:options: +MOCK`.
+If your output is non-deterministic and you want to display a sample output, add `:options: +MOCK`.
 
 ```
 .. testcode::
@@ -283,7 +283,7 @@ If your output is hard to test and you don't want to display a sample output, ex
 
 To configure Bazel to run an example with GPUs, complete the following steps:
 
-1. Open the corresponding `BUILD` file. If your example is in the `doc/` folder, open `doc/BUILD`. If your example is in the `python/` folder, open a file like `python/ray/train/BUILD`.
+1. Open the corresponding `BUILD` file. If your example is in the `doc/` folder, open `doc/BUILD`. If your example is in the `python/` folder, open a file such as `python/ray/train/BUILD`.
 
 2. Locate the `doctest` rule. It looks like this:
 

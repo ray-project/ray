@@ -16,12 +16,16 @@
 
 #include <boost/thread.hpp>
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "ray/asio/asio_util.h"
 #include "ray/common/metrics.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/grpc_service.h"
 #include "ray/core_worker/metrics.h"
+#include "ray/observability/ray_task_event_recorder.h"
+#include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/mutex_protected.h"
 
@@ -92,6 +96,13 @@ class CoreWorkerProcess {
   /// \return The `CoreWorker` instance.
   static std::shared_ptr<CoreWorker> TryGetWorker();
 
+  /// Whether a running task has been marked for cancellation and should be interrupted.
+  /// Empty once the core worker is gone, so that background threads polling during
+  /// shutdown can tell that case apart in one read instead of exiting the process the way
+  /// GetCoreWorker() does. No reference to the CoreWorker escapes, which keeps a caller
+  /// from becoming its last owner.
+  static std::optional<bool> ShouldInterruptTaskForCancellation();
+
   /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();
 
@@ -134,6 +145,9 @@ class CoreWorkerProcessImpl {
   /// Try to get core worker. Returns nullptr if core worker doesn't exist.
   std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
 
+  /// Whether a running task should be interrupted. Empty if core worker doesn't exist.
+  std::optional<bool> ShouldInterruptTaskForCancellation() const;
+
   std::shared_ptr<CoreWorker> CreateCoreWorker(CoreWorkerOptions options,
                                                const WorkerID &worker_id);
 
@@ -166,9 +180,23 @@ class CoreWorkerProcessImpl {
   /// Keeps the io_service_ alive.
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
 
+  /// Dedicated io_context for out-of-scope callbacks registered by users (e.g. Python).
+  instrumented_io_context object_freed_callback_service_{
+      /*enable_lag_probe=*/false,
+      /*running_on_single_thread=*/true};
+
+  /// Keeps object_freed_callback_service_ alive until explicitly stopped.
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+      object_freed_callback_service_work_;
+
   /// Shared client call manager across all gRPC clients in the core worker process.
   /// This is used by the CoreWorker and the MetricsAgentClient.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  /// Dependencies of the RayTaskEventRecorder
+  std::unique_ptr<InstrumentedIOContextWithThread> ray_task_event_recorder_io_context_;
+  std::unique_ptr<ray::stats::Count> ray_task_event_recorder_dropped_events_counter_;
+  std::unique_ptr<rpc::EventAggregatorClient> ray_task_event_recorder_aggregator_client_;
 
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid
@@ -182,6 +210,9 @@ class CoreWorkerProcessImpl {
 
   // Thread that runs a boost::asio service to process IO events.
   boost::thread io_thread_;
+
+  /// Thread that drains object_freed_callback_service_.
+  boost::thread object_freed_callback_thread_;
 
   /// The core worker instance of this worker process.
   MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;

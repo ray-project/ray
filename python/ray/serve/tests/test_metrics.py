@@ -26,6 +26,7 @@ from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
 )
@@ -38,6 +39,7 @@ from ray.serve._private.test_utils import (
     get_metric_float,
     ping_grpc_call_method,
     ping_grpc_list_applications,
+    skip_if_haproxy,
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
@@ -203,6 +205,10 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     wait_for_condition(ensure_request_processing, timeout=5)
 
 
+@skip_if_haproxy(
+    "HAProxy answers unmatched-route 404s itself and counts its health-check "
+    "probes in these metrics"
+)
 def test_proxy_metrics_not_found(metrics_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
@@ -300,6 +306,10 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
+@skip_if_haproxy(
+    "HAProxy returns 502 for a dead backend instead of a replica 500 and counts "
+    "its health-check probes in these metrics"
+)
 def test_proxy_metrics_internal_error(metrics_start_shutdown):
     # This test kills the replica process so metrics are not emitted.
     if RAY_SERVE_ENABLE_DIRECT_INGRESS and not RAY_SERVE_ENABLE_HA_PROXY:
@@ -402,6 +412,10 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
+@skip_if_haproxy(
+    "HAProxy answers the 404 itself and counts its health-check probes in these "
+    "metrics"
+)
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
@@ -464,6 +478,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     ],
     indirect=True,
 )
+@skip_if_haproxy("HAProxy counts its gRPC health-check probes in these metrics")
 def test_proxy_timeout_metrics(metrics_start_shutdown):
     """Test that HTTP timeout metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -543,6 +558,7 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@skip_if_haproxy("HAProxy counts its gRPC health-check probes in these metrics")
 def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     """Test that gRPC disconnect metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -594,6 +610,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@skip_if_haproxy("HAProxy counts its health-check probes in these latency metrics")
 def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
@@ -735,6 +752,10 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     )
 
 
+@skip_if_haproxy(
+    "HAProxy can't inspect websocket close codes, so it can't classify them as "
+    "HTTP errors and the error-vs-success request counts this test asserts can't hold"
+)
 def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     """Verify that status codes aisde from 1000 or 1001 are errors."""
 
@@ -1042,6 +1063,8 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
 def test_router_queue_len_metric(metrics_start_shutdown):
     """Test that router queue length metric is recorded correctly per replica."""
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip("direct ingress bypasses the proxy router, queue-len gauge stays 0")
     signal = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=10)
@@ -1116,7 +1139,18 @@ def test_multiplexed_metrics(metrics_start_shutdown):
             await self.get_model(model_id)
             return
 
-    handle = serve.run(Model.bind(), name="app", route_prefix="/app")
+    # Multiplexing is not supported on the ingress deployment when direct ingress /
+    # HAProxy is enabled, so keep the multiplexed deployment downstream of a plain
+    # ingress.
+    @serve.deployment
+    class Ingress:
+        def __init__(self, model):
+            self._model = model
+
+        async def __call__(self, model_id: str):
+            await self._model.remote(model_id)
+
+    handle = serve.run(Ingress.bind(Model.bind()), name="app", route_prefix="/app")
     handle.remote("model1")
     handle.remote("model2")
     # Trigger model eviction.
@@ -1146,6 +1180,10 @@ def test_multiplexed_metrics(metrics_start_shutdown):
     )
 
 
+@skip_if_haproxy(
+    "HAProxy labels HTTP metrics with the static backend path_prefix, not "
+    "FastAPI route patterns"
+)
 @pytest.mark.parametrize("use_factory_pattern", [False, True])
 def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_pattern):
     """Test that proxy metrics use specific route patterns for FastAPI apps.
@@ -1293,6 +1331,179 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     assert (
         "/api/users/{user_id}" in latency_routes or "/api/" in latency_routes
     ), f"Latency metrics should use route patterns. Found: {latency_routes}"
+
+
+def _check_controller_high_cardinality_metric_tags(include_high_cardinality: bool):
+    """Test controller metrics respect high-cardinality tag config."""
+
+    @ray.remote
+    class ReplicaHealthState:
+        def __init__(self):
+            self.replica_ids = set()
+            self.failures_enabled = False
+            self.failing_replica_id = None
+
+        def get_num_registered_replicas(self) -> int:
+            return len(self.replica_ids)
+
+        def enable_failures(self):
+            self.failures_enabled = True
+
+        def register_and_should_fail_health_check(self, replica_id: str) -> bool:
+            self.replica_ids.add(replica_id)
+            if not self.failures_enabled:
+                return False
+            if self.failing_replica_id is None:
+                self.failing_replica_id = replica_id
+            return replica_id == self.failing_replica_id
+
+    signal = SignalActor.remote()
+    replica_health_state = ReplicaHealthState.remote()
+
+    @serve.deployment(
+        name="autoscaling_metrics_model",
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "target_ongoing_requests": 2,
+            "metrics_interval_s": 0.1,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 5,
+            "look_back_period_s": 1,
+        },
+        max_ongoing_requests=10,
+        graceful_shutdown_timeout_s=0.1,
+    )
+    class AutoscalingModel:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "hello"
+
+        async def record_autoscaling_stats(self):
+            return {"custom_metric": 1}
+
+    @serve.deployment(
+        name="lifecycle_metrics_model",
+        num_replicas=2,
+        health_check_period_s=0.1,
+        health_check_timeout_s=1,
+        graceful_shutdown_timeout_s=0.1,
+    )
+    class LifecycleModel:
+        async def __call__(self):
+            return serve.get_replica_context().replica_tag
+
+        async def check_health(self):
+            replica_id = serve.get_replica_context().replica_tag
+            should_fail_health_check = (
+                await replica_health_state.register_and_should_fail_health_check.remote(
+                    replica_id
+                )
+            )
+            if should_fail_health_check:
+                raise RuntimeError("Intentional health check failure.")
+
+    autoscaling_app_name = "autoscaling_metrics_app"
+    autoscaling_deployment_name = "autoscaling_metrics_model"
+    lifecycle_app_name = "lifecycle_metrics_app"
+    lifecycle_deployment_name = "lifecycle_metrics_model"
+    serve.run(
+        AutoscalingModel.bind(),
+        name=autoscaling_app_name,
+        route_prefix="/autoscaling",
+    )
+    serve.run(
+        LifecycleModel.bind(),
+        name=lifecycle_app_name,
+        route_prefix="/lifecycle",
+    )
+
+    wait_for_condition(
+        lambda: ray.get(replica_health_state.get_num_registered_replicas.remote()) == 2,
+        timeout=60,
+    )
+    timeseries = PrometheusTimeseries()
+
+    def get_health_status_value(deployment: str, application: str) -> float:
+        return get_metric_float(
+            "ray_serve_deployment_replica_healthy",
+            {
+                "deployment": deployment,
+                "application": application,
+            },
+            timeseries=timeseries,
+            timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        )
+
+    if not include_high_cardinality:
+        wait_for_condition(
+            lambda: get_health_status_value(
+                lifecycle_deployment_name, lifecycle_app_name
+            )
+            == 2,
+            timeout=60,
+        )
+
+    ray.get(replica_health_state.enable_failures.remote())
+    handle = serve.get_deployment_handle(
+        autoscaling_deployment_name, autoscaling_app_name
+    )
+    [handle.remote() for _ in range(10)]
+
+    def get_matching_metrics(metric_name: str, deployment: str, application: str):
+        return [
+            metric
+            for metric in get_metric_dictionaries(
+                metric_name, timeseries=timeseries, wait=False
+            )
+            if metric.get("deployment") == deployment
+            and metric.get("application") == application
+        ]
+
+    def assert_high_cardinality_tag(metric, tag):
+        assert (tag in metric) is include_high_cardinality
+
+    def check_controller_metric_tags():
+        health_failure_metrics = get_matching_metrics(
+            "ray_serve_health_check_failures_total",
+            lifecycle_deployment_name,
+            lifecycle_app_name,
+        )
+        health_status_metrics = get_matching_metrics(
+            "ray_serve_deployment_replica_healthy",
+            lifecycle_deployment_name,
+            lifecycle_app_name,
+        )
+        if not health_failure_metrics or not health_status_metrics:
+            return False
+
+        for metric in health_failure_metrics:
+            assert_high_cardinality_tag(metric, "replica")
+        for metric in health_status_metrics:
+            assert_high_cardinality_tag(metric, "replica")
+
+        return True
+
+    try:
+        wait_for_condition(check_controller_metric_tags, timeout=60)
+    finally:
+        ray.get(signal.send.remote())
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
+    reason="controller metric high-cardinality tags are disabled",
+)
+def test_controller_high_cardinality_metric_tags(metrics_start_shutdown):
+    _check_controller_high_cardinality_metric_tags(include_high_cardinality=True)
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
+    reason="controller metric high-cardinality tags are enabled",
+)
+def test_disable_high_cardinality_controller_metrics(metrics_start_shutdown):
+    _check_controller_high_cardinality_metric_tags(include_high_cardinality=False)
 
 
 def test_routing_stats_delay_metric(metrics_start_shutdown):
@@ -1742,4 +1953,4 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", "-s"] + sys.argv[1:] + [__file__]))

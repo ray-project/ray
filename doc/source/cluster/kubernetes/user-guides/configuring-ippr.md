@@ -2,8 +2,7 @@
 
 # KubeRay In-Place Pod Resizing (IPPR)
 
-This guide explains how to configure In-Place Pod Resizing (IPPR) for the Ray Autoscaler on Kubernetes 1.35+ with Ray 2.56 or later.
-IPPR allows the Ray Autoscaler to vertically resize running Pods (CPU and memory) to change the cluster capacity.
+This guide explains how to configure In-Place Pod Resizing (IPPR) for the Ray Autoscaler on Kubernetes 1.35+ with Ray 2.56 or later. IPPR allows the Ray Autoscaler to vertically resize running Pods (CPU and memory) to change the cluster capacity.
 
 ```{admonition} Alpha feature
 :class: warning

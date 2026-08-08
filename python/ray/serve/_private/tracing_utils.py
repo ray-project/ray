@@ -3,7 +3,7 @@ import os
 import threading
 from contextvars import ContextVar, Token
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 
 from ray._common.utils import import_attr
 from ray.serve._private.constants import (
@@ -11,6 +11,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
     RAY_SERVE_TRACING_SAMPLING_RATIO,
 )
+
+if TYPE_CHECKING:
+    from ray.serve._private.common import ServeComponentType
 
 try:
     from opentelemetry import trace
@@ -27,22 +30,22 @@ try:
     from opentelemetry.trace.status import Status, StatusCode
 
 except ImportError:
-    SpanProcessor = None
-    ConsoleSpanExporter = None
-    SimpleSpanProcessor = None
-    trace = None
-    SpanKind = None
-    TracerProvider = None
-    TraceIdRatioBased = None
-    Status = None
-    StatusCode = None
-    set_span_in_context = None
-    TraceContextTextMapPropagator = None
-    get_current = None
-    attach = None
-    detach = None
-    SpanAttributes = None
-    ParentBasedTraceIdRatio = None
+    SpanProcessor = cast(Any, None)
+    ConsoleSpanExporter = cast(Any, None)
+    SimpleSpanProcessor = cast(Any, None)
+    trace = cast(Any, None)
+    SpanKind = cast(Any, None)
+    TracerProvider = cast(Any, None)
+    TraceIdRatioBased = cast(Any, None)
+    Status = cast(Any, None)
+    StatusCode = cast(Any, None)
+    set_span_in_context = cast(Any, None)
+    TraceContextTextMapPropagator = cast(Any, None)
+    get_current = cast(Any, None)
+    attach = cast(Any, None)
+    detach = cast(Any, None)
+    SpanAttributes = cast(Any, None)
+    ParentBasedTraceIdRatio = cast(Any, None)
 
 
 TRACE_STACK: ContextVar[List[Any]] = ContextVar(
@@ -131,7 +134,7 @@ class TraceContextManager:
 class BatchTraceContextManager:
     """Attach/detach a tracing context around a block to scope the span of a batch."""
 
-    def __init__(self, trace_context: Optional[object]):
+    def __init__(self, trace_context: Optional[Dict[str, str]]):
         self._enabled = is_tracing_enabled() and trace_context is not None
         self._trace_context = trace_context
         self._token: Optional[Token] = None
@@ -263,7 +266,7 @@ def setup_tracing(
     )
 
     span_processors = _load_span_processors(
-        tracing_exporter_import_path, tracing_file_name
+        cast(str, tracing_exporter_import_path), tracing_file_name
     )
 
     # Intialize tracing
@@ -281,7 +284,7 @@ def setup_tracing(
     return True
 
 
-def create_propagated_context() -> Dict[str, str]:
+def create_propagated_context() -> Optional[Dict[str, str]]:
     """Create context that can be used across services and processes.
 
     This function retrieves the current context and converts it
@@ -294,7 +297,7 @@ def create_propagated_context() -> Dict[str, str]:
     """
     trace_context = get_trace_context()
     if trace_context and TraceContextTextMapPropagator:
-        ctx = {}
+        ctx: Dict[str, str] = {}
         TraceContextTextMapPropagator().inject(ctx, trace_context)
         return ctx
 
@@ -311,10 +314,10 @@ def extract_propagated_context(
     return None
 
 
-def set_trace_context(trace_context: Dict[str, str]) -> Optional[Token]:
+def set_trace_context(trace_context: Optional[Dict[str, str]]) -> Optional[Token]:
     """Set the current trace context."""
     if attach is None:
-        return
+        return  # type: ignore[return-value]
 
     return attach(trace_context)
 
@@ -400,7 +403,7 @@ def set_span_attributes(attributes: Dict[str, Any]):
             trace_stack[-1].set_attributes(attributes)
 
 
-def set_trace_status(is_error: bool, description: str = ""):
+def set_trace_status(is_error: bool, description: Optional[str] = ""):
     """Set the status for the current span in context."""
     trace_stack = TRACE_STACK.get([])
     if trace_stack:

@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 import ray
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.exceptions import RayActorError
 from ray.train.v2._internal.constants import GET_ACTOR_TIMEOUT_S
 from ray.train.v2._internal.execution.callback import (
@@ -61,6 +62,8 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             self._cleaner = cleaner_actor_cls.options(
                 lifetime="detached",
                 get_if_exists=False,
+                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+                scheduling_strategy="DEFAULT",
             ).remote(
                 controller_actor_id=self._controller_actor_id,
                 check_interval_s=self._check_interval_s,

@@ -192,8 +192,7 @@ name: dp-pd-architecture
 Combined DP + PD architecture: each phase has its own gang-scheduled DP group.
 ```
 
-Each phase can have an independent `data_parallel_size`.
-`PDDecodeServer` orchestrates remote prefill then runs decode locally.
+Each phase can have an independent `data_parallel_size`. `PDDecodeServer` orchestrates remote prefill then runs decode locally.
 
 ## See also
 

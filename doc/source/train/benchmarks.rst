@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Train performance benchmarks: GPU image-classification throughput across cluster sizes, and parity with native PyTorch Distributed.
+
 .. _train-benchmarks:
 
 Ray Train Benchmarks

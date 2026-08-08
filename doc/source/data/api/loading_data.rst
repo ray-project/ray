@@ -53,6 +53,24 @@ Binary
 
    read_binary_files
 
+Catalog
+^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Catalog
+
+   DatabricksUnityCatalog
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   ReaderFormat
+
 CSV
 ^^^
 
@@ -178,6 +196,15 @@ Lance
    :toctree: doc/
 
    read_lance
+
+LeRobot
+^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_lerobot
 
 MCAP (Message Capture)
 ^^^^^^^^^^^^^^^^^^^^^^

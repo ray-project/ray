@@ -59,6 +59,7 @@ using ::testing::Return;
 namespace {
 
 constexpr double kTestTotalCpuResource = 10.0;
+constexpr double kTestObjectStoreMemory = 1024 * 1024 * 1024;  // 1 GiB
 
 class FakeLocalObjectManager : public LocalObjectManagerInterface {
  public:
@@ -100,7 +101,10 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id) override { return ""; }
 
-  int64_t GetPrimaryBytes() const override { return 0; }
+  int64_t GetPrimaryBytes() const override { return primary_bytes_; }
+
+  // Settable by tests to simulate pinned primary object copies on the node.
+  int64_t primary_bytes_ = 0;
 
   bool HasLocallySpilledObjects() const override { return false; }
 
@@ -320,8 +324,10 @@ class NodeManagerTest : public ::testing::Test {
     NodeManagerConfig node_manager_config{};
     node_manager_config.maximum_startup_concurrency = 1;
     node_manager_config.store_socket_name = "test_store_socket";
-    node_manager_config.resource_config = ResourceSet(
-        absl::flat_hash_map<std::string, double>{{"CPU", kTestTotalCpuResource}});
+    node_manager_config.resource_config =
+        ResourceSet(absl::flat_hash_map<std::string, double>{
+            {"CPU", kTestTotalCpuResource},
+            {"object_store_memory", kTestObjectStoreMemory}});
     // Set non-zero ports to skip waiting for agents reporting ports back.
     // we don't actually start the agents in this test.
     node_manager_config.metrics_agent_port = 44386;
@@ -353,7 +359,7 @@ class NodeManagerTest : public ::testing::Test {
     objects_pending_deletion_ = std::make_shared<absl::flat_hash_set<ObjectID>>();
 
     local_object_manager_ =
-        std::make_unique<FakeLocalObjectManager>(objects_pending_deletion_);
+        std::make_shared<FakeLocalObjectManager>(objects_pending_deletion_);
 
     lease_dependency_manager_ = std::make_unique<LeaseDependencyManager>(
         *mock_object_manager_, fake_task_by_state_counter_);
@@ -478,7 +484,7 @@ class NodeManagerTest : public ::testing::Test {
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
   std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
-  std::shared_ptr<LocalObjectManagerInterface> local_object_manager_;
+  std::shared_ptr<FakeLocalObjectManager> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
       std::make_unique<gcs::MockGcsClient>();
@@ -1449,6 +1455,37 @@ TEST_P(NodeManagerDeathTest, TestGcsPublishesSelfDead) {
 INSTANTIATE_TEST_SUITE_P(NodeManagerDeathVariations,
                          NodeManagerDeathTest,
                          testing::Bool());
+
+TEST_F(NodeManagerTest, TestHandleDrainRayletRejectsIdleDrainWithPinnedObject) {
+  // Tests that a node that holds a primary copy rejects a drain.
+  local_object_manager_->primary_bytes_ = 1;
+
+  rpc::DrainRayletRequest request;
+  request.set_reason(
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION);
+  request.set_reason_message("idle for long enough");
+  request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+
+  rpc::DrainRayletReply reply;
+  node_manager_->HandleDrainRaylet(
+      request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_FALSE(reply.is_accepted());
+  ASSERT_FALSE(
+      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
+
+  // With no pinned primary copies, the same idle drain is accepted.
+  local_object_manager_->primary_bytes_ = 0;
+  rpc::DrainRayletReply reply2;
+  node_manager_->HandleDrainRaylet(
+      request, &reply2, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_TRUE(reply2.is_accepted());
+  ASSERT_TRUE(
+      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
+}
 
 class DrainRayletIdempotencyTest
     : public NodeManagerTest,

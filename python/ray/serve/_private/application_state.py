@@ -48,6 +48,7 @@ from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    _callable_uses_multiplexing,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
@@ -1026,12 +1027,15 @@ class ApplicationState:
                 or target_state_changed
             )
 
-        # Delete outdated deployments
-        for deployment_name in self._get_live_deployments():
-            if deployment_name not in self.target_deployments:
-                target_state_changed = (
-                    self._delete_deployment(deployment_name) or target_state_changed
-                )
+        # Delete outdated deployments. Skipped during a full instance
+        # shutdown, as it would bypass DeploymentStateManager's own tiered
+        # shutdown order.
+        if not self._deployment_state_manager.is_shutting_down():
+            for deployment_name in self._get_live_deployments():
+                if deployment_name not in self.target_deployments:
+                    target_state_changed = (
+                        self._delete_deployment(deployment_name) or target_state_changed
+                    )
 
         return target_state_changed
 
@@ -1695,6 +1699,9 @@ def build_serve_application(
                     serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                     serialized_deployment_actors=serialized_deployment_actors,
+                    uses_multiplexing=_callable_uses_multiplexing(
+                        deployment.func_or_class
+                    ),
                 )
             )
 
@@ -1900,13 +1907,23 @@ def override_deployment_info(
                         **request_router_config
                     )
 
+        # _serialized_actor_class is a PrivateAttr dropped by model_dump() above;
+        # carry it over so it survives the DeploymentConfig reconstruction.
+        serialized_actors = {
+            cfg.name: cfg._serialized_actor_class
+            for cfg in (info.deployment_config.deployment_actors or [])
+            if cfg._serialized_actor_class
+        }
+
         if (
             deployment_to_serialized_deployment_actors
             and deployment_name in deployment_to_serialized_deployment_actors
         ):
-            serialized_actors = deployment_to_serialized_deployment_actors[
+            serialized_actors |= deployment_to_serialized_deployment_actors[
                 deployment_name
             ]
+
+        if serialized_actors:
             actors_list = options.get(
                 "deployment_actors",
                 original_options.get("deployment_actors"),

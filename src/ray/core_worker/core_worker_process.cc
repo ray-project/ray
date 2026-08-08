@@ -31,6 +31,8 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/plasma/client.h"
+#include "ray/observability/metric_constants.h"
+#include "ray/observability/metrics.h"
 #include "ray/pubsub/posting_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -133,6 +135,13 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker() {
   return core_worker_process->TryGetCoreWorker();
 }
 
+std::optional<bool> CoreWorkerProcess::ShouldInterruptTaskForCancellation() {
+  if (core_worker_process == nullptr) {
+    return std::nullopt;
+  }
+  return core_worker_process->ShouldInterruptTaskForCancellation();
+}
+
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     CoreWorkerOptions options, const WorkerID &worker_id) {
   /// Event loop where the IO events are handled. e.g. async GCS operations.
@@ -188,6 +197,26 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     SetThreadName("worker.io");
     io_service_.run();
     RAY_LOG(INFO) << "Core worker main io service stopped.";
+  });
+
+  // Start the dedicated callback thread for user-registered object-freed callbacks.
+  // Python code invoked from callbacks may call into numpy or other libraries that
+  // need a large stack; give it the same 16 MB as the IO thread on Mac.
+  boost::thread::attributes obj_freed_cb_thread_attrs;
+#if defined(__APPLE__)
+  obj_freed_cb_thread_attrs.set_stack_size(16777216);
+#endif
+  object_freed_callback_thread_ = boost::thread(obj_freed_cb_thread_attrs, [this]() {
+#ifndef _WIN32
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, nullptr);
+#endif
+    SetThreadName("worker.user_obj_freed_callback");
+    object_freed_callback_service_.run();
+    RAY_LOG(INFO) << "Object-freed callback service stopped.";
   });
 
   if (options.worker_type == WorkerType::DRIVER &&
@@ -281,6 +310,33 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     }
   }
 
+  // Create the task-event RayEventRecorder. A second aggregator client is owned by the
+  // task event buffer which will be removed later. This is passed to other consumers
+  // like TaskManager, TaskReceiver, queues etc.
+  ray_task_event_recorder_aggregator_client_ =
+      (options.metrics_agent_port > 0)
+          ? std::make_unique<rpc::EventAggregatorClientImpl>(options.metrics_agent_port,
+                                                             *client_call_manager_)
+          : std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
+  auto ray_task_event_recorder = std::make_unique<observability::RayTaskEventRecorder>(
+      *ray_task_event_recorder_aggregator_client_,
+      // When disabled, the recorder is never started and drops all events, so give it a
+      // runner over the existing io_service_ rather than a dedicated thread.
+      PeriodicalRunner::Create(observability::RayTaskEventRecorder::Enabled()
+                                   ? ray_task_event_recorder_io_context_->GetIoService()
+                                   : io_service_),
+      RayConfig::instance().task_events_max_num_status_events_buffer_on_worker(),
+      observability::kMetricSourceCoreWorker,
+      *ray_task_event_recorder_dropped_events_counter_,
+      local_node_id);
+
+  // Start the recorder's export path as per the flag. If disabled,
+  // task_event_buffer might be used depending on other flags. (see
+  // task_event_buffer.h/.cc)
+  if (observability::RayTaskEventRecorder::Enabled()) {
+    ray_task_event_recorder->StartExportingEvents();
+  }
+
   auto raylet_client_pool =
       std::make_shared<rpc::RayletClientPool>([&](const rpc::Address &addr) {
         auto core_worker = GetCoreWorker();
@@ -310,7 +366,6 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<pubsub::Publisher>(
           /*channels=*/
           std::vector<rpc::ChannelType>{
-              rpc::ChannelType::WORKER_OBJECT_EVICTION,
               rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
               rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
           /*periodical_runner=*/*periodical_runner,
@@ -322,8 +377,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto object_info_subscriber = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/worker_context->GetWorkerID(),
       /*channels=*/
-      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
@@ -477,6 +531,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       push_error_callback,
       RayConfig::instance().max_lineage_bytes(),
       *task_event_buffer,
+      *ray_task_event_recorder,
       /*get_actor_rpc_client_callback=*/
       [this](const ActorID &actor_id)
           -> std::optional<std::shared_ptr<rpc::CoreWorkerClientInterface>> {
@@ -690,6 +745,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<CoreWorker>(std::move(options),
                                    std::move(worker_context),
                                    io_service_,
+                                   object_freed_callback_service_,
                                    std::move(core_worker_client_pool),
                                    std::move(raylet_client_pool),
                                    std::move(periodical_runner),
@@ -699,6 +755,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(raylet_ipc_client),
                                    std::move(local_raylet_rpc_client),
                                    io_thread_,
+                                   object_freed_callback_thread_,
                                    std::move(reference_counter),
                                    std::move(memory_store),
                                    std::move(plasma_store_provider),
@@ -715,6 +772,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(actor_manager),
                                    task_execution_service_,
                                    std::move(task_event_buffer),
+                                   std::move(ray_task_event_recorder),
                                    pid,
                                    *task_by_state_gauge_,
                                    *actor_by_state_gauge_,
@@ -731,6 +789,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : options_.worker_id),
       io_work_(io_service_.get_executor()),
+      object_freed_callback_service_work_(object_freed_callback_service_.get_executor()),
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
@@ -841,6 +900,16 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
+
+  // Dependencies for the RayTaskEventRecorder.
+  ray_task_event_recorder_dropped_events_counter_ = std::unique_ptr<ray::stats::Count>(
+      new ray::stats::Count(GetRayEventRecorderDroppedEventsCounterMetric()));
+  // Only spin up the recorder's dedicated export thread when the recorder is enabled;
+  // otherwise it stays inert and we avoid an idle worker thread in the default config.
+  if (observability::RayTaskEventRecorder::Enabled()) {
+    ray_task_event_recorder_io_context_ =
+        std::make_unique<InstrumentedIOContextWithThread>("ray_task_event_recorder");
+  }
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
@@ -1011,6 +1080,18 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::TryGetCoreWorker() const {
   const auto read_locked = core_worker_.LockForRead();
   return read_locked.Get();
+}
+
+std::optional<bool> CoreWorkerProcessImpl::ShouldInterruptTaskForCancellation() const {
+  const auto read_locked = core_worker_.LockForRead();
+  // Bind by reference. Copying the shared_ptr would let a caller that outlives
+  // ShutdownDriver() become the last owner and run ~CoreWorker on its own thread, which
+  // deadlocks when ~MutableObjectProvider joins that same thread.
+  const auto &worker = read_locked.Get();
+  if (worker == nullptr) {
+    return std::nullopt;
+  }
+  return worker->ShouldInterruptTaskForCancellation();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {

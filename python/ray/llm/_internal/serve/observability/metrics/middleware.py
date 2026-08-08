@@ -1,10 +1,9 @@
 import time
 from asyncio import CancelledError
-from typing import Dict
+from typing import Dict, Optional
 
 from fastapi import FastAPI
 from starlette.requests import Request
-from starlette.routing import Match
 from starlette.types import Message
 
 from ray.llm._internal.serve.core.ingress.middleware import (
@@ -21,6 +20,7 @@ from ray.llm._internal.serve.observability.metrics.fastapi_utils import (
     FASTAPI_HTTP_USER_ID_TAG_KEY,
     get_app_name,
 )
+from ray.serve._private.thirdparty.get_asgi_route_name import _get_route_name
 
 logger = get_logger("ray.serve")
 
@@ -114,7 +114,7 @@ class MeasureHTTPRequestMetricsMiddleware:
                 )
 
 
-def _get_route_details(scope: dict) -> str:
+def _get_route_details(scope: dict) -> Optional[str]:
     """
     Function to retrieve Starlette route from scope.
     TODO: there is currently no way to retrieve http.route from
@@ -125,17 +125,11 @@ def _get_route_details(scope: dict) -> str:
     Returns:
         A string containing the route or None
     """
-    app = scope["app"]
-    route = None
-
-    for starlette_route in app.routes:
-        match, _ = starlette_route.matches(scope)
-        if match == Match.FULL:
-            route = starlette_route.path
-            break
-        if match == Match.PARTIAL:
-            route = starlette_route.path
-    return route
+    # Delegate to Serve's shared route-name resolver, which walks the route tree
+    # and handles FastAPI >= 0.137 `_IncludedRouter` nodes (added by
+    # `include_router`) that have no `.path` attribute of their own. Accessing
+    # `.path` on such a node previously raised AttributeError here (#64245).
+    return _get_route_name(scope, scope["app"].routes)
 
 
 def _get_tags(request: Request, status_code: int, app: FastAPI) -> Dict[str, str]:

@@ -6,8 +6,7 @@ This guide outlines strategies to reduce image pull latency for Ray clusters on 
 
 ## Image pull latency
 
-Ray container images can often be several gigabytes, primarily due to the Python dependencies included.
-Other factors can also contribute to image size. Pulling large images from remote repositories can slow down Ray cluster startup times. The time required to download an image depends on several factors, including:
+Ray container images can often be several gigabytes, primarily due to the Python dependencies included. Other factors can also contribute to image size. Pulling large images from remote repositories can slow down Ray cluster startup times. The time required to download an image depends on several factors, including:
 *   Whether image layers are already cached on the node.
 *   The overall size of the image.
 *   The reliability and throughput of the remote repository.
@@ -58,9 +57,7 @@ For production environments, it's generally recommended to avoid pulling images 
 
 If you're using Google Kubernetes Engine (GKE), you can leverage [Image streaming](https://cloud.google.com/kubernetes-engine/docs/how-to/image-streaming).
 
-With Image streaming, GKE uses a remote filesystem as the root filesystem for any containers that use eligible container images.
-GKE streams image data from the remote filesystem as needed by your workloads. While streaming the image data, GKE downloads the entire container image onto the local disk in the background and caches it.
-GKE then serves future data read requests from the cached image. When you deploy workloads that need to read specific files in the container image, the Image streaming backend serves only those requested files.
+With Image streaming, GKE uses a remote filesystem as the root filesystem for any containers that use eligible container images. GKE streams image data from the remote filesystem as needed by your workloads. While streaming the image data, GKE downloads the entire container image onto the local disk in the background and caches it. GKE then serves future data read requests from the cached image. When you deploy workloads that need to read specific files in the container image, the Image streaming backend serves only those requested files.
 
 Only container images hosted on [Artifact Registry](https://cloud.google.com/artifact-registry/docs/overview) are eligible for Image streaming.
 
@@ -80,8 +77,6 @@ See [Enable Image streaming on clusters](https://cloud.google.com/kubernetes-eng
 
 If you're using Google Kubernetes Engine (GKE), you can enable the [secondary bootdisk to preload data or container images](https://cloud.google.com/kubernetes-engine/docs/how-to/data-container-image-preloading).
 
-GKE enables secondary boot disks per node pool. Once enabled, GKE attaches a Persistent Disk to each node within the node pool.
-The images within the Persistent Disk are immediately accessible to containers once Ray schedules workloads on those nodes.
-Including Ray images in the secondary boot disk can significantly reduce image pull latency.
+GKE enables secondary boot disks per node pool. Once enabled, GKE attaches a Persistent Disk to each node within the node pool. The images within the Persistent Disk are immediately accessible to containers once Ray schedules workloads on those nodes. Including Ray images in the secondary boot disk can significantly reduce image pull latency.
 
 See [Prepare the secondary boot disk image](https://cloud.google.com/kubernetes-engine/docs/how-to/data-container-image-preloading#prepare) for detailed steps on how to prepare the secondary boot disk. See [Configure the secondary boot disk](https://cloud.google.com/kubernetes-engine/docs/how-to/data-container-image-preloading#configure) for how to enable secondary boot disks for your node pools.
