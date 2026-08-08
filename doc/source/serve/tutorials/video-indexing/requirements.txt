@@ -1,0 +1,8 @@
+ray[serve]
+torch
+transformers
+numpy
+pillow
+boto3
+redis
+celery

@@ -1,0 +1,6 @@
+# Extra deps layered on the SageMaker PyTorch inference DLC (which already has
+# torch, boto3, numpy, and the sagemaker-inference toolkit).
+transformers>=4.45,<5
+accelerate
+sentencepiece
+pillow
