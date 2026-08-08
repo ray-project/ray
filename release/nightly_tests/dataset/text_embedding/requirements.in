@@ -1,0 +1,7 @@
+transformers==4.56.2
+sentence-transformers==5.1.0
+torch==2.8.0
+# The GPU base image ships TensorFlow + Keras 3. `transformers` refuses to load
+# its TF integration against Keras 3 unless the backwards-compatible tf-keras
+# shim is present. Pin to the requirements_compiled version.
+tf-keras==2.20.1
