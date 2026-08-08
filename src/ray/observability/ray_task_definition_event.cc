@@ -42,7 +42,9 @@ RayTaskDefinitionEvent::RayTaskDefinitionEvent(
       task_spec_(std::move(task_spec)),
       task_id_(task_id),
       job_id_(job_id),
-      task_attempt_(task_attempt) {}
+      task_attempt_(task_attempt) {
+  RAY_CHECK(task_spec_ != nullptr);
+}
 
 std::string RayTaskDefinitionEvent::GetEntityId() const {
   return task_id_.Binary() + std::to_string(task_attempt_);
