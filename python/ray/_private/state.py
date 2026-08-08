@@ -56,7 +56,7 @@ class TaskEventsHeadClient:
             if not address:
                 raise RuntimeError(
                     "Could not find the dashboard address to read task events from the "
-                    "dashboard head. Is the dashboard running? It requires `ray[default]`."
+                    "dashboard head. Is the dashboard running?"
                 )
             address = address.decode()
             if not address.startswith(("http://", "https://")):
@@ -88,12 +88,15 @@ class TaskEventsHeadClient:
                 headers=headers,
                 timeout=timeout,
             )
-        except requests.RequestException:
+        except requests.RequestException as e:
             # Any request failure may mean the head is unreachable or restarted at a new
             # address; drop the cached endpoint so the next call re-resolves it. This is
             # slightly conservative though.
             self._endpoint = None
-            raise
+            raise RuntimeError(
+                f"Failed to reach the dashboard head at {endpoint} to read task events. "
+                "Is the dashboard running?"
+            ) from e
         if not (200 <= response.status_code < 300):
             auth_error = format_authentication_http_error(
                 response.status_code, response.text
@@ -164,6 +167,9 @@ class GlobalState:
             self.gcs_options = None
             if self._global_state_accessor is not None:
                 self._global_state_accessor = None
+            # Drop the cached task-events client so it doesn't keep a stale accessor
+            # across a reconnect; the next call rebuilds it.
+            self._task_events_head_client = None
 
     def _initialize_global_state(self, gcs_options: GcsClientOptions):
         """Set args for lazily initialization of the GlobalState object.
@@ -336,7 +342,7 @@ class GlobalState:
             }
         """
         result = defaultdict(list)
-        for task_event in self._get_profiling_task_events():
+        for task_event in self._get_all_task_events():
             profile = task_event.profile_events
             if not profile:
                 continue
@@ -364,7 +370,7 @@ class GlobalState:
 
         return dict(result)
 
-    def _get_profiling_task_events(self) -> List["gcs_pb2.TaskEvents"]:
+    def _get_all_task_events(self) -> List["gcs_pb2.TaskEvents"]:
         """Return all task events (as ``TaskEvents`` protos) for timeline/profiling.
 
         Reads from the dashboard head when the task-events-to-dashboard-head migration is
@@ -382,11 +388,13 @@ class GlobalState:
 
     def _get_task_events_head_client(self) -> "TaskEventsHeadClient":
         """Lazily build and cache the reusable dashboard-head task-events client."""
-        if self._task_events_head_client is None:
-            self._task_events_head_client = TaskEventsHeadClient(
-                self._connect_and_get_accessor()
-            )
-        return self._task_events_head_client
+        # Resolve the accessor first (it takes _init_lock itself), then guard the cache
+        # write so concurrent callers don't each build a client.
+        accessor = self._connect_and_get_accessor()
+        with self._init_lock:
+            if self._task_events_head_client is None:
+                self._task_events_head_client = TaskEventsHeadClient(accessor)
+            return self._task_events_head_client
 
     def get_placement_group_by_name(self, placement_group_name, ray_namespace):
         accessor = self._connect_and_get_accessor()
@@ -1155,12 +1163,6 @@ def timeline(filename: Optional[str] = None):
             "Ray has not been started yet. Timeline requires Ray to be initialized first."
         )
 
-    if _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD:
-        logger.warning(
-            "ray.timeline() reads task profiling events from the dashboard (API server) "
-            "because RAY_enable_task_events_to_dashboard_head is enabled; it will fail if "
-            "the dashboard is not running. Start Ray with the dashboard to use ray.timeline()."
-        )
     return state.chrome_tracing_dump(filename=filename)
 
 
