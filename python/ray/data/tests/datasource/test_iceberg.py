@@ -2027,6 +2027,156 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     assert len(result.data_files) > 0, "Expected data files in result"
 
 
+def _supports_incremental_scan() -> bool:
+    """Whether the installed PyIceberg exposes incremental append scans."""
+    return hasattr(Table, "incremental_append_scan")
+
+
+_INCREMENTAL_UNSUPPORTED_REASON = (
+    "Installed PyIceberg does not support Table.incremental_append_scan "
+    "(apache/iceberg-python#3512)"
+)
+
+
+def _append_batch(col_a_values: List[int]) -> int:
+    """Append a batch of rows to the test table and return the new snapshot ID."""
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    batch = pa.Table.from_pydict(
+        {
+            "col_a": col_a_values,
+            "col_b": ["x"] * len(col_a_values),
+            "col_c": [1] * len(col_a_values),
+        },
+        schema=_SCHEMA,
+    )
+    table.append(batch)
+    return table.current_snapshot().snapshot_id
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_incremental_snapshot_id_mutually_exclusive():
+    """`snapshot_id` cannot be combined with the incremental snapshot bounds."""
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        IcebergDatasource(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            snapshot_id=123,
+            start_snapshot_id=456,
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        IcebergDatasource(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            snapshot_id=123,
+            end_snapshot_id=789,
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_incremental_read_requires_pyiceberg_support(monkeypatch):
+    """A clear error is raised when PyIceberg lacks incremental_append_scan.
+
+    This runs on all PyIceberg versions: on versions without the capability the
+    attribute is simply absent; on versions with it we remove it to exercise the
+    guard.
+    """
+    start_snapshot_id = _append_batch([200, 201, 202])
+
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        start_snapshot_id=start_snapshot_id,
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    # Force the capability check to fail regardless of the installed version.
+    monkeypatch.delattr(Table, "incremental_append_scan", raising=False)
+
+    with pytest.raises(ValueError, match="incremental_append_scan"):
+        # Triggers _get_data_scan via the plan_files property.
+        _ = iceberg_ds.plan_files
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+@pytest.mark.skipif(
+    not _supports_incremental_scan(), reason=_INCREMENTAL_UNSUPPORTED_REASON
+)
+def test_incremental_read_between_snapshots():
+    """Reading between two snapshots returns only the rows appended in that range."""
+    # The autouse fixture appends 120 rows then deletes some; append two more
+    # batches so we have distinct append snapshots to read between.
+    start_snapshot_id = _append_batch([200, 201, 202])  # start bound (exclusive)
+    _append_batch([300, 301])  # appended within the range
+    end_snapshot_id = _append_batch([400, 401, 402])  # end bound (inclusive)
+
+    ds = read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        start_snapshot_id=start_snapshot_id,
+        end_snapshot_id=end_snapshot_id,
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    result = ds.to_pandas().sort_values("col_a").reset_index(drop=True)
+    # Start is exclusive, so the 200/201/202 batch is not included; end is
+    # inclusive, so the 400/401/402 batch is.
+    assert result["col_a"].tolist() == [300, 301, 400, 401, 402]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+@pytest.mark.skipif(
+    not _supports_incremental_scan(), reason=_INCREMENTAL_UNSUPPORTED_REASON
+)
+def test_incremental_read_defaults_end_to_current_snapshot():
+    """Omitting end_snapshot_id reads everything appended after the start snapshot."""
+    start_snapshot_id = _append_batch([200, 201])
+    _append_batch([300, 301])
+    _append_batch([400])
+
+    ds = read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        start_snapshot_id=start_snapshot_id,
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    result = ds.to_pandas().sort_values("col_a").reset_index(drop=True)
+    assert result["col_a"].tolist() == [300, 301, 400]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+@pytest.mark.skipif(
+    not _supports_incremental_scan(), reason=_INCREMENTAL_UNSUPPORTED_REASON
+)
+def test_incremental_read_with_predicate_pushdown():
+    """Predicate pushdown composes with incremental reads."""
+    start_snapshot_id = _append_batch([200, 201, 202])
+    end_snapshot_id = _append_batch([300, 301, 302])
+
+    ds = read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        start_snapshot_id=start_snapshot_id,
+        end_snapshot_id=end_snapshot_id,
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    ).filter(expr=col("col_a") >= 301)
+
+    result = ds.to_pandas().sort_values("col_a").reset_index(drop=True)
+    assert result["col_a"].tolist() == [301, 302]
+
+
 if __name__ == "__main__":
     import sys
 
