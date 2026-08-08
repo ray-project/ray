@@ -131,19 +131,58 @@ class DeltaFileIndexer(FileIndexer):
         filesystem: "FileSystem",
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        limit: Optional[int] = None,
+        projected_columns: Optional[List[str]] = None,
     ) -> Iterable[FileManifest]:
         """Yield manifests for the files this query may need.
 
         ``preserve_order`` needs no special handling: the add actions of a
         given snapshot are read in a fixed order, so listing is already
         deterministic.
+
+        ``predicate`` / ``limit`` / ``projected_columns`` are the listing-time
+        pushdown state derived by
+        :class:`~ray.data._internal.logical.rules.derive_list_files_pushdown.DeriveListFilesPushdown`.
+        They are ignored here: this indexer prunes from the predicates it was
+        constructed with (see :meth:`with_predicates`), which are already split
+        into partition-only and data-column halves. Consuming the derived state
+        instead would let the custom rule be dropped -- see the note on the PR.
         """
         yield from build_manifests(
-            self._iter_file_infos(paths),
-            pruners=pruners or [],
+            self.list_file_infos(
+                paths,
+                filesystem=filesystem,
+                pruners=pruners,
+                preserve_order=preserve_order,
+            ),
             file_chunker=self._file_chunker,
             max_paths_per_output=self._max_paths_per_output,
         )
+
+    def list_file_infos(
+        self,
+        paths: "BlockColumn",
+        *,
+        filesystem: "FileSystem",
+        pruners: Optional[List[FilePruner]] = None,
+        preserve_order: bool = False,
+    ) -> Iterable[FileInfo]:
+        """Yield pruned, non-empty ``FileInfo``\\ s from the transaction log.
+
+        Mirrors :meth:`NonSamplingFileIndexer.list_file_infos`: zero-size files
+        are dropped and ``pruners`` applied here, so this and :meth:`list_files`
+        share one filtering point. The log-level pruning that makes this indexer
+        worthwhile happens upstream of both, in :meth:`_iter_file_infos`.
+        """
+        pruners = pruners or []
+        for file_info in self._iter_file_infos(paths):
+            if file_info.size is None or file_info.size == 0:
+                logger.warning(f"Skipping zero-size file: {file_info.path!r}")
+                continue
+            if not all(pruner.should_include(file_info.path) for pruner in pruners):
+                continue
+            yield file_info
 
     def _iter_file_infos(self, paths: "BlockColumn") -> Iterable[FileInfo]:
         import pyarrow as pa
