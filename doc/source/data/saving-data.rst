@@ -156,14 +156,23 @@ number of output files, configure ``min_rows_per_file``.
 Writing into Partitioned Dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When writing partitioned dataset (using Hive-style, folder-based partitioning) it's recommended to repartition the dataset by the partition columns prior to writing into it. 
-This allows you to *have control over the file sizes and their number*. When the dataset is repartitioned by the partition columns every block should contain all of the rows corresponding to particular partition, 
-meaning that the number of files created should be controlled based on the configuration provided to, 
-for example, `write_parquet` method (such as `min_rows_per_file`, `max_rows_per_file`). 
-Since every block is written out independently, when writing the dataset without prior 
-repartitioning you could potentially get an N number of files per partition 
-(where N is the number of blocks in your dataset) with very limited ability to control the 
-number of files & their sizes (since every block could potentially carry the rows corresponding to any partition).
+When writing partitioned dataset (using Hive-style, folder-based partitioning), it's
+recommended to repartition the dataset by the partition columns prior to writing into it.
+This lets you control the file sizes and their number. When the dataset is repartitioned
+by the partition columns, every block should contain all of the rows corresponding to a
+particular partition, meaning that the number of files created should be controlled by
+the repartitioning, with optional limits from the write method, such as
+``max_rows_per_file``. Since every block is written out independently, when writing the
+dataset without prior repartitioning you could potentially get an N number of files per
+partition (where N is the number of blocks in your dataset) with very limited ability to
+control the number of files and their sizes, since every block could potentially carry
+the rows corresponding to any partition.
+
+.. note::
+    ``min_rows_per_file`` isn't supported together with ``partition_cols``: each
+    block can be split across partition directories, so a minimum row count per
+    file can't be guaranteed. Use ``repartition()`` and ``max_rows_per_file`` to
+    control file sizes instead.
 
 .. testcode::
     import ray
@@ -200,13 +209,12 @@ number of files & their sizes (since every block could potentially carry the row
     #    block – this minimises shuffling during the write.
     # 2. Pass the same columns to ``partition_cols`` so Ray creates a
     #    Hive-style directory layout:  city=<value>/year=<value>/....
-    # 3. Use ``min_rows_per_file`` / ``max_rows_per_file`` to control how many
-    #    rows Ray puts in each Parquet file.
+    # 3. Use ``max_rows_per_file`` to cap how many rows Ray puts in each
+    #    Parquet file.
     ds.repartition(keys=["city", "year"], num_blocks=4).write_parquet(
         "/tmp/sales_partitioned",
         partition_cols=["city", "year"],
-        min_rows_per_file=2,     # At least 2 rows in each file …
-        max_rows_per_file=3,     # … but never more than 3.
+        max_rows_per_file=3,
     )
 
     print_directory_tree("/tmp/sales_partitioned")
