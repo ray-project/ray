@@ -4710,6 +4710,7 @@ class Dataset:
         snapshot_properties: Optional[Dict[str, str]] = None,
         mode: "SaveMode" = SaveMode.APPEND,
         overwrite_filter: Optional["Expr"] = None,
+        create_kwargs: Optional[Dict[str, Any]] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
@@ -4736,6 +4737,13 @@ class Dataset:
                 ds.write_iceberg(
                     table_identifier="db_name.table_name",
                     catalog_kwargs={"name": "default", "type": "sql"}
+                )
+
+                # Create a brand new table from the dataset schema
+                ds.write_iceberg(
+                    table_identifier="db_name.new_table",
+                    catalog_kwargs={"name": "default", "type": "sql"},
+                    mode=SaveMode.CREATE,
                 )
 
                 # Schema evolution is automatic - new columns are added automatically
@@ -4778,6 +4786,7 @@ class Dataset:
                 to an iceberg table.
             mode: Write mode using SaveMode enum. Options:
 
+                * SaveMode.CREATE: Create a new table from the dataset schema and fail if the table already exists.
                 * SaveMode.APPEND (default): Add new data to the table without checking for duplicates.
                 * SaveMode.UPSERT: Update existing rows that match on the join condition (``join_cols`` in ``upsert_kwargs``),
                   or insert new rows if they don't exist in the table.
@@ -4788,6 +4797,9 @@ class Dataset:
                 Must be a Ray Data expression from `ray.data.expressions`. Only rows matching
                 this filter are replaced. If None with OVERWRITE mode, replaces all table data.
                 Example: `col("date") >= "2024-01-01"` or `(col("region") == "US") & (col("status") == "active")`
+            create_kwargs: Optional arguments to pass through to PyIceberg's
+                catalog.create_table_transaction() method. Supported parameters include
+                location, partition_spec, sort_order, and properties.
             upsert_kwargs: Optional arguments for upsert operations.
                 Supported parameters: join_cols (List[str]), case_sensitive (bool), branch (str).
                 Note: Ray Data uses a copy-on-write strategy that always updates all columns
@@ -4804,7 +4816,8 @@ class Dataset:
         Note:
             Schema evolution is automatically enabled. New columns in the incoming data
             are automatically added to the table schema. The schema is extracted
-            automatically from the data being written.
+            automatically from the data being written. CREATE mode also uses this
+            inferred schema to create the target table.
         """
         if catalog is not None:
             if catalog_kwargs:
@@ -4827,6 +4840,7 @@ class Dataset:
             snapshot_properties=snapshot_properties,
             mode=mode,
             overwrite_filter=overwrite_filter,
+            create_kwargs=create_kwargs,
             upsert_kwargs=upsert_kwargs,
             overwrite_kwargs=overwrite_kwargs,
         )
