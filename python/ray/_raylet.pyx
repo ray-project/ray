@@ -3237,6 +3237,38 @@ cdef void _invoke_object_out_of_scope_callback(
             cpython.Py_DECREF(<object>user_callback)
 
 
+cdef void _invoke_object_freed_on_producer_callback(
+        const CObjectID &c_object_id, void *user_callback) noexcept nogil:
+    """Invoked on the object_freed_callback_service_ thread when the producer of
+    a moved object physically frees its copy. Calls the registered Python
+    callback with the object ID as ``bytes``, then releases the Py_INCREF taken
+    at registration.
+
+    Args:
+        c_object_id: The C++ ObjectID whose producer copy was freed.
+        user_callback: The Python callable registered by the caller, kept
+            alive by the Py_INCREF in ``add_object_freed_on_producer_callback``.
+    """
+    with gil:
+        try:
+            callback = <object>user_callback
+            id_binary = c_object_id.Binary()
+            callback(id_binary)
+        except BaseException:
+            # Invoked from C++ through a C function pointer, so a propagating
+            # exception would be undefined behavior; that is why we catch
+            # everything here, including KeyboardInterrupt/SystemExit.
+            logger.exception(
+                "Exception in the callback registered via "
+                "CoreWorker.add_object_freed_on_producer_callback for object %s. "
+                "The callback must be non-blocking and exception-free, so check "
+                "it for I/O, blocking calls, or bugs that raise.",
+                c_object_id.Hex().decode("ascii"),
+            )
+        finally:
+            cpython.Py_DECREF(<object>user_callback)
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -4635,6 +4667,53 @@ cdef class CoreWorker:
             .AddObjectOutOfScopeOrFreedCallback(
                 c_object_id,
                 _invoke_object_out_of_scope_callback,
+                <void *>callback)
+        if not registered:
+            cpython.Py_DECREF(callback)
+        return registered
+
+    def add_object_freed_on_producer_callback(
+            self, ObjectRef object_ref, callback: Callable[[bytes], None]):
+        """Register a callable to fire when the producer of object_ref
+        physically frees its copy after a plasma move-semantics handoff.
+
+        .. warning::
+            This is an internal Ray API. Do not use it outside of Ray libraries.
+
+        Fires at most once, when the owner learns the producer has deleted its
+        copy (distinct from ``add_object_out_of_scope_callback``, which fires
+        only once the object is fully out of scope everywhere). Used by Ray Data
+        to release a producer's output-buffer backpressure as soon as its bytes
+        are physically gone.
+
+        Can only be called on the worker that owns object_ref. Raises
+        ValueError if object_ref is not owned by this worker.
+
+        The callback runs on the same dedicated background thread as
+        ``add_object_out_of_scope_callback``, so it MUST be O(1), non-blocking,
+        and thread-safe. If it raises, the exception is logged and swallowed.
+
+        Args:
+            object_ref: The owned object to watch.
+            callback: Called with the object ID as ``bytes`` when the producer
+                frees its copy.
+
+        Returns:
+            True if registered; False if the object is unknown or the producer
+            already freed its copy (the callback will never fire).
+        """
+        if not callable(callback):
+            raise TypeError(
+                f"callback must be callable, got {type(callback).__name__!r}"
+            )
+        cdef CObjectID c_object_id = object_ref.native()
+        check_status(CCoreWorkerProcess.GetCoreWorker().CheckObjectOwnedByUs(
+            c_object_id))
+        cpython.Py_INCREF(callback)
+        registered = CCoreWorkerProcess.GetCoreWorker() \
+            .AddObjectFreedOnProducerCallback(
+                c_object_id,
+                _invoke_object_freed_on_producer_callback,
                 <void *>callback)
         if not registered:
             cpython.Py_DECREF(callback)
