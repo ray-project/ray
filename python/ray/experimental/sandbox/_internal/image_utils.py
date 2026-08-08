@@ -7,11 +7,12 @@ import platform
 import re
 import shutil
 import tarfile
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import Dict, Tuple
+from typing import BinaryIO, Dict, Tuple, Union
 
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
@@ -133,9 +134,16 @@ def get_registry_auth_headers(
     return {}
 
 
-def extract_tar_layer(tar_bytes: bytes, dest_dir: str) -> None:
+def extract_tar_layer(
+    tar_input: Union[bytes, io.IOBase, BinaryIO], dest_dir: str
+) -> None:
     """Extract a tar archive layer onto dest_dir with OCI whiteout handling."""
-    with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:*") as tar:
+    if isinstance(tar_input, bytes):
+        tar_fileobj = io.BytesIO(tar_input)
+    else:
+        tar_fileobj = tar_input
+
+    with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
         for member in tar.getmembers():
             name = member.name.lstrip("/")
 
@@ -202,12 +210,9 @@ def extract_tar_layer(tar_bytes: bytes, dest_dir: str) -> None:
                     except OSError:
                         pass
                 else:
-                    # Clear out existing files/symlinks to avoid traversal via symlinks
-                    if not os.path.isdir(target_path) or os.path.islink(target_path):
-                        try:
-                            os.remove(target_path)
-                        except OSError:
-                            pass
+                    # If target_path is a directory or a symlink to an existing directory
+                    # inside dest_dir, preserve it (e.g. UsrMerge /bin -> usr/bin).
+                    pass
 
             # Use safe extraction
             member.name = name
@@ -289,7 +294,7 @@ def pull_and_extract_container_image(
             if os.path.isfile(image):
                 try:
                     with open(image, "rb") as f:
-                        extract_tar_layer(f.read(), tmp_rootfs_dir)
+                        extract_tar_layer(f, tmp_rootfs_dir)
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                     raise SandboxCreationError(
@@ -298,7 +303,7 @@ def pull_and_extract_container_image(
             elif os.path.isfile(tar_path):
                 try:
                     with open(tar_path, "rb") as f:
-                        extract_tar_layer(f.read(), tmp_extract_dir)
+                        extract_tar_layer(f, tmp_extract_dir)
                 except Exception as err:
                     shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                     raise SandboxCreationError(
@@ -394,9 +399,14 @@ def pull_and_extract_container_image(
                         with urllib.request.urlopen(
                             blob_req, timeout=timeout_seconds
                         ) as blob_resp:
-                            layer_bytes = blob_resp.read()
-
-                        extract_tar_layer(layer_bytes, tmp_rootfs_dir)
+                            with tempfile.NamedTemporaryFile(
+                                dir=images_dir, delete=True
+                            ) as tmp_blob_file:
+                                shutil.copyfileobj(
+                                    blob_resp, tmp_blob_file, length=64 * 1024
+                                )
+                                tmp_blob_file.seek(0)
+                                extract_tar_layer(tmp_blob_file, tmp_rootfs_dir)
 
                     with tarfile.open(tar_path, "w") as tar:
                         tar.add(tmp_extract_dir, arcname=".")

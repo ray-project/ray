@@ -19,6 +19,7 @@ from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
+    SandboxExecError,
     SandboxNotFoundError,
     SandboxTimeoutError,
 )
@@ -55,7 +56,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
             image_dir = self._pull_and_extract_image(config.image)
-            image_rootfs = os.path.join(image_dir, "rootfs")
             if not config.workdir:
                 config_json_path = os.path.join(image_dir, ".image_config.json")
                 if os.path.exists(config_json_path):
@@ -96,7 +96,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             cpu=config.cpu,
             memory=config.memory,
             readonly=config.readonly,
-            image_rootfs=image_rootfs,
             _oci_spec_transforms=config._oci_spec_transforms,
         )
         run_args = self._runsc_base_args(config)
@@ -107,9 +106,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         run_args.append(f"--overlay2=root:dir={overlay_dir}")
         run_args.extend(["run", "--bundle", root_dir, sandbox_id])
 
-        import tempfile
-
-        stderr_file = tempfile.TemporaryFile()
+        stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
+        stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
         proc = subprocess.Popen(
             run_args,
             stdin=subprocess.DEVNULL,
@@ -126,7 +124,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     stderr_file.seek(0)
                     stderr_str = stderr_file.read()
                     raise SandboxCreationError(
-                        f"gVisor container failed to start: {stderr_str.decode('utf-8', errors='replace')}"
+                        f"gVisor container failed to start: {stderr_str}"
                     )
 
                 res = subprocess.run(state_args, capture_output=True, text=True)
@@ -153,14 +151,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
 
                 time.sleep(0.1)
-        finally:
+        except Exception:
+            if proc and proc.poll() is None:
+                proc.kill()
+                try:
+                    proc.communicate(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
             stderr_file.close()
+            del_args = self._runsc_base_args(config) + ["delete", sandbox_id]
+            subprocess.run(del_args, capture_output=True)
+            shutil.rmtree(root_dir, ignore_errors=True)
+            raise
 
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
             "workdir": work_dir_path,
             "config": config,
             "proc": proc,
+            "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
         }
         return sandbox_id
@@ -172,6 +181,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             root_dir = meta["root_dir"]
             config: SandboxConfig = meta["config"]
             proc = meta.get("proc")
+            stderr_file = meta.get("stderr_file")
 
             kill_args = self._runsc_base_args(config)
             kill_args.extend(["kill", sandbox_id, "SIGKILL"])
@@ -186,6 +196,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     proc.communicate(timeout=2)
                 except subprocess.TimeoutExpired:
                     proc.kill()
+
+            if stderr_file:
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
 
             del_args = self._runsc_base_args(config)
             del_args.extend(["delete", sandbox_id])
@@ -205,11 +221,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
 
-        if isinstance(command, list):
-            cmd_str = " ".join(command)
-        else:
-            cmd_str = command
-
         exec_env = {}
         if env:
             exec_env.update(env)
@@ -225,7 +236,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if isinstance(command, list):
             runsc_args.extend([sandbox_id] + command)
         else:
-            runsc_args.extend([sandbox_id, "/bin/sh", "-c", cmd_str])
+            runsc_args.extend([sandbox_id, "/bin/sh", "-c", command])
 
         start_time = time.time()
 
@@ -256,7 +267,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ) from err
         except Exception as err:
             duration = time.time() - start_time
-            raise SandboxError(f"gVisor exec failed: {err}") from err
+            raise SandboxExecError(f"gVisor exec failed: {err}") from err
 
     def write_file(
         self, sandbox_id: str, path: str, content: Union[str, bytes]
@@ -266,9 +277,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig = meta["config"]
 
         runsc_args = self._runsc_base_args(config)
+        exec_cwd = config.workdir
         runsc_args.extend(
             [
                 "exec",
+                "-cwd",
+                exec_cwd,
                 sandbox_id,
                 "/bin/sh",
                 "-c",
@@ -298,7 +312,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig = meta["config"]
 
         runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", sandbox_id, "cat", "--", path])
+        exec_cwd = config.workdir
+        runsc_args.extend(["exec", "-cwd", exec_cwd, sandbox_id, "cat", "--", path])
 
         proc = subprocess.Popen(
             runsc_args,
@@ -348,7 +363,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         work_dir_path: str,
         container_cwd: str,
         image: str,
-        image_rootfs: str,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
@@ -365,14 +379,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         with open(config_json_path, "r", encoding="utf-8") as f:
             spec = json.load(f)
 
-        spec["root"]["path"] = image_rootfs
+        image_dir = self._pull_and_extract_image(image)
+        rootfs = os.path.join(image_dir, "rootfs")
+
+        spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
         spec["process"]["args"] = ["sleep", "infinity"]
         spec["process"]["cwd"] = container_cwd
 
         # inherit Env from image config by default
         envs = []
-        image_dir = os.path.dirname(image_rootfs)
         image_config_path = os.path.join(image_dir, ".image_config.json")
         if os.path.exists(image_config_path):
             try:
