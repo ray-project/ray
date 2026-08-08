@@ -14,6 +14,7 @@ from ray.serve._private.constants import (
 
 if TYPE_CHECKING:
     from ray.serve._private.common import ServeComponentType
+    from ray.serve.schema import TracingConfig
 
 try:
     from opentelemetry import trace
