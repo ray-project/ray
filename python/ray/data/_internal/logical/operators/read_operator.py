@@ -468,6 +468,11 @@ class ListFiles(LogicalOperator, SourceOperator):
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None
+    # Disjoint from ``predicate``: ``ReadFiles.apply_predicate`` routes
+    # partition columns here and data columns there. An indexer whose catalog
+    # records partition values (e.g. the Delta transaction log) can skip whole
+    # files from this without touching the filesystem.
+    partition_predicate: Optional[Expr] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list

@@ -60,22 +60,34 @@ def unpartitioned_table(tmp_path) -> str:
     return path
 
 
-def _list(indexer: DeltaFileIndexer, path: str) -> List[FileManifest]:
+def _list(
+    indexer: DeltaFileIndexer,
+    path: str,
+    *,
+    predicate: Optional[Expr] = None,
+    partition_predicate: Optional[Expr] = None,
+) -> List[FileManifest]:
+    """List with the pushdown state ``DeriveListFilesPushdown`` would supply."""
     return list(
-        indexer.list_files(pa.array([path]), filesystem=pyarrow.fs.LocalFileSystem())
+        indexer.list_files(
+            pa.array([path]),
+            filesystem=pyarrow.fs.LocalFileSystem(),
+            predicate=predicate,
+            partition_predicate=partition_predicate,
+        )
     )
 
 
-def _paths(indexer: DeltaFileIndexer, path: str) -> List[str]:
+def _paths(indexer: DeltaFileIndexer, path: str, **pushdown) -> List[str]:
     paths: List[str] = []
-    for manifest in _list(indexer, path):
+    for manifest in _list(indexer, path, **pushdown):
         paths.extend(manifest.paths.tolist())
     return paths
 
 
-def _sizes(indexer: DeltaFileIndexer, path: str) -> List[int]:
+def _sizes(indexer: DeltaFileIndexer, path: str, **pushdown) -> List[int]:
     sizes: List[int] = []
-    for manifest in _list(indexer, path):
+    for manifest in _list(indexer, path, **pushdown):
         sizes.extend(int(s) for s in manifest.file_sizes.tolist())
     return sizes
 
@@ -169,22 +181,9 @@ def test_empty_table_yields_no_manifests(tmp_path):
 def test_partition_predicate_prunes(
     partitioned_table, predicate: Expr, expected_regions: set, description: str
 ):
-    paths = _paths(
-        DeltaFileIndexer(partition_predicate=predicate, table_schema=_schema()),
-        partitioned_table,
-    )
+    paths = _paths(DeltaFileIndexer(), partitioned_table, partition_predicate=predicate)
     regions = {p.split("region=")[1].split("/")[0] for p in paths}
     assert regions == expected_regions, description
-
-
-def _schema() -> pa.Schema:
-    return pa.schema(
-        [
-            pa.field("region", pa.string()),
-            pa.field("val", pa.int64()),
-            pa.field("name", pa.string()),
-        ]
-    )
 
 
 @pytest.mark.parametrize(
@@ -200,17 +199,17 @@ def _schema() -> pa.Schema:
 def test_statistics_prune_without_partitioning(
     unpartitioned_table, predicate: Expr, expected_files: int, description: str
 ):
-    paths = _paths(DeltaFileIndexer(data_predicate=predicate), unpartitioned_table)
+    paths = _paths(DeltaFileIndexer(), unpartitioned_table, predicate=predicate)
     assert len(paths) == expected_files, description
 
 
 def test_partition_and_statistics_prune_together(partitioned_table):
-    indexer = DeltaFileIndexer(
+    paths = _paths(
+        DeltaFileIndexer(),
+        partitioned_table,
         partition_predicate=col("region") == lit("EU"),
-        data_predicate=col("val") > lit(150),
-        table_schema=_schema(),
+        predicate=col("val") > lit(150),
     )
-    paths = _paths(indexer, partitioned_table)
     assert len(paths) == 1
     assert "region=EU" in paths[0]
 
@@ -235,39 +234,37 @@ def test_honors_file_pruners(partitioned_table):
 # ---------------------------------------------------------------------------
 
 
-def test_with_predicates_does_not_mutate_the_original(partitioned_table):
-    """The optimizer rule rebuilds the indexer rather than mutating it.
+def test_pushdown_state_does_not_persist_across_calls(partitioned_table):
+    """Predicates are per call, so one listing can't bias the next.
 
-    A logical operator may be re-optimized, so an indexer that accumulated
-    predicates in place would prune against a stale plan.
+    A logical operator may be re-optimized, and the same indexer instance is
+    reused across listing tasks. Holding predicates on the instance risked
+    pruning against a stale plan; taking them as arguments makes that
+    unrepresentable. This pins that.
     """
-    original = DeltaFileIndexer()
-    derived = original.with_predicates(
-        partition_predicate=col("region") == lit("US"),
-        data_predicate=None,
-        table_schema=_schema(),
-    )
+    indexer = DeltaFileIndexer()
 
-    assert derived is not original
-    assert len(_paths(original, partitioned_table)) == 2
-    assert len(_paths(derived, partitioned_table)) == 1
+    pruned = _paths(
+        indexer, partitioned_table, partition_predicate=col("region") == lit("US")
+    )
+    unpruned = _paths(indexer, partitioned_table)
+
+    assert len(pruned) == 1
+    assert len(unpruned) == 2
 
 
 @pytest.mark.parametrize("version", [None, 0])
-def test_with_predicates_preserves_construction_options(
-    tmp_path, version: Optional[int]
-):
+def test_construction_options_survive_pushdown(tmp_path, version: Optional[int]):
+    """Per-call predicates must not disturb the snapshot the indexer is pinned to."""
     from deltalake import write_deltalake
 
     path = os.path.join(tmp_path, "opts")
     write_deltalake(path, pa.table({"val": [1]}))
     write_deltalake(path, pa.table({"val": [2]}), mode="append")
 
-    derived = DeltaFileIndexer(version=version).with_predicates(
-        partition_predicate=None, data_predicate=None, table_schema=None
-    )
+    indexer = DeltaFileIndexer(version=version)
     expected = 1 if version == 0 else 2
-    assert len(_paths(derived, path)) == expected
+    assert len(_paths(indexer, path, predicate=col("val") > lit(0))) == expected
 
 
 if __name__ == "__main__":

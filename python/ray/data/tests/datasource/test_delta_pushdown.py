@@ -95,25 +95,40 @@ def _files_listed(ds: "ray.data.Dataset", path: str) -> int:
     """
     import pyarrow.fs
 
+    list_files = _find_list_files(ds)
+    return sum(
+        len(manifest)
+        for manifest in list_files.file_indexer.list_files(
+            pa.array([path]),
+            filesystem=pyarrow.fs.LocalFileSystem(),
+            # Forward the operator's pushdown state exactly as
+            # ``plan_list_files_op`` does. The indexer holds no predicates of
+            # its own, so omitting these would list the whole snapshot and
+            # make every pruning assertion below vacuous.
+            predicate=list_files.predicate,
+            limit=list_files.limit,
+            projected_columns=list_files.projected_columns,
+            partition_predicate=list_files.partition_predicate,
+        )
+    )
+
+
+def _find_list_files(ds: "ray.data.Dataset") -> ListFiles:
+    """The optimized plan's ``ListFiles``, carrying its derived constraints."""
     optimized = LogicalOptimizer().optimize(ds._logical_plan)
 
-    def find_indexer(op):
+    def find(op):
         if isinstance(op, ListFiles):
-            return op.file_indexer
+            return op
         for dependency in op.input_dependencies:
-            found = find_indexer(dependency)
+            found = find(dependency)
             if found is not None:
                 return found
         return None
 
-    indexer = find_indexer(optimized.dag)
-    assert indexer is not None, "plan has no ListFiles operator"
-    return sum(
-        len(manifest)
-        for manifest in indexer.list_files(
-            pa.array([path]), filesystem=pyarrow.fs.LocalFileSystem()
-        )
-    )
+    list_files = find(optimized.dag)
+    assert list_files is not None, "plan has no ListFiles operator"
+    return list_files
 
 
 def _read(path: str, v2: bool, predicate: Optional[Expr] = None, **kwargs):
@@ -562,20 +577,18 @@ def test_partition_predicates_over_a_null_partition_match_v1(
 def test_typed_partition_predicate_is_correct_without_the_pruning_rule(
     int_partitioned_table, restore_data_context, monkeypatch
 ):
-    """Remove the rule entirely; the answer must not change."""
-    from ray.data._internal.logical import optimizers
-    from ray.data._internal.logical.interfaces.optimizer import Rule
-    from ray.data._internal.logical.rules import PushdownDeltaFilePruning
+    """Remove listing-time pruning entirely; the answer must not change.
 
-    without_rule = [
-        rule
-        for rule in optimizers._LOGICAL_RULESET
-        if rule is not PushdownDeltaFilePruning
-    ]
+    Pruning is an optimization -- the scanner enforces the same predicates
+    while reading. ``DeriveListFilesPushdown`` is the only thing that hands
+    those predicates to ``ListFiles``, so neutering it is the strongest
+    available "no pruning at all" test.
+    """
+    from ray.data._internal.logical.rules import DeriveListFilesPushdown
+
     monkeypatch.setattr(
-        optimizers, "_LOGICAL_RULESET", type(optimizers._LOGICAL_RULESET)(without_rule)
+        DeriveListFilesPushdown, "apply", lambda self, plan: plan, raising=True
     )
-    assert issubclass(PushdownDeltaFilePruning, Rule)
 
     DataContext.get_current().use_datasource_v2 = True
     rows = (
@@ -586,19 +599,27 @@ def test_typed_partition_predicate_is_correct_without_the_pruning_rule(
     assert sorted(row["val"] for row in rows) == [3]
 
 
-def test_pruning_rule_declares_its_ordering_dependency():
-    """List position is only a tiebreaker; the edge has to be declared.
+def test_partition_predicate_reaches_list_files(
+    int_partitioned_table, restore_data_context
+):
+    """The partition half of a split predicate must survive to ``ListFiles``.
 
-    The rule reads predicates that ``PredicatePushdown`` settles onto the
-    scanner. If another rule later declares ``PredicatePushdown`` as a
-    dependent, topological order flips and this rule would see a bare plan.
+    ``ReadFiles.apply_predicate`` splits by column, so a partition predicate
+    never lands in ``scanner.predicate`` and is invisible to
+    ``pushed_predicate()``. It reaches listing only because
+    ``derive_list_files_pushdown`` reports it separately. Without that, the
+    Delta log could still skip files by statistics but never by partition --
+    which reads correctly and silently does more work.
     """
-    from ray.data._internal.logical.rules import (
-        PredicatePushdown,
-        PushdownDeltaFilePruning,
+    DataContext.get_current().use_datasource_v2 = True
+    ds = ray.data.read_delta(int_partitioned_table).filter(
+        expr=col("year") == lit(2024)
     )
 
-    assert PredicatePushdown in PushdownDeltaFilePruning.dependencies()
+    list_files = _find_list_files(ds)
+
+    assert list_files.partition_predicate is not None
+    assert list_files.predicate is None
 
 
 @pytest.mark.parametrize(

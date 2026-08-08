@@ -28,9 +28,10 @@ class DeltaScanner(ParquetScanner):
     Declining enforcement keeps the ``Filter`` in the plan, where the
     predicate is applied to the partition columns the reader has already
     materialized -- exactly typed, with real nulls.
-    :class:`~ray.data._internal.logical.rules.delta_file_pruning_pushdown.PushdownDeltaFilePruning`
-    still forwards the same predicate to the Delta log for file skipping, so
-    the pruning is kept and only the correctness burden is moved.
+    :class:`~ray.data._internal.logical.rules.derive_list_files_pushdown.DeriveListFilesPushdown`
+    still reports the same predicate to ``ListFiles``, so the Delta log can
+    skip files from it and the pruning is kept -- only the correctness burden
+    is moved.
     """
 
     @property

@@ -23,7 +23,6 @@ from ray.data.block import BlockColumn
 from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
-    import pyarrow as pa
     from pyarrow.fs import FileSystem
 
 logger = logging.getLogger(__name__)
@@ -42,13 +41,14 @@ class DeltaFileIndexer(FileIndexer):
     query can skip. Pruning therefore happens *before* a file is listed, so
     skipped files are never sized, chunked, or scheduled.
 
-    Predicates are optional: an indexer without them lists the whole
-    snapshot. That is what keeps pruning an optimization rather than a
-    correctness requirement -- the scanner independently enforces the same
-    predicates while reading (see
-    :class:`~ray.data._internal.logical.rules.delta_file_pruning_pushdown.PushdownDeltaFilePruning`),
-    which for partition columns depends on ``read_delta`` giving the
-    partitioning a ``field_types`` mapping so path-parsed values are typed.
+    Predicates arrive per call, as the listing-time pushdown state that
+    :class:`~ray.data._internal.logical.rules.derive_list_files_pushdown.DeriveListFilesPushdown`
+    derives from the consuming ``ReadFiles`` scanner. They are optional: a
+    call without them lists the whole snapshot. That is what keeps pruning an
+    optimization rather than a correctness requirement -- the scanner
+    independently enforces the same predicates while reading, which for
+    partition columns depends on ``read_delta`` giving the partitioning a
+    ``field_types`` mapping so path-parsed values are typed.
     """
 
     def __init__(
@@ -57,9 +57,6 @@ class DeltaFileIndexer(FileIndexer):
         table_uri: Optional[str] = None,
         version: Optional[int] = None,
         storage_options: Optional[Dict[str, Any]] = None,
-        partition_predicate: Optional[Expr] = None,
-        data_predicate: Optional[Expr] = None,
-        table_schema: Optional["pa.Schema"] = None,
         file_chunker: Optional[FileChunker] = None,
         max_paths_per_output: int = _DEFAULT_MAX_PATHS_PER_OUTPUT,
     ):
@@ -74,11 +71,6 @@ class DeltaFileIndexer(FileIndexer):
                 local paths.
             version: Table version to read. ``None`` reads the latest.
             storage_options: Backend credentials/config passed to ``deltalake``.
-            partition_predicate: Predicate over partition columns only.
-            data_predicate: Predicate over data columns, applied against the
-                log's min/max statistics.
-            table_schema: Arrow schema of the table, used to cast partition
-                values (strings in the log) before comparing them.
             file_chunker: Strategy for splitting a file across read tasks.
                 Defaults to :class:`ParquetFileChunker`, matching
                 ``read_parquet``; a Delta table of a few large files would
@@ -88,9 +80,6 @@ class DeltaFileIndexer(FileIndexer):
         self._table_uri = table_uri
         self._version = version
         self._storage_options = storage_options
-        self._partition_predicate = partition_predicate
-        self._data_predicate = data_predicate
-        self._table_schema = table_schema
         self._file_chunker = (
             file_chunker if file_chunker is not None else ParquetFileChunker()
         )
@@ -99,30 +88,6 @@ class DeltaFileIndexer(FileIndexer):
     @property
     def file_chunker(self) -> FileChunker:
         return self._file_chunker
-
-    def with_predicates(
-        self,
-        *,
-        partition_predicate: Optional[Expr],
-        data_predicate: Optional[Expr],
-        table_schema: Optional["pa.Schema"],
-    ) -> "DeltaFileIndexer":
-        """Return a copy carrying the given predicates.
-
-        Returns a new instance rather than mutating: a logical operator can
-        be optimized more than once, and an indexer that accumulated
-        predicates in place would prune against a stale plan.
-        """
-        return DeltaFileIndexer(
-            table_uri=self._table_uri,
-            version=self._version,
-            storage_options=self._storage_options,
-            partition_predicate=partition_predicate,
-            data_predicate=data_predicate,
-            table_schema=table_schema,
-            file_chunker=self._file_chunker,
-            max_paths_per_output=self._max_paths_per_output,
-        )
 
     def list_files(
         self,
@@ -134,6 +99,7 @@ class DeltaFileIndexer(FileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        partition_predicate: Optional["Expr"] = None,
     ) -> Iterable[FileManifest]:
         """Yield manifests for the files this query may need.
 
@@ -141,13 +107,16 @@ class DeltaFileIndexer(FileIndexer):
         given snapshot are read in a fixed order, so listing is already
         deterministic.
 
-        ``predicate`` / ``limit`` / ``projected_columns`` are the listing-time
-        pushdown state derived by
-        :class:`~ray.data._internal.logical.rules.derive_list_files_pushdown.DeriveListFilesPushdown`.
-        They are ignored here: this indexer prunes from the predicates it was
-        constructed with (see :meth:`with_predicates`), which are already split
-        into partition-only and data-column halves. Consuming the derived state
-        instead would let the custom rule be dropped -- see the note on the PR.
+        ``predicate`` and ``partition_predicate`` are the listing-time pushdown
+        state derived by
+        :class:`~ray.data._internal.logical.rules.derive_list_files_pushdown.DeriveListFilesPushdown`,
+        already split by column: the former binds data columns, the latter
+        partition columns. Both are answerable from the log, so both prune.
+
+        ``limit`` and ``projected_columns`` are ignored. Early-stop listing
+        would have to know each file's row count survives the predicate, and
+        the log's ``num_records`` is exact only when no data predicate applies;
+        rather than special-case that, leave the limit to the reader.
         """
         yield from build_manifests(
             self.list_file_infos(
@@ -155,6 +124,8 @@ class DeltaFileIndexer(FileIndexer):
                 filesystem=filesystem,
                 pruners=pruners,
                 preserve_order=preserve_order,
+                predicate=predicate,
+                partition_predicate=partition_predicate,
             ),
             file_chunker=self._file_chunker,
             max_paths_per_output=self._max_paths_per_output,
@@ -167,6 +138,8 @@ class DeltaFileIndexer(FileIndexer):
         filesystem: "FileSystem",
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        partition_predicate: Optional["Expr"] = None,
     ) -> Iterable[FileInfo]:
         """Yield pruned, non-empty ``FileInfo``\\ s from the transaction log.
 
@@ -174,9 +147,16 @@ class DeltaFileIndexer(FileIndexer):
         are dropped and ``pruners`` applied here, so this and :meth:`list_files`
         share one filtering point. The log-level pruning that makes this indexer
         worthwhile happens upstream of both, in :meth:`_iter_file_infos`.
+
+        The two predicate arguments are an extension of the base signature:
+        callers that reach an indexer directly (rather than through
+        ``list_files``) can still prune. They default to ``None``, so the base
+        contract is unchanged.
         """
         pruners = pruners or []
-        for file_info in self._iter_file_infos(paths):
+        for file_info in self._iter_file_infos(
+            paths, predicate=predicate, partition_predicate=partition_predicate
+        ):
             if file_info.size is None or file_info.size == 0:
                 logger.warning(f"Skipping zero-size file: {file_info.path!r}")
                 continue
@@ -184,7 +164,13 @@ class DeltaFileIndexer(FileIndexer):
                 continue
             yield file_info
 
-    def _iter_file_infos(self, paths: "BlockColumn") -> Iterable[FileInfo]:
+    def _iter_file_infos(
+        self,
+        paths: "BlockColumn",
+        *,
+        predicate: Optional["Expr"] = None,
+        partition_predicate: Optional["Expr"] = None,
+    ) -> Iterable[FileInfo]:
         import pyarrow as pa
         from deltalake import DeltaTable
 
@@ -196,12 +182,20 @@ class DeltaFileIndexer(FileIndexer):
             )
             add_actions = pa.table(table.get_add_actions(flatten=True))
 
+            # The log's partition values are strings, so comparing them to a
+            # predicate's typed literals needs the table schema. Read it off the
+            # snapshot we already opened rather than plumbing it in: it is the
+            # unprojected schema by construction, which is what the cast needs.
+            # ``deltalake`` returns arro3 objects, so this is a real conversion
+            # over the Arrow PyCapsule interface, not a redundant wrap.
+            table_schema = pa.schema(table.schema().to_arrow())
+
             total = add_actions.num_rows
             add_actions = prune_add_actions(
                 add_actions,
-                partition_predicate=self._partition_predicate,
-                data_predicate=self._data_predicate,
-                table_schema=self._table_schema,
+                partition_predicate=partition_predicate,
+                data_predicate=predicate,
+                table_schema=table_schema,
             )
             if add_actions.num_rows < total:
                 logger.debug(

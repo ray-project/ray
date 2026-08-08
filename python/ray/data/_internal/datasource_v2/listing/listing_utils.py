@@ -66,6 +66,7 @@ def list_files_for_each_block(
     predicate: Optional["Expr"] = None,
     limit: Optional[int] = None,
     projected_columns: Optional[List[str]] = None,
+    partition_predicate: Optional["Expr"] = None,
 ) -> Iterable[Block]:
     """Expand path blocks into ``FileManifest`` blocks.
 
@@ -76,10 +77,10 @@ def list_files_for_each_block(
     ``partition_filter`` — keeps pruner construction out of the
     ``_read_datasource_v2`` entry point.
 
-    Pushed-down ``predicate`` / ``limit`` / ``projected_columns`` are forwarded
-    to the indexer; metadata-aware indexers (e.g. the footer-based Parquet
-    indexer) use them to skip row groups, stop early, and size projected
-    columns, while the plain indexer ignores them.
+    Pushed-down ``predicate`` / ``limit`` / ``projected_columns`` /
+    ``partition_predicate`` are forwarded to the indexer; metadata-aware
+    indexers use them to skip row groups, stop early, size projected columns,
+    and drop whole partitions, while the plain indexer ignores them.
     """
     pruners = _build_pruners(file_extensions, partition_filter)
     for block in blocks:
@@ -91,6 +92,7 @@ def list_files_for_each_block(
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            partition_predicate=partition_predicate,
         ):
             if len(manifest) > 0:
                 yield manifest.as_block()

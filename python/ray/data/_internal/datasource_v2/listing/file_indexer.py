@@ -58,6 +58,7 @@ class FileIndexer(ABC):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        partition_predicate: Optional["Expr"] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
 
@@ -66,13 +67,18 @@ class FileIndexer(ABC):
             filesystem: A PyArrow filesystem object.
             pruners: A list of file pruners to apply.
             preserve_order: Whether to preserve order in file listing.
-            predicate: Pushed-down row filter. Indexers that read file
-                metadata (e.g. the footer-based Parquet indexer) use it to skip
-                row groups; others ignore it.
+            predicate: Pushed-down row filter over data columns. Indexers that
+                read file metadata (e.g. the footer-based Parquet indexer) use
+                it to skip row groups; others ignore it.
             limit: Pushed-down row limit, for indexers that can stop listing
                 early. Others ignore it.
             projected_columns: Pushed-down column projection, for metadata-aware
                 sizing. Others ignore it.
+            partition_predicate: Pushed-down filter over partition columns,
+                disjoint from ``predicate``. Indexers backed by a catalog that
+                records partition values (e.g. the Delta transaction log) drop
+                whole files from it without touching the filesystem; others
+                ignore it and let the scanner prune the manifest instead.
 
         Returns:
             An iterator of `FileManifest` objects, each of which contains a file path
@@ -198,9 +204,12 @@ class NonSamplingFileIndexer(FileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        partition_predicate: Optional["Expr"] = None,
     ) -> Iterable[FileManifest]:
-        # This per-file listing path ignores predicate/limit/projected_columns;
-        # they're consumed by metadata-aware indexers (e.g. the footer indexer).
+        # This per-file listing path ignores the pushed-down constraints; they
+        # are consumed by metadata-aware indexers (e.g. the footer indexer for
+        # predicate/limit/projected_columns, the Delta indexer for
+        # partition_predicate).
         # ``list_file_infos`` already skips zero-size files and applies pruners,
         # so the manifest builder only has to chunk.
         file_infos = self.list_file_infos(
