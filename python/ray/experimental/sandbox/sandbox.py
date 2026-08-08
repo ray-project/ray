@@ -71,6 +71,20 @@ class Sandbox:
             **kwargs,
         )
 
+        self._ttl_timer = None
+        if ttl_seconds is not None and ttl_seconds > 0:
+            import threading
+
+            self._ttl_timer = threading.Timer(ttl_seconds, self.delete)
+            self._ttl_timer.daemon = True
+            self._ttl_timer.start()
+
+    def __del__(self):
+        try:
+            self.delete()
+        except Exception:
+            pass
+
     def get_instance_id(self) -> str:
         """Get the unique instance ID for the sandbox."""
         return self.instance_id
