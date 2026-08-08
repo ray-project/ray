@@ -6,7 +6,7 @@ import random
 import string
 import time
 import traceback
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -83,7 +83,11 @@ class JobManager:
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(
-        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+        self,
+        gcs_client: GcsClient,
+        logs_dir: str,
+        timeout_check_timer: Timer = None,
+        ensure_ray_initialized: Optional[Callable[[], Awaitable[None]]] = None,
     ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
@@ -93,6 +97,7 @@ class JobManager:
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self._timeout_check_timer = timeout_check_timer or Timer()
+        self._ensure_ray_initialized = ensure_ray_initialized
         self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
@@ -197,9 +202,18 @@ class JobManager:
                     )
                     await asyncio.sleep(delay_s)
 
-            for job_id, job_info in all_jobs.items():
-                if not job_info.status.is_terminal():
-                    run_background_task(self._monitor_job(job_id))
+            non_terminal_job_ids = [
+                job_id
+                for job_id, job_info in all_jobs.items()
+                if not job_info.status.is_terminal()
+            ]
+            # Keep an idle Dashboard Agent independent of its local raylet. Only
+            # recovery monitors need the CoreWorker connection established here.
+            if non_terminal_job_ids and self._ensure_ray_initialized is not None:
+                await self._ensure_ray_initialized()
+
+            for job_id in non_terminal_job_ids:
+                run_background_task(self._monitor_job(job_id))
         finally:
             # This event is awaited in `submit_job` to avoid race conditions between
             # recovery and new job submission, so it must always get set even if there

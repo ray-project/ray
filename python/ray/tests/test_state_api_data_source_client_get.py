@@ -1352,9 +1352,7 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     """
     result = await client.get_all_worker_info(limit=2)
     assert len(result.worker_table_data) == 2
-    # 5 = 1 driver + 3 actor workers + at least 1 dashboard agent connection.
-    # Aggregator routing or an agent restart can leave additional internal records.
-    assert result.total >= 5
+    assert result.total == 4
 
 
 @pytest.mark.asyncio

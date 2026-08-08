@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -39,11 +40,17 @@ async def test_head_job_agent_eagerly_initializes_job_manager():
 
     with (
         patch.object(optional_utils, "init_ray_connection") as init_ray_connection,
-        patch.object(job_agent_module, "JobManager", return_value=job_manager),
+        patch.object(
+            job_agent_module, "JobManager", return_value=job_manager
+        ) as job_manager_cls,
     ):
         await agent.run(server=None)
 
-    init_ray_connection.assert_called_once_with("127.0.0.1:6379")
+    init_ray_connection.assert_not_called()
+    job_manager_cls.assert_called_once()
+    ensure_ray_initialized = job_manager_cls.call_args.kwargs["ensure_ray_initialized"]
+    assert ensure_ray_initialized.__self__ is agent
+    assert ensure_ray_initialized.__func__ is JobAgent._ensure_ray_initialized
     assert agent._job_manager is job_manager
 
 
@@ -65,7 +72,6 @@ async def test_worker_job_agent_does_not_initialize_job_manager():
 @pytest.mark.asyncio
 async def test_job_agent_retries_ray_connection_failure():
     agent = _make_job_agent(is_head=True)
-    job_manager = MagicMock()
 
     with (
         patch.object(
@@ -73,17 +79,15 @@ async def test_job_agent_retries_ray_connection_failure():
             "init_ray_connection",
             side_effect=[ConnectionError("GCS is unavailable"), None],
         ) as init_ray_connection,
-        patch.object(job_agent_module, "JobManager", return_value=job_manager),
         patch.object(job_agent_module.random, "uniform", return_value=0),
         patch.object(
             job_agent_module.asyncio, "sleep", new_callable=AsyncMock
         ) as sleep,
     ):
-        await agent.run(server=None)
+        await agent._ensure_ray_initialized()
 
     assert init_ray_connection.call_count == 2
     sleep.assert_awaited_once_with(30)
-    assert agent._job_manager is job_manager
 
 
 @pytest.mark.asyncio
@@ -105,7 +109,7 @@ async def test_job_agent_retries_job_manager_construction_failure():
     ):
         await agent.run(server=None)
 
-    assert init_ray_connection.call_count == 2
+    init_ray_connection.assert_not_called()
     assert job_manager_cls.call_count == 2
     sleep.assert_awaited_once_with(30)
     assert agent._job_manager is job_manager
@@ -122,13 +126,12 @@ async def test_job_agent_retry_delay_is_capped():
             "init_ray_connection",
             side_effect=[*failures, None],
         ),
-        patch.object(job_agent_module, "JobManager", return_value=MagicMock()),
         patch.object(job_agent_module.random, "uniform", return_value=0),
         patch.object(
             job_agent_module.asyncio, "sleep", new_callable=AsyncMock
         ) as sleep,
     ):
-        await agent.run(server=None)
+        await agent._ensure_ray_initialized()
 
     assert sleep.await_args_list == [
         call(30),
@@ -147,13 +150,10 @@ async def test_job_agent_ray_init_does_not_block_event_loop():
     def slow_init(_):
         time.sleep(0.3)
 
-    with (
-        patch.object(optional_utils, "init_ray_connection", side_effect=slow_init),
-        patch.object(job_agent_module, "JobManager", return_value=MagicMock()),
-    ):
+    with patch.object(optional_utils, "init_ray_connection", side_effect=slow_init):
         loop = asyncio.get_running_loop()
         start = loop.time()
-        run_task = asyncio.create_task(agent.run(server=None))
+        run_task = asyncio.create_task(agent._ensure_ray_initialized())
         await asyncio.sleep(0.01)
         elapsed = loop.time() - start
         await run_task
@@ -262,6 +262,7 @@ async def test_recovery_scan_retries_then_monitors_non_terminal_jobs():
         ]
     )
     manager._recover_running_jobs_event = asyncio.Event()
+    manager._ensure_ray_initialized = AsyncMock()
     manager._monitor_job = MagicMock()
 
     with (
@@ -277,6 +278,7 @@ async def test_recovery_scan_retries_then_monitors_non_terminal_jobs():
         call(timeout=5),
     ]
     sleep.assert_awaited_once_with(1)
+    manager._ensure_ray_initialized.assert_awaited_once_with()
     manager._monitor_job.assert_called_once_with("pending")
     run_task.assert_called_once_with(manager._monitor_job.return_value)
     assert manager._recover_running_jobs_event.is_set()
@@ -297,6 +299,7 @@ async def test_recovery_scan_allows_two_gcs_timeout_phases():
 
     manager._job_info_client.get_all_jobs = AsyncMock(side_effect=get_all_jobs)
     manager._recover_running_jobs_event = asyncio.Event()
+    manager._ensure_ray_initialized = AsyncMock()
     manager._monitor_job = MagicMock()
 
     with (
@@ -308,8 +311,28 @@ async def test_recovery_scan_allows_two_gcs_timeout_phases():
         await JobManager._recover_running_jobs(manager)
 
     manager._job_info_client.get_all_jobs.assert_awaited_once_with(timeout=0.05)
+    manager._ensure_ray_initialized.assert_awaited_once_with()
     manager._monitor_job.assert_called_once_with("pending")
     run_task.assert_called_once_with(manager._monitor_job.return_value)
+    assert manager._recover_running_jobs_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_recovery_scan_does_not_connect_ray_without_non_terminal_jobs():
+    manager = MagicMock()
+    manager._job_info_client.get_all_jobs = AsyncMock(
+        return_value={"finished": MagicMock(status=JobStatus.SUCCEEDED)}
+    )
+    manager._recover_running_jobs_event = asyncio.Event()
+    manager._ensure_ray_initialized = AsyncMock()
+    manager._monitor_job = MagicMock()
+
+    with patch.object(job_manager_module, "run_background_task") as run_task:
+        await JobManager._recover_running_jobs(manager)
+
+    manager._ensure_ray_initialized.assert_not_awaited()
+    manager._monitor_job.assert_not_called()
+    run_task.assert_not_called()
     assert manager._recover_running_jobs_event.is_set()
 
 
@@ -371,3 +394,7 @@ async def test_submit_job_fails_instead_of_waiting_forever_for_recovery():
                 entrypoint="echo hello",
                 submission_id="submission-id",
             )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

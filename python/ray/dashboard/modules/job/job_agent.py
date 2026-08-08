@@ -204,9 +204,36 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def get_job_manager(self):
         if not self._job_manager:
             self._job_manager = JobManager(
-                self._dashboard_agent.gcs_client, self._dashboard_agent.log_dir
+                self._dashboard_agent.gcs_client,
+                self._dashboard_agent.log_dir,
+                ensure_ray_initialized=self._ensure_ray_initialized,
             )
         return self._job_manager
+
+    async def _ensure_ray_initialized(self) -> None:
+        retry_delay_s = _INIT_RETRY_BASE_SECONDS
+        attempt = 0
+        while True:
+            try:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None, optional_utils.init_ray_connection, self.gcs_address
+                )
+                return
+            except Exception:
+                attempt += 1
+                delay_s = retry_delay_s * (
+                    1 + random.uniform(-_INIT_RETRY_JITTER, _INIT_RETRY_JITTER)
+                )
+                logger.warning(
+                    "Failed to initialize Ray for submission job recovery "
+                    "(attempt %d); retrying in %.1f seconds.",
+                    attempt,
+                    delay_s,
+                    exc_info=True,
+                )
+                await asyncio.sleep(delay_s)
+                retry_delay_s = min(retry_delay_s * 2, _INIT_RETRY_MAX_SECONDS)
 
     async def run(self, server):
         if not self._dashboard_agent.is_head:
@@ -216,10 +243,6 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         attempt = 0
         while True:
             try:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(
-                    None, optional_utils.init_ray_connection, self.gcs_address
-                )
                 self.get_job_manager()
                 logger.info(
                     "Initialized JobManager on the head node and scheduled "
