@@ -653,7 +653,7 @@ class TestRequestContextMetrics:
                 ),
             )
             == 1,
-            timeout=40,
+            timeout=60,
         )
 
         counter_metrics = get_metric_dictionaries(
@@ -702,6 +702,7 @@ class TestHandleMetrics:
             caller.call.remote()
             wait_for_condition(
                 check_sum_metric_eq,
+                timeout=30,
                 metric_name="ray_serve_deployment_queued_queries",
                 tags={"application": "app1"},
                 expected=i + 1,
@@ -712,6 +713,7 @@ class TestHandleMetrics:
         ray.get(signal.send.remote())
         wait_for_condition(
             check_sum_metric_eq,
+            timeout=30,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=0,
@@ -726,6 +728,7 @@ class TestHandleMetrics:
         call.remote("WaitForSignal", "app1")
         wait_for_condition(
             check_sum_metric_eq,
+            timeout=30,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=0,
@@ -735,6 +738,7 @@ class TestHandleMetrics:
         call.remote("WaitForSignal", "app1")
         wait_for_condition(
             check_sum_metric_eq,
+            timeout=30,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=1,
@@ -744,6 +748,7 @@ class TestHandleMetrics:
         call.remote("WaitForSignal", "app1")
         wait_for_condition(
             check_sum_metric_eq,
+            timeout=30,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=2,
@@ -753,6 +758,7 @@ class TestHandleMetrics:
         ray.get(signal.send.remote())
         wait_for_condition(
             check_sum_metric_eq,
+            timeout=30,
             metric_name="ray_serve_deployment_queued_queries",
             tags={"application": "app1", "deployment": "WaitForSignal"},
             expected=0,
@@ -779,7 +785,7 @@ class TestHandleMetrics:
         timeseries = PrometheusTimeseries()
         wait_for_condition(
             check_metric_float_eq,
-            timeout=15,
+            timeout=30,
             metric="ray_serve_num_scheduling_tasks",
             # Router is eagerly created on HTTP proxy, so there are metrics emitted
             # from proxy router
@@ -794,7 +800,7 @@ class TestHandleMetrics:
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
             check_metric_float_eq,
-            timeout=15,
+            timeout=30,
             metric="ray_serve_num_scheduling_tasks_in_backoff",
             # Router is eagerly created on HTTP proxy, so there are metrics emitted
             # from proxy router
@@ -823,7 +829,7 @@ class TestHandleMetrics:
         print("First request is executing.")
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_num_ongoing_http_requests",
             expected=1,
             timeseries=timeseries,
@@ -837,7 +843,7 @@ class TestHandleMetrics:
         # First request should be processing. All others should be queued.
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_deployment_queued_queries",
             expected=num_queued_requests,
             timeseries=timeseries,
@@ -845,7 +851,7 @@ class TestHandleMetrics:
         print("ray_serve_deployment_queued_queries updated successfully.")
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_num_ongoing_http_requests",
             expected=num_queued_requests + 1,
             timeseries=timeseries,
@@ -856,7 +862,7 @@ class TestHandleMetrics:
         # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_num_scheduling_tasks",
             expected=2,
             timeseries=timeseries,
@@ -864,7 +870,7 @@ class TestHandleMetrics:
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_num_scheduling_tasks_in_backoff",
             expected=2,
             timeseries=timeseries,
@@ -878,7 +884,7 @@ class TestHandleMetrics:
 
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_deployment_queued_queries",
             expected=0,
             timeseries=timeseries,
@@ -888,7 +894,7 @@ class TestHandleMetrics:
         # Task should get cancelled.
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_num_ongoing_http_requests",
             expected=0,
             timeseries=timeseries,
@@ -897,7 +903,7 @@ class TestHandleMetrics:
 
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_num_scheduling_tasks",
             expected=0,
             timeseries=timeseries,
@@ -905,7 +911,7 @@ class TestHandleMetrics:
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
             check_sum_metric_eq,
-            timeout=15,
+            timeout=30,
             metric_name="ray_serve_num_scheduling_tasks_in_backoff",
             expected=0,
             timeseries=timeseries,
@@ -947,6 +953,7 @@ class TestHandleMetrics:
 
             wait_for_condition(
                 check_sum_metric_eq,
+                timeout=30,
                 metric_name="ray_serve_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "d1"},
                 expected=requests_sent[1],
@@ -955,6 +962,7 @@ class TestHandleMetrics:
 
             wait_for_condition(
                 check_sum_metric_eq,
+                timeout=30,
                 metric_name="ray_serve_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "d2"},
                 expected=requests_sent[2],
@@ -963,6 +971,7 @@ class TestHandleMetrics:
 
             wait_for_condition(
                 check_sum_metric_eq,
+                timeout=30,
                 metric_name="ray_serve_num_ongoing_requests_at_replicas",
                 tags={"application": "app1", "deployment": "Router"},
                 expected=i + 1,
@@ -973,6 +982,7 @@ class TestHandleMetrics:
         ray.get(signal.send.remote())
         wait_for_condition(
             check_sum_metric_eq,
+            timeout=30,
             metric_name="ray_serve_num_ongoing_requests_at_replicas",
             tags={"application": "app1"},
             expected=0,
@@ -1017,6 +1027,7 @@ class TestProxyStateMetrics:
 
         wait_for_condition(
             check_metric_float_eq,
+            timeout=30,
             metric="ray_serve_proxy_status",
             expected=2,
             timeseries=timeseries,

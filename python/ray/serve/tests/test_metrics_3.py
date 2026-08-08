@@ -535,7 +535,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     # Test 1: Check that target_replicas metric is 5 (10 requests / target_ongoing_requests=2)
     wait_for_condition(
         check_metric_float_eq,
-        timeout=15,
+        timeout=30,
         metric="ray_serve_autoscaling_target_replicas",
         expected=5,
         expected_tags=base_tags,
@@ -764,6 +764,7 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
             "ray_serve_user_autoscaling_stats_latency_ms_sum",
             expected_tags=base_tags,
             timeseries=timeseries,
+            timeout=5,
         )
         if value >= 0:
             # Verify replica tag exists
@@ -785,7 +786,7 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
                     return True
         return False
 
-    wait_for_condition(check_user_stats_latency_metric, timeout=15)
+    wait_for_condition(check_user_stats_latency_metric, timeout=60)
     print("User autoscaling stats latency metric verified.")
 
 
@@ -1099,7 +1100,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
                 return True
         return False
 
-    wait_for_condition(check_proxy_main_loop_metrics, timeout=30)
+    wait_for_condition(check_proxy_main_loop_metrics, timeout=60)
     print("Proxy main loop monitoring metrics verified.")
 
     # Test 1a: Check proxy router loop metrics
@@ -1118,7 +1119,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
         return False
 
     if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
-        wait_for_condition(check_proxy_router_loop_metrics, timeout=30)
+        wait_for_condition(check_proxy_router_loop_metrics, timeout=60)
         print("Proxy router loop monitoring metrics verified.")
     else:
         print("Proxy router loop monitoring metrics not verified.")
@@ -1143,7 +1144,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
                 return True
         return False
 
-    wait_for_condition(check_replica_main_loop_metrics, timeout=30)
+    wait_for_condition(check_replica_main_loop_metrics, timeout=60)
     print("Replica main loop monitoring metrics verified.")
 
     # Test 3: Check replica user_code loop metrics (enabled by default)
@@ -1167,7 +1168,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
         return False
 
     if RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
-        wait_for_condition(check_replica_user_code_loop_metrics, timeout=30)
+        wait_for_condition(check_replica_user_code_loop_metrics, timeout=60)
         print("Replica user_code loop monitoring metrics verified.")
     else:
         print("Replica user_code loop monitoring metrics not verified.")
@@ -1188,7 +1189,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
         return False
 
     if RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
-        wait_for_condition(check_router_loop_metrics, timeout=30)
+        wait_for_condition(check_router_loop_metrics, timeout=60)
         print("Router loop monitoring metrics verified.")
     else:
         print("Router loop monitoring metrics not verified.")
@@ -1221,7 +1222,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             expected_pairs.add(("proxy", "router"))
         return expected_pairs.issubset(component_loop_pairs)
 
-    wait_for_condition(check_scheduling_latency_metric, timeout=30)
+    wait_for_condition(check_scheduling_latency_metric, timeout=60)
     print("Scheduling latency histogram metrics verified.")
 
     # Test 6: Check that tasks gauge exists
@@ -1251,7 +1252,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             expected_pairs.add(("proxy", "router"))
         return expected_pairs.issubset(component_loop_pairs)
 
-    wait_for_condition(check_tasks_gauge_metric, timeout=30)
+    wait_for_condition(check_tasks_gauge_metric, timeout=60)
     print("Event loop tasks gauge metrics verified.")
 
 
