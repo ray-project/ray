@@ -79,17 +79,19 @@ class RayTaskEventRecorder : public RayEventRecorderBase {
                        const TaskAttemptId &attempt)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  struct EventsToSend {
+    std::list<std::unique_ptr<RayEventInterface>> events;
+    absl::flat_hash_set<TaskAttemptId> dropped_to_send;
+  };
+
   /**
    * @brief Move the buffered events and the dropped task attempts to report out of the
    * buffers so that the caller can group, serialize and send them without holding mutex_.
    * Events belonging to a dropped attempt are discarded so that a task attempt is either
    * sent in full or not at all.
-   * @param[out] events Receives the events to export.
-   * @param[out] dropped_to_send Receives the task attempts to report as dropped.
+   * @return The events to export and the task attempts to report as dropped.
    */
-  void TakeEventsToSend(std::list<std::unique_ptr<RayEventInterface>> *events,
-                        absl::flat_hash_set<TaskAttemptId> *dropped_to_send)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  EventsToSend TakeEventsToSend() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Read the task attempt of an event; the event must implement TaskRayEventInterface.
   static TaskAttemptId GetTaskAttemptOrDie(
