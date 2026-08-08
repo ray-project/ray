@@ -24,8 +24,13 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
+from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
     InternalQueueOperatorMixin,
+)
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import (
@@ -246,7 +251,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_backpressure_guard = OutputBackpressureGuard(
             self._topology, self._resource_manager
         )
-
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,
@@ -286,6 +290,24 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         for callback in self._callbacks:
             callback.before_execution_starts(self)
+
+        # AllToAllOperator blocks the execution loop inside bulk_fn.
+        # Hash shuffle V1 does not show its finalization metrics,
+        # and hash shuffle V1 will be deprecated in 2.60.
+        # Neither is distinguishable from a stall, so we disable the guard.
+        if any(
+            isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
+            for op in self._topology
+        ):
+            timeout = -1
+        else:
+            timeout = self._data_context.execution_no_progress_timeout_s
+        # The clock starts on construction, so construct guard right before
+        # the loop starts.
+        self._no_progress_guard = NoProgressGuard(
+            self._topology,
+            timeout,
+        )
 
         self.start()
         self._execution_started = True
@@ -580,8 +602,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
 
-        # Keep going until all operators run to completion.
-        return not all(op.has_completed() for op in topology)
+        # Check until all oprators have completed.
+        should_continue = not all(op.has_completed() for op in topology)
+        self._no_progress_guard.check()
+        return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.
