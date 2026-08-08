@@ -1,3 +1,6 @@
 /target
+# maturin build output. Platform-specific wheels must never be committed — one
+# slipped into a rebase on 2026-08-10 via a broad `git add -A`.
+/dist
 # Cargo.lock IS committed: this crate builds a wheel for reproducible CI, and
 # ci/docker/dataarrowrs.build.wanda.yaml lists Cargo.lock in its build srcs.

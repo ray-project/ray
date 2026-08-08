@@ -195,12 +195,31 @@ _LOGGED_NATIVE_ACTIVE = False
 # 32 / 64 / 128 MiB agree within 4% on memory, so 32 is a knee and not a sharp
 # optimum; it also wins on the local-disk arm (0.81 / 0.81 / 0.93).
 #
-# Why small batches cost *more* is NOT established. The leading suspect is that
-# handing Ray's block builder many sub-block batches forces an accumulate-then-
-# concatenate that needs inputs and output alive together — but the sweep that
-# would show it (exp6 phase B) ran with a write fused onto the read, and the writer
-# was holding 589 MiB, so it could not have seen an effect this size (§8.9.1). The
-# default change rests on the measurement above, not on that explanation.
+# **The memory half of that no longer stands.** Every arm above was fused (a write
+# attached to the read) at four fragment threads. Re-run UNFUSED at one thread —
+# the configuration this reader now ships — on local disk, 128 MiB blocks:
+#
+#     budget    avg USS    max USS    wall
+#      2 MiB     443 MiB    449 MiB    6.7 s
+#      8 MiB     489 MiB    496 MiB    6.2 s
+#     32 MiB     462 MiB    466 MiB    5.8 s
+#    128 MiB     463 MiB    466 MiB    5.9 s
+#
+# Memory is FLAT: 1.10x across a 64x sweep, non-monotone, and the minimum sits on
+# the *old* default. The 1.47x max/avg that condemned 2 MiB is gone too — every arm
+# is within 1.5% of its own average, so that spike was the writer's, not the
+# decoder's. Wall time keeps the shape it had fused (32 MiB fastest, 0.87x against
+# 2 MiB, from two independent configurations), so **32 MiB stays, justified on
+# throughput and on the row-floor argument below, not on memory.**
+#
+# It also settles why small batches seemed to cost more: they do not. The suspect
+# was that handing Ray's block builder many sub-block batches forces an
+# accumulate-then-concatenate needing inputs and output alive together. If that
+# were it, budget=128 MiB — one batch per 128 MiB block, nothing to concatenate —
+# would collapse the cost. It reads 463 MiB against 2 MiB's 443. Refuted; the
+# block-size cost measured in exp6 phase G is Ray's block layer (PyArrow scales
+# with block size at the same marginal rate) rather than anything this knob
+# reaches.
 #
 # Note the 2048-row floor below can void this knob entirely: it only binds below
 # ~1 KiB/row (2 MiB / 2048 rows). At 32 MiB it binds up to ~16 KiB/row, so this
