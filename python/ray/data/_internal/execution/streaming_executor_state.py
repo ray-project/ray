@@ -158,20 +158,14 @@ class OutputBackpressureGuard:
         # first release for each op is not throttled.
         self._last_release_time: Dict[PhysicalOperator, float] = {}
 
-    def _within_release_interval(self, op: PhysicalOperator) -> bool:
-        if self._release_interval_s <= 0:
-            return False
-        last = self._last_release_time.get(op, 0)
-        return time.time() - last < self._release_interval_s
-
     def notify_release_emitted(self, op: PhysicalOperator) -> None:
         """Record that a release granted to ``op`` actually yielded output.
 
         Callers must invoke this only once task output was really read, so the
-        interval throttles the rate at which bytes enter the object store rather
-        than the rate at which releases are merely offered. A release that turns
-        out to be a no-op leaves the interval untouched and stays available for
-        the next iteration."""
+        interval throttles the rate at which upstream tasks are unblocked to
+        produce more output rather than the rate at which releases are merely
+        offered. A release that turns out to be a no-op leaves the interval
+        untouched and stays available for the next iteration."""
         self._last_release_time[op] = time.time()
 
     def should_unblock(self, op: PhysicalOperator) -> bool:
@@ -187,7 +181,10 @@ class OutputBackpressureGuard:
         # is being throttled. Only the release decision is gated below.
         if not self._evaluate_unblock_raw(op):
             return False
-        return not self._within_release_interval(op)
+        if self._release_interval_s <= 0:
+            return True
+        last_release_time = self._last_release_time.get(op, 0)
+        return time.time() - last_release_time >= self._release_interval_s
 
     def _evaluate_unblock_raw(self, op: PhysicalOperator) -> bool:
         """Underlying liveness check without interval throttling."""

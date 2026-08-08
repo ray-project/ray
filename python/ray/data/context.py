@@ -283,9 +283,6 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
 
-# Per-operator minimum interval (seconds) between successive
-# `OutputBackpressureGuard` releases. See the `DataContext` attribute docstring
-# for details. Defaults to None (no throttling -- preserves legacy behavior).
 DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S = env_float(
     "RAY_DATA_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S", None
 )
