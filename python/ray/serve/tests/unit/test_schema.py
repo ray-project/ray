@@ -1577,5 +1577,38 @@ def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
     assert schema.max_replicas_per_node is DEFAULT.VALUE
 
 
+class TestDeploymentEquality:
+    """Tests for Deployment.__eq__ behavior with non-Deployment objects."""
+
+    def test_eq_with_non_deployment_returns_not_implemented(self):
+        """Comparing Deployment to non-Deployment should return NotImplemented."""
+        dc = DeploymentConfig.from_default()
+        rc = ReplicaConfig.create(lambda: None)
+        dep = Deployment(
+            name="test",
+            deployment_config=dc,
+            replica_config=rc,
+            _internal=True,
+        )
+        assert dep.__eq__("not a deployment") is NotImplemented
+        assert dep.__eq__(42) is NotImplemented
+        assert dep.__eq__(None) is NotImplemented
+
+    def test_eq_with_non_deployment_does_not_raise(self):
+        """Comparing Deployment to non-Deployment should not raise AttributeError."""
+        dc = DeploymentConfig.from_default()
+        rc = ReplicaConfig.create(lambda: None)
+        dep = Deployment(
+            name="test",
+            deployment_config=dc,
+            replica_config=rc,
+            _internal=True,
+        )
+        # These should not raise AttributeError (the bug was accessing other._name)
+        assert dep != "not a deployment"
+        assert dep != 42
+        assert dep != None  # noqa: E711
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
