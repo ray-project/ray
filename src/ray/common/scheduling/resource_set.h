@@ -21,6 +21,7 @@
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 
@@ -205,10 +206,16 @@ namespace std {
 template <>
 struct hash<ray::ResourceSet> {
   size_t operator()(ray::ResourceSet const &k) const {
-    size_t seed = k.GetResourceMap().size();
-    for (auto &elem : k.GetResourceMap()) {
-      seed ^= std::hash<std::string>()(elem.first);
-      seed ^= std::hash<double>()(elem.second);
+    // Hash the underlying ResourceID -> FixedPoint map directly. GetResourceMap()
+    // would allocate a fresh string-keyed map and take a lock per entry (via
+    // ResourceID::Binary()) on every call, and this runs on the scheduling path.
+    size_t seed = k.Resources().size();
+    for (const auto &[id, quantity] : k.Resources()) {
+      // absl::HashOf mixes id and quantity with avalanche, so swapping
+      // quantities between resources or repeated quantities do not collide.
+      // XOR-accumulate entries so the result is independent of map iteration
+      // order, which is not stable for flat_hash_map.
+      seed ^= absl::HashOf(id.ToInt(), quantity.Double());
     }
     return seed;
   }
