@@ -1,0 +1,17 @@
+load("//bazel:python.bzl", "py_test_module_list")
+
+py_test_module_list(
+    size = "medium",
+    files = glob(
+        ["tests/**/*.py"],
+        exclude = [
+            "tests/conftest.py",
+            "tests/__init__.py",
+        ],
+    ),
+    tags = [
+        "sandbox_tests",
+        "team:core",
+    ],
+    deps = ["//python/ray/tests:conftest"],
+)
