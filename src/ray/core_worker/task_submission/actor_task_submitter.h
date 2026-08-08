@@ -250,6 +250,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Return running streaming generator tasks that have a queued resubmission for
   /// lineage reconstruction once their current attempt finishes.
+  /// \return The task IDs of those streaming generators.
   std::vector<TaskID> GetQueuedGeneratorResubmitTaskIds() const;
 
  private:

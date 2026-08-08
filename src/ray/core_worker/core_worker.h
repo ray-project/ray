@@ -833,6 +833,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Return locally submitted running streaming generator tasks that have a queued
   /// resubmission for lineage reconstruction. No RPCs are made in this method.
+  /// \return The task IDs of those streaming generators.
   std::vector<TaskID> GetLocalQueuedGeneratorResubmitTaskIds() const;
 
   /// Get the locations of a list objects. Locations that failed to be retrieved
