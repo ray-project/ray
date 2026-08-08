@@ -331,6 +331,7 @@ class SubprocessModuleHandle:
             url,
             data=body,
             headers=filter_hop_by_hop_headers(request.headers),
+            timeout=aiohttp.ClientTimeout(total=None, sock_connect=30),
         ) as backend_resp:
             proxy_resp = aiohttp.web.StreamResponse(
                 status=backend_resp.status,
