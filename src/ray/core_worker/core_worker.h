@@ -1312,9 +1312,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// WorkerContext::GetNextPutIndex.
   /// If std::nullopt is specified, it will deduce the put index from the
   /// current worker context.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
-                                   const TaskID &task_id = TaskID::Nil(),
-                                   std::optional<ObjectIDIndexType> put_index = -1);
+  ObjectID AllocateDynamicReturnId(
+      const rpc::Address &owner_address,
+      const TaskID &task_id = TaskID::Nil(),
+      std::optional<ObjectIDIndexType> put_index = std::nullopt);
 
   /// Get a handle to an actor.
   ///
