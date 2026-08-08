@@ -205,33 +205,20 @@ class NodeStateCache:
 
 class UnschedulableRequestCache:
     """
-    Caches resource requests that have failed to schedule on a node.
+    Caches resource request shape keys that have failed to schedule on a node.
     """
 
     def __init__(self):
         self.shapes = set()
-        self.last_r_id = None
-        self.last_shape_key = None
 
-    def contains(self, request: ResourceRequest) -> bool:
-        current_id = id(request)
-        if current_id == self.last_r_id:
-            shape_key = self.last_shape_key
-        else:
-            shape_key = request.SerializeToString(deterministic=True)
-            self.last_r_id = current_id
-            self.last_shape_key = shape_key
-
+    def contains(self, shape_key: bytes) -> bool:
         return shape_key in self.shapes
 
-    def add(self, request: ResourceRequest) -> None:
-        assert self.last_r_id == id(request)
-        self.shapes.add(self.last_shape_key)
+    def add(self, shape_key: bytes) -> None:
+        self.shapes.add(shape_key)
 
     def clear(self) -> None:
         self.shapes.clear()
-        self.last_r_id = None
-        self.last_shape_key = None
 
 
 class SchedulingNodeStatus(Enum):
@@ -586,6 +573,7 @@ class SchedulingNode:
         self,
         requests: List[ResourceRequest],
         resource_request_source: ResourceRequestSource,
+        shape_keys: Optional[Dict[int, bytes]] = None,
     ) -> Tuple[List[ResourceRequest], UtilizationScore]:
         """
         Try to schedule the resource requests on this node.
@@ -598,6 +586,8 @@ class SchedulingNode:
             requests: The resource requests to be scheduled.
             resource_request_source: The source of the resource request, i.e.
                 pending demands from ray actors/tasks or cluster resource constraints.
+            shape_keys: Precomputed serialization keys for each request, keyed by
+                id(request). If None, keys are computed on the fly (fallback).
 
         Returns:
             A tuple of:
@@ -613,7 +603,11 @@ class SchedulingNode:
 
         # Sort the requests and try schedule them one by one.
         for r in requests:
-            if unfittable_cache.contains(r):
+            sk = shape_keys.get(id(r)) if shape_keys is not None else None
+            if sk is None:
+                sk = r.SerializeToString(deterministic=True)
+
+            if unfittable_cache.contains(sk):
                 unschedulable_requests.append(r)
                 continue
 
@@ -622,7 +616,7 @@ class SchedulingNode:
             num_labels_before = len(self.labels)
 
             if not self._try_schedule_one(r, resource_request_source):
-                unfittable_cache.add(r)
+                unfittable_cache.add(sk)
                 unschedulable_requests.append(r)
             else:
                 # If the request successfully scheduled and added a label to the node,
@@ -1731,6 +1725,12 @@ class ResourceDemandScheduler(IResourceScheduler):
             requests_to_sched, key=_sort_resource_request, reverse=True
         )
 
+        # Precompute serialization keys to avoid redundant SerializeToString
+        # calls inside the per-node try_schedule loop.
+        shape_keys = {
+            id(r): r.SerializeToString(deterministic=True) for r in requests_to_sched
+        }
+
         # Precompute the minimum resource demand across all requests for quick
         # feasibility pre-checks.
         min_resource_demand = _compute_min_resource_demand(requests_to_sched)
@@ -1784,6 +1784,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
+                shape_keys,
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
@@ -1831,6 +1832,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
+                shape_keys,
             )
             if best_node is None:
                 # No ippr nodes can schedule any more requests.
@@ -1898,6 +1900,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
                 ctx.get_recoverable_resource_availabilities(),
+                shape_keys,
             )
             if best_node is None:
                 break
@@ -1918,6 +1921,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         resource_request_source: ResourceRequestSource,
         cloud_resource_availabilities: Dict[NodeType, float],
         recoverable_resource_availabilities: Dict[NodeType, float],
+        shape_keys: Optional[Dict[int, bytes]] = None,
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
@@ -1949,6 +1953,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             recoverable_resource_availabilities: The recoverable cloud resource availability
                 score. Similar to cloud_resource_availabilities, but it will recover from
                 0.0 to 1.0 linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
+            shape_keys: Precomputed {id(request): serialized_bytes} mapping. Avoids
+                redundant SerializeToString calls inside try_schedule. If None, keys
+                are computed on the fly (fallback for tests and external callers).
 
         Returns:
             best_node: The best node to schedule the requests.
@@ -1984,7 +1991,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
             node_copy = copy.deepcopy(node)
 
-            remaining, score = node_copy.try_schedule(requests, resource_request_source)
+            remaining, score = node_copy.try_schedule(
+                requests, resource_request_source, shape_keys
+            )
 
             if len(remaining) == len(requests):
                 # The node cannot schedule any of the requests.
