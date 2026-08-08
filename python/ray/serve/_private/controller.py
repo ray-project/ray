@@ -206,6 +206,11 @@ class ServeController:
         self._last_ingress_port_tuples: set = set()
         # Last ingress membership version seen; -1 forces the first tick to run.
         self._last_ingress_membership_version: int = -1
+        # Last full set of (node_id, replica_id, internal_grpc_port) tuples fed to
+        # the internal-gRPC allocator (for the per-tick set-diff). Unlike the
+        # ingress tuples above this covers every replica, not just ingress ones,
+        # because every replica runs an inter-deployment gRPC server.
+        self._last_internal_grpc_port_tuples: set = set()
         if self._ha_proxy_enabled:
             logger.info(
                 "HAProxy is enabled in ServeController, replacing Serve proxy "
@@ -692,42 +697,86 @@ class ServeController:
                 self.broadcast_fallback_targets_if_changed()
 
     def _maybe_update_ingress_ports(self) -> None:
-        """Update ingress ports if direct ingress is enabled."""
-        # Direct ingress port management
-        if self._direct_ingress_enabled:
-            # Skip the whole O(replicas) port reconcile on ticks where no ingress
-            # replica's membership/node/ports changed and no quarantined port is awaiting
-            # reclaim. The membership version is a monotonic counter (immune to the
-            # same-tick clear of the per-deployment broadcast dirty flag).
-            version = self.deployment_state_manager.get_ingress_membership_version()
-            if (
-                version == self._last_ingress_membership_version
-                and not NodePortManager.any_pending_quarantine()
-            ):
-                return
-            # Update port values for ingress replicas.
-            # Ingress request router replicas also need direct-ingress ports.
-            ingress_replicas_info_list: List[
-                Tuple[str, str, int, int]
-            ] = self.deployment_state_manager.get_ingress_replicas_info()
+        """Reconcile controller-allocated replica ports.
 
-            # update_port_if_missing is additive and idempotent, so we send update_ports
-            # only the tuples added since the last tick (the set difference) instead of
-            # the full set every tick -- work proportional to what changed rather than to
-            # the replica count. The full set is recomputed and cached each tick, so after
-            # a controller restart the empty cache re-sends everything on the first tick.
-            fresh = set(ingress_replicas_info_list)
-            NodePortManager.update_ports(list(fresh - self._last_ingress_port_tuples))
-            self._last_ingress_port_tuples = fresh
+        Two pools with different scopes share ``NodePortManager``:
 
-            # Clean up stale ports
-            # get all alive replica ids and their node ids.
-            NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
+        * Direct-ingress HTTP/gRPC ports, held only by ingress replicas, and
+          only when direct ingress is enabled.
+        * The inter-deployment gRPC port, held by **every** replica, so it is
+          reconciled unconditionally.
 
-            # Mark this membership version reconciled only after update_ports +
-            # prune succeed. If either raised, the version is left unchanged so the
-            # control loop retries the reconcile next tick instead of skipping it.
-            self._last_ingress_membership_version = version
+        Both need the same two things after a controller restart or a replica
+        crash: re-learning the ports of replicas that are already running, and
+        reclaiming the ports of replicas that are gone. ``prune`` covers every
+        allocator on a node at once, so it runs once here rather than per pool.
+        """
+        self._reconcile_direct_ingress_ports()
+        self._reconcile_internal_grpc_ports()
+
+        # Reclaim ports of replicas that are no longer alive. Cheap on ticks
+        # where nothing changed: ``prune`` skips the scan per node when the
+        # alive set is unchanged since the last pass.
+        NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
+
+    def _reconcile_direct_ingress_ports(self) -> None:
+        if not self._direct_ingress_enabled:
+            return
+
+        # Skip the whole O(replicas) port reconcile on ticks where no ingress
+        # replica's membership/node/ports changed. The membership version is a
+        # monotonic counter (immune to the same-tick clear of the per-deployment
+        # broadcast dirty flag).
+        #
+        # This used to also run whenever any port was awaiting quarantine
+        # reclaim, so that the reclaim pass wasn't skipped along with the
+        # reconcile. `prune` now runs unconditionally in the caller, so that no
+        # longer applies -- and keeping it would be actively harmful: every
+        # replica holds an internal gRPC port, so every replica stop would
+        # defeat this skip for the whole quarantine window even when ingress
+        # membership is untouched. Expired quarantines still return to the pool
+        # on demand, since `PortAllocator.allocate` drains them first.
+        version = self.deployment_state_manager.get_ingress_membership_version()
+        if version == self._last_ingress_membership_version:
+            return
+        # Update port values for ingress replicas.
+        # Ingress request router replicas also need direct-ingress ports.
+        ingress_replicas_info_list: List[
+            Tuple[str, str, int, int]
+        ] = self.deployment_state_manager.get_ingress_replicas_info()
+
+        # update_port_if_missing is additive and idempotent, so we send update_ports
+        # only the tuples added since the last tick (the set difference) instead of
+        # the full set every tick -- work proportional to what changed rather than to
+        # the replica count. The full set is recomputed and cached each tick, so after
+        # a controller restart the empty cache re-sends everything on the first tick.
+        fresh = set(ingress_replicas_info_list)
+        NodePortManager.update_ports(list(fresh - self._last_ingress_port_tuples))
+        self._last_ingress_port_tuples = fresh
+
+        # Mark this membership version reconciled only after update_ports
+        # succeeds. If it raised, the version is left unchanged so the control
+        # loop retries the reconcile next tick instead of skipping it.
+        self._last_ingress_membership_version = version
+
+    def _reconcile_internal_grpc_ports(self) -> None:
+        """Re-learn inter-deployment gRPC ports of already-running replicas.
+
+        Without this, a controller restart would forget which ports live
+        replicas hold and hand the same ones to new replicas, which then fail
+        to bind and retry until the collision clears.
+
+        There is no membership-version shortcut here because the counter
+        upstream tracks ingress membership only. The set difference keeps the
+        per-tick work proportional to what changed rather than to the replica
+        count, which is what the version check was buying.
+        """
+        fresh = set(self.deployment_state_manager.get_internal_grpc_ports_info())
+        for node_id, replica_id, port in fresh - self._last_internal_grpc_port_tuples:
+            NodePortManager.get_node_manager(
+                node_id
+            ).update_internal_grpc_port_if_missing(replica_id, port)
+        self._last_internal_grpc_port_tuples = fresh
 
     def broadcast_target_groups_if_changed(self) -> None:
         """Broadcast target groups over long poll if they have changed.
@@ -1739,6 +1788,26 @@ class ServeController:
         """Release an HTTP port for a replica in direct ingress mode."""
         node_manager = NodePortManager.get_node_manager(node_id)
         node_manager.release_port(replica_id, port, protocol, block_port)
+
+    def allocate_internal_grpc_port(self, node_id: str, replica_id: str) -> int:
+        """Allocate a port for a replica's inter-deployment gRPC server.
+
+        Unlike the direct-ingress ports, this is requested by every replica,
+        so it is served regardless of whether direct ingress is enabled.
+        """
+        node_manager = NodePortManager.get_node_manager(node_id)
+        return node_manager.allocate_internal_grpc_port(replica_id)
+
+    def release_internal_grpc_port(
+        self,
+        node_id: str,
+        replica_id: str,
+        port: int,
+        block_port: bool = False,
+    ):
+        """Release a replica's inter-deployment gRPC port."""
+        node_manager = NodePortManager.get_node_manager(node_id)
+        node_manager.release_internal_grpc_port(replica_id, port, block_port)
 
     def _get_port(
         self, replica_detail: ReplicaDetails, protocol: RequestProtocol

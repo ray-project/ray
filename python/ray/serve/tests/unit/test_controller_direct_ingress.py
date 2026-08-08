@@ -205,6 +205,11 @@ class FakeDeploymentStateManager:
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         return []
 
+    def get_internal_grpc_ports_info(self) -> List[Tuple[str, str, int]]:
+        # Every replica has an inter-deployment gRPC port, but these fakes
+        # don't model one; tests that care override this.
+        return []
+
     def get_ingress_membership_version(self) -> int:
         # Advance every call so the reconcile gate never skips in tests that
         # exercise the reconcile body. The gate's skip behavior is covered by
@@ -1207,8 +1212,7 @@ def test_ingress_port_reconcile_gated_on_membership_version(
     direct_ingress_controller: FakeDirectIngressController,
 ):
     """The direct-ingress port reconcile is skipped on ticks where the ingress
-    membership version is unchanged and no port is awaiting quarantine reclaim, and
-    runs again as soon as the version advances."""
+    membership version is unchanged, and runs again as soon as it advances."""
     dsm = FakeDeploymentStateManager(running_replica_infos={})
     dsm.get_ingress_replicas_info = lambda: [("node1", "r1", 30000, 40000)]
     version = {"v": 1}
@@ -1221,7 +1225,7 @@ def test_ingress_port_reconcile_gated_on_membership_version(
         direct_ingress_controller._maybe_update_ingress_ports()
         assert mock_update.call_count == 1
 
-        # Unchanged version and nothing quarantined -> gate skips the reconcile.
+        # Unchanged version -> gate skips the reconcile.
         direct_ingress_controller._maybe_update_ingress_ports()
         assert mock_update.call_count == 1
 
@@ -1229,6 +1233,40 @@ def test_ingress_port_reconcile_gated_on_membership_version(
         version["v"] = 2
         direct_ingress_controller._maybe_update_ingress_ports()
         assert mock_update.call_count == 2
+
+
+def test_ingress_skip_survives_an_internal_grpc_quarantine(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """A quarantined internal gRPC port must not force an ingress reconcile.
+
+    Every replica holds one of these ports, so every replica stop puts one in
+    quarantine. If the ingress skip gate consulted quarantine state -- which is
+    shared across all three allocators -- ordinary replica churn anywhere in
+    the cluster would defeat the skip for the whole quarantine window, even
+    with ingress membership untouched.
+    """
+    dsm = FakeDeploymentStateManager(running_replica_infos={})
+    dsm.get_ingress_replicas_info = lambda: [("node1", "r1", 30000, 40000)]
+    dsm.get_ingress_membership_version = lambda: 1
+    dsm.get_node_id_to_alive_replica_ids = lambda: {"node1": {"r1"}}
+    direct_ingress_controller.deployment_state_manager = dsm
+
+    manager = NodePortManager.get_node_manager("node1")
+    # A non-ingress replica came and went, leaving its port in quarantine.
+    port = manager.allocate_internal_grpc_port("some-other-replica")
+    manager.release_internal_grpc_port("some-other-replica", port)
+    # Guard against this test going vacuous: with quarantine disabled the port
+    # would return to the pool immediately and there would be nothing to skip.
+    assert manager.has_pending_quarantine()
+
+    with mock.patch.object(NodePortManager, "update_ports") as mock_update:
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 1
+
+        # Membership is unchanged; the pending quarantine must not re-trigger.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 1
 
 
 def test_reconcile_version_not_advanced_on_failure(
@@ -1256,6 +1294,67 @@ def test_reconcile_version_not_advanced_on_failure(
         direct_ingress_controller._maybe_update_ingress_ports()
         assert ok.call_count == 1  # retried
     assert direct_ingress_controller._last_ingress_membership_version == 1
+
+
+def test_internal_grpc_ports_recovered_regardless_of_direct_ingress(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """Internal gRPC ports are re-learned even with direct ingress disabled.
+
+    Every replica runs an inter-deployment gRPC server, not just ingress ones,
+    so this reconcile can't sit behind the direct-ingress gate. If it did, a
+    controller restart would forget live ports and hand them out again.
+    """
+    dsm = FakeDeploymentStateManager(running_replica_infos={})
+    dsm.get_internal_grpc_ports_info = lambda: [("node1", "r1", 42000)]
+    # r1 must look alive, or the reclaim pass in the same tick drops the whole
+    # node manager (and with it the port we just recovered).
+    dsm.get_node_id_to_alive_replica_ids = lambda: {"node1": {"r1"}}
+    direct_ingress_controller.deployment_state_manager = dsm
+    direct_ingress_controller._direct_ingress_enabled = False
+
+    direct_ingress_controller._maybe_update_ingress_ports()
+
+    manager = NodePortManager.get_node_manager("node1")
+    # The recovered port is live, so it must not be handed to anyone else.
+    assert manager.allocate_internal_grpc_port("r2") != 42000
+
+
+def test_internal_grpc_port_recovery_sends_only_the_delta(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """Only tuples new since the last tick are pushed to the allocator.
+
+    There is no membership-version shortcut for this pool, so the set
+    difference is what keeps the per-tick work proportional to what changed
+    rather than to the replica count.
+    """
+    dsm = FakeDeploymentStateManager(running_replica_infos={})
+    replicas = [("node1", "r1", 42000)]
+    dsm.get_internal_grpc_ports_info = lambda: list(replicas)
+    # Keep the replicas alive so the reclaim pass doesn't tear down the node
+    # manager between ticks -- that would silently swap out the mock below.
+    dsm.get_node_id_to_alive_replica_ids = lambda: {
+        "node1": {replica_id for _, replica_id, _ in replicas}
+    }
+    direct_ingress_controller.deployment_state_manager = dsm
+
+    manager = NodePortManager.get_node_manager("node1")
+    with mock.patch.object(
+        manager, "update_internal_grpc_port_if_missing"
+    ) as mock_update:
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 1
+
+        # Unchanged membership -> nothing re-sent.
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 1
+
+        # A new replica -> only that one is sent.
+        replicas.append(("node1", "r2", 42001))
+        direct_ingress_controller._maybe_update_ingress_ports()
+        assert mock_update.call_count == 2
+        assert mock_update.call_args.args == ("r2", 42001)
 
 
 if __name__ == "__main__":
