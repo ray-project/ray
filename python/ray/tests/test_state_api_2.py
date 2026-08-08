@@ -441,6 +441,8 @@ def test_profile_events_reads_from_dashboard_head(monkeypatch):
     accessor = MagicMock()
     accessor.get_internal_kv.return_value = b"127.0.0.1:8265"
     monkeypatch.setattr(gs, "_connect_and_get_accessor", lambda: accessor)
+    # The client getter reads _global_state_accessor directly so set it too.
+    gs._global_state_accessor = accessor
 
     session = MagicMock()
     session.post.return_value = MagicMock(
