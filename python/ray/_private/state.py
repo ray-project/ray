@@ -388,12 +388,26 @@ class GlobalState:
 
     def _get_task_events_head_client(self) -> "TaskEventsHeadClient":
         """Lazily build and cache the reusable dashboard-head task-events client."""
-        # Resolve the accessor first (it takes _init_lock itself), then guard the cache
-        # write so concurrent callers don't each build a client.
-        accessor = self._connect_and_get_accessor()
+        # Ensure we're connected, then read the accessor under the lock and build against
+        # that.
+        self._connect_and_get_accessor()
         with self._init_lock:
-            if self._task_events_head_client is None:
+            accessor = self._global_state_accessor
+            if accessor is None:
+                # don't build the client against a None accessor
+                raise ray.exceptions.RaySystemError(
+                    "Ray was disconnected while reading task events; please retry."
+                )
+            if (
+                self._task_events_head_client is None
+                # if the accessor with client is diff from actual accessor
+                # build client with the new accessor
+                or self._task_events_head_client._accessor is not accessor
+            ):
                 self._task_events_head_client = TaskEventsHeadClient(accessor)
+            # TODO(karticam): There might be an edgy race condition where accessor
+            #  could go invalid after returning the client. so client makes request
+            #  with an invalid accessor.
             return self._task_events_head_client
 
     def get_placement_group_by_name(self, placement_group_name, ray_namespace):
