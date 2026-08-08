@@ -11,7 +11,10 @@ The :ref:`Ray dashboard <observability-getting-started>`  lets you profile Ray D
    :width: 80%
 
 Clicking "Stack Trace" will return the current stack trace sample using ``py-spy``. By default, only the Python stack
-trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux).
+trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux). To make native
+frames the default for every stack trace on the cluster, set the ``RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT=1`` environment
+variable on the Ray head node (see :ref:`Configuring profiling defaults <profiling-defaults>`). Because native frames add
+significant profiling overhead, prefer enabling it only when sampling the Python layer alone isn't enough.
 
 .. image:: /images/stack.png
    :align: center
