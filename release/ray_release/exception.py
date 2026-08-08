@@ -8,7 +8,7 @@ class ExitCode(enum.Enum):
     UNSPECIFIED = 2
     UNKNOWN = 3
 
-    # Hard infra errors (non-retryable)
+    # Hard infra errors (see RETRYABLE_EXIT_CODES below)
     CLI_ERROR = 10
     CONFIG_ERROR = 11
     SETUP_ERROR = 12
@@ -20,7 +20,7 @@ class ExitCode(enum.Enum):
     FETCH_RESULT_ERROR = 18
     ANYSCALE_ERROR = 19
 
-    # Infra timeouts (retryable)
+    # Infra timeouts (see RETRYABLE_EXIT_CODES below)
     RAY_WHEELS_TIMEOUT = 30
     CLUSTER_ENV_BUILD_TIMEOUT = 31
     CLUSTER_STARTUP_TIMEOUT = 32
@@ -31,6 +31,33 @@ class ExitCode(enum.Enum):
     COMMAND_ALERT = 41
     COMMAND_TIMEOUT = 42
     PREPARE_ERROR = 43
+
+
+# Exit codes for failures where the test never got a fair chance to run, and where a
+# second attempt has a real chance of succeeding.
+#
+# This is the single source of truth for retry behavior: ray_release.result.should_retry
+# reads it, and run_release_test.sh acts on the retry marker that decision produces.
+# Adding a member here causes real, billable re-runs -- be deliberate.
+#
+# Deliberately excluded:
+#   CLI_ERROR, CONFIG_ERROR: deterministic; a second attempt fails identically.
+#   FETCH_RESULT_ERROR:      the test already ran, so a retry pays for a full re-run
+#                            just to recover a result file.
+#   Everything else:         the test ran and failed on its own merits.
+RETRYABLE_EXIT_CODES = frozenset(
+    {
+        ExitCode.SETUP_ERROR,
+        ExitCode.CLUSTER_RESOURCE_ERROR,
+        ExitCode.CLUSTER_ENV_BUILD_ERROR,
+        ExitCode.CLUSTER_STARTUP_ERROR,
+        ExitCode.ANYSCALE_ERROR,
+        ExitCode.RAY_WHEELS_TIMEOUT,
+        ExitCode.CLUSTER_ENV_BUILD_TIMEOUT,
+        ExitCode.CLUSTER_STARTUP_TIMEOUT,
+        ExitCode.CLUSTER_WAIT_TIMEOUT,
+    }
+)
 
 
 class ReleaseTestError(RuntimeError):

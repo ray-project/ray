@@ -4,7 +4,7 @@ import os
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
-from ray_release.result import Result, ResultStatus
+from ray_release.result import Result
 from ray_release.test import Test
 from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 
@@ -28,10 +28,10 @@ class RayTestDBReporter(Reporter):
         ):
             logger.info("Skip upload test results. We only upload on branch pipeline.")
             return
-        if result.status == ResultStatus.TRANSIENT_INFRA_ERROR.value:
+        if result.will_retry:
             logger.info(
-                f"Skip recording result for test {test.get_name()} due to transient "
-                "infra error result"
+                f"Skip recording result for test {test.get_name()}; Buildkite will "
+                "retry this attempt and the final one is what counts"
             )
             return
         logger.info(
