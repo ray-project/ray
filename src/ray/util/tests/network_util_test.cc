@@ -15,6 +15,8 @@
 #include "ray/util/network_util.h"
 
 #include <boost/asio/generic/basic_endpoint.hpp>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/host_name.hpp>
 #include <memory>
 #include <string>
 #include <utility>
@@ -127,6 +129,31 @@ TEST(NetworkUtilTest, TestIsIPv6) {
   EXPECT_FALSE(IsIPv6(""));
   EXPECT_FALSE(IsIPv6("not-an-ip"));
   EXPECT_FALSE(IsIPv6("::1::2"));
+}
+
+TEST(NetworkUtilTest, TestGetNodeIpAddressHostnameRouting) {
+  // Test that GetNodeIpAddressFromPerspective returns hostname when
+  // RAY_NODE_USE_HOSTNAME=1
+#ifdef _WIN32
+  _putenv_s("RAY_NODE_USE_HOSTNAME", "1");
+#else
+  setenv("RAY_NODE_USE_HOSTNAME", "1", 1);
+#endif
+  std::string hostname = boost::asio::ip::host_name();
+  EXPECT_EQ(GetNodeIpAddressFromPerspective(std::nullopt), hostname);
+
+  // Test default behavior (should be an IP, not the hostname)
+#ifdef _WIN32
+  _putenv_s("RAY_NODE_USE_HOSTNAME", "");
+#else
+  unsetenv("RAY_NODE_USE_HOSTNAME");
+#endif
+  std::string ip_address = GetNodeIpAddressFromPerspective(std::nullopt);
+  // Validate that the result is a well-formed IP address (v4 or v6), not just a
+  // string that happens to contain '.' or ':'.
+  boost::system::error_code ec;
+  boost::asio::ip::make_address(ip_address, ec);
+  EXPECT_FALSE(ec) << "Expected a valid IP address, got: " << ip_address;
 }
 
 }  // namespace ray
