@@ -839,6 +839,7 @@ py_test_module_list(
         "test_client_metadata.py",
         "test_client_terminate.py",
         "test_coordinator_server.py",
+        "test_metric_registry.py",
         "test_monitor.py",
         "test_node_provider_availability_tracker.py",
         "test_response_cache.py",
