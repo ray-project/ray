@@ -3,18 +3,50 @@ import os
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
+    BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.image_manager import BaseImageManager, ImageManager
 
 
 class SandboxRuntime:
-    """Low-level interface for managing local gVisor sandbox runtime environments."""
+    """Low-level interface for managing local sandbox runtime environments."""
 
-    def __init__(self):
-        self._backend = GVisorSandboxBackend()
+    def __init__(
+        self,
+        backend: Optional[BaseSandboxBackend] = None,
+        image_manager: Optional[BaseImageManager] = None,
+    ):
+        self._image_manager = image_manager or ImageManager()
+        if backend is not None:
+            self._backend = backend
+        else:
+            self._backend = GVisorSandboxBackend(image_manager=self._image_manager)
+
+    @property
+    def image_manager(self) -> BaseImageManager:
+        """The ImageManager instance used by this runtime."""
+        return self._image_manager
+
+    @property
+    def backend(self) -> BaseSandboxBackend:
+        """The backend instance used by this runtime."""
+        return self._backend
+
+    def pull_image(self, image: str, timeout_seconds: float = 120.0) -> str:
+        """Download and extract container image into local cache.
+
+        Args:
+            image: Container image name or tar path.
+            timeout_seconds: Request timeout.
+
+        Returns:
+            Extracted image directory path.
+        """
+        return self._image_manager.pull_image(image, timeout_seconds=timeout_seconds)
 
     def create(
         self,
@@ -68,6 +100,7 @@ class SandboxRuntime:
             _oci_spec_transforms=_oci_spec_transforms,
             **kwargs,
         )
+        self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)
         return self._backend.create_sandbox(cfg)
 
     def exec(

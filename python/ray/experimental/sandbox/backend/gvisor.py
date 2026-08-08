@@ -7,15 +7,12 @@ import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
-from ray.experimental.sandbox._internal.image_utils import (
-    pull_and_extract_container_image,
-)
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
-from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
+from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -23,6 +20,7 @@ from ray.experimental.sandbox.exceptions import (
     SandboxNotFoundError,
     SandboxTimeoutError,
 )
+from ray.experimental.sandbox.image_manager import BaseImageManager
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,8 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
-    def __init__(self):
+    def __init__(self, image_manager: Optional[BaseImageManager] = None):
+        super().__init__(image_manager=image_manager)
         self._sandbox_metadata: Dict[str, Dict] = {}
 
     def create_sandbox(self, config: SandboxConfig) -> str:
@@ -55,18 +54,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
-            image_dir = self._pull_and_extract_image(config.image)
+            self._image_manager.pull_image(
+                config.image, timeout_seconds=config.timeout_seconds
+            )
             if not config.workdir:
-                config_json_path = os.path.join(image_dir, ".image_config.json")
-                if os.path.exists(config_json_path):
-                    with open(config_json_path, "r", encoding="utf-8") as f:
-                        try:
-                            image_cfg = json.load(f)
-                            config.workdir = image_cfg.get("config", {}).get(
-                                "WorkingDir"
-                            )
-                        except Exception:
-                            pass
+                config.workdir = self._image_manager.get_workdir(config.image)
                 if not config.workdir:
                     config.workdir = "/"
 
@@ -87,7 +79,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ) from err
 
         # Prepare OCI bundle config for long-running container process
-        self._prepare_oci_bundle(
+        self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
             work_dir_path=work_dir_path,
             container_cwd=config.workdir,
@@ -355,7 +347,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def _pull_and_extract_image(self, image: str) -> str:
         """Pull a container image and extract rootfs to local directory."""
-        return pull_and_extract_container_image(image)
+        return self._image_manager.pull_image(image)
 
     def _prepare_oci_bundle(
         self,
@@ -369,91 +361,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         readonly: bool = True,
         _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
-        config_json_path = os.path.join(root_dir, "config.json")
-        rootfs_dir = os.path.join(root_dir, "rootfs")
-        os.makedirs(rootfs_dir, exist_ok=True)
-
-        if not os.path.exists(config_json_path):
-            subprocess.run(["runsc", "spec"], cwd=root_dir, check=True)
-
-        with open(config_json_path, "r", encoding="utf-8") as f:
-            spec = json.load(f)
-
-        image_dir = self._pull_and_extract_image(image)
-        rootfs = os.path.join(image_dir, "rootfs")
-
-        spec["root"]["path"] = rootfs
-        spec["root"]["readonly"] = readonly
-        spec["process"]["args"] = ["sleep", "infinity"]
-        spec["process"]["cwd"] = container_cwd
-
-        # inherit Env from image config by default
-        envs = []
-        image_config_path = os.path.join(image_dir, ".image_config.json")
-        if os.path.exists(image_config_path):
-            try:
-                with open(image_config_path, "r", encoding="utf-8") as f:
-                    image_cfg = json.load(f)
-                    image_env = image_cfg.get("config", {}).get("Env")
-                    if image_env:
-                        envs = image_env
-            except Exception:
-                pass
-
-        # user provided envs override image envs
-        if env_dict:
-            filtered_envs = []
-            for e in envs:
-                key = e.split("=", 1)[0]
-                if key not in env_dict:
-                    filtered_envs.append(e)
-            envs = filtered_envs
-            for k, v in env_dict.items():
-                envs.append(f"{k}={v}")
-        spec["process"]["env"] = envs
-
-        mounts = spec.get("mounts", [])
-        existing_dests = {m.get("destination") for m in mounts}
-
-        default_binds = [
-            (container_cwd, work_dir_path),
-        ]
-        for dest, src in default_binds:
-            if dest != "/" and dest not in existing_dests and os.path.exists(src):
-                mounts.append(
-                    {
-                        "destination": dest,
-                        "type": "bind",
-                        "source": src,
-                        "options": ["rbind", "rw" if dest == container_cwd else "ro"],
-                    }
-                )
-
-        spec["mounts"] = mounts
-
-        # Configure OCI cgroup resource limits for CPU and memory
-        linux_sec = spec.setdefault("linux", {})
-        resources = linux_sec.setdefault("resources", {})
-
-        if cpu is not None and cpu > 0:
-            period = 100000
-            quota = int(cpu * period)
-            cpu_res = resources.setdefault("cpu", {})
-            cpu_res["period"] = period
-            cpu_res["quota"] = quota
-
-        parsed_mem = parse_memory_bytes(memory)
-        if parsed_mem is not None and parsed_mem > 0:
-            mem_res = resources.setdefault("memory", {})
-            mem_res["limit"] = parsed_mem
-
-        if _oci_spec_transforms:
-            result = _oci_spec_transforms(spec)
-            if result is not None:
-                spec = result
-
-        config_json_str = json.dumps(spec, indent=2)
-        with open(config_json_path, "w", encoding="utf-8") as f:
-            f.write(config_json_str)
-
-        return config_json_path
+        return self._image_manager.prepare_oci_bundle(
+            root_dir=root_dir,
+            work_dir_path=work_dir_path,
+            container_cwd=container_cwd,
+            image=image,
+            env_dict=env_dict,
+            cpu=cpu,
+            memory=memory,
+            readonly=readonly,
+            _oci_spec_transforms=_oci_spec_transforms,
+        )

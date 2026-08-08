@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.config import SandboxConfig
 
@@ -43,6 +43,17 @@ ExecutionResult = ExecResult
 
 class BaseSandboxBackend(ABC):
     """Abstract Base Class defining the contract for Sandbox Backends."""
+
+    def __init__(self, image_manager: Optional[Any] = None):
+        if image_manager is None:
+            from ray.experimental.sandbox.image_manager import ImageManager
+
+            image_manager = ImageManager()
+        self._image_manager = image_manager
+
+    @property
+    def image_manager(self):
+        return self._image_manager
 
     @abstractmethod
     def create_sandbox(self, config: SandboxConfig) -> str:

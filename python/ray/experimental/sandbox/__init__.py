@@ -16,6 +16,11 @@ from ray.experimental.sandbox.exceptions import (
     SandboxNotFoundError,
     SandboxTimeoutError,
 )
+from ray.experimental.sandbox.image_manager import (
+    BaseImageManager,
+    ImageManager,
+    get_default_oci_spec,
+)
 from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.experimental.sandbox.sandbox import Sandbox
 
@@ -56,9 +61,9 @@ def create(
         A Sandbox actor handle.
     """
     actor_opts = {}
-    if cpu is not None and cpu > 0:
+    if cpu > 0:
         actor_opts["num_cpus"] = cpu
-    if memory is not None:
+    if memory > 0:
         parsed_mem = parse_memory_bytes(memory)
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem
@@ -84,6 +89,9 @@ __all__ = [
     "create",
     "Sandbox",
     "SandboxRuntime",
+    "BaseImageManager",
+    "ImageManager",
+    "get_default_oci_spec",
     "BaseSandboxBackend",
     "GVisorSandboxBackend",
     "ExecResult",
