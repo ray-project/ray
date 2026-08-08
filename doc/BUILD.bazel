@@ -432,6 +432,25 @@ py_test_run_all_subdirectory(
     ],
 )
 
+# Transcription example, direct streaming variant.
+py_test(
+    name = "source/llm/doc_code/serve/transcription/transcription_example_direct_streaming",
+    size = "large",
+    srcs = ["source/llm/doc_code/serve/transcription/transcription_example.py"],
+    main = "source/llm/doc_code/serve/transcription/transcription_example.py",
+    env = {
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+        # Direct streaming wires LLMRouter as the ingress_request_router,
+        # which build_app.py rejects unless HAProxy is enabled.
+        "RAY_SERVE_ENABLE_HA_PROXY": "1",
+    },
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:llm",
+    ],
+)
+
 # Multi-GPU Tests (4+ GPUs)
 py_test_run_all_subdirectory(
     size = "large",

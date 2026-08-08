@@ -46,6 +46,7 @@ steps:
         --except-tags gpu
     depends_on: llmbuild
 
+  # Runs the serve LLM doc examples, including the direct-streaming variants.
   - label: "llm gpu tests"
     if: '!(build.pull_request.labels includes "docs-go")'
     key: "llm-gpu-tests"
