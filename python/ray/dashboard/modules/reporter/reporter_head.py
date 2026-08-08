@@ -1087,7 +1087,10 @@ class ReportHead(SubprocessModule):
     async def run(self):
         await super().run()
         self._state_api_data_source_client = StateDataSourceClient(
-            self.aiogrpc_gcs_channel, self.gcs_client
+            self.aiogrpc_gcs_channel,
+            self.gcs_client,
+            dashboard_socket_dir=self._config.socket_dir,
+            dashboard_session_name=self._config.session_name,
         )
         # Set up the state API in order to fetch task information.
         # This is only used to get task info. If we have Task APIs in GcsClient we can
