@@ -25,6 +25,13 @@ _OBSERVABILITY_PUBSUB_CHANNELS = (
 )
 
 
+class GcsSubscriberStateMissingError(grpc.RpcError):
+    """The GCS publisher no longer has state for a registered subscriber."""
+
+    def code(self) -> grpc.StatusCode:
+        return grpc.StatusCode.NOT_FOUND
+
+
 class _SubscriberBase:
     def __init__(self, worker_id: bytes = None):
         self._worker_id = worker_id
@@ -66,7 +73,7 @@ class _SubscriberBase:
         return req
 
     @staticmethod
-    def _should_terminate_polling(e: grpc.RpcError) -> None:
+    def _should_terminate_polling(e: grpc.RpcError) -> bool:
         # Caller only expects polling to be terminated after deadline exceeded.
         if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
             return True
@@ -130,44 +137,50 @@ class _AioSubscriber(_SubscriberBase):
         # Wrap GRPC _AioCall as a coroutine.
         return await self._stub.GcsSubscriberPoll(req, timeout=timeout)
 
-    async def _poll(self, timeout=None) -> None:
+    async def _poll(self, timeout=None, raise_on_unavailable=False) -> None:
         while len(self._queue) == 0:
             req = self._poll_request()
-            poll = get_or_create_event_loop().create_task(
-                self._poll_call(req, timeout=timeout)
-            )
-            close = get_or_create_event_loop().create_task(self._close.wait())
-            done, others = await asyncio.wait(
-                [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
-            )
-            # Cancel the other task if needed to prevent memory leak.
-            other_task = others.pop()
-            if not other_task.done():
-                other_task.cancel()
-            if poll not in done or close in done:
-                # Request timed out or subscriber closed.
-                break
+            loop = get_or_create_event_loop()
+            poll = loop.create_task(self._poll_call(req, timeout=timeout))
+            close = loop.create_task(self._close.wait())
             try:
-                self._last_batch_size = len(poll.result().pub_messages)
-                if poll.result().publisher_id != self._publisher_id:
+                done, _ = await asyncio.wait(
+                    [poll, close],
+                    timeout=timeout,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if poll not in done or close in done:
+                    # Request timed out or subscriber closed.
+                    break
+
+                result = poll.result()
+                self._last_batch_size = len(result.pub_messages)
+                if result.publisher_id != self._publisher_id:
                     if self._publisher_id != b"":
                         logger.debug(
-                            f"replied publisher_id {poll.result().publisher_id} "
+                            f"replied publisher_id {result.publisher_id} "
                             f"different from {self._publisher_id}, this should "
                             "only happen during gcs failover."
                         )
-                    self._publisher_id = poll.result().publisher_id
+                    self._publisher_id = result.publisher_id
                     self._max_processed_sequence_id = 0
-                for msg in poll.result().pub_messages:
+                for msg in result.pub_messages:
                     if msg.sequence_id <= self._max_processed_sequence_id:
                         logger.warning(f"Ignoring out of order message {msg}")
                         continue
                     self._max_processed_sequence_id = msg.sequence_id
                     self._queue.append(msg)
             except grpc.RpcError as e:
+                if raise_on_unavailable and e.code() == grpc.StatusCode.UNAVAILABLE:
+                    raise
                 if self._should_terminate_polling(e):
                     return
                 raise
+            finally:
+                for task in (poll, close):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(poll, close, return_exceptions=True)
 
     async def close(self) -> None:
         """Closes the subscriber and its active subscription."""
@@ -265,6 +278,11 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
     ):
         super().__init__(pubsub_pb2.GCS_NODE_INFO_CHANNEL, worker_id, address, channel)
 
+    def _poll_request(self):
+        request = super()._poll_request()
+        request.reject_if_subscriber_missing = True
+        return request
+
     async def poll(
         self, batch_size: int, timeout: Optional[float] = None
     ) -> List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]:
@@ -277,7 +295,17 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
         Returns:
             A list of tuples of (node_id, GcsNodeInfo).
         """
-        await self._poll(timeout=timeout)
+        try:
+            await self._poll(timeout=timeout, raise_on_unavailable=True)
+        except grpc.RpcError as error:
+            # RayStatusToGrpcStatus transports internal Ray statuses as ABORTED
+            # and places the Ray status name in the gRPC details.
+            if (
+                error.code() == grpc.StatusCode.ABORTED
+                and error.details() == "NotFound"
+            ):
+                raise GcsSubscriberStateMissingError() from error
+            raise
         return self._pop_node_infos(self._queue, batch_size=batch_size)
 
     @staticmethod
