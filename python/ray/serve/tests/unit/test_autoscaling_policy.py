@@ -1,5 +1,6 @@
 import math
 import sys
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -636,7 +637,8 @@ class TestReplicaQueueLengthPolicy:
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         assert new_num_replicas == 100
 
-        # Two new replicas spun up during this timestep.
+        # Still starting (current=3 < target=100): the transient backlog inflates the
+        # metric, but anti-windup holds desired at the committed target (100).
         ctx = create_context_with_overrides(
             ctx,
             total_num_requests=123,
@@ -644,7 +646,7 @@ class TestReplicaQueueLengthPolicy:
             target_num_replicas=100,
         )
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
-        assert new_num_replicas == 123
+        assert new_num_replicas == 100
 
         # A lot of queries got drained and a lot of replicas started up, but
         # new_num_replicas should not decrease, because of the downscale delay.
@@ -652,10 +654,10 @@ class TestReplicaQueueLengthPolicy:
             ctx,
             total_num_requests=10,
             current_num_replicas=4,
-            target_num_replicas=123,
+            target_num_replicas=100,
         )
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
-        assert new_num_replicas == 123
+        assert new_num_replicas == 100
 
     @pytest.mark.parametrize("delay_s", [30.0, 0.0])
     def test_fluctuating_ongoing_requests(self, delay_s):
@@ -1569,6 +1571,160 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
         # user state remains intact
         assert final_state[d2]["counter"] == 5
+
+
+# ---- Autoscaling window clip (RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S) ----
+
+
+def _clip_state(aggregation_function=AggregationFunction.MEAN):
+    """A registered DeploymentAutoscalingState for exercising the aggregate path."""
+    state = DeploymentAutoscalingState(DeploymentID(name="test", app_name="app"))
+    info = MagicMock()
+    info.deployment_config.autoscaling_config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=10,
+        look_back_period_s=30,
+        aggregation_function=aggregation_function,
+    )
+    info.deployment_config.gang_scheduling_config = None
+    info.target_capacity = None
+    info.target_capacity_direction = None
+    info.config_changed.return_value = False
+    state.register(info, curr_target_num_replicas=1)
+    return state
+
+
+def test_clip_excludes_stale_transient_from_aggregate():
+    """A stale high transient early in the window inflates the aggregated request
+    total; the clip drops it so only the recent window is averaged."""
+    state = _clip_state()
+    now = time.time()
+    series = [
+        TimeStampedValue(now - 20, 100.0),  # stale ramp transient
+        TimeStampedValue(now - 3, 10.0),
+        TimeStampedValue(now - 2, 10.0),
+        TimeStampedValue(now - 1, 10.0),
+    ]
+    full = state._merge_and_aggregate_timeseries([series], clip_window_s=0.0)
+    clipped = state._merge_and_aggregate_timeseries([series], clip_window_s=5.0)
+    assert clipped < full
+
+
+def test_clip_disabled_leaves_aggregate_unchanged(monkeypatch):
+    """clip_window_s<=0, or a clip wider than the data, is a no-op on the aggregate."""
+    state = _clip_state()
+    now = 1_000_000.0
+    # Freeze time: both aggregations must share one window (last_window_s reads time.time()).
+    monkeypatch.setattr("ray.serve._private.autoscaling_state.time.time", lambda: now)
+    series = [TimeStampedValue(now - 3, 10.0), TimeStampedValue(now - 1, 30.0)]
+    full = state._merge_and_aggregate_timeseries([series], clip_window_s=0.0)
+    wide = state._merge_and_aggregate_timeseries([series], clip_window_s=1000.0)
+    assert wide == full
+
+
+def test_clip_keeps_last_sample_under_max_aggregation():
+    """MAX/MIN hard-filter on window_start with no carry-forward, so if every sample is
+    older than the clip window (a metrics gap), the clip must keep the last sample
+    instead of dropping all -> None -> 0.0, a spurious scale-down."""
+    state = _clip_state(aggregation_function=AggregationFunction.MAX)
+    now = time.time()
+    series = [TimeStampedValue(now - 30, 40.0), TimeStampedValue(now - 25, 50.0)]
+    clipped = state._merge_and_aggregate_timeseries([series], clip_window_s=5.0)
+    assert clipped == 50.0
+
+
+def test_clip_window_floored_to_two_record_intervals(monkeypatch):
+    """The clip is floored at 2x the record cadence (12s at the 30s default), so a
+    sub-cadence clip still spans real samples: through get_total_num_requests in
+    aggregate mode a now-8s sample stays inside the window (kept), now-15s falls outside
+    (dropped) even with CLIP_WINDOW_S=5. No floor -> 5s window drops now-8s too and MAX
+    reads 10, not 50."""
+    monkeypatch.setattr(
+        "ray.serve._private.autoscaling_state.RAY_SERVE_AUTOSCALE_CLIP_WINDOW_S", 5.0
+    )
+    monkeypatch.setattr(
+        "ray.serve._private.autoscaling_state.RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER",
+        True,
+    )
+    state = _clip_state(aggregation_function=AggregationFunction.MAX)
+    now = time.time()
+    series = [
+        TimeStampedValue(now - 15, 100.0),  # outside the 12s window -> dropped
+        TimeStampedValue(now - 8, 50.0),  # kept only because of the floor
+        TimeStampedValue(now - 1, 10.0),
+    ]
+    monkeypatch.setattr(state, "_collect_replica_running_requests", lambda: [series])
+    monkeypatch.setattr(state, "_collect_handle_queued_requests", lambda: [])
+    assert state.get_total_num_requests() == 50.0
+
+
+# ---- Anti-windup desired-replica cap ----
+
+
+def _antiwindup_ctx(current, target, total_requests, up_factor=1.0, down_factor=1.0):
+    """Minimal queue-length context. With target_ongoing_requests=1, desired ==
+    total_requests before the scaling factor and the anti-windup cap."""
+    config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=100000,
+        target_ongoing_requests=1,
+        upscaling_factor=up_factor,
+        downscaling_factor=down_factor,
+        upscale_delay_s=0,
+        downscale_delay_s=0,
+    )
+    return AutoscalingContext(
+        config=config,
+        current_num_replicas=current,
+        target_num_replicas=target,
+        total_num_requests=total_requests,
+        capacity_adjusted_min_replicas=1,
+        capacity_adjusted_max_replicas=100000,
+        policy_state={},
+        deployment_id=None,
+        deployment_name=None,
+        app_name=None,
+        running_replicas=None,
+        current_time=None,
+        total_queued_requests=None,
+        aggregated_metrics=None,
+        raw_metrics=None,
+        last_scale_up_time=None,
+        last_scale_down_time=None,
+        total_pending_async_requests=0,
+    )
+
+
+@pytest.mark.parametrize(
+    "current, target, total_requests, expected",
+    [
+        # starting (target>current); transient backlog would push desired>target
+        pytest.param(100, 200, 500, 200, id="caps_windup_while_starting"),
+        # target==current (not starting): initial jump untouched
+        pytest.param(100, 100, 500, 500, id="no_cap_on_initial_jump"),
+        # desired<target while starting: only upward windup capped, not scale-down
+        pytest.param(100, 200, 50, 50, id="scale_down_untouched"),
+    ],
+)
+def test_antiwindup_desired_cap(current, target, total_requests, expected):
+    """Anti-windup caps desired at the committed target while a batch is starting;
+    initial jumps (target==current) and scale-down are left untouched."""
+    desired, _ = wrapped_replica_queue_length_autoscaling_policy(
+        _antiwindup_ctx(current, target, total_requests)
+    )
+    assert desired == expected
+
+
+@pytest.mark.parametrize("factor", [0.5, 1.0, 2.0])
+def test_antiwindup_caps_after_scaling_factor(factor):
+    """The cap is applied after the scaling factor, so a non-unit factor can't
+    re-inflate desired past the target. current=100, target=200, raw desired=500 ->
+    cap-after gives 200 for any factor; a mis-ordered cap-before would give
+    100 + factor*(200-100) (150 at 0.5, 300 at 2.0). factor=1.0 can't tell them apart."""
+    desired, _ = wrapped_replica_queue_length_autoscaling_policy(
+        _antiwindup_ctx(100, 200, 500, up_factor=factor, down_factor=factor)
+    )
+    assert desired == 200
 
 
 if __name__ == "__main__":
