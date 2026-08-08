@@ -9,6 +9,7 @@ import functools
 import inspect
 import logging
 import os
+import threading
 import time
 import traceback
 from collections import namedtuple
@@ -40,6 +41,10 @@ except AttributeError:
 
 
 logger = logging.getLogger(__name__)
+
+_ray_init_lock = threading.Lock()
+# ray.is_initialized() becomes true before ray.init() finishes its post-init hooks.
+_ray_connection_ready = threading.Event()
 
 DashboardHeadRouteTable = method_route_table_factory()
 DashboardAgentRouteTable = method_route_table_factory()
@@ -209,6 +214,35 @@ def get_browser_request_middleware(
     return browser_request_middleware
 
 
+def init_ray_connection(address: str) -> None:
+    """Connect to a running Ray cluster if this process is not connected."""
+    with _ray_init_lock:
+        if ray.is_initialized():
+            return
+
+        _ray_connection_ready.clear()
+        logger.info(f"Connecting to ray with address={address}")
+        os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
+            dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
+        )
+        try:
+            ray.init(
+                address=address,
+                log_to_driver=False,
+                configure_logging=False,
+                namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
+                _skip_env_hook=True,
+            )
+        except Exception:
+            try:
+                ray.shutdown()
+            except Exception:
+                logger.exception("Failed to clean up after ray.init() failed.")
+            raise
+        else:
+            _ray_connection_ready.set()
+
+
 def init_ray_and_catch_exceptions() -> Callable:
     """Decorator to be used on methods that require being connected to Ray."""
 
@@ -218,26 +252,11 @@ def init_ray_and_catch_exceptions() -> Callable:
             self: Union[DashboardAgentModule, DashboardHeadModule], *args, **kwargs
         ):
             try:
-                if not ray.is_initialized():
-                    try:
-                        address = self.gcs_address
-                        logger.info(f"Connecting to ray with address={address}")
-                        # Set the gcs rpc timeout to shorter
-                        os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
-                            dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
-                        )
-                        # Init ray without logging to driver
-                        # to avoid infinite logging issue.
-                        ray.init(
-                            address=address,
-                            log_to_driver=False,
-                            configure_logging=False,
-                            namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
-                            _skip_env_hook=True,
-                        )
-                    except Exception as e:
-                        ray.shutdown()
-                        raise e from None
+                if not _ray_connection_ready.is_set() or not ray.is_initialized():
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        None, init_ray_connection, self.gcs_address
+                    )
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")
