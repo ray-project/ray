@@ -20,6 +20,8 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     CPUAccelerator,
     CPUConfig,
     GPUAccelerator,
+    NPUAccelerator,
+    NPUConfig,
     TPUAccelerator,
     TPUConfig,
     format_ray_accelerator_resource,
@@ -110,6 +112,8 @@ class VLLMEngineConfig(BaseModelExtended):
         # LLMConfig has already resolved and validated accelerator_config
         if isinstance(cfg, TPUConfig):
             self._accelerator = TPUAccelerator(cfg)
+        elif isinstance(cfg, NPUConfig):
+            self._accelerator = NPUAccelerator()
         elif isinstance(cfg, CPUConfig):
             self._accelerator = CPUAccelerator()
         else:
