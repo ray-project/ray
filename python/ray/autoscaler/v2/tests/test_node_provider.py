@@ -23,7 +23,6 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
-    NO_DRIVER_TTL_EXPIRED_ANNOTATION,
     KubeRayProvider,
 )
 from ray.autoscaler.v2.instance_manager.config import (
@@ -347,6 +346,7 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
         self._ray_cluster = ray_cluster
         self._pod_list = pod_list
         self._patches = {}
+        self._deletes = set()
 
     def get(self, path: str) -> Dict[str, Any]:
         if "pods" in path:
@@ -367,6 +367,10 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
     def get_patches(self, path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         return self._patches[path]
+
+    def delete(self, path: str) -> Dict[str, Any]:
+        self._deletes.add(path)
+        return {}
 
 
 class KubeRayProviderIntegrationTest(unittest.TestCase):
@@ -389,7 +393,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             k8s_api_client=self.mock_client,
         )
         # In production _sync_with_api_server caches the CR before the
-        # no-driver annotation is set; mirror that for the dispatch tests.
+        # cluster is deleted; mirror that for the dispatch tests.
         self.provider._ray_cluster = raycluster_cr
 
     def test_get_nodes(self):
@@ -781,33 +785,33 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert finished_deletes == set()
         assert workers_to_delete == {pod_names[0], pod_names[1]}
 
-    def test_set_no_driver_annotation_adds_when_absent(self):
-        self.provider._set_no_driver_annotation()
+    def test_delete_ray_cluster_issues_delete(self):
+        self.provider._delete_ray_cluster()
         path = f"rayclusters/{self.provider._cluster_name}"
-        patch = self.mock_client.get_patches(path)
-        assert patch == {
-            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
-        }
+        assert path in self.mock_client._deletes
 
-    def test_set_no_driver_annotation_idempotent(self):
-        self.provider._ray_cluster.setdefault("metadata", {}).setdefault(
-            "annotations", {}
-        )[NO_DRIVER_TTL_EXPIRED_ANNOTATION] = "true"
-
-        self.provider._set_no_driver_annotation()
+    def test_delete_ray_cluster_skips_when_deletion_in_progress(self):
+        self.provider._ray_cluster["metadata"][
+            "deletionTimestamp"
+        ] = "2026-01-01T00:00:00Z"
+        self.provider._delete_ray_cluster()
         path = f"rayclusters/{self.provider._cluster_name}"
-        assert path not in self.mock_client._patches
+        assert path not in self.mock_client._deletes
 
-    def test_set_no_driver_annotation_swallows_patch_failure(self):
-        path = f"rayclusters/{self.provider._cluster_name}"
+    def test_delete_ray_cluster_swallows_delete_failure(self):
+        original_delete = self.mock_client.delete
 
-        def failing_patch(*args, **kwargs):
+        def failing_delete(*args, **kwargs):
             raise RuntimeError("k8s unreachable")
 
-        self.mock_client.patch = failing_patch
-        # Should not raise.
-        self.provider._set_no_driver_annotation()
-        assert path not in self.mock_client._patches
+        self.mock_client.delete = failing_delete
+        # Do not raise. The resource is not yet marked for deletion, so the next
+        # reconcile loop will retry the delete operation.
+        self.provider._delete_ray_cluster()
+        self.mock_client.delete = original_delete
+        self.provider._delete_ray_cluster()
+        path = f"rayclusters/{self.provider._cluster_name}"
+        assert path in self.mock_client._deletes
 
     # --- No-driver termination predicate + dispatch ---
 
@@ -862,7 +866,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         self.provider._gcs_client = self._make_gcs()  # no drivers
         self.provider._no_driver_timeout_seconds = None
         self.provider._evaluate_no_driver_termination()
-        assert path not in self.mock_client._patches
+        assert path not in self.mock_client._deletes
         assert self.provider._no_driver_observed_since is None
 
     def test_evaluate_no_driver_termination_waits_for_timeout(self):
@@ -875,13 +879,11 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
         path = f"rayclusters/{self.provider._cluster_name}"
         evaluate_at(0.0)
-        assert path not in self.mock_client._patches  # anchored, not yet
+        assert path not in self.mock_client._deletes  # anchored, not yet
         evaluate_at(50.0)
-        assert path not in self.mock_client._patches  # still below timeout
+        assert path not in self.mock_client._deletes  # still below timeout
         evaluate_at(100.0)
-        assert self.mock_client._patches.get(path) == {
-            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
-        }
+        assert path in self.mock_client._deletes
 
     def test_evaluate_no_driver_termination_resets_when_driver_attaches(self):
         path = f"rayclusters/{self.provider._cluster_name}"
@@ -892,12 +894,12 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             self.provider._evaluate_no_driver_termination()
         assert self.provider._no_driver_observed_since == 0.0
 
-        # Driver attaches → anchor cleared, no patch.
+        # Driver attaches → anchor cleared, no delete.
         with mock.patch("time.monotonic", return_value=50.0):
             self.provider._gcs_client = self._make_gcs((False, "default"))
             self.provider._evaluate_no_driver_termination()
         assert self.provider._no_driver_observed_since is None
-        assert path not in self.mock_client._patches
+        assert path not in self.mock_client._deletes
 
     def test_evaluate_no_driver_termination_resets_on_intermittent_driver(self):
         self.provider._no_driver_timeout_seconds = 100.0
