@@ -524,5 +524,7 @@ Content-Type: application/json
    :toctree: doc/
 
    serve.llm.LLMServer
-   serve.llm.LLMRouter
+   serve.llm.deployment.PDDecodeServer
+   serve.llm.deployment.PDPrefillServer
+   serve.llm.deployment.DPServer
 ```
