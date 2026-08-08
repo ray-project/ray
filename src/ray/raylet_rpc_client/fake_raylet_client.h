@@ -314,8 +314,24 @@ class FakeRayletClient : public RayletClientInterface {
     num_cancel_local_task_requested += 1;
   }
 
-  void FreeLocalObjects(const FreeLocalObjectsRequest &request) override {
+  void FreeLocalObjects(
+      const FreeLocalObjectsRequest &request,
+      const ClientCallback<FreeLocalObjectsReply> &callback = {}) override {
     num_free_local_objects_requested += 1;
+    free_local_objects_batches.push_back(request.object_ids_size());
+    if (callback != nullptr) {
+      free_local_objects_callbacks.push_back(callback);
+    }
+  }
+
+  bool ReplyFreeLocalObjects(const Status &status = Status::OK()) {
+    if (free_local_objects_callbacks.empty()) {
+      return false;
+    }
+    auto callback = free_local_objects_callbacks.front();
+    callback(status, FreeLocalObjectsReply());
+    free_local_objects_callbacks.pop_front();
+    return true;
   }
 
   int num_workers_requested = 0;
@@ -330,6 +346,9 @@ class FakeRayletClient : public RayletClientInterface {
   int num_commit_requested = 0;
   int num_cancel_local_task_requested = 0;
   int num_free_local_objects_requested = 0;
+  // Object count of each FreeLocalObjects RPC, and the still-pending replies.
+  std::vector<int> free_local_objects_batches;
+  std::list<ClientCallback<FreeLocalObjectsReply>> free_local_objects_callbacks = {};
   int num_release_unused_bundles_requested = 0;
   NodeID node_id_ = NodeID::FromRandom();
   std::vector<ActorID> killed_actors;
