@@ -29,6 +29,7 @@ user-guides/tpu
 user-guides/pod-command
 user-guides/helm-chart-rbac
 user-guides/tls
+user-guides/network-policy
 user-guides/k8s-autoscaler
 user-guides/kubectl-plugin
 user-guides/kuberay-auth
@@ -67,6 +68,7 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-pod-command`
 * {ref}`kuberay-helm-chart-rbac`
 * {ref}`kuberay-tls`
+* {ref}`kuberay-network-policy`
 * {ref}`kuberay-gke-bucket`
 * {ref}`ray-k8s-autoscaler-comparison`
 * {ref}`kubectl-plugin`
