@@ -203,6 +203,8 @@ class CoreWorkerTest : public ::testing::Test {
         fake_total_lineage_bytes_gauge_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
         /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+        /*free_object_on_nodes_async=*/
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         /*clock=*/clock_);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
