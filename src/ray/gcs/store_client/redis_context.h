@@ -178,6 +178,31 @@ class RedisContext {
   instrumented_io_context &io_service() { return io_service_; }
 
  private:
+  /// Called when hiredis reports the async connection was lost. Runs from
+  /// inside hiredis' teardown, so it only schedules work.
+  void OnAsyncDisconnected();
+
+  /// Called when hiredis reports the async connection came up.
+  void OnAsyncConnected();
+
+  /// Try once to re-establish the async connection, rescheduling itself with
+  /// exponential backoff on failure. Runs on the io_service thread.
+  void AttemptReconnect();
+
+  /// Queue the next reconnect attempt on the backoff schedule.
+  void ScheduleReconnectRetry();
+
+  /// Open, authenticate and adopt a fresh async connection, keeping the
+  /// existing RedisAsyncContext object so in-flight requests stay valid.
+  Status ReconnectAsyncContext();
+
+  /// Point resolved_ip_/port_ at whichever node Sentinel currently calls the
+  /// primary. No-op when this context was not reached through a Sentinel.
+  Status RefreshPrimaryFromSentinel();
+
+  /// Re-resolve address_, in case the name now points somewhere else.
+  Status RefreshResolvedAddress();
+
   /// Run an arbitrary Redis command synchronously.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -200,6 +225,42 @@ class RedisContext {
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   int64_t redis_db_probe_timeout_milliseconds_;
+
+  /// Connection parameters retained from the last successful Connect() so the
+  /// async connection can be re-established without a caller.
+  std::string address_;
+  int port_ = 0;
+  std::string username_;
+  std::string password_;
+  bool enable_ssl_ = false;
+  /// The resolved address actually connected to. Reused on reconnect.
+  std::string resolved_ip_;
+  /// The address Connect() was originally called with. For a Sentinel setup
+  /// this is the Sentinel itself, which is the only address that stays valid
+  /// across a failover.
+  std::string origin_address_;
+  int origin_port_ = 0;
+  /// Whether the primary behind this context was discovered through Sentinel.
+  bool via_sentinel_ = false;
+
+  /// The reconnect state below runs on the io_service thread; Connect() and
+  /// Disconnect() touch it only while no reconnect work is scheduled.
+  /// Set by Disconnect() and cleared by Connect(). While set, a disconnect
+  /// callback must not schedule a reconnect: the teardown may be running from
+  /// ~RedisContext, where the io_service is already gone.
+  bool disconnect_requested_ = false;
+  /// Guards against overlapping reconnect attempts.
+  bool reconnecting_ = false;
+  /// An async connect has been issued and its callback has not fired yet.
+  bool reconnect_pending_ = false;
+  int64_t reconnect_attempts_left_ = 0;
+  /// Bumped when a reconnect episode ends in success, so retry timers armed
+  /// during that episode die instead of joining the next one.
+  uint64_t reconnect_epoch_ = 0;
+  ExponentialBackoff reconnect_backoff_;
+  /// Sentinel letting a posted/delayed reconnect callback detect that this
+  /// RedisContext was destroyed before the callback ran.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
 }  // namespace ray::gcs
