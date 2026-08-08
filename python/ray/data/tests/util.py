@@ -3,6 +3,7 @@ import os
 import tempfile
 from contextlib import contextmanager
 from typing import Any, Callable, Iterable, List, Optional
+from unittest.mock import MagicMock
 
 import pandas as pd
 
@@ -213,3 +214,38 @@ def _take_outputs(op: PhysicalOperator) -> List[Any]:
         assert ref.owns_blocks, ref
         _get_blocks(ref, output)
     return output
+
+
+class FakeDataOpTask(DataOpTask):
+    """Minimal ``DataOpTask`` stand-in for output-backpressure scheduling tests.
+
+    Records the byte budget passed to every ``on_data_ready`` call in ``calls``
+    (a list of ``(task_id, max_bytes_to_read)`` tuples) and returns a fixed
+    ``bytes_read``, so tests can assert exactly how each task was read without a
+    real generator.
+    """
+
+    def __init__(self, task_index, task_id, bytes_read, waitable=None, calls=None):
+        self._task_index = task_index
+        self._task_id = task_id
+        self._bytes_read = bytes_read
+        self._waitable = waitable
+        self.calls = calls if calls is not None else []
+
+    def get_waitable(self):
+        return self._waitable
+
+    def get_task_id(self):
+        return self._task_id
+
+    def on_data_ready(self, max_bytes_to_read, metadata_fetcher):
+        self.calls.append((self._task_id, max_bytes_to_read))
+        return self._bytes_read
+
+
+def make_backpressured_op(bypass_blocks: int) -> MagicMock:
+    """A mock operator whose data context caps the lineage-reconstruction bypass
+    lane at ``bypass_blocks`` blocks."""
+    op = MagicMock()
+    op.data_context.lineage_reconstruction_backpressure_bypass_blocks = bypass_blocks
+    return op

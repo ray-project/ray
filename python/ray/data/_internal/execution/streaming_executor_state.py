@@ -9,9 +9,10 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
+import ray._private.worker
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
@@ -123,13 +124,74 @@ class IdleDetector:
         logger.warning(msg)
 
 
+def _get_local_queued_generator_resubmit_task_ids() -> List[ray.TaskID]:
+    """Streaming generators submitted by this worker that Ray Core has queued for
+    resubmission by lineage reconstruction. Local (no RPC), but locks the task
+    submitter, so avoid calling it on hot paths when it is not needed."""
+    core_worker = ray._private.worker.global_worker.core_worker
+    return core_worker.get_local_queued_generator_resubmit_task_ids()
+
+
+class ReconstructionBypassLane:
+    """One operator's allowance to read past output backpressure, for a single
+    scheduling round.
+
+    Vended by :meth:`OutputBackpressureGuard.reconstruction_bypass_lane`. The
+    allowance is a block count shared by all of the operator's generators that
+    lineage reconstruction has queued for resubmit; ordinary tasks are never
+    eligible. That task-scoped eligibility is why this exception can't simply
+    widen the operator-level byte budget that ``should_unblock`` relaxes —
+    doing so would let every task on the operator read past backpressure.
+    """
+
+    def __init__(
+        self,
+        blocks: int,
+        queued_generator_resubmit_task_ids: Set[ray.TaskID],
+    ):
+        self._remaining_blocks = blocks
+        self._queued_generator_resubmit_task_ids = queued_generator_resubmit_task_ids
+
+    def try_drain(self, task: DataOpTask, metadata_fetcher: "MetadataFetcher") -> bool:
+        """Read up to the remaining allowance from ``task``, one block at a time.
+
+        Returns False without reading anything when ``task`` is not a
+        reconstruction-critical generator or the allowance is already spent; the
+        caller then falls back to the operator's normal output byte budget.
+        """
+        if self._remaining_blocks <= 0 or not self._is_eligible(task):
+            return False
+        while self._remaining_blocks > 0:
+            # ``on_data_ready(1, ...)`` reads a single block. Stop as soon as
+            # there is no more ready output (drained, pending emits, or nothing
+            # buffered yet) so we never spin the full allowance for nothing.
+            if task.on_data_ready(1, metadata_fetcher) == 0:
+                break
+            self._remaining_blocks -= 1
+        return True
+
+    def _is_eligible(self, task: OpTask) -> bool:
+        """Whether ``task`` is a generator that reconstruction is waiting on."""
+        return (
+            isinstance(task, DataOpTask)
+            and task.get_task_id() in self._queued_generator_resubmit_task_ids
+        )
+
+
 class OutputBackpressureGuard:
     """Escape hatch for streaming output backpressure.
 
-    When backpressure policies collectively allow 0 bytes of task output to be
-    read for an operator, the pipeline can deadlock if downstream is also
-    starved (no active tasks, no queued inputs). This guard inspects the
-    topology and resource state and decides whether to unblock the backpressure.
+    Owns every exception to output backpressure, of which there are two:
+
+    - Operator-scoped (:meth:`should_unblock`): when backpressure policies
+      collectively allow 0 bytes of task output to be read for an operator, the
+      pipeline can deadlock if downstream is also starved (no active tasks, no
+      queued inputs), so the budget is relaxed to 1 byte.
+    - Task-scoped (:meth:`reconstruction_bypass_lane`): a fully-backpressured
+      operator starves the one streaming generator that Ray Core's lineage
+      reconstruction is waiting on to finish, stalling replay. That generator
+      gets a small block allowance past backpressure while its siblings stay
+      throttled.
 
     The guard owns per-operator idle-detection state across the lifetime of
     a single executor, so it must be constructed once and reused across
@@ -140,6 +202,54 @@ class OutputBackpressureGuard:
         self._topology = topology
         self._resource_manager = resource_manager
         self._idle_detector = IdleDetector()
+
+    def order_ready_tasks(
+        self,
+        ready_tasks: List[OpTask],
+        queued_generator_resubmit_task_ids: Set[ray.TaskID],
+    ) -> List[OpTask]:
+        """Order an operator's ready tasks for consumption, reconstruction first.
+
+        Generators that reconstruction has queued for resubmit go first, so they
+        claim the operator's output budget (including any single block
+        ``should_unblock`` frees for liveness) before ordinary tasks, instead of
+        being starved and blocking replay. Remaining ties use deterministic
+        task-index order so that, when backpressure caps an operator's reads,
+        fewer tasks finish quickly and yield resources rather than all tasks
+        emitting blocks together.
+        """
+        if not queued_generator_resubmit_task_ids:
+            return sorted(ready_tasks, key=lambda task: task.task_index())
+        return sorted(
+            ready_tasks,
+            key=lambda task: (
+                task.get_task_id() not in queued_generator_resubmit_task_ids
+                if isinstance(task, DataOpTask)
+                else True,
+                task.task_index(),
+            ),
+        )
+
+    def reconstruction_bypass_lane(
+        self,
+        op: PhysicalOperator,
+        op_output_budget: Optional[int],
+        queued_generator_resubmit_task_ids: Set[ray.TaskID],
+    ) -> ReconstructionBypassLane:
+        """The block allowance ``op``'s reconstruction-critical generators may
+        read past output backpressure this round.
+
+        Only granted while the operator is effectively fully backpressured: a
+        budget of 0, or the 1 byte ``should_unblock`` bumped it to (with which
+        ordinary tasks still can't make meaningful progress).
+        """
+        fully_backpressured = op_output_budget is not None and op_output_budget <= 1
+        blocks = (
+            op.data_context.lineage_reconstruction_backpressure_bypass_blocks
+            if fully_backpressured and queued_generator_resubmit_task_ids
+            else 0
+        )
+        return ReconstructionBypassLane(blocks, queued_generator_resubmit_task_ids)
 
     def should_unblock(self, op: PhysicalOperator) -> bool:
         """Return True if output backpressure should be relaxed for ``op``
@@ -605,9 +715,10 @@ def process_completed_tasks(
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
-        output_backpressure_guard: Escape hatch for streaming output
-            backpressure. Bumps a fully-throttled output limit (0 bytes) to
-            1 byte when the guard signals a stall.
+        output_backpressure_guard: Owns the exceptions to output backpressure:
+            bumps a fully-throttled output limit (0 bytes) to 1 byte when it
+            signals a stall, orders each operator's ready tasks, and vends the
+            per-operator lineage-reconstruction bypass lane.
         metadata_fetcher: Resolves pulled (block_ref, meta_ref) pairs into
             emitted RefBundles. The threaded fetcher defers metadata fetches to
             a background thread (emitting in per-op order as they become ready);
@@ -704,11 +815,8 @@ def process_completed_tasks(
             timeout=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
         )
 
-        # Organize tasks by the operator they belong to, and sort them by task index.
-        # So that we'll process them in a deterministic order.
-        # This is because backpressure policies may limit the number of blocks to read
-        # per operator. In this case, we want to have fewer tasks finish quickly and
-        # yield resources, instead of having all tasks output blocks together.
+        # Organize ready tasks by operator; the guard then orders each operator's
+        # tasks for consumption (reconstruction priority + deterministic index).
         ready_tasks_by_op = defaultdict(list)
         for ref in ready:
             state, task = active_tasks[ref]
@@ -724,24 +832,44 @@ def process_completed_tasks(
         #   to the background fetcher by ``submit``; emission and the postponed
         #   done-callback happen in ``emit_ready_and_fire_done_callbacks``, preserving the per-op,
         #   per-task, per-pair emission order.
+
+        # Gated on there being a finite output read budget somewhere: only an
+        # output-limited operator can starve a reconstruction-critical generator,
+        # and this lookup takes Ray Core's task submitter lock.
+        queued_generator_resubmit_task_ids = (
+            set(_get_local_queued_generator_resubmit_task_ids())
+            if remaining_output_budget
+            else set()
+        )
         for state, ready_tasks in ready_tasks_by_op.items():
-            # TODO elaborate why sorting (helps preserve_order case)
-            ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
+            ready_tasks = output_backpressure_guard.order_ready_tasks(
+                ready_tasks, queued_generator_resubmit_task_ids
+            )
+            bypass_lane = output_backpressure_guard.reconstruction_bypass_lane(
+                state.op,
+                remaining_output_budget.get(state),
+                queued_generator_resubmit_task_ids,
+            )
             op_data_tasks: List[DataOpTask] = []
             try:
                 for task in ready_tasks:
                     if isinstance(task, DataOpTask):
                         try:
-                            bytes_read = task.on_data_ready(
-                                remaining_output_budget.get(state, None),
-                                metadata_fetcher,
-                            )
-                            op_data_tasks.append(task)
-                            if state in remaining_output_budget:
-                                # Clamp remaining output budget at 0
-                                remaining_output_budget[state] = max(
-                                    remaining_output_budget[state] - bytes_read, 0
+                            # Reconstruction-critical generators drain through
+                            # the bypass lane, leaving the operator's (zeroed)
+                            # byte budget untouched so ordinary tasks stay
+                            # backpressured. Everything else reads against it.
+                            if not bypass_lane.try_drain(task, metadata_fetcher):
+                                bytes_read = task.on_data_ready(
+                                    remaining_output_budget.get(state, None),
+                                    metadata_fetcher,
                                 )
+                                if state in remaining_output_budget:
+                                    # Clamp remaining output budget at 0
+                                    remaining_output_budget[state] = max(
+                                        remaining_output_budget[state] - bytes_read, 0
+                                    )
+                            op_data_tasks.append(task)
                         except Exception as e:
                             _record_errored_block(e, state.op.name)
                     else:

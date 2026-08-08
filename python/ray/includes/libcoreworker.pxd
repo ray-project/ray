@@ -415,6 +415,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         unordered_map[CLineageReconstructionTask, uint64_t] \
             GetLocalOngoingLineageReconstructionTasks() const
 
+        c_vector[CTaskID] GetLocalQueuedGeneratorResubmitTaskIds() const
+
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
