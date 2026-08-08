@@ -126,12 +126,31 @@ doc/source/data/images/dataset-arch.png:
 doc/source/train/images/overview.jpg:
 doc/source/tune/images/tune-flow.gif:
 # Config and script assets a doc example consumes can change what the test
-# does, so under a library doc dir they keep routing to that library. Under an
-# unowned dir they still fall through to the trailing `doc/` skip, because the
-# catch-all matches only .py, .ipynb, and BUILD.bazel. That is unchanged from
-# before this rework, and none of those assets is a bazel test dep today.
+# does, so under a library doc dir they keep routing to that library.
 doc/source/serve/doc_code/config.yaml: serve_doc
-doc/source/cluster/doc_code/slurm-basic.sh:
+# Under an unowned dir the asset is not a test input at all -- no bazel target
+# covers doc/source/cluster/doc_code/ -- but a rendered page literalincludes it,
+# so it routes to the build. This asserts the whole directory lands on `doc`
+# regardless of extension: the .sh here and the .py sibling below must agree,
+# since it is the include that matters, not whether the catch-all's .py/.ipynb
+# patterns happen to reach the file.
+doc/source/cluster/doc_code/slurm-basic.sh: doc
+doc/source/cluster/doc_code/slurm-launch.py: doc
+doc/source/ray-contribute/doc_code/example_module.py: doc
+# Starter templates and the authoring boilerplate are excluded from the Sphinx
+# build and back no bazel target, so they emit nothing at all. 05 is the lone
+# exception: a rendered Train page literalincludes its sources, so those route
+# to the build like any other include input.
+doc/source/templates/01_batch_inference/start.ipynb:
+doc/source/templates/03_serving_stable_diffusion/app.py:
+doc/source/templates/04_finetuning_llms_with_deepspeed/utils.py:
+doc/source/_templates/template.ipynb:
+doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py: doc
+# The leading prose-and-image skip still wins inside a `doc`-routed directory,
+# so an image or README under 05 emits nothing. Locks in that the new rule did
+# not accidentally reorder past that skip.
+doc/source/templates/05_dreambooth_finetuning/dreambooth/images/lego-car/1.jpg:
+doc/source/templates/05_dreambooth_finetuning/README.md:
 # Documentation validation infra stays on the `doc` tag. The Sphinx config, the
 # modules it imports, the in-repo build extensions, and the doc-build helper
 # scripts build the docs, so they route to the `doc` build and validation only,
