@@ -72,6 +72,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_FREEZE_GC_ON_STARTUP,
     RAY_SERVE_HAPROXY_METRICS_ENABLED,
+    RAY_SERVE_INTERNAL_GRPC_PORT_RETRY_COUNT,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
@@ -1141,7 +1142,17 @@ class Replica:
                 (
                     "grpc.max_receive_message_length",
                     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
-                )
+                ),
+                # This server binds a specific port handed out by the
+                # controller's NodePortManager, so a port that is already taken
+                # must actually fail to bind -- otherwise the retry loop in
+                # `_on_initialized` can't tell a collision from a success and
+                # two servers would silently share a port. SO_REUSEPORT is on
+                # by default on Linux, so disable it explicitly.
+                #
+                # Must be the integer 0: the string "0" does NOT disable
+                # SO_REUSEPORT, it is parsed as a non-empty value.
+                ("grpc.so_reuseport", 0),
             ],
         )
         # Silence spammy false positive errors from gRPC Python
@@ -1773,9 +1784,7 @@ class Replica:
 
         # Start the gRPC server for inter-deployment communication
         add_ASGIServiceServicer_to_server(self, self._server)
-        # Use the shared helper so RAY_USE_TLS is honored; binding the port
-        # directly would leave this server plaintext in a TLS-enabled cluster.
-        self._internal_grpc_port = add_port_to_grpc_server(self._server, "[::]:0")
+        self._internal_grpc_port = await self._bind_internal_grpc_port()
         await self._server.start()
         logger.debug(
             f"Started inter-deployment gRPC server on port {self._internal_grpc_port}"
@@ -1785,6 +1794,56 @@ class Replica:
         # for the first time.
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - self._initialization_start_time
+
+    async def _bind_internal_grpc_port(self) -> int:
+        """Bind the inter-deployment gRPC server to a controller-assigned port.
+
+        The port comes from the controller's ``NodePortManager``, the same
+        allocator direct ingress uses, so every replica's handle-path port is
+        drawn from one bounded, declarable range. A service mesh (e.g. Istio)
+        does not route undeclared ephemeral ports, which is what this server
+        used to bind.
+
+        A port the allocator believes is free can still be held by something
+        outside Serve, so failures are retried against a fresh port and the
+        failed one is blocked. Binding goes through ``add_port_to_grpc_server``
+        so ``RAY_USE_TLS`` is honored; calling ``add_insecure_port`` directly
+        would leave this server plaintext in a TLS-enabled cluster.
+        """
+        for _ in range(RAY_SERVE_INTERNAL_GRPC_PORT_RETRY_COUNT):
+            port = await self._controller_handle.allocate_internal_grpc_port.remote(
+                self._node_id, self._replica_id.unique_id
+            )
+            try:
+                bound_port = add_port_to_grpc_server(self._server, f"[::]:{port}")
+            except RuntimeError:
+                # Modern grpcio raises when the address can't be bound; older
+                # versions return 0 instead. Both mean "try another port".
+                bound_port = 0
+            if bound_port != 0:
+                return bound_port
+
+            logger.warning(
+                f"Failed to bind the inter-deployment gRPC server to port {port}; "
+                "retrying with another port."
+            )
+            # Block it: something outside Serve holds this port on this node,
+            # so handing it to another replica would fail the same way.
+            await self._controller_handle.release_internal_grpc_port.remote(
+                self._node_id,
+                self._replica_id.unique_id,
+                port,
+                block_port=True,
+            )
+
+        raise RuntimeError(
+            "Failed to bind the inter-deployment gRPC server after "
+            f"{RAY_SERVE_INTERNAL_GRPC_PORT_RETRY_COUNT} attempts. Widen "
+            "RAY_SERVE_INTERNAL_GRPC_MIN_PORT / RAY_SERVE_INTERNAL_GRPC_MAX_PORT, "
+            "or ensure that range does not overlap the Ray worker port range "
+            "(min_worker_port to max_worker_port) or the Serve direct-ingress "
+            "port ranges."
+        )
 
     def _raise_if_multiplexing_with_direct_ingress(self):
         """Reject model multiplexing on the ingress deployment under direct ingress.
@@ -2138,6 +2197,21 @@ class Replica:
             except Exception:
                 logger.exception(
                     "Error shutting down the inter-deployment gRPC server."
+                )
+            # Hand the port back so the allocator can reuse it without waiting
+            # for the controller's reclaim pass. Best-effort: a replica that
+            # crashes never gets here, which is what `NodePortManager.prune`
+            # covers.
+            try:
+                await self._controller_handle.release_internal_grpc_port.remote(
+                    self._node_id,
+                    self._replica_id.unique_id,
+                    self._internal_grpc_port,
+                )
+            except Exception:
+                logger.exception(
+                    "Error releasing the inter-deployment gRPC port; the "
+                    "controller will reclaim it during reconciliation."
                 )
 
         await self.shutdown()
