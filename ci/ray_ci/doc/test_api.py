@@ -255,6 +255,20 @@ def test_introspect_annotation_type():
     )
     assert API.introspect_annotation_type(object()) == AnnotationType.UNKNOWN
 
+    # A hostile object whose attribute lookup raises (e.g. ValueError from metaclass __getattr__)
+    class HostileMetaclass(type):
+        def __getattr__(cls, name):
+            if name == "_annotated":
+                return "HostileClass"
+            if name == "_annotated_type":
+                raise ValueError("Simulated metaclass getattr failure")
+            raise AttributeError(name)
+
+    class HostileClass(metaclass=HostileMetaclass):
+        pass
+
+    assert API.introspect_annotation_type(HostileClass) == AnnotationType.UNKNOWN
+
 
 def test_introspect_annotation_type_ignores_inherited_annotations():
     # `_annotated_type` is a plain class attribute, so an undecorated subclass
