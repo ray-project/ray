@@ -299,6 +299,14 @@ class PathPartitionParser:
         partitions: Dict[str, str] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
+            # ``field_types`` describes the scheme, not any one path, so a typed
+            # field need not appear in every path. A file outside -- or at the
+            # first level of -- ``base_dir`` is unpartitioned and parses to
+            # ``{}``, which both ``Partitioning.base_dir`` and
+            # ``PathPartitionFilter`` document as supported. Indexing blindly
+            # would raise ``KeyError`` and take those files down.
+            if field not in partitions:
+                continue
             value = partitions[field]
             # ``null_fallback`` already resolved this directory to a null;
             # there is nothing to coerce, and ``_cast_value`` would raise.
