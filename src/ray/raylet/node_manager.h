@@ -1008,6 +1008,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// we issue a GC command so that none of the messages are dropped.
   int64_t gc_command_sync_version_ = 0;
 
+  // Controls the lifecycle of the CgroupManager. Declared before
+  // `worker_killing_policy_`, `add_process_to_system_cgroup_hook_`, and
+  // `memory_monitors_` so all objects that hold/call references to the manager
+  // are destroyed before the manager itself is torn down.
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
+
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::unique_ptr<WorkerKillingPolicyInterface> worker_killing_policy_;
 
@@ -1018,14 +1024,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool worker_killing_in_progress_ ABSL_GUARDED_BY(worker_killing_in_progress_mutex_) =
       false;
 
-  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
-  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
-
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;
 
-  // Controls the lifecycle of the CgroupManager.
-  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
+  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
+  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
 
   std::atomic_bool &shutting_down_;
 

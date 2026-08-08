@@ -42,22 +42,23 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
   }
 
   uint64_t monitor_interval_ms = RayConfig::instance().memory_monitor_refresh_ms();
-  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                                   MemoryMonitorInterface::kDefaultCgroupPath)
-                                   .total_bytes;
-  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-      total_memory_bytes,
-      RayConfig::instance().memory_usage_threshold(),
-      RayConfig::instance().min_memory_free_bytes(),
-      resource_isolation_enabled,
-      cgroup_manager);
+  float usage_threshold = RayConfig::instance().memory_usage_threshold();
+  int64_t min_memory_free_bytes = RayConfig::instance().min_memory_free_bytes();
+  MemoryMonitorUtils::ValidateMemoryThresholdConfig(usage_threshold,
+                                                    min_memory_free_bytes);
 
   if (monitor_interval_ms > 0) {
+    // The threshold is recomputed on every poll inside ThresholdMemoryMonitor
+    // from the live cgroup limit, so a runtime change to the node's memory
+    // budget (e.g. Kubernetes in-place pod resize) propagates without
+    // restarting the raylet.
     monitors.push_back(std::make_unique<ThresholdMemoryMonitor>(
         std::move(kill_workers_callback),
-        memory_usage_threshold_bytes,
+        usage_threshold,
+        min_memory_free_bytes,
         monitor_interval_ms,
         resource_isolation_enabled,
+        cgroup_manager,
         MemoryMonitorInterface::kDefaultCgroupPath,
         /* user_cgroup_path */
         resource_isolation_enabled ? cgroup_manager.GetUserCgroupPath()

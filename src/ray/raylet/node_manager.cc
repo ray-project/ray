@@ -279,13 +279,15 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
+      // cgroup_manager_ is declared before all members that reference it, so
+      // those members are destroyed first during teardown.
+      cgroup_manager_(std::move(cgroup_manager)),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
-          config.enable_resource_isolation, *cgroup_manager)),
+          config.enable_resource_isolation, *cgroup_manager_)),
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
                                                     config.enable_resource_isolation,
-                                                    *cgroup_manager)),
-      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
-      cgroup_manager_(std::move(cgroup_manager)),
+                                                    *cgroup_manager_)),
       shutting_down_(shutting_down),
       clock_(clock),
       acceptor_(std::move(acceptor)),
@@ -3167,9 +3169,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           }
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
-          MemoryUsageSnapshot memory_usage_snapshot =
-              MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                  MemoryMonitorInterface::kDefaultCgroupPath);
+          MemoryUsageSnapshot memory_usage_snapshot;
           if (initial_config_.enable_resource_isolation) {
             StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
                         StatusT::NotFound>
@@ -3177,15 +3177,21 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                     MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
-            if (user_and_system_slice_memory_snapshot_or.has_value()) {
-              memory_usage_snapshot =
-                  user_and_system_slice_memory_snapshot_or.value().first;
-            } else {
-              RAY_LOG(ERROR) << absl::StrFormat(
-                  "Failed to take user and system slice memory snapshot due to: %s. "
-                  "Falling back to host system memory snapshot.",
-                  user_and_system_slice_memory_snapshot_or.message());
+            if (!user_and_system_slice_memory_snapshot_or.has_value()) {
+              RAY_LOG_EVERY_MS(ERROR, MemoryMonitorInterface::kErrorLogIntervalMs)
+                  << absl::StrFormat(
+                         "Failed to take user and system slice memory snapshot due to: "
+                         "%s. "
+                         "Skipping this resource-isolation worker killing decision.",
+                         user_and_system_slice_memory_snapshot_or.message());
+              ReleaseKillWorkerInProgress();
+              return;
             }
+            memory_usage_snapshot =
+                user_and_system_slice_memory_snapshot_or.value().first;
+          } else {
+            memory_usage_snapshot = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+                MemoryMonitorInterface::kDefaultCgroupPath);
           }
 
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
