@@ -6,17 +6,21 @@ import tempfile
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 
 import ray
+import ray._private.state
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import binary_to_hex
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.test_utils import (
     check_call_subprocess,
     wait_for_aggregator_agent_if_enabled,
 )
+from ray.core.generated import gcs_pb2, gcs_service_pb2
 from ray.util.state import (
     get_actor,
     list_actors,
@@ -403,6 +407,80 @@ def test_ray_timeline(shutdown_only):
             return True
 
         wait_for_condition(verify, timeout=20, retry_interval_ms=1000)
+
+
+def _profile_task_event(component_type, component_id, event_name):
+    task_event = gcs_pb2.TaskEvents()
+    profile = task_event.profile_events
+    profile.component_type = component_type
+    profile.component_id = component_id
+    profile.node_ip_address = "1.2.3.4"
+    entry = profile.events.add()
+    entry.event_name = event_name
+    entry.start_time = 1
+    entry.end_time = 2
+    entry.extra_data = "{}"
+    return task_event
+
+
+def test_profile_events_reads_from_dashboard_head(monkeypatch):
+    """With the migration flag on, profile_events() fetches task events from the dashboard
+    head through a reused client that resolves the address once and reuses its session."""
+    monkeypatch.setattr(
+        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
+    )
+
+    component_id = b"\x01" * 28
+    reply = gcs_service_pb2.GetTaskEventsReply()
+    reply.status.SetInParent()
+    reply.events_by_task.add().CopyFrom(
+        _profile_task_event("worker", component_id, "task:execute")
+    )
+
+    gs = ray._private.state.GlobalState()
+    accessor = MagicMock()
+    accessor.get_internal_kv.return_value = b"127.0.0.1:8265"
+    monkeypatch.setattr(gs, "_connect_and_get_accessor", lambda: accessor)
+    # The client getter reads _global_state_accessor directly so set it too.
+    gs._global_state_accessor = accessor
+
+    session = MagicMock()
+    session.post.return_value = MagicMock(
+        status_code=200, content=reply.SerializeToString()
+    )
+    with patch("requests.Session", return_value=session):
+        result = gs.profile_events()
+        gs.profile_events()  # second call reuses the cached endpoint + session
+
+    accessor.get_task_events.assert_not_called()
+    # Address resolved once and the session reused across both timeline calls.
+    assert accessor.get_internal_kv.call_count == 1
+    assert session.post.call_count == 2
+    assert session.post.call_args.args[0].endswith("/api/task_events/query")
+    assert result[binary_to_hex(component_id)][0]["event_type"] == "task:execute"
+
+
+def test_profile_events_reads_from_gcs_by_default(monkeypatch):
+    """With the migration flag off, profile_events() reads from GCS via the accessor and
+    never builds the dashboard-head client."""
+    monkeypatch.setattr(
+        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", False
+    )
+
+    component_id = b"\x02" * 28
+    task_event = _profile_task_event("driver", component_id, "driver:startup")
+
+    gs = ray._private.state.GlobalState()
+    accessor = MagicMock()
+    accessor.get_task_events.return_value = [task_event.SerializeToString()]
+    monkeypatch.setattr(gs, "_connect_and_get_accessor", lambda: accessor)
+
+    with patch("requests.Session") as mock_session_cls:
+        result = gs.profile_events()
+
+    accessor.get_task_events.assert_called_once()
+    mock_session_cls.assert_not_called()
+    assert result[binary_to_hex(component_id)][0]["event_type"] == "driver:startup"
 
 
 def test_state_init_multiple_threads(shutdown_only):
