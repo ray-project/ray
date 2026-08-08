@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.experimental.sandbox.config import (
@@ -57,3 +59,7 @@ def test_parse_memory_bytes():
 
     with pytest.raises(ValueError):
         parse_memory_bytes("invalid_format")
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

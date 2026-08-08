@@ -1,5 +1,6 @@
 import io
 import os
+import sys
 import tarfile
 
 import pytest
@@ -234,3 +235,7 @@ def test_extract_tar_layer_usr_merge(tmp_path):
     assert (dest / "bin" / "base").read_bytes() == b"base_binary"
     assert (dest / "usr" / "bin" / "app").read_bytes() == b"app_binary"
     assert (dest / "bin" / "app").read_bytes() == b"app_binary"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,4 +1,5 @@
 import os
+import sys
 
 import pytest
 
@@ -189,3 +190,7 @@ def test_gvisor_backend_readonly_rootfs():
         assert "ws_ok" in res_ws.stdout
     finally:
         backend.delete_sandbox(sandbox_id)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
