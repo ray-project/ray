@@ -38,6 +38,22 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "retryable_grpc_client_test",
+    size = "small",
+    srcs = [
+        "retryable_grpc_client_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":grpc_test_common",
+        "//src/ray/protobuf:test_service_cc_grpc",
+        "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc:retryable_grpc_client",
+    ],
+)
+
+ray_cc_test(
     name = "metrics_agent_client_test",
     size = "small",
     srcs = [

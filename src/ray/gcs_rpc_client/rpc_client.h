@@ -17,7 +17,9 @@
 #include <gtest/gtest_prod.h>
 
 #include <chrono>
+#include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -226,7 +228,9 @@ class GcsRpcClient {
       const std::string &call_name,
       Request &&request,
       const ClientCallback<Reply> &callback,
-      const int64_t timeout_ms) {
+      const int64_t timeout_ms,
+      std::optional<RetryableGrpcClient::RetryOnTimeoutPolicy> retry_on_timeout =
+          std::nullopt) {
     retryable_grpc_client_->template CallMethod<Service, Request, Reply>(
         prepare_async_function,
         std::move(grpc_client),
@@ -247,7 +251,8 @@ class GcsRpcClient {
             callback(status, std::move(reply));
           }
         },
-        timeout_ms);
+        timeout_ms,
+        retry_on_timeout);
   }
 
   /// Add job info to GCS Service.
@@ -325,11 +330,44 @@ class GcsRpcClient {
                              KillActorViaGcs,
                              actor_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
-  /// Register a client to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
-                             GetClusterId,
-                             node_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
+  /// Fetch the cluster ID from GCS Service. Hand-written (the other methods use
+  /// VOID_GCS_RPC_CLIENT_METHOD) to attach a RetryOnTimeoutPolicy: every
+  /// client's Connect() blocks on this constant-value read, and during mass
+  /// cluster bring-up the GCS can be too backlogged to answer within one
+  /// deadline. Each attempt gets at most the connect timeout; timed-out
+  /// attempts are retried with jittered backoff until the caller's overall
+  /// timeout_ms budget is exhausted. Requires a finite positive timeout_ms.
+  void GetClusterId(GetClusterIdRequest &&request,
+                    const ClientCallback<GetClusterIdReply> &callback,
+                    const int64_t timeout_ms) {
+    invoke_async_method<NodeInfoGcsService,
+                        GetClusterIdRequest,
+                        GetClusterIdReply,
+                        /*handle_payload_status=*/true>(
+        &NodeInfoGcsService::Stub::PrepareAsyncGetClusterId,
+        node_info_grpc_client_,
+        "ray::rpc::NodeInfoGcsService.grpc_client.GetClusterId",
+        std::move(request),
+        callback,
+        timeout_ms,
+        RetryableGrpcClient::RetryOnTimeoutPolicy{
+            /*per_attempt_timeout_ms=*/::RayConfig::instance()
+                .gcs_rpc_server_connect_timeout_s() *
+            1000});
+  }
+  ray::Status SyncGetClusterId(GetClusterIdRequest &&request,
+                               GetClusterIdReply *reply_in,
+                               const int64_t timeout_ms) {
+    std::promise<Status> promise;
+    GetClusterId(
+        std::move(request),
+        [&promise, reply_in](const Status &status, const GetClusterIdReply &reply) {
+          reply_in->CopyFrom(reply);
+          promise.set_value(status);
+        },
+        timeout_ms);
+    return promise.get_future().get();
+  }
 
   /// Register a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
