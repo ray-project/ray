@@ -1299,6 +1299,74 @@ class TestGenerateTransformFnForAsyncMap:
 
         assert list(transform_fn(input_seq, task_context)) == expected
 
+    def test_async_gen_output_buffering_is_bounded(
+        self,
+        mock_actor_async_ctx,
+        target_max_block_size_infinite_or_default,
+    ):
+        """Test that async generator UDFs don't buffer all of their outputs.
+
+        Peak number of the outputs held in memory has to be fully determined by the
+        requested concurrency, and *must not* scale with the number of the objects
+        yielded by an individual UDF invocation (otherwise `target_max_block_size`
+        isn't able to bound peak memory utilization, since downstream block-shaping
+        stage never gets a chance to flush).
+        """
+
+        max_concurrency = 2
+
+        def _measure_peak_buffered(yields_per_invocation: int) -> int:
+            outstanding = 0
+            peak_outstanding = 0
+
+            class _Output:
+                def __init__(self):
+                    nonlocal outstanding, peak_outstanding
+                    outstanding += 1
+                    peak_outstanding = max(peak_outstanding, outstanding)
+
+                def consume(self):
+                    nonlocal outstanding
+                    outstanding -= 1
+
+            async def multi_yield_fn(x):
+                for _ in range(yields_per_invocation):
+                    yield _Output()
+
+            # NOTE: `max_buffered_udf_outputs` is pinned explicitly (rather than
+            #       relying on `DEFAULT_ASYNC_UDF_MAX_BUFFERED_OUTPUTS`, which is
+            #       read from the env at import time) to keep the bound asserted
+            #       below hermetic
+            transform_fn = _generate_transform_fn_for_async_map(
+                multi_yield_fn,
+                Mock(),
+                max_concurrency=max_concurrency,
+                max_buffered_udf_outputs=1,
+            )
+
+            input_seq = list(range(8))
+
+            num_outputs = 0
+            for out in transform_fn(input_seq, Mock()):
+                num_outputs += 1
+                # NOTE: This simulates downstream (block-shaping) stage flushing
+                #       produced output
+                out.consume()
+
+            assert num_outputs == len(input_seq) * yields_per_invocation
+
+            return peak_outstanding
+
+        peaks = {n: _measure_peak_buffered(n) for n in (8, 64, 512)}
+
+        assert len(set(peaks.values())) == 1, peaks
+        # NOTE: With `max_buffered_udf_outputs=1`, no more than `2 * max_concurrency`
+        #       invocations could be awaiting to be reported, each holding no more
+        #       than 2 buffered (1 + the sentinel slot) and 1 in-flight output, on
+        #       top of no more than `max_concurrency` outputs held in the output
+        #       queue (and 1 being currently consumed)
+        assert max(peaks.values()) <= 6 * max_concurrency + 1, peaks
+
     def test_concurrency_limiting(
         self,
         mock_actor_async_ctx,
