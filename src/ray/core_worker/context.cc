@@ -435,9 +435,11 @@ bool WorkerContext::CurrentActorDetached() const {
 ObjectID WorkerContext::GetGeneratorReturnId(const TaskID &task_id,
                                              std::optional<ObjectIDIndexType> put_index) {
   TaskID current_task_id;
-  // We only allow to specify both task id and put index or not specifying both.
+  // Deducing only one of the two would key the ObjectID to one task while drawing the
+  // index from another, so the caller must supply both or neither.
   RAY_CHECK((task_id.IsNil() && !put_index.has_value()) ||
-            (!task_id.IsNil() || put_index.has_value()));
+            (!task_id.IsNil() && put_index.has_value()))
+      << "task_id and put_index must both be specified or both omitted";
   if (task_id.IsNil()) {
     const auto &task_spec = GetCurrentTask();
     current_task_id = task_spec->TaskId();
@@ -454,7 +456,7 @@ ObjectID WorkerContext::GetGeneratorReturnId(const TaskID &task_id,
     // We don't allow to return more than GetMaxNumGeneratorReturnIndex()
     // return values.
     auto max_generator_returns = GetThreadContext().GetMaxNumGeneratorReturnIndex();
-    if (put_index > max_generator_returns) {
+    if (current_put_index > max_generator_returns) {
       RAY_LOG(FATAL).WithField(current_task_id)
           << "The generator returns " << current_put_index
           << " items, which exceed the maximum number of return values allowed, "
