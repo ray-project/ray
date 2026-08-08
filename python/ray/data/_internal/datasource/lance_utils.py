@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple
+from inspect import signature
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 _NAMESPACE_CACHE_SIZE = int(os.environ.get("LANCE_RAY_NAMESPACE_CACHE_SIZE", "16"))
 
@@ -56,3 +57,28 @@ def create_storage_options_provider(
     from lance import LanceNamespaceStorageOptionsProvider
 
     return LanceNamespaceStorageOptionsProvider(namespace=namespace, table_id=table_id)
+
+
+def get_lance_namespace_kwargs(
+    target: Callable[..., Any],
+    namespace_impl: Optional[str],
+    namespace_properties: Optional[Dict[str, str]],
+    table_id: Optional[List[str]],
+) -> Dict[str, Any]:
+    """Build namespace arguments for the installed PyLance API."""
+    if not _has_namespace_params(namespace_impl, table_id):
+        return {}
+
+    if "namespace_client" in signature(target).parameters:
+        namespace = get_or_create_namespace(namespace_impl, namespace_properties)
+        if namespace is None:
+            return {}
+        return {"namespace_client": namespace, "table_id": table_id}
+
+    return {
+        "storage_options_provider": create_storage_options_provider(
+            namespace_impl,
+            namespace_properties,
+            table_id,
+        )
+    }
