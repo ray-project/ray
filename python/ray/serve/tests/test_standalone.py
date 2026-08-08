@@ -14,6 +14,7 @@ import time
 
 import httpx
 import pytest
+from opentelemetry import trace
 
 import ray
 import ray._private.state as state
@@ -41,6 +42,7 @@ from ray.serve.config import (
 )
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema, TracingConfig
+from ray.serve.utils import get_trace_context
 from ray.util.state import list_actors
 
 
@@ -716,10 +718,6 @@ def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     Note: proxy tracing is not wired via this path (proxies start before the
     controller is queryable); that is handled separately via long poll.
     """
-    from opentelemetry import trace
-
-    from ray.serve.utils import get_trace_context
-
     tracing_config = TracingConfig(enabled=True, sampling_ratio=1.0)
     serve.start(
         http_options=HTTPOptions(host="0.0.0.0"),
