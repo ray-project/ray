@@ -68,7 +68,7 @@ def test_port_auto_increment(shutdown_only):
 
     def dashboard_available():
         try:
-            requests.get("http://" + url).status_code == 200
+            requests.get("http://" + url).raise_for_status()
             return True
         except Exception:
             return False
@@ -85,9 +85,9 @@ url = ray._private.worker.get_dashboard_url()
 assert url != "{url}"
 def dashboard_available():
     try:
-        requests.get("http://"+url).status_code == 200
+        requests.get("http://"+url).raise_for_status()
         return True
-    except:
+    except Exception:
         return False
 wait_for_condition(dashboard_available)
 ray.shutdown()
