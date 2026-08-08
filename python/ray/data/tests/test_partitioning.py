@@ -909,6 +909,61 @@ def test_field_types(partition_value, expected_type):
 
 
 @pytest.mark.parametrize(
+    "path,expected,description",
+    [
+        (
+            "loose.csv",
+            {},
+            "unpartitioned file carries none of the typed keys",
+        ),
+        (
+            "year=2024/f.csv",
+            {"year": 2024},
+            "fully partitioned file, typed key cast as usual",
+        ),
+        (
+            "year=2024/month=07/f.csv",
+            {"year": 2024, "month": "07"},
+            "untyped key alongside a typed one is left a string",
+        ),
+    ],
+)
+def test_field_types_tolerates_paths_missing_a_typed_key(path, expected, description):
+    """``field_types`` describes the scheme, not any individual path.
+
+    ``Partitioning.base_dir`` documents files outside -- or at the first level
+    of -- the base directory as unpartitioned, and ``PathPartitionFilter``
+    documents those as yielding an empty dictionary. Indexing ``field_types``
+    keys blindly raised ``KeyError`` on exactly those paths.
+    """
+    partitioning = Partitioning(style="hive", field_types={"year": int})
+    parse = PathPartitionParser(partitioning)
+
+    assert parse(path) == expected, description
+
+
+def test_path_partition_filter_mixed_partitioned_and_loose_files():
+    """The ``PathPartitionFilter`` docstring recipe must survive a typed key.
+
+    "Unpartitioned files are denoted with an empty input dictionary", so
+    ``lambda d: bool(d)`` is documented as the way to drop them. That recipe
+    raised ``KeyError`` instead whenever ``field_types`` was supplied.
+    """
+    partition_filter = PathPartitionFilter.of(
+        lambda d: bool(d),
+        style="hive",
+        base_dir="part_probe",
+        field_types={"year": int},
+    )
+    base_dir = partition_filter.parser.scheme.normalized_base_dir
+
+    partitioned = posixpath.join(base_dir, "year=2024/f.csv")
+    loose = posixpath.join(base_dir, "loose.csv")
+
+    assert partition_filter([partitioned, loose]) == [partitioned]
+
+
+@pytest.mark.parametrize(
     "path,predicate,expected_result,description",
     [
         # Simple equality matches

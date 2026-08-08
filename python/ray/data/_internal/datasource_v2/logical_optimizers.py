@@ -132,6 +132,20 @@ class SupportsPartitionPruning(ABC):
         """
         ...
 
+    @property
+    def enforces_partition_predicate(self) -> bool:
+        """Whether :meth:`prune_partitions` guarantees the predicate is applied.
+
+        Scanners that evaluate partition predicates by parsing file paths
+        return ``True``: every row they emit has already been checked.
+
+        A scanner returns ``False`` to accept the predicate as a *pruning
+        hint only* -- it may use it to skip work, but does not promise that
+        every surviving row satisfies it. The optimizer then keeps a
+        ``Filter`` above the read, so correctness never rests on the hint.
+        """
+        return True
+
     @abstractmethod
     def prune_partitions(self, predicate: "Expr") -> "Scanner":
         """Prune partitions based on a predicate.
@@ -148,19 +162,39 @@ class SupportsPartitionPruning(ABC):
         """
         ...
 
+    def pushed_partition_predicate(self) -> Optional["Expr"]:
+        """The partition predicate this scanner accepted, if any.
+
+        This is the accepted result of :meth:`prune_partitions`, and is
+        reported separately from :meth:`SupportsFilterPushdown.pushed_predicate`
+        because the two are disjoint: ``ReadFiles.apply_predicate`` splits a
+        query's predicate by column, routing partition columns here and data
+        columns there. An indexer whose catalog records partition values (e.g.
+        the Delta transaction log) can answer this one at listing time.
+
+        Concrete rather than abstract, for the same reason as
+        :meth:`SupportsFilterPushdown.pushed_predicate`.
+        """
+        return None
+
 
 def derive_list_files_pushdown(
     scanner: Optional["Scanner"],
-) -> Tuple[Optional["Expr"], Optional[List[str]], Optional[int]]:
+) -> Tuple[Optional["Expr"], Optional[List[str]], Optional[int], Optional["Expr"]]:
     """Read the pushed-down state a scanner accepted, for upstream listing.
 
-    Returns ``(predicate, projected_columns, limit)`` -- the constraints a
-    ``ListFiles`` feeding this scanner's ``ReadFiles`` may safely apply while
-    listing (see :class:`~ray.data._internal.logical.rules.
+    Returns ``(predicate, projected_columns, limit, partition_predicate)`` --
+    the constraints a ``ListFiles`` feeding this scanner's ``ReadFiles`` may
+    safely apply while listing (see :class:`~ray.data._internal.logical.rules.
     derive_list_files_pushdown.DeriveListFilesPushdown`). Each element is
     ``None`` unless the scanner both implements the corresponding ``Supports*``
     mixin and reports state it actually accepted, so a datasource that ignores
     a pushdown can never cause listing-time pruning.
+
+    ``predicate`` and ``partition_predicate`` are disjoint and reported
+    separately because ``ReadFiles.apply_predicate`` splits by column: data
+    columns go to ``push_filters``, partition columns to ``prune_partitions``.
+    An indexer that can only answer one of them consumes just that one.
 
     ``scanner`` may be ``None`` (no downstream reader), which yields all-``None``:
     nothing downstream applies these constraints, so listing must not either.
@@ -178,4 +212,9 @@ def derive_list_files_pushdown(
     limit = (
         scanner.pushed_limit() if isinstance(scanner, SupportsLimitPushdown) else None
     )
-    return predicate, projected_columns, limit
+    partition_predicate = (
+        scanner.pushed_partition_predicate()
+        if isinstance(scanner, SupportsPartitionPruning)
+        else None
+    )
+    return predicate, projected_columns, limit, partition_predicate

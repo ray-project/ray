@@ -21,6 +21,7 @@ from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
+from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 from ray.data.datasource.path_util import _filesystem_root_from_uri
 from ray.util.annotations import DeveloperAPI
 
@@ -896,8 +897,6 @@ def _parse_partition_values(
             unquoted_key = urllib.parse.unquote(key)
             unquoted_value = urllib.parse.unquote(value)
             values[unquoted_key] = (
-                None
-                if unquoted_value == "__HIVE_DEFAULT_PARTITION__"
-                else unquoted_value
+                None if unquoted_value == HIVE_DEFAULT_PARTITION else unquoted_value
             )
     return {col: values.get(col) for col in partition_by}
