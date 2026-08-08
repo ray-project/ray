@@ -1,8 +1,8 @@
-"""This module contains wrapper classes for OpenAI-compatible protocol models.
+"""Wrapper classes for OpenAI-compatible protocol models.
 
-Supports both vLLM and SGLang as the underlying engine. vLLM is tried first;
-on ImportError, SGLang models are imported as a fallback. If neither is
-installed, an ImportError is raised at import time.
+vLLM is tried first and SGLang second. If neither optional engine is installed,
+dependency-free models preserve the request payload for validation on the
+engine node.
 """
 
 import uuid
@@ -10,7 +10,10 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Uni
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ray.llm._internal.common.utils.import_utils import raise_llm_engine_import_error
+from ray.llm._internal.common.utils.import_utils import (
+    is_missing_module,
+    raise_llm_engine_import_error,
+)
 
 try:
     from vllm.entrypoints.openai.chat_completion.protocol import (
@@ -68,47 +71,86 @@ except ImportError as _vllm_import_error:
             TokenizeResponse as _TokenizeResponse,
         )
     except ImportError as _sglang_import_error:
-        raise_llm_engine_import_error(_vllm_import_error, _sglang_import_error)
+        if not (
+            is_missing_module(_vllm_import_error, "vllm")
+            and is_missing_module(_sglang_import_error, "sglang")
+        ):
+            raise_llm_engine_import_error(_vllm_import_error, _sglang_import_error)
 
-    def _unsupported_model(name: str, feature: str = ""):
-        """Create a BaseModel stub that raises NotImplementedError on instantiation."""
-        msg = f"{name} is not supported with the current backend." + (
-            f" {feature}" if feature else ""
+        class _FallbackRequest(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
+            model: Optional[str] = None
+
+        class _FallbackChatRequest(_FallbackRequest):
+            messages: List[Any]
+
+        class _FallbackResponse(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
+
+        _ChatCompletionRequest = _FallbackChatRequest
+        _CompletionRequest = _FallbackRequest
+        _EmbeddingChatRequest = _EmbeddingCompletionRequest = _FallbackRequest
+        _ScoreTextRequest = _DetokenizeRequest = _FallbackRequest
+        _TokenizeChatRequest = _TokenizeCompletionRequest = _FallbackRequest
+        _TranscriptionRequest = _FallbackRequest
+
+        _ChatCompletionResponse = _ChatCompletionStreamResponse = _FallbackResponse
+        _CompletionResponse = _CompletionStreamResponse = _FallbackResponse
+        _EmbeddingResponse = _ScoreResponse = _FallbackResponse
+        _DetokenizeResponse = _TokenizeResponse = _FallbackResponse
+        _TranscriptionResponse = _TranscriptionStreamResponse = _FallbackResponse
+
+        class _ErrorInfo(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+            message: str
+            type: str
+            param: Optional[str] = None
+            code: int
+
+        class _ErrorResponse(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+            error: _ErrorInfo
+
+    else:
+
+        def _unsupported_model(name: str, feature: str = ""):
+            """Create a model that raises when an unsupported feature is used."""
+            msg = f"{name} is not supported with the current backend." + (
+                f" {feature}" if feature else ""
+            )
+
+            class _Stub(BaseModel):
+                model_config = ConfigDict(arbitrary_types_allowed=True)
+
+                def __init__(self, **kwargs):
+                    raise NotImplementedError(msg)
+
+            _Stub.__name__ = _Stub.__qualname__ = name
+            return _Stub
+
+        # SGLang does not provide transcription protocol models.
+        _vllm_hint = "Install vLLM to use transcription endpoints."
+        _TranscriptionRequest = _unsupported_model("TranscriptionRequest", _vllm_hint)
+        _TranscriptionResponse = _unsupported_model("TranscriptionResponse", _vllm_hint)
+        _TranscriptionStreamResponse = _unsupported_model(
+            "TranscriptionStreamResponse", _vllm_hint
         )
 
-        class _Stub(BaseModel):
+        # SGLang has no equivalent to vLLM's nested
+        # ErrorResponse.error -> ErrorInfo pattern, so we define our own.
+        class _ErrorInfo(BaseModel):
             model_config = ConfigDict(arbitrary_types_allowed=True)
+            message: str
+            type: str
+            param: Optional[str] = None
+            code: int
 
-            def __init__(self, **kwargs):
-                raise NotImplementedError(msg)
+        class _ErrorResponse(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+            error: _ErrorInfo
 
-        _Stub.__name__ = _Stub.__qualname__ = name
-        return _Stub
-
-    # SGLang does not provide transcription protocol models.
-    _vllm_hint = "Install vLLM to use transcription endpoints."
-    _TranscriptionRequest = _unsupported_model("TranscriptionRequest", _vllm_hint)
-    _TranscriptionResponse = _unsupported_model("TranscriptionResponse", _vllm_hint)
-    _TranscriptionStreamResponse = _unsupported_model(
-        "TranscriptionStreamResponse", _vllm_hint
-    )
-
-    # SGLang has no equivalent to vLLM's nested ErrorResponse.error -> ErrorInfo
-    # pattern, so we define our own.
-
-    class _ErrorInfo(BaseModel):
-        model_config = ConfigDict(arbitrary_types_allowed=True)
-        message: str
-        type: str
-        param: Optional[str] = None
-        code: int
-
-    class _ErrorResponse(BaseModel):
-        model_config = ConfigDict(arbitrary_types_allowed=True)
-        error: _ErrorInfo
-
-    _EmbeddingChatRequest = _EmbeddingCompletionRequest
-    _TokenizeChatRequest = _TokenizeCompletionRequest
+        _EmbeddingChatRequest = _EmbeddingCompletionRequest
+        _TokenizeChatRequest = _TokenizeCompletionRequest
 
 
 if TYPE_CHECKING:

@@ -35,7 +35,13 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     to_model_metadata,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
-from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
+from ray.llm._internal.serve.core.protocol import (
+    LLMServerProtocol,
+    OpenAIModelPayload,
+    RawRequestInfo,
+    deserialize_openai_model,
+    serialize_openai_model,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
@@ -69,6 +75,43 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 T = TypeVar("T")
+
+
+def _deserialize_openai_request(request: Any) -> Any:
+    from ray.llm._internal.serve.core.configs.openai_api_models import (
+        ChatCompletionRequest,
+        CompletionRequest,
+        DetokenizeRequest,
+        EmbeddingChatRequest,
+        EmbeddingCompletionRequest,
+        ScoreRequest,
+        TokenizeChatRequest,
+        TokenizeCompletionRequest,
+        TranscriptionRequest,
+    )
+
+    request_models = {
+        model.__name__: model
+        for model in (
+            ChatCompletionRequest,
+            CompletionRequest,
+            DetokenizeRequest,
+            EmbeddingChatRequest,
+            EmbeddingCompletionRequest,
+            ScoreRequest,
+            TokenizeChatRequest,
+            TokenizeCompletionRequest,
+            TranscriptionRequest,
+        )
+    }
+    return deserialize_openai_model(request, request_models)
+
+
+async def _serialize_openai_responses(
+    generator: AsyncGenerator[Any, None],
+) -> AsyncGenerator[Any, None]:
+    async for response in generator:
+        yield serialize_openai_model(response)
 
 
 def _merge_replica_actor_and_child_actor_bundles(
@@ -360,6 +403,8 @@ class LLMServer(LLMServerProtocol):
             An AsyncGenerator of the response. If stream is True and batching is enabled, then the generator will yield a list of streaming responses (strings of the format data: {response_json}\n\n). Otherwise, it will yield the non-streaming response from engine directly.
         """
 
+        use_transport = isinstance(request, OpenAIModelPayload)
+        request = _deserialize_openai_request(request)
         await self._maybe_add_request_id_to_request(request)
         await self._maybe_resolve_lora_from_multiplex()
 
@@ -371,6 +416,8 @@ class LLMServer(LLMServerProtocol):
         else:
             stream = engine_stream
 
+        if use_transport:
+            return _serialize_openai_responses(stream)
         return stream
 
     async def chat(

@@ -5,8 +5,10 @@ from typing import (
     AsyncGenerator,
     Dict,
     List,
+    Mapping,
     Optional,
     Protocol,
+    Type,
     Union,
 )
 
@@ -70,6 +72,40 @@ class RawRequestInfo:
         if raw_request_info is not None:
             return raw_request_info.to_starlette_request()
         return None
+
+
+@dataclass
+class OpenAIModelPayload:
+    """Dependency-free transport for an OpenAI-compatible Pydantic model."""
+
+    model_type: str
+    data: Dict[str, Any]
+
+
+def serialize_openai_model(value: Any) -> Any:
+    """Convert Pydantic models in a response or request to transport payloads."""
+    if isinstance(value, (list, tuple)):
+        return type(value)(serialize_openai_model(item) for item in value)
+    if hasattr(value, "model_dump"):
+        return OpenAIModelPayload(
+            model_type=type(value).__name__, data=value.model_dump()
+        )
+    return value
+
+
+def deserialize_openai_model(value: Any, model_types: Mapping[str, Type[Any]]) -> Any:
+    """Rebuild transported models using the models available on this node."""
+    if isinstance(value, (list, tuple)):
+        return type(value)(
+            deserialize_openai_model(item, model_types) for item in value
+        )
+    if not isinstance(value, OpenAIModelPayload):
+        return value
+
+    model_type = model_types.get(value.model_type)
+    if model_type is None:
+        raise ValueError(f"Unknown OpenAI model payload type: {value.model_type}")
+    return model_type.model_validate(value.data)
 
 
 class DeploymentProtocol(Protocol):

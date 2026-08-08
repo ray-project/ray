@@ -5,6 +5,7 @@ SGLang fallback tests live in the llm_serve_sglang_e2e release test.
 
 import importlib
 import sys
+from contextlib import contextmanager
 
 import pytest
 
@@ -27,6 +28,18 @@ class _VLLMImportBlocker:
         return None
 
 
+class _LLMEngineImportBlocker:
+    """Meta-path finder that simulates both LLM engines being absent."""
+
+    def find_spec(self, fullname, path=None, target=None):
+        for package in ("vllm", "sglang"):
+            if fullname == package or fullname.startswith(f"{package}."):
+                err = ModuleNotFoundError(f"Mocked: {fullname} is not installed")
+                err.name = package
+                raise err
+        return None
+
+
 class _VLLMBrokenInstallBlocker:
     """Meta-path finder that simulates vLLM installed but broken at runtime
     (e.g. missing libcudart.so or a missing transitive dependency).
@@ -43,6 +56,8 @@ class _VLLMBrokenInstallBlocker:
 
 class TestVLLMBackend:
     def test_wrapper_classes_inherit_from_vllm(self):
+        pytest.importorskip("vllm")
+
         from ray.llm._internal.serve.core.configs.openai_api_models import (
             ChatCompletionRequest,
             CompletionRequest,
@@ -93,11 +108,9 @@ class TestVLLMBackend:
             sys.modules.pop(_OAI_MODELS_MOD, None)
             sys.modules.update(saved)
 
-    def test_import_error_when_vllm_blocked(self):
-        """SGLang is not installed here either, so blocking vLLM means neither
-        backend is available."""
-        with pytest.raises(ImportError, match="Neither vLLM nor SGLang"):
-            self._reload_oai_models_with_blocker(_VLLMImportBlocker())
+    def test_fallback_when_vllm_blocked(self):
+        """The dependency-free fallback is used when neither engine exists."""
+        self._reload_oai_models_with_blocker(_VLLMImportBlocker())
 
     def test_vllm_installed_but_broken_cuda(self):
         """Plain ImportError (e.g. missing libcudart.so) → clear message that
@@ -117,6 +130,165 @@ class TestVLLMBackend:
         blocker = _VLLMBrokenInstallBlocker(dep_err)
         with pytest.raises(ImportError, match="vLLM is installed but failed to import"):
             self._reload_oai_models_with_blocker(blocker)
+
+
+class TestNoEngineBackend:
+    @contextmanager
+    def _load_without_engines(self):
+        saved = {
+            key: sys.modules.pop(key)
+            for key in list(sys.modules)
+            if key in {"vllm", "sglang"}
+            or key.startswith("vllm.")
+            or key.startswith("sglang.")
+        }
+        old_module = sys.modules.pop(_OAI_MODELS_MOD, None)
+        blocker = _LLMEngineImportBlocker()
+        sys.meta_path.insert(0, blocker)
+        try:
+            yield importlib.import_module(_OAI_MODELS_MOD)
+        finally:
+            sys.meta_path.remove(blocker)
+            sys.modules.pop(_OAI_MODELS_MOD, None)
+            if old_module is not None:
+                sys.modules[_OAI_MODELS_MOD] = old_module
+            sys.modules.update(saved)
+
+    def test_import_and_engine_independent_models(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        with self._load_without_engines() as models:
+            request = models.ChatCompletionRequest(
+                model="test-model",
+                messages=[{"role": "user", "content": "hello"}],
+                stream=False,
+            )
+            assert request.model == "test-model"
+            assert request.model_dump()["messages"][0]["content"] == "hello"
+
+            error = models.ErrorResponse(
+                error=models.ErrorInfo(
+                    message="something broke", code=500, type="InternalError"
+                )
+            )
+            assert error.model_dump()["error"]["message"] == "something broke"
+
+            app = FastAPI()
+
+            @app.post("/v1/chat/completions")
+            async def chat(body: models.ChatCompletionRequest):
+                return body.model_dump()
+
+            response = TestClient(app).post(
+                "/v1/chat/completions",
+                json={
+                    "model": "test-model",
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "temperature": 0.5,
+                },
+            )
+            assert response.status_code == 200
+            assert response.json()["temperature"] == 0.5
+
+            response = TestClient(app).post(
+                "/v1/chat/completions", json={"model": "test-model"}
+            )
+            assert response.status_code == 422
+
+    def test_transport_round_trip(self):
+        import pickle
+
+        from ray.llm._internal.serve.core.protocol import (
+            deserialize_openai_model,
+            serialize_openai_model,
+        )
+        from ray.llm._internal.serve.core.server.llm_server import (
+            _deserialize_openai_request,
+        )
+
+        with self._load_without_engines() as models:
+            request = models.CompletionRequest(
+                model="test-model", prompt="hello", stream=False
+            )
+            payload = pickle.loads(pickle.dumps(serialize_openai_model(request)))
+
+        restored = _deserialize_openai_request(payload)
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            CompletionRequest,
+        )
+
+        assert isinstance(restored, CompletionRequest)
+        assert restored.model_dump() == request.model_dump()
+
+        transported = serialize_openai_model((request, "stream chunk"))
+        restored = deserialize_openai_model(
+            transported, {"CompletionRequest": CompletionRequest}
+        )
+        assert isinstance(restored, tuple)
+        assert isinstance(restored[0], CompletionRequest)
+        assert restored[1] == "stream chunk"
+
+
+class TestIngressTransport:
+    def test_request_and_response_cross_dependency_boundary(self):
+        import asyncio
+
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            CompletionRequest,
+            ErrorInfo,
+            ErrorResponse,
+        )
+        from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+        from ray.llm._internal.serve.core.protocol import (
+            OpenAIModelPayload,
+            serialize_openai_model,
+        )
+
+        class _RemoteMethod:
+            request = None
+
+            def remote(self, request, raw_request_info):
+                self.request = request
+
+                async def generate():
+                    yield serialize_openai_model(
+                        ErrorResponse(
+                            error=ErrorInfo(
+                                message="something broke",
+                                code=500,
+                                type="InternalError",
+                            )
+                        )
+                    )
+
+                return generate()
+
+        class _Handle:
+            completions = _RemoteMethod()
+
+            def options(self, **kwargs):
+                return self
+
+        handle = _Handle()
+        ingress = OpenAiIngress({"test-model": handle}, {"test-model": object()})
+        request = CompletionRequest(model="test-model", prompt="hello")
+
+        async def collect():
+            return [
+                item
+                async for item in ingress._get_response(
+                    body=request, call_method="completions"
+                )
+            ]
+
+        responses = asyncio.run(collect())
+
+        assert isinstance(handle.completions.request, OpenAIModelPayload)
+        assert handle.completions.request.model_type == "CompletionRequest"
+        assert handle.completions.request.data["prompt"] == "hello"
+        assert isinstance(responses[0], ErrorResponse)
+        assert responses[0].error.message == "something broke"
 
 
 class TestSanitizeChatCompletionRequest:
