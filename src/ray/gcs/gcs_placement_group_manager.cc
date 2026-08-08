@@ -230,11 +230,16 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
         << "State: " << state;
 
     if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
-      // NOTE: If a node is dead, the placement group scheduler should try to recover the
-      // group by rescheduling the bundles of the dead node. This should have higher
-      // priority than trying to place other placement groups.
+      // A rescheduling group (one whose node died) already gets an immediate,
+      // high-priority first attempt from the rank-0 enqueue in OnNodeDead. On
+      // *failure* we must apply the same exponential backoff as the PENDING path
+      // below rather than re-enqueue at rank 0: a feasible-but-currently-unplaceable
+      // group (e.g. a packed cluster that lost a node with no spare capacity) would
+      // otherwise be re-eligible on every scheduler pass, busy-spinning the
+      // single-threaded GCS io_context until capacity appears and starving all other
+      // GCS work (health checks, RPCs).
       stats->set_scheduling_state(rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
-      AddToPendingQueue(std::move(placement_group), /*rank=*/0);
+      AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     } else if (state == rpc::PlacementGroupTableData::PENDING) {
       stats->set_scheduling_state(rpc::PlacementGroupStats::NO_RESOURCES);
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
