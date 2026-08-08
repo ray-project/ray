@@ -19,6 +19,7 @@ from ray.data.dataset import (
     Schema,
     SinkMode,
     ClickHouseTableSettings,
+    KineticaTableSettings,
     SaveMode,
 )
 from ray.data._internal.logical.operators.n_ary_operator import (
@@ -70,6 +71,8 @@ from ray.data.read_api import (  # noqa: F401
     read_iceberg,
     read_images,
     read_json,
+    read_kinetica,
+    read_kinetica_sql,
     read_lance,
     read_lerobot,
     read_mcap,
@@ -138,6 +141,7 @@ __all__ = [
     "ActorPoolStrategy",
     "BlockBasedFileDatasink",
     "ClickHouseTableSettings",
+    "KineticaTableSettings",
     "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
@@ -190,6 +194,8 @@ __all__ = [
     "read_iceberg",
     "read_images",
     "read_json",
+    "read_kinetica",
+    "read_kinetica_sql",
     "read_lance",
     "read_lerobot",
     "read_mcap",
