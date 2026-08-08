@@ -1835,7 +1835,7 @@ Status CoreWorker::GetLocationFromOwner(
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
   } else if (ready_promise->get_future().wait_for(
-                 std::chrono::microseconds(timeout_ms)) != std::future_status::ready) {
+                 std::chrono::milliseconds(timeout_ms)) != std::future_status::ready) {
     std::ostringstream stream;
     stream << "Failed querying object locations within " << timeout_ms
            << " milliseconds.";
