@@ -49,7 +49,31 @@ def _sglang_config(
             "autoscaling_config": {
                 "min_replicas": num_replicas,
                 "max_replicas": num_replicas,
-            }
+            },
+            # Replicas are actors in their own processes, so they don't inherit
+            # this shell's environment. Forward the trace switch explicitly, or
+            # bench/pd_trace.py reads it as unset and every replica silently
+            # traces nothing. Only forwarded when set, so untraced runs carry
+            # no runtime_env at all.
+            **(
+                {
+                    "ray_actor_options": {
+                        "runtime_env": {
+                            "env_vars": {
+                                "RAY_PD_TRACE": os.environ["RAY_PD_TRACE"],
+                                # Replicas cwd elsewhere; pd_server.py imports
+                                # bench.pd_trace by name, so the repo root has
+                                # to be importable inside the actor.
+                                "PYTHONPATH": os.path.dirname(
+                                    os.path.dirname(os.path.abspath(__file__))
+                                ),
+                            }
+                        }
+                    }
+                }
+                if os.environ.get("RAY_PD_TRACE")
+                else {}
+            ),
         },
         engine_kwargs={
             # disaggregation_mode is set automatically by the builder.

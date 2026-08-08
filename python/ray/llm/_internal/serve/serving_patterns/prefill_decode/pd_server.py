@@ -51,6 +51,34 @@ from ray.serve.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 
+
+class _NullTrace:
+    """No-op used when the bench tracer isn't importable or is disabled."""
+
+    __slots__ = ()
+
+    def mark(self, stage: str) -> None:
+        pass
+
+    def emit(self) -> None:
+        pass
+
+
+_NULL_TRACE = _NullTrace()
+
+# Per-request stage timing, enabled by ``RAY_PD_TRACE``. Benchmark-only
+# instrumentation (``bench/pd_trace.py``) used to attribute the P/D TTFT gap to
+# specific stages. Resolved once at import: the hot path must not pay for an
+# import lookup per request, and this is a no-op in any normal deploy where the
+# bench directory isn't on the path.
+try:
+    from bench.pd_trace import new_trace as _new_trace
+except ImportError:
+
+    def _new_trace(**meta):
+        return _NULL_TRACE
+
+
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
 # TODO(Kourosh): Deprecate in Ray 2.56, remove in Ray 2.58.
@@ -226,6 +254,9 @@ class PDOrchestratorMixin:
 
         backend = self._get_connector_backend()
 
+        trace = _new_trace()
+        trace.mark("t0")
+
         prefill_handle = self._prefill_handle
         if raw_request_info is not None:
             session_id = session_id_from_headers(raw_request_info.headers)
@@ -239,7 +270,9 @@ class PDOrchestratorMixin:
             # dispatch (e.g. request-id-addressed transfers). Reserve a replica
             # via choose_replica, expose its metadata to the backend, then
             # dispatch onto that exact selection.
+            trace.mark("choose_start")
             async with prefill_handle_method.choose_replica(request) as selection:
+                trace.mark("chosen")
                 # The selected replica's published metadata (empty dict if none).
                 peer = getattr(selection, "replica_metadata", {})
                 prefill_request = backend.prepare_prefill_request(
@@ -256,6 +289,7 @@ class PDOrchestratorMixin:
                     prefill_resp = prefill_handle_method.dispatch(
                         selection, prefill_request, raw_request_info
                     )
+                    trace.mark("prefill_sent")
                     # dispatch()'s completion accounting fires when its result
                     # completes, so the response must be drained to exhaustion
                     # inside the choose_replica context — never cancelled
@@ -267,8 +301,11 @@ class PDOrchestratorMixin:
                         prefill_resp,
                         raw_request_info,
                         cancel_on_failure=False,
+                        trace=trace,
                     ):
                         yield chunk
+                    trace.mark("end")
+                    trace.emit()
                     return
 
                 # Sequential handoff with peer binding: run prefill to its first
@@ -349,6 +386,7 @@ class PDOrchestratorMixin:
         raw_request_info: Optional[RawRequestInfo],
         *,
         cancel_on_failure: bool = True,
+        trace=None,
     ):
         """Run local decode while a remote prefill drains concurrently.
 
@@ -366,10 +404,16 @@ class PDOrchestratorMixin:
         token, so this is early) and drains decode directly: no per-token
         Future bookkeeping for the ~127 remaining tokens.
         """
+        if trace is None:
+            trace = _new_trace()
         prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
+        # Stamped when the prefill drain actually finishes, rather than when
+        # the racing loop next notices, so the two are not conflated.
+        prefill_task.add_done_callback(lambda _f: trace.mark("prefill_done"))
         completed = False
         local_gen = None
         next_fut = None
+        first_token_seen = False
 
         def _prefill_error() -> Optional[ErrorResponse]:
             """An error to surface to the client, if prefill finished badly.
@@ -406,6 +450,7 @@ class PDOrchestratorMixin:
         try:
             local_gen = await getattr(super(), method)(decode_request, raw_request_info)
             gen = local_gen.__aiter__()
+            trace.mark("decode_started")
 
             # Phase 1: race against prefill while it's still in flight.
             while not prefill_task.done():
@@ -425,6 +470,9 @@ class PDOrchestratorMixin:
                     finally:
                         if next_fut.done():
                             next_fut = None
+                    if not first_token_seen:
+                        first_token_seen = True
+                        trace.mark("first_token")
                     yield chunk
 
             err = _prefill_error()
@@ -442,11 +490,17 @@ class PDOrchestratorMixin:
                     except StopAsyncIteration:
                         completed = True
                     else:
+                        if not first_token_seen:
+                            first_token_seen = True
+                            trace.mark("first_token")
                         yield chunk
                     finally:
                         next_fut = None
                 if not completed:
                     async for chunk in gen:
+                        if not first_token_seen:
+                            first_token_seen = True
+                            trace.mark("first_token")
                         yield chunk
                     completed = True
 
