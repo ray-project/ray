@@ -14,18 +14,22 @@
 
 #include "ray/observability/ray_actor_task_definition_event.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/strings/escaping.h"
 #include "absl/strings/str_format.h"
+#include "ray/observability/task_event_populators.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace observability {
 
 RayActorTaskDefinitionEvent::RayActorTaskDefinitionEvent(
-    rpc::events::ActorTaskDefinitionEvent data,
+    std::shared_ptr<const TaskSpecification> task_spec,
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t task_attempt,
     const std::string &session_name,
     int64_t timestamp)
     : RayEvent<rpc::events::ActorTaskDefinitionEvent>(
@@ -34,16 +38,20 @@ RayActorTaskDefinitionEvent::RayActorTaskDefinitionEvent(
           rpc::events::RayEvent::INFO,
           "",
           session_name,
-          timestamp) {
-  data_ = std::move(data);
+          timestamp),
+      task_spec_(std::move(task_spec)),
+      task_id_(task_id),
+      job_id_(job_id),
+      task_attempt_(task_attempt) {
+  RAY_CHECK(task_spec_ != nullptr);
 }
 
 std::string RayActorTaskDefinitionEvent::GetEntityId() const {
-  return data_.task_id() + std::to_string(data_.task_attempt());
+  return task_id_.Binary() + std::to_string(task_attempt_);
 }
 
 TaskAttemptId RayActorTaskDefinitionEvent::GetTaskAttempt() const {
-  return {data_.task_id(), data_.task_attempt()};
+  return {task_id_.Binary(), task_attempt_};
 }
 
 void RayActorTaskDefinitionEvent::MergeData(
@@ -51,13 +59,17 @@ void RayActorTaskDefinitionEvent::MergeData(
   RAY_CHECK(false) << absl::StrFormat(
       "MergeData called on actor task definition event for task %s attempt %d; only "
       "one definition event is expected per task attempt.",
-      absl::BytesToHexString(data_.task_id()),
-      data_.task_attempt());
+      task_id_.Hex(),
+      task_attempt_);
 }
 
 ray::rpc::events::RayEvent RayActorTaskDefinitionEvent::SerializeData() && {
   ray::rpc::events::RayEvent event;
-  event.mutable_actor_task_definition_event()->Swap(&data_);
+  PopulateTaskDefinitionEvent(*task_spec_,
+                              task_id_,
+                              job_id_,
+                              task_attempt_,
+                              *event.mutable_actor_task_definition_event());
   return event;
 }
 
