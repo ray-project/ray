@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import ray
@@ -128,3 +130,7 @@ def test_sandbox_runtime_create_variants():
     # Missing image should raise TypeError
     with pytest.raises(TypeError):
         rt.create(workdir="/workspace", cpu=1.0)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
