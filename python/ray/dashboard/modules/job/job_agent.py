@@ -1,14 +1,19 @@
+import asyncio
 import dataclasses
 import json
 import logging
+import os
 import traceback
 
 import aiohttp
 from aiohttp.web import Request, Response
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import run_background_task
+from ray._raylet import RAY_INTERNAL_DASHBOARD_NAMESPACE
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
     JobLogsResponse,
@@ -203,7 +208,66 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        pass
+        if not self._dashboard_agent.is_head:
+            return
+
+        run_background_task(self._initialize_job_manager())
+
+    async def _initialize_job_manager(self):
+        """Eagerly initialize JobManager on the head node.
+
+        This ensures that non-terminal submission jobs are recovered after
+        the head Dashboard Agent restarts, without requiring external Job
+        API traffic to lazily trigger JobManager creation.
+
+        Retries with exponential backoff because GCS may still be recovering
+        when the Dashboard Agent starts.
+        """
+        backoff_s = 1
+        max_backoff_s = 60
+        while True:
+            try:
+                # Verify GCS is responsive before initializing Ray / JobManager to ensure
+                # that background job recovery does not fail due to GCS recovery delays.
+                await dashboard_utils.get_head_node_id(
+                    self._dashboard_agent.gcs_client, timeout=5
+                )
+
+                initialized_here = False
+                if not ray.is_initialized():
+                    os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
+                        dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
+                    )
+                    try:
+                        ray.init(
+                            address=self.gcs_address,
+                            log_to_driver=False,
+                            configure_logging=False,
+                            namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
+                            _skip_env_hook=True,
+                        )
+                        initialized_here = True
+                    except Exception:
+                        if initialized_here:
+                            try:
+                                ray.shutdown()
+                            except Exception:
+                                pass
+                        raise
+
+                self.get_job_manager()
+                logger.info(
+                    "Head node JobAgent: JobManager initialized, "
+                    "job recovery scheduled."
+                )
+                return
+            except Exception:
+                logger.exception(
+                    "Head node JobAgent: Failed to initialize JobManager, "
+                    f"retrying in {backoff_s}s."
+                )
+                await asyncio.sleep(backoff_s)
+                backoff_s = min(backoff_s * 2, max_backoff_s)
 
     @staticmethod
     def is_minimal_module():
