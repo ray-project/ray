@@ -2751,9 +2751,13 @@ def connect(
         )
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
-        # If the job's logging config is set, don't add the prefix
+        # If the job's logging config is set, or the user has explicitly
+        # opted out via RAY_DISABLE_WORKER_LOG_PREFIX, don't add the prefix
         # (task/actor's name and its PID) to the logs.
-        ignore_prefix = global_worker.job_logging_config is not None
+        ignore_prefix = (
+            global_worker.job_logging_config is not None
+            or ray_constants.RAY_DISABLE_WORKER_LOG_PREFIX
+        )
 
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
@@ -2803,8 +2807,12 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
-        # Ignore the prefix if the logging config is set.
-        ignore_prefix = worker.job_logging_config is not None
+        # Ignore the prefix if the logging config is set, or the user has
+        # explicitly opted out via RAY_DISABLE_WORKER_LOG_PREFIX.
+        ignore_prefix = (
+            worker.job_logging_config is not None
+            or ray_constants.RAY_DISABLE_WORKER_LOG_PREFIX
+        )
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout, ignore_prefix)
         for leftover in stderr_deduplicator.flush():
