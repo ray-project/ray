@@ -296,6 +296,47 @@ def test_get_all_jobs_filters_out_none_job_info():
         asdict(job_info)  # This should not raise an exception
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "current_info",
+    [None, JobInfo(status=JobStatus.SUCCEEDED, entrypoint="echo done")],
+)
+async def test_guarded_put_status_skips_deleted_or_changed_job(current_info):
+    storage = JobInfoStorageClient(MagicMock())
+    storage.get_info = AsyncMock(return_value=current_info)
+    storage.put_info = AsyncMock()
+
+    updated = await storage.put_status(
+        "job-id",
+        JobStatus.FAILED,
+        jobinfo_must_exist=True,
+        expected_status=JobStatus.RUNNING,
+    )
+
+    assert not updated
+    storage.put_info.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_guarded_put_status_updates_matching_job():
+    storage = JobInfoStorageClient(MagicMock())
+    storage.get_info = AsyncMock(
+        return_value=JobInfo(status=JobStatus.RUNNING, entrypoint="echo running")
+    )
+    storage.put_info = AsyncMock()
+
+    updated = await storage.put_status(
+        "job-id",
+        JobStatus.FAILED,
+        jobinfo_must_exist=True,
+        expected_status=JobStatus.RUNNING,
+    )
+
+    assert updated
+    written_info = storage.put_info.await_args.args[1]
+    assert written_info.status == JobStatus.FAILED
+
+
 if __name__ == "__main__":
     import sys
 
