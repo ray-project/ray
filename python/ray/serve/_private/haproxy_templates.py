@@ -81,6 +81,11 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if config.hard_stop_after_s is not none %}
     hard-stop-after {{ config.hard_stop_after_s }}s
     {%- endif %}
+    {%- if config.close_spread_time_s is not none %}
+    # Spread soft-stop idle-connection closes over this window so a reloaded-out
+    # worker doesn't hold them until hard-stop-after.
+    close-spread-time {{ config.close_spread_time_s }}s
+    {%- endif %}
     {%- if config.grpc_enabled %}
     tune.h2.max-frame-size {{ config.h2_max_frame_size }}
     tune.h2.be.initial-window-size {{config.h2_be_initial_window_size}}
@@ -135,6 +140,13 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
+    {%- if has_ingress_request_router %}
+    # Direct-streaming requests first pass through the ingress request router,
+    # then are forwarded to a selected replica. Generate a request ID here when
+    # the client did not provide one so both hops use the same lifecycle ID.
+    unique-id-format %[uuid]
+    http-request set-header x-request-id %[unique-id] if !{ req.hdr(x-request-id) -m found }
+    {%- endif %}
     {%- if config.metrics_enabled %}
     log global
     # Per-request HTTP ingress metrics. One RFC 5424 line per request matched to
@@ -206,6 +218,9 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    # Remove client-supplied values from the router-owned header namespace.
+    # Lua then applies trusted metadata returned by /internal/route.
+    http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}

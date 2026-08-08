@@ -1,3 +1,5 @@
 datasets==4.4.1
-# Keep compatible with transformers in the llm-cu130 image.
-huggingface-hub==0.36.2; python_version == "3.12"
+# Keep in sync with huggingface-hub in the llm-cu130 image (transformers 5.x
+# requires huggingface-hub>=1.5.0); the byod layer installs this with --no-deps
+# on top of the image, so a mismatch would downgrade the image's copy.
+huggingface-hub==1.13.0; python_version == "3.12"

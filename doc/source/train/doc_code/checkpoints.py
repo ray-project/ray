@@ -402,7 +402,7 @@ from ray.train import Checkpoint
 
 # For demonstration, create a locally available directory with a `model.pt` file.
 example_checkpoint_dir = Path("/tmp/test-checkpoint")
-example_checkpoint_dir.mkdir()
+example_checkpoint_dir.mkdir(exist_ok=True)
 example_checkpoint_dir.joinpath("model.pt").touch()
 
 # Create the checkpoint, which is a reference to the directory.

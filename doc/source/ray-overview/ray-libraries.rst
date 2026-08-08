@@ -1,3 +1,6 @@
+.. meta::
+   :description: Third-party libraries and tools that integrate with Ray for distributed execution, plus an ecosystem map showing component maturity.
+
 .. _ray-oss-list:
 
 The Ray Ecosystem

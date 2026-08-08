@@ -315,10 +315,11 @@ def test_http_proxy_fail_loudly(ray_shutdown):
 
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
+    # All of these should disable the HTTP proxy.
     options = [
         {"http_options": {"host": None}},
-        {"http_options": {"location": None}},
-        {"http_options": {"location": "NoServer"}},
+        {"proxy_location": "Disabled"},
+        {"http_options": {"location": "NoServer"}},  # deprecated override
     ]
 
     address = ray.init(num_cpus=8)["address"]
@@ -354,7 +355,7 @@ def test_http_head_only(ray_cluster):
     ray.init(head_node.address)
     assert len(ray.nodes()) == 2
 
-    serve.start(http_options={"port": _get_random_port(), "location": "HeadOnly"})
+    serve.start(proxy_location="HeadOnly", http_options={"port": _get_random_port()})
 
     # Controller and proxy on the head node. Under HAProxy the proxy is the
     # HAProxyManager alongside the fallback ProxyActor, which registers asynchronously.
@@ -642,84 +643,64 @@ def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
 @pytest.mark.parametrize(
     "options",
     [
+        # No proxy_location and no location -> default EveryNode.
         {
             "proxy_location": None,
             "http_options": None,
-            "expected": HTTPOptions(location=ProxyLocation.EveryNode),
+            "expected": ProxyLocation.EveryNode,
         },
         {
             "proxy_location": None,
-            "http_options": {"test": "test"},  # location is not specified
-            "expected": HTTPOptions(
-                location=ProxyLocation.EveryNode
-            ),  # using default proxy_location (to align with the case when `http_options` are None)
+            "http_options": {"test": "test"},
+            "expected": ProxyLocation.EveryNode,
         },
-        {
-            "proxy_location": None,
-            "http_options": {
-                "location": "NoServer"
-            },  # `location` is specified, but `proxy_location` is not
-            "expected": HTTPOptions(
-                location=ProxyLocation.Disabled
-            ),  # using `location` value
-        },
-        {
-            "proxy_location": None,
-            "http_options": HTTPOptions(location=None),
-            "expected": HTTPOptions(location=ProxyLocation.Disabled),
-        },
-        {
-            "proxy_location": None,
-            "http_options": HTTPOptions(),
-            "expected": HTTPOptions(location=ProxyLocation.HeadOnly),
-        },  # using default location from HTTPOptions
-        {
-            "proxy_location": None,
-            "http_options": HTTPOptions(location="NoServer"),
-            "expected": HTTPOptions(location=ProxyLocation.Disabled),
-        },
+        # Explicit (deprecated) `location` is a back-compat override.
         {
             "proxy_location": None,
             "http_options": {"location": "NoServer"},
-            "expected": HTTPOptions(location=ProxyLocation.Disabled),
+            "expected": ProxyLocation.Disabled,
+        },
+        # location=None now means "unset" -> defers to proxy_location (EveryNode),
+        # NOT Disabled (the old None-means-Disabled overload is gone).
+        {
+            "proxy_location": None,
+            "http_options": {"location": None},
+            "expected": ProxyLocation.EveryNode,
+        },
+        # Bare HTTPOptions() defers to proxy_location -> EveryNode (was HeadOnly).
+        {
+            "proxy_location": None,
+            "http_options": HTTPOptions(),
+            "expected": ProxyLocation.EveryNode,
         },
         {
             "proxy_location": "Disabled",
             "http_options": None,
-            "expected": HTTPOptions(location=ProxyLocation.Disabled),
+            "expected": ProxyLocation.Disabled,
         },
         {
             "proxy_location": "Disabled",
             "http_options": {},
-            "expected": HTTPOptions(location=ProxyLocation.Disabled),
-        },
-        {
-            "proxy_location": "Disabled",
-            "http_options": HTTPOptions(host="foobar"),
-            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
+            "expected": ProxyLocation.Disabled,
         },
         {
             "proxy_location": "Disabled",
             "http_options": {"host": "foobar"},
-            "expected": HTTPOptions(location=ProxyLocation.Disabled, host="foobar"),
+            "expected": ProxyLocation.Disabled,
         },
+        # Explicit `location` overrides `proxy_location`.
         {
             "proxy_location": "Disabled",
             "http_options": {"location": "HeadOnly"},
-            "expected": HTTPOptions(location=ProxyLocation.Disabled),
-        },
-        {
-            "proxy_location": ProxyLocation.Disabled,
-            "http_options": HTTPOptions(location=ProxyLocation.HeadOnly),
-            "expected": HTTPOptions(location=ProxyLocation.Disabled),
+            "expected": ProxyLocation.HeadOnly,
         },
     ],
 )
 def test_serve_start_proxy_location(ray_shutdown, options):
-    expected_options = options.pop("expected")
+    expected = options.pop("expected")
     serve.start(**options)
     client = _get_global_client()
-    assert ray.get(client._controller.get_http_config.remote()) == expected_options
+    assert client.get_serve_details()["proxy_location"] == expected
 
 
 @pytest.mark.parametrize(

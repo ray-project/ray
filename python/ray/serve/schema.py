@@ -19,7 +19,7 @@ from pydantic import (
 )
 
 from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
-from ray._private.runtime_env.packaging import parse_uri
+from ray._common.runtime_env_uri import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -41,6 +41,7 @@ from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
+    BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
@@ -341,8 +342,18 @@ class DeploymentSchema(BaseModel):
             "Maximum number of requests to this deployment that will be queued at "
             "each caller (proxy or DeploymentHandle). Once this limit is reached, "
             "subsequent requests will raise a BackPressureError (for handles) or "
-            "return an HTTP 503 status code (for HTTP requests). Defaults to -1 "
+            "return an HTTP 503 status code by default (configurable via "
+            "`backpressure_config.status_code`) for HTTP requests. Defaults to -1 "
             "(no limit)."
+        ),
+    )
+    backpressure_config: BackpressureConfig = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Configuration of the HTTP response returned when a request to "
+            "this deployment is rejected due to backpressure "
+            "(`max_queued_requests` exceeded): the status code (503 by "
+            "default, or 429) and an optional `Retry-After` header."
         ),
     )
     user_config: Optional[Dict] = Field(
@@ -666,6 +677,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         name=name,
         max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
+        # Dump to a plain dict (like autoscaling_config below) so the details
+        # API always returns the full, stable shape regardless of which fields
+        # were explicitly set.
+        backpressure_config=info.deployment_config.backpressure_config.model_dump(),
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s

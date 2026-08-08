@@ -569,12 +569,17 @@ void NodeManager::HandleAccept(const boost::system::error_code &error) {
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
                                 const std::string &disconnect_detail,
-                                bool force) {
+                                bool force,
+                                std::optional<int64_t> memory_used_bytes_at_death) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(
-      worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
+  DisconnectClient(worker->Connection(),
+                   /*graceful=*/false,
+                   disconnect_type,
+                   disconnect_detail,
+                   /*creation_task_exception=*/nullptr,
+                   memory_used_bytes_at_death);
   worker->KillAsync(io_service_, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
     number_workers_killed_++;
@@ -1484,7 +1489,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    bool graceful,
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
-                                   const rpc::RayException *creation_task_exception) {
+                                   const rpc::RayException *creation_task_exception,
+                                   std::optional<int64_t> memory_used_bytes_at_death) {
   bool is_worker = false, is_driver = false;
   std::shared_ptr<WorkerInterface> worker;
   if ((worker = worker_pool_.GetRegisteredWorker(client))) {
@@ -1529,7 +1535,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    disconnect_type,
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
-                                   creation_task_exception);
+                                   creation_task_exception,
+                                   memory_used_bytes_at_death);
+  if (!worker->GetAssignedJobId().IsNil()) {
+    worker_failure_data_ptr->set_job_id(worker->GetAssignedJobId().Binary());
+  }
   gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr);
 
   if (is_worker) {
@@ -1802,7 +1812,8 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   auto message =
       flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
   auto object_ids = FlatbufferToObjectIds(*message->object_ids());
-  int64_t tag = message->tag();
+  const TaskID task_id = TaskID::FromBinary(message->task_id()->str());
+  const int32_t attempt_number = message->attempt_number();
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
@@ -1810,20 +1821,21 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
-  wait_manager_.Wait(object_ids,
-                     -1,
-                     object_ids.size(),
-                     [this, client, tag](const std::vector<ObjectID> &ready,
-                                         const std::vector<ObjectID> &remaining) {
-                       RAY_CHECK(remaining.empty());
-                       std::shared_ptr<WorkerInterface> worker =
-                           worker_pool_.GetRegisteredWorker(client);
-                       if (!worker) {
-                         RAY_LOG(ERROR) << "Lost worker for wait request " << client;
-                       } else {
-                         worker->ActorCallArgWaitComplete(tag);
-                       }
-                     });
+  wait_manager_.Wait(
+      object_ids,
+      -1,
+      object_ids.size(),
+      [this, client, task_id, attempt_number](const std::vector<ObjectID> &ready,
+                                              const std::vector<ObjectID> &remaining) {
+        RAY_CHECK(remaining.empty());
+        std::shared_ptr<WorkerInterface> worker =
+            worker_pool_.GetRegisteredWorker(client);
+        if (!worker) {
+          RAY_LOG(ERROR) << "Lost worker for wait request " << client;
+        } else {
+          worker->ActorCallArgWaitComplete(task_id, attempt_number);
+        }
+      });
 }
 
 void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
@@ -3224,10 +3236,18 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                                      should_retry);
             }
 
+            std::optional<int64_t> memory_used_bytes_at_death;
+            auto memory_used_or = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+                process_memory_snapshot, worker_to_kill->GetProcess().GetId());
+            if (memory_used_or.has_value()) {
+              memory_used_bytes_at_death = memory_used_or.value();
+            }
+
             DestroyWorker(worker_to_kill,
                           rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
                           worker_exit_message,
-                          true /* force */);
+                          true /* force */,
+                          memory_used_bytes_at_death);
 
             if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
               // TODO(sang): Add the job entrypoint to the name.

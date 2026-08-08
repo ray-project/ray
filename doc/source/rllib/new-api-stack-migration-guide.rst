@@ -1,3 +1,6 @@
+.. meta::
+   :description: Migrate from the old RLlib API stack to the new one: mapping ModelV2, RolloutWorker, and Policy to RLModule, Learner, and ConnectorV2.
+
 .. _rllib-new-api-stack-migration-guide:
 
 .. testcode::

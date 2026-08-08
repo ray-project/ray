@@ -706,7 +706,7 @@ def method(*args: Any, **kwargs: Any):
                 method
             ) or inspect.isasyncgenfunction(method)
             ray_option_utils.validate_num_returns(
-                is_generator_callable, kwargs["num_returns"]
+                is_generator_callable, kwargs["num_returns"], stacklevel=3
             )
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
@@ -969,6 +969,11 @@ class ActorMethod:
                 "call. Use @ray.method(_num_objects_per_yield=...) instead."
             )
 
+        if "num_returns" in options:
+            ray_option_utils.validate_num_returns(
+                self._is_generator, options["num_returns"], stacklevel=3
+            )
+
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
             from ray.experimental.rdt.util import (
@@ -999,6 +1004,9 @@ class ActorMethod:
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
         )
+
+        if num_returns is None:
+            num_returns = self._num_returns
 
         # TODO(sang): unify option passing
         options = {
@@ -2939,12 +2947,14 @@ def exit_actor():
     This API can be used only inside an actor. Use ray.kill
     API if you'd like to kill an actor using actor handle.
 
-    When this API is called, an exception is raised and the actor
-    will exit immediately. For asyncio actors, there may be a short
-    delay before the actor exits if the API is called from a background
-    task.
-    Any queued methods will fail. Any ``atexit``
-    handlers installed in the actor will be run.
+    When this API is called, an exception is raised in the calling task and the
+    actor is scheduled to exit. The caller of the task that calls this API
+    observes the actor's death rather than a return value, and methods that have
+    not started executing fail with ``RayActorError``.
+
+    Tasks queued for execution will fail with ``RayActorError``. For concurrent and async actors, tasks currently executing will run to completion before the actor exits.
+
+    Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:
         TypeError: An exception is raised if this is a driver or this

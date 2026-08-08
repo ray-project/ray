@@ -96,6 +96,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
+   serve.config.BackpressureConfig
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
    serve.config.DeploymentActorConfig
@@ -524,5 +525,7 @@ Content-Type: application/json
    :toctree: doc/
 
    serve.llm.LLMServer
-   serve.llm.LLMRouter
+   serve.llm.deployment.PDDecodeServer
+   serve.llm.deployment.PDPrefillServer
+   serve.llm.deployment.DPServer
 ```

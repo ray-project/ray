@@ -16,7 +16,6 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
-    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -42,6 +41,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
@@ -54,11 +54,11 @@ from ray.serve.context import (
     DeploymentActorContext,
     ReplicaContext,
     _check_cached_client_alive,
+    _disconnect,
     _get_deployment_actor,
     _get_global_client,
     _get_internal_deployment_actor_context,
     _get_internal_replica_context,
-    _set_global_client,
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -114,9 +114,9 @@ def start(
         **kwargs: Reserved for forward-compatibility; passed through to the
             internal Serve start helper.
     """
-    http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
+        proxy_location=proxy_location,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
         controller_options=controller_options,
@@ -153,7 +153,7 @@ def shutdown():
             return
 
     client.shutdown()
-    _set_global_client(None)
+    _disconnect()
 
 
 @PublicAPI(stability="alpha")
@@ -181,7 +181,7 @@ async def shutdown_async():
             return
 
     await client.shutdown_async()
-    _set_global_client(None)
+    _disconnect()
 
 
 @DeveloperAPI
@@ -524,6 +524,7 @@ def deployment(
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
@@ -591,8 +592,15 @@ def deployment(
         max_queued_requests: Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
-            BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
-            requests). Defaults to -1 (no limit).
+            BackPressureError (for handles) or return an HTTP 503 status code by
+            default (configurable via `backpressure_config.status_code`) for HTTP
+            requests. Defaults to -1 (no limit).
+        backpressure_config: Configuration of the HTTP response returned for
+            requests rejected due to backpressure (`max_queued_requests`
+            exceeded): the status code (503 by default, or 429) and an optional
+            `Retry-After` header. Requests rejected because the deployment is
+            unavailable (e.g., it failed to deploy) always return 503. See
+            `BackpressureConfig` for options.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` should be "auto" or not set.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
@@ -692,6 +700,7 @@ def deployment(
         user_config=user_config,
         max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
+        backpressure_config=backpressure_config,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
@@ -828,7 +837,7 @@ def _run_many(
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
     else:
         client = _private_api.serve_start(
-            http_options={"location": "EveryNode"},
+            proxy_location=ProxyLocation.EveryNode,
             global_logging_config=None,
             controller_options=controller_options,
         )

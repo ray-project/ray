@@ -17,13 +17,63 @@
 ! core_python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
-! linux_wheels macos_wheels docker doc python_dependencies min_build tools windows
-! release_tests spark_on_ray
+! linux_wheels macos_wheels docker doc doc_api python_dependencies min_build tools windows
+! release_tests spark_on_ray rocksdb_tests redis_tests
+! core_doc data_doc ml_doc rllib_doc serve_doc
 
-# NOTE: dstrodtman is leading effort to rework content in RST files, and wanted to shift
-# from blocking premerge for these changes. We can remove this pass block once effort concludes,
-# or earlier should regressions become an issue.
+# Per-team API reference pages. Editing these can change the documented public
+# API surface, so they must be able to trigger the API-consistency checks
+# ("doc: check API annotations" and "doc: check API doc consistency" in
+# doc.rayci.yml), which cross-check every @PublicAPI symbol against these
+# autosummary pages. Emit a dedicated "doc_api" tag, ahead of the narrative
+# prose skip rule below so these pages aren't swallowed as prose.
+#
+# This tag is the whole trigger mechanism for those two checks: they carry no
+# `if:` label guard, so what runs is decided here and nowhere else. Keep that
+# in mind when editing the rules below -- an API surface that stops emitting
+# doc_api stops being checked, silently.
+#
+# The six per-team dirs match the API-page set in doc/source/_ext/api_sidebar.py
+# (API_PATH_PREFIXES). ray-observability/reference/ is here too because the Ray
+# Core landing (ray-core/api/index.rst) toctrees into its api.rst, so those
+# pages are part of the Core API surface the check walks despite living outside
+# ray-core/api/. //ci/pipeline:test_doc_api_rules_sync enforces this alignment,
+# so adding a library's API dir to API_PATH_PREFIXES without adding it here (or
+# vice versa) fails CI.
+doc/source/data/api/
+doc/source/serve/api/
+doc/source/ray-core/api/
+doc/source/train/api/
+doc/source/tune/api/
+doc/source/rllib/package_ref/
+doc/source/ray-observability/reference/
+@ doc_api
+;
+
+# Documentation prose (.md and .rst) and static image assets do not block
+# premerge. A content-only change to narrative docs or a diagram swap triggers
+# no library test steps: neither can change tested code, and the post-merge
+# documentation build is the coverage for these changes. Executable doc assets
+# such as .py and .ipynb are matched by the rules below and still run tests.
+#
+# Images are listed here, ahead of the per-library rules, because those rules
+# match a whole directory and would otherwise route a .png or .svg edit to that
+# library's docs example step. Config assets that examples consume (.yaml, .sh)
+# are deliberately absent: they can change what a test does, so they keep
+# routing to the owning library below.
+# Claude Code skills and agent files under doc/.claude/ never participate in
+# the Sphinx build and define no test targets, so they trigger nothing. This
+# matches the RtD build guard, which excludes the same path for the same reason
+# (see the `:!doc/.claude/` exclude in .readthedocs.yaml).
+doc/.claude/
+doc/*.md
 doc/*.rst
+doc/*.png
+doc/*.svg
+doc/*.jpg
+doc/*.jpeg
+doc/*.gif
+doc/*.webp
 # pass
 ;
 
@@ -99,10 +149,14 @@ python/deplocks/ci/macos_depset_py*
 @ macos_wheels python_dependencies
 ;
 
-# Short-circuit deps handling for docs-specific.
+# Short-circuit deps handling for docs-specific. These pin the resolved Sphinx
+# and autodoc/autosummary versions the docbuild image installs, so a lock
+# change can alter stub generation and therefore what the API-consistency
+# checks see. Emit `doc_api` as well so those checks run on a docs dependency
+# bump.
 python/deplocks/docs/*.lock
 ci/raydepsets/configs/docs.depsets.yaml
-@ doc python_dependencies
+@ doc doc_api python_dependencies
 ;
 
 # Raydepsets-generated lock files and raydepsets configs that drive
@@ -186,16 +240,193 @@ docker/
 @ doc
 ;
 
-doc/*.py
-doc/*.ipynb
-doc/BUILD
-doc/*/BUILD
-doc/*.rst
+# api_sidebar.py is autodoc machinery like the rest of doc/source/_ext/ below,
+# but it needs `tools` on top. Its `API_PATH_PREFIXES` is one half of the pair
+# that //ci/pipeline:test_doc_api_rules_sync compares; the other half is the
+# doc_api rule block at the top of this file. That test is a ci_unit target, and
+# ci_unit is selected by `tools`, not by `doc` or `doc_api`. Without `tools`
+# here the guard would run on an edit to the rules side (this file emits
+# `tools`) but not on an edit to the prefixes side -- so growing
+# API_PATH_PREFIXES without adding the matching rule, which is exactly the drift
+# the guard exists to catch, would never execute it. First match wins, so this
+# rule has to precede the doc/source/_ext/ directory entry in part 1.
+doc/source/_ext/api_sidebar.py
+@ doc doc_api tools
+;
+
+# Documentation validation infra, part 1 of 2: the autodoc machinery. These
+# files determine what the API reference *contains*, so a change here can alter
+# the documented public API surface just as an API page edit can. They emit
+# `doc_api` alongside `doc` so both the documentation build and the two
+# API-consistency checks run.
+#
+# Why each one is autodoc machinery, not just build config:
+#   - conf.py             the autodoc, autosummary, and intersphinx
+#                         configuration, and the importer of the four modules
+#                         below
+#   - api_autogen.py      generates the autosummary stub .rst files that
+#                         `lint.sh api_policy_check` reads; `AUTOGEN_FILES` here
+#                         is what decides which stubs exist at all
+#   - api_mock_imports.py the mocked-module list; mocking a package changes
+#                         which symbols autodoc can resolve, and therefore what
+#                         the check sees as documented
+#   - custom_directives.py imported by conf.py and registers directives the API
+#                         templates render through
+#   - doc/source/_ext/    the in-repo Sphinx extensions, including
+#                         api_sidebar.py, whose `API_PATH_PREFIXES` is the
+#                         source of truth for "this page documents public API"
+#                         (//ci/pipeline:test_doc_api_rules_sync enforces that
+#                         alignment)
+#   - requirements-doc.txt pins Sphinx and the autodoc/autosummary extensions;
+#                         a version bump can change stub generation output
+#
+# The `doc/source/*.py` modules are enumerated one by one on purpose, here and
+# in part 2. A `doc/source/*.py` pattern would NOT work: `*` in these patterns
+# is fnmatch and crosses `/`, so it would also swallow every example script
+# under `doc/source/<lib>/doc_code/` and stop those from reaching the
+# per-library rules below. Add a module to one of these two blocks when
+# `conf.py` grows a new import -- part 1 if it can affect the API surface,
+# part 2 if it only affects rendering.
+doc/source/conf.py
+doc/source/api_autogen.py
+doc/source/api_mock_imports.py
+doc/source/custom_directives.py
+doc/source/_ext/
 doc/requirements-doc.txt
+# The doc pipeline definition declares the two API-consistency check steps. An
+# edit to those step definitions should exercise the steps it edits, so this
+# emits `doc_api` too. Without it, changing a check's command or image would
+# never run that check on the PR making the change.
+.buildkite/doc.rayci.yml
+@ doc doc_api
+;
+
+# Documentation validation infra, part 2 of 2: rendering and validation only.
+# These drive the documentation build but cannot change the documented API
+# surface, so they emit `doc` alone and deliberately do NOT pull in the two
+# API-consistency checks. They route here only, so they trigger the
+# documentation build and validation without running any library doctest or
+# example execution.
+#
+# The two `llms_txt` entries are routed ahead of the files existing: they land
+# with ray-project/ray#64458, which adds a hermetic Sphinx-extension test and
+# the summary text that test and the build both consume. A rule for an absent
+# path is inert, and pre-routing them means that PR merges correctly scoped
+# rather than leaving the test on the `doc/*.py` catch-all, which would run Ray
+# Core's doctests and examples for a test that imports no Ray code.
+doc/source/template_collections.py
+doc/source/preprocess_github_markdown.py
+doc/source/llms_txt_summary.txt
+doc/load_doc_cache.py
+doc/update_cache_env.py
+doc/rtd_doctor.py
+doc/test_no_new_rst.py
+doc/test_llms_txt.py
 .vale.ini
 .vale/
-.buildkite/doc.rayci.yml
+# The three gallery configs are build inputs, not example inputs. They are
+# parsed by `custom_directives.py` (its `EXAMPLE_GALLERY_CONFIGS` names these
+# three) to generate the gallery pages; they contain no executable code and
+# cannot change what any
+# example does. They live under the per-library doc directories, so they are
+# routed here, ahead of those rules, to keep a gallery edit on the build.
+doc/source/data/examples.yml
+doc/source/serve/examples.yml
+doc/source/train/examples.yml
+# highly_parallel.ipynb is executed by no premerge step. Its `py_test` in
+# doc/BUILD.bazel carries a `highly_parallel` tag that the ml docs example
+# step excludes (`--except-tags ...,highly_parallel` in ml.rayci.yml), and
+# the notebook glob in doc/source/ray-core/examples/BUILD.bazel excludes it
+# as well: it needs a live multi-node cluster and belongs in a release test.
+# Routing it to `ml_doc` alongside its four siblings would start the whole ml
+# example suite while skipping the one file that changed. The documentation
+# build renders it (`nb_execution_mode` is `off`, so render-and-lint only, no
+# execution), which is the only validation premerge actually offers here.
+doc/source/ray-core/examples/highly_parallel.ipynb
 @ doc
+;
+
+# The root doc/BUILD.bazel defines the example and doctest targets for every
+# library, so a change there exercises all of them. Route it to every
+# library's docs example step.
+doc/BUILD.bazel
+@ core_doc data_doc ml_doc rllib_doc serve_doc llm
+;
+
+# Executable doc assets route to the owning library's docs example test step
+# via a dedicated <lib>_doc tag, so a one-library doc change runs only that
+# library's example tests instead of fanning out to every team. Prose
+# (.md/.rst) is skipped by the leading rule; the llm doc assets are routed to
+# `llm` earlier. Each directory rule also covers that library's example
+# BUILD.bazel files.
+doc/source/data/
+doc/source/ray-more-libs/
+@ data_doc
+;
+
+doc/source/serve/
+@ serve_doc
+;
+
+doc/source/rllib/
+@ rllib_doc
+;
+
+doc/source/train/
+doc/source/tune/
+doc/source/ray-air/
+@ ml_doc
+;
+
+# These four notebooks live under ray-core/ but their targets in
+# doc/BUILD.bazel are tagged `team:ml`, and the team argument to
+# ci/ray_ci:test_in_docker filters targets by `team:<team>`
+# (ci/ray_ci/tester.py:372). So the core step would not execute them: routing
+# them to core_doc would run a step that tests everything under ray-core/
+# except the file that changed. They route to ml_doc, the step that actually
+# owns the targets, and carry no tag the step excludes. Re-tagging the targets
+# `team:core` in doc/BUILD.bazel would be the alternative fix and would let
+# these lines go away. Their fifth sibling, highly_parallel.ipynb, is routed to
+# `doc` above: no step executes it at all.
+doc/source/ray-core/examples/plot_hyperparameter.ipynb
+doc/source/ray-core/examples/batch_prediction.ipynb
+doc/source/ray-core/examples/plot_parameter_server.ipynb
+doc/source/ray-core/examples/plot_pong_example.ipynb
+@ ml_doc
+;
+
+doc/source/ray-core/
+doc/source/ray-observability/
+@ core_doc
+;
+
+# doc/external/ holds a vendored PyTorch tutorial and the test that guards it
+# against upstream drift. The same cross-team miss applies: `test_external_hashes`
+# in doc/BUILD.bazel is tagged `team:ml`, so the core step would filter it out.
+# Route the whole directory rather than the test file alone, because the tutorial
+# script is the test's `data` and editing it is what the hash check exists to
+# catch. Without this rule both files fall through to the `doc/*.py` catch-all
+# below, since `*` in these patterns crosses `/`.
+doc/external/
+@ ml_doc
+;
+
+# Any remaining executable doc asset (cluster/, ray-contribute/, other
+# unowned doc dirs, and any example BUILD.bazel outside the library dirs
+# above) falls to the core docs example step as the catch-all owner.
+#
+# `doc/test_myst_doc.py` lands here too. It is the shared notebook runner behind
+# every library's example targets, so a change to it could in principle break
+# any of them, and routing it to all five `<lib>_doc` tags the way
+# `doc/BUILD.bazel` does would be the maximal-coverage choice. One library's
+# worth of execution is deliberately treated as a sufficient smoke signal
+# instead: the runner is shared, so a break shows up in core as readily as
+# anywhere, and the post-merge documentation build covers the rest. Widen this
+# only if a harness regression actually escapes core.
+doc/*.py
+doc/*.ipynb
+doc/*/BUILD.bazel
+@ core_doc
 ;
 
 ci/docker/doctest.build.Dockerfile
@@ -254,6 +485,22 @@ ci/ray_ci/macos/macos_ci_build.sh
 # these into 'tools' only.
 ci/ray_ci/windows/
 @ windows tools
+;
+
+# The API-consistency checker's own source. Editing the checker (its walk, team
+# configs, or allowlists under ci/ray_ci/doc/) must re-run the two API checks it
+# implements, hence 'doc_api'. It keeps 'tools' as well: this directory declares
+# six ci_unit py_test targets of its own (test_api, test_autodoc, test_module,
+# test_build_cache, test_cmd_check_api_discrepancy, test_update_cache_env), and
+# the job that runs ci_unit is selected by 'tools'. Dropping 'tools' here would
+# mean editing the checker never runs the checker's own unit tests.
+#
+# This rule exists only to add 'doc_api' on top of what the general ci/ray_ci/
+# rule below already gives these files, so it must precede that rule (first
+# match wins). An API reference *page* change does not reach here: pages are
+# routed to 'doc_api' alone by the rule near the top of this file.
+ci/ray_ci/doc/
+@ doc_api tools
 ;
 
 ci/pipeline/
@@ -320,6 +567,17 @@ ci/ci.sh
 src/ray/core_worker/experimental*.h
 src/ray/core_worker/experimental*.cc
 @ cgraphs_direct_transport
+;
+
+# REP-64: changes to the GCS store_client API or backend implementations
+# (rocksdb, redis, in-memory) must re-run the GCS FT premerge suites for
+# both backends. Also covers rocksdb build-flag changes. The broader
+# `core_cpp ...` tags below mirror the catch-all `src/` rule so this
+# path keeps its normal build coverage on top of the FT suites.
+src/ray/gcs/store_client/
+bazel/rocksdb.BUILD
+@ rocksdb_tests redis_tests
+@ core_cpp cpp java core_python linux_wheels macos_wheels dashboard release_tests
 ;
 
 src/

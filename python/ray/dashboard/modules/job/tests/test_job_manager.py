@@ -44,7 +44,7 @@ from ray.dashboard.modules.job.tests.conftest import (
 )
 from ray.job_submission import JobErrorType, JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
-from ray.util.state import list_tasks
+from ray.util.state import get_actor, list_tasks
 
 import psutil
 
@@ -1057,7 +1057,9 @@ class TestAsyncAPI:
                 assert psutil.pid_exists(pid), "driver subprocess should be running"
 
             actor = job_manager._get_actor_for_job(job_id)
-            ray.kill(actor, no_restart=True)
+            supervisor_pid = get_actor(actor._actor_id.hex()).pid
+            kill_signal = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
+            os.kill(supervisor_pid, kill_signal)
             await async_wait_for_condition(
                 check_job_failed,
                 job_manager=job_manager,
