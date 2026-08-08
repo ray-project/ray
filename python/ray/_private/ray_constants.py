@@ -182,6 +182,10 @@ RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S",
 # Enable profiling endpoints in the dashboard.
 RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
+# Redact `runtime_env` secrets (e.g. `env_vars` values) in dashboard responses to
+# browser-originated requests. Set to 0 to return the plaintext values instead.
+RAY_DASHBOARD_REDACT_RUNTIME_ENV = env_bool("RAY_DASHBOARD_REDACT_RUNTIME_ENV", True)
+
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
 DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
