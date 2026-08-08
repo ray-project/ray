@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../depsets.schema.json
 build_arg_sets:
   py314_cuda128:
     PYTHON_VERSION: "3.14"

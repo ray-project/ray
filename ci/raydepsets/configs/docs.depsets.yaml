@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../depsets.schema.json
 build_arg_sets:
   py310:
     PYTHON_VERSION: "3.10"
@@ -10,8 +11,6 @@ build_arg_sets:
 depsets:
   - name: docbuild_depset_${PYTHON_SHORT}
     operation: compile
-    depsets:
-      - ray_img_depset_${PYTHON_SHORT}
     requirements:
       - doc/requirements-doc.txt
     output: python/deplocks/docs/docbuild_depset_py${PYTHON_VERSION}.lock
