@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -66,6 +67,7 @@ class JobSupervisor:
 
     DEFAULT_RAY_JOB_STOP_WAIT_TIME_S = 3
     SUBPROCESS_POLL_PERIOD_S = 0.1
+    LOG_ROTATION_CHECK_PERIOD_S = 5.0
     VALID_STOP_SIGNALS = ["SIGINT", "SIGTERM"]
 
     def __init__(
@@ -82,6 +84,31 @@ class JobSupervisor:
         self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
+
+        # Dedicated single-thread executor for log rotation. A raw
+        # concurrent.futures.Future (not the asyncio wrapper returned by
+        # loop.run_in_executor) is required here because cancelling the
+        # asyncio task that awaits it also cancels that asyncio-level
+        # future immediately, without stopping or waiting for the
+        # underlying thread. Keeping a direct reference to the raw future
+        # lets us genuinely wait for an in-flight rotation to finish
+        # before reading the driver log for a failure message.
+        self._log_rotation_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"log-rotation-{job_id}"
+        )
+        self._log_rotation_future: Optional[concurrent.futures.Future] = None
+
+        # Separate dedicated executor for the failure-path log read
+        # (get_last_n_log_lines). Kept distinct from
+        # _log_rotation_executor so a large failure-log read is never
+        # queued behind an in-flight rotation on a shared single-worker
+        # pool, which would just reintroduce a smaller version of the
+        # same blocking concern this executor exists to avoid. This
+        # call only happens once per failed job, so max_workers=1 is
+        # sufficient.
+        self._log_read_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"log-read-{job_id}"
+        )
 
         # Default metadata if not passed by the user.
         self._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
@@ -296,6 +323,103 @@ class JobSupervisor:
                 # still running, yield control, 0.1s by default
                 await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
+    async def _rotate_driver_log_if_needed(self, log_path: str) -> None:
+        """Periodically check the driver log file size and rotate if needed.
+
+        Runs for the lifetime of the driver subprocess, alongside _polling.
+        Uses copytruncate semantics since the driver subprocess holds this
+        file open directly; see JobLogStorageClient.rotate_log_file.
+        """
+        max_bytes = ray._private.worker._global_node.max_bytes
+        backup_count = ray._private.worker._global_node.backup_count
+        if max_bytes <= 0:
+            # Rotation disabled, matches convention used elsewhere in Ray.
+            return
+        check_period_s = float(
+            os.environ.get(
+                "RAY_JOB_LOG_ROTATION_CHECK_PERIOD_S",
+                self.LOG_ROTATION_CHECK_PERIOD_S,
+            )
+        )
+        while True:
+            await asyncio.sleep(check_period_s)
+            try:
+                if os.path.getsize(log_path) >= max_bytes:
+                    # rotate_log_file does synchronous file copy/truncate
+                    # that can take real time for large log files. Run it
+                    # in a dedicated executor so it doesn't block the
+                    # event loop JobSupervisor shares with subprocess
+                    # polling, stop handling, and status updates. The raw
+                    # future is kept on self so a genuine wait for
+                    # completion is possible later, see
+                    # _wait_for_rotation_to_finish.
+                    self._log_rotation_future = self._log_rotation_executor.submit(
+                        self._log_client.rotate_log_file,
+                        log_path,
+                        backup_count,
+                    )
+                    try:
+                        await asyncio.wrap_future(self._log_rotation_future)
+                    finally:
+                        self._log_rotation_future = None
+            except FileNotFoundError:
+                # Job finished and log file was already cleaned up.
+                return
+
+    async def _wait_for_rotation_to_finish(
+        self,
+        rotation_future: Optional[concurrent.futures.Future],
+        timeout: float = 30,
+    ) -> None:
+        """Wait for an in-flight log rotation to genuinely finish.
+
+        Cancelling the asyncio task running _rotate_driver_log_if_needed
+        cancels the asyncio-level future it may be awaiting, but does not
+        stop or wait for the underlying executor thread doing the actual
+        file copy/truncate. This waits on the raw concurrent.futures.Future
+        directly, which is unaffected by that cancellation, so callers can
+        be sure rotation has actually stopped touching the log file before
+        reading it, e.g. for a job failure message.
+
+        rotation_future must be captured by the caller from
+        self._log_rotation_future BEFORE cancelling the rotation task, not
+        read fresh from self._log_rotation_future afterward.
+        _rotate_driver_log_if_needed clears that attribute to None in a
+        finally block as part of its own cancellation cleanup, and that
+        finally can run synchronously enough that the attribute is
+        already None by the time a caller reads it post-cancel, silently
+        skipping the wait below and defeating this method's entire
+        purpose. Verified this race empirically before adding this
+        parameter, see PR #64528 discussion.
+
+        Note on test coverage: this method is not covered by a local unit
+        test. JobSupervisor's constructor builds a real GcsClient against
+        a live cluster address, and every existing test in
+        test_job_manager.py goes through that same real-cluster path, so a
+        mocked-GcsClient unit test here would be inconsistent with the
+        rest of the file and unverifiable in this environment. The
+        underlying asyncio/executor cancellation semantics this method
+        relies on were verified empirically with standalone repro scripts
+        before writing this method. End-to-end coverage comes from the
+        existing test_job_driver_log_rotation integration test in CI.
+        """
+        if rotation_future is None or rotation_future.done():
+            return
+        self._logger.info(
+            f"Job {self._job_id} waiting for in-flight log "
+            "rotation to finish before reading logs."
+        )
+        try:
+            await asyncio.wait_for(
+                asyncio.wrap_future(rotation_future), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            self._logger.warning(
+                f"Job {self._job_id} timed out waiting for log "
+                "rotation to finish, proceeding, failure message "
+                "may reflect a transient mid-rotation state."
+            )
+
     async def _poll_all(self, processes: List[psutil.Process]):
         """Poll processes until all are completed."""
         while True:
@@ -381,10 +505,24 @@ class JobSupervisor:
             child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))
+            log_rotation_task = create_task(self._rotate_driver_log_if_needed(log_path))
             finished, _ = await asyncio.wait(
                 [polling_task, create_task(self._stop_event.wait())],
                 return_when=FIRST_COMPLETED,
             )
+            # Capture the raw future reference before cancelling.
+            # _rotate_driver_log_if_needed clears self._log_rotation_future
+            # to None in a finally block as part of its own cancellation
+            # cleanup, and that finally can run synchronously enough that
+            # self._log_rotation_future is already None by the time we
+            # would otherwise read it here, silently defeating the wait
+            # below. Capturing our own reference first avoids depending
+            # on that attribute surviving cancellation. Verified this
+            # race and the fix empirically, see PR #64528 discussion on
+            # Cursor's "Rotation wait can cancel job completion" comment.
+            rotation_future = self._log_rotation_future
+            log_rotation_task.cancel()
+            await self._wait_for_rotation_to_finish(rotation_future)
 
             if self._stop_event.is_set():
                 polling_task.cancel()
@@ -445,7 +583,9 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = await self._log_client.get_last_n_log_lines(self._job_id)
+                    log_tail = await self._log_client.get_last_n_log_lines(
+                        self._job_id, executor=self._log_read_executor
+                    )
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job entrypoint command "
