@@ -189,6 +189,16 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
   auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
   // Error happened.
   if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
+    if (redis_reply == nullptr &&
+        request_cxt->clock_.Now() - request_cxt->start_time_ <
+            absl::Milliseconds(RayConfig::instance().redis_reconnect_grace_period_ms())) {
+      // No reply at all means the command never made it to Redis: the
+      // connection was gone, or the context was still mid-connect when hiredis
+      // accepted it and then freed it. Either way the attempt says nothing
+      // about the command, so give the retry back and let the reconnect finish.
+      // The wall clock above is what bounds the wait.
+      ++request_cxt->pending_retries_;
+    }
     auto error_msg = redis_reply ? redis_reply->str
                                  : (async_context ? async_context->errstr
                                                   : "Redis connection unavailable");
@@ -232,9 +242,11 @@ void RedisRequestContext::Run() {
       RedisResponseFn, this, argv_.size(), argv_.data(), argc_.data());
 
   if (!status.ok()) {
-    // Pass a null context rather than the raw pointer: reading it here is
-    // unsynchronized against the io_service thread freeing it, and the
-    // callback only wants it for errstr.
+    // Reports through the same path as a dropped reply, which is where the
+    // retry budget is refunded while a reconnect is in flight. Pass a null
+    // context rather than the raw pointer: reading it here is unsynchronized
+    // against the io_service thread freeing it, and the callback only wants
+    // it for errstr.
     RedisResponseFn(nullptr, nullptr, this);
   }
 }

@@ -718,15 +718,17 @@ print("DONE")
 def test_redis_with_sentinel_failureover(
     ray_start_cluster_head_with_external_redis_sentinel,
 ):
-    """This test is to cover ray cluster's behavior with Redis sentinel.
-    The expectation is Redis sentinel should manage failover
-    automatically, and GCS can continue talking to the same address
-    without any human intervention on Redis.
+    """Ray's behavior when the Redis primary behind Sentinel fails.
+
+    Sentinel handles the failover; Ray has to follow it. GCS asks Sentinel
+    for the primary again on every reconnect attempt, so the promotion is
+    picked up in place.
+
     For this test we ensure:
-    - When Redis master failed, Ray should crash (TODO: GCS should
-        autommatically try re-connect to sentinel).
-    - When restart Ray, it should continue talking to sentinel, which
-        should return information about new master.
+    - When the primary fails, gcs_server stays up and reconnects to
+      whichever node Sentinel promoted.
+    - The cluster keeps working afterwards, including a detached actor
+      created before the failover.
     """
     cluster = ray_start_cluster_head_with_external_redis_sentinel
     import redis
@@ -780,22 +782,33 @@ def test_redis_with_sentinel_failureover(
     leader_process = psutil.Process(pid=leader_pid)
     leader_process.kill()
 
-    print(">>> Waiting gcs server to exit", gcs_server_pid)
-    wait_for_pid_to_exit(gcs_server_pid, 1000)
-    print("GCS killed")
-
     wait_for_condition(lambda: current_leader != get_sentinel_nodes()[0])
+    print(">>> Sentinel promoted", get_sentinel_nodes()[0])
 
-    # Kill Counter actor. It should restart after GCS is back
+    # gcs_server used to die with the old primary and had to be restarted by
+    # hand. It should now still be the same process, having re-resolved the
+    # primary through Sentinel.
+    assert psutil.pid_exists(gcs_server_pid), "gcs_server exited on failover"
+    wait_for_condition(
+        lambda: run_string_as_driver(
+            f"""
+import ray
+ray.init('{cluster.address}')
+nodes = ray.nodes()
+assert len(nodes) == 1, nodes
+print("ALIVE" if nodes[0]["alive"] else "DEAD")
+"""
+        ).count("ALIVE")
+        == 1,
+        # ray.init blocks on GCS internal KV until the reconnect lands, and the
+        # command-side grace period allows up to 60s of that; the default 10s
+        # would fail on the first slow attempt.
+        timeout=120,
+    )
+    assert psutil.pid_exists(gcs_server_pid), "gcs_server exited after the failover"
+
+    # Kill the actor. It should come back on the promoted primary.
     c_process.kill()
-    # Cleanup the in memory data and then start gcs
-    cluster.head_node.kill_gcs_server(False)
-
-    print("Start gcs")
-    cluster.head_node.start_gcs_server()
-
-    assert len(ray.nodes()) == 1
-    assert ray.nodes()[0]["alive"]
 
     driver_script = f"""
 import ray
@@ -812,6 +825,13 @@ print("DONE")
 """
 
     # Make sure the cluster is usable
+    wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
+
+    # A restarted GCS must also come back from the promoted primary: this is
+    # what proves the failover preserved the data, not just the process. The
+    # pre-reconnect version of this test only covered this cold-restart path.
+    cluster.head_node.kill_gcs_server(False)
+    cluster.head_node.start_gcs_server()
     wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
 
 
