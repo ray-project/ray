@@ -69,8 +69,10 @@ class RayEventRecorderBase : public RayEventRecorderInterface {
   // it.
   void SendRequest(rpc::events::AddEventsRequest &&request);
 
-  // Clear grpc_in_progress_ and wake a shutdown waiter. Needed by an export that
-  // marks the send in progress before it knows whether it has anything to send.
+  /**
+   * @brief Clear grpc_in_progress_ and wake a shutdown waiter. Needed by an export that
+   * marks the send in progress before it knows whether it has anything to send.
+   */
   void MarkGrpcDone();
 
   rpc::EventAggregatorClient &event_aggregator_client_;

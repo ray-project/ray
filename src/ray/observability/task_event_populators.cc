@@ -77,46 +77,45 @@ void AppendTaskLifecycleUpdate(const TaskID &task_id,
     return;
   }
 
-  if (state_update->error_info_.has_value()) {
-    lifecycle_event_data.mutable_ray_error_info()->CopyFrom(*state_update->error_info_);
+  if (state_update->error_info.has_value()) {
+    lifecycle_event_data.mutable_ray_error_info()->CopyFrom(*state_update->error_info);
   }
 
-  if (!state_update->actor_repr_name_.empty()) {
-    lifecycle_event_data.set_actor_repr_name(state_update->actor_repr_name_);
+  if (!state_update->actor_repr_name.empty()) {
+    lifecycle_event_data.set_actor_repr_name(state_update->actor_repr_name);
   }
 
-  if (state_update->node_id_.has_value()) {
+  if (state_update->node_id.has_value()) {
     RAY_CHECK(task_status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
             .WithField("TaskStatus", task_status)
         << "Node ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    lifecycle_event_data.set_node_id(state_update->node_id_->Binary());
+    lifecycle_event_data.set_node_id(state_update->node_id->Binary());
   }
 
-  if (state_update->worker_id_.has_value()) {
+  if (state_update->worker_id.has_value()) {
     RAY_CHECK(task_status == rpc::TaskStatus::SUBMITTED_TO_WORKER)
             .WithField("TaskStatus", task_status)
         << "Worker ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    lifecycle_event_data.set_worker_id(state_update->worker_id_->Binary());
+    lifecycle_event_data.set_worker_id(state_update->worker_id->Binary());
   }
 
-  if (state_update->pid_.has_value()) {
-    lifecycle_event_data.set_worker_pid(state_update->pid_.value());
+  if (state_update->pid.has_value()) {
+    lifecycle_event_data.set_worker_pid(state_update->pid.value());
   }
 
-  if (state_update->is_debugger_paused_.has_value()) {
-    lifecycle_event_data.set_is_debugger_paused(
-        state_update->is_debugger_paused_.value());
+  if (state_update->is_debugger_paused.has_value()) {
+    lifecycle_event_data.set_is_debugger_paused(state_update->is_debugger_paused.value());
   }
 
-  if (state_update->task_log_info_.has_value()) {
+  if (state_update->task_log_info.has_value()) {
     // Merge rather than overwrite: log start and log end arrive as two separate updates
     // carrying disjoint sub-fields (file paths + start offsets vs. end offsets), so an
     // assignment would drop whichever came first. Matches the GCS path in
     // ToRpcTaskEvents.
     lifecycle_event_data.mutable_task_log_info()->MergeFrom(
-        TaskLogInfoToLifecycleEvent(state_update->task_log_info_.value()));
+        TaskLogInfoToLifecycleEvent(state_update->task_log_info.value()));
   }
 }
 

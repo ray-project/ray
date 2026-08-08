@@ -99,39 +99,39 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
     return;
   }
 
-  if (state_update_->node_id_.has_value()) {
+  if (state_update_->node_id.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "When task status changes to SUBMITTED_TO_WORKER, the Node ID should be "
            "included in the status update";
-    dst_state_update->set_node_id(state_update_->node_id_->Binary());
+    dst_state_update->set_node_id(state_update_->node_id->Binary());
   }
 
-  if (state_update_->worker_id_.has_value()) {
+  if (state_update_->worker_id.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "When task status changes to SUBMITTED_TO_WORKER, Worker ID should be "
            "included in the status update";
-    dst_state_update->set_worker_id(state_update_->worker_id_->Binary());
+    dst_state_update->set_worker_id(state_update_->worker_id->Binary());
   }
 
-  if (state_update_->error_info_.has_value()) {
-    *(dst_state_update->mutable_error_info()) = *state_update_->error_info_;
+  if (state_update_->error_info.has_value()) {
+    *(dst_state_update->mutable_error_info()) = *state_update_->error_info;
   }
 
-  if (state_update_->task_log_info_.has_value()) {
+  if (state_update_->task_log_info.has_value()) {
     dst_state_update->mutable_task_log_info()->MergeFrom(
-        state_update_->task_log_info_.value());
+        state_update_->task_log_info.value());
   }
 
-  if (!state_update_->actor_repr_name_.empty()) {
-    dst_state_update->set_actor_repr_name(state_update_->actor_repr_name_);
+  if (!state_update_->actor_repr_name.empty()) {
+    dst_state_update->set_actor_repr_name(state_update_->actor_repr_name);
   }
 
-  if (state_update_->pid_.has_value()) {
-    dst_state_update->set_worker_pid(state_update_->pid_.value());
+  if (state_update_->pid.has_value()) {
+    dst_state_update->set_worker_pid(state_update_->pid.value());
   }
 
-  if (state_update_->is_debugger_paused_.has_value()) {
-    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused_.value());
+  if (state_update_->is_debugger_paused.has_value()) {
+    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused.value());
   }
 }
 
@@ -155,39 +155,38 @@ void TaskStatusEvent::ToRpcTaskExportEvents(
     return;
   }
 
-  if (state_update_->node_id_.has_value()) {
+  if (state_update_->node_id.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Node ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    dst_state_update->set_node_id(state_update_->node_id_->Binary());
+    dst_state_update->set_node_id(state_update_->node_id->Binary());
   }
 
-  if (state_update_->worker_id_.has_value()) {
+  if (state_update_->worker_id.has_value()) {
     RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
         << "Worker ID should be included when task status changes to "
            "SUBMITTED_TO_WORKER.";
-    dst_state_update->set_worker_id(state_update_->worker_id_->Binary());
+    dst_state_update->set_worker_id(state_update_->worker_id->Binary());
   }
 
-  if (state_update_->error_info_.has_value()) {
+  if (state_update_->error_info.has_value()) {
     auto error_info = dst_state_update->mutable_error_info();
-    error_info->set_error_message((*state_update_->error_info_).error_message());
-    error_info->set_error_type((*state_update_->error_info_).error_type());
+    error_info->set_error_message((*state_update_->error_info).error_message());
+    error_info->set_error_type((*state_update_->error_info).error_type());
   }
 
-  if (state_update_->task_log_info_.has_value()) {
+  if (state_update_->task_log_info.has_value()) {
     rpc::ExportTaskEventData::TaskLogInfo export_task_log_info;
-    gcs::TaskLogInfoToExport(state_update_->task_log_info_.value(),
-                             &export_task_log_info);
+    gcs::TaskLogInfoToExport(state_update_->task_log_info.value(), &export_task_log_info);
     dst_state_update->mutable_task_log_info()->MergeFrom(export_task_log_info);
   }
 
-  if (state_update_->pid_.has_value()) {
-    dst_state_update->set_worker_pid(state_update_->pid_.value());
+  if (state_update_->pid.has_value()) {
+    dst_state_update->set_worker_pid(state_update_->pid.value());
   }
 
-  if (state_update_->is_debugger_paused_.has_value()) {
-    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused_.value());
+  if (state_update_->is_debugger_paused.has_value()) {
+    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused.value());
   }
 }
 

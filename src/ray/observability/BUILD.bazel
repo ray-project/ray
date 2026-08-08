@@ -227,6 +227,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/protobuf/public:events_task_definition_event_cc_proto",
         "//src/ray/util:logging",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -261,6 +262,7 @@ ray_cc_library(
         "//src/ray/common:task_common",
         "//src/ray/protobuf/public:events_actor_task_definition_event_cc_proto",
         "//src/ray/util:logging",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
