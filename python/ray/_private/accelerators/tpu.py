@@ -40,8 +40,9 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-
+RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
+
 
 # The following defines environment variables that allow
 # us to access a subset of TPU visible chips.
@@ -69,9 +70,15 @@ TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 # Topologies that are always sub-host or single-host
 TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 
-# Accelerators that are 2 cores per chip: v2, v3, v4, v5p, v7x
-# Accelerators that are 1 core per chip: v5e, v6e
+# TPU generations fall into three hardware/software accounting categories:
+# 1) Megacore (v2, v3, v4, v5p): 2 TensorCores per chip, but fused into 1 logical XLA
+#    device per chip (3D topology, e.g. "2,2,1"). Listed in neither set below.
+# 2) Single-Core (v5litepod, v6e): 1 TensorCore per chip and 1 logical XLA device per chip
+#    (3D topology, e.g. "2,4,1"). Listed in SINGLE_CORE_TPU_TYPES.
+# 3) Dual-Device (v7x): 2 discrete chiplets, enumerated as 2 logical XLA devices
+#    per chip (4D topology, e.g. "2,2,1,2"). Listed in DUAL_DEVICE_TPU_TYPES.
 SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
+DUAL_DEVICE_TPU_TYPES = ("v7x",)
 
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
@@ -110,8 +117,8 @@ VALID_TPU_TOPOLOGY = {
         "2x2x4",
         "2x4x4",
     }.union(_get_larger_3d_topologies(16, 16, 24)),
-    "v5litepod": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
-    "v6e": {"1x1", "2x2", "2x4", "2x8", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v5litepod": {"1x1", "2x2", "2x4", "4x4", "4x8", "8x8", "8x16", "16x16"},
+    "v6e": {"1x1", "2x2", "2x4", "4x4", "4x8", "8x8", "8x16", "16x16"},
     "v7x": {
         "2x2x1",
         "2x2x2",
@@ -169,6 +176,44 @@ def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
     return tuple(int(d) for d in topology.strip().lower().split("x"))
 
 
+def normalize_torchtpu_topology(topology: str, tpu_resource_per_chip: int = 1) -> str:
+    """Normalizes TPU topology strings for PyTorch/XLA (e.g. '4x4' -> '4,4,1'; '2x2x4' -> '2,2,4,2')."""
+    clean_topo = topology.strip().lower().replace("x", ",")
+    dims = [d.strip() for d in clean_topo.split(",") if d.strip().isdigit()]
+    if len(dims) == 2:
+        dims.append("1")
+    if len(dims) == 3 and tpu_resource_per_chip > 1:
+        dims.append(str(tpu_resource_per_chip))
+    return ",".join(dims)
+
+
+def normalize_tpu_accelerator_type(accelerator_type: str) -> str:
+    """Normalizes a TPU accelerator type string to the standard 'v{gen}' format."""
+    s = str(accelerator_type).strip().lower()
+    if s.startswith("tpu-v"):
+        return s[4:]
+    if s.startswith("tpu-"):
+        return "v" + s[4:]
+    if s.startswith("tpuv"):
+        return s[3:]
+    if s.startswith("tpu"):
+        return "v" + s[3:]
+    return s
+
+
+def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
+    """Returns the number of TPU custom resources per chip for a TPU accelerator type."""
+    val = os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR)
+    if val is not None:
+        return int(val)
+    if not accelerator_type:
+        accelerator_type = os.environ.get(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+    acc_str = normalize_tpu_accelerator_type(accelerator_type)
+    if any(t in acc_str for t in DUAL_DEVICE_TPU_TYPES):
+        return 2
+    return 1
+
+
 @lru_cache(maxsize=None)
 def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
     """Return the worker-grid dimensions for *topology*: (y, x) for 2D,
@@ -195,10 +240,10 @@ def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
     """Return the default chips-per-VM for *topology* on *accelerator_version*
     (single-host v5e/v6e topologies pack up to 8 chips on one VM).
     """
-    accel_lower = accelerator_version.strip().lower()
+    norm_accel = normalize_tpu_accelerator_type(accelerator_version)
 
     # Single-host: return total chips in topology
-    if accel_lower in TPU_8_CHIPS_PER_HOST_TYPES:
+    if any(norm_accel.startswith(t) for t in TPU_8_CHIPS_PER_HOST_TYPES):
         total_chips = get_num_chips_from_topology(topology)
         if total_chips <= 8:
             return total_chips
@@ -230,7 +275,8 @@ def _get_tpu_metadata(key: str) -> Optional[str]:
 
 
 def _accelerator_type_check(accelerator_type: str):
-    if not accelerator_type.startswith(VALID_TPU_TYPES):
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    if not norm_type.startswith(VALID_TPU_TYPES):
         raise ValueError(
             f"Invalid accelerator type: {accelerator_type}. Must start with one of: {VALID_TPU_TYPES}"
         )
@@ -238,25 +284,27 @@ def _accelerator_type_check(accelerator_type: str):
 
 def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
     """Calculates total chips from a GCP accelerator ("pod") type string (e.g. "v6e-16")."""
-    _accelerator_type_check(accelerator_type)
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
 
-    parts = accelerator_type.split("-")
+    parts = norm_type.split("-")
     if len(parts) < 2:
         raise ValueError(
             f"Accelerator type must include size (e.g. 'v6e-8'), got: {accelerator_type}"
         )
 
     num_cores = int(parts[1])
-    cores_per_chip = get_tpu_cores_per_chip(accelerator_type)
+    cores_per_chip = get_tpu_cores_per_chip(norm_type)
 
     return num_cores // cores_per_chip
 
 
 def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
-    _accelerator_type_check(accelerator_type)
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
 
-    if accelerator_type.startswith(TPU_8_CHIPS_PER_HOST_TYPES):
-        total_chips = get_total_chips_from_accelerator_type(accelerator_type)
+    if norm_type.startswith(TPU_8_CHIPS_PER_HOST_TYPES):
+        total_chips = get_total_chips_from_accelerator_type(norm_type)
 
         # Sub/single-host topologies return their exact chip count
         if total_chips <= 8:
@@ -267,8 +315,9 @@ def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
 
 
 def get_tpu_cores_per_chip(accelerator_type: str) -> int:
-    _accelerator_type_check(accelerator_type)
-    if accelerator_type.startswith(SINGLE_CORE_TPU_TYPES):
+    norm_type = normalize_tpu_accelerator_type(accelerator_type)
+    _accelerator_type_check(norm_type)
+    if norm_type.startswith(SINGLE_CORE_TPU_TYPES):
         return 1
 
     return DEFAULT_TPU_NUM_CORES_PER_CHIP
@@ -293,7 +342,7 @@ def infer_tpu_pod_type_from_topology(
         return None
     try:
         num_chips = get_num_chips_from_topology(topology)
-        generation = accelerator_type.lower().replace("tpu-", "")
+        generation = normalize_tpu_accelerator_type(accelerator_type)
         num_cores = num_chips * get_tpu_cores_per_chip(generation)
 
         return f"{generation}-{num_cores}"
@@ -338,8 +387,9 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     total_chips = get_num_chips_from_topology(topology)
 
     # Check for 8-chip host types (v5litepod, v6e) for single host setups
+    norm_accel = normalize_tpu_accelerator_type(accelerator_version)
     if (
-        accelerator_version.strip().lower() in TPU_8_CHIPS_PER_HOST_TYPES
+        any(norm_accel.startswith(t) for t in TPU_8_CHIPS_PER_HOST_TYPES)
         and topology.strip().lower() in TPU_SINGLE_HOST_TOPOLOGIES
     ):
         return total_chips
@@ -818,10 +868,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         if accelerator_type and TPUAcceleratorManager.is_valid_tpu_accelerator_type(
             tpu_accelerator_type=accelerator_type
         ):
-            if accelerator_type.lower().startswith("tpu"):
-                return "v" + accelerator_type.lower()[3:]
-
-            return accelerator_type
+            return normalize_tpu_accelerator_type(accelerator_type)
         logging.debug("Failed to get a valid accelerator type.")
         return None
 
