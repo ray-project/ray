@@ -84,7 +84,7 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC", "ARROW_FLIGHT"]
 
 _default_transports_registered = False
 
@@ -109,6 +109,19 @@ def _ensure_default_transports_registered():
             )
             register_tensor_transport(
                 "CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor
+            )
+        except ImportError:
+            pass
+
+        try:
+            import pyarrow
+
+            from ray.experimental.rdt.arrow_flight_transport import (
+                ArrowFlightTransport,
+            )
+
+            register_tensor_transport(
+                "ARROW_FLIGHT", ["cpu"], ArrowFlightTransport, pyarrow.Table
             )
         except ImportError:
             pass
