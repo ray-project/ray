@@ -18,7 +18,7 @@
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
 ! linux_wheels macos_wheels docker doc doc_api python_dependencies min_build tools windows
-! release_tests spark_on_ray rocksdb_tests redis_tests
+! release_tests spark_on_ray rocksdb_tests redis_tests sandbox_tests
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 
 # Per-team API reference pages. Editing these can change the documented public
@@ -599,6 +599,10 @@ setup_hooks.sh
 .prettierrc.toml
 .fossa.yml
 # pass
+;
+
+python/ray/experimental/sandbox/
+@ sandbox_tests
 ;
 
 *
