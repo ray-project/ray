@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <queue>
@@ -58,6 +59,9 @@
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray::core {
+
+// Defined in core_worker.cc; opaque to callers.
+struct WaitAsyncState;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -790,6 +794,59 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               const int64_t timeout_ms,
               std::vector<bool> *results,
               bool fetch_local);
+
+  /**
+   * Asynchronously wait for objects to become ready without blocking the
+   * calling thread. Invokes ``callback`` once ``num_objects`` are ready or
+   * ``timeout_ms`` elapses (``timeout_ms < 0`` waits forever).
+   *
+   * Semantics match ``Wait``, except ``timeout_ms == 0`` only reports objects
+   * already present in the in-process memory store and does not start plasma
+   * pulls (``Wait`` may begin fetches even on a zero timeout).
+   * - ``fetch_local=false``: an object is ready when it is in the memory store
+   *   or a plasma marker is present (no pull).
+   * - ``fetch_local=true``: plasma objects are pulled local before ready
+   *   (when ``timeout_ms != 0``).
+   *
+   * The callback is invoked at most once. ``ready`` is a byte array of length
+   * ``n`` with 1 for ready and 0 otherwise (parallel to ``object_ids``).
+   *
+   * Threading: validation errors, the ``timeout_ms == 0`` fast path, and
+   * synchronous pre-pass completions invoke ``callback`` on the calling
+   * thread. Other success / timeout completions run on ``io_service_``.
+   *
+   * \param[in] object_ids IDs of the objects to wait for. Must be unique.
+   * \param[in] num_objects Number of objects that should become ready.
+   * \param[in] timeout_ms Timeout in milliseconds; wait forever if negative.
+   * ``timeout_ms == 0`` only reports in-process memory hits (no timer, no
+   * plasma pull-start).
+   * \param[in] fetch_local Whether ready objects must be present on the local
+   * node.
+   * \param[in] callback Invoked with status, ready bit array, length, and
+   * ``user``.
+   * \param[in] user Opaque pointer passed through to ``callback``.
+   * \return Non-zero handle for ``CancelWaitAsync``, or 0 if ``callback`` was
+   * already invoked synchronously (validation error or immediate completion).
+   */
+  uint64_t WaitAsync(
+      const std::vector<ObjectID> &object_ids,
+      int num_objects,
+      int64_t timeout_ms,
+      bool fetch_local,
+      void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
+      void *user);
+
+  /**
+   * Cancel an in-flight ``WaitAsync`` identified by its handle.
+   *
+   * If the request is still pending, completes it (invoking the callback at
+   * most once with ``Status::OK`` and whatever ready bits are set so far) so
+   * resources such as the Python callback can be released. No-op if ``handle``
+   * is 0 or the request already completed.
+   *
+   * \param[in] handle Value returned by ``WaitAsync``.
+   */
+  void CancelWaitAsync(uint64_t handle);
 
   /// Delete a list of objects from the plasma object store.
   ///
@@ -2128,6 +2185,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Callbacks for when when a plasma object becomes ready.
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
+
+  // In-flight WaitAsync requests for this worker. Keyed by opaque handle
+  // (never by Python object address) so cancellation is ABA-safe.
+  absl::Mutex wait_async_mu_;
+  uint64_t wait_async_next_handle_ ABSL_GUARDED_BY(wait_async_mu_) = 0;
+  absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>> wait_async_requests_
+      ABSL_GUARDED_BY(wait_async_mu_);
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.

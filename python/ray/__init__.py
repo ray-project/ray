@@ -116,6 +116,7 @@ from ray._private.worker import (  # noqa: E402,F401
     WORKER_MODE,
     RESTORE_WORKER_MODE,
     SPILL_WORKER_MODE,
+    _wait_async,
     cancel,
     get,
     get_actor,

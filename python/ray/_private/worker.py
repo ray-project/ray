@@ -35,6 +35,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
+    cast,
     overload,
 )
 from urllib.parse import urlparse
@@ -1401,6 +1402,54 @@ global_worker = Worker()
 We use a global Worker object to ensure that there is a single worker object
 per worker process.
 """
+
+
+class _CoreWorkerAPI(Protocol):
+    """Structural type for :func:`get_core_worker`.
+
+    This Protocol is intentionally incomplete and is meant to grow as more
+    call sites move off ``Worker.core_worker`` direct access. Only methods
+    used through the helper need to be declared here.
+
+    ``Worker.core_worker`` is attached dynamically on connect (and deleted on
+    shutdown), so static checkers do not see it on ``Worker``.
+    """
+
+    def wait_async(
+        self,
+        object_refs_or_generators: List[Any],
+        num_returns: int,
+        timeout_ms: int,
+        fetch_local: bool,
+        callback: Callable,
+    ) -> int:
+        ...
+
+    def cancel_wait_async(self, handle: int) -> None:
+        ...
+
+
+def get_core_worker() -> _CoreWorkerAPI:
+    """Return the connected worker's CoreWorker.
+
+    The returned value is typed as :class:`_CoreWorkerAPI`, a structural
+    Protocol that currently declares only the wait-async helpers; extend that
+    Protocol when new call sites need additional CoreWorker methods.
+
+    Returns:
+        The process-global CoreWorker attached on ``ray.init()``.
+
+    Raises:
+        RaySystemError: If Ray is not initialized or the core worker is
+            unavailable (same condition as ``Worker.check_connected``).
+    """
+    core_worker = getattr(global_worker, "core_worker", None)
+    if core_worker is None:
+        raise RaySystemError(
+            "Ray has not been started yet. You can start Ray with 'ray.init()'."
+        )
+    return cast(_CoreWorkerAPI, core_worker)
+
 
 _global_node = None
 """ray._private.node.Node: The global node object that is created by ray.init()."""
@@ -3218,6 +3267,136 @@ def wait(
             fetch_local,
         )
         return ready_ids, remaining_ids
+
+
+async def _wait_async(
+    ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],
+    *,
+    num_returns: int = 1,
+    timeout: Optional[float] = None,
+    fetch_local: bool = True,
+) -> Tuple[
+    List[Union[ObjectRef, ObjectRefGenerator]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
+]:
+    """Async-friendly wait that does not block the event loop.
+
+    Private API. Argument shape and ``(ready, remaining)`` return value match
+    :func:`ray.wait`, but this helper does not auto-init Ray or honor client
+    mode. Unlike ``await obj_ref``, ``fetch_local=False`` waits for readiness
+    without pulling the object to the local node.
+
+    Cancelling the awaiting task cancels the underlying C++ wait so the
+    Python callback can be released promptly.
+
+    Args:
+        ray_waitables: List of :class:`~ObjectRef` or
+            :class:`~ObjectRefGenerator` to wait on. Must be unique.
+        num_returns: Number of waitables that should become ready before
+            returning.
+        timeout: Max seconds to wait, or ``None`` to wait indefinitely.
+            ``timeout=0`` reports waitables already present in the in-process
+            memory store and does not start plasma pulls (unlike
+            :func:`ray.wait`, which may begin fetches on a zero timeout).
+        fetch_local: If True, wait until objects are present on the local
+            node. If False, return as soon as each object exists anywhere in
+            the cluster (no local pull).
+
+    Returns:
+        A pair ``(ready, remaining)`` of waitable lists, preserving input
+        order within each list.
+    """
+    import asyncio
+
+    worker = global_worker
+    worker.check_connected()
+
+    if isinstance(ray_waitables, ObjectRef) or isinstance(
+        ray_waitables, ObjectRefGenerator
+    ):
+        raise TypeError(
+            "_wait_async() expected a list of ray.ObjectRef or "
+            "ray.ObjectRefGenerator, got a single ray.ObjectRef or "
+            f"ray.ObjectRefGenerator {ray_waitables}"
+        )
+
+    if not isinstance(ray_waitables, list):
+        raise TypeError(
+            "_wait_async() expected a list of ray.ObjectRef or "
+            "ray.ObjectRefGenerator, "
+            f"got {type(ray_waitables)}"
+        )
+
+    if timeout is not None and timeout < 0:
+        raise ValueError(
+            "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
+        )
+
+    for ray_waitable in ray_waitables:
+        if not isinstance(ray_waitable, ObjectRef) and not isinstance(
+            ray_waitable, ObjectRefGenerator
+        ):
+            raise TypeError(
+                "_wait_async() expected a list of ray.ObjectRef or "
+                "ray.ObjectRefGenerator, "
+                f"got list containing {type(ray_waitable)}"
+            )
+
+    if len(ray_waitables) == 0:
+        return [], []
+
+    if len(ray_waitables) != len(set(ray_waitables)):
+        raise ValueError("_wait_async requires a list of unique ray_waitables.")
+    if num_returns <= 0:
+        raise ValueError("Invalid number of objects to return %d." % num_returns)
+    if num_returns > len(ray_waitables):
+        raise ValueError(
+            "num_returns cannot be greater than the number "
+            "of ray_waitables provided to ray._wait_async."
+        )
+
+    # timeout=None -> wait forever (-1). Explicit timeout uses milliseconds.
+    timeout_milliseconds = -1 if timeout is None else int(timeout * 1000)
+
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future = loop.create_future()
+
+    def _on_complete(exc, ready_bits):
+        if fut.done():
+            return
+
+        def _set():
+            if fut.done():
+                return
+            if exc is not None:
+                fut.set_exception(exc)
+                return
+            ready_ids = []
+            remaining_ids = []
+            for i, ray_waitable in enumerate(ray_waitables):
+                if ready_bits[i]:
+                    ready_ids.append(ray_waitable)
+                else:
+                    remaining_ids.append(ray_waitable)
+            fut.set_result((ready_ids, remaining_ids))
+
+        loop.call_soon_threadsafe(_set)
+
+    core_worker = get_core_worker()
+    handle = core_worker.wait_async(
+        ray_waitables,
+        num_returns,
+        timeout_milliseconds,
+        fetch_local,
+        _on_complete,
+    )
+
+    def _cancel_cpp_wait(f: asyncio.Future) -> None:
+        if f.cancelled() and handle != 0:
+            core_worker.cancel_wait_async(handle)
+
+    fut.add_done_callback(_cancel_cpp_wait)
+    return await fut
 
 
 @client_mode_hook

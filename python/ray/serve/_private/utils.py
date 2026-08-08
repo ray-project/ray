@@ -790,6 +790,25 @@ async def await_deployment_response(deployment_response):
     return await deployment_response
 
 
+async def deployment_response_to_object_ref(deployment_response: Any) -> ray.ObjectRef:
+    """Convert a DeploymentResponse to an ObjectRef and wait until it is ready.
+
+    ``_to_object_ref`` returns immediately (peeked ref). We still wait for the
+    upstream result before the router enqueues the request so autoscaling
+    metrics do not count unresolved composition args.
+
+    Args:
+        deployment_response: Upstream handle response to convert.
+
+    Returns:
+        The underlying ObjectRef after its value is ready in the cluster.
+    """
+    obj_ref = await deployment_response._to_object_ref()
+    # fetch_local=False: forward by reference; downstream fetches the value.
+    await ray._wait_async([obj_ref], fetch_local=False)
+    return obj_ref
+
+
 async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadata):
     """Resolve `DeploymentResponse` objects to underlying object references.
 
@@ -801,9 +820,7 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
         if request_metadata._by_reference and obj.by_reference:
-            # If sending requests by reference, launch async task to
-            # convert DeploymentResponse to an object ref
-            return asyncio.create_task(obj._to_object_ref())
+            return asyncio.create_task(deployment_response_to_object_ref(obj))
         else:
             # Otherwise, resolve DeploymentResponse directly to result
             return asyncio.create_task(await_deployment_response(obj))
