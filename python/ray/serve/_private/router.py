@@ -1390,12 +1390,11 @@ class AsyncioRouter:
         re-raising.
         """
         replica = selection._replica
-        if selection._slot_token is None:
-            raise RuntimeError(
-                "Cannot dispatch a ReplicaSelection that was created without a "
-                "reservation (_reserve=False)."
-            )
-        # Inject the slot token so the replica skips re-acquiring its semaphore.
+        # A reserved slot lets the replica skip re-acquiring its semaphore. A
+        # selection made with `_reserve=False` carries no token, so the replica
+        # acquires the semaphore itself in `_start_request` -- admission control
+        # still applies, it just happens replica-side instead of via a
+        # round-trip ahead of dispatch.
         # Args are re-resolved here because dispatch may carry augmented args.
         pr = PendingRequest(
             args=list(request_args),
@@ -1414,8 +1413,12 @@ class AsyncioRouter:
                 raise self._make_upstream_crash_error(e)
             result = replica.try_send_request(pr, with_rejection=False)
         except BaseException:
-            # Dispatch failed; release the reservation before re-raising.
-            await self._release_slot_and_refresh_cache(selection, replica, force=True)
+            # Dispatch failed; release the reservation before re-raising. A
+            # selection made without one has nothing to release.
+            if selection._slot_token is not None:
+                await self._release_slot_and_refresh_cache(
+                    selection, replica, force=True
+                )
             raise
 
         self._register_completion_callback(result, replica, pr)

@@ -7,6 +7,7 @@ decode deployment owns a real engine and orchestrates remote prefill.
 import asyncio
 import contextlib
 import logging
+import os
 import uuid
 import warnings
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
@@ -93,6 +94,19 @@ except ImportError:
 
 
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
+
+# Experiment switch for the P/D prefill handoff. ``choose_replica`` reserves a
+# slot on the selected prefill replica, which costs a ``reserve_slot`` RPC
+# before dispatch and a release RPC at context exit. This connector only needs
+# the selection's ``replica_metadata`` (the peer's bootstrap address) -- it does
+# not need the capacity guarantee -- and the replica still admits the request
+# through its own semaphore when no slot was reserved. Setting
+# ``RAY_PD_SKIP_SLOT_RESERVATION=1`` takes the router's pick-only fast path so
+# that RPC pair is skipped; measured against the reserving path it isolates how
+# much of the P/D TTFT gap those two round-trips account for.
+_CHOOSE_REPLICA_KWARGS = (
+    {"_reserve": False} if os.environ.get("RAY_PD_SKIP_SLOT_RESERVATION") == "1" else {}
+)
 
 # TODO(Kourosh): Deprecate in Ray 2.56, remove in Ray 2.58.
 DEFAULT_PD_PROXY_SERVER_OPTIONS = {
@@ -297,7 +311,9 @@ class PDOrchestratorMixin:
             # via choose_replica, expose its metadata to the backend, then
             # dispatch onto that exact selection.
             trace.mark("choose_start")
-            async with prefill_handle_method.choose_replica(request) as selection:
+            async with prefill_handle_method.choose_replica(
+                request, **_CHOOSE_REPLICA_KWARGS
+            ) as selection:
                 trace.mark("chosen")
                 # The selected replica's published metadata (empty dict if none).
                 peer = getattr(selection, "replica_metadata", {})
