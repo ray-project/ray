@@ -1921,6 +1921,16 @@ class DeploymentReplica:
         return self._actor.grpc_port
 
     @property
+    def actor_internal_grpc_port(self) -> Optional[int]:
+        """Port of this replica's inter-deployment gRPC server.
+
+        ``None`` until the replica reports it back through ``_ready_obj_ref``,
+        which is also how it is re-learned when the controller recovers a
+        replica that was already running.
+        """
+        return self._actor._internal_grpc_port
+
+    @property
     def actor_pid(self) -> Optional[int]:
         """Returns the node id of the actor, None if not placed."""
         return self._actor.pid
@@ -6680,6 +6690,31 @@ class DeploymentStateManager:
                     )
                 )
         return ingress_replicas_info
+
+    def get_internal_grpc_ports_info(self) -> List[Tuple[str, str, int]]:
+        """Get ``(node_id, replica_id, port)`` for every replica's gRPC server.
+
+        The sibling of :meth:`get_ingress_replicas_info` for the
+        inter-deployment gRPC server. Deliberately unfiltered: unlike the
+        direct-ingress ports, every replica runs this server, so restricting to
+        ``owns_direct_ingress_ports()`` would leave most live ports invisible
+        to the allocator and let them be handed out twice.
+
+        Replicas that have not yet reported a port -- still starting, or not
+        yet recovered after a controller restart -- are skipped rather than
+        recorded as ``None``; they appear on a later tick.
+        """
+        internal_grpc_ports_info = []
+        for deployment_state in self._deployment_states.values():
+            for replica in deployment_state._replicas.get():
+                node_id = replica.actor_node_id
+                port = replica.actor_internal_grpc_port
+                if node_id is None or port is None:
+                    continue
+                internal_grpc_ports_info.append(
+                    (node_id, replica.replica_id.unique_id, port)
+                )
+        return internal_grpc_ports_info
 
     def _get_replica_ranks_mapping(
         self, deployment_id: DeploymentID

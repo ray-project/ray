@@ -16,6 +16,8 @@ def port_range_constants():
         "RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT": 8005,
         "RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT": 9000,
         "RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT": 9005,
+        "RAY_SERVE_INTERNAL_GRPC_MIN_PORT": 9500,
+        "RAY_SERVE_INTERNAL_GRPC_MAX_PORT": 9505,
     }
 
 
@@ -36,6 +38,14 @@ def setup_port_constants(monkeypatch, port_range_constants):
     monkeypatch.setattr(
         "ray.serve._private.node_port_manager.RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT",
         port_range_constants["RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT"],
+    )
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_INTERNAL_GRPC_MIN_PORT",
+        port_range_constants["RAY_SERVE_INTERNAL_GRPC_MIN_PORT"],
+    )
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_INTERNAL_GRPC_MAX_PORT",
+        port_range_constants["RAY_SERVE_INTERNAL_GRPC_MAX_PORT"],
     )
     # Disable quarantine so existing tests keep their immediate-reuse semantics.
     monkeypatch.setattr(
@@ -350,6 +360,105 @@ def test_prune_drops_empty_manager_after_quarantine(monkeypatch, port_range_cons
         return node_id not in NodePortManager._node_managers
 
     wait_for_condition(_manager_reclaimed, timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# Inter-deployment gRPC port
+#
+# Unlike the direct-ingress pools this one is consumed by *every* replica, so
+# its recovery and reclaim paths have to work even when direct ingress is off.
+# ---------------------------------------------------------------------------
+
+
+def test_internal_grpc_port_allocation_and_release(port_range_constants):
+    manager = NodePortManager.get_node_manager("node-1")
+
+    port = manager.allocate_internal_grpc_port("replica-1")
+    assert (
+        port_range_constants["RAY_SERVE_INTERNAL_GRPC_MIN_PORT"]
+        <= port
+        < port_range_constants["RAY_SERVE_INTERNAL_GRPC_MAX_PORT"]
+    )
+
+    manager.release_internal_grpc_port("replica-1", port)
+    assert manager.allocate_internal_grpc_port("replica-2") == port
+
+
+def test_internal_grpc_pool_is_disjoint_from_direct_ingress(port_range_constants):
+    """A replica holds an ingress port and an internal port at the same time.
+
+    They come from separate allocators, so neither may shadow the other: the
+    same replica id must get two independent ports, from two ranges.
+    """
+    manager = NodePortManager.get_node_manager("node-1")
+
+    grpc_port = manager.allocate_port("replica-1", RequestProtocol.GRPC)
+    internal_port = manager.allocate_internal_grpc_port("replica-1")
+
+    assert grpc_port != internal_port
+    assert (
+        port_range_constants["RAY_SERVE_INTERNAL_GRPC_MIN_PORT"]
+        <= internal_port
+        < port_range_constants["RAY_SERVE_INTERNAL_GRPC_MAX_PORT"]
+    )
+
+
+def test_internal_grpc_blocked_port_is_not_reallocated():
+    """A port that failed to bind must not come back to the pool.
+
+    This is the retry path in ``Replica._bind_internal_grpc_port``: something
+    outside Serve holds the port, so handing it to the next replica would fail
+    the same way.
+    """
+    manager = NodePortManager.get_node_manager("node-1")
+
+    port = manager.allocate_internal_grpc_port("replica-1")
+    manager.release_internal_grpc_port("replica-1", port, block_port=True)
+
+    assert manager.allocate_internal_grpc_port("replica-2") != port
+
+
+def test_internal_grpc_recovered_port_is_not_reallocated():
+    """After a controller restart, live replicas' ports must not be handed out.
+
+    ``update_internal_grpc_port_if_missing`` is how the controller re-learns
+    them. Without it the allocator would hand the same port to a new replica,
+    which then fails to bind and retries until the collision clears.
+    """
+    manager = NodePortManager.get_node_manager("node-1")
+
+    recovered_port = 9500
+    manager.update_internal_grpc_port_if_missing("recovered-replica", recovered_port)
+
+    ports = {manager.allocate_internal_grpc_port(f"replica-{i}") for i in range(4)}
+    assert recovered_port not in ports
+
+
+def test_internal_grpc_port_reclaimed_for_dead_replica():
+    """A replica that crashes never releases its port; prune has to.
+
+    Covers the leak the controller reconcile pass exists to prevent.
+    """
+    manager = NodePortManager.get_node_manager("node-1")
+    port = manager.allocate_internal_grpc_port("replica-1")
+
+    NodePortManager.prune({"node-1": {"replica-2"}})
+
+    assert manager.allocate_internal_grpc_port("replica-3") == port
+
+
+def test_internal_grpc_port_exhaustion(port_range_constants):
+    manager = NodePortManager.get_node_manager("node-1")
+    pool_size = (
+        port_range_constants["RAY_SERVE_INTERNAL_GRPC_MAX_PORT"]
+        - port_range_constants["RAY_SERVE_INTERNAL_GRPC_MIN_PORT"]
+    )
+
+    for i in range(pool_size):
+        manager.allocate_internal_grpc_port(f"replica-{i}")
+
+    with pytest.raises(NoAvailablePortError):
+        manager.allocate_internal_grpc_port("one-too-many")
 
 
 if __name__ == "__main__":

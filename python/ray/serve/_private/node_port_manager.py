@@ -9,9 +9,17 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+    RAY_SERVE_INTERNAL_GRPC_MAX_PORT,
+    RAY_SERVE_INTERNAL_GRPC_MIN_PORT,
     RAY_SERVE_PORT_QUARANTINE_S,
     SERVE_LOGGER_NAME,
 )
+
+# Allocator key for the per-replica inter-deployment gRPC server. Deliberately
+# not a ``RequestProtocol`` member: that enum is also a metrics tag dimension,
+# and this server carries no ingress traffic. Distinct from
+# ``RequestProtocol.GRPC`` ("gRPC"), which keys the direct-ingress allocator.
+INTERNAL_GRPC_PROTOCOL = "internal-gRPC"
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -92,6 +100,17 @@ class PortAllocator:
                 <= RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT
             ):
                 logger.warning(f"GRPC port out of range: {port}")
+        elif self._protocol == INTERNAL_GRPC_PROTOCOL:
+            if not (
+                RAY_SERVE_INTERNAL_GRPC_MIN_PORT
+                <= port
+                <= RAY_SERVE_INTERNAL_GRPC_MAX_PORT
+            ):
+                # Reachable when the range is narrowed between restarts: the
+                # replica is still on its old port, which is now outside the
+                # pool. Recovering it anyway is right -- the port is genuinely
+                # in use -- but it will not be handed out again once released.
+                logger.warning(f"Internal gRPC port out of range: {port}")
         self._allocated_ports[replica_id] = port
 
         logger.info(
@@ -302,10 +321,20 @@ class NodePortManager:
             protocol=RequestProtocol.GRPC,
             node_id=node_id,
         )
+        # Every replica has an inter-deployment gRPC server, not just ingress
+        # ones, so this allocator sees strictly more replicas than the two
+        # above.
+        self._internal_grpc_allocator = PortAllocator(
+            RAY_SERVE_INTERNAL_GRPC_MIN_PORT,
+            RAY_SERVE_INTERNAL_GRPC_MAX_PORT,
+            protocol=INTERNAL_GRPC_PROTOCOL,
+            node_id=node_id,
+        )
 
     def _prune_replica_ports(self, active_replica_ids: Set[str]):
         self._http_allocator.prune(active_replica_ids)
         self._grpc_allocator.prune(active_replica_ids)
+        self._internal_grpc_allocator.prune(active_replica_ids)
 
     def allocate_port(self, replica_id: str, protocol: RequestProtocol) -> int:
         if protocol == RequestProtocol.HTTP:
@@ -345,9 +374,22 @@ class NodePortManager:
         else:
             raise ValueError(f"Unsupported protocol: {protocol}")
 
+    def allocate_internal_grpc_port(self, replica_id: str) -> int:
+        return self._internal_grpc_allocator.allocate(replica_id)
+
+    def release_internal_grpc_port(
+        self, replica_id: str, port: int, block_port: bool = False
+    ):
+        self._internal_grpc_allocator.release(replica_id, port, block_port)
+
+    def update_internal_grpc_port_if_missing(self, replica_id: str, port: int):
+        """Re-learn a running replica's port after a controller restart."""
+        self._internal_grpc_allocator.update_port_if_missing(replica_id, port)
+
     def has_pending_quarantine(self) -> bool:
-        """True if either allocator still holds a quarantined port."""
-        # Evaluate both (no short-circuit) so each allocator drains expired ports.
+        """True if any allocator still holds a quarantined port."""
+        # Evaluate all (no short-circuit) so each allocator drains expired ports.
         http_pending = self._http_allocator.has_pending_quarantine()
         grpc_pending = self._grpc_allocator.has_pending_quarantine()
-        return http_pending or grpc_pending
+        internal_pending = self._internal_grpc_allocator.has_pending_quarantine()
+        return http_pending or grpc_pending or internal_pending

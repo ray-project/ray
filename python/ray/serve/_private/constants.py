@@ -1000,6 +1000,36 @@ RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
     "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
 )
 
+# Port range for each replica's inter-deployment gRPC server, used for
+# proxy->replica and replica->replica handle calls when gRPC is enabled by
+# default (RAY_SERVE_USE_GRPC_BY_DEFAULT / RAY_SERVE_THROUGHPUT_OPTIMIZED).
+#
+# Historically this server bound an OS-assigned ephemeral port. Service meshes
+# such as Istio do not route undeclared ephemeral ports, so cross-node handle
+# calls to it were dropped. Ports are now always allocated from this bounded,
+# declarable range by the controller's NodePortManager -- the same mechanism,
+# and the same deterministic min-heap assignment, that direct ingress uses.
+#
+# Unlike the direct-ingress ranges, this one is consumed by *every* replica on
+# a node rather than only ingress replicas, so it is the range most likely to
+# bind first. Keep it from overlapping the direct-ingress ranges above and the
+# Ray worker port range (min_worker_port to max_worker_port).
+RAY_SERVE_INTERNAL_GRPC_MIN_PORT = get_env_int(
+    "RAY_SERVE_INTERNAL_GRPC_MIN_PORT", 42000
+)
+RAY_SERVE_INTERNAL_GRPC_MAX_PORT = get_env_int(
+    "RAY_SERVE_INTERNAL_GRPC_MAX_PORT", 43000
+)
+
+# How many allocate-and-bind attempts a replica makes for its inter-deployment
+# gRPC port before giving up. Mirrors
+# RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT: a port the allocator believes is
+# free can still be taken by a non-Serve process on the node, and each failed
+# attempt blocks that port so the next attempt gets a different one.
+RAY_SERVE_INTERNAL_GRPC_PORT_RETRY_COUNT = get_env_int(
+    "RAY_SERVE_INTERNAL_GRPC_PORT_RETRY_COUNT", 100
+)
+
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
