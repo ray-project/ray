@@ -96,6 +96,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
+   serve.config.BackpressureConfig
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
    serve.config.DeploymentActorConfig
@@ -475,6 +476,7 @@ Content-Type: application/json
    :template: autosummary/autopydantic.rst
 
    schema.LoggingConfig
+   schema.TracingConfig
 ```
 
 (serve-llm-api)=
