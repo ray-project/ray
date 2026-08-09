@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ray.experimental.sandbox._internal.image_utils import DEFAULT_IMAGES_DIR
+from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.image_manager import (
     BaseImageManager,
@@ -197,15 +198,13 @@ def test_image_manager_prepare_oci_bundle(tmp_path):
 
 
 def test_sandbox_runtime_image_manager_integration(tmp_path):
-    images_dir = str(tmp_path / "images")
-    custom_mgr = ImageManager(images_dir=images_dir)
+    rt = SandboxRuntime()
+    assert isinstance(rt.image_manager, ImageManager)
+    assert isinstance(rt.backend, GVisorSandboxBackend)
 
     mock_backend = MagicMock()
     mock_backend.create_sandbox.return_value = "ray-sandbox-12345"
-
-    rt = SandboxRuntime(backend=mock_backend, image_manager=custom_mgr)
-    assert rt.image_manager is custom_mgr
-    assert rt.backend is mock_backend
+    rt._backend = mock_backend
 
     local_tar = tmp_path / "rt_test.tar"
     with tarfile.open(str(local_tar), "w") as tar:
@@ -216,7 +215,7 @@ def test_sandbox_runtime_image_manager_integration(tmp_path):
     # Test runtime.pull_image
     extracted_path = rt.pull_image(str(local_tar))
     assert os.path.exists(extracted_path)
-    assert custom_mgr.is_image_extracted(str(local_tar))
+    assert rt.image_manager.is_image_extracted(str(local_tar))
 
     # Test runtime.create triggers image manager and backend
     sid = rt.create(
@@ -275,16 +274,10 @@ def test_custom_image_manager_subclass(tmp_path):
     os.makedirs(custom_root, exist_ok=True)
     custom_mgr = CustomImageManager(rootfs_dir=custom_root)
 
-    mock_backend = MagicMock()
-    mock_backend.create_sandbox.return_value = "custom-sb-id"
-
-    rt = SandboxRuntime(backend=mock_backend, image_manager=custom_mgr)
-    assert rt.image_manager is custom_mgr
-
-    sid = rt.create(image="my-custom-image:v1")
-    assert sid == "custom-sb-id"
-    assert ("my-custom-image:v1", 30.0) in custom_mgr.pull_calls
-    assert rt.pull_image("another-image") == custom_root
+    backend = GVisorSandboxBackend(image_manager=custom_mgr)
+    assert backend.image_manager is custom_mgr
+    assert custom_mgr.pull_image("another-image") == custom_root
+    assert ("another-image", 120.0) in custom_mgr.pull_calls
 
 
 if __name__ == "__main__":
