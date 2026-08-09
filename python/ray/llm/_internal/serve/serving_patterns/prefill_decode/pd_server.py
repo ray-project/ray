@@ -81,13 +81,9 @@ _NULL_TRACE = _NullTrace()
 try:
     from bench.pd_trace import (
         current as _trace_current,
-        new_trace as _new_trace,
         start_request as _trace_start,
     )
 except ImportError:
-
-    def _new_trace(**meta):
-        return _NULL_TRACE
 
     def _trace_start(**meta):
         return _NULL_TRACE
@@ -281,11 +277,10 @@ class PDOrchestratorMixin:
 
         # Adopt the trace the ASGI handler opened for this request, so the
         # HTTP-boundary stages and the orchestration stages land in one record.
-        # Falls back to a fresh trace when the request came through the
-        # separate ingress deployment, where that handler never ran.
+        # When the request came through the separate ingress deployment that
+        # handler never ran, and ``_trace_current`` opens a fresh trace itself
+        # (stages from ``t0`` onward) -- so there is nothing to check here.
         trace = _trace_current()
-        if trace is _NULL_TRACE:
-            trace = _new_trace()
         trace.mark("t0")
 
         prefill_handle = self._prefill_handle
@@ -435,8 +430,11 @@ class PDOrchestratorMixin:
         token, so this is early) and drains decode directly: no per-token
         Future bookkeeping for the ~127 remaining tokens.
         """
+        # The peer-binding path passes its trace in so the stages land in one
+        # record. The default path doesn't, so pick up this request's trace
+        # rather than opening an orphan that nothing would ever emit.
         if trace is None:
-            trace = _new_trace()
+            trace = _trace_current()
         prefill_task = asyncio.ensure_future(_drain_prefill(prefill_resp))
         # Stamped when the prefill drain actually finishes, rather than when
         # the racing loop next notices, so the two are not conflated.

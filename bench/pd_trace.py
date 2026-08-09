@@ -155,15 +155,25 @@ def start_request(**meta) -> "RequestTrace":
 
 
 def current() -> "RequestTrace":
-    """The trace for the in-flight request, or a no-op if there is none.
+    """The trace for the in-flight request, creating one if nothing started it.
 
-    Returns the no-op (rather than creating one) when nothing upstream started
-    a trace: the non-direct-streaming path reaches the orchestrator through the
-    separate ingress deployment, where no ASGI hook of ours runs.
+    The ASGI handler calls ``start_request`` first on the direct-streaming
+    path. On the non-direct-streaming path the orchestrator is reached through
+    the separate ingress deployment, where no ASGI hook of ours runs -- so
+    there is no trace yet and one is opened here (stages from ``t0`` onward,
+    with the HTTP-boundary stages necessarily absent).
+
+    Creating it here rather than returning a no-op keeps the "is this live?"
+    decision inside this module: a caller cannot compare the result against
+    its own no-op sentinel, because that is a different object than ``_NULL``.
     """
     if not ENABLED:
         return _NULL
-    return _current.get() or _NULL
+    trace = _current.get()
+    if trace is None:
+        trace = RequestTrace()
+        _current.set(trace)
+    return trace
 
 
 def summarize(paths: List[str], concurrency: Optional[int] = None) -> None:
