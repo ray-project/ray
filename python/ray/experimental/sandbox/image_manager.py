@@ -121,7 +121,7 @@ class BaseImageManager(ABC):
         self,
         image: str,
         container_cwd: str = "/",
-        work_dir_path: Optional[str] = None,
+        workdir_path: Optional[str] = None,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
@@ -134,7 +134,7 @@ class BaseImageManager(ABC):
         Args:
             image: Container image name or tar path.
             container_cwd: Working directory inside the container.
-            work_dir_path: Host path to bind mount into container_cwd.
+            workdir_path: Host path to bind mount into container_cwd.
             env_dict: Optional environment variables dictionary overriding image envs.
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
@@ -151,7 +151,7 @@ class BaseImageManager(ABC):
     def prepare_oci_bundle(
         self,
         root_dir: str,
-        work_dir_path: str,
+        workdir_path: str,
         container_cwd: str,
         image: str,
         env_dict: Optional[Dict[str, str]] = None,
@@ -164,7 +164,7 @@ class BaseImageManager(ABC):
 
         Args:
             root_dir: Host directory for the container bundle.
-            work_dir_path: Host directory for the sandbox working directory.
+            workdir_path: Host directory for the sandbox working directory.
             container_cwd: Working directory inside container.
             image: Container image name or tar path.
             env_dict: Environment variables dictionary.
@@ -293,7 +293,7 @@ class ImageManager(BaseImageManager):
         self,
         image: str,
         container_cwd: str = "/",
-        work_dir_path: Optional[str] = None,
+        workdir_path: Optional[str] = None,
         env_dict: Optional[Dict[str, str]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
@@ -306,7 +306,7 @@ class ImageManager(BaseImageManager):
         Args:
             image: Container image name or tar path.
             container_cwd: Working directory inside the container.
-            work_dir_path: Host path to bind mount into container_cwd.
+            workdir_path: Host path to bind mount into container_cwd.
             env_dict: Optional environment variables dictionary overriding image envs.
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
@@ -353,9 +353,9 @@ class ImageManager(BaseImageManager):
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
 
-        if work_dir_path:
+        if workdir_path:
             default_binds = [
-                (container_cwd, work_dir_path),
+                (container_cwd, workdir_path),
             ]
             for dest, src in default_binds:
                 if dest != "/" and dest not in existing_dests and os.path.exists(src):
@@ -398,7 +398,7 @@ class ImageManager(BaseImageManager):
     def prepare_oci_bundle(
         self,
         root_dir: str,
-        work_dir_path: str,
+        workdir_path: str,
         container_cwd: str,
         image: str,
         env_dict: Optional[Dict[str, str]] = None,
@@ -411,7 +411,7 @@ class ImageManager(BaseImageManager):
 
         Args:
             root_dir: Host directory for the container bundle.
-            work_dir_path: Host directory for the sandbox working directory.
+            workdir_path: Host directory for the sandbox working directory.
             container_cwd: Working directory inside container.
             image: Container image name or tar path.
             env_dict: Environment variables dictionary.
@@ -430,7 +430,7 @@ class ImageManager(BaseImageManager):
         spec = self.create_oci_spec(
             image=image,
             container_cwd=container_cwd,
-            work_dir_path=work_dir_path,
+            workdir_path=workdir_path,
             env_dict=env_dict,
             cpu=cpu,
             memory=memory,

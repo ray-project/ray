@@ -62,17 +62,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 if not config.workdir:
                     config.workdir = "/"
 
-            work_dir_path = os.path.abspath(
+            workdir_path = os.path.abspath(
                 os.path.join(root_dir, config.workdir.lstrip("/"))
             )
             if not (
-                work_dir_path == os.path.abspath(root_dir)
-                or work_dir_path.startswith(os.path.abspath(root_dir) + os.sep)
+                workdir_path == os.path.abspath(root_dir)
+                or workdir_path.startswith(os.path.abspath(root_dir) + os.sep)
             ):
                 raise SandboxCreationError(
                     f"Invalid workdir '{config.workdir}': Path traversal detected."
                 )
-            os.makedirs(work_dir_path, mode=0o777, exist_ok=True)
+            os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
@@ -81,7 +81,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # Prepare OCI bundle config for long-running container process
         self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
-            work_dir_path=work_dir_path,
+            workdir_path=workdir_path,
             container_cwd=config.workdir,
             image=config.image,
             env_dict=config.env,
@@ -158,7 +158,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
-            "workdir": work_dir_path,
+            "workdir": workdir_path,
             "config": config,
             "proc": proc,
             "stderr_file": stderr_file,
@@ -352,7 +352,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def _prepare_oci_bundle(
         self,
         root_dir: str,
-        work_dir_path: str,
+        workdir_path: str,
         container_cwd: str,
         image: str,
         env_dict: Optional[Dict[str, str]] = None,
@@ -363,7 +363,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
-            work_dir_path=work_dir_path,
+            workdir_path=workdir_path,
             container_cwd=container_cwd,
             image=image,
             env_dict=env_dict,

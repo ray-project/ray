@@ -128,7 +128,7 @@ def test_image_manager_create_oci_spec(tmp_path):
     spec = mgr.create_oci_spec(
         image=str(local_tar),
         container_cwd="/workspace",
-        work_dir_path=host_workdir,
+        workdir_path=host_workdir,
         env_dict={"VAR2": "override2", "VAR3": "new3"},
         cpu=2.5,
         memory="1Gi",
@@ -177,7 +177,7 @@ def test_image_manager_prepare_oci_bundle(tmp_path):
 
     config_json_path = mgr.prepare_oci_bundle(
         root_dir=bundle_dir,
-        work_dir_path=workdir_path,
+        workdir_path=workdir_path,
         container_cwd="/workdir",
         image=str(local_tar),
         env_dict={"TEST_ENV": "123"},
