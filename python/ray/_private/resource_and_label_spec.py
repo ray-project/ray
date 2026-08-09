@@ -455,6 +455,31 @@ class ResourceAndLabelSpec:
                 num_accelerators = num_gpus
             else:
                 num_accelerators = resources.get(resource_name)
+
+            if num_accelerators is not None and num_accelerators > 0:
+                try:
+                    detected_num_accelerators = (
+                        accelerator_manager.get_current_node_num_accelerators()
+                    )
+                except Exception:
+                    logger.warning(
+                        "Ray was configured to use %s %s accelerator(s), but "
+                        "auto-detection failed. Check that the accelerator driver "
+                        "and discovery library are installed and accessible to Ray.",
+                        num_accelerators,
+                        resource_name,
+                        exc_info=True,
+                    )
+                else:
+                    if detected_num_accelerators == 0:
+                        logger.warning(
+                            "Ray was configured to use %s %s accelerator(s), but "
+                            "auto-detection found none. Check that the accelerator "
+                            "hardware is present and its driver is installed and "
+                            "accessible to Ray.",
+                            num_accelerators,
+                            resource_name,
+                        )
             if num_accelerators is None:
                 num_accelerators = (
                     accelerator_manager.get_current_node_num_accelerators()
