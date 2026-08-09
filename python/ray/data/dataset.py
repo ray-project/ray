@@ -219,6 +219,8 @@ def _warn_on_ray_remote_args_fn(
 
 def _warn_on_ray_remote_args(ray_remote_args: Dict[str, Any]) -> None:
     if ray_remote_args:
+        # add_column and drop_columns call other Dataset methods. Skip those calls so
+        # the warning points to where add_column or drop_columns was called.
         stacklevel = 1
         frame = inspect.currentframe()
         try:
@@ -226,6 +228,7 @@ def _warn_on_ray_remote_args(ray_remote_args: Dict[str, Any]) -> None:
                 stacklevel += 1
                 frame = frame.f_back
         finally:
+            # Release the frame so Python can clean up the call stack.
             del frame
 
         warnings.warn(
