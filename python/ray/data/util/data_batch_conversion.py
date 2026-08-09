@@ -133,12 +133,6 @@ def _convert_pandas_to_batch_type(
                 output_dict[column] = data[column].to_numpy()
             return output_dict
     elif type == BatchFormat.ARROW:
-        if not pyarrow:
-            raise ValueError(
-                "Attempted to convert data to Pyarrow Table but Pyarrow "
-                "is not installed. Please do `pip install pyarrow` to "
-                "install Pyarrow."
-            )
         return pyarrow.Table.from_pandas(data)
     elif type == BatchFormat.CUDF:
         cudf = _lazy_import_cudf()
