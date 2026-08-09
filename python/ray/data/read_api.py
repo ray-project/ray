@@ -542,11 +542,17 @@ def _read_datasource_v2(
     # (``-1`` when unset). Honoring it here per-read avoids mutating the
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    partitioner = RoundRobinPartitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(),
-        min_bucket_size=min_bucket_size,
-        max_bucket_size=max_bucket_size,
-        num_buckets=num_buckets,
+    # An indexer that already emits bin-packed read units (e.g. the footer-based
+    # Parquet indexer) doesn't use the size-estimate ``RoundRobinPartitioner``.
+    partitioner = (
+        None
+        if indexer.produces_partitioned_manifests
+        else RoundRobinPartitioner(
+            in_memory_size_estimator=datasource.get_size_estimator(),
+            min_bucket_size=min_bucket_size,
+            max_bucket_size=max_bucket_size,
+            num_buckets=num_buckets,
+        )
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
@@ -838,6 +844,8 @@ def read_videos(
     partitioning: Optional[Partitioning] = None,
     include_paths: bool = False,
     include_timestamps: bool = False,
+    fps: Optional[int] = None,
+    resize: Optional[Tuple[int, int]] = None,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = VideoDatasource._FILE_EXTENSIONS,
     shuffle: Union[Literal["files"], None] = None,
@@ -863,6 +871,12 @@ def read_videos(
         frame        ArrowTensorTypeV2(shape=(720, 1280, 3), dtype=uint8)
         frame_index  int64
 
+        Subsample frames to a target frame rate or resize frames to
+        ``(height, width)``:
+
+        >>> ds = ray.data.read_videos(path, fps=5)  # doctest: +SKIP
+        >>> ds = ray.data.read_videos(path, resize=(240, 320))  # doctest: +SKIP
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -887,6 +901,16 @@ def read_videos(
             stored in the ``'path'`` column.
         include_timestamps: If ``True``, include the frame timestamps from the video
             as a ``'frame_timestamp'`` column.
+        fps: If specified, subsample frames to approximately this target frame rate
+            instead of decoding every frame. Frames are kept at a fixed stride of
+            ``max(1, round(source_fps / fps))``, so the effective rate may differ
+            slightly from ``fps``. ``frame_index`` remains the index of the frame in
+            the original video. If ``fps`` is greater than or equal to the source
+            frame rate, all frames are kept.
+        resize: If specified, resize each frame to ``(height, width)`` at decode
+            time. This ordering mirrors the ``size`` parameter of
+            :func:`~ray.data.read_images`. If unspecified, frames retain their
+            original shape.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
@@ -919,6 +943,8 @@ def read_videos(
         shuffle=shuffle,
         include_paths=include_paths,
         include_timestamps=include_timestamps,
+        fps=fps,
+        resize=resize,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1358,6 +1384,8 @@ def read_parquet(
     include_paths: bool = False,
     include_row_hash: bool = False,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
+    ignore_missing_paths: bool = False,
+    skip_paths: Optional[Union[str, List[str]]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
@@ -1494,6 +1522,14 @@ def read_parquet(
             returned dataset and include ``'row_hash'`` explicitly in the list
             to retain it.
         file_extensions: A list of file extensions to filter files by.
+        ignore_missing_paths: If "True", ignores any file/directory paths in "paths"
+            that are not found. This only tolerates paths that are already missing
+            when the files are listed.
+        skip_paths: A path, or list of paths, to exclude from the read. Any
+            listed or expanded file whose path matches an entry is skipped,
+            whether or not it exists. Use this to deterministically drop
+            known-bad paths (e.g. from a manifest diff) without paying to read
+            them. Composes with ``ignore_missing_paths``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -1638,6 +1674,8 @@ def read_parquet(
             filesystem=filesystem,
             partitioning=partitioning,
             file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            skip_paths=skip_paths,
             include_paths=include_paths,
             include_row_hash=include_row_hash,
             shuffle=shuffle,
@@ -1659,6 +1697,18 @@ def read_parquet(
         if select_columns_after_read is not None:
             ds = ds.select_columns(select_columns_after_read)
         return ds
+
+    # ``ignore_missing_paths`` / ``skip_paths`` are only implemented on the V2
+    # datasource path. Fail loudly rather than silently ignoring them on V1.
+    # An empty ``skip_paths`` (``[]``) is a no-op, so only raise when the caller
+    # actually requested one of these behaviors.
+    if ignore_missing_paths or skip_paths:
+        raise NotImplementedError(
+            "`ignore_missing_paths` and `skip_paths` on `read_parquet` require "
+            "the V2 datasource. Enable it with "
+            "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
 
     datasource = ParquetDatasource(
         paths,

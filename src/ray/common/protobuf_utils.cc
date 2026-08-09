@@ -73,7 +73,8 @@ std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
     int pid,
-    const rpc::RayException *creation_task_exception) {
+    const rpc::RayException *creation_task_exception,
+    std::optional<int64_t> memory_used_bytes_at_death) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   // Only report the worker id + delta (new data upon worker failures).
   // GCS will merge the data with original worker data.
@@ -84,6 +85,9 @@ std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   worker_failure_info_ptr->set_exit_type(disconnect_type);
   worker_failure_info_ptr->set_exit_detail(disconnect_detail);
   worker_failure_info_ptr->set_end_time_ms(current_sys_time_ms());
+  if (memory_used_bytes_at_death.has_value()) {
+    worker_failure_info_ptr->set_memory_used_bytes_at_death(*memory_used_bytes_at_death);
+  }
   if (creation_task_exception != nullptr) {
     // this pointer will be freed by protobuf internal codes
     auto copied_data = new rpc::RayException(*creation_task_exception);
