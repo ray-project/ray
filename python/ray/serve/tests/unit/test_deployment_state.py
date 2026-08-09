@@ -4295,6 +4295,87 @@ def test_resource_requirements_none():
     replica.resource_requirements()
 
 
+def test_actor_label_selector_is_exposed():
+    """A pending replica exposes its label selector so the slow-startup message
+    can name it.
+
+    A replica can be unschedulable purely because no node satisfies its label
+    selector, in which case the resources reported alongside look plentiful and
+    point the reader away from the real cause.
+    """
+
+    class FakeActor:
+        actor_resources = {"CPU": 1.0}
+        placement_group_bundles = None
+        available_resources = {"CPU": 800.0}
+        actor_label_selector = {"enterprise-tier": "in(plus-1,plus-2,plus-3)"}
+        actor_fallback_strategy = [{"label_selector": {"enterprise-tier": "basic"}}]
+
+    replica_id = ReplicaID("asdf123", DeploymentID(name="test"))
+    replica = DeploymentReplica(replica_id, None)
+    replica._actor = FakeActor()
+
+    assert replica.actor_label_selector == {
+        "enterprise-tier": "in(plus-1,plus-2,plus-3)"
+    }
+    # Fallbacks are only tried when the selector above matches nothing, so a still
+    # pending replica means these did not match either.
+    assert replica.actor_fallback_strategy == [
+        {"label_selector": {"enterprise-tier": "basic"}}
+    ]
+
+
+def test_actor_fallback_strategy_with_multiple_options():
+    """All fallback options are reported, not just the first.
+
+    Each option is tried in turn, so a still pending replica means every one of
+    them failed to match.
+    """
+    fallbacks = [
+        {"label_selector": {"enterprise-tier": "in(gold-1,gold-2)"}},
+        {
+            "label_selector": {
+                "enterprise-tier": "in(silver-1)",
+                "service-type": "in(all)",
+            }
+        },
+        {"label_selector": {"enterprise-tier": "basic"}},
+    ]
+
+    class FakeActor:
+        actor_resources = {"CPU": 1.0}
+        placement_group_bundles = None
+        available_resources = {"CPU": 800.0}
+        actor_label_selector = {"enterprise-tier": "in(plus-1)"}
+        actor_fallback_strategy = fallbacks
+
+    replica_id = ReplicaID("asdf123", DeploymentID(name="test"))
+    replica = DeploymentReplica(replica_id, None)
+    replica._actor = FakeActor()
+
+    # The whole list is reported, so every option stays visible in the message.
+    assert replica.actor_fallback_strategy == fallbacks
+    assert len(replica.actor_fallback_strategy) == 3
+
+
+def test_actor_label_selector_is_none_when_unset():
+    """Deployments without a label selector report None, so the message omits it."""
+
+    class FakeActor:
+        actor_resources = {"CPU": 1.0}
+        placement_group_bundles = None
+        available_resources = {}
+        actor_label_selector = None
+        actor_fallback_strategy = None
+
+    replica_id = ReplicaID("asdf123", DeploymentID(name="test"))
+    replica = DeploymentReplica(replica_id, None)
+    replica._actor = FakeActor()
+
+    assert replica.actor_label_selector is None
+    assert replica.actor_fallback_strategy is None
+
+
 class TestActorReplicaWrapper:
     def test_default_value(self):
         actor_replica = ActorReplicaWrapper(
@@ -5067,11 +5148,14 @@ class TestAutoscaling:
                 "This may be caused by a slow __init__ or reconfigure method."
             )
         elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+            # No label selector is configured here, so the selector sentence is
+            # omitted entirely.
             expected_message = (
                 "Deployment 'test_deployment' in application 'test_app' "
                 "has 3 replicas that have taken more than 30s to be scheduled. "
-                "This may be due to waiting for the cluster to auto-scale or for "
-                "a runtime environment to be installed. "
+                "This may be due to waiting for the cluster to auto-scale, for "
+                "a runtime environment to be installed, or for a node matching "
+                "the replica's label selector to become available. "
                 "Resources required for each replica: "
                 '{"CPU": 0.1}, '
                 "total resources available: "
