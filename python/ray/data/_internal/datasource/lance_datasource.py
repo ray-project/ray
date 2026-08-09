@@ -226,17 +226,19 @@ def _read_fragments(
 
 
 def _fill_missing_columns(table, schema, scanner_options) -> "pyarrow.Table":
-    """Null-fill columns advertised by the ReadTask schema but omitted by a per-dataset scan so each block conforms; skipped under `columns=` projection."""
+    """Null-fill and reorder each block to the unified ReadTask schema; skipped under `columns=` projection."""
     if scanner_options.get("columns") is not None:
         # Projection already trims to the requested columns.
         return table
     import pyarrow as pa
 
     missing = [f.name for f in schema if f.name not in table.schema.names]
-    if not missing:
-        return table
-    for name in missing:
-        table = table.append_column(
-            name, pa.nulls(len(table), type=schema.field(name).type)
-        )
+    if missing:
+        for name in missing:
+            table = table.append_column(
+                name, pa.nulls(len(table), type=schema.field(name).type)
+            )
+    # Scanners return columns out of unified-schema order; reorder via select.
+    if table.schema.names != schema.names:
+        table = table.select(schema.names)
     return table
