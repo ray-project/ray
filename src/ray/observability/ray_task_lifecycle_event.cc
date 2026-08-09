@@ -18,6 +18,7 @@
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "ray/observability/task_event_populators.h"
 
 namespace ray {
@@ -45,7 +46,7 @@ RayTaskLifecycleEvent::RayTaskLifecycleEvent(
 }
 
 std::string RayTaskLifecycleEvent::GetEntityId() const {
-  return task_id_.Binary() + std::to_string(task_attempt_);
+  return absl::StrCat(task_id_.Binary(), task_attempt_);
 }
 
 TaskAttemptId RayTaskLifecycleEvent::GetTaskAttempt() const {

@@ -282,6 +282,7 @@ ray_cc_library(
         ":task_state_update",
         "//src/ray/common:id",
         "//src/ray/protobuf/public:events_task_lifecycle_event_cc_proto",
+        "@com_google_absl//absl/strings",
     ],
 )
 
