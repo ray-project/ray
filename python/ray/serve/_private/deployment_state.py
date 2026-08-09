@@ -3303,8 +3303,10 @@ class DeploymentState:
 
     @property
     def target_info(self) -> DeploymentInfo:
-        # `info` is only None before the first deploy()/recovery.
-        return self._deployed_info
+        # `info` is only None before the first deploy()/recovery, where callers
+        # (e.g. _record_deployment_usage) guard on None -- so this must not assert.
+        # pyrefly: ignore[bad-return]
+        return self._target_state.info  # type: ignore[return-value]
 
     @property
     def target_version(self) -> DeploymentVersion:
@@ -6179,6 +6181,9 @@ class DeploymentStateManager:
         If a tier does not drain within RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S it is
         force advanced past.
         """
+        # Both are populated by the caller before this runs (see None-check above).
+        assert self._shutdown_tiers is not None
+        assert self._shutdown_tier_started_at is not None
         while self._shutdown_tier_idx < len(self._shutdown_tiers):
             tier = [
                 deployment_id
