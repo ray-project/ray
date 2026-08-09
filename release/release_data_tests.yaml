@@ -339,7 +339,7 @@
       python groupby_benchmark.py --sf 1000 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
 
-# map_groups v2 on the 84-group key stays at SF100 because there's data skew in partition that makes the task unscheduable.
+# map_groups v2 on the 84-group key stays at SF100 because there's data skew in partition that makes the task unschedulable.
 - name: "map_groups_{{scaling}}_{{shuffle_strategy}}_{{columns}}"
   python: "3.10"
   matrix:

@@ -6,8 +6,6 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
-        # The original hardcoded counts (16, tuned at sf100) yield ~15GB join
-        # partitions at sf1000 -- reduce tasks too large for a single node.
         join_num_partitions = 200
         # Q22: Global Sales Opportunity Query
         # Identify geographic areas where there are customers who may be
