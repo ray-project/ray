@@ -1412,6 +1412,15 @@ class AsyncioRouter:
             except ActorDiedError as e:
                 raise self._make_upstream_crash_error(e)
             result = replica.try_send_request(pr, with_rejection=False)
+            if selection._slot_token is None:
+                # A reserved selection already bumped the queue-length cache
+                # via reserve_slot()'s own RPC response. This one didn't, so
+                # without this the cache under-counts this replica's load for
+                # every unreserved dispatch until an unrelated reserved
+                # request happens to refresh it -- mirrors the increment
+                # `_route_and_send_request_once` does for its own no-rejection
+                # path.
+                self.request_router.on_send_request(replica.replica_id)
         except BaseException:
             # Dispatch failed; release the reservation before re-raising. A
             # selection made without one has nothing to release.
