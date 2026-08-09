@@ -127,7 +127,7 @@ class BaseImageManager(ABC):
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
         base_spec: Optional[Dict[str, Any]] = None,
-        _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
 
@@ -140,7 +140,7 @@ class BaseImageManager(ABC):
             memory: Memory allocation specifier.
             readonly: Whether rootfs is mounted read-only.
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
-            _oci_spec_transforms: Optional callback to transform the final spec.
+            _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -158,7 +158,7 @@ class BaseImageManager(ABC):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
-        _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
@@ -171,7 +171,7 @@ class BaseImageManager(ABC):
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
             readonly: Read-only rootfs flag.
-            _oci_spec_transforms: Optional OCI spec transform function.
+            _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
             Path to the written config.json file.
@@ -299,7 +299,7 @@ class ImageManager(BaseImageManager):
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
         base_spec: Optional[Dict[str, Any]] = None,
-        _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
 
@@ -312,7 +312,7 @@ class ImageManager(BaseImageManager):
             memory: Memory allocation specifier.
             readonly: Whether rootfs is mounted read-only.
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
-            _oci_spec_transforms: Optional callback to transform the final spec.
+            _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -388,8 +388,8 @@ class ImageManager(BaseImageManager):
             mem_res = resources.setdefault("memory", {})
             mem_res["limit"] = parsed_mem
 
-        if _oci_spec_transforms:
-            result = _oci_spec_transforms(spec)
+        if _oci_spec_transform_fn:
+            result = _oci_spec_transform_fn(spec)
             if result is not None:
                 spec = result
 
@@ -405,7 +405,7 @@ class ImageManager(BaseImageManager):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
-        _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
@@ -418,7 +418,7 @@ class ImageManager(BaseImageManager):
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
             readonly: Read-only rootfs flag.
-            _oci_spec_transforms: Optional OCI spec transform function.
+            _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
             Path to the written config.json file.
@@ -435,7 +435,7 @@ class ImageManager(BaseImageManager):
             cpu=cpu,
             memory=memory,
             readonly=readonly,
-            _oci_spec_transforms=_oci_spec_transforms,
+            _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 
         config_json_str = json.dumps(spec, indent=2)

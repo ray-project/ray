@@ -88,7 +88,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             cpu=config.cpu,
             memory=config.memory,
             readonly=config.readonly,
-            _oci_spec_transforms=config._oci_spec_transforms,
+            _oci_spec_transform_fn=config._oci_spec_transform_fn,
         )
         run_args = self._runsc_base_args(config)
         if config.network:
@@ -359,7 +359,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
-        _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
@@ -370,5 +370,5 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             cpu=cpu,
             memory=memory,
             readonly=readonly,
-            _oci_spec_transforms=_oci_spec_transforms,
+            _oci_spec_transform_fn=_oci_spec_transform_fn,
         )

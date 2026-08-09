@@ -52,7 +52,7 @@ class SandboxRuntime:
         rootless: bool = True,
         network: str = "none",
         readonly: bool = True,
-        _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
@@ -70,7 +70,7 @@ class SandboxRuntime:
             rootless: If True, run gVisor in rootless mode.
             network: Network mode for runsc.
             readonly: If True, mount container image rootfs in read-only mode (default: True).
-            _oci_spec_transforms: PRIVATE — development/testing only. Called with the fully-built OCI
+            _oci_spec_transform_fn: PRIVATE — development/testing only. Called with the fully-built OCI
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
             **kwargs: Additional parameters.
@@ -89,7 +89,7 @@ class SandboxRuntime:
             rootless=rootless,
             network=network,
             readonly=readonly,
-            _oci_spec_transforms=_oci_spec_transforms,
+            _oci_spec_transform_fn=_oci_spec_transform_fn,
             **kwargs,
         )
         self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)

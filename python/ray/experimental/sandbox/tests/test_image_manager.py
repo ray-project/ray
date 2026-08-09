@@ -133,7 +133,7 @@ def test_image_manager_create_oci_spec(tmp_path):
         cpu=2.5,
         memory="1Gi",
         readonly=True,
-        _oci_spec_transforms=lambda s: {**s, "customField": "customValue"},
+        _oci_spec_transform_fn=lambda s: {**s, "customField": "customValue"},
     )
 
     assert spec["root"]["path"] == os.path.join(extracted_dir, "rootfs")

@@ -73,7 +73,7 @@ class SandboxConfig:
     rootless: bool = True
     network: str = "none"
     readonly: bool = True
-    _oci_spec_transforms: Optional[Callable[[Dict], Optional[Dict]]] = field(
+    _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
     )
 
