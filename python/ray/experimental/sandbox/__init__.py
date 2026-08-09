@@ -27,8 +27,8 @@ from ray.experimental.sandbox.sandbox import Sandbox
 
 def create(
     image: str,
-    cpu: float = 0.0,
-    memory: Union[str, int, float] = 0,
+    cpu: Optional[float] = None,
+    memory: Optional[Union[str, int, float]] = None,
     env: Optional[Dict[str, str]] = None,
     workdir: Optional[str] = None,
     ttl_seconds: Optional[int] = 3600,
@@ -61,9 +61,10 @@ def create(
         A Sandbox actor handle.
     """
     actor_opts = {}
-    if cpu > 0:
+    # Ray actors default to num_cpu=1 if not set
+    if cpu is not None and cpu >= 0:
         actor_opts["num_cpus"] = cpu
-    if memory > 0:
+    if memory is not None:
         parsed_mem = parse_memory_bytes(memory)
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem

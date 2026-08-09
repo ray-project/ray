@@ -33,8 +33,8 @@ class Sandbox:
     def __init__(
         self,
         image: str,
-        cpu: float = 0.0,
-        memory: Union[str, int, float] = 0,
+        cpu: Optional[float] = None,
+        memory: Optional[Union[str, int, float]] = None,
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
         ttl_seconds: Optional[int] = 3600,
@@ -49,10 +49,10 @@ class Sandbox:
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
         try:
             assigned = ray.get_runtime_context().get_assigned_resources()
-            if cpu <= 0 and "CPU" in assigned and assigned["CPU"] > 0:
+            if (cpu is None or cpu <= 0) and "CPU" in assigned and assigned["CPU"] > 0:
                 cpu = float(assigned["CPU"])
 
-            if (memory <= 0) and "memory" in assigned and assigned["memory"] > 0:
+            if (memory is None) and "memory" in assigned and assigned["memory"] > 0:
                 memory = int(assigned["memory"])
         except Exception:
             pass
