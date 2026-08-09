@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+from types import ModuleType
 
 import pytest
 
@@ -224,6 +225,17 @@ def test_immediate_child_modules_of_plain_module_is_empty():
 def test_import_status_detects_public_api():
     # mock_module defines @PublicAPI classes/functions in its own namespace.
     assert cmd._import_status(f"{_PKG}.mock_module") == (True, True)
+
+
+def test_import_status_ignores_inherited_api_annotations(monkeypatch):
+    module_name = "fake_inherited_annotation_module"
+    module = ModuleType(module_name)
+    inherited_annotation = type("InheritedAnnotation", (MockClass,), {})
+    inherited_annotation.__module__ = module_name
+    module.InheritedAnnotation = inherited_annotation
+    monkeypatch.setitem(sys.modules, module_name, module)
+
+    assert cmd._import_status(module_name) == (True, False)
 
 
 def test_import_status_unimportable_module():

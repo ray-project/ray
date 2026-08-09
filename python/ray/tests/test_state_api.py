@@ -82,6 +82,8 @@ from ray.util.state.common import (
     RuntimeEnvState,
     StateResource,
     StateSchema,
+    TaskState,
+    filter_fields,
     state_column,
 )
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
@@ -321,6 +323,15 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # localhost string
     _, gcs_port = parse_address(gcs_address)
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
+
+
+def test_filter_fields_preserves_schema_column_order():
+    """filter_fields must emit columns in StateSchema order, not set order."""
+    data = {col: None for col in reversed(TaskState.list_columns(detail=True))}
+
+    for detail in (True, False):
+        expected = TaskState.list_columns(detail=detail)
+        assert list(filter_fields(data, TaskState, detail=detail).keys()) == expected
 
 
 def test_state_schema():
