@@ -61,24 +61,15 @@ def _sglang_config(
                 "max_replicas": num_replicas,
             },
             # Replicas are actors in their own processes, so they don't inherit
-            # this shell's environment -- only the raylet's, and that's a race:
-            # relying on the raylet having picked up a var set just before
-            # `ray start` cost a launch to "RuntimeError: can't start new
-            # thread" (8 SGLang engines' thread pools spiking past the cgroup
-            # PID limit simultaneously) when the timing didn't line up. Forward
-            # the thread caps explicitly and unconditionally so this can't
-            # recur; RAY_PD_TRACE/PYTHONPATH stay conditional since they're
-            # benchmark-only and absent by default.
-            "ray_actor_options": {
-                "runtime_env": {
-                    "env_vars": {
-                        "OMP_NUM_THREADS": os.environ.get("OMP_NUM_THREADS", "4"),
-                        "RAYON_NUM_THREADS": os.environ.get("RAYON_NUM_THREADS", "4"),
-                        "TOKENIZERS_PARALLELISM": os.environ.get(
-                            "TOKENIZERS_PARALLELISM", "false"
-                        ),
-                        **(
-                            {
+            # this shell's environment. Forward the trace switch explicitly, or
+            # bench/pd_trace.py reads it as unset and every replica silently
+            # traces nothing. Only forwarded when set, so untraced runs carry
+            # no runtime_env at all.
+            **(
+                {
+                    "ray_actor_options": {
+                        "runtime_env": {
+                            "env_vars": {
                                 "RAY_PD_TRACE": os.environ["RAY_PD_TRACE"],
                                 # Replicas cwd elsewhere; pd_server.py imports
                                 # bench.pd_trace by name, so the repo root has
@@ -87,12 +78,12 @@ def _sglang_config(
                                     os.path.dirname(os.path.abspath(__file__))
                                 ),
                             }
-                            if os.environ.get("RAY_PD_TRACE")
-                            else {}
-                        ),
+                        }
                     }
                 }
-            },
+                if os.environ.get("RAY_PD_TRACE")
+                else {}
+            ),
         },
         engine_kwargs={
             # disaggregation_mode is set automatically by the builder.
