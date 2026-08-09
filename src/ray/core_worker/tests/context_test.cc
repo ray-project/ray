@@ -31,11 +31,6 @@ namespace {
 
 constexpr int kTestJobId = 1;
 
-WorkerContext MakeWorkerContext() {
-  return WorkerContext(
-      WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(kTestJobId));
-}
-
 // The job ID has to match the context's, otherwise WorkerContext::SetCurrentTask
 // rejects the spec.
 TaskSpecification MakeTaskSpec(const TaskID &task_id, uint64_t num_returns) {
@@ -69,14 +64,29 @@ TaskSpecification MakeTaskSpec(const TaskID &task_id, uint64_t num_returns) {
 
 }  // namespace
 
+// WorkerContext keeps its per-thread state in a static thread_local, so that state
+// outlives any one WorkerContext and is shared by every test on this thread. Reset it
+// after each test: SetCurrentTask requires the put counter to be zero, so a test that
+// leaves it dirty would crash the next one.
+class WorkerContextTest : public ::testing::Test {
+ protected:
+  void TearDown() override { context_.ResetCurrentTask(); }
+
+  WorkerContext context_{
+      WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(kTestJobId)};
+};
+
+// gtest runs suites whose name ends in DeathTest before the others; both share the
+// fixture so the reset above applies to every case in this file.
+class WorkerContextDeathTest : public WorkerContextTest {};
+
 // Supplying both arguments keys the ObjectID to the caller's task and index rather
 // than to whatever this thread's context happens to hold.
-TEST(WorkerContextTest, GeneratorReturnIdUsesBothSuppliedArguments) {
-  WorkerContext context = MakeWorkerContext();
+TEST_F(WorkerContextTest, GeneratorReturnIdUsesBothSuppliedArguments) {
   const TaskID task_id = TaskID::FromRandom(JobID::FromInt(kTestJobId));
 
   const ObjectID object_id =
-      context.GetGeneratorReturnId(task_id, /*put_index=*/ObjectIDIndexType{1});
+      context_.GetGeneratorReturnId(task_id, /*put_index=*/ObjectIDIndexType{1});
 
   EXPECT_EQ(object_id, ObjectID::FromIndex(task_id, 1));
 }
@@ -84,17 +94,13 @@ TEST(WorkerContextTest, GeneratorReturnIdUsesBothSuppliedArguments) {
 // Omitting both is the form the production callers use: the task ID and the put index
 // both come from the worker context. Asserting the deduced values, not a literal
 // index, keeps this independent of the max_num_generator_returns config.
-TEST(WorkerContextTest, GeneratorReturnIdDeducesBothWhenOmitted) {
-  WorkerContext context = MakeWorkerContext();
+TEST_F(WorkerContextTest, GeneratorReturnIdDeducesBothWhenOmitted) {
   const TaskID task_id = TaskID::FromRandom(JobID::FromInt(kTestJobId));
   const uint64_t num_returns = 1;
-  // thread_context_ is a static thread_local shared by every WorkerContext on this
-  // thread, so reset the put counter: SetCurrentTask requires it to be zero.
-  context.ResetCurrentTask();
-  context.SetCurrentTask(MakeTaskSpec(task_id, num_returns));
+  context_.SetCurrentTask(MakeTaskSpec(task_id, num_returns));
 
   const ObjectID object_id =
-      context.GetGeneratorReturnId(TaskID::Nil(), /*put_index=*/std::nullopt);
+      context_.GetGeneratorReturnId(TaskID::Nil(), /*put_index=*/std::nullopt);
 
   EXPECT_EQ(object_id.TaskId(), task_id);
   // GetNextPutIndex reserves the generator window, so the deduced index lands past
@@ -107,21 +113,18 @@ TEST(WorkerContextTest, GeneratorReturnIdDeducesBothWhenOmitted) {
 // Supplying a task ID without a put index would take the index from this thread's put
 // counter, which belongs to whatever task this thread is running, not to task_id. The
 // resulting ObjectID can collide with one the other task mints.
-TEST(WorkerContextDeathTest, GeneratorReturnIdRejectsTaskIdWithoutPutIndex) {
-  WorkerContext context = MakeWorkerContext();
+TEST_F(WorkerContextDeathTest, GeneratorReturnIdRejectsTaskIdWithoutPutIndex) {
   const TaskID task_id = TaskID::FromRandom(JobID::FromInt(kTestJobId));
 
-  EXPECT_DEATH((void)context.GetGeneratorReturnId(task_id, /*put_index=*/std::nullopt),
+  EXPECT_DEATH((void)context_.GetGeneratorReturnId(task_id, /*put_index=*/std::nullopt),
                "task_id and put_index must both be specified or both omitted");
 }
 
 // The mirror case: a put index with no task ID would attach a caller-chosen index to
 // whichever task this thread happens to be running.
-TEST(WorkerContextDeathTest, GeneratorReturnIdRejectsPutIndexWithoutTaskId) {
-  WorkerContext context = MakeWorkerContext();
-
-  EXPECT_DEATH((void)context.GetGeneratorReturnId(TaskID::Nil(),
-                                                  /*put_index=*/ObjectIDIndexType{1}),
+TEST_F(WorkerContextDeathTest, GeneratorReturnIdRejectsPutIndexWithoutTaskId) {
+  EXPECT_DEATH((void)context_.GetGeneratorReturnId(TaskID::Nil(),
+                                                   /*put_index=*/ObjectIDIndexType{1}),
                "task_id and put_index must both be specified or both omitted");
 }
 
