@@ -4124,15 +4124,11 @@ class UserCallableWrapper:
         but for ASGI apps (like FastAPI), the actual method will be a regular function
         implementing the ASGI `__call__` protocol.
         """
-        # Invariants (runtime no-op rebinds to narrow the Optionals): callers
-        # always provide `generator_result_callback` for streaming calls and
-        # `asgi_args` for HTTP requests.
-        generator_result_callback = cast(Callable, generator_result_callback)
-        asgi_args = cast(ASGIArgs, asgi_args)
-
         result_is_gen = inspect.isgenerator(result)
         result_is_async_gen = inspect.isasyncgen(result)
         if is_streaming:
+            # Callers always provide the callback for streaming calls.
+            assert generator_result_callback is not None
             if result_is_gen:
                 for r in result:
                     generator_result_callback(r)
@@ -4142,6 +4138,8 @@ class UserCallableWrapper:
             elif is_http_request and not user_method_info.is_asgi_app:
                 # For the FastAPI codepath, the response has already been sent over
                 # ASGI, but for the vanilla deployment codepath we need to send it.
+                # asgi_args is always provided for HTTP requests.
+                assert asgi_args is not None
                 await self._send_user_result_over_asgi(result, asgi_args)
             elif not is_http_request and not sync_gen_consumed:
                 # If a unary method is called with stream=True for anything EXCEPT

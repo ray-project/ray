@@ -953,8 +953,7 @@ class ServeController:
 
         return self.proxy_state_manager.get_proxy_details().get(node_id)
 
-    # Implicitly returns None when the app doesn't exist.
-    def get_deployment_timestamps(self, app_name: str) -> Optional[float]:  # type: ignore[return]
+    def get_deployment_timestamps(self, app_name: str) -> Optional[float]:
         """Returns the deployment timestamp for the given app.
 
         Returns None if the app doesn't exist. Currently used for test only.
@@ -965,6 +964,7 @@ class ServeController:
         ) in self.application_state_manager.list_app_statuses().items():
             if app_name == _app_name:
                 return app_status_info.deployment_timestamp
+        return None
 
     def get_deployment_details(
         self, app_name: str, deployment_name: str

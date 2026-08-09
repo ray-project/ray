@@ -3204,15 +3204,12 @@ class DeploymentState:
         # Checkpointed target states always carry a `DeploymentInfo`.
         self._deployment_scheduler.on_deployment_deployed(
             self._id,
-            # pyrefly: ignore[missing-attribute]
-            self._target_state.info.replica_config,  # type: ignore[union-attr]
+            self._deployed_info.replica_config,
         )
-        # pyrefly: ignore[missing-attribute]
-        if self._target_state.info.deployment_config.autoscaling_config:  # type: ignore[union-attr]
+        if self._deployed_info.deployment_config.autoscaling_config:
             self._autoscaling_state_manager.register_deployment(
                 self._id,
-                # pyrefly: ignore[bad-argument-type]
-                self._target_state.info,  # type: ignore[arg-type]
+                self._deployed_info,
                 self._target_state.target_num_replicas,
             )
         self._recover_deployment_actors()
@@ -3242,8 +3239,7 @@ class DeploymentState:
             )
             # If replica is no longer alive, simply don't add it to the
             # deployment state manager to track.
-            # pyrefly: ignore[bad-argument-type]
-            if not new_deployment_replica.recover(self._target_state.info):  # type: ignore[arg-type]
+            if not new_deployment_replica.recover(self._deployed_info):
                 logger.warning(f"{replica_id} died before controller could recover it.")
                 continue
 
@@ -3300,10 +3296,15 @@ class DeploymentState:
             )
 
     @property
+    def _deployed_info(self) -> DeploymentInfo:
+        """The target DeploymentInfo, asserted present (set for any deployed target)."""
+        assert self._target_state.info is not None, "no target state set"
+        return self._target_state.info
+
+    @property
     def target_info(self) -> DeploymentInfo:
         # `info` is only None before the first deploy()/recovery.
-        # pyrefly: ignore[bad-return]
-        return self._target_state.info  # type: ignore[return-value]
+        return self._deployed_info
 
     @property
     def target_version(self) -> DeploymentVersion:
@@ -3339,8 +3340,7 @@ class DeploymentState:
     def _failed_to_start_threshold(self) -> int:
         return min(
             # `info` is set for any deployed target state.
-            # pyrefly: ignore[missing-attribute]
-            self._target_state.info.deployment_config.max_constructor_retry_count,  # type: ignore[union-attr]
+            self._deployed_info.deployment_config.max_constructor_retry_count,
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
@@ -3352,8 +3352,7 @@ class DeploymentState:
         scale by target_num_replicas (which would be 0 during scale-to-zero/deletion).
         """
         # `info` is set for any deployed target state.
-        # pyrefly: ignore[missing-attribute]
-        return self._target_state.info.deployment_config.max_constructor_retry_count  # type: ignore[union-attr]
+        return self._deployed_info.deployment_config.max_constructor_retry_count
 
     def _get_deployment_actors_configs(
         self, version: Optional[DeploymentVersion] = None
@@ -3412,8 +3411,8 @@ class DeploymentState:
         )
         return replica_failed or self.deployment_actor_terminally_failed()
 
-    def get_alive_replica_actor_ids(self) -> Set[Optional[str]]:
-        return {replica.actor_id for replica in self._replicas.get()}
+    def get_alive_replica_actor_ids(self) -> Set[str]:
+        return {r.actor_id for r in self._replicas.get() if r.actor_id is not None}
 
     def get_running_replica_ids(self) -> List[ReplicaID]:
         return [
@@ -3587,8 +3586,7 @@ class DeploymentState:
         if it has changed.
         """
         # `info` is set for any deployed target state.
-        # pyrefly: ignore[missing-attribute]
-        current_deployment_config = self._target_state.info.deployment_config  # type: ignore[union-attr]
+        current_deployment_config = self._deployed_info.deployment_config
         if self._last_broadcasted_deployment_config == current_deployment_config:
             return
 
@@ -3603,8 +3601,7 @@ class DeploymentState:
         """Set the target state for the deployment to be deleted."""
         target_state = DeploymentTargetState.create(
             # Deleting an existing deployment implies `info` is set.
-            # pyrefly: ignore[bad-argument-type]
-            info=self._target_state.info,  # type: ignore[arg-type]
+            info=self._deployed_info,
             target_num_replicas=0,
             deleting=True,
         )
@@ -3871,8 +3868,7 @@ class DeploymentState:
         """Set the target state for the deployment to the provided info."""
         self._set_target_state(
             # Only called for existing deployments, so `info` is set.
-            # pyrefly: ignore[bad-argument-type]
-            self._target_state.info,  # type: ignore[arg-type]
+            self._deployed_info,
             target_num_replicas,
             updated_via_api=True,
         )
@@ -4140,8 +4136,7 @@ class DeploymentState:
         # or rollout_size new replicas starting.
         rolling_update_percentage = (
             # `info` is set for any deployed target state.
-            # pyrefly: ignore[missing-attribute]
-            self._target_state.info.deployment_config.rolling_update_percentage  # type: ignore[union-attr]
+            self._deployed_info.deployment_config.rolling_update_percentage
         )
         rollout_size = max(
             int(rolling_update_percentage * self._target_state.target_num_replicas), 1
@@ -4298,8 +4293,7 @@ class DeploymentState:
                 else None
             )
             scheduling_request = new_deployment_replica.start(
-                # pyrefly: ignore[bad-argument-type]
-                self._target_state.info,  # type: ignore[arg-type]
+                self._deployed_info,
                 assign_rank_callback=self._rank_manager.assign_rank,
                 target_node_id=target_node_id,
             )
@@ -4356,8 +4350,7 @@ class DeploymentState:
         # consecutive bundles in the gang PG.  The actor for replica i is placed at
         # bundle i * bundles_per_replica.
         # `info` is set for any deployed target state.
-        # pyrefly: ignore[missing-attribute]
-        pg_bundles = self._target_state.info.replica_config.placement_group_bundles  # type: ignore[union-attr]
+        pg_bundles = self._deployed_info.replica_config.placement_group_bundles
         bundles_per_replica = len(pg_bundles) if pg_bundles else 1
 
         logger.info(
@@ -4389,8 +4382,7 @@ class DeploymentState:
                 )
 
                 scheduling_request = new_deployment_replica.start(
-                    # pyrefly: ignore[bad-argument-type]
-                    self._target_state.info,  # type: ignore[arg-type]
+                    self._deployed_info,
                     assign_rank_callback=self._rank_manager.assign_rank,
                     gang_placement_group=gang_pg,
                     gang_pg_index=bundle_index * bundles_per_replica,
@@ -5665,12 +5657,10 @@ class DeploymentState:
 
     def is_ingress(self) -> bool:
         # `info` is set for any deployed target state.
-        # pyrefly: ignore[missing-attribute]
-        return self._target_state.info.ingress  # type: ignore[union-attr]
+        return self._deployed_info.ingress
 
     def is_ingress_request_router(self) -> bool:
-        # pyrefly: ignore[missing-attribute]
-        return self._target_state.info.ingress_request_router  # type: ignore[union-attr]
+        return self._deployed_info.ingress_request_router
 
     def owns_direct_ingress_ports(self) -> bool:
         """Whether this deployment owns direct-ingress ports -- i.e. it is an
@@ -6398,8 +6388,8 @@ class DeploymentStateManager:
                     statuses.append(state.curr_status_info)
             return statuses
 
-    def get_alive_replica_actor_ids(self) -> Set[Optional[str]]:
-        alive_replica_actor_ids: Set[Optional[str]] = set()
+    def get_alive_replica_actor_ids(self) -> Set[str]:
+        alive_replica_actor_ids: Set[str] = set()
         for ds in self._deployment_states.values():
             alive_replica_actor_ids |= ds.get_alive_replica_actor_ids()
 

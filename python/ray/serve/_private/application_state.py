@@ -672,10 +672,10 @@ class ApplicationState:
 
         config_version = get_app_code_version(config)
         if config_version == self._target_state.code_version:
+            # `deployment_infos` is non-None whenever `code_version` is
+            # non-None (they are always set together in the target state).
+            assert self._target_state.deployment_infos is not None
             try:
-                # `deployment_infos` is non-None whenever `code_version` is
-                # non-None (they are always set together in the target state).
-                assert self._target_state.deployment_infos is not None
                 overrided_infos = override_deployment_info(
                     self._target_state.deployment_infos,
                     config,
@@ -758,11 +758,11 @@ class ApplicationState:
                     for actor_cfg in actors:
                         if isinstance(actor_cfg, dict):
                             name = actor_cfg.get("name")
+                            if not name:
+                                continue
                             cls_path = actor_cfg.get("actor_class")
                             if isinstance(cls_path, str):
-                                # `name` is validated upstream; a missing name
-                                # would be stored as a None key at runtime.
-                                actor_classes[cast(str, name)] = cls_path
+                                actor_classes[name] = cls_path
                     if actor_classes:
                         deployment_to_deployment_actor_classes[
                             deployment.name
