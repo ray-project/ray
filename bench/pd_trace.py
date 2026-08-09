@@ -54,16 +54,53 @@ _lock = threading.Lock()
 _fh = None
 
 
+def _trace_file_path() -> str:
+    """This process's trace file. Each replica is its own process, so the pid
+    suffix keeps replicas from interleaving partial lines into one file."""
+    base, ext = os.path.splitext(_TRACE_PATH)
+    return f"{base}.{os.getpid()}{ext or '.jsonl'}"
+
+
+def _is_stale(fh) -> bool:
+    """True when writes to ``fh`` would no longer land at the trace path.
+
+    Collecting a run's traces means taking the per-pid files away -- by ``rm``
+    or by renaming them aside -- while the replica process keeps running with
+    this handle open. Writes then land on an inode no path reaches and the
+    *next* run's traces silently vanish (which is exactly how one concurrency
+    level's traces were lost and had to be recovered from /proc/<pid>/fd).
+
+    Both removals have to be caught, and they look different: ``rm`` drops the
+    link count to zero, while a rename leaves the inode intact but points the
+    path at nothing (or, eventually, at some other file).
+    """
+    try:
+        st = os.fstat(fh.fileno())
+        if st.st_nlink == 0:  # unlinked (rm)
+            return True
+        path_st = os.stat(_trace_file_path())
+    except FileNotFoundError:
+        return True  # renamed away: the path is gone
+    except OSError:
+        return True  # can't tell, so don't trust it
+    # Path exists but resolves to a different inode than the one we hold.
+    return (path_st.st_ino, path_st.st_dev) != (st.st_ino, st.st_dev)
+
+
 def _out():
-    """Open the trace file lazily, once per process."""
+    """The trace file handle, reopened if the previous file was removed."""
     global _fh
-    if _fh is None:
-        with _lock:
-            if _fh is None:
-                # Each replica is its own process; suffix by pid so replicas
-                # never interleave partial lines into one file.
-                base, ext = os.path.splitext(_TRACE_PATH)
-                _fh = open(f"{base}.{os.getpid()}{ext or '.jsonl'}", "a")
+    if _fh is not None and not _is_stale(_fh):
+        return _fh
+    with _lock:
+        # Re-check under the lock: another thread may have reopened already.
+        if _fh is None or _is_stale(_fh):
+            if _fh is not None:
+                try:
+                    _fh.close()
+                except OSError:
+                    pass
+            _fh = open(_trace_file_path(), "a")
     return _fh
 
 

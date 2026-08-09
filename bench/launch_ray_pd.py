@@ -15,6 +15,7 @@ sentinel on stdout, benchmark against it, then kill the process.
 import argparse
 import os
 import time
+from typing import Optional
 
 from ray import serve
 from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
@@ -34,11 +35,20 @@ def _sglang_config(
     tp_size: int,
     base_gpu_id: int,
     mem_fraction_static: float,
+    stream_batching_interval_ms: Optional[int] = None,
 ) -> dict:
     """Build one side (prefill or decode) of the P/D pair.
 
     ``base_gpu_id`` pins this side to its own GPU range so prefill and decode
     never share a device; the caller lays out the whole node.
+
+    ``stream_batching_interval_ms`` controls Ray Serve LLM's streaming batcher.
+    It defaults to 50ms, and that batcher waits out its interval *before*
+    draining its queue with no exemption for the first token -- so it adds up
+    to 50ms to TTFT. SGLang's own batching is counted in decode steps and
+    always flushes the first token, so leaving Ray's default in place measures
+    a buffering-policy difference on top of the orchestration difference. Ray's
+    published benchmark config sets this to 0; pass 0 here to match it.
     """
     return LLMConfig(
         model_loading_config={
@@ -83,6 +93,14 @@ def _sglang_config(
             "base_gpu_id": base_gpu_id,
         },
         llm_engine="SGLang",
+        # Read by LLMServer._get_batch_interval_ms(); omitted (None) falls
+        # through to Ray's own 50ms default, so this only appears when the
+        # caller explicitly asked to override it.
+        experimental_configs=(
+            {"stream_batching_interval_ms": stream_batching_interval_ms}
+            if stream_batching_interval_ms is not None
+            else {}
+        ),
     ).model_dump()
 
 
@@ -129,6 +147,18 @@ def parse_args() -> argparse.Namespace:
         default=1200,
         help="Seconds to wait for the app to reach RUNNING.",
     )
+    parser.add_argument(
+        "--stream-batching-interval-ms",
+        type=int,
+        default=None,
+        help=(
+            "Override Ray Serve LLM's streaming batcher (default 50ms; it "
+            "waits out the interval before draining, with no first-token "
+            "exemption, so the default adds up to 50ms to TTFT). Ray's own "
+            "published benchmark config sets this to 0. Omit to keep the "
+            "framework default."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -146,6 +176,7 @@ def main() -> None:
         tp_size=args.tp_size,
         base_gpu_id=0,
         mem_fraction_static=args.mem_fraction_static,
+        stream_batching_interval_ms=args.stream_batching_interval_ms,
     )
     decode = _sglang_config(
         model_source=args.model,
@@ -154,6 +185,7 @@ def main() -> None:
         tp_size=args.tp_size,
         base_gpu_id=prefill_gpus,
         mem_fraction_static=args.mem_fraction_static,
+        stream_batching_interval_ms=args.stream_batching_interval_ms,
     )
 
     app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
