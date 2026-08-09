@@ -16,12 +16,15 @@
 
 #include <array>
 #include <deque>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/stats/metric.h"
 
@@ -34,10 +37,14 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
  public:
   GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage,
                    instrumented_io_context &io_context,
-                   pubsub::GcsPublisher &gcs_publisher)
+                   pubsub::GcsPublisher &gcs_publisher,
+                   observability::RayEventRecorderInterface &ray_event_recorder,
+                   std::string session_name)
       : gcs_table_storage_(gcs_table_storage),
         io_context_(io_context),
-        gcs_publisher_(gcs_publisher) {}
+        gcs_publisher_(gcs_publisher),
+        ray_event_recorder_(ray_event_recorder),
+        session_name_(std::move(session_name)) {}
 
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -82,6 +89,13 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
   void RestoreDeadWorkerIdsQueue(const GcsInitData &gcs_init_data);
 
  private:
+  /**
+   * @brief Reads one worker's record from the worker table, logging on failure.
+   *
+   * @param worker_id The worker to look up.
+   * @param callback Invoked with the record, or std::nullopt if absent or the
+   * read failed.
+   */
   void GetWorkerInfo(const WorkerID &worker_id,
                      Postable<void(std::optional<rpc::WorkerTableData>)> callback) const;
 
@@ -94,9 +108,19 @@ class GcsWorkerManager : public rpc::WorkerInfoGcsServiceHandler {
    */
   void TrimDeadWorkers(const WorkerID &worker_id, rpc::WorkerExitType exit_type);
 
+  /**
+   * @brief Records a worker lifecycle event if ray events are enabled. Callers must
+   * exclude driver workers (covered by driver job events).
+   *
+   * @param data Worker table data to build the lifecycle event from.
+   */
+  void RecordWorkerLifecycleEvent(const rpc::WorkerTableData &data);
+
   gcs::GcsTableStorage &gcs_table_storage_;
   instrumented_io_context &io_context_;
   pubsub::GcsPublisher &gcs_publisher_;
+  observability::RayEventRecorderInterface &ray_event_recorder_;
+  std::string session_name_;
   UsageStatsClient *usage_stats_client_;
 
   /// Only listens for unexpected worker deaths not expected like node death.
