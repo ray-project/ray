@@ -47,6 +47,10 @@ class TaskEventsHeadClient:
         self._session = requests.Session()
         self._endpoint = None
 
+    def close(self):
+        """Close the underlying HTTP session and its connection pool."""
+        self._session.close()
+
     def _get_endpoint(self) -> str:
         if self._endpoint is None:
             address = self._accessor.get_internal_kv(
@@ -165,9 +169,11 @@ class GlobalState:
             self.gcs_options = None
             if self._global_state_accessor is not None:
                 self._global_state_accessor = None
-            # Drop the cached task-events client so it doesn't keep a stale accessor
-            # across a reconnect; the next call rebuilds it.
-            self._task_events_head_client = None
+            # Drop the cached task-events client (closing its HTTP session) so it doesn't
+            # keep a stale accessor across a reconnect; the next call rebuilds it.
+            if self._task_events_head_client is not None:
+                self._task_events_head_client.close()
+                self._task_events_head_client = None
 
     def _initialize_global_state(self, gcs_options: GcsClientOptions):
         """Set args for lazily initialization of the GlobalState object.
@@ -402,6 +408,9 @@ class GlobalState:
                 # build client with the new accessor
                 or self._task_events_head_client._accessor is not accessor
             ):
+                # Close the stale client's HTTP session before replacing it.
+                if self._task_events_head_client is not None:
+                    self._task_events_head_client.close()
                 self._task_events_head_client = TaskEventsHeadClient(accessor)
             # TODO(karticam): There might be an edgy race condition where accessor
             #  could go invalid after returning the client. so client makes request
