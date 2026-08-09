@@ -18,6 +18,26 @@ _SPHINX_AUTODOC_SHORTNAME = "~"
 _OVERRIDE_HOOK_MARKER = "__is_overridden__"
 
 
+def _is_directly_annotated(obj: object) -> bool:
+    """Whether an object owns an API annotation rather than inheriting one.
+
+    The @PublicAPI / @DeveloperAPI / @Deprecated decorators stamp ``_annotated``
+    with the decorated object's own ``__name__``, so a plain ``hasattr`` reads
+    true for every undecorated subclass of an annotated base as well. Comparing
+    the stored name against the object's own name is what distinguishes the two.
+
+    Deliberately identical to ``ray.util.annotations._is_annotated``, which is
+    the definition Ray itself uses. Keep it that way: a checker that disagrees
+    with the runtime about what counts as annotated is worse than one that
+    shares the runtime's edge cases (a subclass that reuses its base's name
+    reads as annotated in both).
+    """
+    annotation_owner = getattr(obj, "_annotated", None)
+    return annotation_owner is not None and annotation_owner == getattr(
+        obj, "__name__", None
+    )
+
+
 class AnnotationType(Enum):
     PUBLIC_API = "PublicAPI"
     DEVELOPER_API = "DeveloperAPI"
@@ -185,7 +205,16 @@ class API:
         ``_annotated_type`` attribute the @PublicAPI/@Deprecated decorators set.
         Objects that carry no annotation (for example methods of an annotated
         class) resolve to UNKNOWN.
+
+        Only an annotation the object *owns* counts. ``_annotated_type`` is a
+        plain class attribute, so an undecorated subclass reads its base's value
+        -- which would classify a subclass of a @Deprecated class as deprecated
+        and fail the resolve check on a documented name nobody deprecated.
+        Inheriting the marker resolves to UNKNOWN, the same accepted case as a
+        documented method of an annotated class.
         """
+        if not _is_directly_annotated(obj):
+            return AnnotationType.UNKNOWN
         annotated_type = getattr(obj, "_annotated_type", None)
         if annotated_type is None:
             return AnnotationType.UNKNOWN
