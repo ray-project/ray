@@ -4787,7 +4787,7 @@ def read_iceberg(
 
 @PublicAPI
 def read_lance(
-    uri: str,
+    uri: Union[str, List[str]],
     *,
     version: Optional[Union[int, str]] = None,
     columns: Optional[List[str]] = None,
@@ -4802,8 +4802,8 @@ def read_lance(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """
-    Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
+    Create a :class:`~ray.data.Dataset` from one or more
+    `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
         >>> import ray
@@ -4812,10 +4812,15 @@ def read_lance(
         ...     columns=["image", "label"],
         ...     filter="label = 2 AND text IS NOT NULL",
         ... )
+        >>> # Read from multiple Lance datasets:
+        >>> ds = ray.data.read_lance( # doctest: +SKIP
+        ...     uri=["./db1.lance", "./db2.lance"],
+        ... )
 
     Args:
-        uri: The URI of the Lance dataset to read from. Local file paths, S3, and GCS
-            are supported.
+        uri: The URI (or list of URIs) of the Lance dataset(s) to read from.
+            Local file paths, S3, and GCS are supported. When multiple URIs are
+            provided, the data from all datasets is combined into a single Dataset.
         version: Load a specific version of the Lance dataset. This can be an
             integer version number or a string tag. By default, the
             latest version is loaded.
@@ -4831,6 +4836,7 @@ def read_lance(
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
             see `Lance Python API doc <https://lance-format.github.io/lance-python-doc/all-modules.html#lance.dataset.LanceDataset.scanner>`_
+            The `fragments` option is not supported when reading multiple datasets.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4847,7 +4853,7 @@ def read_lance(
             value in most cases.
 
     Returns:
-        A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
+        A :class:`~ray.data.Dataset` producing records read from the Lance dataset(s).
     """  # noqa: E501
 
     # Check for deprecated filter parameter
@@ -4858,6 +4864,9 @@ def read_lance(
             DeprecationWarning,
             stacklevel=2,
         )
+
+    if isinstance(uri, list) and len(uri) == 0:
+        raise ValueError("`uri` list must not be empty.")
 
     datasource = LanceDatasource(
         uri=uri,
