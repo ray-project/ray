@@ -4113,8 +4113,8 @@ class UserCallableWrapper:
         is_streaming: bool,
         is_http_request: bool,
         sync_gen_consumed: bool,
-        generator_result_callback: Optional[Callable],
-        asgi_args: Optional[ASGIArgs],
+        generator_result_callback: Callable,
+        asgi_args: ASGIArgs,
     ) -> Any:
         """Postprocess the result of a user method.
 
@@ -4131,8 +4131,6 @@ class UserCallableWrapper:
         result_is_gen = inspect.isgenerator(result)
         result_is_async_gen = inspect.isasyncgen(result)
         if is_streaming:
-            # Callers always provide the callback for streaming calls.
-            assert generator_result_callback is not None
             if result_is_gen:
                 for r in result:
                     generator_result_callback(r)
@@ -4142,8 +4140,6 @@ class UserCallableWrapper:
             elif is_http_request and not user_method_info.is_asgi_app:
                 # For the FastAPI codepath, the response has already been sent over
                 # ASGI, but for the vanilla deployment codepath we need to send it.
-                # asgi_args is always provided for HTTP requests.
-                assert asgi_args is not None
                 await self._send_user_result_over_asgi(result, asgi_args)
             elif not is_http_request and not sync_gen_consumed:
                 # If a unary method is called with stream=True for anything EXCEPT
