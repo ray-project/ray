@@ -586,8 +586,8 @@ class SchedulingNode:
             requests: The resource requests to be scheduled.
             resource_request_source: The source of the resource request, i.e.
                 pending demands from ray actors/tasks or cluster resource constraints.
-            shape_keys: Precomputed serialization keys for each request, keyed by
-                id(request). If None, keys are computed on the fly (fallback).
+            shape_keys: Precomputed serialization keys for each request. If None,
+                keys are computed on the fly (fallback).
 
         Returns:
             A tuple of:
@@ -1728,7 +1728,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Precompute serialization keys to avoid redundant SerializeToString
         # calls inside the per-node try_schedule loop.
         shape_keys = {
-            id(r): r.SerializeToString(deterministic=True) for r in requests_to_sched
+            id(r): r.SerializeToString(deterministic=True) for r in requests_to_sched  # noqa
         }
 
         # Precompute the minimum resource demand across all requests for quick
@@ -1953,9 +1953,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             recoverable_resource_availabilities: The recoverable cloud resource availability
                 score. Similar to cloud_resource_availabilities, but it will recover from
                 0.0 to 1.0 linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
-            shape_keys: Precomputed {id(request): serialized_bytes} mapping. Avoids
-                redundant SerializeToString calls inside try_schedule. If None, keys
-                are computed on the fly (fallback for tests and external callers).
+            shape_keys: Precomputed serialization keys for each request. Avoids
+                redundant SerializeToString calls inside try_schedule. If None,
+                keys are computed on the fly (fallback for tests and external callers).
 
         Returns:
             best_node: The best node to schedule the requests.
