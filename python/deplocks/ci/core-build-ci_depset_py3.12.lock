@@ -1483,9 +1483,9 @@ gitdb==4.0.11 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gitpython
-gitpython==3.1.47 \
-    --hash=sha256:489f590edfd6d20571b2c0e72c6a6ac6915ee8b8cd04572330e3842207a78905 \
-    --hash=sha256:dba27f922bd2b42cb54c87a8ab3cb6beb6bf07f3d564e21ac848913a05a8a3cd
+gitpython==3.1.58 \
+    --hash=sha256:621416df10ef3fd0e19fabf9172ddeed0fa704d353d04f194eec56a625a95b22 \
+    --hash=sha256:d331e722577f0fd7fc1f857419b3ecc07af66282b933d2a4d95f84a042fdd50f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
