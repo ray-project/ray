@@ -13,6 +13,8 @@ instrumentation can stay in the code path for the untraced benchmark runs.
 
 Stages recorded on the decode replica, in request order:
 
+  ``http_in``          ASGI handler entered (first line of user code)
+  ``body_ready``       request body parsed/validated, raw info extracted
   ``t0``               orchestration entered
   ``choose_start``     before choose_replica (routing + reserve_slot RPC)
   ``chosen``           replica selected, slot reserved
@@ -21,12 +23,24 @@ Stages recorded on the decode replica, in request order:
   ``first_token``      first decode chunk yielded  <- TTFT lands here
   ``prefill_done``     remote prefill drained
   ``end``              generator exhausted
+  ``http_out``         first chunk handed to the HTTP response layer
 
 ``chosen - choose_start`` isolates the two blocking RPCs; ``first_token -
-decode_started`` isolates the Phase-1 racing loop. Those are the two candidate
-costs the aggregate numbers cannot separate.
+decode_started`` isolates the Phase-1 racing loop.
+
+``http_in`` is the earliest point reachable from user code on the replica.
+Client-measured TTFT minus ``http_in`` is everything upstream of it -- Serve
+proxy, ASGI transport, replica scheduling -- which the first version of this
+tracer could not see. A c=256 run measured 412ms client-side against 165ms
+from ``t0``, so that upstream window was the largest single unattributed
+cost; ``http_in``/``body_ready`` split it from request shaping.
+
+The wall-clock stamps (``*_wall``) exist for exactly that subtraction: they
+are ``time.time()``, comparable against a client-side timestamp, whereas the
+``perf_counter``-based stage offsets are only comparable within one process.
 """
 
+import contextvars
 import json
 import os
 import threading
@@ -56,23 +70,39 @@ def _out():
 class RequestTrace:
     """Stage stamps for one request. All times are ``perf_counter`` seconds."""
 
-    __slots__ = ("stages", "meta")
+    __slots__ = ("stages", "meta", "_emitted", "_wall0")
 
     def __init__(self, **meta):
         self.stages: List[tuple] = []
         self.meta: Dict = meta
+        # Guards against a second emit() when both the ASGI wrapper and the
+        # orchestrator own a reference to the same trace (they do, by design:
+        # whichever finishes last must not write a duplicate record).
+        self._emitted = False
+        # Wall clock paired with the first mark, so offsets computed against
+        # perf_counter can still be placed on a timeline shared with a client.
+        self._wall0: Optional[float] = None
 
     def mark(self, stage: str) -> None:
+        if self._wall0 is None:
+            self._wall0 = time.time()
         self.stages.append((stage, time.perf_counter()))
 
     def emit(self) -> None:
         """Write the record, converting stamps to ms deltas from the first."""
-        if not self.stages:
+        if self._emitted or not self.stages:
             return
+        self._emitted = True
         t0 = self.stages[0][1]
         rec = dict(self.meta)
         rec["stages_ms"] = {name: (t - t0) * 1000.0 for name, t in self.stages}
         rec["total_ms"] = (self.stages[-1][1] - t0) * 1000.0
+        # Absolute wall clock of the first stage. A client that logs its own
+        # send time can subtract these to get the upstream (proxy/transport)
+        # window that no replica-side stamp can observe.
+        if self._wall0 is not None:
+            rec["t0_wall"] = self._wall0
+            rec["end_wall"] = self._wall0 + rec["total_ms"] / 1000.0
         line = json.dumps(rec)
         fh = _out()
         # One write per request; the GIL makes a single write() of a short
@@ -95,12 +125,45 @@ class _NullTrace:
 
 _NULL = _NullTrace()
 
+# The ASGI handler creates the trace, but ``_pd_handle_request`` is reached
+# through ``LLMServer.chat``/``completions``, whose signatures are shared with
+# every non-P/D server -- threading a trace argument through them would change
+# public-ish method signatures for benchmark-only instrumentation. A ContextVar
+# is copied into each asyncio task automatically, so the orchestrator picks up
+# the trace its own request created and never another concurrent request's.
+_current: contextvars.ContextVar = contextvars.ContextVar("pd_trace", default=None)
+
 
 def new_trace(**meta) -> "RequestTrace":
     """A live trace when enabled, else a no-op object."""
     if not ENABLED:
         return _NULL
     return RequestTrace(**meta)
+
+
+def start_request(**meta) -> "RequestTrace":
+    """Create a trace for this request and publish it to the ContextVar.
+
+    Called at the HTTP boundary. ``current()`` then returns this object for
+    everything downstream in the same asyncio task.
+    """
+    if not ENABLED:
+        return _NULL
+    trace = RequestTrace(**meta)
+    _current.set(trace)
+    return trace
+
+
+def current() -> "RequestTrace":
+    """The trace for the in-flight request, or a no-op if there is none.
+
+    Returns the no-op (rather than creating one) when nothing upstream started
+    a trace: the non-direct-streaming path reaches the orchestrator through the
+    separate ingress deployment, where no ASGI hook of ours runs.
+    """
+    if not ENABLED:
+        return _NULL
+    return _current.get() or _NULL
 
 
 def summarize(paths: List[str], concurrency: Optional[int] = None) -> None:
@@ -119,6 +182,13 @@ def summarize(paths: List[str], concurrency: Optional[int] = None) -> None:
         print("no records")
         return
 
+    def _pct(vals, p):
+        vals = sorted(vals)
+        k = (len(vals) - 1) * p / 100.0
+        f = int(k)
+        c = min(f + 1, len(vals) - 1)
+        return vals[f] + (vals[c] - vals[f]) * (k - f)
+
     # Stage order is stable per request; take it from the longest record so a
     # request that errored early doesn't truncate the column list.
     order = max((list(r["stages_ms"].keys()) for r in records), key=len)
@@ -126,13 +196,38 @@ def summarize(paths: List[str], concurrency: Optional[int] = None) -> None:
     print(f"{'stage':>16} {'p50 ms':>9} {'p95 ms':>9} {'delta p50':>10}")
     prev = 0.0
     for stage in order:
-        vals = sorted(r["stages_ms"][stage] for r in records if stage in r["stages_ms"])
+        vals = [r["stages_ms"][stage] for r in records if stage in r["stages_ms"]]
         if not vals:
             continue
-        p50 = vals[int(len(vals) * 0.5)]
-        p95 = vals[int(len(vals) * 0.95)]
+        p50 = _pct(vals, 50)
+        p95 = _pct(vals, 95)
         print(f"{stage:>16} {p50:>9.2f} {p95:>9.2f} {p50 - prev:>10.2f}")
         prev = p50
+
+    # Server-side TTFT, for subtracting from a client-side measurement. The
+    # difference is the upstream window (proxy, transport, replica scheduling)
+    # that no stamp in this process can reach.
+    ttfts = [
+        r["stages_ms"]["first_token"]
+        for r in records
+        if "first_token" in r["stages_ms"]
+    ]
+    if ttfts:
+        zero = order[0]
+        print(
+            f"\nserver-side TTFT ({zero} -> first_token): "
+            f"p50={_pct(ttfts, 50):.2f}ms  p95={_pct(ttfts, 95):.2f}ms"
+        )
+        if zero == "http_in":
+            print(
+                "  subtract this from the client's TTFT p50 to size everything "
+                "upstream of the replica handler."
+            )
+        else:
+            print(
+                "  NOTE: traced from 't0', not 'http_in' -- the HTTP-boundary "
+                "stages are missing, so this understates replica-side time."
+            )
 
 
 def collect(pattern: str, out_path: str) -> int:

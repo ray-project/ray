@@ -71,11 +71,28 @@ _NULL_TRACE = _NullTrace()
 # specific stages. Resolved once at import: the hot path must not pay for an
 # import lookup per request, and this is a no-op in any normal deploy where the
 # bench directory isn't on the path.
+#
+# ``_trace_start`` opens a trace at the HTTP boundary and publishes it to a
+# ContextVar; ``_trace_current`` is how the orchestrator picks that same trace
+# up without a signature change. When the request arrives through the separate
+# ingress deployment instead of direct streaming, no ASGI hook of ours ran, so
+# ``_trace_current`` yields the no-op and the orchestrator opens its own trace
+# (stages from ``t0`` only, as before).
 try:
-    from bench.pd_trace import new_trace as _new_trace
+    from bench.pd_trace import (
+        current as _trace_current,
+        new_trace as _new_trace,
+        start_request as _trace_start,
+    )
 except ImportError:
 
     def _new_trace(**meta):
+        return _NULL_TRACE
+
+    def _trace_start(**meta):
+        return _NULL_TRACE
+
+    def _trace_current():
         return _NULL_TRACE
 
 
@@ -113,14 +130,22 @@ def _strip_routes(app, path: str) -> None:
     ]
 
 
-async def _pd_http_response(gen) -> Response:
+async def _pd_http_response(gen, trace=None) -> Response:
     """Shape a P/D orchestration generator into an OpenAI HTTP response.
 
     Returns a JSON response when the first chunk is an error or a complete
     (non-streaming) response, otherwise an SSE stream. Uses the same response
     helpers as ``OpenAiIngress`` so the wire format matches the standard path.
+
+    ``_peek_at_generator`` pulls the first chunk, which is what actually drives
+    orchestration to its first token -- so ``http_out`` is stamped after it, and
+    ``http_out - first_token`` is the response-shaping cost that sits between
+    the engine producing a token and the client being able to receive one.
     """
+    if trace is None:
+        trace = _NULL_TRACE
     first, gen = await _peek_at_generator(gen)
+    trace.mark("http_out")
     if isinstance(first, list):
         first = first[0]
     if isinstance(first, ErrorResponse):
@@ -254,7 +279,13 @@ class PDOrchestratorMixin:
 
         backend = self._get_connector_backend()
 
-        trace = _new_trace()
+        # Adopt the trace the ASGI handler opened for this request, so the
+        # HTTP-boundary stages and the orchestration stages land in one record.
+        # Falls back to a fresh trace when the request came through the
+        # separate ingress deployment, where that handler never ran.
+        trace = _trace_current()
+        if trace is _NULL_TRACE:
+            trace = _new_trace()
         trace.mark("t0")
 
         prefill_handle = self._prefill_handle
@@ -541,16 +572,30 @@ class PDOrchestratorMixin:
         _strip_routes(app, "/v1/chat/completions")
         _strip_routes(app, "/v1/completions")
 
+        # ``http_in`` is the earliest stamp reachable from user code on this
+        # replica: FastAPI has already parsed and validated the body by the
+        # time the handler body runs. Client-measured TTFT minus ``http_in``
+        # is therefore everything upstream -- Serve proxy, ASGI transport,
+        # replica scheduling -- which no stage inside the orchestrator can see.
+
         @app.post("/v1/chat/completions")
         async def _pd_chat(body: ChatCompletionRequest, request: Request):
+            trace = _trace_start(route="chat")
+            trace.mark("http_in")
             body = _sanitize_chat_completion_request(body)
             raw_info = RawRequestInfo.from_starlette_request(request)
-            return await _pd_http_response(await self.chat(body, raw_info))
+            trace.mark("body_ready")
+            return await _pd_http_response(await self.chat(body, raw_info), trace)
 
         @app.post("/v1/completions")
         async def _pd_completions(body: CompletionRequest, request: Request):
+            trace = _trace_start(route="completions")
+            trace.mark("http_in")
             raw_info = RawRequestInfo.from_starlette_request(request)
-            return await _pd_http_response(await self.completions(body, raw_info))
+            trace.mark("body_ready")
+            return await _pd_http_response(
+                await self.completions(body, raw_info), trace
+            )
 
         return app
 
