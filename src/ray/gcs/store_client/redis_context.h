@@ -125,6 +125,10 @@ struct RedisRequestContext {
   ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
   RedisAsyncContext *redis_context_;
+  /// Expires when `redis_context_` is destroyed. Its teardown flushes this
+  /// request's callback while the event loop may be going away with it, so
+  /// the retry path must not schedule anything once this is gone.
+  std::weak_ptr<bool> context_alive_;
   size_t pending_retries_;
   RedisCallback callback_;
   absl::Time start_time_;
@@ -184,6 +188,13 @@ class RedisContext {
 
   /// Called when hiredis reports the async connection came up.
   void OnAsyncConnected();
+
+  /// hiredis reply callback for the AUTH that ReconnectAsyncContext sends.
+  /// Unlike startup, a reconnect has no synchronous probe that already proved
+  /// the credentials, so this is where the attempt succeeds or fails.
+  static void ReconnectAuthCallback(redisAsyncContext *async_context,
+                                    void *raw_reply,
+                                    void *privdata);
 
   /// Try once to re-establish the async connection, rescheduling itself with
   /// exponential backoff on failure. Runs on the io_service thread.
@@ -253,6 +264,9 @@ class RedisContext {
   bool reconnecting_ = false;
   /// An async connect has been issued and its callback has not fired yet.
   bool reconnect_pending_ = false;
+  /// An AUTH sent by ReconnectAsyncContext has not been answered yet. While
+  /// set, a TCP-level connect callback must not declare the reconnect done.
+  bool auth_pending_ = false;
   int64_t reconnect_attempts_left_ = 0;
   /// Bumped when a reconnect episode ends in success, so retry timers armed
   /// during that episode die instead of joining the next one.

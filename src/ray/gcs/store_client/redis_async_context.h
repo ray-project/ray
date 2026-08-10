@@ -112,6 +112,12 @@ class RedisAsyncContext {
   /// Invoke the connect handler, if one is set.
   void NotifyConnected();
 
+  /// Token that expires when this object is destroyed. Freeing the raw
+  /// context flushes its pending callbacks, and by then the event loop
+  /// itself may be mid-destruction: a callback that would schedule more
+  /// work checks this first and gives up instead.
+  std::weak_ptr<bool> GetAliveToken() const { return alive_; }
+
   /// Perform command 'redisvAsyncCommand'. Thread-safe.
   ///
   /// \param fn Callback that will be called after the command finishes.

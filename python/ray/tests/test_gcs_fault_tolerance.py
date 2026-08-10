@@ -584,6 +584,12 @@ def redis_replicas(monkeypatch):
         generate_system_config_map(
             gcs_server_request_timeout_seconds=10,
             redis_db_connect_retries=50,
+            # This scenario points GCS at a Redis Cluster node directly, which
+            # the in-place reconnect does not support (there is no lookup point
+            # to re-resolve the primary through). Turn the command-side grace
+            # period off so gcs_server exits promptly, which is what this test
+            # asserts.
+            redis_reconnect_grace_period_ms=0,
         )
     ],
     indirect=True,
@@ -802,8 +808,10 @@ print("ALIVE" if nodes[0]["alive"] else "DEAD")
         == 1,
         # ray.init blocks on GCS internal KV until the reconnect lands, and the
         # command-side grace period allows up to 60s of that; the default 10s
-        # would fail on the first slow attempt.
+        # would fail on the first slow attempt. Each probe spawns a driver
+        # process, so poll gently.
         timeout=120,
+        retry_interval_ms=2000,
     )
     assert psutil.pid_exists(gcs_server_pid), "gcs_server exited after the failover"
 
