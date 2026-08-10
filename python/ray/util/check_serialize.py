@@ -197,6 +197,7 @@ def inspect_serializability(
     .. versionadded:: 1.1.0
 
     """
+    colorama.just_fix_windows_console()
     printer = _Printer(print_file)
     return _inspect_serializability(base_obj, name, depth, None, None, printer)
 
@@ -204,7 +205,6 @@ def inspect_serializability(
 def _inspect_serializability(
     base_obj, name, depth, parent, failure_set, printer, path=()
 ) -> Tuple[bool, Set[FailureTuple]]:
-    colorama.init()
     top_level = False
     declaration = ""
     found = False
