@@ -3,9 +3,16 @@ import time
 import pytest
 
 import ray
-from ray.data.context import DataContext
+from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.no_progress_guard import NoProgressGuard
+from ray.data._internal.execution.streaming_executor_state import (
+    build_streaming_topology,
+)
+from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.exceptions import ExecutionTimeoutError
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.conftest import noop_counter
 from ray.tests.conftest import *  # noqa
 
 # Deterministic coverage of the guard's timing logic lives in
@@ -32,26 +39,24 @@ def test_hanging_udf_fails_execution(
         ds.take(1)
 
 
-@pytest.mark.parametrize(
-    "make_dataset,expected_enabled",
-    [
-        (lambda: ray.data.range(10).map(lambda row: row), True),
-        (lambda: ray.data.range(10).sort("id"), False),
-    ],
-    ids=["map", "sort"],
-)
-def test_all_to_all_operator_disables_the_guard(
-    make_dataset,
-    expected_enabled,
-    ray_start_regular,
+@pytest.mark.parametrize("shuffle_strategy", list(ShuffleStrategy))
+def test_legacy_shuffle_operators_disable_the_guard(
+    shuffle_strategy,
     restore_data_context,  # noqa: F811
 ):
-    DataContext.get_current().execution_no_progress_timeout_s = 600
+    # Only the V2 hash shuffle implementation is supported by the guard.
+    expected_enabled = shuffle_strategy is ShuffleStrategy.HASH_SHUFFLE_V2
+    DataContext.get_current().shuffle_strategy = shuffle_strategy
 
-    bundles, _, executor = make_dataset()._execute_to_iterator()
-    list(bundles)
+    ds = ray.data.range(1).sort("id")
+    physical_plan, _ = get_execution_plan(ds._logical_plan)
+    topology = build_streaming_topology(
+        physical_plan.dag, ExecutionOptions(), noop_counter()
+    )
 
-    assert executor._no_progress_guard.enabled is expected_enabled
+    guard = NoProgressGuard(topology, timeout_s=1)
+
+    assert guard.enabled is expected_enabled
 
 
 if __name__ == "__main__":

@@ -274,7 +274,11 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager,
             config=self._data_context.autoscaling_config,
         )
-
+        self._no_progress_guard = NoProgressGuard(
+            self._topology,
+            self._data_context.execution_no_progress_timeout_s,
+        )
+        
         self._has_op_completed = dict.fromkeys(self._topology, False)
 
         self._output_node = dag, self._topology[dag]
@@ -290,24 +294,6 @@ class StreamingExecutor(Executor, threading.Thread):
         )
         for callback in self._callbacks:
             callback.before_execution_starts(self)
-
-        # AllToAllOperator blocks the execution loop inside bulk_fn.
-        # Hash shuffle V1 does not show its finalization metrics,
-        # and hash shuffle V1 will be deprecated in 2.60.
-        # Neither is distinguishable from a stall, so we disable the guard.
-        if any(
-            isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
-            for op in self._topology
-        ):
-            timeout = -1
-        else:
-            timeout = self._data_context.execution_no_progress_timeout_s
-        # The clock starts on construction, so construct guard right before
-        # the loop starts.
-        self._no_progress_guard = NoProgressGuard(
-            self._topology,
-            timeout,
-        )
 
         self.start()
         self._execution_started = True

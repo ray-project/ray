@@ -1,10 +1,30 @@
 import time
-from typing import Callable
+from functools import cached_property
+from typing import Callable, List, Tuple
 
 from ray.data._internal.execution.streaming_executor_state import (
     Topology,
 )
+from dataclasses import dataclass
 from ray.data.exceptions import ExecutionTimeoutError
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
+)
+from ray.data._internal.execution.operators.base_physical_operator import AllToAllOperator
+
+
+@dataclass(frozen=True)
+class OperatorState:
+    """The state the guard checks against to identify hangs.
+
+    Attributes:
+        num_outputs_taken: The cumulative number of outputs taken.
+        total_enqueued_input_blocks: The current number of inputs queued.
+        total_enqueued_output_blocks: The current number of outputs queued.
+    """
+    num_outputs_taken: int
+    total_enqueued_input_blocks: int
+    total_enqueued_output_blocks: int
 
 
 class NoProgressGuard:
@@ -40,10 +60,20 @@ class NoProgressGuard:
         self._clock = clock
 
         self._last_progress_time = clock()
-        self._last_progress_states = self._total_progress_states()
+        self._last_progress_states = self._current_progress_states()
 
-    @property
+    @cached_property
     def enabled(self) -> bool:
+        # AllToAllOperator and HashShufflingOperatorBase require special-cased logic to
+        # implement a no-progress check. Since we're deprecating both of them in favor
+        # of the V2 hash shuffle implementation around Ray 2.60, we don't bother
+        # supporting them.
+        if any(
+            isinstance(op, (AllToAllOperator, HashShufflingOperatorBase))
+            for op in self._topology
+        ):
+            return False
+
         return self._timeout_s > 0
 
     def check(self) -> None:
@@ -51,7 +81,7 @@ class NoProgressGuard:
             return
 
         current_time = self._clock()
-        current_progress_states = self._total_progress_states()
+        current_progress_states = self._current_progress_states()
 
         execution_made_progress = current_progress_states != self._last_progress_states
         if execution_made_progress:
@@ -62,18 +92,16 @@ class NoProgressGuard:
         if current_time - self._last_progress_time >= self._timeout_s:
             raise ExecutionTimeoutError(self._error_message())
 
-    def _total_progress_states(self) -> tuple[int, int, int]:
-        outputs_taken = 0
-        enqueued_input_blocks = 0
-        enqueued_output_blocks = 0
-
-        # Since these counts can cancel each other out when summed,
-        # track them individually.
-        for op, state in self._topology.items():
-            outputs_taken += op.metrics.num_outputs_taken
-            enqueued_input_blocks += state.total_enqueued_input_blocks()
-            enqueued_output_blocks += state.total_enqueued_output_blocks()
-        return (outputs_taken, enqueued_input_blocks, enqueued_output_blocks)
+    def _current_progress_states(self) -> List[OperatorState]:
+        """Return the state of each operator."""
+        return [
+            OperatorState(
+                num_outputs_taken=op.metrics.num_outputs_taken,
+                total_enqueued_input_blocks=state.total_enqueued_input_blocks(),
+                total_enqueued_output_blocks=state.total_enqueued_output_blocks(),
+            )
+            for op, state in self._topology.items()
+        ]
 
     def _error_message(self) -> str:
         stalled_s = self._clock() - self._last_progress_time
