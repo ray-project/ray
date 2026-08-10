@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Serve Llama 2 7B and 70B on Intel Gaudi HPUs with Ray Serve, on a single accelerator or sharded across several."
 ---
 
 # Serve Llama2-7b/70b on a single or multiple Intel Gaudi Accelerator

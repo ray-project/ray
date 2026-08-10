@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Ray Serve API reference: the Python API for writing and running applications, configs and schemas, request router, CLI, and REST API."
+---
+
 (serve-api)=
 # Ray Serve API
 
