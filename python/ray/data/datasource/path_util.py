@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import re
 import sys
 import warnings
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
@@ -144,6 +145,7 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
     # versioned object-store paths like `...parquet?versionId=...`).
     # Keep `#` untouched because it can be part of object keys.
     parsed_path = path.split("?", 1)[0]
+    parsed_path = re.sub(r"-\d+-of-\d+$", "", parsed_path)
     return any(parsed_path.lower().endswith(ext) for ext in extensions)
 
 

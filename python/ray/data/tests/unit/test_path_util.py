@@ -33,6 +33,17 @@ from ray.util.annotations import RayDeprecationWarning
         ("s3://bucket/data#v2/file.parquet", ["parquet"], True),
         ("C:\\data\\test.parquet", ["parquet"], True),
         ("C:\\data\\parquet", ["parquet"], False),
+        ("mnist-train.tfrecord-00000-of-00001", ["tfrecord"], True),
+        ("mnist-train.TFRECORD-00000-of-00001", ["tfrecord"], True),
+        (
+            "s3://bucket/mnist.tfrecord-00000-of-00001?versionId=abc123",
+            ["tfrecord"],
+            True,
+        ),
+        ("mnist.tfrecord-backup", ["tfrecord"], False),
+        ("mnist.tfrecord-abc-of-def", ["tfrecord"], False),
+        ("mnist.tfrecord-00000-of-00001.tmp", ["tfrecord"], False),
+        ("mnist-tfrecord-00000-of-00001", ["tfrecord"], False),
         ("foo.csv", None, True),
     ],
 )
