@@ -144,7 +144,7 @@ def _truncate_message(
 
 
 def get_grpc_response_status(
-    exc: BaseException, request_timeout_s: float, request_id: str
+    exc: BaseException, request_timeout_s: Optional[float], request_id: str
 ) -> ResponseStatus:
     if isinstance(exc, TimeoutError):
         message = f"Request timed out after {request_timeout_s}s."
