@@ -92,7 +92,7 @@ The split lives in `.buildkite/always.rules.txt`, which emits the `lint` tag for
 
 Adding the `docs-go` label skips the per-library docs example steps. It's optional. Reach for it on a content-only PR where executing the examples adds nothing and you don't want to wait on them. Like the `go` label, it requires write access, so an external contributor asks a reviewer to add it.
 
-A guard step, `lint: validate docs-go scope`, bounds what the label can skip. It runs whenever the label is present and fails unless the PR changes only content under `doc/`. So the label skips example tests on a prose change but never on a code, CI, or build change. The API surface checks ignore the label by design, since an API reference page edit is exactly the content-only change they need to cover.
+A guard step, `lint: validate docs-go scope`, bounds what the label can skip. It runs whenever the label is present and fails unless every changed file is documentation content: anything under `doc/`, plus the Vale prose-lint configuration at the repository root (`.vale.ini` and `.vale/`), and in both cases excluding `BUILD` files. So the label skips example tests on a prose change but never on a code, CI, or build change. The Vale configuration qualifies because it defines no test target and holds no executable code, and because `lint: documentation_style` runs on every PR regardless of the label, so a style-rule edit is still linted. The API surface checks ignore the label by design, since an API reference page edit is exactly the content-only change they need to cover.
 
 ### What doesn't run on your PR
 
