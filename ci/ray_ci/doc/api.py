@@ -289,9 +289,18 @@ class API:
         except (ImportError, ValueError):
             # The documented name's parent is a class rather than a module
             # (``Dataset.map_batches``), or it doesn't import. Either way there
-            # is no module ``__all__`` to read.
+            # is no module ``__all__`` to read. Only the import-machinery errors
+            # are caught, matching resolve(): this runs on a name that already
+            # resolved, so every prefix of it has imported once already.
             return False
-        return leaf in getattr(module, "__all__", ())
+        exports = getattr(module, "__all__", None)
+        if not isinstance(exports, (list, tuple, set, frozenset)):
+            # __all__ is conventionally a list or a tuple of names, and Ray uses
+            # both. Anything else is not a declaration to read: absent or None
+            # confers nothing, and a bare string would make the membership test
+            # below match a substring rather than a name.
+            return False
+        return leaf in exports
 
     @staticmethod
     def _is_override_hook(obj: object) -> bool:

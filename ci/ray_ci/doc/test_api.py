@@ -419,6 +419,24 @@ def test_is_public_reexport():
     assert not API._is_public_reexport("MockReexportedClass", "pkg.Thing")
 
 
+def test_is_public_reexport_requires_a_real_export_list(monkeypatch):
+    from ci.ray_ci.doc.mock import mock_module
+
+    documented = f"{_MOCK}.MockReexportedClass"
+    canonical = f"{_INTERNAL_MOCK}.MockReexportedClass"
+
+    # A tuple is as valid a declaration as a list; Ray modules use both.
+    monkeypatch.setattr(mock_module, "__all__", ("MockReexportedClass",))
+    assert API._is_public_reexport(documented, canonical)
+
+    # Anything that isn't a collection of names confers nothing. A bare string
+    # is the case worth naming: a membership test against it would match a
+    # substring and silently exempt a symbol nobody exported.
+    for not_an_export_list in ("MockReexportedClass", None, 42):
+        monkeypatch.setattr(mock_module, "__all__", not_an_export_list)
+        assert not API._is_public_reexport(documented, canonical)
+
+
 def test_find_duplicate_doc_apis():
     # mock_w00t appears twice, MockClass once. Names canonicalize first, so the
     # duplicate is reported under the canonical name.
