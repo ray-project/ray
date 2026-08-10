@@ -127,6 +127,7 @@ from ray.serve._private.http_util import (
     parse_disconnect_disabled_header,
     parse_request_timeout_header,
     parse_session_id_header,
+    retry_after_headers,
     start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
@@ -1146,23 +1147,19 @@ class Replica:
         # Silence spammy false positive errors from gRPC Python
         self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
 
-        try:
-            is_tracing_setup_successful = setup_tracing(
-                component_type=ServeComponentType.REPLICA,
-                component_name=self._component_name,
-                component_id=self._component_id,
-            )
-            if is_tracing_setup_successful:
-                logger.info("Successfully set up tracing for replica")
-        except Exception as e:
-            logger.warning(
-                f"Failed to set up tracing: {e}. "
-                "The replica will continue running, but traces will not be exported."
-            )
-
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
+
+        tracing_config = ray.get(self._controller_handle.get_tracing_config.remote())
+        is_tracing_setup_successful = setup_tracing(
+            component_type=ServeComponentType.REPLICA,
+            component_name=self._component_name,
+            component_id=self._component_id,
+            tracing_config=tracing_config,
+        )
+        if is_tracing_setup_successful:
+            logger.info("Successfully set up tracing for replica")
 
         # get node ID
         self._node_id = ray.get_runtime_context().get_node_id()
@@ -2175,6 +2172,10 @@ class Replica:
     def max_queued_requests(self) -> int:
         return self._deployment_config.max_queued_requests
 
+    @property
+    def backpressure_config(self):
+        return self._deployment_config.backpressure_config
+
     async def _maybe_start_direct_ingress_servers(self):
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
@@ -3018,7 +3019,10 @@ class Replica:
             # because between incrementing and decrementing the queued requests, we yield to the event loop.
             for msg in convert_object_to_asgi_messages(
                 "Request dropped due to backpressure",
-                status_code=503,
+                status_code=self.backpressure_config.status_code,
+                extra_headers=retry_after_headers(
+                    self.backpressure_config.retry_after_s
+                ),
             ):
                 await send(msg)
             return
@@ -4371,7 +4375,16 @@ class UserCallableWrapper:
         return result
 
     def handle_exception(self, exc: Exception):
-        if isinstance(exc, self.service_unavailable_exceptions):
+        if isinstance(exc, BackPressureError):
+            headers = retry_after_headers(exc.retry_after_s)
+            return starlette.responses.Response(
+                exc.message,
+                status_code=exc.status_code,
+                headers=(
+                    {k.decode(): v.decode() for k, v in headers} if headers else None
+                ),
+            )
+        elif isinstance(exc, self.service_unavailable_exceptions):
             return starlette.responses.Response(exc.message, status_code=503)
         else:
             return starlette.responses.Response(
