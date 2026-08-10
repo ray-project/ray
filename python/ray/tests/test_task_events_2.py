@@ -295,6 +295,12 @@ def test_fault_tolerance_job_failed(shutdown_only, monkeypatch):
     monkeypatch.setenv("RAY_gcs_mark_task_failed_on_job_done_delay_ms", "1000")
     monkeypatch.setenv("RAY_gcs_mark_task_failed_on_worker_dead_delay_ms", "30000")
     sys_config = _SYSTEM_CONFIG.copy()
+
+    # We set the config here again after setting env variables for the GCS path. If
+    # we don't set it then _SYSTEM_CONFIG takes effect, which has both the delays
+    # set to 1000ms. This is because system config overrides the env variable setting.
+    # Since, we specifically want the delays to be 1000 and 30000, we set the config
+    # again.
     config = {
         "gcs_mark_task_failed_on_job_done_delay_ms": 1000,
         # make worker failure not trigger task failure
