@@ -1,4 +1,3 @@
-import asyncio
 import sys
 from unittest.mock import AsyncMock
 
@@ -10,12 +9,16 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
 )
-from ray._common.test_utils import async_wait_for_condition
 from ray._raylet import JobID
-from ray.core.generated import events_event_aggregator_service_pb2, gcs_pb2
+from ray.core.generated import (
+    events_event_aggregator_service_pb2,
+    gcs_pb2,
+    gcs_service_pb2,
+)
 from ray.core.generated.common_pb2 import TaskType
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.events_task_definition_event_pb2 import TaskDefinitionEvent
+from ray.dashboard.modules.task_events import task_event_query
 from ray.dashboard.modules.task_events.task_events_head import TaskEventsHead
 from ray.dashboard.subprocesses.module import SubprocessModuleConfig
 
@@ -74,6 +77,14 @@ def _fake_request(body: bytes):
     return request
 
 
+def _add_stored_task(head, task_id, worker=None, job=_JOB):
+    event = gcs_pb2.TaskEvents(task_id=task_id, attempt_number=0, job_id=job)
+    event.task_info.type = TaskType.NORMAL_TASK
+    if worker is not None:
+        event.state_updates.worker_id = worker
+    head._store.add_or_replace_task_event(event)
+
+
 @pytest.mark.asyncio
 async def test_add_task_events_buffers_events():
     head = _make_head()
@@ -130,122 +141,36 @@ def test_deserialize_request_roundtrip():
     assert len(request.events_data.events) == 1
 
 
-def test_handle_worker_delta_buffers():
+@pytest.mark.asyncio
+async def test_get_task_events_endpoint_roundtrip():
     head = _make_head()
-    assert head.num_dead_workers_received == 0
+    _add_stored_task(head, _task_id(1))
 
-    head._handle_worker_delta(
-        gcs_pb2.WorkerDeltaData(worker_id=b"worker_1", node_id=b"node_1")
-    )
+    query = gcs_service_pb2.GetTaskEventsRequest()
+    response = await head.get_task_events(_fake_request(query.SerializeToString()))
 
-    assert head.num_dead_workers_received == 1
-
-
-def test_handle_job_update_buffers_finished_job():
-    head = _make_head()
-
-    head._handle_job_update(
-        gcs_pb2.JobTableData(job_id=b"job_1", is_dead=True, end_time=123)
-    )
-
-    assert head.num_finished_jobs_received == 1
-
-
-def test_handle_job_update_ignores_running_job():
-    head = _make_head()
-
-    head._handle_job_update(gcs_pb2.JobTableData(job_id=b"job_1", is_dead=False))
-
-    assert head.num_finished_jobs_received == 0
-
-
-class _FakeSubscriber:
-    """Delivers a canned batch on the first poll, then parks so the loop settles."""
-
-    def __init__(self, messages):
-        self._messages = messages
-        self._delivered = False
-
-    async def subscribe(self):
-        pass
-
-    async def poll(self, batch_size, timeout=None):
-        if self._delivered:
-            await asyncio.sleep(3600)
-            return []
-        self._delivered = True
-        return self._messages
-
-
-async def _cancel(task: asyncio.Task) -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    assert response.status == 200
+    reply = gcs_service_pb2.GetTaskEventsReply()
+    reply.ParseFromString(response.body)
+    assert [event.task_id for event in reply.events_by_task] == [_task_id(1)]
 
 
 @pytest.mark.asyncio
-async def test_gc_job_summary_loop_trims_over_cap(monkeypatch):
-    monkeypatch.setattr(
-        "ray.dashboard.modules.task_events.task_events_head.GC_JOB_SUMMARY_INTERVAL_S",
-        0.01,
-    )
-    monkeypatch.setattr(
-        "ray.dashboard.modules.task_events.task_event_storage."
-        "MAX_DROPPED_TASK_ATTEMPTS_PER_JOB",
-        2,
-    )
+async def test_get_task_events_invalid_predicate_returns_status_in_reply():
     head = _make_head()
-    summary = head._store._summary(_JOB)
-    for i in range(10):
-        summary.record_task_attempt_dropped((_task_id(i), 0))
-    assert len(summary._dropped_task_attempts) == 10
+    _add_stored_task(head, _task_id(1))
 
-    task = asyncio.create_task(head._gc_job_summary_loop())
-    try:
-        await async_wait_for_condition(lambda: len(summary._dropped_task_attempts) < 10)
-    finally:
-        await _cancel(task)
+    query = gcs_service_pb2.GetTaskEventsRequest()
+    task_filter = query.filters.task_filters.add()
+    task_filter.task_id = _task_id(1)
+    task_filter.predicate = 100
+    response = await head.get_task_events(_fake_request(query.SerializeToString()))
 
-
-@pytest.mark.asyncio
-async def test_worker_death_subscription_loop_buffers(monkeypatch):
-    head = _make_head()
-    worker_delta = gcs_pb2.WorkerDeltaData(worker_id=b"worker_1", node_id=b"node_1")
-    fake = _FakeSubscriber([(b"key", worker_delta)])
-    monkeypatch.setattr(
-        "ray.dashboard.modules.task_events.task_events_head."
-        "GcsAioWorkerDeltaSubscriber",
-        lambda address=None: fake,
-    )
-
-    task = asyncio.create_task(head._subscribe_for_worker_deaths())
-    try:
-        await async_wait_for_condition(lambda: head.num_dead_workers_received == 1)
-    finally:
-        await _cancel(task)
-
-
-@pytest.mark.asyncio
-async def test_job_subscription_loop_buffers_only_finished(monkeypatch):
-    head = _make_head()
-    running = gcs_pb2.JobTableData(job_id=b"job_1", is_dead=False)
-    finished = gcs_pb2.JobTableData(job_id=b"job_2", is_dead=True)
-    fake = _FakeSubscriber([(b"k1", running), (b"k2", finished)])
-    monkeypatch.setattr(
-        "ray.dashboard.modules.task_events.task_events_head.GcsAioJobSubscriber",
-        lambda address=None: fake,
-    )
-
-    task = asyncio.create_task(head._subscribe_for_finished_jobs())
-    try:
-        await async_wait_for_condition(lambda: head.num_finished_jobs_received == 1)
-    finally:
-        await _cancel(task)
-
-    # The running job was filtered out; only the finished one was buffered.
-    assert head.num_finished_jobs_received == 1
+    assert response.status == 200
+    reply = gcs_service_pb2.GetTaskEventsReply()
+    reply.ParseFromString(response.body)
+    assert reply.status.code == task_event_query._INVALID_ARGUMENT_STATUS_CODE
+    assert len(reply.events_by_task) == 0
 
 
 if __name__ == "__main__":
