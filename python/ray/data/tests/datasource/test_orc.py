@@ -5,6 +5,7 @@ import pytest
 from pyarrow import orc
 
 import ray
+from ray.exceptions import UserCodeException
 
 
 def _write_orc(path, table):
@@ -285,7 +286,32 @@ def test_read_orc_projection_pushdown_missing_column(
     _write_orc(path, pa.table({"id": [0, 1, 2], "name": ["a", "b", "c"]}))
 
     ds = ray.data.read_orc(path).select_columns(["id", "typo_col"])
-    with pytest.raises((ray.exceptions.UserCodeException, KeyError)):
+    # pyrefly: ignore[no-matching-overload]
+    with pytest.raises((UserCodeException, KeyError)):
+        ds.materialize()
+
+
+def test_read_orc_projection_pushdown_missing_column_hive_no_field_names(
+    ray_start_regular_shared, tmp_path
+):
+    """A typo alongside a real Hive partition key must still raise, even
+    when ``Partitioning.field_names`` is left unset (the common HIVE usage
+    pattern -- see ``test_read_orc_projection_pushdown_partitioned``). Names
+    are validated against the partition keys actually parsed from this
+    file's path, not against a declared (and here, absent) field list."""
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    os.makedirs(os.path.join(tmp_path, "year=2024"))
+    _write_orc(
+        os.path.join(tmp_path, "year=2024", "data.orc"),
+        pa.table({"data": [0, 1]}),
+    )
+
+    ds = ray.data.read_orc(
+        str(tmp_path), partitioning=Partitioning(PartitionStyle.HIVE)
+    ).select_columns(["year", "typo_col"])
+    # pyrefly: ignore[no-matching-overload]
+    with pytest.raises((UserCodeException, KeyError)):
         ds.materialize()
 
 
