@@ -32,6 +32,7 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/ray_event_interface.h"
 #include "ray/observability/ray_event_recorder_interface.h"
+#include "ray/observability/task_state_update.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
@@ -121,45 +122,7 @@ class TaskEvent {
 /// TaskStatusEvent is generated when a task changes its status.
 class TaskStatusEvent : public TaskEvent {
  public:
-  /// A class that contain data that will be converted to rpc::TaskStateUpdate
-  struct TaskStateUpdate {
-    TaskStateUpdate() = default;
-
-    explicit TaskStateUpdate(const std::optional<const rpc::RayErrorInfo> &error_info)
-        : error_info_(error_info) {}
-
-    TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
-        : node_id_(node_id), worker_id_(worker_id) {}
-
-    explicit TaskStateUpdate(rpc::TaskLogInfo task_log_info)
-        : task_log_info_(std::move(task_log_info)) {}
-
-    TaskStateUpdate(std::string actor_repr_name, uint32_t pid)
-        : actor_repr_name_(std::move(actor_repr_name)), pid_(pid) {}
-
-    explicit TaskStateUpdate(uint32_t pid) : pid_(pid) {}
-
-    explicit TaskStateUpdate(bool is_debugger_paused)
-        : is_debugger_paused_(is_debugger_paused) {}
-
-   private:
-    friend class TaskStatusEvent;
-
-    /// Node id if it's a SUBMITTED_TO_WORKER status change.
-    std::optional<NodeID> node_id_ = std::nullopt;
-    /// Worker id if it's a SUBMITTED_TO_WORKER status change.
-    std::optional<WorkerID> worker_id_ = std::nullopt;
-    /// Task error info.
-    std::optional<rpc::RayErrorInfo> error_info_ = std::nullopt;
-    /// Task log info.
-    std::optional<rpc::TaskLogInfo> task_log_info_ = std::nullopt;
-    /// Actor task repr name.
-    std::string actor_repr_name_;
-    /// Worker's pid if it's a RUNNING status change.
-    std::optional<uint32_t> pid_ = std::nullopt;
-    /// If the task is paused by the debugger.
-    std::optional<bool> is_debugger_paused_ = std::nullopt;
-  };
+  using TaskStateUpdate = observability::TaskStateUpdate;
 
   explicit TaskStatusEvent(
       TaskID task_id,
@@ -199,16 +162,6 @@ class TaskStatusEvent : public TaskEvent {
   bool IsProfileEvent() const override { return false; }
 
  private:
-  // Helper functions to populate the task definition event of rpc::events::RayEvent
-  // This function assumes task_spec_ is not null.
-  template <typename T>
-  void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
-
-  // Helper functions to populate the task lifecycle event of rpc::events::RayEvent
-  void PopulateRpcRayTaskLifecycleEvent(
-      rpc::events::TaskLifecycleEvent &lifecycle_event_data,
-      google::protobuf::Timestamp timestamp);
-
   // Helper functions to populate the base fields of rpc::events::RayEvent
   void PopulateRpcRayEventBaseFields(rpc::events::RayEvent &ray_event,
                                      bool is_definition_event,
@@ -628,6 +581,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
+  /// True while at least one destination below is live. Owns whether events are
+  /// recorded; enabled_ owns the io thread and GCS client lifecycle, so Stop() still
+  /// tears them down when nothing is being recorded.
+  std::atomic<bool> recording_enabled_ = false;
+
   /// Circular buffered task status events.
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_
       ABSL_GUARDED_BY(mutex_);
@@ -704,6 +662,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
               TestFlushSendsDroppedAttemptsWithoutEvents);
   FRIEND_TEST(TaskEventBufferTestRecorderSwitch, TestRecorderTakesOverAggregatorSend);
+  FRIEND_TEST(TaskEventBufferTestNoDestination, TestNoRecordingWhenNoDestination);
 };
 
 }  // namespace worker
