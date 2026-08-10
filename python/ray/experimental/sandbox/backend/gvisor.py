@@ -333,6 +333,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         args = ["runsc"]
         if config.rootless:
             args.append("--rootless")
+        if (
+            getattr(config, "_ignore_cgroups", False)
+            or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
+        ):
+            args.append("--ignore-cgroups")
         args.extend(["--root", _RUNSC_ROOT])
         return args
 

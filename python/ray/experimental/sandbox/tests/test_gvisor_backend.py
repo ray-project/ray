@@ -114,10 +114,14 @@ def test_gvisor_backend_invalid_image():
 def test_gvisor_backend_container_image_overlay_isolation():
     backend = GVisorSandboxBackend()
     cfg1 = GVisorSandboxConfig(
-        image="busybox:latest", workdir="/workspace", readonly=False
+        image="busybox:latest",
+        workdir="/workspace",
+        readonly=False,
     )
     cfg2 = GVisorSandboxConfig(
-        image="busybox:latest", workdir="/workspace", readonly=False
+        image="busybox:latest",
+        workdir="/workspace",
+        readonly=False,
     )
 
     sb1 = backend.create_sandbox(cfg1)
@@ -154,7 +158,9 @@ def test_gvisor_backend_container_image_overlay_isolation():
 
     # A newly created SB3 should not see /overlay_test.txt
     cfg3 = GVisorSandboxConfig(
-        image="busybox:latest", workdir="/workspace", readonly=False
+        image="busybox:latest",
+        workdir="/workspace",
+        readonly=False,
     )
     sb3 = backend.create_sandbox(cfg3)
     try:
@@ -190,6 +196,22 @@ def test_gvisor_backend_readonly_rootfs():
         assert "ws_ok" in res_ws.stdout
     finally:
         backend.delete_sandbox(sandbox_id)
+
+
+def test_gvisor_backend_ignore_cgroups_flag():
+    backend = GVisorSandboxBackend()
+    cfg_default = GVisorSandboxConfig(image="busybox:latest")
+    orig_env = os.environ.pop("RAY_SANDBOX_IGNORE_CGROUPS", None)
+    try:
+        args_default = backend._runsc_base_args(cfg_default)
+        assert "--ignore-cgroups" not in args_default
+
+        cfg_ignored = GVisorSandboxConfig(image="busybox:latest", _ignore_cgroups=True)
+        args_ignored = backend._runsc_base_args(cfg_ignored)
+        assert "--ignore-cgroups" in args_ignored
+    finally:
+        if orig_env is not None:
+            os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
 
 
 if __name__ == "__main__":

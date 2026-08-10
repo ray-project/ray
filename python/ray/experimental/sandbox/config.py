@@ -76,6 +76,7 @@ class SandboxConfig:
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
     )
+    _ignore_cgroups: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self):
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
