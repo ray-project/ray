@@ -209,6 +209,10 @@ python/ray/runtime_env/
 @ core_python runtime_env_container
 ;
 
+python/ray/experimental/sandbox/
+@ core_python sandbox_tests
+;
+
 python/
 # Run library tests on core Python code change.
 @ core_python llm ml tune train data serve
@@ -636,10 +640,6 @@ setup_hooks.sh
 .prettierrc.toml
 .fossa.yml
 # pass
-;
-
-python/ray/experimental/sandbox/
-@ sandbox_tests
 ;
 
 *
