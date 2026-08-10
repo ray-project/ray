@@ -3,21 +3,120 @@ import logging
 import sys
 from collections import defaultdict
 from threading import Lock
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+
+import requests
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._common.utils import binary_to_hex, decode, hex_to_binary
+from ray._private import ray_constants
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.protobuf_compat import message_to_dict
 from ray._private.utils import (
     validate_actor_state_name,
 )
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
-from ray.core.generated import autoscaler_pb2, common_pb2, gcs_pb2
+from ray.core.generated import autoscaler_pb2, common_pb2, gcs_pb2, gcs_service_pb2
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# Timeout for the synchronous task-events query to the dashboard head.
+_DASHBOARD_HEAD_QUERY_TIMEOUT_S = 30
+# Dashboard-head route that answers task-events queries.
+_TASK_EVENTS_QUERY_PATH = "/api/task_events/query"
+# GcsStatus.code value for a successful reply.
+_GCS_STATUS_CODE_OK = 0
+# Read task events (for ray.timeline / profiling) from the dashboard head instead of GCS.
+_READ_TASK_EVENTS_FROM_DASHBOARD_HEAD = (
+    ray._config.enable_task_events_to_dashboard_head()
+)
+
+
+class TaskEventsHeadClient:
+    """Synchronous client for the dashboard-head task-events query endpoint.
+
+    Resolves and caches the endpoint address on first use, reuses one HTTP session, and
+    attaches the cluster auth token on every request, so repeated ``ray.timeline`` calls
+    don't re-resolve the address or reopen connections.
+    """
+
+    def __init__(self, accessor: GlobalStateAccessor):
+        self._accessor = accessor
+        self._session = requests.Session()
+        self._endpoint = None
+
+    def close(self):
+        """Close the underlying HTTP session and its connection pool."""
+        self._session.close()
+
+    def _get_endpoint(self) -> str:
+        if self._endpoint is None:
+            address = self._accessor.get_internal_kv(
+                ray_constants.KV_NAMESPACE_DASHBOARD,
+                ray_constants.DASHBOARD_ADDRESS.encode(),
+            )
+            if not address:
+                raise RuntimeError(
+                    "Could not find the dashboard address to read task events from the "
+                    "dashboard head. Is the dashboard running?"
+                )
+            address = address.decode()
+            if not address.startswith(("http://", "https://")):
+                address = f"http://{address}"
+            self._endpoint = f"{address}{_TASK_EVENTS_QUERY_PATH}"
+        return self._endpoint
+
+    def get_task_events(self, timeout: int) -> List["gcs_pb2.TaskEvents"]:
+        """Return all task events (as ``TaskEvents`` protos) from the head.
+
+        No ``limit`` is set, so the head returns everything in its store, matching the
+        unbounded GCS ``GetAllTaskEvents`` path this replaces.
+        """
+        from ray._private.authentication.http_token_authentication import (
+            format_authentication_http_error,
+            get_auth_headers_if_auth_enabled,
+        )
+
+        endpoint = self._get_endpoint()
+        request = gcs_service_pb2.GetTaskEventsRequest()
+        headers = {"Content-Type": "application/octet-stream"}
+        headers.update(get_auth_headers_if_auth_enabled(headers))
+        try:
+            response = self._session.post(
+                endpoint,
+                data=request.SerializeToString(),
+                headers=headers,
+                timeout=timeout,
+            )
+        except requests.RequestException as e:
+            # Any request failure may mean the head is unreachable or restarted at a new
+            # address; drop the cached endpoint so the next call re-resolves it. This is
+            # slightly conservative though.
+            self._endpoint = None
+            raise RuntimeError(
+                f"Failed to reach the dashboard head at {endpoint} to read task events. "
+                "Is the dashboard running?"
+            ) from e
+        if not (200 <= response.status_code < 300):
+            auth_error = format_authentication_http_error(
+                response.status_code, response.text
+            )
+            if auth_error:
+                raise RuntimeError(auth_error)
+            raise RuntimeError(
+                f"Failed to read task events from the dashboard head at {endpoint}: "
+                f"HTTP {response.status_code} {response.reason}."
+            )
+        reply = gcs_service_pb2.GetTaskEventsReply()
+        reply.ParseFromString(response.content)
+        if reply.status.code != _GCS_STATUS_CODE_OK:
+            raise RuntimeError(
+                "The dashboard head rejected the task-events query: "
+                f"{reply.status.message}"
+            )
+        return list(reply.events_by_task)
 
 
 class GlobalState:
@@ -34,6 +133,7 @@ class GlobalState:
         self.gcs_options = None
         self._global_state_accessor = None
         self._init_lock = Lock()
+        self._task_events_head_client = None
 
     def _connect_and_get_accessor(self) -> GlobalStateAccessor:
         """
@@ -69,6 +169,11 @@ class GlobalState:
             self.gcs_options = None
             if self._global_state_accessor is not None:
                 self._global_state_accessor = None
+            # Drop the cached task-events client (closing its HTTP session) so it doesn't
+            # keep a stale accessor across a reconnect; the next call rebuilds it.
+            if self._task_events_head_client is not None:
+                self._task_events_head_client.close()
+                self._task_events_head_client = None
 
     def _initialize_global_state(self, gcs_options: GcsClientOptions):
         """Set args for lazily initialization of the GlobalState object.
@@ -240,13 +345,9 @@ class GlobalState:
                 ]
             }
         """
-        accessor = self._connect_and_get_accessor()
-
         result = defaultdict(list)
-        task_events = accessor.get_task_events()
-        for i in range(len(task_events)):
-            event = gcs_pb2.TaskEvents.FromString(task_events[i])
-            profile = event.profile_events
+        for task_event in self._get_all_task_events():
+            profile = task_event.profile_events
             if not profile:
                 continue
 
@@ -272,6 +373,49 @@ class GlobalState:
                 result[component_id].append(profile_event)
 
         return dict(result)
+
+    def _get_all_task_events(self) -> List["gcs_pb2.TaskEvents"]:
+        """Return all task events (as ``TaskEvents`` protos) for timeline/profiling.
+
+        Reads from the dashboard head when the task-events-to-dashboard-head migration is
+        enabled, otherwise from GCS.
+        """
+        if _READ_TASK_EVENTS_FROM_DASHBOARD_HEAD:
+            return self._get_task_events_head_client().get_task_events(
+                _DASHBOARD_HEAD_QUERY_TIMEOUT_S
+            )
+        accessor = self._connect_and_get_accessor()
+        return [
+            gcs_pb2.TaskEvents.FromString(task_event)
+            for task_event in accessor.get_task_events()
+        ]
+
+    def _get_task_events_head_client(self) -> "TaskEventsHeadClient":
+        """Lazily build and cache the reusable dashboard-head task-events client."""
+        # Ensure we're connected, then read the accessor under the lock and build against
+        # that.
+        self._connect_and_get_accessor()
+        with self._init_lock:
+            accessor = self._global_state_accessor
+            if accessor is None:
+                # don't build the client against a None accessor
+                raise ray.exceptions.RaySystemError(
+                    "Ray was disconnected while reading task events; please retry."
+                )
+            if (
+                self._task_events_head_client is None
+                # if the accessor with client is diff from actual accessor
+                # build client with the new accessor
+                or self._task_events_head_client._accessor is not accessor
+            ):
+                # Close the stale client's HTTP session before replacing it.
+                if self._task_events_head_client is not None:
+                    self._task_events_head_client.close()
+                self._task_events_head_client = TaskEventsHeadClient(accessor)
+            # TODO(karticam): There might be an edgy race condition where accessor
+            #  could go invalid after returning the client. so client makes request
+            #  with an invalid accessor.
+            return self._task_events_head_client
 
     def get_placement_group_by_name(self, placement_group_name, ray_namespace):
         accessor = self._connect_and_get_accessor()
@@ -1039,6 +1183,7 @@ def timeline(filename: Optional[str] = None):
         raise RuntimeError(
             "Ray has not been started yet. Timeline requires Ray to be initialized first."
         )
+
     return state.chrome_tracing_dump(filename=filename)
 
 
