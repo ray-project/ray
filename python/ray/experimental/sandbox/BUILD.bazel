@@ -17,6 +17,14 @@ py_library(
     ],
 )
 
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"],
+    deps = [
+        "//python/ray/tests:conftest",
+    ],
+)
+
 py_test_module_list(
     size = "medium",
     files = glob(
@@ -31,7 +39,7 @@ py_test_module_list(
         "team:core",
     ],
     deps = [
+        ":conftest",
         ":sandbox_lib",
-        "//python/ray/tests:conftest",
     ],
 )
