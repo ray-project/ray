@@ -209,7 +209,7 @@ doc/source/llms_txt_summary.txt: doc
 # The shared notebook runner stays on the catch-all core step by design; see
 # the comment on the catch-all rule in test.rules.txt.
 doc/test_myst_doc.py: core_doc
-python/deplocks/docs/docbuild_depset_py3.10.lock: doc doc_api python_dependencies
+python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api python_dependencies
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
 
 # === Release ===

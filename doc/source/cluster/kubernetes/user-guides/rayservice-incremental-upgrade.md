@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Perform zero-downtime incremental RayService upgrades, covering the upgrade process, configuration, and monitoring."
+---
+
 (kuberay-rayservice-incremental-upgrade)=
 # RayService Zero-Downtime Incremental Upgrades
 

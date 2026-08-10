@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Create a GKE cluster with TPU node pools for KubeRay, including manual install of the TPU webhook."
+---
+
 (kuberay-gke-tpu-cluster-setup)=
 
 # Start Google Cloud GKE Cluster with TPUs for KubeRay
