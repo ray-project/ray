@@ -1727,9 +1727,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Precompute serialization keys to avoid redundant SerializeToString
         # calls inside the per-node try_schedule loop.
-        shape_keys = {
-            id(r): r.SerializeToString(deterministic=True) for r in requests_to_sched  # noqa
-        }
+        shape_keys = {}
+        for r in requests_to_sched:
+            shape_keys[id(r)] = r.SerializeToString(deterministic=True)
 
         # Precompute the minimum resource demand across all requests for quick
         # feasibility pre-checks.
