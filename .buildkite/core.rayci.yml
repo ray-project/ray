@@ -156,6 +156,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
         --install-mask all-ray-libraries
+        --privileged
         --test-env=TEST_SANDBOX=1
         --python-version 3.10 --build-name corebuild-py3.10
 
