@@ -15,6 +15,7 @@
 #pragma once
 
 #include <boost/circular_buffer.hpp>
+#include <list>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -77,6 +78,20 @@ class RayTaskEventRecorder : public RayEventRecorderBase {
   void AddProfileEvent(std::unique_ptr<RayEventInterface> event,
                        const TaskAttemptId &attempt)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  struct EventsToSend {
+    std::list<std::unique_ptr<RayEventInterface>> events;
+    absl::flat_hash_set<TaskAttemptId> dropped_to_send;
+  };
+
+  /**
+   * @brief Move the buffered events and the dropped task attempts to report out of the
+   * buffers so that the caller can group, serialize and send them without holding mutex_.
+   * Events belonging to a dropped attempt are discarded so that a task attempt is either
+   * sent in full or not at all.
+   * @return The events to export and the task attempts to report as dropped.
+   */
+  EventsToSend TakeEventsToSend() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Read the task attempt of an event; the event must implement TaskRayEventInterface.
   static TaskAttemptId GetTaskAttemptOrDie(
