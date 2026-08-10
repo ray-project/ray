@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run a Ray job on Kubernetes with RayJob, which creates a RayCluster on demand and can delete it once the job finishes."
+---
+
 (kuberay-rayjob-quickstart)=
 
 # RayJob Quickstart

@@ -159,6 +159,47 @@ llms_txt_exclude = [
 # sphinx-collections). No docname enumeration needed here. Notebooks remain
 # fully rendered in the HTML build; only the agent corpus drops them.
 
+# Thin API-reference hub pages: a title plus an autosummary table, under 40 words
+# of real prose. The per-symbol pages they link to are already excluded above via
+# the `*/api/doc/*` patterns, so an agent gains nothing from the shell — and a
+# description on one would only restate its title. `data/api/_autogen` has no
+# title at all, and the two `*_regression_example` pages are literalinclude
+# stubs with zero prose. Every remaining in-scope page carries a curated
+# description; these are the pages where exclusion beats describing.
+llms_txt_exclude += [
+    "data/api/_autogen",
+    "data/api/aggregate",
+    "data/api/api",
+    "data/api/checkpoint",
+    "data/api/data_context",
+    "data/api/data_iterator",
+    "data/api/dataset",
+    "data/api/datatype",
+    "data/api/execution_options",
+    "data/api/grouped_data",
+    "data/api/llm",
+    "data/api/loading_data",
+    "data/api/preprocessor",
+    "data/api/saving_data",
+    "ray-core/api/cli",
+    "ray-core/api/core",
+    "ray-core/api/exceptions",
+    "ray-core/api/index",
+    "ray-core/api/runtime-env",
+    "ray-core/api/scheduling",
+    "ray-core/api/utility",
+    "ray-core/compiled-graph/compiled-graph-api",
+    "train/examples/pytorch/torch_regression_example",
+    "train/examples/tf/tensorflow_regression_example",
+    "tune/api/api",
+    "tune/api/execution",
+    "tune/api/integration",
+    "tune/api/internals",
+    "tune/api/result_grid",
+    "tune/api/search_space",
+    "tune/api/syncing",
+]
+
 # -- sphinx-collections: pull external template files at build time -----------
 # The fetch machinery, template registry, collections config, and _collections/
 # Sphinx wiring live in template_collections.py so template-publishing changes
