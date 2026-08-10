@@ -119,6 +119,7 @@ class StateApiClient(SubmissionClient):
         address: Optional[str] = None,
         cookies: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
+        verify: Union[str, bool] = True,
     ):
         """Initialize a StateApiClient and check the connection to the cluster.
 
@@ -131,14 +132,16 @@ class StateApiClient(SubmissionClient):
             cookies: Cookies to use when sending requests to the HTTP job server.
             headers: Headers to use when sending requests to the HTTP job server, used
                 for cases like authentication to a remote cluster.
+            verify: TLS verification flag or path to a CA bundle/directory.
         """
         if requests is None:
             raise RuntimeError(
                 "The Ray state CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``"
             )
-        if not headers:
-            headers = {"Content-Type": "application/json"}
+        request_headers = {"Content-Type": "application/json"}
+        if headers:
+            request_headers.update(headers)
 
         # Resolve API server URL
         api_server_url = get_address_for_submission_client(address)
@@ -146,8 +149,9 @@ class StateApiClient(SubmissionClient):
         super().__init__(
             address=api_server_url,
             create_cluster_if_needed=False,
-            headers=headers,
+            headers=request_headers,
             cookies=cookies,
+            verify=verify,
         )
 
     @classmethod
@@ -1176,6 +1180,12 @@ Log APIs
 """
 
 
+def _prepare_request_headers(headers: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    request_headers = headers.copy() if headers else {}
+    request_headers.update(get_auth_headers_if_auth_enabled(request_headers))
+    return request_headers
+
+
 @DeveloperAPI
 def get_log(
     address: Optional[str] = None,
@@ -1195,6 +1205,8 @@ def get_log(
     attempt_number: int = 0,
     _interval: Optional[float] = None,
     filter_ansi_code: bool = False,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Union[str, bool] = True,
 ) -> Generator[str, None, None]:
     """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
 
@@ -1255,6 +1267,8 @@ def get_log(
         _interval: The interval in secs to print new logs when `follow=True`.
         filter_ansi_code: A boolean flag for determining whether to filter ANSI escape codes.
             Setting to `True` removes ANSI escape codes from the output. The default value is `False`.
+        headers: Headers to use when sending requests to the HTTP job server.
+        verify: TLS verification flag or path to a CA bundle/directory.
 
     Yields:
         str: A chunk of log content. When ``encoding`` is ``None`` the raw bytes
@@ -1295,7 +1309,8 @@ def get_log(
         f"{api_server_url}/api/v0/logs/{media_type}?"
         f"{urllib.parse.urlencode(options_dict)}",
         stream=True,
-        headers=get_auth_headers_if_auth_enabled({}),
+        headers=_prepare_request_headers(headers),
+        verify=verify,
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
@@ -1312,6 +1327,8 @@ def list_logs(
     node_ip: Optional[str] = None,
     glob_filter: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Union[str, bool] = True,
 ) -> Dict[str, List[str]]:
     """Listing log files available.
 
@@ -1323,6 +1340,8 @@ def list_logs(
         glob_filter: Name of the file (relative to the ray log directory) to be
             retrieved. E.g. `glob_filter="*worker*"` for all worker logs.
         timeout: Max timeout for requests made when getting the logs.
+        headers: Headers to use when sending requests to the HTTP job server.
+        verify: TLS verification flag or path to a CA bundle/directory.
 
     Returns:
         A dictionary where the keys are log groups (e.g. gcs, raylet, worker), and
@@ -1352,7 +1371,8 @@ def list_logs(
 
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}",
-        headers=get_auth_headers_if_auth_enabled({}),
+        headers=_prepare_request_headers(headers),
+        verify=verify,
     )
     # TODO(rickyx): we could do better at error handling here.
     r.raise_for_status()
@@ -1377,6 +1397,8 @@ def summarize_tasks(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Union[str, bool] = True,
 ) -> Dict:
     """Summarize the tasks in cluster.
 
@@ -1388,6 +1410,8 @@ def summarize_tasks(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
+        headers: Headers to use when sending requests to the HTTP job server.
+        verify: TLS verification flag or path to a CA bundle/directory.
 
     Returns:
         Dictionarified
@@ -1396,7 +1420,7 @@ def summarize_tasks(
     Raises:
         RayStateApiException: if the CLI is failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address).summary(
+    return StateApiClient(address=address, headers=headers, verify=verify).summary(
         SummaryResource.TASKS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,
@@ -1410,6 +1434,8 @@ def summarize_actors(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Union[str, bool] = True,
 ) -> Dict:
     """Summarize the actors in cluster.
 
@@ -1421,6 +1447,8 @@ def summarize_actors(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
+        headers: Headers to use when sending requests to the HTTP job server.
+        verify: TLS verification flag or path to a CA bundle/directory.
 
     Returns:
         Dictionarified
@@ -1429,7 +1457,7 @@ def summarize_actors(
     Raises:
         RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address).summary(
+    return StateApiClient(address=address, headers=headers, verify=verify).summary(
         SummaryResource.ACTORS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,
@@ -1443,6 +1471,8 @@ def summarize_objects(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Union[str, bool] = True,
 ) -> Dict:
     """Summarize the objects in cluster.
 
@@ -1454,6 +1484,8 @@ def summarize_objects(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
+        headers: Headers to use when sending requests to the HTTP job server.
+        verify: TLS verification flag or path to a CA bundle/directory.
 
     Returns:
         Dictionarified :class:`~ray.util.state.common.ObjectSummaries`
@@ -1461,7 +1493,7 @@ def summarize_objects(
     Raises:
         RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address).summary(
+    return StateApiClient(address=address, headers=headers, verify=verify).summary(
         SummaryResource.OBJECTS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,
