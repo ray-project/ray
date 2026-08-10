@@ -7,9 +7,12 @@ This directory contains example scripts for using SGLang with Ray Serve LLM.
 | File | Description |
 |------|-------------|
 | `serve_sglang_example.py` | Single-node SGLang serving with autoscaling |
-| `serve_sglang_multinode_example.py` | Multi-node serving with tensor and pipeline parallelism |
 | `batch_sglang_example.py` | Batch inference using Ray Data |
 | `query_example.py` | OpenAI client for querying a running deployment |
+
+A multi-node serving example with tensor and pipeline parallelism lives in
+`doc/source/llm/doc_code/serve/sglang/sglang_multinode_example.py` and is
+rendered in the [SGLang user guide](https://docs.ray.io/en/master/serve/llm/user-guides/sglang.html).
 
 ## Prerequisites
 

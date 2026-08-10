@@ -307,6 +307,7 @@ For more information on saving data, read
     .. tab-item:: Parquet
 
         .. testcode::
+            :skipif: True
 
             import torch
             import ray
@@ -314,11 +315,12 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_parquet("local:///tmp/tensor")
+            ds.write_parquet("s3://my-bucket/tensor")
 
     .. tab-item:: Numpy
 
         .. testcode::
+            :skipif: True
 
             import torch
             import ray
@@ -326,7 +328,7 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_numpy("local:///tmp/tensor", column="tensor")
+            ds.write_numpy("s3://my-bucket/tensor", column="tensor")
 
 .. _migrate_pytorch:
 
@@ -483,7 +485,7 @@ The following table describes how the arguments for PyTorch DataLoader map to Ra
    * - ``shuffle``
      - ``local_shuffle_buffer_size`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
    * - ``collate_fn``
-     - ``collate_fn`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
+     - ``collate_fn`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Use a callable class such as :class:`~ray.data.collate_fn.ArrowBatchCollateFn`, :class:`~ray.data.collate_fn.NumpyBatchCollateFn`, or :class:`~ray.data.collate_fn.PandasBatchCollateFn` for custom iterator collation. For expensive transformations, see :ref:`scaling collation functions <scaling_collation_functions>`.
    * - ``sampler``
      - Not supported. Can be manually implemented after iterating through the dataset with :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
    * - ``batch_sampler``

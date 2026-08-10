@@ -165,7 +165,7 @@ def placement_group(
             This currently only works with STRICT_PACK pg.
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
-        topology_strategy: Topology-aware placement. A dict mapping each
+        topology_strategy: Topology strategy placement. A dict mapping each
             topology label key to a placement strategy (e.g.,
             ``{"ray.io/gpu-domain": "STRICT_PACK"}``).
             Mutually exclusive with `strategy`.

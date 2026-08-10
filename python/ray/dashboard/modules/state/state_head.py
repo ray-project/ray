@@ -273,7 +273,10 @@ class StateHead(SubprocessModule, RateLimitedModule):
             await response.prepare(req)
             await response.write(first_chunk)
         except StopAsyncIteration:
-            pass
+            # Empty log stream (e.g. task log byte range has zero length:
+            # start_offset == end_offset). We must still prepare the response before
+            # write_eof(), otherwise aiohttp raises AssertionError.
+            await response.prepare(req)
         except asyncio.CancelledError:
             # This happens when the client side closes the connection.
             # Force close the connection and do no-op.
@@ -348,7 +351,10 @@ class StateHead(SubprocessModule, RateLimitedModule):
         await SubprocessModule.run(self)
         gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self.gcs_client
+            gcs_channel,
+            self.gcs_client,
+            dashboard_socket_dir=self._config.socket_dir,
+            dashboard_session_name=self._config.session_name,
         )
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,

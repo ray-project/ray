@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure Ray Dashboard port, access it from remote clusters via port forwarding or ingress, and integrate Prometheus and Grafana for enhanced monitoring."
+---
+
 (observability-configure-manage-dashboard)=
 # Configuring and Managing Ray Dashboard
 {ref}`Ray Dashboard<observability-getting-started>` is one of the most important tools to monitor and debug Ray applications and Clusters. This page describes how to configure Ray Dashboard on your Clusters.

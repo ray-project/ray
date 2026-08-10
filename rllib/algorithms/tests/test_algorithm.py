@@ -676,6 +676,45 @@ class TestAlgorithm(unittest.TestCase):
         self.assertIn(EVALUATION_RESULTS, metrics)
         algo.stop()
 
+    @OldAPIStack
+    def test_compute_action_with_filters(self):
+        """Test that compute_single_action and compute_actions both apply filters correctly."""
+        from ray.rllib.policy.sample_batch import SampleBatch
+
+        config = (
+            ppo.PPOConfig()
+            .environment("CartPole-v1")
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
+            .training(
+                train_batch_size=50,
+                minibatch_size=25,
+                num_epochs=1,
+            )
+            .env_runners(observation_filter="MeanStdFilter")
+        )
+        algo = config.build()
+        algo.train()
+
+        policy = algo.get_policy()
+        obs = policy.observation_space.sample()
+
+        # sample action from compute_single_action
+        _, _, info_1 = algo.compute_single_action(obs, explore=False, full_fetch=True)
+
+        # sample action from compute_actions
+        obs = SampleBatch({SampleBatch.OBS: obs})
+        _, _, info_2 = algo.compute_actions(obs, explore=False, full_fetch=True)
+
+        # we should have the same logits from both methods
+        self.assertTrue(
+            np.allclose(
+                info_1["action_dist_inputs"], info_2["action_dist_inputs"], rtol=1e-5
+            )
+        )
+
 
 if __name__ == "__main__":
     import sys

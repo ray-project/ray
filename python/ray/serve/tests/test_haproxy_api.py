@@ -22,6 +22,8 @@ from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -29,6 +31,7 @@ from ray.serve._private.haproxy import (
     HAProxyConfig,
     HAProxyManager,
     ServerConfig,
+    _routers_and_targets_by_backend,
 )
 from ray.serve.config import HTTPOptions
 
@@ -244,7 +247,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 timeout_tunnel_s=45,
                 servers=[
                     ServerConfig(name="web_server1", host="127.0.0.1", port=8003),
-                ]
+                ],
                 # No health check overrides - should use global defaults
             ),
         }
@@ -476,6 +479,38 @@ def test_config_escapes_special_characters_in_names(haproxy_api_cleanup):
         assert "str(app#name)" not in cfg
 
 
+def test_generate_config_close_spread_time(haproxy_api_cleanup):
+    """`close-spread-time` is rendered in the global section when configured
+    and omitted when unset (the default)."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        socket_path = os.path.join(temp_dir, "admin.sock")
+
+        def generate_config(close_spread_time_s):
+            config_stub = HAProxyConfig(
+                socket_path=socket_path,
+                close_spread_time_s=close_spread_time_s,
+                http_options=HTTPOptions(host="0.0.0.0", port=8000),
+                has_received_routes=True,
+                has_received_servers=True,
+            )
+            with mock.patch(
+                "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+                config_file_path,
+            ):
+                api = HAProxyApi(
+                    cfg=config_stub,
+                    backend_configs={},
+                    config_file_path=config_file_path,
+                )
+                api._generate_config_file_internal()
+            with open(config_file_path, "r") as f:
+                return f.read()
+
+        assert "close-spread-time 60s" in generate_config(60)
+        assert "close-spread-time" not in generate_config(None)
+
+
 def test_generate_backends_in_order(haproxy_api_cleanup):
     """Test that the backends are generated in the correct order."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -569,6 +604,76 @@ def _make_api(temp_dir, backend_configs):
         config_file_path=config_file_path,
         backend_configs=backend_configs,
     )
+
+
+def test_routers_and_targets_prefers_colocated_router():
+    """Each HAProxy round-robins across the routers co-located on its own node,
+    and falls back to a single deterministic pick when none is co-located."""
+    local = "10.0.0.1"
+
+    colocated = [
+        BackendConfig(
+            name="llm",
+            path_prefix="/",
+            servers=[
+                ServerConfig(name="r1", host=local, port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_local_b", host=local, port=9001),
+                ServerConfig(name="router_local_a", host=local, port=9000),
+                ServerConfig(name="router_remote", host="10.0.0.2", port=9000),
+            ],
+        )
+    ]
+    # Both on-node routers form the sorted pool; the remote router is excluded.
+    routers, _ = _routers_and_targets_by_backend(colocated, local_host=local)
+    assert [s.name for s in routers["llm"]] == ["router_local_a", "router_local_b"]
+
+    # No router on this node falls back to a single lexicographically smallest.
+    remote_only = [
+        BackendConfig(
+            name="llm",
+            path_prefix="/",
+            servers=[
+                ServerConfig(name="r1", host="10.0.0.5", port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_a", host="10.0.0.2", port=9000),
+                ServerConfig(name="router_b", host="10.0.0.3", port=9000),
+            ],
+        )
+    ]
+    routers, _ = _routers_and_targets_by_backend(remote_only, local_host=local)
+    assert [s.name for s in routers["llm"]] == ["router_a"]
+
+
+def test_write_ingress_request_router_lua_pools_colocated_routers(haproxy_api_cleanup):
+    """Multiple co-located routers render as a pool in the app's ROUTERS entry."""
+    from ray._common.network_utils import get_localhost_ip
+
+    local = get_localhost_ip()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(name="r1", host=local, port=30001, replica_id="rid_1"),
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_a", host=local, port=9000),
+                ServerConfig(name="router_b", host=local, port=9001),
+            ],
+        )
+        api = _make_api(temp_dir, {"llm": backend})
+
+        result = api._write_ingress_request_router_lua([backend])
+        assert result is not None
+        with open(result) as f:
+            lua = f.read()
+
+        # Both co-located routers land in the pool the Lua round-robins over.
+        assert "port = 9000" in lua and "port = 9001" in lua
 
 
 def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
@@ -890,10 +995,15 @@ def test_ingress_request_router_forward_body_gate_renders(
         else:
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
+        assert (
+            "http-request del-header x-serve-router- -m beg "
+            "if has_ingress_request_router_app"
+        ) in cfg
+        assert "extract_json_string" not in lua
 
 
 def _create_replica_server(port: int, replica_id_header: str):
-    """Fake data-plane replica that echoes its identity in a response header."""
+    """Fake data-plane replica that echoes routing and request-ID headers."""
     app = FastAPI()
 
     @app.get("/-/healthz")
@@ -903,23 +1013,32 @@ def _create_replica_server(port: int, replica_id_header: str):
     @app.post("/{path:path}")
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
+        for name, value in req.headers.items():
+            if name.startswith(SERVE_INGRESS_ROUTER_HEADER_PREFIX):
+                res.headers[f"echo-{name}"] = value
+        res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
         return {"replica": replica_id_header, "echo": body.decode("utf-8")}
 
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
 
-def _create_router_server(port: int, replica_id_to_return: str):
-    """Fake /internal/route. Captures bodies so tests can verify HAProxy
-    forwards the buffered request body prefix to the router."""
+def _create_router_server(
+    port: int, replica_id_to_return: str, extra_response: Optional[dict] = None
+):
+    """Fake /internal/route. Captures request data forwarded by HAProxy."""
     app = FastAPI()
-    captured = {"bodies": []}
+    captured = {"bodies": [], "request_ids": []}
 
     @app.post("/internal/route")
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
-        return {"replica_id": replica_id_to_return}
+        captured["request_ids"].append(req.headers.get("x-request-id", ""))
+        response = {"replica_id": replica_id_to_return}
+        if extra_response:
+            response.update(extra_response)
+        return response
 
     def ready():
         return (
@@ -930,8 +1049,9 @@ def _create_router_server(port: int, replica_id_to_return: str):
         )
 
     server, thread = _serve_fastapi_app(app, port, ready)
-    # Discard the readiness-probe body so callers see only client traffic.
+    # Discard the readiness-probe data so callers see only client traffic.
     captured["bodies"].clear()
+    captured["request_ids"].clear()
     return server, thread, captured
 
 
@@ -1062,6 +1182,10 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             )
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "B"
+            assert router_captured["request_ids"] == [
+                resp.headers.get("x-received-request-id")
+            ]
+            assert router_captured["request_ids"][0]
 
             # Direct streaming keeps a bounded request-body path for
             # prefix-cache-aware routing.
@@ -1076,6 +1200,8 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 )
                 assert resp.headers.get("x-replica-id") == "B"
             assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
+            assert len(router_captured["request_ids"]) == 4
+            assert all(router_captured["request_ids"])
 
             # GET is not POST, so Lua routing never runs; the router should
             # have seen exactly the four POSTs above and nothing more.
@@ -1091,6 +1217,90 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             _shutdown_fake_servers(
                 (replica_a, replica_b, router),
                 (replica_a_thread, replica_b_thread, router_thread),
+            )
+
+
+@pytest.mark.asyncio
+async def test_ingress_request_router_forwards_trusted_headers(
+    haproxy_api_cleanup, monkeypatch
+):
+    """Router metadata is forwarded generically, while client-supplied values
+    under the router-owned prefix are stripped."""
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        True,
+    )
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_port = find_free_port()
+        router_port = find_free_port()
+
+        actor_name = "SERVE_REPLICA::app#dep#aaa"
+        token_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
+        metadata_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "metadata"
+        spoofed_only_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "spoofed-only"
+
+        replica, replica_thread = _create_replica_server(
+            replica_port, replica_id_header="A"
+        )
+        router, router_thread, _ = _create_router_server(
+            router_port,
+            replica_id_to_return=actor_name,
+            extra_response={
+                RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: {
+                    token_header: "trusted-key",
+                    metadata_header: "trusted-metadata",
+                }
+            },
+        )
+
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                http_health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="A",
+                        host="127.0.0.1",
+                        port=replica_port,
+                        replica_id=actor_name,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+            )
+
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                json={"prompt": "hello"},
+                headers={
+                    token_header: "spoofed-key",
+                    metadata_header: "spoofed-metadata",
+                    spoofed_only_header: "must-be-removed",
+                },
+                timeout=5,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get(f"echo-{token_header}") == "trusted-key"
+            assert resp.headers.get(f"echo-{metadata_header}") == "trusted-metadata"
+            assert f"echo-{spoofed_only_header}" not in resp.headers
+
+        finally:
+            _shutdown_fake_servers(
+                (replica, router),
+                (replica_thread, router_thread),
             )
 
 
