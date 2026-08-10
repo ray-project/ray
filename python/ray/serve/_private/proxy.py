@@ -407,7 +407,7 @@ class GenericProxy(ABC):
             # changed without restarting the replicas.
             route_path = proxy_request.route_path
             if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
-                assert isinstance(proxy_request, ASGIProxyRequest)
+                proxy_request = cast(ASGIProxyRequest, proxy_request)
                 assert not route_prefix.endswith("/")
                 proxy_request.set_root_path(proxy_request.root_path + route_prefix)
                 # NOTE(edoakes): starlette<0.33.0 expected the ASGI 'root_prefix'
@@ -422,7 +422,7 @@ class GenericProxy(ABC):
             # See: https://github.com/ray-project/ray/issues/47999 and
             # https://github.com/ray-project/ray/issues/52212
             if self.protocol == RequestProtocol.HTTP:
-                assert isinstance(proxy_request, ASGIProxyRequest)
+                proxy_request = cast(ASGIProxyRequest, proxy_request)
                 logs_and_metrics_route = self.proxy_router.match_route_pattern(
                     route_prefix, proxy_request.scope
                 )
@@ -589,7 +589,7 @@ class gRPCProxy(GenericProxy):
     async def not_found_response(
         self, proxy_request: ProxyRequest
     ) -> ResponseGenerator:
-        assert isinstance(proxy_request, gRPCProxyRequest)
+        proxy_request = cast(gRPCProxyRequest, proxy_request)
         if not proxy_request.app_name:
             application_message = "Application metadata not set."
         else:
@@ -785,7 +785,7 @@ class gRPCProxy(GenericProxy):
         Unpack gRPC request metadata and extract info to set up request context and
         handle.
         """
-        assert isinstance(proxy_request, gRPCProxyRequest)
+        proxy_request = cast(gRPCProxyRequest, proxy_request)
         multiplexed_model_id = proxy_request.multiplexed_model_id
         session_id = proxy_request.session_id
         request_id = proxy_request.request_id
@@ -935,7 +935,7 @@ class gRPCProxy(GenericProxy):
             return
 
         # Standard server-unary/server-streaming path
-        assert isinstance(proxy_request, gRPCProxyRequest)
+        proxy_request = cast(gRPCProxyRequest, proxy_request)
         self._setup_grpc_tracing(request_id, handle, proxy_request)
 
         response_generator = ProxyResponseGenerator(
@@ -1074,7 +1074,7 @@ class HTTPProxy(GenericProxy):
     async def not_found_response(
         self, proxy_request: ProxyRequest
     ) -> ResponseGenerator:
-        assert isinstance(proxy_request, ASGIProxyRequest)
+        proxy_request = cast(ASGIProxyRequest, proxy_request)
         status_code = 404
         for message in convert_object_to_asgi_messages(
             f"Path '{proxy_request.path}' not found. "
@@ -1190,7 +1190,7 @@ class HTTPProxy(GenericProxy):
         Unpack HTTP request headers and extract info to set up request context and
         handle.
         """
-        assert isinstance(proxy_request, ASGIProxyRequest)
+        proxy_request = cast(ASGIProxyRequest, proxy_request)
         request_context_info: Dict[str, Any] = {
             "route": route,
             "app_name": app_name,
@@ -1270,7 +1270,7 @@ class HTTPProxy(GenericProxy):
         proxy_request: ProxyRequest,
     ) -> str:
         """Convert an HTTP request to the Java-accepted format (single byte string)."""
-        assert isinstance(proxy_request, ASGIProxyRequest)
+        proxy_request = cast(ASGIProxyRequest, proxy_request)
         query_string = proxy_request.scope.get("query_string")
         http_body_bytes = await receive_http_body(
             proxy_request.scope, proxy_request.receive, proxy_request.send
@@ -1298,7 +1298,7 @@ class HTTPProxy(GenericProxy):
         The yielded values will be ASGI messages until the final one, which will be
         the status code.
         """
-        assert isinstance(proxy_request, ASGIProxyRequest)
+        proxy_request = cast(ASGIProxyRequest, proxy_request)
         if is_span_recording():
             self._setup_http_tracing(request_id, handle, proxy_request)
 
