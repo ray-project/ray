@@ -275,6 +275,20 @@ def test_read_orc_projection_pushdown_mixed(ray_start_regular_shared, tmp_path):
     ]
 
 
+def test_read_orc_projection_pushdown_missing_column(
+    ray_start_regular_shared, tmp_path
+):
+    """select_columns on a name that isn't a physical column, a declared
+    partition key, or ``path`` must raise -- not silently drop the column
+    the way a pure Project's pushdown could otherwise let it."""
+    path = os.path.join(tmp_path, "data.orc")
+    _write_orc(path, pa.table({"id": [0, 1, 2], "name": ["a", "b", "c"]}))
+
+    ds = ray.data.read_orc(path).select_columns(["id", "typo_col"])
+    with pytest.raises((ray.exceptions.UserCodeException, KeyError)):
+        ds.materialize()
+
+
 def test_read_orc_projection_pushdown_include_paths(ray_start_regular_shared, tmp_path):
     """select_columns(["path"]) with include_paths=True returns only the
     synthetic path column, not the file data."""
