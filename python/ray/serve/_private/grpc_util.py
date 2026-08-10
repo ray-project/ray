@@ -147,7 +147,11 @@ def get_grpc_response_status(
     exc: BaseException, request_timeout_s: Optional[float], request_id: str
 ) -> ResponseStatus:
     if isinstance(exc, TimeoutError):
-        message = f"Request timed out after {request_timeout_s}s."
+        message = (
+            f"Request timed out after {request_timeout_s}s."
+            if request_timeout_s is not None
+            else "Request timed out."
+        )
         return ResponseStatus(
             code=grpc.StatusCode.DEADLINE_EXCEEDED,
             is_error=True,

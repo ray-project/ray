@@ -128,14 +128,16 @@ class ActorProxyWrapper(ProxyWrapper):
             self._actor_handle = actor_handle
         else:
             # Creating a new proxy requires all connection parameters.
-            assert (
-                http_options is not None
-                and grpc_options is not None
-                and name is not None
-                and node_id is not None
-                and node_ip_address is not None
-                and port is not None
-            ), "proxy actor creation requires all connection parameters"
+            if (
+                http_options is None
+                or grpc_options is None
+                or name is None
+                or node_id is None
+                or node_ip_address is None
+            ):
+                raise ValueError(
+                    "proxy actor creation requires all connection parameters"
+                )
             self._actor_handle = self._get_or_create_proxy_actor(
                 http_options=http_options,
                 grpc_options=grpc_options,
@@ -164,7 +166,7 @@ class ActorProxyWrapper(ProxyWrapper):
         name: str,
         node_id: str,
         node_ip_address: str,
-        port: int,
+        port: Optional[int],
         logging_config: LoggingConfig,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
     ) -> ActorHandle:
