@@ -30,7 +30,7 @@ kind: RayCluster
 metadata:
   name: raycluster-complete
 spec:
-  rayVersion: "2.3.0"
+  rayVersion: "2.56.1"
   enableInTreeAutoscaling: true
   autoscalerOptions:
      ...
@@ -44,7 +44,7 @@ spec:
         spec: # Pod spec
             containers:
             - name: ray-head
-              image: rayproject/ray-ml:2.3.0
+              image: rayproject/ray:2.56.1
               resources:
                 limits:
                   cpu: 14
