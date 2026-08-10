@@ -479,6 +479,12 @@ While all transformations are automatically parallelized across your Ray cluster
 a large model, you may want to distribute the model across multiple nodes.
 You can do this by using :ref:`placement groups <ray-placement-group-doc-ref>` and ``ray_remote_args_fn``, which can dynamically create placement groups for each model replica.
 
+.. warning::
+
+    This example uses the deprecated ``ray_remote_args_fn`` API. Placement
+    groups created this way aren't automatically cleaned up when Ray Data
+    actors exit and may continue reserving cluster resources.
+
 .. testcode::
 
     import ray

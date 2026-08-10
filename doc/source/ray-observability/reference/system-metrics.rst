@@ -52,8 +52,17 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - `instance`
      - The number of CPU cores per node.
    * - `ray_node_gpus_utilization`
-     - `instance`, `GpuDeviceName`, `GpuIndex`
-     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G) and `GpuIndex` is the index of the GPU.
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G), `GpuIndex` is the index of the GPU, and `GpuUuid` is the unique device identifier.
+   * - `ray_node_gpus_available`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The number of GPUs available.
+   * - `ray_node_gpu_power_milliwatts`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The current GPU power per GPU, in milliwatts.
+   * - `ray_node_gpu_temperature_celsius`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The current GPU temperature per GPU, in Celsius.
    * - `ray_node_disk_usage`
      - `instance`
      - The amount of disk space used per node, in bytes.
@@ -116,10 +125,10 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - `Component`, `instance`
      - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_available`
-     - `instance`, `node_type`, `GpuIndex`, `GpuDeviceName`
+     - `instance`, `node_type`, `GpuIndex`, `GpuDeviceName`, `GpuUuid`
      - The amount of GPU memory available per GPU, in megabytes.
    * - `ray_node_gram_used`
-     - `instance`, `GpuDeviceName`, `GpuIndex`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
      - The amount of GPU memory used per GPU, in bytes.
    * - `ray_node_network_received`
      - `instance`, `node_type`

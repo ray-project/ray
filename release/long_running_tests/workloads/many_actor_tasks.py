@@ -1,4 +1,5 @@
 # This workload tests submitting many actor methods.
+import os
 import time
 
 import numpy as np
@@ -56,6 +57,9 @@ actors = [
     for i in range(num_nodes * 5)
 ]
 
+# Stop before the 24h job timeout so the test exits cleanly as success.
+MAX_RUNTIME_S = int(os.environ.get("MAX_RUNTIME_S", 22 * 60 * 60))
+
 iteration = 0
 start_time = time.time()
 previous_time = start_time
@@ -84,3 +88,6 @@ while True:
     )
     previous_time = new_time
     iteration += 1
+    if new_time - start_time > MAX_RUNTIME_S:
+        print(f"Reached max runtime of {MAX_RUNTIME_S}s. Exiting successfully.")
+        break

@@ -30,6 +30,7 @@ from ray._common.usage import usage_lib
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data._internal.dataset_id import generate_dataset_ulid
 from ray.data._internal.dataset_repr import (
     build_dataset_ascii_repr,
     build_dataset_summary_repr,
@@ -140,7 +141,12 @@ from ray.data.exceptions import omit_traceback_stdout
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import (
+    Deprecated,
+    DeveloperAPI,
+    PublicAPI,
+    RayDeprecationWarning,
+)
 from ray.util.debug import log_once
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -198,6 +204,17 @@ IOC_API_GROUP = "I/O and Conversion"
 IM_API_GROUP = "Inspecting Metadata"
 E_API_GROUP = "Execution"
 EXPRESSION_API_GROUP = "Expressions"
+
+
+def _warn_on_ray_remote_args_fn(
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+) -> None:
+    if ray_remote_args_fn is not None:
+        warnings.warn(
+            "`ray_remote_args_fn` is deprecated and will be removed in Ray 2.64.",
+            RayDeprecationWarning,
+            stacklevel=3,
+        )
 
 
 @PublicAPI
@@ -314,7 +331,10 @@ class Dataset:
         # Bind context to logical plan.
         self._logical_plan.context = context
 
-        self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
+        if self._context.use_legacy_dataset_ids:
+            self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
+        else:
+            self._set_uuid(generate_dataset_ulid())
 
     @classmethod
     def _from_parent(cls, parent: "Dataset", logical_plan: LogicalPlan) -> "Dataset":
@@ -457,7 +477,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                experimental feature. This argument is deprecated and will be removed
+                in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -474,6 +495,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the transformation applied to each row.
         """  # noqa: E501
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         compute = get_compute_strategy(
             fn,
             fn_constructor_args=fn_constructor_args,
@@ -735,7 +758,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
+                experimental feature. This argument is deprecated and will be removed
+                in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -773,6 +797,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "auto"):
             raise ValueError(
@@ -786,7 +812,7 @@ class Dataset:
         if isinstance(batch_size, int) and batch_size < 1:
             raise ValueError("Batch size can't be negative or 0")
 
-        return self._map_batches_without_batch_size_validation(
+        return self.map_batches_internal(
             fn,
             batch_size=batch_size,
             compute=compute,
@@ -805,26 +831,28 @@ class Dataset:
             **ray_remote_args,
         )
 
-    def _map_batches_without_batch_size_validation(
+    @DeveloperAPI
+    def map_batches_internal(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["auto"]],
-        compute: Optional[ComputeStrategy],
-        batch_format: Optional[str],
-        zero_copy_batch: bool,
-        fn_args: Optional[Iterable[Any]],
-        fn_kwargs: Optional[Dict[str, Any]],
-        fn_constructor_args: Optional[Iterable[Any]],
-        fn_constructor_kwargs: Optional[Dict[str, Any]],
-        num_cpus: Optional[float],
-        num_gpus: Optional[float],
-        memory: Optional[float],
-        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]],
-        udf_modifying_row_count: bool,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        batch_size: Union[int, None, Literal["auto"]] = None,
+        compute: Optional[ComputeStrategy] = None,
+        batch_format: Optional[str] = "default",
+        zero_copy_batch: bool = True,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        udf_modifying_row_count: bool = True,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
-    ):
+    ) -> "Dataset":
+        """Apply a function to batches without public ``map_batches`` validation."""
         # NOTE: The `map_groups` implementation calls `map_batches` with
         # `batch_size=None`. The issue is that if you request GPUs with
         # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
@@ -870,6 +898,65 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
+        return Dataset._from_parent(self, logical_plan)
+
+    @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
+    def with_columns(
+        self,
+        exprs: Mapping[str, "Expr"],
+        *,
+        compute: Optional[ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """
+        Add or overwrite multiple columns via expressions in a single projection.
+
+        This is the multi-column counterpart of :meth:`with_column`. All
+        expressions are evaluated within one projection over the existing
+        columns, which avoids the repeated work of chaining several
+        ``with_column`` calls.
+
+        Examples:
+            >>> import ray
+            >>> from ray.data.expressions import col
+            >>> ds = ray.data.range(100)
+            >>> ds.with_columns({
+            ...     "id_2": col("id") * 2,
+            ...     "id_3": col("id") * 3,
+            ... }).show(2)
+            {'id': 0, 'id_2': 0, 'id_3': 0}
+            {'id': 1, 'id_2': 2, 'id_3': 3}
+
+        Args:
+            exprs: A mapping from new column name to the expression that
+                defines its values. Column order follows the mapping's
+                insertion order.
+            compute: The compute strategy to use for the projection operation.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray for the map tasks (e.g., ``num_gpus=1``).
+
+        Returns:
+            A new dataset with the added or overwritten columns.
+        """
+        from ray.data.expressions import DownloadExpr
+
+        if not exprs:
+            return self
+        if any(isinstance(expr, DownloadExpr) for expr in exprs.values()):
+            raise ValueError(
+                "`with_columns` does not support DownloadExpr. "
+                "Use `with_column` for download expressions instead."
+            )
+
+        from ray.data._internal.logical.operators import Project
+
+        project_op = Project(
+            exprs=[StarExpr(), *(expr.alias(name) for name, expr in exprs.items())],
+            input_dependencies=[self._logical_plan.dag],
+            compute=compute,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(project_op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
@@ -947,7 +1034,7 @@ class Dataset:
             A new dataset with the added column evaluated via the expression.
         """
         # TODO: update schema based on the expression AST.
-        from ray.data._internal.logical.operators import Download, Project
+        from ray.data._internal.logical.operators import Download
 
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
@@ -961,15 +1048,11 @@ class Dataset:
                 filesystem=expr.filesystem,
             )
             logical_plan = LogicalPlan(download_op, self.context)
-        else:
-            project_op = Project(
-                exprs=[StarExpr(), expr.alias(column_name)],
-                input_dependencies=[self._logical_plan.dag],
-                compute=compute,
-                ray_remote_args=ray_remote_args,
-            )
-            logical_plan = LogicalPlan(project_op, self.context)
-        return Dataset._from_parent(self, logical_plan)
+            return Dataset._from_parent(self, logical_plan)
+
+        return self.with_columns(
+            {column_name: expr}, compute=compute, **ray_remote_args
+        )
 
     @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1507,7 +1590,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+                advanced, experimental feature. This argument is deprecated and will be
+                removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker. See :func:`ray.remote` for details.
 
@@ -1522,6 +1606,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` containing the flattened results of applying the function to each row.
         """
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         compute = get_compute_strategy(
             fn,
             fn_constructor_args=fn_constructor_args,
@@ -1640,7 +1726,8 @@ class Dataset:
                 dynamic arguments for each actor/task, and will be called each time
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+                advanced, experimental feature. This argument is deprecated and will be
+                removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -1648,6 +1735,8 @@ class Dataset:
         Returns:
             A new :class:`Dataset` containing only the rows that satisfy the predicate.
         """
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+
         # Ensure exactly one of fn or expr is provided
         provided_params = sum([fn is not None, expr is not None])
         if provided_params != 1:
@@ -3824,7 +3913,14 @@ class Dataset:
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_parent(self, logical_plan)
 
-    @PublicAPI(api_group=SMJ_API_GROUP)
+    @Deprecated(
+        message=(
+            "`Dataset.zip` is deprecated and will be removed in Ray 2.64. Use `join` "
+            "on a shared key instead. `zip` relies on deterministic ordering for "
+            "correctness, which Ray Data doesn't guarantee by default."
+        ),
+        warning=True,
+    )
     def zip(self, *other: "Dataset") -> "Dataset":
         """Zip the columns of this dataset with the columns of another.
 
@@ -4747,10 +4843,12 @@ class Dataset:
         self,
         path: str,
         *,
+        catalog: Optional["Catalog"] = None,
         mode: "SaveMode" = SaveMode.APPEND,
         partition_by: Optional[List[str]] = None,
         storage_options: Optional[Dict[str, str]] = None,
         schema_mode: str = "merge",
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         name: Optional[str] = None,
         description: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -4802,7 +4900,13 @@ class Dataset:
 
         Args:
             path: URI of the Delta table (e.g. ``/tmp/my_table`` or
-                ``s3://bucket/my_table``).
+                ``s3://bucket/my_table``). If ``catalog`` is set, this is instead
+                the table identifier the catalog resolves (e.g.
+                ``"main.schema.table"``).
+            catalog: Optional catalog (e.g. a Unity Catalog connector) that
+                resolves ``path`` to its physical location and vends
+                credentials for it. See :class:`~ray.data.catalog.Catalog`.
+                Cannot be combined with ``filesystem``.
             mode: Write mode using the :class:`~ray.data.SaveMode` enum. Options:
 
                 * ``SaveMode.APPEND`` (default): Add new data to the table.
@@ -4833,6 +4937,9 @@ class Dataset:
                 ``ValueError`` -- regardless of ``schema_mode``. Only adding
                 a brand-new column is supported; changing an existing
                 column's type is not.
+            filesystem: Optional PyArrow filesystem used for worker Parquet
+                writes, instead of one built from ``storage_options`` or ambient
+                credentials. Cannot be combined with ``catalog``.
             name: Optional table name recorded in the Delta metadata when a new
                 table is created.
             description: Optional table description recorded in the Delta metadata
@@ -4843,12 +4950,45 @@ class Dataset:
                 change the total number of tasks run. By default, concurrency is
                 dynamically decided based on the available resources.
         """
+        # Only meaningful with a catalog: it's the identifier the catalog
+        # resolves, captured before ``path`` is rewritten to the physical
+        # location below, so a later refresh can re-resolve the same table.
+        table_identifier = path if catalog is not None else None
+        # Preserved before any catalog merge below, so a later credential
+        # refresh can re-merge fresh catalog values with these (which should
+        # always win) instead of with a since-stale merged dict.
+        user_storage_options = storage_options
+        if catalog is not None:
+            from ray.data.catalog import CatalogAccessMode, ReaderFormat
+
+            if filesystem is not None:
+                raise ValueError(
+                    "`filesystem` cannot be specified with `catalog`. The "
+                    "`catalog` will resolve the `filesystem` with appropriate "
+                    "credentials automatically."
+                )
+            resolved = catalog.resolve(
+                path, reader=ReaderFormat.DELTA, mode=CatalogAccessMode.WRITE
+            )
+            path = resolved.path
+            if resolved.storage_options:
+                storage_options = {
+                    **resolved.storage_options,
+                    **(user_storage_options or {}),
+                }
+            if resolved.filesystem is not None:
+                filesystem = resolved.filesystem
+
         datasink = DeltaDatasink(
             path=path,
             mode=mode,
             partition_by=partition_by,
             storage_options=storage_options,
             schema_mode=schema_mode,
+            user_storage_options=user_storage_options,
+            filesystem=filesystem,
+            catalog=catalog,
+            table_identifier=table_identifier,
             name=name,
             description=description,
         )
@@ -7958,11 +8098,14 @@ class Dataset:
         }
 
     def __setstate__(self, state):
-        self._uuid = state["uuid"]
         self._logical_plan = state["logical_plan"]
         self._dataset_name = state.get("dataset_name")
         self._in_stats = state["in_stats"]
         self._context = state["context"]
+        if self._context.use_legacy_dataset_ids:
+            self._set_uuid(state["uuid"])
+        else:
+            self._set_uuid(generate_dataset_ulid())
         self._cache = _ExecutionCache()
         self._run_index = -1
         self._current_executor = None
