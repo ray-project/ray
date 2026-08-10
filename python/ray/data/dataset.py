@@ -7252,7 +7252,7 @@ class Dataset:
 
     @Deprecated(
         message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
-        warning=True
+        warning=True,
     )
     def to_random_access_dataset(
         self,
