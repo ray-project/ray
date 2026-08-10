@@ -81,7 +81,7 @@ spec:
             ray_actor_options:
               num_cpus: 0
   rayClusterConfig:
-    rayVersion: '2.3.0'
+    rayVersion: '2.56.0'
     headGroupSpec:
       replicas: 1
       rayStartParams:
@@ -92,7 +92,7 @@ spec:
         spec:
           containers:
             - name: ray-head
-              image: rayproject/ray:2.3.0
+              image: rayproject/ray:2.56.0
               imagePullPolicy: Always
               env:
                 - name: MY_POD_IP
@@ -128,7 +128,7 @@ spec:
           spec:
             containers:
               - name: machine-learning
-                image: rayproject/ray:2.3.0
+                image: rayproject/ray:2.56.0
                 imagePullPolicy: Always
                 env:
                   - name:  RAY_DISABLE_DOCKER_CPU_WARNING
