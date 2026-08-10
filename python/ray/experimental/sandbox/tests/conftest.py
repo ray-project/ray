@@ -1,7 +1,6 @@
 import os
 import platform
 import shutil
-import stat
 import tempfile
 import urllib.request
 
@@ -22,6 +21,7 @@ def ensure_runsc():
 
     if not shutil.which("runsc"):
         temp_bin = tempfile.mkdtemp()
+        os.chmod(temp_bin, 0o755)
         runsc_path = os.path.join(temp_bin, "runsc")
         arch = (
             "aarch64"
@@ -31,7 +31,7 @@ def ensure_runsc():
         url = f"https://storage.googleapis.com/gvisor/releases/release/latest/{arch}/runsc"
         try:
             urllib.request.urlretrieve(url, runsc_path)
-            os.chmod(runsc_path, os.stat(runsc_path).st_mode | stat.S_IEXEC)
+            os.chmod(runsc_path, 0o755)
             os.environ["PATH"] = f"{temp_bin}:{os.environ.get('PATH', '')}"
         except Exception as e:
             pytest.skip(f"Failed to install runsc for sandbox tests: {e}")
