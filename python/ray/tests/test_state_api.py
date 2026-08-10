@@ -122,7 +122,13 @@ def state_source_client(gcs_address):
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
     gcs_client = GcsClient(address=gcs_address)
-    client = StateDataSourceClient(gcs_channel=gcs_channel, gcs_client=gcs_client)
+    node = ray._private.worker.global_worker.node
+    client = StateDataSourceClient(
+        gcs_channel=gcs_channel,
+        gcs_client=gcs_client,
+        dashboard_socket_dir=os.path.join(node.get_session_dir_path(), "sockets"),
+        dashboard_session_name=node.session_name,
+    )
     return client
 
 
