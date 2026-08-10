@@ -115,7 +115,7 @@ def test_queue_movement_counts_as_progress():
     op = _FakeOperator("MapBatches(embed)")
     state = _FakeOpState()
     clock = _FakeClock()
-    guard = NoProgressGuard({op: state}, 3.0, clock=clock)
+    guard = NoProgressGuard(cast(Topology, {op: state}), 3.0, clock=clock)
 
     for _ in range(3):
         clock.advance(2.0)

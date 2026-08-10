@@ -39,7 +39,11 @@ def test_hanging_udf_fails_execution(
         ds.take(1)
 
 
-@pytest.mark.parametrize("shuffle_strategy", list(ShuffleStrategy))
+# GPU_SHUFFLE is excluded because building its plan needs GPUs in the cluster.
+@pytest.mark.parametrize(
+    "shuffle_strategy",
+    [s for s in ShuffleStrategy if s is not ShuffleStrategy.GPU_SHUFFLE],
+)
 def test_legacy_shuffle_operators_disable_the_guard(
     shuffle_strategy,
     restore_data_context,  # noqa: F811
@@ -48,7 +52,7 @@ def test_legacy_shuffle_operators_disable_the_guard(
     expected_enabled = shuffle_strategy is ShuffleStrategy.HASH_SHUFFLE_V2
     DataContext.get_current().shuffle_strategy = shuffle_strategy
 
-    ds = ray.data.range(1).sort("id")
+    ds = ray.data.range(1).groupby("id").count()
     physical_plan, _ = get_execution_plan(ds._logical_plan)
     topology = build_streaming_topology(
         physical_plan.dag, ExecutionOptions(), noop_counter()
