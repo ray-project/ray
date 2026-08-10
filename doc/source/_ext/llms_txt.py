@@ -483,7 +483,10 @@ def _write_shard(app, env, outdir, relpath, label, description, lead, docnames):
     for d in ordered:
         try:
             content = Path(env.doc2path(d)).read_text(encoding="utf-8")
-        except OSError as exc:  # pragma: no cover - defensive
+        except (OSError, UnicodeDecodeError) as exc:  # pragma: no cover - defensive
+            # UnicodeDecodeError is a ValueError, not an OSError, so decoding a
+            # non-UTF-8 source would otherwise escape this handler and abort the
+            # build with a traceback from inside `build-finished`.
             logger.warning("[llms_txt] could not read source for %s: %s", d, exc)
             continue
         body += [
