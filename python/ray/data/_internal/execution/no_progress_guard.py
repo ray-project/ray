@@ -1,16 +1,18 @@
 import time
-from functools import cached_property
-from typing import Callable, List, Tuple
-
-from ray.data._internal.execution.streaming_executor_state import (
-    Topology,
-)
 from dataclasses import dataclass
-from ray.data.exceptions import ExecutionTimeoutError
+from functools import cached_property
+from typing import Callable, List
+
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
 )
-from ray.data._internal.execution.operators.base_physical_operator import AllToAllOperator
+from ray.data._internal.execution.streaming_executor_state import (
+    Topology,
+)
+from ray.data.exceptions import ExecutionTimeoutError
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,7 @@ class OperatorState:
         total_enqueued_input_blocks: The current number of inputs queued.
         total_enqueued_output_blocks: The current number of outputs queued.
     """
+
     num_outputs_taken: int
     total_enqueued_input_blocks: int
     total_enqueued_output_blocks: int

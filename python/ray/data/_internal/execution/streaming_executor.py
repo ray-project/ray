@@ -26,11 +26,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
 from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
     InternalQueueOperatorMixin,
-)
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import (
@@ -278,7 +274,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._topology,
             self._data_context.execution_no_progress_timeout_s,
         )
-        
+
         self._has_op_completed = dict.fromkeys(self._topology, False)
 
         self._output_node = dag, self._topology[dag]
