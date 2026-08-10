@@ -676,12 +676,14 @@ The default Docker image to pull in the head and worker nodes. This can be overr
 * **Importance:** High
 * **Type:** String
 
-The Ray project provides Docker images on `DockerHub <https://hub.docker.com/u/rayproject>`_. The repository includes following images:
+The Ray project publishes Docker images to the ``rayproject/ray`` `Docker Hub repository <https://hub.docker.com/r/rayproject/ray>`_. Pin an explicit Ray version rather than a floating tag such as ``latest``, so that the image your cluster starts doesn't change underneath you when a new Ray release ships:
 
-* ``rayproject/ray-ml:latest-gpu``: CUDA support, includes ML dependencies.
-* ``rayproject/ray:latest-gpu``: CUDA support, no ML dependencies.
-* ``rayproject/ray-ml:latest``: No CUDA support, includes ML dependencies.
-* ``rayproject/ray:latest``: No CUDA support, no ML dependencies.
+* ``rayproject/ray:2.56.1``: no CUDA support.
+* ``rayproject/ray:2.56.1-gpu``: CUDA support.
+
+These images don't include machine learning libraries such as PyTorch, TensorFlow, or XGBoost. To add them, either build a custom image on top of a ``rayproject/ray`` base image or install them with a :ref:`runtime environment <runtime-environments>`.
+
+See :ref:`docker-images` for the full tag format, including the Python version and platform tags.
 
 .. _cluster-configuration-head-image:
 
