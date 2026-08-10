@@ -19,6 +19,7 @@ from ci.ray_ci.doc.mock.mock_module import (
 )
 
 _MOCK = "ci.ray_ci.doc.mock.mock_module"
+_INTERNAL_MOCK = "ci.ray_ci.doc.mock._internal"
 
 
 def _doc_api(name: str, code_type: CodeType = CodeType.FUNCTION) -> API:
@@ -357,6 +358,65 @@ def test_split_resolvable_exempts_override_hook():
 
     assert unresolved == []
     assert non_public == [f"{_MOCK}.MockClass._mock_private"]
+
+
+def test_split_resolvable_exempts_public_reexport_of_private_module():
+    # A class implemented in a private module but re-exported through a public
+    # module's __all__ is public: the export is the contract, the implementation
+    # path is not. Its sibling in the same private module, absent from __all__,
+    # is still flagged -- the exemption must not weaken detection of genuinely
+    # private symbols.
+    unresolved, non_public = API.split_resolvable_and_broken_doc_apis(
+        [
+            _doc_api(f"{_MOCK}.MockReexportedClass", CodeType.CLASS),
+            _doc_api(f"{_MOCK}.MockInternalOnlyClass", CodeType.CLASS),
+        ],
+        set(),
+    )
+
+    assert unresolved == []
+    assert non_public == [f"{_INTERNAL_MOCK}.MockInternalOnlyClass"]
+
+
+def test_split_resolvable_flags_reexport_documented_by_private_path():
+    # The same object documented through its private canonical path instead of
+    # its public re-export stays flagged. A private module's __all__ is not a
+    # public contract, so it can't launder the name.
+    unresolved, non_public = API.split_resolvable_and_broken_doc_apis(
+        [_doc_api(f"{_INTERNAL_MOCK}.MockReexportedClass", CodeType.CLASS)],
+        set(),
+    )
+
+    assert unresolved == []
+    assert non_public == [f"{_INTERNAL_MOCK}.MockReexportedClass"]
+
+
+def test_is_public_reexport():
+    # Exported from a public module's __all__.
+    assert API._is_public_reexport(
+        f"{_MOCK}.MockReexportedClass",
+        f"{_INTERNAL_MOCK}.MockReexportedClass",
+    )
+    # Importable from the same module but not exported.
+    assert not API._is_public_reexport(
+        f"{_MOCK}.MockInternalOnlyClass",
+        f"{_INTERNAL_MOCK}.MockInternalOnlyClass",
+    )
+    # Documented through a private module path.
+    assert not API._is_public_reexport(
+        f"{_INTERNAL_MOCK}.MockReexportedClass",
+        f"{_INTERNAL_MOCK}.MockReexportedClass",
+    )
+    # An underscore leaf stays private on either side of the re-export, so
+    # __all__ membership can never promote one.
+    assert not API._is_public_reexport(f"{_MOCK}._MockReexportedClass", "pkg.Thing")
+    assert not API._is_public_reexport(
+        f"{_MOCK}.MockReexportedClass", "pkg._internal._Thing"
+    )
+    # A parent that is a class, not a module, has no __all__ to read.
+    assert not API._is_public_reexport(f"{_MOCK}.MockClass.mock_method", "pkg.Thing")
+    # A name with no module part.
+    assert not API._is_public_reexport("MockReexportedClass", "pkg.Thing")
 
 
 def test_find_duplicate_doc_apis():
