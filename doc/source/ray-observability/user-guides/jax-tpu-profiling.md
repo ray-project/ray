@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Profile JAX workloads on Ray TPU workers in Kubernetes: trigger profiling dynamically on a worker, then view the traces in TensorBoard."
+---
+
 (jax-tpu-profiling)=
 
 # JAX profiler for Ray on Kubernetes
