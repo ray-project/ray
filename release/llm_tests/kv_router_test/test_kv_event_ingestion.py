@@ -42,7 +42,9 @@ class _TestKVTokenTracker(KVTokenTracker):
         """(Test only) Worker ids the selection service can currently schedule."""
         if self._svc is None:
             return []
-        workers = self._svc.list_workers(model_name=_MODEL_NAME, tenant_id=_TENANT_ID)
+        workers = self._svc.list_workers(
+            model_name=_MODEL_NAME, routing_group=_TENANT_ID
+        )
         return sorted(
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
         )
@@ -52,6 +54,13 @@ class _TestKVTokenTracker(KVTokenTracker):
 
         Returns the number of leading blocks of ``token_ids`` each worker has cached.
         """
+        scores = await self.get_kv_overlap_scores(token_ids)
+        return {
+            worker_id: score["device_blocks"] for worker_id, score in scores.items()
+        }
+
+    async def get_kv_overlap_scores(self, token_ids: List[int]) -> Dict[int, dict]:
+        """(Test only) Per-worker overlap across every KV storage tier."""
         if self._svc is None:
             return {}
         scores = await self._svc.overlap_scores(
@@ -61,7 +70,7 @@ class _TestKVTokenTracker(KVTokenTracker):
                 "token_ids": list(token_ids),
             }
         )
-        return {w["worker_id"]: w["device_blocks"] for w in scores["workers"]}
+        return {worker["worker_id"]: worker for worker in scores["workers"]}
 
     async def get_potential_loads(self, token_ids: List[int]) -> Dict[int, dict]:
         """(Test only) Per-worker projected load for routing ``token_ids``."""
@@ -80,7 +89,7 @@ class _TestKVTokenTracker(KVTokenTracker):
         """(Test only) Current per-worker active load."""
         if self._svc is None:
             return {}
-        model_loads = self._svc.loads(model_name=_MODEL_NAME, tenant_id=_TENANT_ID)
+        model_loads = self._svc.loads(model_name=_MODEL_NAME, routing_group=_TENANT_ID)
         if not model_loads:
             return {}
         return {load["worker_id"]: load for load in model_loads[0]["loads"]}
@@ -120,7 +129,7 @@ class FakeReplica:
     def replay_endpoint(self) -> str:
         return f"tcp://127.0.0.1:{self._replay_port}"
 
-    def publish_stored(self, block_hashes, token_ids) -> None:
+    def publish_stored(self, block_hashes, token_ids, medium="GPU") -> None:
         self._pub.publish(
             KVEventBatch(
                 ts=1.0,
@@ -131,18 +140,18 @@ class FakeReplica:
                         token_ids=list(token_ids),
                         block_size=BLOCK_SIZE,
                         lora_id=None,
-                        medium="GPU",
+                        medium=medium,
                         lora_name=None,
                     )
                 ],
             )
         )
 
-    def publish_removed(self, block_hashes) -> None:
+    def publish_removed(self, block_hashes, medium="GPU") -> None:
         self._pub.publish(
             KVEventBatch(
                 ts=2.0,
-                events=[BlockRemoved(block_hashes=list(block_hashes), medium="GPU")],
+                events=[BlockRemoved(block_hashes=list(block_hashes), medium=medium)],
             )
         )
 
@@ -203,6 +212,23 @@ async def wait_for_overlap(tracker, token_ids, predicate, publish=None, timeout=
     await async_wait_for_condition(condition, timeout=timeout, retry_interval_ms=500)
 
 
+async def wait_for_overlap_scores(
+    tracker, token_ids, predicate, publish=None, timeout=30
+):
+    """Poll the tracker's tiered overlap view until ``predicate`` holds."""
+
+    async def condition():
+        if publish is not None:
+            publish()
+        try:
+            scores = await tracker.get_kv_overlap_scores(list(token_ids))
+        except Exception:
+            return False
+        return predicate(scores)
+
+    await async_wait_for_condition(condition, timeout=timeout, retry_interval_ms=500)
+
+
 async def book_uncached_load(tracker, worker_id, count, base):
     """Book ``count`` reservations of distinct, uncached tokens onto ``worker_id``
     so each adds full prefill load to it; returns their reservation ids."""
@@ -214,11 +240,6 @@ async def book_uncached_load(tracker, worker_id, count, base):
         selection = await tracker.select_worker(reservation_id, token_ids, [worker_id])
         assert selection["worker_id"] == worker_id
         assert selection["effective_prefill_tokens"] == len(token_ids)
-        await tracker.on_request_added(
-            reservation_id,
-            worker_id,
-            token_ids,
-        )
         reservation_ids.append(reservation_id)
     return reservation_ids
 
@@ -232,14 +253,10 @@ async def book_decode_load(
     expected_output_tokens=None,
 ):
     """Book a request, move it to decode, and add output blocks."""
-    selection = await tracker.select_worker(reservation_id, token_ids, [worker_id])
-    assert selection["worker_id"] == worker_id
-    await tracker.on_request_added(
-        reservation_id,
-        worker_id,
-        list(token_ids),
-        expected_output_tokens=expected_output_tokens,
+    selection = await tracker.select_worker(
+        reservation_id, token_ids, [worker_id], expected_output_tokens
     )
+    assert selection["worker_id"] == worker_id
     await tracker.on_prefill_complete(reservation_id)
     await tracker.on_decode_progress(reservation_id, output_tokens)
     return reservation_id
@@ -391,6 +408,81 @@ class TestKvEventIngestion:
             )
             assert selection["worker_id"] == worker_a
             assert selection["overlap_tokens"] >= BLOCK_SIZE
+        finally:
+            a.close()
+            b.close()
+
+    @pytest.mark.asyncio
+    async def test_cpu_offload_routing(self):
+        """CPU overlap breaks GPU-overlap ties but loses to a larger GPU hit."""
+        tracker = _LocalKVTokenTracker()
+        a = FakeReplica(23913)
+        b = FakeReplica(23914)
+        worker_a = get_worker_id("replica-A")
+        worker_b = get_worker_id("replica-B")
+        block_hashes = [701, 702, 703]
+        token_ids = list(range(3 * BLOCK_SIZE))
+        try:
+            tracker._on_deployment_targets(
+                targets(
+                    running_replica("replica-A", a.endpoint(), a.replay_endpoint()),
+                    running_replica("replica-B", b.endpoint(), b.replay_endpoint()),
+                )
+            )
+            await wait_registered(tracker, [worker_a, worker_b])
+
+            a.publish_stored(block_hashes, token_ids)
+            a.publish_stored(block_hashes, token_ids, medium="CPU")
+            a.publish_removed(block_hashes[1:])
+            b.publish_stored(block_hashes[:1], token_ids[:BLOCK_SIZE])
+            await wait_for_overlap_scores(
+                tracker,
+                token_ids,
+                lambda scores: (
+                    scores.get(worker_a, {}).get("device_blocks") == 1
+                    and scores.get(worker_a, {}).get("host_pinned_extension_blocks")
+                    == 2
+                    and scores.get(worker_b, {}).get("device_blocks") == 1
+                ),
+            )
+
+            cpu_selection = await tracker.select_worker(
+                "cpu-tiebreak", token_ids, [worker_a, worker_b]
+            )
+            assert cpu_selection["worker_id"] == worker_a
+            await tracker.on_request_completed("cpu-tiebreak")
+
+            b.publish_stored(block_hashes, token_ids)
+            await wait_for_overlap_scores(
+                tracker,
+                token_ids,
+                lambda scores: scores.get(worker_b, {}).get("device_blocks") == 3,
+            )
+
+            scores = await tracker.get_kv_overlap_scores(token_ids)
+            assert scores[worker_a]["host_pinned_extension_blocks"] == 2
+            assert 1 < scores[worker_a]["router_credit_blocks"] < 3
+            assert scores[worker_b]["router_credit_blocks"] == 3
+
+            gpu_selection = await tracker.select_worker(
+                "gpu-hit", token_ids, [worker_a, worker_b]
+            )
+            assert gpu_selection["worker_id"] == worker_b
+            assert gpu_selection["effective_prefill_tokens"] == 0
+            await tracker.on_request_completed("gpu-hit")
+
+            b.publish_removed(block_hashes)
+            await wait_for_overlap(
+                tracker,
+                token_ids,
+                lambda overlap: overlap.get(worker_b) == 0,
+            )
+
+            cpu_selection = await tracker.select_worker(
+                "cpu-reload", token_ids, [worker_a, worker_b]
+            )
+            assert cpu_selection["worker_id"] == worker_a
+            assert 0 < cpu_selection["effective_prefill_tokens"] < len(token_ids)
         finally:
             a.close()
             b.close()

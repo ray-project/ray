@@ -1,6 +1,13 @@
 # Production requirements. This is what readthedocs.com picks up
 
-# Required to build the docs on 3.12 due to pkg_resources deprecation
+# Declared explicitly because Python 3.12 and later no longer ship setuptools,
+# and sphinxcontrib-redoc imports pkg_resources at module load.
+# Don't bump to 82 or later: setuptools 82.0.0 removed pkg_resources, and the
+# docs build then fails at extension load with
+# "Could not import extension sphinxcontrib.redoc".
+# No released sphinxcontrib-redoc fixes this. 1.6.0 is the latest release and
+# dates from 2020; the 2.0.0a1 alpha still imports pkg_resources. Lifting this
+# ceiling means replacing or vendoring that extension.
 setuptools==80.9.0
 
 # Syntax highlighting

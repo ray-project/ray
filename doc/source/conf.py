@@ -227,7 +227,7 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-myst_heading_anchors = 3
+myst_heading_anchors = 4
 
 # Add these for attachment handling
 nb_render_key_pairs = {
@@ -573,8 +573,13 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
-# Better typehint formatting (see custom.css)
-autodoc_typehints = "signature"
+# Show type hints in both the signature and the Parameters description list
+# (see custom.css). "documented" scopes the description-side types to params
+# that already have a docstring entry, which keeps their prose descriptions and
+# preserves short type names. Plain "both" with the default "all" target drops
+# the descriptions and renders verbose typing spellings.
+autodoc_typehints = "both"
+autodoc_typehints_description_target = "documented"
 
 
 def add_custom_assets(

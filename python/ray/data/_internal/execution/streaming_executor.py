@@ -366,9 +366,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 op.shutdown(timer, force=force)
 
             self._clear_topology_queues_post_shutdown(force, exception)
-            # Queues have been drained; any remaining Ray Core callbacks that fire
-            # after this point should be no-ops.
-            self._block_ref_counter.clear()
 
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
