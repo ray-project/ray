@@ -569,6 +569,7 @@ def test_state_cli_headers_cli_precedence_over_env(
     [
         ("{bad json", "Failed to parse headers into JSON"),
         ("[]", "Expected headers to be a JSON object/dictionary"),
+        ('{"X-Retry": 3}', "All header keys and values must be strings"),
     ],
 )
 def test_state_cli_rejects_invalid_headers(headers, error, reset_fake_state_api_client):
@@ -764,20 +765,22 @@ def test_list_logs_forwards_headers_verify_and_does_not_mutate(monkeypatch):
         captured.update(kwargs)
         return _FakeLogResponse()
 
-    monkeypatch.setattr(
-        state_api, "ray_address_to_api_server_url", lambda address: "http://api"
+    monkeypatch.delenv(
+        ray_constants.RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE, raising=False
     )
+    monkeypatch.delenv(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE, raising=False)
     monkeypatch.setattr(state_api.requests, "get", fake_get)
     monkeypatch.setattr(
         state_api, "get_auth_headers_if_auth_enabled", lambda headers: {}
     )
 
     assert state_api.list_logs(
-        address="http://api",
+        address="https://cluster.example.com:8265",
         node_ip="127.0.0.1",
         headers=headers,
         verify="/tmp/test-ca.pem",
     ) == {"worker": ["worker.log"]}
+    assert captured["url"].startswith("https://cluster.example.com:8265/api/v0/logs?")
     assert captured["headers"] == {"X-API-Key": "logs"}
     assert captured["verify"] == "/tmp/test-ca.pem"
     assert headers == {"X-API-Key": "logs"}
@@ -792,9 +795,10 @@ def test_get_log_forwards_headers_verify_and_does_not_mutate(monkeypatch):
         captured.update(kwargs)
         return _FakeLogResponse(chunks=[b"hello"])
 
-    monkeypatch.setattr(
-        state_api, "ray_address_to_api_server_url", lambda address: "http://api"
+    monkeypatch.delenv(
+        ray_constants.RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE, raising=False
     )
+    monkeypatch.delenv(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE, raising=False)
     monkeypatch.setattr(state_api.requests, "get", fake_get)
     monkeypatch.setattr(
         state_api, "get_auth_headers_if_auth_enabled", lambda headers: {}
@@ -802,7 +806,7 @@ def test_get_log_forwards_headers_verify_and_does_not_mutate(monkeypatch):
 
     chunks = list(
         state_api.get_log(
-            address="http://api",
+            address="https://cluster.example.com:8265",
             node_ip="127.0.0.1",
             filename="worker.log",
             headers=headers,
@@ -811,6 +815,9 @@ def test_get_log_forwards_headers_verify_and_does_not_mutate(monkeypatch):
     )
 
     assert chunks == ["hello"]
+    assert captured["url"].startswith(
+        "https://cluster.example.com:8265/api/v0/logs/file?"
+    )
     assert captured["headers"] == {"X-API-Key": "logs"}
     assert captured["verify"] is False
     assert headers == {"X-API-Key": "logs"}
@@ -843,6 +850,29 @@ def test_state_api_client_forwards_headers_verify_and_does_not_mutate(monkeypatc
     assert headers == {"Authorization": "Bearer user"}
 
 
+def test_state_api_client_merges_content_type_case_insensitively(monkeypatch):
+    captured = {}
+    headers = {"content-type": "application/custom"}
+
+    def fake_submission_init(self, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        state_api, "get_address_for_submission_client", lambda address: "http://api"
+    )
+    monkeypatch.setattr(state_api.SubmissionClient, "__init__", fake_submission_init)
+
+    state_api.StateApiClient(address="http://api", headers=headers)
+
+    content_type_headers = [
+        (key, value)
+        for key, value in captured["headers"].items()
+        if key.lower() == "content-type"
+    ]
+    assert content_type_headers == [("content-type", "application/custom")]
+    assert headers == {"content-type": "application/custom"}
+
+
 @pytest.mark.parametrize(
     "input_headers,expected_authorization",
     [
@@ -861,12 +891,12 @@ def test_log_headers_preserve_user_auth_and_add_internal_auth(
         return _FakeLogResponse()
 
     def fake_auth(headers):
-        if any(key.lower() == "authorization" for key in headers):
+        if "Authorization" in headers:
             return {}
         return {"Authorization": "Bearer internal"}
 
     monkeypatch.setattr(
-        state_api, "ray_address_to_api_server_url", lambda address: "http://api"
+        state_api, "get_address_for_submission_client", lambda address: "http://api"
     )
     monkeypatch.setattr(state_api.requests, "get", fake_get)
     monkeypatch.setattr(state_api, "get_auth_headers_if_auth_enabled", fake_auth)
@@ -875,13 +905,38 @@ def test_log_headers_preserve_user_auth_and_add_internal_auth(
         address="http://api", node_ip="127.0.0.1", headers=input_headers
     )
 
-    authorization = next(
+    authorization_headers = [
         value
         for key, value in captured["headers"].items()
         if key.lower() == "authorization"
-    )
-    assert authorization == expected_authorization
+    ]
+    assert authorization_headers == [expected_authorization]
     assert input_headers == original_headers
+
+
+def test_log_apis_delegate_bootstrap_address_to_submission_resolver(monkeypatch):
+    resolved_addresses = []
+    requested_urls = []
+
+    def fake_resolve(address):
+        resolved_addresses.append(address)
+        return "http://api"
+
+    def fake_get(url, **kwargs):
+        requested_urls.append(url)
+        return _FakeLogResponse(chunks=[b"hello"])
+
+    monkeypatch.setattr(state_api, "get_address_for_submission_client", fake_resolve)
+    monkeypatch.setattr(state_api.requests, "get", fake_get)
+    monkeypatch.setattr(
+        state_api, "get_auth_headers_if_auth_enabled", lambda headers: {}
+    )
+
+    state_api.list_logs(address="auto", node_ip="127.0.0.1")
+    list(state_api.get_log(address="auto", node_ip="127.0.0.1", filename="worker.log"))
+
+    assert resolved_addresses == ["auto", "auto"]
+    assert all(url.startswith("http://api/api/v0/logs") for url in requested_urls)
 
 
 def test_state_cli_list_integration_sends_headers_to_http_server():

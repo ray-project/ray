@@ -128,6 +128,8 @@ def test_parse_headers_no_input_returns_none():
     [
         ("{bad json", "Failed to parse headers into JSON"),
         ("[]", "Expected headers to be a JSON object/dictionary"),
+        ('{"X-Retry": 3}', "All header keys and values must be strings"),
+        ('{"X-Enabled": true}', "All header keys and values must be strings"),
     ],
 )
 def test_parse_headers_rejects_invalid_input(headers, error):

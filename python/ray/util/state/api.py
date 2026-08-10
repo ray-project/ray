@@ -13,10 +13,7 @@ from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
 )
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
-from ray.dashboard.utils import (
-    get_address_for_submission_client,
-    ray_address_to_api_server_url,
-)
+from ray.dashboard.utils import get_address_for_submission_client
 from ray.util.annotations import DeveloperAPI
 from ray.util.state.common import (
     DEFAULT_LIMIT,
@@ -139,7 +136,9 @@ class StateApiClient(SubmissionClient):
                 "The Ray state CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``"
             )
-        request_headers = {"Content-Type": "application/json"}
+        request_headers = requests.structures.CaseInsensitiveDict(
+            {"Content-Type": "application/json"}
+        )
         if headers:
             request_headers.update(headers)
 
@@ -149,7 +148,7 @@ class StateApiClient(SubmissionClient):
         super().__init__(
             address=api_server_url,
             create_cluster_if_needed=False,
-            headers=request_headers,
+            headers=dict(request_headers),
             cookies=cookies,
             verify=verify,
         )
@@ -1181,9 +1180,9 @@ Log APIs
 
 
 def _prepare_request_headers(headers: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    request_headers = headers.copy() if headers else {}
+    request_headers = requests.structures.CaseInsensitiveDict(headers or {})
     request_headers.update(get_auth_headers_if_auth_enabled(request_headers))
-    return request_headers
+    return dict(request_headers)
 
 
 @DeveloperAPI
@@ -1278,7 +1277,7 @@ def get_log(
         RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
 
-    api_server_url = ray_address_to_api_server_url(address)
+    api_server_url = get_address_for_submission_client(address)
     media_type = "stream" if follow else "file"
 
     options = GetLogOptions(
@@ -1355,7 +1354,7 @@ def list_logs(
         node_ip is not None or node_id is not None
     ), "At least one of node ip and node id is required"
 
-    api_server_url = ray_address_to_api_server_url(address)
+    api_server_url = get_address_for_submission_client(address)
 
     if not glob_filter:
         glob_filter = "*"

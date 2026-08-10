@@ -33,6 +33,12 @@ def parse_headers(headers: Optional[str], *, env_var: str) -> Optional[Dict[str,
     if not isinstance(parsed_headers, dict):
         raise ValueError("Expected headers to be a JSON object/dictionary.")
 
+    if any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in parsed_headers.items()
+    ):
+        raise ValueError("All header keys and values must be strings.")
+
     return dict(parsed_headers)
 
 
