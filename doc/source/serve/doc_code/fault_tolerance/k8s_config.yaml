@@ -61,24 +61,25 @@ spec:
           configMap:
             name: redis-config
 ---
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayService
 metadata:
   name: rayservice-sample
   annotations:
     ray.io/ft-enabled: "true"
 spec:
-  serviceUnhealthySecondThreshold: 300
-  deploymentUnhealthySecondThreshold: 300
-  serveConfig:
-    importPath: "sleepy_pid:app"
-    runtimeEnv: |
-      working_dir: "https://github.com/ray-project/serve_config_examples/archive/42d10bab77741b40d11304ad66d39a4ec2345247.zip"
-    deployments:
-      - name: SleepyPid
-        numReplicas: 6
-        rayActorOptions:
-          numCpus: 0
+  serveConfigV2: |
+    applications:
+      - name: sleepy_pid
+        import_path: sleepy_pid:app
+        route_prefix: /
+        runtime_env:
+          working_dir: "https://github.com/ray-project/serve_config_examples/archive/42d10bab77741b40d11304ad66d39a4ec2345247.zip"
+        deployments:
+          - name: SleepyPid
+            num_replicas: 6
+            ray_actor_options:
+              num_cpus: 0
   rayClusterConfig:
     rayVersion: '2.3.0'
     headGroupSpec:
