@@ -450,8 +450,9 @@ class ServeController:
                 # object path -- keeps simple-mode scalars and custom-metric
                 # timeseries correct regardless of the producer's wire format.
                 _decompress_start = time.time()
-                replica_metric_report = autoscaling_metrics_codec.reconstruct(
-                    replica_metric_report
+                replica_metric_report = cast(
+                    ReplicaMetricReport,
+                    autoscaling_metrics_codec.reconstruct(replica_metric_report),
                 )
             else:
                 _decompress_start = time.time()
@@ -507,8 +508,9 @@ class ServeController:
                 # object path -- keeps simple-mode scalars and custom-metric
                 # timeseries correct regardless of the producer's wire format.
                 _decompress_start = time.time()
-                handle_metric_report = autoscaling_metrics_codec.reconstruct(
-                    handle_metric_report
+                handle_metric_report = cast(
+                    HandleMetricReport,
+                    autoscaling_metrics_codec.reconstruct(handle_metric_report),
                 )
             else:
                 _decompress_start = time.time()
