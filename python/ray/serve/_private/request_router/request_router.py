@@ -53,8 +53,10 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # sub-step (enqueue/dequeue wait vs. the queue-length probe RPC) instead of
 # treating the whole call as one opaque cost. This module is imported for
 # every Ray Serve deployment, not just the PD benchmark, so the import is
-# lazy and any failure (bench/ absent) is silent: routing must never depend
-# on, or be slowed by, diagnostics that only exist for one investigation.
+# resolved once here, at module load, rather than per call: routing must
+# never depend on, or be slowed by, diagnostics that only exist for one
+# investigation, and re-attempting a failing import on every routing
+# decision would do exactly that.
 #
 # _pd_trace_mark() piggybacks on the ContextVar-based trace bench/pd_trace.py
 # already publishes per HTTP request -- safe here because
@@ -64,26 +66,29 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # _pd_probe_log_sample() is deliberately NOT the same mechanism: the queue-
 # length probe (_probe_queue_lens) is awaited from _fulfill_pending_requests,
 # a background task spawned once per deployment and reused across many
-# requests. A contextvars.Task created that far back captured whatever
+# requests. An asyncio task created that far back captured whatever
 # ContextVar value existed at *its* creation, not the current request's --
 # attributing probe timing to individual request records there would be
 # silently wrong (either no trace, or another request's). Logging aggregate
 # samples instead answers the real question (is the probe RPC itself slow)
-# without makes any claim about which request it was slow for.
+# without making any claim about which request it was slow for.
+try:
+    from bench.pd_trace import (
+        ENABLED as _PD_TRACE_ENABLED,
+        current as _pd_trace_current,
+    )
+except ImportError:
+    _PD_TRACE_ENABLED = False
+    _pd_trace_current = None
+
+
 def _pd_trace_mark(stage: str) -> None:
-    try:
-        from bench.pd_trace import current as _pd_trace_current
-    except ImportError:
-        return
-    _pd_trace_current().mark(stage)
+    if _PD_TRACE_ENABLED:
+        _pd_trace_current().mark(stage)
 
 
 def _pd_probe_log_sample(elapsed_s: float, num_replicas: int) -> None:
-    try:
-        from bench.pd_trace import ENABLED as _pd_trace_enabled
-    except ImportError:
-        return
-    if _pd_trace_enabled:
+    if _PD_TRACE_ENABLED:
         logger.info(
             f"[pd_probe_diag] elapsed_ms={elapsed_s * 1000:.2f} "
             f"num_replicas={num_replicas}"
