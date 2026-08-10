@@ -273,6 +273,72 @@ class TestReconciler:
         assert instances["i-2"].status == Instance.ALLOCATION_FAILED
 
     @staticmethod
+    def test_requested_multiple_node_types_same_request_id_to_allocation_failed(setup):
+        """
+        Test that when multiple instances with different node_types share the same
+        request_id and all fail to launch, each instance should be transitioned to
+        ALLOCATION_FAILED with its corresponding launch error.
+
+        This tests the scenario where a single scaling request contains multiple
+        node_types, and each node_type fails independently.
+        """
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-2",
+                launch_request_id="l1",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        # Both node_types failed to launch
+        launch_errors = [
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=1,
+                details="Type-1 node failed: workers_to_be_deleted conflict",
+            ),
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-2",
+                timestamp_ns=1,
+                details="Type-2 node failed: workers_to_be_deleted conflict",
+            ),
+        ]
+
+        cloud_instances = {}
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=launch_errors,
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        result_instances, _ = instance_storage.get_instances()
+
+        # Both instances should be ALLOCATION_FAILED
+        assert result_instances["i-1"].status == Instance.ALLOCATION_FAILED
+        assert result_instances["i-2"].status == Instance.ALLOCATION_FAILED
+
+    @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
 
         instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup
