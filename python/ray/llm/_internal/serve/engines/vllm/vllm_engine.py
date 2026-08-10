@@ -22,6 +22,7 @@ from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorResponse
+from vllm.exceptions import VLLMClientError
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
@@ -676,7 +677,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_chat, e)
             return
 
@@ -711,7 +712,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_completion, e)
             return
 
@@ -748,7 +749,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_embedding, e)
             return
 
@@ -778,7 +779,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_transcription, e)
             return
 
@@ -816,7 +817,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
@@ -841,7 +842,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 
@@ -870,7 +871,7 @@ class VLLMEngine(LLMEngine):
                     raw_request=raw_request,
                 )
             )
-        except ValueError as e:
+        except (ValueError, VLLMClientError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 

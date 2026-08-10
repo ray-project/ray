@@ -1,0 +1,7 @@
+# uv override file for the ray-llm deplocks.
+#
+# DeepEP V2's "NCCL Gin" backend needs NCCL >= 2.30.4 at both build and run
+# time, but torch pins nvidia-nccl-cu13==2.29.7 as a transitive dep. vLLM's own
+# release image solves this the same way (NCCL_VERSION + UV_OVERRIDE in
+# vllm's docker/Dockerfile); keep this version in sync with that ARG.
+nvidia-nccl-cu13==2.30.7; platform_system == "Linux"

@@ -8,13 +8,13 @@ COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.26.0"
+ARG VLLM_SCRIPTS_REF="v0.27.0"
 
-# Pin DeepEP to the V1 (NVSHMEM) commit that vLLM's own release image uses. The
-# install script's default drifted to DeepEP V2 ("NCCL Gin"), which needs
-# NCCL >= 2.30.4, but our image has nvidia-nccl-cu13==2.28.9 (via torch) so V2
-# fails to build. Keep in sync with DEEPEP_COMMIT_HASH in vllm's docker/Dockerfile.
-ARG DEEPEP_COMMIT_HASH="73b6ea4"
+# Keep in sync with DEEPEP_COMMIT_HASH in vllm's docker/Dockerfile. This is
+# DeepEP V2 ("NCCL Gin"), which needs NCCL >= 2.30.4 at build and run time;
+# python/requirements/llm/nccl_overrides.txt lifts nvidia-nccl-cu13 above the
+# version torch pins so the lock satisfies that.
+ARG DEEPEP_COMMIT_HASH="d4f41e4e93"
 
 RUN <<EOF
 #!/bin/bash
@@ -84,8 +84,6 @@ export UV_SYSTEM_PYTHON=1
 export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
-# Pin --deepep-ref to the V1 NVSHMEM-backend commit (see DEEPEP_COMMIT_HASH above);
-# the script's own default is the V2 NCCL-Gin backend that fails to compile here.
 curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
     bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER} --deepep-ref ${DEEPEP_COMMIT_HASH}
 
@@ -106,8 +104,3 @@ EOF
 # introduces longer adds a large one-time engine initialization cost. To avoid performance
 # surprises, we disable the FlashInfer sampler by default.
 ENV VLLM_USE_FLASHINFER_SAMPLER=0
-
-# vLLM 0.26.0 defaults to Model Runner V2, which skips multimodal encoder memory
-# profiling and OOMs the LLM GPU tests. Force Model Runner V1 for now.
-# TODO (jeffreywang): Use the default MRV2 when upgrading to vLLM 0.27.0.
-ENV VLLM_USE_V2_MODEL_RUNNER=0

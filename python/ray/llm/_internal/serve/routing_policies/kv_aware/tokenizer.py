@@ -5,6 +5,7 @@ from pydantic import ValidationError
 from vllm.entrypoints.chat_utils import load_chat_template
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.engine.protocol import ErrorResponse
+from vllm.exceptions import VLLMClientError
 from vllm.renderers import renderer_from_config
 from vllm.renderers.inputs.preprocess import extract_prompt_components
 from vllm.renderers.online_renderer import OnlineRenderer
@@ -145,7 +146,7 @@ class Tokenizer:
                 )
         except TokenizeError:
             raise
-        except (ValueError, jinja2.TemplateError) as e:
+        except (ValueError, VLLMClientError, jinja2.TemplateError) as e:
             # /tokenize maps bad inputs and chat-template errors to 400; other
             # exceptions are real bugs and should surface, not degrade routing.
             raise TokenizeError(str(e), status_code=400, type="BadRequestError")

@@ -214,6 +214,42 @@ def test_malformed_payload_falls_back():
     assert request.kv_transfer_params is None
 
 
+@pytest.mark.parametrize(
+    "content,expected_ids",
+    [
+        ("describe this", [1, 2, 3]),
+        ([{"type": "text", "text": "describe this"}], [1, 2, 3]),
+        (
+            [
+                {"type": "text", "text": "describe this"},
+                {"type": "image_url", "image_url": {"url": "http://img"}},
+            ],
+            None,
+        ),
+        ([{"type": "input_audio", "input_audio": {"data": "..."}}], None),
+    ],
+)
+def test_multimodal_chat_falls_back(content, expected_ids):
+    """vLLM builds the engine input from forwarded ids alone, dropping the
+    images/audio the placeholder tokens refer to, so multimodal chat requests
+    must re-tokenize in the engine."""
+    store = TokenStore()
+    store.put("k", payload=_payload([1, 2, 3]))
+    request = SimpleNamespace(
+        kv_transfer_params=None,
+        messages=[{"role": "user", "content": content}],
+    )
+
+    inject_prompt_token_ids(request, _raw_request("k"), store)
+
+    if expected_ids is None:
+        assert request.kv_transfer_params is None
+    else:
+        assert request.kv_transfer_params["prompt_token_ids"] == expected_ids
+    # The staged entry is claimed either way, so it never lingers until TTL.
+    assert store.pop("k") is None
+
+
 @pytest.mark.asyncio
 async def test_keeps_tokens_separate():
     token_ids_by_key = {

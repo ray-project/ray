@@ -15,6 +15,31 @@ from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
 logger = get_logger(__name__)
 
 
+def _has_multimodal_content(request: Any) -> bool:
+    """True if any chat message carries a non-text content part.
+
+    vLLM builds the engine input from the forwarded ids alone, so it would drop
+    the images/audio/video that the placeholder tokens refer to.
+    """
+    for message in getattr(request, "messages", None) or ():
+        content = (
+            message.get("content")
+            if isinstance(message, dict)
+            else getattr(message, "content", None)
+        )
+        if not isinstance(content, (list, tuple)):
+            continue
+        for part in content:
+            part_type = (
+                part.get("type")
+                if isinstance(part, dict)
+                else getattr(part, "type", None)
+            )
+            if part_type is not None and part_type != "text":
+                return True
+    return False
+
+
 def inject_prompt_token_ids(
     request: Any,
     raw_request: Optional[Request],
@@ -28,6 +53,9 @@ def inject_prompt_token_ids(
 
     entry = store.pop(token_key)
     if entry is None:
+        return
+
+    if _has_multimodal_content(request):
         return
 
     try:
