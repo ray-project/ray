@@ -11,9 +11,6 @@ import aiohttp
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
-from ray._private.authentication.http_token_authentication import (
-    get_auth_headers_if_auth_enabled,
-)
 from ray._private.protobuf_compat import message_to_json
 from ray._raylet import GcsClient
 from ray.core.generated import (
@@ -21,6 +18,9 @@ from ray.core.generated import (
     events_event_aggregator_service_pb2,
 )
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.modules.aggregator.publisher.authenticated_http_client import (
+    AuthenticatedHttpClient,
+)
 from ray.dashboard.modules.aggregator.publisher.configs import (
     HTTP_EXPOSABLE_EVENT_TYPES,
     PUBLISHER_TIMEOUT_SECONDS,
@@ -316,8 +316,7 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
         self._gcs_client = gcs_client
         self._executor = executor
         self._endpoint_path = endpoint_path
-        self._timeout = aiohttp.ClientTimeout(total=timeout_s)
-        self._session = None
+        self._http_client = AuthenticatedHttpClient(timeout_s=timeout_s)
         # Resolved lazily from InternalKV on first publish and cached.
         self._endpoint = None
 
@@ -393,17 +392,8 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
                 lambda: request.SerializeToString(),
             )
 
-            # Create session on first use (lazy initialization)
-            if not self._session:
-                self._session = aiohttp.ClientSession(timeout=self._timeout)
-            # Propagate the auth token so the POST passes the dashboard's auth middleware.
-            headers = get_auth_headers_if_auth_enabled({})
             try:
-                async with self._session.post(
-                    endpoint,
-                    data=serialized_request,
-                    headers=headers,
-                ) as resp:
+                async with self._http_client.post(endpoint, serialized_request) as resp:
                     resp.raise_for_status()
             except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
                 # Couldn't reach the endpoint; the dashboard head may have restarted at a
@@ -443,6 +433,4 @@ class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
         return events_data
 
     async def close(self) -> None:
-        if self._session:
-            await self._session.close()
-            self._session = None
+        await self._http_client.close()

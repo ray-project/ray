@@ -197,9 +197,10 @@ class DashboardHead:
             dashboard_head_modules,
             skipped_head_modules,
         ) = self._load_dashboard_head_modules(modules_to_load)
-        subprocess_module_handles = self._load_subprocess_module_handles(
-            modules_to_load
-        )
+        (
+            subprocess_module_handles,
+            skipped_subprocess_modules,
+        ) = self._load_subprocess_module_handles(modules_to_load)
 
         all_names = {type(m).__name__ for m in dashboard_head_modules} | {
             h.module_cls.__name__ for h in subprocess_module_handles
@@ -208,9 +209,12 @@ class DashboardHead:
             subprocess_module_handles
         ), "Duplicate module names. A module name can't be a DashboardHeadModule and a SubprocessModule at the same time."
 
-        # Verify modules are loaded as expected.
+        # Verify modules are loaded as expected. Subtract both kinds of disabled modules;
+        # a requested-but-disabled module (head or subprocess) is legitimately skipped.
         if modules_to_load is not None:
-            expected_names = modules_to_load - skipped_head_modules
+            expected_names = (
+                modules_to_load - skipped_head_modules - skipped_subprocess_modules
+            )
             if all_names != expected_names:
                 assert False, (
                     f"Actual loaded modules {all_names}, doesn't match the requested modules "
@@ -270,10 +274,10 @@ class DashboardHead:
 
     def _load_subprocess_module_handles(
         self, modules_to_load: Optional[Set[str]] = None
-    ) -> List["SubprocessModuleHandle"]:
+    ) -> Tuple[List["SubprocessModuleHandle"], Set[str]]:
         """Load ``SubprocessModule`` handles.
 
-        If minimal, return an empty list.
+        If minimal, load no subprocess modules.
         If non-minimal, load `SubprocessModule`s by creating Handles to them.
 
         Args:
@@ -281,12 +285,13 @@ class DashboardHead:
                 it loads all modules.
 
         Returns:
-            A list of ``SubprocessModuleHandle`` instances, or an empty list in
-            minimal mode.
+            A tuple of ``(handles, skipped_module_names)``: the loaded
+            ``SubprocessModuleHandle`` instances, and the names of modules skipped
+            because they are disabled. Both are empty in minimal mode.
         """
         if self.minimal:
             logger.info("Subprocess modules not loaded in minimal mode.")
-            return []
+            return [], set()
 
         from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
         from ray.dashboard.subprocesses.module import (
@@ -295,6 +300,7 @@ class DashboardHead:
         )
 
         handles = []
+        skipped_modules = set()
         subprocess_cls_list = dashboard_utils.get_all_modules(SubprocessModule)
 
         loop = ray._common.utils.get_or_create_event_loop()
@@ -320,12 +326,16 @@ class DashboardHead:
             ]
 
         for cls in subprocess_cls_list:
+            if not cls.is_enabled():
+                logger.info(f"Skipping {SubprocessModule.__name__}: {cls} (disabled).")
+                skipped_modules.add(cls.__name__)
+                continue
             logger.info(f"Loading {SubprocessModule.__name__}: {cls}.")
             handle = SubprocessModuleHandle(loop, cls, config)
             handles.append(handle)
 
         logger.info(f"Loaded {len(handles)} subprocess modules: {handles}.")
-        return handles
+        return handles, skipped_modules
 
     async def _setup_metrics(self, gcs_client):
         metrics = DashboardPrometheusMetrics()
