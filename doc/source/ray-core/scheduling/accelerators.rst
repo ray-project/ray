@@ -1,3 +1,6 @@
+.. meta::
+   :description: Use accelerators in Ray tasks and actors: start nodes with GPUs, request fractional accelerators, and pin to accelerator types.
+
 .. _gpu-support:
 .. _accelerator-support:
 

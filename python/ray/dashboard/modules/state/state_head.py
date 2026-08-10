@@ -351,7 +351,10 @@ class StateHead(SubprocessModule, RateLimitedModule):
         await SubprocessModule.run(self)
         gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self.gcs_client
+            gcs_channel,
+            self.gcs_client,
+            dashboard_socket_dir=self._config.socket_dir,
+            dashboard_session_name=self._config.session_name,
         )
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,
