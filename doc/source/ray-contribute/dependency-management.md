@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How Ray's three-layer Python dependency system works, how to add or update a package, and how to diagnose resolution conflicts."
+---
+
 (dependency-management)=
 
 # Editing and managing Python dependencies

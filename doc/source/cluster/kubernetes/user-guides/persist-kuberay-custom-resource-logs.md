@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Persist Ray pod logs off-cluster with sidecar or DaemonSet collection, using Fluent Bit, Loki, and Grafana."
+---
+
 (persist-kuberay-custom-resource-logs)=
 
 # Persist KubeRay custom resource logs

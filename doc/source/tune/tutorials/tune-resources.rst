@@ -1,3 +1,6 @@
+.. meta::
+   :description: Control Tune parallelism and resources: request GPUs per trial, run distributed training inside trials, and limit trial concurrency.
+
 .. _tune-parallelism:
 
 A Guide To Parallelism and Resources for Ray Tune

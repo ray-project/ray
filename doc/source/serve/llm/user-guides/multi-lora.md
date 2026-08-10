@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve multiple fine-tuned LoRA adapters from a single Ray Serve LLM deployment, with adapter-aware request routing."
+---
+
 # Multi-LoRA deployment
 
 Deploy multiple fine-tuned LoRA adapters efficiently with Ray Serve LLM.

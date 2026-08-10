@@ -1,3 +1,6 @@
+.. meta::
+   :description: Load and preprocess data for Ray Train with Ray Data: ingest, transform, split across workers, and consume shards in the training function.
+
 .. _data-ingest-torch:
 
 Data Loading and Preprocessing

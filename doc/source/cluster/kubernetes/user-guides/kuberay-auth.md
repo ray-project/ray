@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Enable Ray token authentication on a KubeRay cluster and access it with the Ray CLI and the dashboard."
+---
+
 (kuberay-auth)=
 
 # Configure Ray clusters to use token authentication
