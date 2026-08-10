@@ -15,6 +15,7 @@ import yaml
 from click.testing import CliRunner
 
 from ray.dashboard.modules.job.cli import job_cli_group
+from ray.dashboard.modules.job.cli_utils import parse_headers
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,41 @@ def _expected_entrypoint(*args):
     if sys.platform == "win32":
         return list2cmdline(args)
     return shlex.join(args)
+
+
+def test_parse_headers_explicit_json_object():
+    assert parse_headers('{"X-API-Key": "abc"}', env_var="RAY_JOB_HEADERS") == {
+        "X-API-Key": "abc"
+    }
+
+
+def test_parse_headers_env_fallback():
+    with set_env_var("RAY_JOB_HEADERS", '{"X-Env": "env"}'):
+        assert parse_headers(None, env_var="RAY_JOB_HEADERS") == {"X-Env": "env"}
+
+
+def test_parse_headers_explicit_value_overrides_env():
+    with set_env_var("RAY_JOB_HEADERS", '{"X-Env": "env"}'):
+        assert parse_headers('{"X-CLI": "cli"}', env_var="RAY_JOB_HEADERS") == {
+            "X-CLI": "cli"
+        }
+
+
+def test_parse_headers_no_input_returns_none():
+    with set_env_var("RAY_JOB_HEADERS"):
+        assert parse_headers(None, env_var="RAY_JOB_HEADERS") is None
+
+
+@pytest.mark.parametrize(
+    "headers,error",
+    [
+        ("{bad json", "Failed to parse headers into JSON"),
+        ("[]", "Expected headers to be a JSON object/dictionary"),
+    ],
+)
+def test_parse_headers_rejects_invalid_input(headers, error):
+    with pytest.raises(ValueError, match=error):
+        parse_headers(headers, env_var="RAY_JOB_HEADERS")
 
 
 def _job_cli_group_test_address(mock_sdk_client, cmd, *args):
