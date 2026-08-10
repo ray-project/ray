@@ -2,12 +2,15 @@ import io
 import os
 import sys
 import tarfile
+import urllib.error
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ray.experimental.sandbox._internal.image_utils import (
     extract_tar_layer,
     get_platform_arch,
+    get_registry_auth_headers,
     parse_image_ref,
     pull_and_extract_container_image,
     sanitize_image_name,
@@ -235,6 +238,75 @@ def test_extract_tar_layer_usr_merge(tmp_path):
     assert (dest / "bin" / "base").read_bytes() == b"base_binary"
     assert (dest / "usr" / "bin" / "app").read_bytes() == b"app_binary"
     assert (dest / "bin" / "app").read_bytes() == b"app_binary"
+
+
+def test_get_registry_auth_headers_success():
+    def mock_urlopen(req, timeout=30.0):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "manifests" in url:
+            headers = MagicMock()
+            headers.get.return_value = (
+                'Bearer realm="https://auth.docker.io/token",'
+                'service="registry.docker.io",'
+                'scope="repository:library/busybox:pull"'
+            )
+            raise urllib.error.HTTPError(
+                url, 401, "Unauthorized", headers, io.BytesIO(b"")
+            )
+        elif "auth.docker.io" in url:
+            resp = MagicMock()
+            resp.read.return_value = b'{"token": "test-bearer-token-xyz"}'
+            resp.__enter__.return_value = resp
+            return resp
+        raise ValueError(f"Unexpected URL: {url}")
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        headers = get_registry_auth_headers(
+            "registry-1.docker.io", "library/busybox", reference="1.36.0"
+        )
+        assert headers == {"Authorization": "Bearer test-bearer-token-xyz"}
+
+
+def test_get_registry_auth_headers_case_insensitive_and_query_param_handling():
+    called_auth_url = []
+
+    def mock_urlopen(req, timeout=30.0):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "manifests" in url:
+            headers = MagicMock()
+            # Lowercase bearer and realm already containing ?account=ray
+            headers.get.return_value = (
+                'bearer realm="https://auth.example.com/token?account=ray",'
+                'service="example.com"'
+            )
+            raise urllib.error.HTTPError(
+                url, 401, "Unauthorized", headers, io.BytesIO(b"")
+            )
+        elif "auth.example.com" in url:
+            called_auth_url.append(url)
+            resp = MagicMock()
+            resp.read.return_value = b'{"access_token": "oauth2-token-456"}'
+            resp.__enter__.return_value = resp
+            return resp
+        raise ValueError(f"Unexpected URL: {url}")
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        headers = get_registry_auth_headers(
+            "registry.example.com", "my/repo", reference="v1.0"
+        )
+        assert headers == {"Authorization": "Bearer oauth2-token-456"}
+        assert len(called_auth_url) == 1
+        assert "https://auth.example.com/token?account=ray&" in called_auth_url[0]
+        assert "service=example.com" in called_auth_url[0]
+        assert "scope=repository%3Amy%2Frepo%3Apull" in called_auth_url[0]
+
+
+def test_get_registry_auth_headers_no_auth_needed():
+    with patch("urllib.request.urlopen", return_value=MagicMock()):
+        headers = get_registry_auth_headers(
+            "localhost:5000", "my/repo", reference="latest"
+        )
+        assert headers == {}
 
 
 if __name__ == "__main__":

@@ -84,10 +84,13 @@ def get_platform_arch() -> str:
 
 
 def get_registry_auth_headers(
-    registry: str, repo: str, timeout: float = 30.0
+    registry: str,
+    repo: str,
+    reference: str = "latest",
+    timeout: float = 30.0,
 ) -> Dict[str, str]:
     """Retrieve bearer authentication token headers for registry repository."""
-    url = f"https://{registry}/v2/{repo}/manifests/latest"
+    url = f"https://{registry}/v2/{repo}/manifests/{reference}"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         urllib.request.urlopen(req, timeout=timeout)
@@ -96,18 +99,20 @@ def get_registry_auth_headers(
         if err.code != 401:
             return {}
         auth_hdr = err.headers.get("Www-Authenticate", "")
-        if not auth_hdr.startswith("Bearer"):
+        if not re.match(r"^\s*Bearer\b", auth_hdr, re.IGNORECASE):
             return {}
 
-        realm_m = re.search(r'realm=["\']([^"\']+)["\']', auth_hdr)
+        realm_m = re.search(r'realm=["\']?([^"\',\s]+)["\']?', auth_hdr, re.IGNORECASE)
         if not realm_m:
             return {}
         realm = realm_m.group(1)
 
-        service_m = re.search(r'service=["\']([^"\']+)["\']', auth_hdr)
+        service_m = re.search(
+            r'service=["\']?([^"\',\s]+)["\']?', auth_hdr, re.IGNORECASE
+        )
         service = service_m.group(1) if service_m else None
 
-        scope_m = re.search(r'scope=["\']([^"\']+)["\']', auth_hdr)
+        scope_m = re.search(r'scope=["\']?([^"\',\s]+)["\']?', auth_hdr, re.IGNORECASE)
         scope = scope_m.group(1) if scope_m else f"repository:{repo}:pull"
 
         params = {}
@@ -116,7 +121,8 @@ def get_registry_auth_headers(
         if scope:
             params["scope"] = scope
 
-        auth_url = f"{realm}?{urllib.parse.urlencode(params)}" if params else realm
+        sep = "&" if "?" in realm else "?"
+        auth_url = f"{realm}{sep}{urllib.parse.urlencode(params)}" if params else realm
         auth_req = urllib.request.Request(auth_url, headers={"User-Agent": _USER_AGENT})
         try:
             with urllib.request.urlopen(auth_req, timeout=timeout) as resp:
@@ -129,7 +135,8 @@ def get_registry_auth_headers(
                 f"Failed to obtain registry auth token from '{auth_url}': {auth_err}"
             )
             return {}
-    except Exception:
+    except Exception as err:
+        logger.debug(f"Failed to query registry '{url}' for auth challenge: {err}")
         return {}
     return {}
 
@@ -323,7 +330,10 @@ def pull_and_extract_container_image(
                 try:
                     registry, repo, reference = parse_image_ref(image)
                     auth_headers = get_registry_auth_headers(
-                        registry, repo, timeout=timeout_seconds
+                        registry,
+                        repo,
+                        reference=reference,
+                        timeout=timeout_seconds,
                     )
                     headers = {
                         "User-Agent": _USER_AGENT,
