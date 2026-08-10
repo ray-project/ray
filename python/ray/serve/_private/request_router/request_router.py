@@ -49,6 +49,46 @@ from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# Diagnostic-only: attributes time inside choose_replica() to a specific
+# sub-step (enqueue/dequeue wait vs. the queue-length probe RPC) instead of
+# treating the whole call as one opaque cost. This module is imported for
+# every Ray Serve deployment, not just the PD benchmark, so the import is
+# lazy and any failure (bench/ absent) is silent: routing must never depend
+# on, or be slowed by, diagnostics that only exist for one investigation.
+#
+# _pd_trace_mark() piggybacks on the ContextVar-based trace bench/pd_trace.py
+# already publishes per HTTP request -- safe here because
+# _choose_replica_for_request() runs directly in the caller's own task, so
+# the ContextVar set at the HTTP boundary is still visible.
+#
+# _pd_probe_log_sample() is deliberately NOT the same mechanism: the queue-
+# length probe (_probe_queue_lens) is awaited from _fulfill_pending_requests,
+# a background task spawned once per deployment and reused across many
+# requests. A contextvars.Task created that far back captured whatever
+# ContextVar value existed at *its* creation, not the current request's --
+# attributing probe timing to individual request records there would be
+# silently wrong (either no trace, or another request's). Logging aggregate
+# samples instead answers the real question (is the probe RPC itself slow)
+# without makes any claim about which request it was slow for.
+def _pd_trace_mark(stage: str) -> None:
+    try:
+        from bench.pd_trace import current as _pd_trace_current
+    except ImportError:
+        return
+    _pd_trace_current().mark(stage)
+
+
+def _pd_probe_log_sample(elapsed_s: float, num_replicas: int) -> None:
+    try:
+        from bench.pd_trace import ENABLED as _pd_trace_enabled
+    except ImportError:
+        return
+    if _pd_trace_enabled:
+        logger.info(
+            f"[pd_probe_diag] elapsed_ms={elapsed_s * 1000:.2f} "
+            f"num_replicas={num_replicas}"
+        )
+
 
 class LocalityScope(str, enum.Enum):
     NODE = "NODE"
@@ -963,11 +1003,13 @@ class RequestRouter(ABC):
             t.replica = r
             get_queue_len_tasks.append(t)
 
+        _probe_start = time.monotonic()
         done, pending = await asyncio.wait(
             get_queue_len_tasks,
             timeout=queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
+        _pd_probe_log_sample(time.monotonic() - _probe_start, len(replicas))
         for t in pending:
             replica = t.replica
             result.append((replica, None))
@@ -1318,7 +1360,9 @@ class RequestRouter(ABC):
 
             self._add_pending_request_to_indices(pending_request)
             self._maybe_start_routing_tasks()
+            _pd_trace_mark("enqueued")
             replica = await pending_request.future
+            _pd_trace_mark("future_resolved")
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
             self._remove_pending_request_from_indices(pending_request)
