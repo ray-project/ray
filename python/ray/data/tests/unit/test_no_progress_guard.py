@@ -1,8 +1,10 @@
 from types import SimpleNamespace
+from typing import Optional, cast
 
 import pytest
 
 from ray.data._internal.execution.no_progress_guard import NoProgressGuard
+from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data.exceptions import ExecutionTimeoutError
 
 
@@ -16,7 +18,7 @@ class _FakeOperator:
         num_tasks_finished: int = 0,
         num_active_tasks: int = 0,
         completed: bool = False,
-        extra_metrics: dict = None,
+        extra_metrics: Optional[dict] = None,
     ):
         self.name = name
         self.metrics = SimpleNamespace(
@@ -62,7 +64,8 @@ class _FakeClock:
 def _make_guard(ops, timeout_s=3.0):
     clock = _FakeClock()
     topology = {op: _FakeOpState() for op in ops}
-    return NoProgressGuard(topology, timeout_s, clock=clock), clock
+    guard = NoProgressGuard(cast(Topology, topology), timeout_s, clock=clock)
+    return guard, clock
 
 
 def test_raises_once_timeout_elapses_without_progress():
