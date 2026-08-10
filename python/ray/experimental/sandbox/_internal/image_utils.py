@@ -37,12 +37,21 @@ def sanitize_image_name(image: str) -> str:
     return safe
 
 
+_DOCKER_HUB_REGISTRIES = (
+    "docker.io",
+    "index.docker.io",
+    "registry-1.docker.io",
+    "registry.hub.docker.com",
+)
+
+
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     """Parse image reference string into (registry, repository, tag_or_digest).
 
     Args:
         image_ref: Container image reference string (e.g. 'busybox:latest',
-            'python:3.10-slim', 'ghcr.io/org/repo:1.0').
+            'python:3.10-slim', 'docker.io/library/python:3.12-slim',
+            'ghcr.io/org/repo:1.0').
 
     Returns:
         Tuple of (registry, repository, tag_or_digest).
@@ -60,8 +69,12 @@ def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
         registry = "registry-1.docker.io"
         repo = f"library/{parts[0]}"
     elif "." in parts[0] or ":" in parts[0] or parts[0] == "localhost":
-        registry = parts[0]
-        repo = parts[1]
+        if parts[0] in _DOCKER_HUB_REGISTRIES:
+            registry = "registry-1.docker.io"
+            repo = f"library/{parts[1]}" if "/" not in parts[1] else parts[1]
+        else:
+            registry = parts[0]
+            repo = parts[1]
     else:
         registry = "registry-1.docker.io"
         repo = image_ref

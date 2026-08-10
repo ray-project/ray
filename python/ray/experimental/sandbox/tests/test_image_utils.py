@@ -74,6 +74,51 @@ def test_parse_image_ref():
         "myimage",
         "v1",
     )
+    assert parse_image_ref("docker.io/library/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("docker.io/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("docker.io/rayproject/ray:2.35.0") == (
+        "registry-1.docker.io",
+        "rayproject/ray",
+        "2.35.0",
+    )
+    assert parse_image_ref("index.docker.io/library/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("index.docker.io/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("registry-1.docker.io/library/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("registry-1.docker.io/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("docker.io/library/ubuntu@sha256:12345") == (
+        "registry-1.docker.io",
+        "library/ubuntu",
+        "sha256:12345",
+    )
+    assert parse_image_ref("docker.io/ubuntu@sha256:12345") == (
+        "registry-1.docker.io",
+        "library/ubuntu",
+        "sha256:12345",
+    )
     assert parse_image_ref("ubuntu@sha256:12345") == (
         "registry-1.docker.io",
         "library/ubuntu",
@@ -173,6 +218,18 @@ def test_pull_and_extract_remote_image(tmp_path):
         os.path.join(extracted_dir, "rootfs", "bin", "sh")
     ) or os.path.exists(os.path.join(extracted_dir, "rootfs", "bin", "busybox"))
     assert os.path.exists(str(images_dir / "busybox_latest.tar"))
+
+
+def test_pull_and_extract_docker_io_prefixed_image(tmp_path):
+    images_dir = tmp_path / "images"
+    extracted_dir = pull_and_extract_container_image(
+        "docker.io/library/busybox:latest", images_dir=str(images_dir)
+    )
+    assert os.path.exists(extracted_dir)
+    assert os.path.exists(os.path.join(extracted_dir, ".extracted"))
+    assert os.path.exists(
+        os.path.join(extracted_dir, "rootfs", "bin", "sh")
+    ) or os.path.exists(os.path.join(extracted_dir, "rootfs", "bin", "busybox"))
 
 
 def test_pull_nonexistent_image(tmp_path):
