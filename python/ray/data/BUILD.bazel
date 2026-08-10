@@ -1029,6 +1029,20 @@ py_test(
 )
 
 py_test(
+    name = "test_placement_group_cluster_autoscaler",
+    size = "small",
+    srcs = ["tests/test_placement_group_cluster_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_projection_fusion",
     size = "small",
     srcs = ["tests/test_projection_fusion.py"],
@@ -1220,6 +1234,21 @@ py_test(
     srcs = ["tests/test_torch_tensor_utils.py"],
     tags = [
         "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_torch_inference",
+    size = "medium",
+    srcs = ["tests/test_torch_inference.py"],
+    tags = [
+        "exclusive",
+        "gpu",
         "team:data",
     ],
     deps = [
@@ -1628,20 +1657,6 @@ py_test(
     name = "test_randomize_block_order",
     size = "small",
     srcs = ["tests/test_randomize_block_order.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_ranker",
-    size = "small",
-    srcs = ["tests/test_ranker.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2162,6 +2177,20 @@ py_test(
 )
 
 py_test(
+    name = "test_combine_downloads",
+    size = "small",
+    srcs = ["tests/test_combine_downloads.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],
@@ -2249,6 +2278,34 @@ py_test(
     name = "test_delta",
     size = "small",
     srcs = ["tests/datasource/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_write_delta",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_write_delta_catalog_e2e",
+    size = "medium",
+    srcs = ["tests/datasource/test_write_delta_catalog_e2e.py"],
     tags = [
         "exclusive",
         "team:data",
