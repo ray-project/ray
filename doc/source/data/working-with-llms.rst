@@ -1,3 +1,6 @@
+.. meta::
+   :description: Batch LLM inference with ray.data.llm: vLLM and SGLang engines or hosted endpoints, multi-GPU scaling, and vision, video, and audio models.
+
 .. _working-with-llms:
 
 Working with LLMs
