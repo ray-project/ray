@@ -100,22 +100,24 @@ class ORCDatasource(FileBasedDatasource):
         """Choose the cheapest physical ORC column to read as a row-count
         carrier when no projection columns are physical.
 
-        Prefers narrow fixed-width types (int / bool) over large string /
-        binary / struct payloads to minimize I/O on big ORC files. Falls
-        back to the first declared field when nothing looks obviously
-        cheap, so the choice stays deterministic.
+        Prefers narrow fixed-width types (int / bool / float / temporal)
+        over large string / binary / struct payloads to minimize I/O on big
+        ORC files. Uses ``pyarrow.types`` predicates rather than matching on
+        ``str(field.type)``, since PyArrow's type reprs (e.g. ``"int64"``,
+        ``"date32[day]"``, ``"double"``) don't match short type-name
+        strings. Falls back to the first declared field when nothing looks
+        obviously cheap, so the choice stays deterministic.
         """
-        cheap_kinds = {
-            "int",
-            "bool",
-            "date",
-            "timestamp",
-            "time",
-            "float",
-        }
+        import pyarrow as pa
+
         # First pass: walk in declared order and pick the first "cheap" type.
         for field in orc_schema:
-            if str(field.type).split("[", 1)[0].split("(", 1)[0] in cheap_kinds:
+            if (
+                pa.types.is_integer(field.type)
+                or pa.types.is_boolean(field.type)
+                or pa.types.is_floating(field.type)
+                or pa.types.is_temporal(field.type)
+            ):
                 return field.name
         # Fallback: first declared field.
         return orc_schema.field(0).name

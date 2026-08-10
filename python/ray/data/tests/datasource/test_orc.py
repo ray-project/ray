@@ -211,8 +211,13 @@ def test_read_orc_projection_pushdown_multi_stripe(ray_start_regular_shared, tmp
 
 
 def test_read_orc_projection_pushdown_empty(ray_start_regular_shared, tmp_path):
-    """select_columns([]) must preserve row counts across multiple stripes
-    and not expose the internal stub to schema/columns."""
+    """select_columns([]) must preserve row counts across multiple stripes.
+
+    The row-preserving ``__bsp_stub`` placeholder is filtered from
+    ``schema()``/``columns()`` (see ``_is_user_visible_column``), but it's a
+    real physical column on each block, so ``take_all()`` returns one row
+    per input row (as it does for the identical Parquet case), not `[]`.
+    """
     path = os.path.join(tmp_path, "empty.orc")
     table = pa.table(
         {"id": list(range(5000)), "extra": [1] * 5000, "other": ["x"] * 5000}
@@ -222,7 +227,8 @@ def test_read_orc_projection_pushdown_empty(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_orc(path).select_columns([])
     assert ds.count() == 5000
-    assert ds.take_all() == []
+    assert ds.schema().names == []
+    assert len(ds.take_all()) == 5000
 
 
 def test_read_orc_projection_pushdown_partitioned(ray_start_regular_shared, tmp_path):
