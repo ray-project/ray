@@ -37,8 +37,15 @@ sudo ldconfig
 # The conda solve above can remove or downgrade python packages in the
 # miniforge env (e.g. exceptiongroup, jinja2) while satisfying ffmpeg's
 # constraints, so the depset must be installed after it to keep the env
-# matching the lock.
-uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
+# matching the lock. --reinstall is required because conda can delete files
+# of packages whose dist-info still matches the lock (stale conda-meta
+# entries for packages pip previously replaced, e.g. msgpack), which would
+# otherwise make uv skip them.
+# TODO(elliot-barn): install ffmpeg into a dedicated conda env
+# (conda create -n ffmpeg) and point ld.so.conf at that env's lib dir, so the
+# solve cannot touch base site-packages at all; then this --reinstall and the
+# ordering constraint can go away.
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --reinstall --index-strategy unsafe-best-match
 
 if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
   uv pip install \
