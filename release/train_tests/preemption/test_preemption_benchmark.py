@@ -253,9 +253,13 @@ def run_experiment(use_jit_checkpoint: bool, args: argparse.Namespace) -> Dict:
         error = repr(e)
     e2e_time = time.time() - start_time
 
-    summary = ray.get(tracker.summary.remote())
-    ray.kill(resource_killer)
-    ray.kill(tracker)
+    try:
+        summary = ray.get(tracker.summary.remote())
+    finally:
+        # Release these even if the tracker is unreachable, so a failed
+        # experiment does not leave a killer terminating nodes behind it.
+        ray.kill(resource_killer)
+        ray.kill(tracker)
 
     wasted_steps = max(0, summary["executed_steps"] - args.target_steps)
     metrics = {
