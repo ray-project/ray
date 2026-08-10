@@ -73,7 +73,9 @@ def test_auto_batches_respect_target_size():
     transformer = MapTransformer(
         [
             BatchMapTransformFn(
-                _generate_transform_fn_for_map_batches(identity),
+                _generate_transform_fn_for_map_batches(
+                    identity, use_actor_pool_event_loop=False
+                ),
                 batch_size="auto",
                 batch_format=BatchFormat.ARROW,
                 output_block_size_option=OutputBlockSizeOption.of(

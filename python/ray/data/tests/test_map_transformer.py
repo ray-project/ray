@@ -21,7 +21,9 @@ def _create_chained_transformer(udf, n):
     """Create a MapTransformer with chained batch transforms that track intermediates."""
     transform_fns = [
         BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(udf),
+            _generate_transform_fn_for_map_batches(
+                udf, use_actor_pool_event_loop=False
+            ),
             batch_format="pandas",
             batch_size=1,
             output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
