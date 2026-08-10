@@ -25,7 +25,7 @@ For docs-only fixes, take the lightest path:
 
 - Touch only files under `doc/`. A prose-only change runs no library tests at all, the cheapest path there is.
 - Don't bundle in a non-doc change "while you're at it" — that change pulls its own (often expensive) test set into the PR.
-- The `docs-go` label skips the per-library docs example steps on a content-only PR. It's optional, and applying it takes write access, so suggest it to the reviewer rather than assuming the PR author can add it. A guard step, `lint: validate docs-go scope`, fails unless every changed file is documentation content (under `doc/`, or the Vale configuration at `.vale.ini` and `.vale/`, excluding `BUILD` files), so the label never skips tests on a code, CI, or build change.
+- The `docs-go` label skips the per-library docs example steps on a content-only PR. It's optional, and applying it takes write access, so suggest it to the reviewer rather than assuming the PR author can add it. A guard step, `lint: validate docs-go scope`, fails unless every changed file is documentation content (under `doc/`, the Vale configuration at `.vale.ini` and `.vale/`, or the API-consistency checker at `ci/ray_ci/doc/`, excluding `BUILD` files everywhere), so the label never skips tests on a library, build, or general CI change. If the guard fails, removing the label isn't enough: push a new commit, because a rebuild replays the old label set.
 - If a docs change requires a non-doc change to land cleanly (e.g., autodoc references a renamed symbol), land them in the larger non-doc PR, not a docs-led PR.
 
 For generated API docs that depend on Python source under `python/ray/...`, expect broader test runs. That's correct, not a misconfiguration.
