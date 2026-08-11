@@ -36,6 +36,19 @@ def restore_ctx():
         ctx.use_arrow_rs_parquet_reader = arrow_rs
 
 
+def _whole_file_manifest():
+    """FileManifest stand-in for tests that call ``_resolve_batch_size`` directly.
+
+    Carries no footer chunk stats (like a ``WholeFileChunker`` manifest), so the
+    reader takes its footer-probe fallback — the pre-#64985 behaviour these tests
+    were written against. Tests that go through ``read()`` never need this; the
+    real manifest arrives there.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(file_chunk_metadatas=[None])
+
+
 def _flat_table(num_rows=20_000):
     rng = np.random.default_rng(0)
     return pa.table(
@@ -190,7 +203,7 @@ def test_native_path_actually_runs(tmp_path):
         scanner_kwargs = {
             "columns": None,
             "filter": None,
-            "batch_size": reader._resolve_batch_size(dataset),
+            "batch_size": reader._resolve_batch_size(dataset, _whole_file_manifest()),
         }
         got = pa.concat_tables(
             list(reader._iter_fragment_tables(fragment, scanner_kwargs))
@@ -811,7 +824,7 @@ def test_filter_pushdown_prunes_row_groups(tmp_path, restore_ctx):
         )
         dataset = pds.dataset(str(path), format="parquet", filesystem=LocalFileSystem())
         fragment = next(dataset.get_fragments())
-        batch_size = reader._resolve_batch_size(dataset)
+        batch_size = reader._resolve_batch_size(dataset, _whole_file_manifest())
         return list(
             reader._iter_fragment_tables(
                 fragment,
@@ -1121,7 +1134,7 @@ def test_large_nested_byte_budget_batching(tmp_path, monkeypatch):
     scanner_kwargs = {
         "columns": None,
         "filter": None,
-        "batch_size": reader._resolve_batch_size(dataset),
+        "batch_size": reader._resolve_batch_size(dataset, _whole_file_manifest()),
     }
     batches = list(reader._iter_fragment_tables(fragment, scanner_kwargs))
 
@@ -1208,13 +1221,19 @@ def test_scanner_leak_signature_and_arrow_rs_avoids_it(tmp_path, monkeypatch):
     assert to_small > 0.4 * file_mb, (to_small, file_mb)
     assert abs(to_small - to_big) < 0.3 * to_small, (to_small, to_big)
 
-    # (2) ParquetFile.iter_batches (the V2 read path) holds only ~a row group —
-    #     materially below to_batches. Better, but still a whole-row-group floor.
+    # (2) ParquetFile.iter_batches (the ARROW-5030 fallback path) HISTORICALLY held
+    #     only ~a row group — measured ~5x below to_batches on the pyarrow this was
+    #     written against (macOS venv, 2026-07). Newer pyarrow buffers more
+    #     aggressively and can hold ~the whole file here too (first seen on Linux,
+    #     2026-08-11: it_small 43.8 vs to_small 44.5), so this is upstream behaviour
+    #     we record but no longer assert. What we DO still require is sanity: the
+    #     fallback path is not materially WORSE than the scanner.
     it_small = _peak_mb(lambda: pq.ParquetFile(str(path)).iter_batches(batch_size=256))
-    assert it_small < 0.6 * to_small, (it_small, to_small)
+    assert it_small < 1.2 * to_small, (it_small, to_small)
 
     # (3) arrow-rs: decoded data is Rust-owned and crosses via zero-copy FFI, so ~0
-    #     lands in the Arrow allocator — below even the row-group floor.
+    #     lands in the Arrow allocator — below whichever floor THIS pyarrow
+    #     version exhibits (row-group or whole-file).
     monkeypatch.setattr(reader_mod, "_ARROW_RS_DECODE_BUDGET_BYTES", 1024 * 1024)
     reader = reader_mod.ArrowRsParquetFileReader(
         filesystem=LocalFileSystem(), target_block_size=128 * 1024 * 1024
@@ -1224,10 +1243,10 @@ def test_scanner_leak_signature_and_arrow_rs_avoids_it(tmp_path, monkeypatch):
     scanner_kwargs = {
         "columns": None,
         "filter": None,
-        "batch_size": reader._resolve_batch_size(dataset),
+        "batch_size": reader._resolve_batch_size(dataset, _whole_file_manifest()),
     }
     rs_peak = _peak_mb(lambda: reader._iter_fragment_tables(frag, scanner_kwargs))
-    assert rs_peak < 0.5 * it_small, (rs_peak, it_small)
+    assert rs_peak < 0.5 * min(it_small, to_small), (rs_peak, it_small, to_small)
 
 
 def test_map_column_native_parity(tmp_path, restore_ctx):
@@ -1788,7 +1807,7 @@ def test_arrow_rs_s3_native_path_runs(s3_fs, s3_path):
         scanner_kwargs = {
             "columns": None,
             "filter": None,
-            "batch_size": reader._resolve_batch_size(dataset),
+            "batch_size": reader._resolve_batch_size(dataset, _whole_file_manifest()),
         }
         got = pa.concat_tables(
             list(reader._iter_fragment_tables(fragment, scanner_kwargs))
