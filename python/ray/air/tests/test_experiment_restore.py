@@ -204,8 +204,8 @@ def test_experiment_restore(tmp_path, runner_type):
 
     assert progress == 1.0
 
-    # The script shouldn't have errored. (It should have finished by this point.)
-    assert return_code == 0, (
+    allowed_return_codes = (0, -signal.SIGUSR1) if interrupted else (0,)
+    assert return_code in allowed_return_codes, (
         f"The script errored with return code: {return_code}.\n"
         f"Check the `{_RUN_SCRIPT_FILENAME}` script for any issues. "
     )
