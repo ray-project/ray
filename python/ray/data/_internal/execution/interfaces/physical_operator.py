@@ -97,15 +97,6 @@ class OpTask(ABC):
             # If the task is an actor task, fallback to force=False.
             ray.cancel(waitable, recursive=True, force=False)
 
-        is_actor_task = not self.get_task_id().actor_id().is_nil()
-
-        ray.cancel(
-            self.get_waitable(),
-            recursive=True,
-            # NOTE: Actor tasks can't be force-cancelled
-            force=force and not is_actor_task,
-        )
-
     def get_task_id(self) -> ray.TaskID:
         object_ref = self.get_waitable()
 
