@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Enable TLS on Ray's gRPC channels so traffic between client, head, and worker processes is authenticated and encrypted."
+---
+
 (kuberay-tls)=
 
 # TLS Authentication

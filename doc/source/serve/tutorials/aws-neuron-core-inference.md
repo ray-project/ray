@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Experimental tutorial serving an inference model on AWS NeuronCores with Ray Serve and FastAPI."
 ---
 (aws-neuron-core-inference-tutorial)=
 
