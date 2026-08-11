@@ -113,9 +113,8 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  bool ReplyCancelWorkerLease(bool success = true) {
+  bool ReplyCancelWorkerLease() {
     CancelWorkerLeaseReply reply;
-    reply.set_success(success);
     if (cancel_callbacks.size() == 0) {
       return false;
     } else {

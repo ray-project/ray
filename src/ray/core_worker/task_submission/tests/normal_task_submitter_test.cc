@@ -347,13 +347,12 @@ class MockRayletClient : public rpc::FakeRayletClient {
     return true;
   }
 
-  bool ReplyCancelWorkerLease(bool success = true) {
+  bool ReplyCancelWorkerLease() {
     rpc::ClientCallback<rpc::CancelWorkerLeaseReply> callback = PopCancelCallbackInLock();
     if (!callback) {
       return false;
     }
     rpc::CancelWorkerLeaseReply reply;
-    reply.set_success(success);
     callback(Status::OK(), std::move(reply));
     return true;
   }

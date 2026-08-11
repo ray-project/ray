@@ -2377,11 +2377,10 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
-  AddCancelledLeaseTombstone(lease_id);
-  cluster_lease_manager_.CancelLease(lease_id);
   // The tombstone makes the cancellation stick even if the lease request has not
   // reached us yet, so the caller never has to retry.
-  reply->set_success(true);
+  AddCancelledLeaseTombstone(lease_id);
+  cluster_lease_manager_.CancelLease(lease_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
