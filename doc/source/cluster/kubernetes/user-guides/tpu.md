@@ -10,6 +10,8 @@ myst:
 
 This document provides tips on TPU usage with KubeRay.
 
+For advanced TPU topology management, including dynamic slicing, KubeRay subslicing, and Ray's `SubslicePlacementGroup`, see the {ref}`kuberay-tpu-subslicing` guide.
+
 TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure both the Kubernetes setup and add additional values to the RayCluster CR configuration. Configure TPUs on GKE by referencing the {ref}`kuberay-gke-tpu-cluster-setup`.
 
 ## About TPUs
@@ -163,6 +165,7 @@ Multi-host TPU autoscaling is supported in KubeRay versions 1.1.0 or later and R
 
 Further reference and discussion
 --------------------------------
+* {ref}`kuberay-tpu-subslicing`
 * See [TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus) for more details on using TPUs.
 * [TPU availability](https://cloud.google.com/tpu/docs/regions-zones)
 * [TPU System Architecture](https://cloud.google.com/tpu/docs/system-architecture-tpu-vm)

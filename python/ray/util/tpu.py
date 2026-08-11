@@ -1809,6 +1809,25 @@ class SubslicePlacementGroup:
         return self._placement_group
 
     @property
+    def slice_placement_group(self) -> PlacementGroup:
+        """Alias for placement_group for compatibility with dispatch."""
+        return self._placement_group
+
+    @property
+    def _pg_per_slice(self) -> bool:
+        return False
+
+    @property
+    def num_bundles(self) -> int:
+        """Alias for num_hosts for compatibility with dispatch."""
+        return self._num_hosts
+
+    @property
+    def devices_per_host(self) -> int:
+        """Alias for chips_per_host for compatibility with dispatch."""
+        return self._chips_per_host
+
+    @property
     def parent_topology(self) -> str:
         """The full parent TPU topology."""
         return self._parent_topology
