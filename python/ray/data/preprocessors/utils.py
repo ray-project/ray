@@ -54,7 +54,8 @@ def _null_where_source_is_missing(rows: List[Any], source: "pd.Series") -> List[
     a list column of numbers with a missing entry, rather than a list of missing
     numbers.
     """
-    return [None if missing else row for row, missing in zip(rows, source.isna())]
+    missing_mask = source.isna().to_numpy()
+    return [None if missing else row for row, missing in zip(rows, missing_mask)]
 
 
 @DeveloperAPI
