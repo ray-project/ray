@@ -88,12 +88,8 @@ def _plan_hash_shuffle_repartition_v2(
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
     key_list = list(normalized_key_columns)
 
-    input_logical_op = input_physical_op._logical_operators[0]
-    estimated_input_blocks = input_logical_op.estimated_num_outputs()
     target_num_partitions = (
-        logical_op.num_outputs
-        or estimated_input_blocks
-        or data_context.default_hash_shuffle_parallelism
+        logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
     )
 
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
@@ -164,12 +160,8 @@ def _plan_hash_shuffle_aggregate_v2(
     aggs = tuple(logical_op.aggs)
 
     if key_list:
-        input_logical_op = input_physical_op._logical_operators[0]
-        estimated_input_blocks = input_logical_op.estimated_num_outputs()
         num_partitions = (
-            logical_op.num_partitions
-            or estimated_input_blocks
-            or data_context.default_hash_shuffle_parallelism
+            logical_op.num_partitions or data_context.default_hash_shuffle_parallelism
         )
     else:
         # Global aggregation reduces the whole dataset to a single row.

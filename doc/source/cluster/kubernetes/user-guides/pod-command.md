@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Customize the container command for Ray head and worker pods, running commands before or instead of the generated ray start."
+---
+
 (kuberay-pod-command)=
 
 # Specify container commands for Ray head/worker Pods

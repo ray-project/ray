@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Common Ray Serve LLM issues: gated Hugging Face models, slow model downloads, vLLM compatibility, and NIXL dependency conflicts."
+---
+
 # Troubleshooting
 
 Common issues and frequently asked questions for Ray Serve LLM.
