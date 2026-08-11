@@ -40,7 +40,11 @@ only returning columns from the requested side)
 - Left Anti, Right Anti (return rows that have no matching rows in the other table, only returning
 columns from the requested side)
 
-Internally joins are currently powered by the :ref:`hash-shuffle backend <hash-shuffle>`.
+Internally joins are currently powered by the :ref:`hash-shuffle backend <hash-shuffle>`. Prefer
+:ref:`hash-shuffle v2 <hash-shuffle-v2>` by setting the shuffle strategy before creating a
+``Dataset``:
+``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2``. See
+:ref:`Tuning hash-shuffle v2 <tuning-hash-shuffle-v2>` for memory-related knobs.
 
 Configuring Joins
 ----------------------------------
@@ -50,9 +54,7 @@ Joins are generally memory-intensive operations that require accurate memory acc
 Ray Data provides the following levers to allow tuning the performance of joins for your workload:
 
 -   `num_partitions`: (required) specifies number of partitions both incoming datasets will be hash-partitioned into. Check out :ref:`configuring number of partitions <joins_configuring_num_partitions>` section for guidance on how to tune this up.
--   `partition_size_hint`: (optional) Hint to joining operator about the estimated avg expected size of the individual partition (in bytes). If not specified, defaults to DataContext.target_max_block_size (128Mb by default).
-    -   Note that, `num_partitions * partition_size_hint` should ideally be approximating actual dataset size, ie `partition_size_hint` could be estimated as dataset size divided by `num_partitions` (assuming relatively evenly sized partitions)
-    -   However, in cases when dataset partitioning is expected to be heavily skewed `partition_size_hint` should approximate largest partition to prevent Out-of-Memory (OOM) errors
+-   `partition_size_hint`: (**deprecated**) Hint to the joining operator about the estimated avg expected size of the individual partition (in bytes). This parameter is deprecated and ignored (the hash-shuffle v2 join path sizes reduce-task memory from observed partition sizes), and it will be removed in a future release.
 
 .. _joins_configuring_num_partitions:
 

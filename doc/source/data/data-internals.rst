@@ -120,8 +120,89 @@ Hash-shuffling is a classical hash-partitioning based shuffling where:
 Hash-shuffling is particularly useful for operations that require deterministic partitioning based on keys, such as joins, group-by operations, and key-based repartitioning, by
 ensuring that rows with the same key-values are being placed into the same partition.
 
-.. note:: To use hash-shuffling in your aggregations and repartitioning operations, you need to currently specify
-    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before creating a ``Dataset``.
+.. note:: Hash-shuffle (``ShuffleStrategy.HASH_SHUFFLE``) is the default shuffle strategy for
+    key-based operations: aggregations, group-bys, key-based repartitioning, and joins. To set it
+    explicitly, specify
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before
+    creating a ``Dataset``.
+
+.. _hash-shuffle-v2:
+
+Hash-shuffle v2
+~~~~~~~~~~~~~~~
+
+Hash-shuffle v2 (``ShuffleStrategy.HASH_SHUFFLE_V2``) is a task-based reimplementation of
+hash-shuffling. Unlike the aggregator-actor model described above, hash-shuffle v2 doesn't push
+shards into long-lived aggregator actors:
+
+1. **Map phase:** map tasks hash-partition their input blocks and emit each partition's shard as a
+   Ray object.
+2. **Reduce phase:** reduce tasks pull the shards for their partition from the object store and
+   combine them into the output blocks.
+
+Because the intermediate shards are ordinary object-store objects rather than in-memory actor
+state, Ray can spill them to disk under memory pressure. This avoids the out-of-memory risk of the
+aggregator-actor model, in which partitions are held in aggregator memory. Running the map and
+reduce stages as tasks rather than long-lived actors also makes them retriable: if a reduce task is
+killed under memory pressure, Ray retries it automatically, whereas a v1 aggregator actor that dies
+loses its in-memory partition state and fails the whole shuffle. Hash-shuffle v2 also coalesces
+shuffle inputs into larger batches before partitioning and sizes reduce-task memory from observed
+partition sizes, which improves memory accounting on skewed datasets.
+
+Hash-shuffle v2 is the recommended hash-shuffle strategy. It supports the same operations as the
+default hash-shuffle strategy and generally performs better, with the largest gains on large, skewed, 
+or memory-intensive workloads.
+
+To enable hash-shuffle v2 for the whole cluster, set the environment variable before starting your
+application:
+
+.. code-block:: bash
+
+    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2
+
+To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
+
+.. code-block:: python
+
+    from ray.data.context import DataContext, ShuffleStrategy
+
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+
+.. _tuning-hash-shuffle-v2:
+
+Tuning hash-shuffle v2
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Hash-shuffle v2 provides the following knobs:
+
+**Input batch size** (``DataContext.shuffle_input_batch_bytes``, environment variable
+``RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES``, default 1 GiB). This setting only applies to the
+``HASH_SHUFFLE_V2`` strategy.
+
+The operator buffers input blocks from the same node until their combined size reaches this
+threshold, then submits a single map task to partition that batch. This controls the trade-off
+between map parallelism and the number of intermediate shard objects:
+
+- A **higher** threshold produces fewer, larger intermediate shard objects and less object-store
+  overhead, but reduces map-stage parallelism.
+- A **lower** threshold increases map-stage parallelism at the cost of more, smaller intermediate
+  objects. Lower the threshold if map-stage CPU utilization is low because the map tasks are too
+  coarse-grained.
+- Set the threshold to ``0`` to disable batching and partition each input bundle individually.
+
+**Object inlining threshold** (``max_direct_call_object_size``, environment variable
+``RAY_max_direct_call_object_size``, default 100 KB). This is a Ray Core setting rather than a Ray
+Data one.
+
+When a map task partitions a block across many partitions, an individual partition's shard can be
+smaller than this threshold. Ray transfers objects below the threshold *inline*, storing them in
+the memory of the process that submitted the task (typically the driver on the head node) rather
+than in the object store. For a shuffle that produces many small shards, these inlined objects
+accumulate on the head node and can cause an out-of-memory failure there.
+
+Lower this threshold (for example, ``RAY_max_direct_call_object_size=8192`` for 8 KB) so that only
+small metadata stays inline and shard data travels through the object store, which is spillable and
+distributed across the cluster. This reduces the risk of head-node out-of-memory failures.
 
 .. _range-partitioning-shuffle:
 
@@ -136,8 +217,6 @@ the real ranges of the totally ordered (sorted) dataset.
 2. **Partition phase:** every block is sorted and split into partitions based on the *range boundaries* derived in the previous step.
 3. **Reduce phase:** individual partitions within the same range are then recombined to produce the resulting block.
 
-.. note:: Range-partitioning shuffle is a default shuffling strategy. To set it explicitly specify
-    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED`` before creating a ``Dataset``.
 
 
 Operators, plans, and planning

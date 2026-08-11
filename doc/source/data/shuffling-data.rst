@@ -229,6 +229,20 @@ Example of hash shuffling based on column `id`:
     # Hash-shuffle
     hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
 
+.. tip::
+
+    Prefer :ref:`hash-shuffle v2 <hash-shuffle-v2>` (``ShuffleStrategy.HASH_SHUFFLE_V2``), an
+    improved hash-shuffle implementation that generally performs better than the default
+    hash-shuffle strategy:
+
+    .. code-block:: python
+
+        from ray.data.context import DataContext, ShuffleStrategy
+
+        DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+
+    See :ref:`Tuning hash-shuffle v2 <tuning-hash-shuffle-v2>` for the available knobs.
+
 .. _optimizing_shuffles:
 
 Advanced: Optimizing shuffles
@@ -260,6 +274,10 @@ shuffle quality higher until you reach this threshold.
 
 Enabling push-based shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note:: ``DataContext.use_push_based_shuffle`` and the ``RAY_DATA_PUSH_BASED_SHUFFLE`` environment
+    variable are deprecated. Configure the shuffle strategy through ``DataContext.shuffle_strategy``
+    (for example, ``ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED``) instead.
 
 Some Dataset operations require a *shuffle* operation, meaning that the system shuffles data from all of the input partitions to all of the output partitions.
 These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
