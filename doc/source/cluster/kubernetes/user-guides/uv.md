@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Use uv for Python package management in a KubeRay cluster and run a Ray script with uv-managed dependencies."
+---
+
 (kuberay-uv)=
 
 # Using `uv` for Python package management in KubeRay

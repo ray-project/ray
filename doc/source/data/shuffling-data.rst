@@ -1,3 +1,6 @@
+.. meta::
+   :description: Shuffle Ray Data at different granularities: file order, local buffer shuffle, map_batches shuffle, block order, and global per-epoch shuffle.
+
 .. _shuffling_data:
 
 ==============

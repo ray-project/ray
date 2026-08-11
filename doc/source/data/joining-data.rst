@@ -1,3 +1,6 @@
+.. meta::
+   :description: Join Ray Data Datasets on key columns using the supported join types, and tune the partition and aggregator counts.
+
 .. _joining-data:
 
 ============

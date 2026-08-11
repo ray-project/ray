@@ -1,3 +1,6 @@
+.. meta::
+   :description: Isolate Ray system and application resources with cgroup v2 across containers, Kubernetes, GKE, and bare-metal deployments.
+
 .. _resource-isolation:
 
 =================================
