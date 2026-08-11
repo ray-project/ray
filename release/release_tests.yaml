@@ -1670,7 +1670,7 @@
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
-    timeout: 21600
+    timeout: 28800
     long_running: false
     script: python workloads/microbenchmarks.py --run-controller
 

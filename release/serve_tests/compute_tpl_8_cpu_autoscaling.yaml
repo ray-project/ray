@@ -8,8 +8,8 @@ advanced_instance_config:
           Value: '24'
 
 head_node:
-    # 16 cpus, x86, 64G mem, 10Gb NIC, $0.768/hr on demand
-    instance_type: m5.4xlarge
+    # 32 cpus, x86, 128G mem, 10Gb NIC, $1.536/hr on demand
+    instance_type: m5.8xlarge
     resources:
       CPU: 0
       proxy: 1
