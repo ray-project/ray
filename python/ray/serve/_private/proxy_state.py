@@ -112,6 +112,10 @@ class ProxyWrapper(ABC):
         """Kill the proxy actor."""
         raise NotImplementedError
 
+    # Populated by is_ready() once the proxy actor reports in.
+    worker_id: Optional[str]
+    log_file_path: Optional[str]
+
 
 class ActorProxyWrapper(ProxyWrapper):
     def __init__(
@@ -127,19 +131,33 @@ class ActorProxyWrapper(ProxyWrapper):
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
     ):
         # initialize with provided proxy actor handle or get or create a new one.
-        self._actor_handle = actor_handle or self._get_or_create_proxy_actor(
-            http_options=http_options,
-            grpc_options=grpc_options,
-            name=name,
-            node_id=node_id,
-            node_ip_address=node_ip_address,
-            port=port,
-            proxy_actor_class=proxy_actor_class,
-            logging_config=logging_config,
-        )
-        self._ready_check_future = None
-        self._health_check_future = None
-        self._drained_check_future = None
+        if actor_handle is not None:
+            self._actor_handle = actor_handle
+        else:
+            # Creating a new proxy requires all connection parameters.
+            if (
+                http_options is None
+                or grpc_options is None
+                or name is None
+                or node_id is None
+                or node_ip_address is None
+            ):
+                raise ValueError(
+                    "proxy actor creation requires all connection parameters"
+                )
+            self._actor_handle = self._get_or_create_proxy_actor(
+                http_options=http_options,
+                grpc_options=grpc_options,
+                name=name,
+                node_id=node_id,
+                node_ip_address=node_ip_address,
+                port=port,
+                proxy_actor_class=proxy_actor_class,
+                logging_config=logging_config,
+            )
+        self._ready_check_future: Optional[asyncio.Future] = None
+        self._health_check_future: Optional[asyncio.Future] = None
+        self._drained_check_future: Optional[asyncio.Future] = None
 
         self._update_draining_obj_ref = None
 
@@ -155,10 +173,10 @@ class ActorProxyWrapper(ProxyWrapper):
         name: str,
         node_id: str,
         node_ip_address: str,
-        port: int,
+        port: Optional[int],
         logging_config: LoggingConfig,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
-    ) -> ProxyWrapper:
+    ) -> ActorHandle:
         """Helper to start or reuse existing proxy.
 
         Takes the name of the proxy, the node id, and the node ip address, and look up
@@ -174,14 +192,14 @@ class ActorProxyWrapper(ProxyWrapper):
                 extra={"log_to_stderr": False},
             )
 
-        return proxy or proxy_actor_class.options(
+        return proxy or proxy_actor_class.options(  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
             num_cpus=http_options.num_cpus,
             name=name,
             namespace=SERVE_NAMESPACE,
             lifetime="detached",
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
-            label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},  # type: ignore[attr-defined]
             enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
         ).remote(
             http_options,
@@ -194,7 +212,7 @@ class ActorProxyWrapper(ProxyWrapper):
     @property
     def actor_id(self) -> str:
         """Return the actor id of the proxy actor."""
-        return self._actor_handle._actor_id.hex()
+        return self._actor_handle._actor_id.hex()  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -208,7 +226,7 @@ class ActorProxyWrapper(ProxyWrapper):
     def is_ready(self, timeout_s: float) -> Optional[bool]:
         if self._ready_check_future is None:
             self._ready_check_future = wrap_as_future(
-                self._actor_handle.ready.remote(), timeout_s=timeout_s
+                self._actor_handle.ready.remote(), timeout_s=timeout_s  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
             )
 
         if not self._ready_check_future.done():
@@ -237,7 +255,7 @@ class ActorProxyWrapper(ProxyWrapper):
     def is_healthy(self, timeout_s: float) -> Optional[bool]:
         if self._health_check_future is None:
             self._health_check_future = wrap_as_future(
-                self._actor_handle.check_health.remote(), timeout_s=timeout_s
+                self._actor_handle.check_health.remote(), timeout_s=timeout_s  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
             )
 
         if not self._health_check_future.done():
@@ -263,7 +281,7 @@ class ActorProxyWrapper(ProxyWrapper):
     def is_drained(self, timeout_s: float) -> Optional[bool]:
         if self._drained_check_future is None:
             self._drained_check_future = wrap_as_future(
-                self._actor_handle.is_drained.remote(),
+                self._actor_handle.is_drained.remote(),  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
                 timeout_s=timeout_s,
             )
 
@@ -297,7 +315,7 @@ class ActorProxyWrapper(ProxyWrapper):
         actor is ready for shutdown.
         """
         try:
-            ray.get(self._actor_handle.check_health.remote(), timeout=0)
+            ray.get(self._actor_handle.check_health.remote(), timeout=0)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
         except (RayActorError, ActorUnschedulableError):
             # The actor is dead or permanently unschedulable (e.g. hard-pinned
             # to a node that no longer exists), so it's ready for shutdown.
@@ -312,7 +330,7 @@ class ActorProxyWrapper(ProxyWrapper):
         """Update the draining status of the proxy actor."""
         # NOTE: All update_draining calls are implicitly serialized, by specifying
         #       `ObjectRef` of the previous call
-        self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
+        self._update_draining_obj_ref = self._actor_handle.update_draining.remote(  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
             draining, _after=self._update_draining_obj_ref
         )
         # In case of cancelled draining, make sure pending draining check is cancelled
@@ -423,7 +441,7 @@ class ProxyState:
 
     @property
     def actor_handle(self) -> ActorHandle:
-        return self._actor_proxy_wrapper.actor_handle
+        return self._actor_proxy_wrapper.actor_handle  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
 
     @property
     def actor_name(self) -> str:
@@ -640,7 +658,7 @@ class ProxyStateManager:
         grpc_options: Optional[gRPCOptions] = None,
         proxy_location: Optional[ProxyLocation] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
-        actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
+        actor_proxy_wrapper_class: Type[ActorProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
         running_native_proxies: bool = False,
     ):
@@ -742,7 +760,7 @@ class ProxyStateManager:
 
     def started_fallback_proxy_at_least_once(self) -> bool:
         return (
-            self._fallback_proxy_state
+            self._fallback_proxy_state is not None
             and self._fallback_proxy_state.status != ProxyStatus.STARTING
         )
 
@@ -812,7 +830,7 @@ class ProxyStateManager:
 
         return proxy_ids
 
-    def update(self, proxy_nodes: Set[NodeId] = None) -> Set[str]:
+    def update(self, proxy_nodes: Optional[Set[NodeId]] = None) -> None:
         """Update the state of all proxies.
 
         Start proxies on all nodes if not already exist and stop the proxies on nodes
@@ -987,7 +1005,7 @@ class ProxyStateManager:
             self._fallback_proxy_state = None
             self._fallback_proxy_restart_count += 1
 
-    def _stop_proxies_if_needed(self) -> bool:
+    def _stop_proxies_if_needed(self) -> None:
         """Removes proxy actors.
 
         Removes proxy actors from any nodes that no longer exist or unhealthy proxy.
