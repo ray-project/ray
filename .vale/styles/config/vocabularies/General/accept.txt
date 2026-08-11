@@ -17,7 +17,7 @@ Databricks
 [Pp]arallelization
 [Pp]erformant
 [Pp]rofiler
-[Rr]esample
+[Rr]esample[sd]?
 [Rr]esampling
 [Ss]pectogram(s)?
 [Ss]ubclassing

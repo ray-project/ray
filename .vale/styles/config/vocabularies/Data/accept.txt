@@ -27,8 +27,6 @@ Modin
 [Mm]ultiget(s)?
 Multimodality
 [Mm]ultitenancy
-[Pp]reprocess(es|ed|ing)?
-[Rr]esample[sd]?
 [Ss]ubcluster(s)?
 ndarray(s)?
 NLP
@@ -44,7 +42,7 @@ Predibase('s)?
 [Pp]refetching
 [Pp]ostprocess
 [Pp]ostprocessor(s)?
-[Pp]reprocess
+[Pp]reprocess(es|ed|ing)?
 [Pp]reprocessor(s)?
 process_file
 [Pp]ushdown

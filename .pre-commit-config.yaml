@@ -355,6 +355,14 @@ repos:
     hooks:
       - id: semgrep
         args: [--config=semgrep.yml, --error]
+        # semgrep.yml's `code-block-python` rule targets doc/source/data/**/*.rst,
+        # but the top-level `exclude` above has kept every doc/source path out of
+        # this hook, so the rule has never actually run on those files. Narrowing
+        # that exclude for Vale exposes 8 pre-existing violations under
+        # doc/source/data and would fail `semgrep_lint`. Keep them exempt here and
+        # fix the violations separately, rather than converting code blocks in a
+        # PR about Vale.
+        exclude: ^doc/source/data/
 
   - repo: https://github.com/errata-ai/vale
     rev: v3.17.1
