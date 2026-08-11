@@ -125,6 +125,47 @@ llms_txt_exclude += sorted(
     for p in _conf_dir.rglob("*.ipynb")
 )
 
+# Thin API-reference hub pages: a title plus an autosummary table, under 40 words
+# of real prose. The per-symbol pages they link to are already excluded above via
+# the `*/api/doc/*` patterns, so an agent gains nothing from the shell — and a
+# description on one would only restate its title. `data/api/_autogen` has no
+# title at all, and the two `*_regression_example` pages are literalinclude
+# stubs with zero prose. Every remaining in-scope page carries a curated
+# description; these are the pages where exclusion beats describing.
+llms_txt_exclude += [
+    "data/api/_autogen",
+    "data/api/aggregate",
+    "data/api/api",
+    "data/api/checkpoint",
+    "data/api/data_context",
+    "data/api/data_iterator",
+    "data/api/dataset",
+    "data/api/datatype",
+    "data/api/execution_options",
+    "data/api/grouped_data",
+    "data/api/llm",
+    "data/api/loading_data",
+    "data/api/preprocessor",
+    "data/api/saving_data",
+    "ray-core/api/cli",
+    "ray-core/api/core",
+    "ray-core/api/exceptions",
+    "ray-core/api/index",
+    "ray-core/api/runtime-env",
+    "ray-core/api/scheduling",
+    "ray-core/api/utility",
+    "ray-core/compiled-graph/compiled-graph-api",
+    "train/examples/pytorch/torch_regression_example",
+    "train/examples/tf/tensorflow_regression_example",
+    "tune/api/api",
+    "tune/api/execution",
+    "tune/api/integration",
+    "tune/api/internals",
+    "tune/api/result_grid",
+    "tune/api/search_space",
+    "tune/api/syncing",
+]
+
 # -- sphinx-collections: pull external template files at build time -----------
 # The fetch machinery, template registry, collections config, and _collections/
 # Sphinx wiring live in template_collections.py so template-publishing changes
@@ -193,7 +234,7 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-myst_heading_anchors = 3
+myst_heading_anchors = 4
 
 # Add these for attachment handling
 nb_render_key_pairs = {
@@ -530,8 +571,13 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
-# Better typehint formatting (see custom.css)
-autodoc_typehints = "signature"
+# Show type hints in both the signature and the Parameters description list
+# (see custom.css). "documented" scopes the description-side types to params
+# that already have a docstring entry, which keeps their prose descriptions and
+# preserves short type names. Plain "both" with the default "all" target drops
+# the descriptions and renders verbose typing spellings.
+autodoc_typehints = "both"
+autodoc_typehints_description_target = "documented"
 
 
 def add_custom_assets(

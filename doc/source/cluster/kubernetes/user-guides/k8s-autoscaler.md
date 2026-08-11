@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How the Ray autoscaler differs from the Horizontal Pod Autoscaler, and how it interacts with the Kubernetes cluster autoscaler."
+---
+
 (ray-k8s-autoscaler-comparison)=
 # (Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes
 We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes ecosystem.
@@ -20,6 +26,8 @@ Horizontal Pod Autoscaling is centrally controlled by a manager in the Kubernete
 (kuberay-autoscaler-with-ray-autoscaler)=
 ## Ray Autoscaler with Kubernetes Cluster Autoscaler
 The Ray Autoscaler and the [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) complement each other. After the Ray autoscaler decides to create a Ray Pod, the Kubernetes Cluster Autoscaler can provision a Kubernetes node so that the Pod can be placed. Similarly, after the Ray autoscaler decides to delete an idle Pod, the Kubernetes Cluster Autoscaler can clean up the idle Kubernetes node that remains. It is recommended to configure your RayCluster so that only one Ray Pod fits per Kubernetes node. If you follow this pattern, Ray Autoscaler Pod scaling events correspond roughly one-to-one with cluster autoscaler node scaling events. (We say "roughly" because it is possible for a Ray Pod be deleted and replaced with a new Ray Pod before the underlying Kubernetes node is scaled down.)
+
+Because the Ray head Pod is a single point of failure, consider setting `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` on its Pod template to prevent the Cluster Autoscaler from evicting it; see {ref}`RayCluster Configuration <kuberay-config-safe-to-evict>`.
 
 
 ## Vertical Pod Autoscaler

@@ -54,6 +54,7 @@ from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
+from ray.data._internal.datasource.orc_datasource import ORCDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
     TensorColumnSchema,
@@ -542,11 +543,17 @@ def _read_datasource_v2(
     # (``-1`` when unset). Honoring it here per-read avoids mutating the
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    partitioner = RoundRobinPartitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(),
-        min_bucket_size=min_bucket_size,
-        max_bucket_size=max_bucket_size,
-        num_buckets=num_buckets,
+    # An indexer that already emits bin-packed read units (e.g. the footer-based
+    # Parquet indexer) doesn't use the size-estimate ``RoundRobinPartitioner``.
+    partitioner = (
+        None
+        if indexer.produces_partitioned_manifests
+        else RoundRobinPartitioner(
+            in_memory_size_estimator=datasource.get_size_estimator(),
+            min_bucket_size=min_bucket_size,
+            max_bucket_size=max_bucket_size,
+            num_buckets=num_buckets,
+        )
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
@@ -838,6 +845,8 @@ def read_videos(
     partitioning: Optional[Partitioning] = None,
     include_paths: bool = False,
     include_timestamps: bool = False,
+    fps: Optional[int] = None,
+    resize: Optional[Tuple[int, int]] = None,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = VideoDatasource._FILE_EXTENSIONS,
     shuffle: Union[Literal["files"], None] = None,
@@ -863,6 +872,12 @@ def read_videos(
         frame        ArrowTensorTypeV2(shape=(720, 1280, 3), dtype=uint8)
         frame_index  int64
 
+        Subsample frames to a target frame rate or resize frames to
+        ``(height, width)``:
+
+        >>> ds = ray.data.read_videos(path, fps=5)  # doctest: +SKIP
+        >>> ds = ray.data.read_videos(path, resize=(240, 320))  # doctest: +SKIP
+
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
@@ -887,6 +902,16 @@ def read_videos(
             stored in the ``'path'`` column.
         include_timestamps: If ``True``, include the frame timestamps from the video
             as a ``'frame_timestamp'`` column.
+        fps: If specified, subsample frames to approximately this target frame rate
+            instead of decoding every frame. Frames are kept at a fixed stride of
+            ``max(1, round(source_fps / fps))``, so the effective rate may differ
+            slightly from ``fps``. ``frame_index`` remains the index of the frame in
+            the original video. If ``fps`` is greater than or equal to the source
+            frame rate, all frames are kept.
+        resize: If specified, resize each frame to ``(height, width)`` at decode
+            time. This ordering mirrors the ``size`` parameter of
+            :func:`~ray.data.read_images`. If unspecified, frames retain their
+            original shape.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
         file_extensions: A list of file extensions to filter files by.
@@ -919,6 +944,8 @@ def read_videos(
         shuffle=shuffle,
         include_paths=include_paths,
         include_timestamps=include_timestamps,
+        fps=fps,
+        resize=resize,
         file_extensions=file_extensions,
     )
     return read_datasource(
@@ -1358,6 +1385,8 @@ def read_parquet(
     include_paths: bool = False,
     include_row_hash: bool = False,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
+    ignore_missing_paths: bool = False,
+    skip_paths: Optional[Union[str, List[str]]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
@@ -1494,6 +1523,14 @@ def read_parquet(
             returned dataset and include ``'row_hash'`` explicitly in the list
             to retain it.
         file_extensions: A list of file extensions to filter files by.
+        ignore_missing_paths: If "True", ignores any file/directory paths in "paths"
+            that are not found. This only tolerates paths that are already missing
+            when the files are listed.
+        skip_paths: A path, or list of paths, to exclude from the read. Any
+            listed or expanded file whose path matches an entry is skipped,
+            whether or not it exists. Use this to deterministically drop
+            known-bad paths (e.g. from a manifest diff) without paying to read
+            them. Composes with ``ignore_missing_paths``.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -1638,6 +1675,8 @@ def read_parquet(
             filesystem=filesystem,
             partitioning=partitioning,
             file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            skip_paths=skip_paths,
             include_paths=include_paths,
             include_row_hash=include_row_hash,
             shuffle=shuffle,
@@ -1659,6 +1698,18 @@ def read_parquet(
         if select_columns_after_read is not None:
             ds = ds.select_columns(select_columns_after_read)
         return ds
+
+    # ``ignore_missing_paths`` / ``skip_paths`` are only implemented on the V2
+    # datasource path. Fail loudly rather than silently ignoring them on V1.
+    # An empty ``skip_paths`` (``[]``) is a no-op, so only raise when the caller
+    # actually requested one of these behaviors.
+    if ignore_missing_paths or skip_paths:
+        raise NotImplementedError(
+            "`ignore_missing_paths` and `skip_paths` on `read_parquet` require "
+            "the V2 datasource. Enable it with "
+            "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
 
     datasource = ParquetDatasource(
         paths,
@@ -2422,6 +2473,108 @@ def read_avro(
     )
 
 
+@PublicAPI(stability="alpha")
+def read_orc(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    file_extensions: Optional[List[str]] = ORCDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from records stored in ORC files.
+
+    Examples:
+        Read an ORC file in remote storage or local storage.
+
+        >>> import ray
+        >>> ds = ray.data.read_orc("s3://bucket/path") # doctest: +SKIP
+        >>> ds.schema() # doctest: +SKIP
+
+        Read multiple local files.
+
+        >>> ray.data.read_orc( # doctest: +SKIP
+        ...    ["local:///path/to/file1", "local:///path/to/file2"])
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
+            Use with a custom callback to read only selected partitions of a
+            dataset. By default, this filters out any file paths whose file
+            extension does not match ``"*.orc*"``.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each file. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
+            found. Defaults to False.
+        shuffle: If setting to "files", randomly shuffle input files order before read.
+            If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
+            shuffle the input files. Defaults to not shuffle with ``None``.
+        file_extensions: A list of file extensions to filter files by. Defaults to
+            ``["orc"]``. Pass ``None`` to disable extension-based filtering.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` holding records from the ORC files.
+    """
+
+    datasource = ORCDatasource(
+        paths,
+        filesystem=filesystem,
+        meta_provider=DefaultFileMetadataProvider(),
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
 @PublicAPI
 def read_numpy(
     paths: Union[str, List[str]],
@@ -2814,6 +2967,8 @@ def read_lerobot(
         "pyarrow.fs.FileSystem | fsspec.spec.AbstractFileSystem"
     ] = None,
     frame_tolerance_s: Optional[float] = None,
+    delta_timestamps: Optional[Dict[str, List[float]]] = None,
+    delta_tolerance_s: float = 1e-4,
     storage_options: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2865,6 +3020,18 @@ def read_lerobot(
         ...     ["/path/to/ds1", "/path/to/ds2"],
         ... )
 
+        Return a temporal window per frame -- here the last 3 image frames and the
+        next 2 actions, each stacked along a new leading time axis with a
+        companion ``*_is_pad`` mask:
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://anonymous@ray-example-data/lerobot/libero-mini",
+        ...     delta_timestamps={
+        ...         "observation.images.image": [-0.2, -0.1, 0.0],
+        ...         "action": [0.0, 0.1],
+        ...     },
+        ... )
+
     Args:
         root: Path or URI to the dataset root (local, ``gs://``, ``s3://``),
             or a list of such paths to read multiple datasets as one.
@@ -2900,6 +3067,31 @@ def read_lerobot(
             default) uses ``0.5 / fps`` — half a frame interval, e.g. ~0.05s at
             10fps. Increase to tolerate timestamp jitter; decrease for stricter
             alignment.
+        delta_timestamps: Optional ``{feature_key: [offsets_in_seconds]}`` mapping
+            requesting a temporal window per frame. For each frame, the listed
+            feature is returned stacked over the offsets -- a new leading time
+            dimension (e.g. a camera frame becomes ``(T, H, W, C)``, an ``action``
+            vector becomes ``(T, action_dim)``) and a boolean ``{key}_is_pad``
+            column of shape ``(T,)``. Offsets are converted to frame steps via the
+            dataset ``fps`` (each must align to the frame grid, i.e. be a multiple
+            of ``1 / fps``) and clamped to the anchor frame's episode: an
+            offset falling before the episode's first frame or after its last
+            returns the nearest in-episode frame and sets ``is_pad`` ``True`` for
+            that slot. Features not listed keep their single-frame output. ``None``
+            (the default) disables temporal windows.
+
+            .. note::
+               When ``delta_timestamps`` is set, reads are **episode-aligned**:
+               each read task always covers whole episodes, so
+               ``override_num_blocks`` cannot split an episode across tasks. It
+               must not exceed the number of episodes (with
+               ``read_granularity="episode"``) or file groups (with ``"file"``) --
+               a larger value raises ``ValueError``. Leaving it unset reads one
+               task per episode / file group.
+        delta_tolerance_s: Frame-grid tolerance in seconds for ``delta_timestamps``
+            offsets. Each offset must be a multiple of ``1 / fps`` within this
+            tolerance. Defaults to ``1e-4`` (matching lerobot's ``LeRobotDataset``).
+            Ignored when ``delta_timestamps`` is ``None``.
         storage_options: fsspec storage options (e.g. credentials or a custom
             ``endpoint_url``). They supply the credentials for the by-URI video
             decode path -- videos are streamed directly through torchcodec /
@@ -2942,6 +3134,8 @@ def read_lerobot(
         filesystem=filesystem,
         storage_options=storage_options,
         frame_tolerance_s=frame_tolerance_s,
+        delta_timestamps=delta_timestamps,
+        delta_tolerance_s=delta_tolerance_s,
     )
     if override_num_blocks is None:
         # Default to one read task per video-file group. Ray's generic
@@ -4696,7 +4890,7 @@ def read_iceberg(
 
 @PublicAPI
 def read_lance(
-    uri: str,
+    uri: Union[str, List[str]],
     *,
     version: Optional[Union[int, str]] = None,
     columns: Optional[List[str]] = None,
@@ -4711,8 +4905,8 @@ def read_lance(
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """
-    Create a :class:`~ray.data.Dataset` from a
-    `Lance Dataset <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
+    Create a :class:`~ray.data.Dataset` from one or more
+    `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     Examples:
         >>> import ray
@@ -4721,10 +4915,15 @@ def read_lance(
         ...     columns=["image", "label"],
         ...     filter="label = 2 AND text IS NOT NULL",
         ... )
+        >>> # Read from multiple Lance datasets:
+        >>> ds = ray.data.read_lance( # doctest: +SKIP
+        ...     uri=["./db1.lance", "./db2.lance"],
+        ... )
 
     Args:
-        uri: The URI of the Lance dataset to read from. Local file paths, S3, and GCS
-            are supported.
+        uri: The URI (or list of URIs) of the Lance dataset(s) to read from.
+            Local file paths, S3, and GCS are supported. When multiple URIs are
+            provided, the data from all datasets is combined into a single Dataset.
         version: Load a specific version of the Lance dataset. This can be an
             integer version number or a string tag. By default, the
             latest version is loaded.
@@ -4740,6 +4939,7 @@ def read_lance(
         scanner_options: Additional options to configure the `LanceDataset.scanner()`
             method, such as `batch_size`. For more information,
             see `Lance Python API doc <https://lance-format.github.io/lance-python-doc/all-modules.html#lance.dataset.LanceDataset.scanner>`_
+            The `fragments` option is not supported when reading multiple datasets.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4756,7 +4956,7 @@ def read_lance(
             value in most cases.
 
     Returns:
-        A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
+        A :class:`~ray.data.Dataset` producing records read from the Lance dataset(s).
     """  # noqa: E501
 
     # Check for deprecated filter parameter
@@ -4767,6 +4967,9 @@ def read_lance(
             DeprecationWarning,
             stacklevel=2,
         )
+
+    if isinstance(uri, list) and len(uri) == 0:
+        raise ValueError("`uri` list must not be empty.")
 
     datasource = LanceDatasource(
         uri=uri,

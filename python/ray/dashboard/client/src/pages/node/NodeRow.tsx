@@ -33,7 +33,7 @@ import {
 
 const TEXT_COL_MIN_WIDTH = 100;
 
-type NodeRowProps = Pick<NodeRowsProps, "node"> & {
+type NodeRowProps = Pick<NodeRowsProps, "node" | "showAcceleratorColumns"> & {
   /**
    * Whether the node has been expanded to show workers
    */
@@ -52,6 +52,7 @@ export const NodeRow = ({
   node,
   expanded,
   onExpandButtonClick,
+  showAcceleratorColumns = true,
 }: NodeRowProps) => {
   const {
     hostname = "",
@@ -160,12 +161,16 @@ export const NodeRow = ({
           </PercentageBar>
         )}
       </TableCell>
-      <TableCell>
-        <NodeAcceleratorView node={node} />
-      </TableCell>
-      <TableCell>
-        <NodeAcceleratorMemory node={node} />
-      </TableCell>
+      {showAcceleratorColumns && (
+        <TableCell>
+          <NodeAcceleratorView node={node} />
+        </TableCell>
+      )}
+      {showAcceleratorColumns && (
+        <TableCell>
+          <NodeAcceleratorMemory node={node} />
+        </TableCell>
+      )}
       <TableCell>
         {raylet && objectStoreTotalMemory && (
           <PercentageBar
@@ -223,12 +228,17 @@ type WorkerRowProps = {
    * Detail of the node the worker is inside.
    */
   node: NodeDetail;
+  showAcceleratorColumns?: boolean;
 };
 
 /**
  * A single row that represents the data of a Worker
  */
-export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
+export const WorkerRow = ({
+  node,
+  worker,
+  showAcceleratorColumns = true,
+}: WorkerRowProps) => {
   const {
     mem,
     raylet: { nodeId },
@@ -312,20 +322,24 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           </PercentageBar>
         )}
       </TableCell>
-      <TableCell>
-        <WorkerAcceleratorRow
-          workerPID={pid}
-          gpus={node.gpus}
-          tpus={node.tpus}
-        />
-      </TableCell>
-      <TableCell>
-        <WorkerAcceleratorMemory
-          workerPID={pid}
-          gpus={node.gpus}
-          tpus={node.tpus}
-        />
-      </TableCell>
+      {showAcceleratorColumns && (
+        <TableCell>
+          <WorkerAcceleratorRow
+            workerPID={pid}
+            gpus={node.gpus}
+            tpus={node.tpus}
+          />
+        </TableCell>
+      )}
+      {showAcceleratorColumns && (
+        <TableCell>
+          <WorkerAcceleratorMemory
+            workerPID={pid}
+            gpus={node.gpus}
+            tpus={node.tpus}
+          />
+        </TableCell>
+      )}
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
@@ -349,6 +363,10 @@ type NodeRowsProps = {
    * Whether the row should start expanded. By default, this is false.
    */
   startExpanded?: boolean;
+  /**
+   * Whether to show accelerator (GPU/TPU) columns.
+   */
+  showAcceleratorColumns?: boolean;
 };
 
 /**
@@ -358,6 +376,7 @@ export const NodeRows = ({
   node,
   isRefreshing,
   startExpanded = false,
+  showAcceleratorColumns = true,
 }: NodeRowsProps) => {
   const [isExpanded, setExpanded] = useState(startExpanded);
 
@@ -394,10 +413,16 @@ export const NodeRows = ({
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
+        showAcceleratorColumns={showAcceleratorColumns}
       />
       {isExpanded &&
         workers.map((worker) => (
-          <WorkerRow key={worker.pid} node={node} worker={worker} />
+          <WorkerRow
+            key={worker.pid}
+            node={node}
+            worker={worker}
+            showAcceleratorColumns={showAcceleratorColumns}
+          />
         ))}
     </React.Fragment>
   );
