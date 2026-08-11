@@ -19,6 +19,7 @@
 
 #include "ray/common/lease/lease.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/status.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -84,6 +85,16 @@ class Work {
   Work(const Work &Work) = delete;
   Work &operator=(const Work &work) = delete;
   ~Work() = default;
+
+  /// Reject the lease back to its submitter: set `rejected` on every pending
+  /// reply and send them. The caller is responsible for removing this work from
+  /// its queue.
+  void Reject() {
+    for (const auto &reply_callback : reply_callbacks_) {
+      reply_callback.reply_->set_rejected(true);
+      reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
+    }
+  }
 
   /// Set the state as waiting with the cause.
   void SetStateWaiting(const UnscheduledWorkCause &cause) {

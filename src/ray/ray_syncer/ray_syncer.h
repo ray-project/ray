@@ -159,6 +159,13 @@ class RaySyncer {
   /// \param message The message to be broadcasted.
   void BroadcastMessage(std::shared_ptr<const RaySyncMessage> message);
 
+  /// Restrict RESOURCE_VIEW fan-out to the given nodes. Other message types are
+  /// unaffected. An empty list (the default) fans out to every connected node.
+  /// The list replaces the previously set one.
+  ///
+  /// \param node_ids Binary ids of the nodes that receive RESOURCE_VIEW updates.
+  void SetResourceViewFanoutTargets(std::vector<std::string> node_ids);
+
   std::vector<std::string> GetAllConnectedNodeIDs() const;
 
  private:
@@ -175,8 +182,18 @@ class RaySyncer {
   /// The current node id.
   const std::string local_node_id_;
 
+  /// Whether a message should be fanned out to a node. False only for
+  /// RESOURCE_VIEW messages when `resource_view_fanout_targets_` is non-empty and
+  /// does not contain the node. Must be called on io_context_.
+  bool ShouldFanOutTo(const RaySyncMessage &message,
+                      const std::string &remote_node_id) const;
+
   /// Manage connections. Here the key is the NodeID in binary form.
   absl::flat_hash_map<std::string, std::shared_ptr<RaySyncerBidiReactor>> sync_reactors_;
+
+  /// When non-empty, RESOURCE_VIEW messages are fanned out only to these nodes
+  /// (binary node ids). Only accessed on io_context_.
+  absl::flat_hash_set<std::string> resource_view_fanout_targets_;
 
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
@@ -198,6 +215,7 @@ class RaySyncer {
   /// Test purpose
   friend struct SyncerServerTest;
   FRIEND_TEST(SyncerTest, Broadcast);
+  FRIEND_TEST(SyncerTest, ResourceViewFanoutTargets);
   FRIEND_TEST(SyncerTest, Reconnect);
   FRIEND_TEST(SyncerTest, Test1To1);
   FRIEND_TEST(SyncerTest, Test1ToN);

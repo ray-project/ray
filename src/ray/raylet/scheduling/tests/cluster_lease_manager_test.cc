@@ -1239,6 +1239,96 @@ TEST_F(ClusterLeaseManagerTest, TestGrantOrReject) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterLeaseManagerTest, TestGrantOrRejectUnderRestrictedResourceViewFanout) {
+  // With `ray_syncer_resource_view_fanout_node_count` > 0 this raylet does not
+  // receive other nodes' resource views, so a grant-or-reject lease it cannot fit
+  // is rejected back to the view-holding raylet instead of being queued locally.
+  // `initialize` resets every field before applying overrides, so keep the
+  // fixture's top-k override alongside the flag under test.
+  RayConfig::instance().initialize(
+      "{\"scheduler_top_k_absolute\": 1, "
+      "\"ray_syncer_resource_view_fanout_node_count\": 1}");
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  int num_callbacks = 0;
+  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+
+  // Fill the local node (the only node in the cluster).
+  auto lease1 = CreateLease({{ray::kCPU_ResourceLabel, 8}});
+  rpc::RequestWorkerLeaseReply reply1;
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      /*grant_or_reject=*/false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply1)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+
+  // A grant-or-reject lease that does not fit locally is rejected immediately
+  // instead of waiting for local resources to free up.
+  auto lease2 = CreateLease({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply reply2;
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      /*grant_or_reject=*/true,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_TRUE(reply2.rejected());
+
+  // An infeasible lease without grant_or_reject parks in the infeasible queue as
+  // usual.
+  auto lease3 = CreateLease({{ray::kCPU_ResourceLabel, 999}});
+  rpc::RequestWorkerLeaseReply reply3;
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      /*grant_or_reject=*/false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply3)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+
+  // A grant-or-reject lease joining an already-infeasible shape is rejected at
+  // enqueue time.
+  auto lease4 = CreateLease({{ray::kCPU_ResourceLabel, 999}});
+  rpc::RequestWorkerLeaseReply reply4;
+  lease_manager_.QueueAndScheduleLease(
+      lease4,
+      /*grant_or_reject=*/true,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply4)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 3);
+  ASSERT_TRUE(reply4.rejected());
+
+  // A grant-or-reject lease whose shape is newly classified as infeasible is
+  // rejected instead of parked.
+  auto lease5 = CreateLease({{ray::kCPU_ResourceLabel, 888}});
+  rpc::RequestWorkerLeaseReply reply5;
+  lease_manager_.QueueAndScheduleLease(
+      lease5,
+      /*grant_or_reject=*/true,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply5)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 4);
+  ASSERT_TRUE(reply5.rejected());
+
+  ASSERT_TRUE(lease_manager_.CancelLease(lease3.GetLeaseSpecification().LeaseId()));
+  while (!leased_workers_.empty()) {
+    local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
+    leased_workers_.erase(leased_workers_.begin());
+  }
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterLeaseManagerTest, TestSpillAfterAssigned) {
   /*
     Test the race condition in which a lease is assigned to the local node, but
