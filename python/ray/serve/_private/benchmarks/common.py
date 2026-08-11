@@ -374,7 +374,6 @@ CONTROLLER_BENCH_CONFIG = {
         3072,
         4096,
         8192,
-        16384,
     ],
     "marination_period_s": 180,
     "sample_interval_s": 5,
@@ -382,12 +381,12 @@ CONTROLLER_BENCH_CONFIG = {
 
 _CONTROLLER_AUTOSCALING_CONFIG = {
     "min_replicas": 1,
-    "max_replicas": 16384,
+    "max_replicas": 8192,
     "target_ongoing_requests": 1,
     "upscale_delay_s": 1,
 }
 
-_CONTROLLER_WAITER_TIMEOUT_S = 3600
+_CONTROLLER_WAITER_TIMEOUT_S = 2400
 # Halve the reservation as the target doubles past 4096 so peak cluster CPU stays
 # flat (~1638 CPU, ~205 nodes); these replicas are idle waiters, so a lighter
 # reservation changes packing density only, not per-replica work.
@@ -402,7 +401,7 @@ def _controller_replica_num_cpus(target_replicas: int) -> float:
 
 
 # SignalActor from ray._common.test_utils; use high max_concurrency for many
-# concurrent waiters (up to 16384 in controller benchmark).
+# concurrent waiters (up to 8192 in controller benchmark).
 _SignalActorForController = _SignalActor.options(max_concurrency=100000)
 
 
