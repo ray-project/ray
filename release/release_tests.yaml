@@ -1732,6 +1732,15 @@
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
         - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+        # handle_10mb allocates and frees a fresh ~10 MB buffer per request,
+        # far above glibc's 128 KB mmap threshold, so malloc mmap/munmaps it
+        # and re-faults ~2500 pages every request. glibc's dynamic threshold
+        # only sometimes adapts, which leaves handle_10mb_p50 bimodal run to
+        # run. Pinning the threshold above the payload keeps those buffers on
+        # the heap and reused; the cost is that freed heap is not returned to
+        # the OS, so RSS settles at roughly peak.
+        - MALLOC_MMAP_THRESHOLD_=1073741824
+        - MALLOC_TRIM_THRESHOLD_=1073741824
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1748,11 +1757,15 @@
     - __suffix__: aws.haproxy
       cluster:
         byod:
+          # Variations replace this list wholesale rather than merging into it,
+          # so the allocator settings from the base definition are repeated.
           runtime_env:
             - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
             - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
             - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
             - RAY_SERVE_ENABLE_HA_PROXY=1
+            - MALLOC_MMAP_THRESHOLD_=1073741824
+            - MALLOC_TRIM_THRESHOLD_=1073741824
       run:
         timeout: 7200
         long_running: false
