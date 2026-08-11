@@ -94,6 +94,7 @@ class _ReloadableServerCertConfig:
         # Fail loudly if the initial load doesn't work, matching the
         # existing behavior of load_certs_from_env().
         self._reload_locked()
+        self._mtimes = self._stat_mtimes()
 
     def _stat_mtimes(self) -> Tuple[float, ...]:
         return tuple(
@@ -114,6 +115,15 @@ class _ReloadableServerCertConfig:
         self._cached_config = grpc.ssl_server_certificate_configuration(
             [(private_key, cert_chain)], root_certificates=ca_cert
         )
+
+    @property
+    def initial_config(self):
+        """The certificate configuration loaded during __init__, for use as
+        the initial_certificate_configuration argument to
+        grpc.dynamic_ssl_server_credentials.
+        """
+        with self._lock:
+            return self._cached_config
 
     def fetch(self):
         """Callback passed to grpc.dynamic_ssl_server_credentials."""
@@ -155,7 +165,9 @@ def add_port_to_grpc_server(server, address):
             os.environ["RAY_TLS_CA_CERT"],
         )
         credentials = grpc.dynamic_ssl_server_credentials(
-            reloader.fetch, require_client_authentication=True
+            reloader.initial_config,
+            reloader.fetch,
+            require_client_authentication=True,
         )
         return server.add_secure_port(address, credentials)
     else:
