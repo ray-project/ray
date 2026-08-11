@@ -41,6 +41,7 @@ py_test(
     size = "small",
     srcs = [
         "mock/__init__.py",
+        "mock/_internal/__init__.py",
         "mock/mock_module.py",
         "test_module.py",
     ],
@@ -60,6 +61,7 @@ py_test(
     size = "small",
     srcs = [
         "mock/__init__.py",
+        "mock/_internal/__init__.py",
         "mock/mock_module.py",
         "test_api.py",
     ],
@@ -79,6 +81,7 @@ py_test(
     size = "small",
     srcs = [
         "mock/__init__.py",
+        "mock/_internal/__init__.py",
         "mock/mock_module.py",
         "test_autodoc.py",
     ],
@@ -99,6 +102,7 @@ py_test(
     srcs = [
         "cmd_check_api_discrepancy.py",
         "mock/__init__.py",
+        "mock/_internal/__init__.py",
         "mock/mock_module.py",
         "test_cmd_check_api_discrepancy.py",
     ],
