@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Diagnose RayService problems through operator logs, custom resource status, pod logs, the dashboard, and the Ray State CLI."
+---
+
 (kuberay-raysvc-troubleshoot)=
 
 # RayService troubleshooting

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Log and aggregate metrics across RLlib components with MetricsLogger: scalars, non-scalar data, timers, counters, and throughput measurements.
+
 .. _rllib-metric-logger-docs:
 
 MetricsLogger API
