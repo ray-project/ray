@@ -314,7 +314,7 @@ status:
 
 ## How to upgrade safely?
 
-Since this feature is alpha and rollback is not yet supported, we recommend conservative parameter settings to minimize risk during upgrades.
+Since this feature is beta and remains open to adjustments based on feedback, we recommend conservative parameter settings to minimize risk during upgrades.
 
 ### Recommended Parameters
 
@@ -374,6 +374,59 @@ upgradeStrategy:
   intervalSeconds: 60  # Wait 1 minute between steps
 ```
 
+## Rollback
+
+RayService incremental upgrades support rollback, which is triggered when you update the `RayService` spec during an ongoing upgrade. Rollback requires KubeRay v1.7.0 or later.
+
+### Rollback Behavior
+
+The KubeRay controller tracks three `RayCluster` specs at any given time:
+
+- Original `RayCluster` spec `A`: the spec of the active cluster that served traffic before the upgrade started.
+- Upgraded `RayCluster` spec `B`: the spec of the pending cluster that the in-progress upgrade migrates to.
+- Desired `RayCluster` spec `C`: the latest spec in the `RayService` CR.
+
+When you modify `rayClusterConfig` in the `RayService` spec during an upgrade, the rollback behavior depends on how the desired spec `C` relates to the original spec `A` and the upgraded spec `B`:
+
+**Case 1: `C == A` (reverting to the original spec)**
+
+The controller cancels the upgrade and gradually shifts traffic back to the original cluster, moving `stepSizePercent` of traffic every `intervalSeconds`. In step with the traffic shift, it scales the original cluster's `targetCapacity` back up to 100% and the pending cluster's down to 0%, `maxSurgePercent` at a time, then deletes the pending cluster.
+
+Pipeline: `A -> B -> A`
+
+**Case 2: `C == B` (canceling the rollback and resuming the upgrade)**
+
+If a rollback is in progress, the controller cancels it and resumes migrating traffic toward `B` from the current traffic split. If no rollback has started, the upgrade is on track and continues unchanged.
+
+Pipeline: `A -> B -> A -> B`, where the trailing `A -> B` is the resumed upgrade.
+
+**Case 3: `C != A` and `C != B` (submitting a new spec)**
+
+The controller first completes the rollback to `A` as defined in **Case 1**, then begins a fresh upgrade toward `C`.
+
+Pipeline: `A -> B -> A -> C`
+
+As the KubeRay controller adopts a safe rollback-first approach, a known-good cluster serves 100% of traffic before the controller provisions a cluster for `C`. This approach keeps the resource ceiling at 100% plus `maxSurgePercent` and never runs two pending clusters at once, at the cost of a longer end-to-end migration.
+
+While the `RollbackInProgress` condition is `True`, KubeRay also:
+
+- Doesn't promote the pending cluster to active, even if the pending cluster reaches 100% `targetCapacity` and `trafficRoutedPercent`.
+- Doesn't submit an updated `serveConfigV2` to the pending cluster, because that cluster only drains its traffic before deletion. KubeRay applies `serveConfigV2` updates to the active cluster instead.
+- Doesn't create a new pending cluster until the rollback completes.
+
+## What triggers an upgrade or rollback?
+
+There are two types of changes in the `RayService` spec:
+
+| Change | Trigger | Behavior |
+|--------|---------|-----------|
+| `rayClusterConfig` (for example, `image` or `resources`) | Upgrade or rollback | Creates a new pending cluster and gradually migrates traffic (upgrade), or switches traffic back to the original cluster (rollback) |
+| `serveConfigV2` | In-place update | Updates the running deployment directly without creating a new cluster or shifting traffic |
+
+:::{note}
+If both `rayClusterConfig` and `serveConfigV2` change simultaneously, the `rayClusterConfig` change takes precedence. Therefore, KubeRay creates a new pending cluster and applies the updated `serveConfigV2` to it.
+:::
+
 ## API Overview (Reference)
 
 This section details the new and updated fields in the `RayService` CRD.
@@ -405,6 +458,15 @@ Three new fields are added to both the `activeServiceStatus` and `pendingService
 | `targetCapacity` | `int32` | The target percentage of Serve replicas this cluster is *configured* to handle (from 0 to 100). This is controlled by KubeRay based on `maxSurgePercent`. |
 | `trafficRoutedPercent` | `int32` | The *actual* percentage of traffic (from 0 to 100) currently being routed to this cluster's endpoint. This is controlled by KubeRay during an upgrade based on `stepSizePercent` and `intervalSeconds`. |
 | `lastTrafficMigratedTime` | `metav1.Time` | A timestamp indicating the last time `trafficRoutedPercent` was updated. |
+
+### `RayService.status.conditions`
+
+These conditions track the state machine that drives an incremental upgrade and its rollback.
+
+| Condition | Description |
+| :--- | :--- |
+| `UpgradeInProgress` | `True` while both an active and a pending `RayCluster` exist for the `RayService`. KubeRay sets this condition to `False` with reason `NoPendingCluster` after it promotes the pending cluster, or after a rollback finishes and it deletes the pending cluster. |
+| `RollbackInProgress` | `True` while KubeRay is rolling an in-progress incremental upgrade back to the original active cluster, with reason `DesiredClusterSpecChanged`. KubeRay removes this condition when the rollback completes, that is, when the active cluster is back at 100% `trafficRoutedPercent` and KubeRay has deleted the pending cluster, or when you revert the spec back to the pending cluster's spec to cancel the rollback. |
 
 #### Next steps:
 * See [Deploy on Kubernetes](https://docs.ray.io/en/latest/serve/production-guide/kubernetes.html) for more information about deploying Ray Serve with KubeRay.
