@@ -128,6 +128,9 @@ class AggregatorAgent(
             common_metric_tags=self._common_tags,
             publisher_name="dashboard_head",
         )
+        self._dashboard_head_task_metadata_buffer = TaskEventsMetadataBuffer(
+            common_metric_tags=self._common_tags
+        )
 
         self._events_export_addr = (
             dashboard_agent.events_export_addr or EVENTS_EXPORT_ADDR

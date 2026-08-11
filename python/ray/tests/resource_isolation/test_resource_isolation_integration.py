@@ -84,6 +84,7 @@ _EXPECTED_DASHBOARD_MODULES = [
     "ray.dashboard.modules.reporter.reporter_head.ReportHead",
     "ray.dashboard.modules.serve.serve_head.ServeHead",
     "ray.dashboard.modules.state.state_head.StateHead",
+    "ray.dashboard.modules.task_events.task_events_head.TaskEventsHead",
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
 # TaskEventsHead is intentionally omitted: it is gated off by default
