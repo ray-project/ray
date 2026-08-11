@@ -2186,12 +2186,18 @@ class TestOpTaskCancel:
             def f(self):
                 return 1
 
+        # Create an empty actor task.
         ref = Actor.remote().f.remote()
         task = MetadataOpTask(0, ref, lambda: None)
 
+        # Temporarily replace ray.cancel with a MagicMock that raises
+        # ValueError on the first call and returns None on the second call.
+        # Core test already verify the ValueError behavior.
         with patch.object(ray, "cancel", side_effect=[ValueError, None]) as mock_cancel:
             task._cancel(force=True)
 
+        # First call should let the ValueError propagate,
+        # and the second call should fall back to force=False
         assert mock_cancel.call_args_list == [
             call(ref, recursive=True, force=True),
             call(ref, recursive=True, force=False),
