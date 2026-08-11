@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import List
+from typing import List, Set
 
 import httpx
 import pytest
@@ -11,12 +11,16 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
+)
 from ray.serve._private.request_router import RequestRouter
 from ray.serve._private.test_utils import skip_if_haproxy
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.schema import ServeInstanceDetails
 
 
 def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
@@ -324,7 +328,7 @@ def test_request_routing_info(serve_instance):
     replica_id = handle.remote("model1").result()
 
     def check_replica_information(
-        model_ids: List[str],
+        model_ids: Set[str],
     ):
         if not handle.is_initialized:
             handle._init()
@@ -337,7 +341,20 @@ def test_request_routing_info(serve_instance):
             ):
                 return False
 
-        return True
+        serve_details = ServeInstanceDetails(**serve_instance.get_serve_details())
+        app = serve_details.applications.get(SERVE_DEFAULT_APP_NAME)
+        if app is None:
+            return False
+
+        deployment = app.deployments.get("MyModel")
+        if deployment is None:
+            return False
+
+        return any(
+            detail.replica_id == replica_id.unique_id
+            and set(detail.multiplexed_model_ids) == model_ids
+            for detail in deployment.replicas
+        )
 
     wait_for_condition(
         check_replica_information,
