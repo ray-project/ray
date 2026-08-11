@@ -1,3 +1,4 @@
+import json
 import logging
 
 import pytest
@@ -65,6 +66,28 @@ def shutdown_only():
 def disable_state_actor_polling(monkeypatch):
     monkeypatch.setenv(ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR, "0")
     yield
+
+
+@pytest.fixture
+def captured_annotations():
+    """Capture the annotations emitted through the ``ray.annotations`` logger.
+
+    Yields the list of emitted annotations, each parsed from its JSON line.
+    """
+    records = []
+
+    class _CaptureHandler(logging.Handler):
+        def emit(self, record):
+            records.append(json.loads(record.getMessage()))
+
+    annotation_logger = logging.getLogger("ray.annotations")
+    handler = _CaptureHandler()
+    annotation_logger.addHandler(handler)
+    annotation_logger.setLevel(logging.INFO)
+    try:
+        yield records
+    finally:
+        annotation_logger.removeHandler(handler)
 
 
 @pytest.fixture

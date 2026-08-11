@@ -27,6 +27,31 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Severities accepted by `ray.train.annotate`, each rendered as its own layer on
+# the Grafana train dashboard.
+_ANNOTATION_SEVERITIES = frozenset({"info", "warning", "error"})
+
+# Annotations are best-effort observability, and a failure here is typically
+# persistent (e.g. metrics that cannot be JSON-serialized), so it is reported
+# once per process rather than once per `ray.train.report` call.
+_annotation_failure_reported = False
+
+
+def _log_annotation_failure(event: str) -> None:
+    """Log an annotation failure at most once per process, with its traceback."""
+    global _annotation_failure_reported
+
+    if _annotation_failure_reported:
+        return
+    _annotation_failure_reported = True
+
+    logger.warning(
+        "Failed to emit the %r annotation; continuing. "
+        "Further annotation failures will not be logged.",
+        event,
+        exc_info=True,
+    )
+
 
 @PublicAPI(stability="stable")
 @requires_train_worker(raise_in_tune_session=True)
@@ -134,7 +159,8 @@ def report(
     # Emit a single rank-0 annotation marking this report on the Grafana train dashboards
     try:
         train_context = get_train_context()
-        if train_context.get_world_rank() == 0:
+        annotation = train_context.annotation
+        if annotation is not None and train_context.get_world_rank() == 0:
             report_fields = {
                 "metrics": json.dumps(metrics, default=str),
                 "has_checkpoint": checkpoint is not None,
@@ -150,14 +176,11 @@ def report(
                     },
                     default=str,
                 )
-            train_context.annotation.annotate(
+            annotation.annotate(
                 event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT, **report_fields
             )
     except Exception:
-        logger.info(
-            "Failed to emit `ray.train.report()` annotation. Continuing",
-            exc_info=True,
-        )
+        _log_annotation_failure(TRAIN_ANNOTATION_RAY_TRAIN_REPORT)
 
     get_train_fn_utils().report(
         metrics=metrics,
@@ -393,6 +416,9 @@ def annotate(
     JSON tag. All custom annotations share one dashboard layer (they are emitted
     under a fixed internal event name), colored by ``severity``.
 
+    Setting ``RAY_TRAIN_ANNOTATIONS_ENABLED=0`` turns all Ray Train annotations
+    off, in which case this call is a no-op.
+
     Example:
 
         .. testcode::
@@ -428,10 +454,20 @@ def annotate(
             are not filterable in LogQL; filter on the reserved fields
             (e.g. ``severity``) or the run/rank tags instead.
     """
-    assert severity in ["info", "warning", "error"]
+    # Not an assert: under `python -O` an invalid severity would silently emit an
+    # annotation that matches none of the dashboard layers, so it would never
+    # appear and no error would surface anywhere.
+    if severity not in _ANNOTATION_SEVERITIES:
+        raise ValueError(
+            f"Invalid annotation severity {severity!r}. "
+            f"Expected one of {sorted(_ANNOTATION_SEVERITIES)}."
+        )
 
     try:
         train_context = get_train_context()
+        annotation = train_context.annotation
+        if annotation is None:
+            return
         if rank_zero_only and train_context.get_world_rank() != 0:
             return
 
@@ -439,13 +475,10 @@ def annotate(
         if fields:
             annotation_fields["fields"] = json.dumps(fields, default=str)
 
-        train_context.annotation.annotate(
+        annotation.annotate(
             event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
             severity=severity,
             **annotation_fields,
         )
     except Exception:
-        logger.warning(
-            "Failed to emit the `ray.train.annotate()` annotation; continuing.",
-            exc_info=True,
-        )
+        _log_annotation_failure(TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE)

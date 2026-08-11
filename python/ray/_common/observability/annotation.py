@@ -42,7 +42,6 @@ class _AnnotationFileHandler(logging.Handler):
 
         try:
             logs_dir = _global_node.get_logs_dir_path()
-            os.makedirs(logs_dir, exist_ok=True)
 
             if self._handler is None or self._logs_dir != logs_dir:
                 # The session logs dir changed (e.g. after a shutdown/restart).
@@ -51,14 +50,21 @@ class _AnnotationFileHandler(logging.Handler):
                     self._handler.close()
                     self._handler = None
 
+                os.makedirs(logs_dir, exist_ok=True)
                 filename = f"annotations_{os.getpid()}.log"
                 self._handler = logging.handlers.RotatingFileHandler(
                     os.path.join(logs_dir, filename),
                     maxBytes=RAY_ANNOTATION_MAX_FILE_SIZE_BYTES,
                     backupCount=RAY_ANNOTATION_MAX_BACKUP_COUNT,
+                    encoding="utf-8",
                 )
                 self._handler.setFormatter(self.formatter)
                 self._logs_dir = logs_dir
+
+            # Snapshot the handler so a concurrent `close()` (e.g. from
+            # `logging.shutdown()` at interpreter exit) can't null it out
+            # between here and the `emit` below.
+            handler = self._handler
         except Exception:
             if not self._setup_failure_reported:
                 self._setup_failure_reported = True
@@ -70,7 +76,8 @@ class _AnnotationFileHandler(logging.Handler):
                 )
             return
 
-        self._handler.emit(record)
+        if handler is not None:
+            handler.emit(record)
 
     def flush(self) -> None:
         if self._handler is not None:
@@ -134,10 +141,17 @@ class Annotation:
         """
         annotation_logger = logging.getLogger("ray.annotations")
         with _logger_lock:
-            if not annotation_logger.handlers:
-                annotation_logger.setLevel(logging.INFO)
-                # Disable propagating to the root logger echoed to the terminal.
-                annotation_logger.propagate = False
+            annotation_logger.setLevel(logging.INFO)
+            # Disable propagating to the root logger echoed to the terminal.
+            # Set unconditionally: if something else attached a handler to this
+            # logger first, propagation must still be off so annotation JSON
+            # lines never reach the terminal.
+            annotation_logger.propagate = False
+
+            if not any(
+                isinstance(handler, _AnnotationFileHandler)
+                for handler in annotation_logger.handlers
+            ):
                 handler = _AnnotationFileHandler()
                 # Emit the raw message (a JSON line) with no extra formatting.
                 handler.setFormatter(logging.Formatter("%(message)s"))
@@ -161,6 +175,9 @@ class Annotation:
         caller.
         """
         try:
+            # Drop only the colliding fields; the rest of the event (most
+            # importantly its `message`) is still worth emitting.
+            emitted_fields = {}
             for key, value in fields.items():
                 if key in self._RESERVED_FIELDS or key in self._base_tags:
                     logger.warning(
@@ -169,13 +186,14 @@ class Annotation:
                         "in the emitted annotation.",
                         key,
                     )
-                    return
+                    continue
+                emitted_fields[key] = value
 
             record = {
                 "annotation_source": self._source,
                 "timestamp_s": time.time(),
                 "event": event,
-                **fields,
+                **emitted_fields,
                 **self._base_tags,
             }
             self._logger.info(json.dumps(record, default=str))

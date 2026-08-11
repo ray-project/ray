@@ -237,7 +237,10 @@ def read_annotation_datasource_config() -> Optional[AnnotationDatasourceConfig]:
         ``None``, annotations are omitted from the generated dashboard JSON
         entirely, so the default Prometheus-only setup is unaffected.
     """
-    uid = os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_UID_ENV_VAR) or ""
+    # Strip surrounding whitespace from all three: these are commonly sourced
+    # from a file or a k8s ConfigMap, and a trailing newline in the uid or type
+    # would silently land in the dashboard JSON as an unresolvable datasource.
+    uid = (os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_UID_ENV_VAR) or "").strip()
     stream_selector = (
         os.environ.get(GRAFANA_ANNOTATION_STREAM_SELECTOR_ENV_VAR) or ""
     ).strip()
@@ -245,9 +248,8 @@ def read_annotation_datasource_config() -> Optional[AnnotationDatasourceConfig]:
         return None
 
     datasource_type = (
-        os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_TYPE_ENV_VAR)
-        or DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE
-    )
+        os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_TYPE_ENV_VAR) or ""
+    ).strip() or DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE
     return AnnotationDatasourceConfig(
         uid=uid,
         stream_selector=stream_selector,

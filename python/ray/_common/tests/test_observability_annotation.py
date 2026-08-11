@@ -98,6 +98,90 @@ def test_annotation_emits_json(captured_annotations):
     assert isinstance(record["timestamp_s"], float)
 
 
+def test_annotation_field_collision_drops_only_the_colliding_field(
+    captured_annotations, captured_warnings
+):
+    """A field that collides with a reserved field or a base tag is dropped on its
+    own; the rest of the event, in particular its ``message``, is still emitted."""
+    annotation = Annotation(
+        source=TRAIN_ANNOTATION_SOURCE,
+        base_tags={RUN_NAME_TAG_KEY: "my_run"},
+    )
+    annotation.annotate(
+        event="custom_event",
+        message="still emitted",
+        epoch=3,
+        # Collides with a reserved field and with a base tag respectively.
+        annotation_source="hijacked",
+        **{RUN_NAME_TAG_KEY: "hijacked"},
+    )
+
+    assert len(captured_annotations) == 1
+    record = captured_annotations[0]
+    assert record["message"] == "still emitted"
+    assert record["epoch"] == 3
+    # The colliding fields did not overwrite the real values.
+    assert record["annotation_source"] == TRAIN_ANNOTATION_SOURCE
+    assert record[RUN_NAME_TAG_KEY] == "my_run"
+
+    assert len(captured_warnings) == 2
+
+
+def test_annotation_logger_setup_with_preexisting_handler():
+    """Another handler on ``ray.annotations`` must not stop Ray from installing its
+    file handler or from disabling propagation, which would otherwise echo every
+    annotation JSON line to the terminal."""
+    annotation_logger = logging.getLogger(_ANNOTATION_LOGGER_BASE_NAME)
+    reset_annotation_logger()
+    annotation_logger.propagate = True
+    other_handler = logging.Handler()
+    annotation_logger.addHandler(other_handler)
+
+    try:
+        Annotation(source=TRAIN_ANNOTATION_SOURCE, base_tags={})
+
+        assert annotation_logger.propagate is False
+        assert any(
+            isinstance(handler, _AnnotationFileHandler)
+            for handler in annotation_logger.handlers
+        )
+    finally:
+        annotation_logger.removeHandler(other_handler)
+        reset_annotation_logger()
+
+
+class FakeNode:
+    """Stands in for ``_global_node`` so emits don't need a real Ray session."""
+
+    def __init__(self, logs_dir: str):
+        self._logs_dir = logs_dir
+
+    def get_logs_dir_path(self) -> str:
+        return self._logs_dir
+
+
+def test_annotation_file_handler_writes_utf8(monkeypatch, tmp_path):
+    """Annotation messages contain non-ASCII characters (e.g. the ``→`` in the
+    controller state-change messages), which the platform default encoding cannot
+    write under a ``C``/``POSIX`` locale."""
+    import ray._private.worker as worker_mod
+
+    logs_dir = tmp_path / "logs"
+    monkeypatch.setattr(worker_mod, "_global_node", FakeNode(str(logs_dir)))
+
+    handler = _AnnotationFileHandler()
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    try:
+        handler.emit(make_log_record("Controller: INITIALIZING → RUNNING"))
+        handler.flush()
+
+        assert handler._handler.encoding == "utf-8"
+        log_file = logs_dir / f"annotations_{os.getpid()}.log"
+        assert "INITIALIZING → RUNNING" in log_file.read_text(encoding="utf-8")
+    finally:
+        handler.close()
+
+
 def test_annotation_file_handler_drops_before_ray_init(monkeypatch, tmp_path):
     """Before Ray is initialized (``_global_node is None``) emits are dropped,
     not raised, and no file is created."""

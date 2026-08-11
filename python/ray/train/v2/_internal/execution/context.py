@@ -20,6 +20,7 @@ from ray.train.v2._internal.constants import (
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
     DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
     TRAIN_ANNOTATION_SOURCE,
+    are_annotations_enabled,
 )
 from ray.train.v2._internal.execution.checkpoint.sync_actor import (
     SynchronizationActor,
@@ -152,12 +153,17 @@ class TrainContext:
         self.report_call_index = self.current_report_index
 
     @cached_property
-    def annotation(self) -> Annotation:
-        """The annotation emitter for this worker.
+    def annotation(self) -> Optional[Annotation]:
+        """The annotation emitter for this worker, or ``None`` if disabled.
 
         Cached because ``ray.train.report`` annotates on every call, and the base
-        tags are fixed for the lifetime of the context.
+        tags are fixed for the lifetime of the context. Returns ``None`` when
+        ``RAY_TRAIN_ANNOTATIONS_ENABLED`` is off so that callers can skip
+        building the annotation payload entirely.
         """
+        if not are_annotations_enabled():
+            return None
+
         return Annotation(
             source=TRAIN_ANNOTATION_SOURCE,
             base_tags={

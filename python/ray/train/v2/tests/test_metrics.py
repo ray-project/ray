@@ -9,6 +9,7 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.constants import ANNOTATIONS_ENABLED_ENV_VAR
 from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
@@ -355,6 +356,47 @@ def test_controller_state_metrics(monkeypatch, mock_gauge):
         )
         == 0
     )
+
+
+@pytest.mark.parametrize("annotations_enabled", [True, False])
+def test_controller_annotations_env_flag(
+    monkeypatch, mock_gauge, captured_annotations, annotations_enabled
+):
+    """Controller annotations are emitted by default and can be turned off with
+    ``RAY_TRAIN_ANNOTATIONS_ENABLED``, without affecting the state metrics."""
+    monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, "1" if annotations_enabled else "0")
+    mock_train_context = MagicMock()
+    mock_train_context.get_run_config.return_value = RunConfig(name="test_run_name")
+    monkeypatch.setattr(
+        ray.train.v2._internal.execution.context,
+        "get_train_context",
+        lambda: mock_train_context,
+    )
+
+    callback = ControllerMetricsCallback()
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
+    callback.after_controller_state_update(
+        TrainControllerState(TrainControllerStateType.INITIALIZING),
+        TrainControllerState(TrainControllerStateType.RUNNING),
+    )
+
+    # The state metric is recorded either way.
+    assert (
+        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
+            TrainControllerStateType.RUNNING
+        )
+        == 1
+    )
+
+    if annotations_enabled:
+        # One annotation for the controller starting, one for the transition.
+        assert len(captured_annotations) == 2
+        assert (
+            captured_annotations[1]["message"] == "Controller: INITIALIZING → RUNNING"
+        )
+    else:
+        assert callback._annotation is None
+        assert captured_annotations == []
 
 
 if __name__ == "__main__":

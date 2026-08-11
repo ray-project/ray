@@ -14,12 +14,12 @@ py_library(
 py_test_module_list(
     size = "small",
     files = [
-        "test_annotations.py",
         "test_deprecation.py",
         "test_filters.py",
         "test_formatters.py",
         "test_logging_constants.py",
         "test_network_utils.py",
+        "test_observability_annotation.py",
         "test_ray_option_utils.py",
         "test_retry.py",
         "test_runtime_env_uri.py",

@@ -76,6 +76,13 @@ DEFAULT_PREEMPTION_DEADLINE_S: float = 120.0
 ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
 DEFAULT_ENABLE_PRINT_PATCH = True
 
+# Feature flag for Grafana annotations. Default-on; provides an opt-out for
+# workloads that call `ray.train.report` frequently enough that the annotation
+# file write on rank 0 (which the other ranks wait on at the report barrier) is
+# not worth its cost.
+ANNOTATIONS_ENABLED_ENV_VAR = "RAY_TRAIN_ANNOTATIONS_ENABLED"
+DEFAULT_ANNOTATIONS_ENABLED: bool = True
+
 # V2 feature flag.
 V2_ENABLED_ENV_VAR = "RAY_TRAIN_V2_ENABLED"
 
@@ -134,6 +141,7 @@ ENV_VARS_TO_PROPAGATE = {
     TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR,
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     PREEMPTION_POLL_INTERVAL_S_ENV_VAR,
+    ANNOTATIONS_ENABLED_ENV_VAR,
 }
 
 
@@ -147,6 +155,10 @@ METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 
 def is_v2_enabled() -> bool:
     return env_bool(V2_ENABLED_ENV_VAR, True)
+
+
+def are_annotations_enabled() -> bool:
+    return env_bool(ANNOTATIONS_ENABLED_ENV_VAR, DEFAULT_ANNOTATIONS_ENABLED)
 
 
 def get_env_vars_to_propagate() -> Dict[str, str]:
