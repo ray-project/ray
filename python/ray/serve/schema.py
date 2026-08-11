@@ -20,6 +20,7 @@ from pydantic import (
 
 from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
 from ray._common.runtime_env_uri import parse_uri
+from ray._private.label_utils import validate_label_selector
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -332,6 +333,15 @@ class RayActorOptionsSchema(BaseModel):
             "options to fall back on when scheduling on a node."
         ),
     )
+
+    @field_validator("label_selector")
+    @classmethod
+    def label_selector_is_valid(cls, v):
+        error_message = validate_label_selector(v)
+        if error_message:
+            raise ValueError(error_message)
+
+        return v
 
     @field_validator("runtime_env")
     @classmethod
