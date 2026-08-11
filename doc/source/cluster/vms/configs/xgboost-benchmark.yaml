@@ -12,11 +12,12 @@ docker:
   image: "rayproject/ray:2.57.0"
   container_name: "ray_container"
 
-# The rayproject/ray images don't include XGBoost, so install it in the container.
-# The constraint file ships in the image and pins the version Ray tested against
-# for this release.
+# The rayproject/ray images don't include XGBoost or LightGBM. The benchmark script
+# imports both at module load, even when run with the xgboost framework, so install
+# both. The constraint file ships in the image and pins the versions Ray tested
+# against for this release.
 setup_commands:
-  - pip install -c /home/ray/requirements_compiled.txt xgboost
+  - pip install -c /home/ray/requirements_compiled.txt xgboost lightgbm
 
 provider:
   type: aws

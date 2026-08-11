@@ -332,13 +332,17 @@ The images include Ray and all required dependencies. It comes with anaconda and
   .. code-block:: dockerfile
 
     FROM rayproject/ray:2.57.0-py311-gpu
-    RUN pip install torch -c /home/ray/requirements_compiled.txt
+    RUN pip install xgboost -c /home/ray/requirements_compiled.txt
 
   or declare the packages in a :ref:`runtime environment <runtime-environments>`.
 
   Every ``rayproject/ray`` image ships the constraint file at ``/home/ray/requirements_compiled.txt``.
   Passing it with ``-c`` installs the exact library version that Ray tested against for that release.
   Drop the flag to get the newest version instead.
+
+  Don't use the constraint file to install PyTorch or TensorFlow on a GPU image. It's compiled
+  against a CPU-only PyTorch index, so it can resolve a CPU build and silently leave you without
+  GPU support. Install those packages from the index that matches your CUDA version instead.
 
 Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platform}]``. ``Ray version`` tag can be one of the following:
 
