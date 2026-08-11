@@ -11,15 +11,19 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BYTES,
 )
 from ray._common.test_utils import async_wait_for_condition, run_string_as_driver
+from ray.dashboard.modules.task_events.task_event_manager import TaskEventManager
 from ray.dashboard.modules.task_events.task_events_head import TaskEventsHead
 from ray.dashboard.subprocesses.module import SubprocessModuleConfig
 from ray.tests.conftest import *  # noqa
 
+_MANAGER = "ray.dashboard.modules.task_events.task_event_manager"
 
-def _make_head(gcs_address: str) -> TaskEventsHead:
-    """Build a TaskEventsHead directly in the test's driver process (not as its usual
-    separate SubprocessModule) so the test can drive its subscription loops and read its
-    in-memory buffers in-process. Test-only."""
+
+def _make_manager(gcs_address: str) -> TaskEventManager:
+    """Build a TaskEventManager directly in the test's driver process (not inside its usual
+    separate SubprocessModule) so the test can drive its subscription loops and inspect its
+    in-memory store in-process. Reuses TaskEventsHead only to obtain a GCS aio channel wired
+    to the test cluster. Test-only."""
     config = SubprocessModuleConfig(
         cluster_id_hex="deadbeef",
         gcs_address=gcs_address,
@@ -34,7 +38,8 @@ def _make_head(gcs_address: str) -> TaskEventsHead:
         logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
         socket_dir="/tmp",
     )
-    return TaskEventsHead(config)
+    head = TaskEventsHead(config)
+    return TaskEventManager(head._store, head.gcs_address, head.aiogrpc_gcs_channel)
 
 
 async def _stop(subscription: asyncio.Task) -> None:
@@ -46,12 +51,23 @@ async def _stop(subscription: asyncio.Task) -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_death_lands_in_buffer(ray_start_regular):
-    """A killed worker's failure is delivered over GCS pubsub and buffered by the head."""
+async def test_worker_death_triggers_reconciliation(ray_start_regular, monkeypatch):
+    """A killed worker's failure is delivered over GCS pubsub, its exit info is fetched,
+    and the manager fails that worker's tasks."""
+    monkeypatch.setattr(f"{_MANAGER}._MARK_FAILED_ON_WORKER_DEAD_DELAY_S", 0.0)
     gcs_address = ray_start_regular["gcs_address"]
-    head = _make_head(gcs_address)
+    manager = _make_manager(gcs_address)
 
-    subscription = asyncio.create_task(head._subscribe_for_worker_deaths())
+    marked_workers = []
+    original = manager._store.mark_tasks_failed_on_worker_dead
+
+    def record(worker_id, worker_table_data):
+        marked_workers.append(worker_id)
+        return original(worker_id, worker_table_data)
+
+    monkeypatch.setattr(manager._store, "mark_tasks_failed_on_worker_dead", record)
+
+    subscription = asyncio.create_task(manager._subscribe_for_worker_deaths())
     try:
         # Let the subscription register before triggering the death: GCS only queues
         # messages for a subscriber once its subscription is established.
@@ -66,35 +82,50 @@ async def test_worker_death_lands_in_buffer(ray_start_regular):
         worker_id = bytes.fromhex(await actor.get_worker_id.remote())
         ray.kill(actor, no_restart=True)
 
-        await async_wait_for_condition(
-            lambda: worker_id in {wd.worker_id for wd in head._dead_workers},
-            timeout=30,
-        )
+        # Reaching the store call means the worker delta arrived and GetWorkerInfo
+        # returned the dead worker's exit info (otherwise reconciliation returns early).
+        await async_wait_for_condition(lambda: worker_id in marked_workers, timeout=30)
     finally:
         await _stop(subscription)
 
 
 @pytest.mark.asyncio
-async def test_job_finished_lands_in_buffer(ray_start_regular):
-    """A finished job is delivered over GCS pubsub and buffered by the head."""
+async def test_job_finished_triggers_reconciliation(ray_start_regular, monkeypatch):
+    """A finished job is delivered over GCS pubsub and the manager fails that job's
+    tasks. Running-job updates are ignored, so only the finished job is acted on."""
+    monkeypatch.setattr(f"{_MANAGER}._MARK_FAILED_ON_JOB_DONE_DELAY_S", 0.0)
     gcs_address = ray_start_regular["gcs_address"]
-    head = _make_head(gcs_address)
+    manager = _make_manager(gcs_address)
 
-    subscription = asyncio.create_task(head._subscribe_for_finished_jobs())
+    marked_jobs = []
+    original = manager._store.mark_tasks_failed_on_job_ends
+
+    def record(job_id, job_finish_time_ns):
+        marked_jobs.append(job_id)
+        return original(job_id, job_finish_time_ns)
+
+    monkeypatch.setattr(manager._store, "mark_tasks_failed_on_job_ends", record)
+
+    subscription = asyncio.create_task(manager._subscribe_for_finished_jobs())
     try:
         await asyncio.sleep(2)
 
-        # A driver that connects and immediately exits, finishing its job. Run it off the
-        # event loop so the subscription keeps polling while the subprocess runs.
-        driver = f'import ray\nray.init(address="{gcs_address}")\n'
-        await asyncio.get_running_loop().run_in_executor(
+        # A driver that connects, reports its job id, and exits (finishing its job). Run
+        # it off the event loop so the subscription keeps polling while it runs.
+        driver = (
+            "import ray\n"
+            f'ray.init(address="{gcs_address}")\n'
+            'print("JOBID:" + ray.get_runtime_context().get_job_id())\n'
+        )
+        output = await asyncio.get_running_loop().run_in_executor(
             None, run_string_as_driver, driver
         )
-
-        await async_wait_for_condition(
-            lambda: any(job.is_dead for job in head._finished_jobs),
-            timeout=30,
+        job_line = next(
+            line for line in output.splitlines() if line.startswith("JOBID:")
         )
+        job_id = bytes.fromhex(job_line[len("JOBID:") :].strip())
+
+        await async_wait_for_condition(lambda: job_id in marked_jobs, timeout=30)
     finally:
         await _stop(subscription)
 
