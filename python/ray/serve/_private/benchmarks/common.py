@@ -358,24 +358,7 @@ class Benchmarker:
 # See https://github.com/ray-project/ray/issues/60680 for more details.
 
 CONTROLLER_BENCH_CONFIG = {
-    "checkpoints": [
-        1,
-        2,
-        4,
-        8,
-        16,
-        32,
-        64,
-        128,
-        256,
-        512,
-        1024,
-        2048,
-        3072,
-        4096,
-        6144,
-        8192,
-    ],
+    "checkpoints": [1, 2, 4, 8, 16, 32, 64, 128, 1024, 2048, 3072, 4096, 8192],
     "marination_period_s": 180,
     "sample_interval_s": 5,
 }
