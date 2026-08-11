@@ -1182,6 +1182,39 @@ def test_large_nested_byte_budget_batching(tmp_path, monkeypatch):
     assert got.equals(table)
 
 
+def test_fat_row_decode_budget_not_voided_by_batch_floor(tmp_path):
+    """A fat-row group (~64 KiB/row) under a small decode budget must stream
+    many small batches. The crate's old 2048-row batch floor overrode
+    ``decode_budget_bytes`` for any schema above ~16 KiB/row (findings K8) —
+    here it would have decoded the whole 32 MiB group as a single batch.
+    Direct crate call: the floor lives in the crate's batch sizing, below the
+    Ray layer."""
+    n = 512
+    table = pa.table(
+        {
+            "id": pa.array(np.arange(n, dtype=np.int64)),
+            "fat": pa.array(["x" * 65536] * n),
+        }
+    )
+    path = tmp_path / "fat_rows.parquet"
+    # Dictionary encoding would shrink the footer's uncompressed size (what the
+    # budget math reads) to nothing; plain encoding keeps ~64 KiB/row.
+    pq.write_table(
+        table, str(path), write_page_index=True, row_group_size=n, use_dictionary=False
+    )
+
+    reader = pa.RecordBatchReader.from_stream(
+        ray_data_arrow_rs.read_row_groups(str(path), decode_budget_bytes=1024 * 1024)
+    )
+    batches = list(reader)
+    # 1 MiB budget / 64 KiB rows -> 16 rows, clamped up to the 32-row floor:
+    # 16 batches. The old floor produced ONE 512-row (32 MiB) batch.
+    assert len(batches) >= 8, f"expected many budget-sized batches, got {len(batches)}"
+    assert max(b.num_rows for b in batches) <= 64
+    got = pa.Table.from_batches(batches, schema=table.schema)
+    assert got.equals(table)
+
+
 def test_scanner_leak_signature_and_arrow_rs_avoids_it(tmp_path, monkeypatch):
     """Reproduce the PyArrow accumulation behind ray#49158 / apache/arrow#39808 and
     show the arrow-rs reader sidesteps it.
@@ -1805,6 +1838,53 @@ def test_arrow_rs_s3_parity_with_projection(s3_fs, s3_path, restore_ctx):
     rs_tbl = _read_s3_sorted(uri, s3_fs, True, restore_ctx, columns=["id", "x"])
     assert rs_tbl.column_names == ["id", "x"]
     assert pa_tbl.equals(rs_tbl)
+
+
+def test_arrow_rs_s3_fat_columns_window_parity(s3_fs, s3_path, restore_ctx):
+    """The M20 shape: a TALL row group whose every projected column exceeds the
+    column-group budget. The old planner mis-selected the column-group (Hstack)
+    path here and retained the whole decoded row group (per-task USS pinned,
+    ``fetch_window_mb``-inert); it now row-windows the group instead — the
+    selection itself is asserted by the crate's
+    ``tall_fat_columns_row_window_instead_of_hstack`` unit test. This proves the
+    multi-window S3 decode is byte-identical on that shape under the same knobs
+    (small window + small column budget, so the read really splits)."""
+    n = 2000
+    table = pa.table(
+        {
+            "id": pa.array(np.arange(n, dtype=np.int64)),
+            "fat": pa.array([f"{i:04d}" + "x" * 4092 for i in range(n)]),
+        }
+    )
+    base = _unwrap_protocol(s3_path)
+    key = os.path.join(base, "fat_cols.parquet")
+    # Plain encoding keeps the column fat on disk (the window math is
+    # compressed-byte-denominated); small pages let windows actually split.
+    pq.write_table(
+        table,
+        key,
+        filesystem=s3_fs,
+        write_page_index=True,
+        use_dictionary=False,
+        data_page_size=64 * 1024,
+        row_group_size=n,
+    )
+    uri = f"s3://{key}"
+
+    knobs = {"arrow_rs_fetch_window_mb": 1, "arrow_rs_column_fetch_mb": 1}
+    pa_tbl = _read_s3_sorted(uri, s3_fs, False, restore_ctx, dataset_kwargs=knobs)
+    rs_tbl = _read_s3_sorted(uri, s3_fs, True, restore_ctx, dataset_kwargs=knobs)
+    assert rs_tbl.num_rows == n
+    assert pa_tbl.equals(rs_tbl)
+
+    # Escape hatch: windowing explicitly disabled -> windows are inert, so the
+    # column-group (Hstack) axis fires instead. Its decode side must stay
+    # byte-identical too (it still serves genuinely wide/short groups).
+    hstack_knobs = {"arrow_rs_fetch_window_mb": 0, "arrow_rs_column_fetch_mb": 1}
+    rs_hstack = _read_s3_sorted(
+        uri, s3_fs, True, restore_ctx, dataset_kwargs=hstack_knobs
+    )
+    assert pa_tbl.equals(rs_hstack)
 
 
 def test_arrow_rs_s3_native_path_runs(s3_fs, s3_path):

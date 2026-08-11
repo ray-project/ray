@@ -148,11 +148,20 @@ fn shared_runtime() -> &'static tokio::runtime::Runtime {
 // --------------------------------------------------------------------------- //
 // Byte-budget batch sizing (ported from main.rs `byte_budget_rows`)
 // --------------------------------------------------------------------------- //
+/// Absolute floor on batch rows: protects against degenerate few-row batches
+/// (per-batch allocation overhead) without overriding the byte budget. The old
+/// floor of 2048 silently voided `decode_budget_bytes` for any schema over
+/// ~16 KiB/row (2048 × 16 KiB = the 32 MiB default budget — findings K8): a
+/// 1 MiB/row fat-string group decoded 2 GiB batches no matter what the knob
+/// said. At 32 the floor only overrides the budget above `budget/32` per row
+/// (1 MiB/row at the default), where a 32-row batch is ~one budget anyway.
+const MIN_BATCH_ROWS: usize = 32;
+
 /// Choose a batch row count so `rows * bytes_per_row ~= budget_bytes`, using the
 /// row group's uncompressed size / row count from the footer. `requested` is the
-/// upper clamp (a narrow schema never grows past the caller's ask) and 2048 is the
-/// lower clamp (a very wide schema never collapses to a pathologically tiny batch).
-/// This is what keeps the decoded working set flat across schemas.
+/// upper clamp (a narrow schema never grows past the caller's ask) and
+/// [`MIN_BATCH_ROWS`] the lower clamp. This is what keeps the decoded working
+/// set flat across schemas.
 fn byte_budget_rows(
     uncompressed_bytes: i64,
     num_rows: i64,
@@ -164,7 +173,7 @@ fn byte_budget_rows(
     }
     let bpr = (uncompressed_bytes as f64 / num_rows as f64).max(1.0);
     let budget_rows = (budget_bytes as f64 / bpr) as usize;
-    budget_rows.clamp(2048, requested.max(2048))
+    budget_rows.clamp(MIN_BATCH_ROWS, requested.max(MIN_BATCH_ROWS))
 }
 
 // --------------------------------------------------------------------------- //
@@ -1067,6 +1076,24 @@ struct PrefetchedUnit {
     permit: tokio::sync::OwnedSemaphorePermit,
 }
 
+/// Permits (KiB) one unit may hold from the prefetch bucket: its compressed
+/// size, capped at HALF the budget so a single oversized unit can never drain
+/// the whole semaphore. When one unit held the full budget, no other fetch
+/// could be admitted while it decoded — fetch stopped overlapping decode and
+/// the read went strictly serial (findings T6 measured this at up to 5× wall).
+/// Capping at half guarantees at least two units can be in flight, restoring
+/// the overlap; the cost is that the bucket under-accounts a unit whose real
+/// size exceeds half the budget (its full bytes are fetched regardless — a
+/// unit can't be split below a page/column), so peak in-flight compressed
+/// bytes is bounded by `budget + 2 * max_oversized_unit_excess` rather than
+/// `budget` exactly. Oversized units are rare after the windows-first planning
+/// rule (a lone column bigger than `colwindow_budget` in a genuinely wide
+/// group, or a no-offset-index chunk fallback). A 0/1-KiB budget still
+/// degrades to strict fetch→decode→fetch as before.
+fn unit_permit_kib(kib: u64, budget_kib: u64) -> u32 {
+    kib.clamp(1, (budget_kib / 2).max(1)) as u32
+}
+
 /// Find `want` inside one of the prefetched `ranges` and return the matching
 /// slice of its `Bytes` (refcounted view, no copy). `None` if no prefetched
 /// range fully contains it. Pure so it unit-tests without an object store.
@@ -1230,17 +1257,28 @@ struct UnitFetch {
 
 /// Plan every `(row group, start, len)` sub-range into prefetchable units.
 /// The split axis is chosen per row group by its shape:
-///   * WIDE (the projected roots' compressed bytes partition into >1 group under
-///     `colwindow_budget`, whole-group read): COLUMN GROUPS — each unit is a
-///     slice of the projection over all the group's rows. The async reader's
-///     `InMemoryRowGroup` otherwise stages every projected chunk of the group at
-///     once, which for a 5000-column schema was the entire S3 memory regression;
-///     one group at a time bounds that to ~`colwindow_budget`, and columns are
-///     independent so no page is ever decoded twice.
-///   * otherwise: ROW WINDOWS — each unit is ~`fetch_window_mb` compressed bytes
-///     of ALL projected columns, page-aligned via the offset index (see
-///     `effective_window_step`; without an offset index the group collapses to
-///     one window).
+///   * ROW WINDOWS whenever they can actually split the range (the effective
+///     window step is smaller than the range): each unit is ~`fetch_window_mb`
+///     compressed bytes of ALL projected columns, page-aligned via the offset
+///     index (see `effective_window_step`). Windows stream batches straight
+///     out, so decoded retention is ~one decode budget regardless of group
+///     size — which is why they are preferred whenever possible.
+///   * COLUMN GROUPS only when row-windowing is inert (the step covers the
+///     whole range — a wide/short group whose every column is a single page, a
+///     missing offset index, or a group smaller than one fetch window) AND the
+///     projected roots' compressed bytes partition into >1 group under
+///     `colwindow_budget`: each unit is a slice of the projection over all the
+///     group's rows. The async reader's `InMemoryRowGroup` otherwise stages
+///     every projected chunk of the group at once, which for a 5000-column
+///     schema was the entire S3 memory regression; one group at a time bounds
+///     the FETCH to ~`colwindow_budget`. The decode side (`RgDecode::Hstack`)
+///     retains every group's decoded batches until the last group lands, so
+///     this axis trades decoded retention for bounded fetch — acceptable for
+///     the shapes that reach it (short groups), pathological for tall fat ones.
+///     Tall-fat-column groups (few projected columns, each over the budget)
+///     used to mis-select this axis and retain the entire decoded row group
+///     (findings M20: 3.47 GB pinned, `fetch_window_mb`-inert); the
+///     windows-first rule above is the fix — they window instead.
 /// Both unit kinds flow through the same byte-budget admission loop in
 /// [`drive_s3`]; only the decode-side reassembly differs. Planning globally
 /// (not per row group) lets the prefetcher run ahead across row-group
@@ -1269,10 +1307,21 @@ fn plan_s3_units(
             batch_clamp,
             decode_budget,
         );
+        // Never window below the coarsest column's largest page (see
+        // max_page_rows): a sub-page window re-decodes that page in every
+        // window it overlaps. Wide/short groups (one page per column) collapse
+        // to a single window; tall multi-page groups still split.
+        let step = effective_window_step(
+            window_rows_for(rgm, fetch_window_mb),
+            max_page_rows(md, rg),
+            len,
+        );
         // Column groups only apply to whole-group reads (a K-split sub-range is
-        // by definition a tall group being split by rows, not columns).
+        // by definition a tall group being split by rows, not columns) and only
+        // when row windows can't split the range (step covers it whole) — see
+        // the doc comment above for why windows always win when they can fire.
         let whole = start == 0 && len == rgm.num_rows().max(0) as usize;
-        let groups = if whole && colwindow_budget > 0 {
+        let groups = if whole && step >= len && colwindow_budget > 0 {
             partition_columns_by_budget(
                 &projected_root_sizes(schema_descr, rgm, roots),
                 colwindow_budget,
@@ -1297,15 +1346,6 @@ fn plan_s3_units(
                 decode: RgDecode::Hstack(n),
             });
         } else {
-            // Never window below the coarsest column's largest page (see
-            // max_page_rows): a sub-page window re-decodes that page in every
-            // window it overlaps. Wide/short groups (one page per column)
-            // collapse to a single window; tall multi-page groups still split.
-            let step = effective_window_step(
-                window_rows_for(rgm, fetch_window_mb),
-                max_page_rows(md, rg),
-                len,
-            );
             let (mut w, end) = (start, start + len);
             let mut n = 0usize;
             while w < end {
@@ -1386,8 +1426,9 @@ async fn next_unit_stream(
 /// here. Two halves, connected by a byte-denominated semaphore ("the bucket"):
 ///
 ///   * admission loop (spawned): for each planned unit IN ORDER, acquire
-///     permits equal to its compressed size (clamped to the whole budget so an
-///     oversized unit can still run, alone), then spawn its ranged GET. Fetches
+///     permits equal to its compressed size (capped at half the budget so one
+///     oversized unit never drains the bucket and serializes fetch behind
+///     decode — see [`unit_permit_kib`]), then spawn its ranged GET. Fetches
 ///     whose permits fit run CONCURRENTLY — that's what overlaps S3 latency
 ///     with decode — while `acquire` blocks the loop the moment the bucket is
 ///     spent.
@@ -1456,7 +1497,7 @@ async fn drive_s3(
                 kib,
             } in units
             {
-                let want = kib.clamp(1, budget_kib) as u32;
+                let want = unit_permit_kib(kib, budget_kib);
                 let permit = match sem.clone().acquire_many_owned(want).await {
                     Ok(p) => p,
                     Err(_) => return, // semaphore closed = consumer gone
@@ -2413,6 +2454,100 @@ mod tests {
             }
         }
         assert_eq!(next_val, 1000);
+    }
+
+    #[test]
+    fn byte_budget_rows_floor_yields_to_the_budget() {
+        // The K8 defect: a 1 MiB/row fat-string group under the 32 MiB default
+        // budget must decode ~32-row batches — the old 2048-row floor made this
+        // 2048 rows (a 2 GiB batch), silently voiding the knob.
+        let mib = 1024 * 1024;
+        assert_eq!(byte_budget_rows(1000 * mib, 1000, 131072, 32 * mib as u64), 32);
+        // 64 KiB/row, 1 MiB budget -> 16 rows... clamped up to the 32-row floor
+        // (per-batch overhead guard), the only place the floor still binds.
+        assert_eq!(byte_budget_rows(1000 * 64 * 1024, 1000, 131072, mib as u64), 32);
+        // Narrow schema: budget_rows huge -> clamped to the caller's ask.
+        assert_eq!(byte_budget_rows(8000, 1000, 131072, 32 * mib as u64), 131072);
+        // Unknown rows -> requested (unchanged behavior).
+        assert_eq!(byte_budget_rows(0, 0, 4096, 1), 4096);
+    }
+
+    #[test]
+    fn oversized_unit_never_drains_the_bucket() {
+        // T6: a unit >= the budget used to take the whole semaphore, serializing
+        // fetch behind decode. It must now cap at half so a second unit fits.
+        assert_eq!(unit_permit_kib(500_000, 64 * 1024), 32 * 1024);
+        assert_eq!(unit_permit_kib(64 * 1024, 64 * 1024), 32 * 1024);
+        // A normal-sized unit takes exactly its size.
+        assert_eq!(unit_permit_kib(16 * 1024, 64 * 1024), 16 * 1024);
+        // Zero-size unit still needs one permit to be ordered by the bucket.
+        assert_eq!(unit_permit_kib(0, 64 * 1024), 1);
+        // Degenerate budget (prefetch disabled) -> strict one-at-a-time, as before.
+        assert_eq!(unit_permit_kib(500, 1), 1);
+    }
+
+    /// Fixture for the M20 mis-selection: a TALL row group with one fat string
+    /// column (1 KiB/row, uncompressed, multi-page) and one small int column.
+    /// Every projected root exceeds a small column budget, so the old planner
+    /// column-grouped it (Hstack = whole decoded group retained); the fixed
+    /// planner must row-window it because the windows actually split.
+    fn tall_fat_col_fixture() -> ArrowReaderMetadata {
+        use arrow::array::{Int64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use parquet::arrow::arrow_writer::ArrowWriter;
+        use parquet::file::properties::WriterProperties;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Int64, false),
+            Field::new("fat", DataType::Utf8, false),
+        ]));
+        let n = 2000usize;
+        let a = Int64Array::from((0..n as i64).collect::<Vec<_>>());
+        let payload = "x".repeat(1024);
+        let fat = StringArray::from((0..n).map(|_| payload.clone()).collect::<Vec<_>>());
+        let batch =
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(a), Arc::new(fat)]).unwrap();
+        let props = WriterProperties::builder()
+            .set_data_page_row_count_limit(100)
+            .set_write_batch_size(100)
+            // Dictionary encoding would collapse the repeated payload to a
+            // few KiB on disk; plain encoding keeps the column fat COMPRESSED
+            // too, which is what the byte-denominated window math sees.
+            .set_dictionary_enabled(false)
+            .build();
+        let mut buf = Vec::new();
+        let mut w = ArrowWriter::try_new(&mut buf, schema, Some(props)).unwrap();
+        w.write(&batch).unwrap();
+        w.close().unwrap();
+        let buf = Bytes::from(buf);
+        ArrowReaderMetadata::load(&buf, reader_options(PageIndexPolicy::Required)).unwrap()
+    }
+
+    #[test]
+    fn tall_fat_columns_row_window_instead_of_hstack() {
+        // The M20 regression test: ~2 MiB of 1 KiB rows, column budget 1 byte
+        // (every root its own group — the strongest Hstack trigger), fetch
+        // window 1 MiB. Windows split the range, so they must win.
+        let meta = tall_fat_col_fixture();
+        let mask = ProjectionMask::all();
+        let roots = vec![0usize, 1];
+        let (plans, units) = plan_s3_units(
+            &meta, &mask, &roots, &[(0, 0, 2000)], 131072, 2 << 20, 1, 1,
+        );
+        assert_eq!(plans.len(), 1);
+        match plans[0].decode {
+            RgDecode::Windows(n) => assert!(n > 1, "expected a real split, got {n} window(s)"),
+            RgDecode::Hstack(_) => panic!("tall fat-column group mis-selected Hstack again"),
+        }
+        // Every unit is a row window over ALL projected columns.
+        assert!(units.iter().all(|u| u.sel.is_some()));
+
+        // Escape hatch: windowing explicitly disabled (fetch_window_mb == 0)
+        // makes windows inert -> the column-group axis may fire again.
+        let (plans, _units) = plan_s3_units(
+            &meta, &mask, &roots, &[(0, 0, 2000)], 131072, 2 << 20, 0, 1,
+        );
+        assert!(matches!(plans[0].decode, RgDecode::Hstack(2)));
     }
 
     #[test]

@@ -23,8 +23,10 @@ C-stream (consumed zero-copy via ``pa.RecordBatchReader.from_stream``):
   split_threshold_bytes, predicate_json, column_fetch_mb, prefetch_budget_mb)``
   — S3 via the Rust ``object_store`` crate. Every read decomposes into
   prefetchable *units* — row windows of ``≈fetch_window_mb`` compressed bytes
-  for ordinary row groups, column groups of ``≈column_fetch_mb`` for wide ones —
-  and all units flow through one byte-budget prefetcher: concurrent ranged GETs
+  whenever windows can split the group, column groups of ``≈column_fetch_mb``
+  only where they can't (wide/short groups: one page per column, or no page
+  index) — and all units flow through one byte-budget prefetcher: concurrent
+  ranged GETs
   are admitted until ``prefetch_budget_mb`` compressed bytes are in flight ahead
   of the (single, in-order) decoder, so S3 peak RSS is a knob, not a property of
   the file layout, and S3 latency hides behind decode without staging whole row
@@ -223,17 +225,23 @@ _LOGGED_NATIVE_ACTIVE = False
 # with block size at the same marginal rate) rather than anything this knob
 # reaches.
 #
-# Note the 2048-row floor below can void this knob entirely: it only binds below
-# ~1 KiB/row (2 MiB / 2048 rows). At 32 MiB it binds up to ~16 KiB/row, so this
-# also widens the range of schemas over which the knob does anything at all.
+# The crate's own batch-row floor used to void this knob for any schema over
+# ~16 KiB/row (a 2048-row floor — findings K8); it is now 32 rows
+# (``MIN_BATCH_ROWS`` in the crate), so the knob holds up to ~1 MiB/row at this
+# default. The 2048-row floor *below* is different: it floors only the
+# *requested* batch size handed to the crate, which is the crate's upper clamp,
+# never the decoded batch itself.
 # Tuning: 32-128 MiB are within noise of each other on memory; go below 8 MiB only
 # to reproduce the pre-2026-08 behaviour.
 _ARROW_RS_DECODE_BUDGET_BYTES = env_integer(
     "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES", 32 * MiB
 )
 
-# Floor on the estimated decode batch size (rows), so a very wide schema can't
-# collapse the batch to a handful of rows and starve throughput.
+# Floor on the estimated *requested* batch size (rows) handed to the crate.
+# The crate treats it as an upper clamp and re-derives the byte-budgeted row
+# count per row group (with its own small 32-row floor), so this cannot force
+# large decoded batches — it only stops a coarse Python-side estimate from
+# capping the crate below what the budget would allow.
 _ARROW_RS_MIN_DECODE_BATCH_ROWS = 2048
 
 # Was ``RAY_DATA_READ_FILES_NUM_THREADS`` set explicitly? This reader bounds the
@@ -305,8 +313,11 @@ _ARROW_RS_FETCH_WINDOW_MB = env_integer("RAY_DATA_ARROW_RS_FETCH_WINDOW_MB", 16)
 # one group's compressed chunks at a time, so peak ≈ ``column_fetch_mb`` + the fully
 # decoded row group (the output, which PyArrow holds too) — asymptotes to PyArrow
 # parity as the budget shrinks. 0 disables (fetch the whole row group at once, the
-# pre-fix behavior). Only affects the S3 path and only engages for wide groups;
-# narrow/small reads partition to a single group and are untouched. Measured on the
+# pre-fix behavior). Only affects the S3 path, and only engages where row windows
+# can't split the group (wide/short groups — one page per column — or no page
+# index): a tall group with fat columns row-windows instead, because the column-group
+# decode retains the whole decoded group (the M20 retention, findings) while windows
+# stream it. Narrow/small reads partition to a single group and are untouched. Measured on the
 # Linux/S3 run (Agents.md §7.1): on the 5000-column fixture, cf=16 cut per-task USS
 # below PyArrow -- fanned out over 4 files arrow_rs peaked at 4.30 GB vs PyArrow's
 # 6.78 GB (~37% less) and finished faster; the sweep was monotone in the budget
