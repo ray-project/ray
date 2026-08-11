@@ -2028,8 +2028,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// This has its own mutex because IsTaskCanceled() is called from check_signals
   /// while the process-level core_worker_ lock is held, and taking mutex_ there
-  /// closes a lock-order cycle. Always acquire this after mutex_, never before.
-  mutable absl::Mutex canceled_tasks_mutex_;
+  /// closes a lock-order cycle.
+  mutable absl::Mutex canceled_tasks_mutex_ ABSL_ACQUIRED_AFTER(mutex_);
   absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(canceled_tasks_mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
