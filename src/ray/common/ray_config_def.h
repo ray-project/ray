@@ -135,6 +135,17 @@ RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 /// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 
+/// The TTL for CancelWorkerLease tombstones on the raylet. Note that a tombstone only has
+/// to cover the message-reordering window between a CancelWorkerLease and its
+/// matching RequestWorkerLease, not the lifetime of the lease itself.
+RAY_CONFIG(uint64_t, cancelled_lease_tombstone_ttl_ms, 10 * 60 * 1000)
+
+/// Maximum number of CancelWorkerLease tombstones retained by a raylet. Each
+/// tombstone is a 32-byte LeaseID plus an 8-byte timestamp, so 100,000 entries
+/// is roughly 10MB including flat_hash_set / deque overhead. Oldest entries
+/// are dropped when the cap is hit.
+RAY_CONFIG(uint32_t, max_cancelled_lease_tombstones, 100000)
+
 /// The number of retries for the task or actor when
 /// it fails due to the process being killed when the memory is running low on the node.
 /// The process killing is done by memory monitor, which is enabled via
