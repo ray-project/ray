@@ -1,86 +1,157 @@
+"""Weight syncing between a trainer and an inference engine using Ray Direct Transport.
+
+This script mimics the weight synchronization step of RL for LLMs: a
+"trainer" actor repeatedly updates a model and pushes the new weights to a
+"generator" actor that is running a generation loop. Either actor can be killed
+while the loops are running to exercise the fault tolerance path, and you can scale
+each independently.
+
+It runs the fully optimized RDT configuration:
+
+* The sender copies each ``ray.put`` into a pre-registered NIXL memory pool
+  (:func:`ray.experimental.register_nixl_memory_pool`), which buckets many small
+  tensor views into contiguous, already-registered buffers.
+* The receiver pre-registers its model weights with
+  :func:`ray.experimental.register_nixl_memory` and points the incoming transfer
+  straight at them with :func:`ray.experimental.set_target_for_ref`, so no
+  staging buffer is allocated and no extra memory is registered on the data path.
+
+Usage:
+
+.. code-block:: bash
+
+    python test_weights_transfer.py --device gpu
+
+    # Split the weights into more, smaller views per transfer.
+    python test_weights_transfer.py --device gpu --num-views 10000
+
+    # Inject one generator failure.
+    python test_weights_transfer.py --device gpu --max-generator-failures 1
+"""
+
 import argparse
 import asyncio
 import json
 import time
+from dataclasses import dataclass
 from statistics import mean
-from typing import List
+from typing import Dict, List, Optional
 
 import torch
 
 import ray
 from ray.actor import ActorHandle
-from ray.experimental import register_nixl_memory, set_target_for_ref
+from ray.experimental import (
+    register_nixl_memory,
+    register_nixl_memory_pool,
+    set_target_for_ref,
+)
+
+DEFAULT_MODEL_SIZE_BYTES = 2 * 1024 * 1024 * 1024
+
+
+@dataclass
+class Config:
+    """Knobs shared by the trainer and the generator."""
+
+    num_views: int
+    num_iters: int
+    device_str: str
+    model_size_bytes: int
+    # Size of the sender's NIXL memory pool, or None to size it from the model.
+    memory_pool_size_bytes: Optional[int]
+    verify: bool
+
+    @property
+    def pool_size_bytes(self) -> int:
+        if self.memory_pool_size_bytes is not None:
+            return self.memory_pool_size_bytes
+        # A pool block is only freed once the ObjectRef goes out of scope on
+        # every generator, which can lag behind the next ray.put. Two
+        # iterations' worth of headroom keeps the allocator from running dry.
+        return 2 * self.model_size_bytes
 
 
 class Model(torch.nn.Module):
-    def __init__(self, num_indices: int):
+    def __init__(self, num_views: int, total_size_bytes: int):
         super().__init__()
-        # 2GiB matrix.
-        TOTAL_SIZE_BYTES = 2 * 1024 * 1024 * 1024
-        NUM_ROWS = 1_000
+        # A single linear layer of `total_size_bytes`, split row-wise so that
+        # each of the `num_views` views is one row.
         self.layer = torch.nn.Linear(
-            TOTAL_SIZE_BYTES // NUM_ROWS // 2, NUM_ROWS, dtype=torch.float16
+            total_size_bytes // num_views // 2, num_views, dtype=torch.float16
         )
         self.layer.requires_grad_(False)
         self.layer.weight.zero_()
-        self.indices = list(range(num_indices))
 
     def forward(self, x):
-        x = self.layer(x)
-        return x
+        with torch.no_grad():
+            x = self.layer(x)
+            return x
 
-    def get_views(self):
+    def get_views(self, num_views: int) -> List[torch.Tensor]:
         views = []
-        for index in self.indices:
+        for index in range(num_views):
             views.append(self.layer.weight[index])
         return views
 
 
 @ray.remote(enable_tensor_transport=True)
 class Generator:
-    def __init__(self, use_nixl: bool, num_indices: int, device_str: str):
+    """Inference engine. Runs a generation loop and pulls weights on request."""
+
+    def __init__(self, config: Config):
         init_start = time.perf_counter()
-        self._device = torch.device(device_str)
-        self._model = Model(num_indices).to(self._device)
+        self._config = config
+        self._device = torch.device(config.device_str)
+        self._model = Model(config.num_views, config.model_size_bytes).to(self._device)
+        self._num_views = config.num_views
         self._model_version = 0
-        if use_nixl:
-            register_nixl_memory(self._model.layer.weight)
-        # Wait for the first weight sync before starting generation.
+        # Since we write directly into our local model weights on every
+        # transfer, register them once here instead of on each transfer.
+        for param in self._model.parameters():
+            register_nixl_memory(param)
         self._generation_event = asyncio.Event()
-        self._timings_ms = {"ray_get": []}
-        self._timings_ms["Generator.__init__"] = [
-            (time.perf_counter() - init_start) * 1000.0
-        ]
+        self._timings_ms = {
+            "ray_get": [],
+            "Generator.__init__": [(time.perf_counter() - init_start) * 1000.0],
+        }
 
-    async def sync_weights(self, model_version, refs: List[ray.ObjectRef]):
-        print("start syncing weights", model_version)
-
-        # Pause generation.
+    async def sync_weights(self, model_version: int, refs: List[ray.ObjectRef]):
+        """Synchronize weights with the trainer's copy."""
+        # 1. Pause generation and wait for in-flight generation to finish.
         self._generation_event.clear()
-        # Wait for in-flight generation requests to finish.
         if self._device.type == "cuda":
             torch.cuda.synchronize()
 
-        # Sync weights.
-        views = self._model.get_views()
-        ref = refs[0]
-        old_items = [view[0].item() for view in views]
+        # 2. Sync weights.
+        # Unpack the ObjectRef. There should be only one, containing all tensor views.
+        (ref,) = refs
+        views = self._model.get_views(self._num_views)
+
         get_start = time.perf_counter()
+        # Land the transfer directly in the model weights rather than in a
+        # staging buffer we would then have to copy out of. The order of the
+        # tensors here must match the order the trainer put them in.
         set_target_for_ref(ref, views)
+        # The tensors this returns are the same underlying tensors as `views`,
+        # so there is nothing left to copy into the model.
         ray.get(ref)
         self._timings_ms["ray_get"].append((time.perf_counter() - get_start) * 1000.0)
-        for view, old_item in zip(views, old_items):
-            if not torch.all(old_item + 1 == view).item():
-                print("weights not synced, got", view[0], "expected", old_item + 1)
 
+        if self._config.verify:
+            # The trainer increments every element by one per version, so the weights should now all equal the model version.
+            if not torch.all(self._model.layer.weight == model_version).item():
+                raise AssertionError(
+                    f"weights not synced for version {model_version}: expected "
+                    f"all {model_version}, got {self._model.layer.weight[0][0].item()}"
+                )
         self._model_version = model_version
-        print("synced weights", model_version)
 
-        # Resume generation.
+        # 3. Resume generation.
         self._generation_event.set()
 
     async def loop(self, num_iters: int):
-        # Generation loop.
+        """Generation loop."""
         inpt = torch.randn(
             self._model.layer.weight.shape[1], dtype=torch.float16, device=self._device
         )
@@ -89,11 +160,11 @@ class Generator:
             # Check that generation is not paused.
             await self._generation_event.wait()
 
+            # Simulate a generation round.
             time.sleep(0.1)
-            output = self._model(inpt)
-            print("generated output", output)
+            self._model(inpt)
 
-            # Yield.
+            # Yield, so a queued sync_weights call can run.
             await asyncio.sleep(0)
             it += 1
             if it >= num_iters:
@@ -103,127 +174,96 @@ class Generator:
         return _summarize_timings(self._timings_ms)
 
     def get_gpu_memory_metrics(self):
-        if self._device.type == "cuda":
-            return {
-                "peak_allocated_bytes": torch.cuda.max_memory_allocated(self._device),
-                "peak_reserved_bytes": torch.cuda.max_memory_reserved(self._device),
-            }
-        return {}
-
-    def get_nixl_transport_metrics(self):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
-
-        transport = get_tensor_transport_manager("NIXL")
-        return {
-            "get_xfer_descs_times_s": transport.get_xfer_descs_cost,
-            "serialize_times_s": transport.ser_cost_map,
-            "deserialize_times_s": transport.deser_cost_map,
-        }
+        return _gpu_memory_metrics(self._device)
 
 
 @ray.remote(enable_tensor_transport=True)
 class Trainer:
-    def __init__(self, use_nixl: bool, num_indices: int, device_str: str):
+    """Training engine. Updates weights and pushes them to the generators."""
+
+    def __init__(self, config: Config):
         init_start = time.perf_counter()
-        self._device = torch.device(device_str)
-        self._model = Model(num_indices).to(self._device)
+        self._device = torch.device(config.device_str)
+        self._model = Model(config.num_views, config.model_size_bytes).to(self._device)
+        self._num_views = config.num_views
         self._model_version = 0
-        self._generators = []
-        self._tensor_transport = "nixl" if use_nixl else None
-        if use_nixl:
-            register_nixl_memory(self._model.layer.weight)
-        self._timings_ms = {"ray_put": [], "ray_get": []}
-        self._timings_ms["Trainer.__init__"] = [
-            (time.perf_counter() - init_start) * 1000.0
-        ]
+        self._generators: List[ActorHandle["Generator"]] = []
+        # Pre-allocate a GPU memory pool for NIXL transfers.
+        # This is instead of directly registering the Trainer's model weights.
+        register_nixl_memory_pool(config.pool_size_bytes, self._device)
+        self._timings_ms = {
+            "ray_put": [],
+            "sync_weights": [],
+            "Trainer.__init__": [(time.perf_counter() - init_start) * 1000.0],
+        }
 
-    async def reset_generators(self, generators: List[ActorHandle[Generator]]):
+    async def reset_generators(self, generators: List[ActorHandle["Generator"]]):
+        """Reset the generators, possibly while the training loop is already running."""
         self._generators = generators
 
-    async def loop(self, generators: List[ActorHandle[Generator]], num_iters: int):
-        """Training loop"""
-        self._generators = generators
-
+    async def loop(self, num_iters: int):
+        """Training loop."""
         it = 0
         while True:
-            # Update weights.
-            item = self._model.layer.weight[0][0].item()
+            # 1. Update weights.
             self._model.layer.weight += 1
-            assert torch.all(
-                item + 1 == self._model.layer.weight
-            ).item(), "weights not updated"
             self._model_version += 1
-            print("updated weights", self._model_version)
 
-            # Put weights.
-            views = self._model.get_views()
+            # 2. Put the weights in the RDT store. The weights physically stay in PyTorch memory,
+            # but this registers their memory with Ray.
+            views = self._model.get_views(self._num_views)
             put_start = time.perf_counter()
-            weight_refs = [ray.put(views, _tensor_transport=self._tensor_transport)]
+            weight_refs = [ray.put(views, _tensor_transport="nixl")]
             self._timings_ms["ray_put"].append(
                 (time.perf_counter() - put_start) * 1000.0
             )
-            print("put weights", weight_refs)
 
-            # Push weights to generators.
-            sync_weights_tasks = []
-            for generator in self._generators:
-                print(
-                    "syncing weights for version",
-                    self._model_version,
-                    "to generator",
-                    generator,
-                )
-                sync_weights_tasks.append(
-                    generator.sync_weights.remote(self._model_version, weight_refs)
-                )
+            # 3. Push the weights to every generator.
+            sync_weights_tasks = [
+                generator.sync_weights.remote(self._model_version, weight_refs)
+                for generator in self._generators
+            ]
+
+            # 4. Drop our references so Ray can garbage-collect the RDT metadata
+            # and free the pool blocks once the generators are done. The weights
+            # stay in PyTorch memory.
             del weight_refs
-            if sync_weights_tasks:
-                get_start = time.perf_counter()
-                ray.get(sync_weights_tasks)
-                self._timings_ms["ray_get"].append(
-                    (time.perf_counter() - get_start) * 1000.0
-                )
 
-            # # Wait for RDT to finish the weight transfers.
-            # # This waits until all generators that we pushed to in the previous round either finish the weight sync or the generator actor fails.
-            # # After this returns, it's safe to update the local weights.
-            # ray.experimental.wait_tensor_freed(views[0])
+            # 5. Wait for the generators to finish syncing. After this returns
+            # it is safe to update the local weights again. This could instead
+            # be deferred until just before the next update.
+            if sync_weights_tasks:
+                sync_start = time.perf_counter()
+                ray.get(sync_weights_tasks)
+                self._timings_ms["sync_weights"].append(
+                    (time.perf_counter() - sync_start) * 1000.0
+                )
 
             it += 1
             if it >= num_iters:
                 break
 
-            # Yield to let the controller reset the list of generators.
+            # 6. Yield to let the controller reset the list of generators if needed.
             await asyncio.sleep(0)
 
     def get_timing_metrics(self):
         return _summarize_timings(self._timings_ms)
 
     def get_bytes_per_iteration(self) -> int:
-        views = self._model.get_views()
+        views = self._model.get_views(self._num_views)
         return sum(view.numel() * view.element_size() for view in views)
 
     def get_gpu_memory_metrics(self):
-        if self._device.type == "cuda":
-            return {
-                "peak_allocated_bytes": torch.cuda.max_memory_allocated(self._device),
-                "peak_reserved_bytes": torch.cuda.max_memory_reserved(self._device),
-            }
+        return _gpu_memory_metrics(self._device)
+
+
+def _gpu_memory_metrics(device: torch.device) -> Dict[str, int]:
+    if device.type != "cuda":
         return {}
-
-    def get_nixl_transport_metrics(self):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
-
-        transport = get_tensor_transport_manager("NIXL")
-        return {
-            "get_xfer_descs_times_s": transport.get_xfer_descs_cost,
-            "serialize_times_s": transport.ser_cost_map,
-            "deserialize_times_s": transport.deser_cost_map,
-        }
+    return {
+        "peak_allocated_bytes": torch.cuda.max_memory_allocated(device),
+        "peak_reserved_bytes": torch.cuda.max_memory_reserved(device),
+    }
 
 
 def _summarize_timings(timings_ms):
@@ -252,67 +292,102 @@ def _summarize_timings(timings_ms):
     return summary
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--num-indices", type=int, default=2)
-    parser.add_argument("--use-nixl", action="store_true")
+def _parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--num-views",
+        type=int,
+        default=1_000,
+        help="Number of tensor views the weights are split into per transfer.",
+    )
     parser.add_argument("--num-iters", type=int, default=10)
     parser.add_argument("--device", choices=["cpu", "gpu"], default="cpu")
+    parser.add_argument(
+        "--model-size-bytes",
+        type=int,
+        default=DEFAULT_MODEL_SIZE_BYTES,
+        help="Total size of the model weights, transferred once per iteration.",
+    )
+    parser.add_argument(
+        "--memory-pool-size-bytes",
+        type=int,
+        default=None,
+        help="Size of the sender's NIXL memory pool. Defaults to twice the model size.",
+    )
+    parser.add_argument(
+        "--no-verify",
+        dest="verify",
+        action="store_false",
+        help="Skip checking that the received weights match the trainer's.",
+    )
     parser.add_argument("--max-trainer-failures", type=int, default=0)
     parser.add_argument("--max-generator-failures", type=int, default=0)
     parser.add_argument("--kill-interval-s", type=int, default=30)
-    parser.add_argument("--output-file", required=True)
-    args = parser.parse_args()
+    parser.add_argument("--output-file", default=None)
+    return parser.parse_args()
 
-    num_indices = args.num_indices
-    use_nixl = args.use_nixl
-    num_iters = args.num_iters
-    device_str = "cuda" if args.device == "gpu" else "cpu"
-    max_trainer_failures = args.max_trainer_failures
-    max_generator_failures = args.max_generator_failures
-    if num_indices > 5 and not use_nixl:
+
+def main():
+    args = _parse_args()
+
+    if args.num_views > args.model_size_bytes // 2:
         raise SystemExit(
-            "--num-indices > 5 requires --use-nixl. Using Ray object store will OOM."
+            f"--num-views {args.num_views} needs at least one float16 element per "
+            f"view, but --model-size-bytes is only {args.model_size_bytes}."
         )
+
+    config = Config(
+        num_views=args.num_views,
+        num_iters=args.num_iters,
+        device_str="cuda" if args.device == "gpu" else "cpu",
+        model_size_bytes=args.model_size_bytes,
+        memory_pool_size_bytes=args.memory_pool_size_bytes,
+        verify=args.verify,
+    )
 
     ray.init()
     run_start = time.perf_counter()
-    actor_opts = {"num_gpus": 1} if device_str == "cuda" else {}
-    trainer = Trainer.options(**actor_opts).remote(use_nixl, num_indices, device_str)
-    generator = Generator.options(**actor_opts).remote(
-        use_nixl, num_indices, device_str
-    )
+    actor_opts = {"num_gpus": 1} if config.device_str == "cuda" else {}
+
+    trainer = Trainer.options(**actor_opts).remote(config)
+    generator = Generator.options(**actor_opts).remote(config)
 
     bytes_per_iteration = ray.get(trainer.get_bytes_per_iteration.remote())
-    trainer_ref = trainer.loop.remote([generator], num_iters=num_iters)
-    generator_ref = generator.loop.remote(num_iters=num_iters)
+    # Give the trainer a handle to the generator before starting the loops.
+    ray.get(trainer.reset_generators.remote([generator]))
+    trainer_ref = trainer.loop.remote(config.num_iters)
+    generator_ref = generator.loop.remote(config.num_iters)
 
     trainer_failures = 0
     generator_failures = 0
-    time_since_last_kill = time.time()
     num_trainer_kills = 0
     num_generator_kills = 0
+    last_kill_time = time.time()
 
+    # Inject failures until we have hit the requested budget for both actors.
     while (
-        trainer_failures < max_trainer_failures
-        and generator_failures < max_generator_failures
+        trainer_failures < args.max_trainer_failures
+        or generator_failures < args.max_generator_failures
     ):
-        # A ref will be ready if its actor process fails or if the loop exits (due to exception).
-        # Kill every 30s.
+        # A ref becomes ready if its actor process dies or if the loop exits.
         failed, _ = ray.wait(
             [trainer_ref, generator_ref], num_returns=1, timeout=args.kill_interval_s
         )
 
-        if time.time() - time_since_last_kill > 30:
-            if num_trainer_kills < max_trainer_failures:
+        if time.time() - last_kill_time > args.kill_interval_s:
+            if num_trainer_kills < args.max_trainer_failures:
                 print("killing trainer")
                 ray.kill(trainer, force=True)
                 num_trainer_kills += 1
-            if num_generator_kills < max_generator_failures:
+            if num_generator_kills < args.max_generator_failures:
                 print("killing generator")
                 ray.kill(generator, force=True)
                 num_generator_kills += 1
-            time_since_last_kill = time.time()
+            last_kill_time = time.time()
+
+        if not failed:
+            # ray.wait timed out; nothing has finished or died yet.
+            continue
 
         if failed[0] is trainer_ref:
             try:
@@ -321,12 +396,10 @@ if __name__ == "__main__":
             except Exception as e:
                 print("trainer failed", e)
                 trainer_failures += 1
-            # Start a new trainer.
             print("starting new trainer")
-            trainer = Trainer.options(**actor_opts).remote(
-                use_nixl, num_indices, device_str
-            )
-            trainer_ref = trainer.loop.remote([generator], num_iters=num_iters)
+            trainer = Trainer.options(**actor_opts).remote(config)
+            ray.get(trainer.reset_generators.remote([generator]))
+            trainer_ref = trainer.loop.remote(config.num_iters)
         else:
             try:
                 ray.get(generator_ref)
@@ -334,66 +407,36 @@ if __name__ == "__main__":
             except Exception as e:
                 print("generator failed", e)
                 generator_failures += 1
-            # Start a new generator.
             print("starting new generator")
-            generator = Generator.options(**actor_opts).remote(
-                use_nixl, num_indices, device_str
-            )
+            generator = Generator.options(**actor_opts).remote(config)
             trainer.reset_generators.remote([generator])
-            generator_ref = generator.loop.remote(num_iters=num_iters)
+            generator_ref = generator.loop.remote(config.num_iters)
 
     ray.get([trainer_ref, generator_ref])
     run_time_ms = (time.perf_counter() - run_start) * 1000.0
     print("job complete")
-    trainer_metrics = ray.get(trainer.get_timing_metrics.remote())
-    generator_metrics = ray.get(generator.get_timing_metrics.remote())
-    trainer_gpu_memory = ray.get(trainer.get_gpu_memory_metrics.remote())
-    generator_gpu_memory = ray.get(generator.get_gpu_memory_metrics.remote())
-    trainer_nixl_metrics = ray.get(trainer.get_nixl_transport_metrics.remote())
-    generator_nixl_metrics = ray.get(generator.get_nixl_transport_metrics.remote())
 
     output = {
-        "num_indices": num_indices,
-        "num_iters": num_iters,
+        "num_views": config.num_views,
+        "num_iters": config.num_iters,
         "num_bytes_per_iter": bytes_per_iteration,
         "device": args.device,
-        "use_nixl": use_nixl,
-        "max_trainer_failures": max_trainer_failures,
-        "max_generator_failures": max_generator_failures,
+        "memory_pool_size_bytes": config.pool_size_bytes,
+        "max_trainer_failures": args.max_trainer_failures,
+        "max_generator_failures": args.max_generator_failures,
         "num_trainer_kills": num_trainer_kills,
         "num_generator_kills": num_generator_kills,
         "total_run_time_ms": run_time_ms,
-        "trainer_metrics": trainer_metrics,
-        "generator_metrics": generator_metrics,
-        "trainer_nixl_metrics": {
-            **_summarize_timings(
-                {
-                    "get_xfer_descs": [
-                        t * 1000.0
-                        for t in trainer_nixl_metrics["get_xfer_descs_times_s"]
-                    ],
-                    "serialize": [
-                        t * 1000.0 for t in trainer_nixl_metrics["serialize_times_s"]
-                    ],
-                }
-            ),
-            "get_xfer_descs_sum_s": sum(trainer_nixl_metrics["get_xfer_descs_times_s"]),
-            "serialize_sum_s": sum(trainer_nixl_metrics["serialize_times_s"]),
-        },
-        "generator_nixl_metrics": {
-            **_summarize_timings(
-                {
-                    "deserialize": [
-                        t * 1000.0
-                        for t in generator_nixl_metrics["deserialize_times_s"]
-                    ],
-                }
-            ),
-            "deserialize_sum_s": sum(generator_nixl_metrics["deserialize_times_s"]),
-        },
-        "trainer_gpu_memory": trainer_gpu_memory,
-        "generator_gpu_memory": generator_gpu_memory,
+        "trainer_metrics": ray.get(trainer.get_timing_metrics.remote()),
+        "generator_metrics": ray.get(generator.get_timing_metrics.remote()),
+        "trainer_gpu_memory": ray.get(trainer.get_gpu_memory_metrics.remote()),
+        "generator_gpu_memory": ray.get(generator.get_gpu_memory_metrics.remote()),
     }
-    print(output)
-    with open(args.output_file, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(output) + "\n")
+    print(json.dumps(output, indent=2))
+    if args.output_file:
+        with open(args.output_file, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(output) + "\n")
+
+
+if __name__ == "__main__":
+    main()
