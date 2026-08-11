@@ -12,7 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import BinaryIO, Dict, Tuple, Union
+from typing import BinaryIO, Dict, Optional, Tuple, Union
 
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
@@ -20,6 +20,23 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_IMAGES_DIR = "/tmp/ray/sandbox/images"
 _USER_AGENT = "ray-sandbox/1.0 (python-urllib)"
+
+
+def _registry_request(
+    url: str, headers: Dict[str, str], auth_header: Optional[str] = None
+) -> urllib.request.Request:
+    """Build a registry request, keeping the bearer token off redirects.
+
+    Registries answer blob GETs with a redirect to presigned object storage.
+    urllib does not copy unredirected headers onto a redirected request, so
+    marking the token this way drops it at the hop. Sending it onward would
+    trip S3's ``400 InvalidArgument: Only one auth mechanism allowed``, since
+    the presigned URL already carries its own signature.
+    """
+    req = urllib.request.Request(url, headers=headers)
+    if auth_header:
+        req.add_unredirected_header("Authorization", auth_header)
+    return req
 
 
 def sanitize_image_name(image: str) -> str:
@@ -357,10 +374,10 @@ def pull_and_extract_container_image(
                             "application/vnd.oci.image.index.v1+json"
                         ),
                     }
-                    headers.update(auth_headers)
+                    auth_header = auth_headers.get("Authorization")
 
                     manifest_url = f"https://{registry}/v2/{repo}/manifests/{reference}"
-                    req = urllib.request.Request(manifest_url, headers=headers)
+                    req = _registry_request(manifest_url, headers, auth_header)
                     with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
                         manifest_data = json.loads(resp.read().decode("utf-8"))
 
@@ -379,9 +396,10 @@ def pull_and_extract_container_image(
                         if not chosen_digest:
                             chosen_digest = manifest_data["manifests"][0]["digest"]
 
-                        sub_req = urllib.request.Request(
+                        sub_req = _registry_request(
                             f"https://{registry}/v2/{repo}/manifests/{chosen_digest}",
-                            headers=headers,
+                            headers,
+                            auth_header,
                         )
                         with urllib.request.urlopen(
                             sub_req, timeout=timeout_seconds
@@ -395,7 +413,7 @@ def pull_and_extract_container_image(
                         config_url = (
                             f"https://{registry}/v2/{repo}/blobs/{config_digest}"
                         )
-                        config_req = urllib.request.Request(config_url, headers=headers)
+                        config_req = _registry_request(config_url, headers, auth_header)
                         try:
                             with urllib.request.urlopen(
                                 config_req, timeout=timeout_seconds
@@ -418,7 +436,7 @@ def pull_and_extract_container_image(
                     for layer in layers:
                         digest = layer["digest"]
                         blob_url = f"https://{registry}/v2/{repo}/blobs/{digest}"
-                        blob_req = urllib.request.Request(blob_url, headers=headers)
+                        blob_req = _registry_request(blob_url, headers, auth_header)
                         with urllib.request.urlopen(
                             blob_req, timeout=timeout_seconds
                         ) as blob_resp:
