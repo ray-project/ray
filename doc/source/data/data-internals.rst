@@ -155,7 +155,7 @@ Plans
 ~~~~~
 
 A *logical plan* is a series of logical operators, and a *physical plan* is a series of
-physical operators. When you call APIs like :func:`ray.data.read_images` and
+physical operators. When you call APIs such as :func:`ray.data.read_images` and
 :meth:`ray.data.Dataset.map_batches`, Ray Data produces a logical plan. When execution
 starts, the planner generates a corresponding physical plan.
 
