@@ -394,6 +394,24 @@ def test_custom_decoder_bypasses_unsafe_guard(ray_start_2_cpus, tmp_path):
     assert rows[0]["pkl"] == {"key": "value"}
 
 
+@pytest.mark.parametrize("num_samples", [1, 511, 512, 513, 1000])
+def test_read_webdataset_chunked_samples(ray_start_2_cpus, tmp_path, num_samples):
+    # Verify the chunked emission reads every sample with
+    # correct values and order, regardless of shard size.
+    path = os.path.join(tmp_path, "data-000000.tar")
+    with wds.TarWriter(path) as writer:
+        for i in range(num_samples):
+            writer.write({"__key__": f"{i:06d}", "cls": str(i).encode("utf-8")})
+
+    rows = ray.data.read_webdataset([path], suffixes=["cls"], decoder=None).take_all()
+
+    assert len(rows) == num_samples
+    assert [row["__key__"] for row in rows] == [f"{i:06d}" for i in range(num_samples)]
+    assert [row["cls"] for row in rows] == [
+        str(i).encode("utf-8") for i in range(num_samples)
+    ]
+
+
 if __name__ == "__main__":
     import sys
 
