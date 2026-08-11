@@ -2,6 +2,7 @@ ARG BASE_IMAGE
 FROM $BASE_IMAGE
 
 COPY python/ray/tests/runtime_env_container/ /home/ray/tests/
+COPY python/ray/tests/pip_install_test-0.5-py3-none-any.whl /tmp/
 
 RUN pip install --no-cache-dir -c /home/ray/requirements_compiled.txt httpx
 
