@@ -242,9 +242,16 @@ def main():
                 )
 
     # -------- E: S3 (headline + fetch window) --------
+    s3_paths = {}
     if "E" in stages and args.s3_bucket:
         print(f"=== [E] S3 stage (bucket {args.s3_bucket}) ===", flush=True)
-        s3_paths = _s3_sync(root, args.s3_bucket, shapes)
+        try:
+            s3_paths = _s3_sync(root, args.s3_bucket, shapes)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            # No creds / no aws CLI must not crash the run AFTER stages A-D
+            # produced results but BEFORE the summary was written.
+            print(f"    !! S3 sync failed ({e}) — skipping stage E", flush=True)
+            s3_paths = {}
         for shape, s3_path in s3_paths.items():
             for reader in ("pyarrow", "arrow_rs"):
                 cell(f"E.{shape}.{reader}", s3_path, reader, {})
@@ -330,7 +337,7 @@ def main():
             [s for s in ("single_rg_files", "tiny_rgs") if s in shapes],
             ["arrow_rs"],
         )
-    if "E" in stages and args.s3_bucket:
+    if s3_paths:
         emit("\n=========== stage E: S3 headline ===========")
         emit("| shape | wall R/P | USS R/P |")
         emit("|---|---|---|")

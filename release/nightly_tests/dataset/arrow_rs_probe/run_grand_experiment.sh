@@ -23,8 +23,10 @@
 #   FIXTURES_ROOT=<dir>         default ~/arrow_rs_grand_fixtures
 #   REPEAT=3                    median-of-N per cell (default 1)
 #   STAGES=A,B                  subset of A,B,C,D,E (default all)
-#   ARROW_RS_S3_BUCKET=s3://... scratch bucket -> enables stage E
-#   plus setup.sh's own SKIP_RAY / SKIP_CRATE / SKIP_APT for re-runs.
+#   ARROW_RS_S3_BUCKET=s3://... scratch bucket -> enables stage E (env.sh exports
+#                               the default one; unset it to disable stage E)
+#   FORCE_SETUP=1               re-run setup.sh even if the env already imports
+#                               (re-runs otherwise skip it automatically)
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -39,7 +41,16 @@ STAGES="${STAGES:-A,B,C,D,E}"
 say() { printf '\n\033[1;35m### %s\033[0m\n' "$*"; }
 
 say "1/4 environment (setup.sh)"
-bash "$SCRIPT_DIR/setup.sh"
+# Skip setup on re-runs when the environment already works — setup.sh is
+# idempotent but re-runs the Ray wheel install (~minutes) every time.
+# FORCE_SETUP=1 forces a full setup.sh run.
+if [ "${FORCE_SETUP:-0}" != "1" ] && [ -f "$SCRIPT_DIR/env.sh" ] && \
+   ( source "$SCRIPT_DIR/env.sh" >/dev/null 2>&1 && \
+     python -c "import ray, ray_data_arrow_rs" >/dev/null 2>&1 ); then
+  say "environment already set up (env.sh + imports OK) — skipping setup.sh (FORCE_SETUP=1 to redo)"
+else
+  bash "$SCRIPT_DIR/setup.sh"
+fi
 # env.sh (written by setup.sh) holds venv activation + RAY_ADDRESS=local +
 # the memory guard that keeps an OOM from killing the whole node.
 source "$SCRIPT_DIR/env.sh"

@@ -189,6 +189,9 @@ export RAY_memory_usage_threshold=0.8
 export AWS_DEFAULT_REGION=us-west-2
 export P=s3://arrowrs-bench-21f6c795/wide_schema/primitives
 export IMG=s3://arrowrs-bench-21f6c795/imagenet/parquet
+# Scratch bucket for grand_experiment.py stage E (S3). Stage E only actually
+# runs if AWS creds work — the sync failure is caught and E is skipped.
+export ARROW_RS_S3_BUCKET=s3://arrowrs-bench-21f6c795
 ENVEOF
 if ! grep -q "arrow_rs_probe/env.sh" "$HOME/.bashrc" 2>/dev/null; then
   echo "[ -f \"$SCRIPT_DIR/env.sh\" ] && source \"$SCRIPT_DIR/env.sh\"" >> "$HOME/.bashrc"

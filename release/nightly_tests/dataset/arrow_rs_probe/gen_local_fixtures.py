@@ -38,6 +38,7 @@ reads that. Idempotent per shape: skips a shape whose directory already exists.
 import argparse
 import json
 import os
+import shutil
 
 import numpy as np
 import pyarrow as pa
@@ -199,8 +200,17 @@ def main():
         gen = SHAPES[shape]
         d = os.path.join(root, shape)
         if os.path.isdir(d) and shape in manifest:
-            print(f"  {shape}: exists, skipping ({manifest[shape]})", flush=True)
-            continue
+            # Skip ONLY at the same scale. A 0.25-scale smoke run must not leave
+            # quarter-size fixtures behind for the full run to silently benchmark.
+            if manifest[shape].get("scale") == args.scale:
+                print(f"  {shape}: exists, skipping ({manifest[shape]})", flush=True)
+                continue
+            print(
+                f"  {shape}: exists at scale={manifest[shape].get('scale')}, "
+                f"want scale={args.scale} — regenerating",
+                flush=True,
+            )
+            shutil.rmtree(d)
         os.makedirs(d, exist_ok=True)
         print(f"  {shape}: generating (scale={args.scale}) ...", flush=True)
         stats = gen(d, args.scale)
