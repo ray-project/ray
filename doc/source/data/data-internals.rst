@@ -54,7 +54,7 @@ Block formats
 Blocks are Arrow tables or `pandas` DataFrames. Generally, blocks are Arrow tables
 unless Arrow can't represent your data.
 
-The block format doesn't affect the type of data returned by APIs like
+The block format doesn't affect the type of data returned by APIs such as
 :meth:`~ray.data.Dataset.iter_batches`.
 
 Block size limiting
