@@ -127,6 +127,7 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 )
 from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
     ParquetFileReader,
+    _estimate_batch_size_from_chunk_stats,
     _estimate_batch_size_from_metadata,
 )
 from ray.data._internal.object_extensions.arrow import (
@@ -807,15 +808,26 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         return 1
 
     @override
-    def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
+    def _resolve_batch_size(
+        self, dataset: pds.Dataset, manifest: "FileManifest"
+    ) -> int:
         """Size the decode batch to the arrow-rs byte budget, not the block size.
 
-        Priority: explicit ``batch_size`` > byte-budget estimate from row-group
-        metadata > default. Unlike the base reader this targets
-        :data:`_ARROW_RS_DECODE_BUDGET_BYTES` (~8 MiB) rather than
+        Priority: explicit ``batch_size`` > footer-stat estimate from the manifest
+        (no I/O) > byte-budget estimate from a row-group footer read > default.
+        Unlike the base reader this targets
+        :data:`_ARROW_RS_DECODE_BUDGET_BYTES` (32 MiB) rather than
         ``target_block_size`` (~128 MiB), because each decode batch is yielded
         straight through in :meth:`_iter_fragment_tables` (the downstream
         ``BlockOutputBuffer`` does the coalescing to the block size).
+
+        Preferring the manifest is not just a tidier source: ``ListFiles`` already
+        read every footer to prune and pack the row groups, and it recorded the
+        projection-scoped uncompressed size and row count of the groups it assigned
+        to this chunk. Reading a footer again here would be a second round trip per
+        read task purely to recompute a number we were handed — and on the
+        many-small-files shapes behind the release regressions that round trip is
+        the dominant per-task cost.
         """
         if self._explicit_batch_size is not None:
             return self._explicit_batch_size
@@ -823,12 +835,35 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         if self._target_block_size is None:
             return _ARROW_DEFAULT_BATCH_SIZE
 
+        budget = self._tuning.decode_budget_bytes
+
+        # Footer stats off the manifest, when the chunker supplied them. Sum across
+        # the split's chunks so the average row size reflects everything this task
+        # will decode rather than whichever file happens to be first.
+        total_size = total_rows = 0
+        for chunk_metadata in manifest.file_chunk_metadatas:
+            if not chunk_metadata:
+                continue
+            size = chunk_metadata.get("uncompressed_size")
+            rows = chunk_metadata.get("num_rows")
+            if size and rows:
+                total_size += size
+                total_rows += rows
+        if total_size and total_rows:
+            estimated = _estimate_batch_size_from_chunk_stats(
+                total_size, total_rows, budget
+            )
+            if estimated is not None:
+                return max(estimated, _ARROW_RS_MIN_DECODE_BATCH_ROWS)
+
+        # No chunk stats (e.g. a whole-file manifest from ``WholeFileChunker``):
+        # fall back to reading the first fragment's footer, as before.
         first_fragment = next(dataset.get_fragments(), None)
         if first_fragment is None:
             return _ARROW_DEFAULT_BATCH_SIZE
 
         estimated = _estimate_batch_size_from_metadata(
-            first_fragment, self._columns, self._tuning.decode_budget_bytes
+            first_fragment, self._columns, budget
         )
         if estimated is None:
             return _ARROW_DEFAULT_BATCH_SIZE
@@ -997,7 +1032,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         from pyarrow.fs import LocalFileSystem
 
         from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (  # noqa: E501
-            _fragments_from_chunk_metadata,
+            _fragments_from_row_group_ids,
         )
 
         unique_paths = list(dict.fromkeys(list(manifest.paths)))
@@ -1066,7 +1101,10 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             ):
                 count_fragments.extend(
                     self._native_count_fragments(
-                        path, chunk_metadata, native_md[path][1]
+                        path,
+                        chunk_metadata,
+                        native_md[path][1],
+                        per_row_group_offsets=self._include_row_hash,
                     )
                 )
             return count_fragments, columns_to_synthesize, scanner_kwargs
@@ -1115,6 +1153,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                         chunk_metadata,
                         native_md[path][1],
                         alignment_by_path[path],
+                        per_row_group_offsets=self._include_row_hash,
                     )
                 )
             else:
@@ -1123,7 +1162,11 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                     fragments_with_offsets.append((fragment, 0))
                 else:
                     fragments_with_offsets.extend(
-                        _fragments_from_chunk_metadata(fragment, chunk_metadata)
+                        _fragments_from_row_group_ids(
+                            fragment,
+                            chunk_metadata["row_group_ids"],
+                            per_row_group_offsets=self._include_row_hash,
+                        )
                     )
 
         return fragments_with_offsets, columns_to_synthesize, scanner_kwargs
@@ -1134,16 +1177,31 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         chunk_metadata: Optional[dict],
         row_group_num_rows: List[int],
         alignment: Optional[_ColumnAlignment] = None,
+        *,
+        per_row_group_offsets: bool = False,
     ) -> List[Tuple[_NativeParquetFragment, int]]:
         """Build native fragments for one file, matching the base reader's
         granularity so ``row_hash`` offsets are identical:
 
         - whole file (``chunk_metadata is None``) → one fragment over *all* row
           groups at offset 0 (the base emits one whole-file fragment);
-        - a chunk → one fragment *per row group* in ``[start, end)``, each seeded
-          with the pre-filter file row offset of that group's first row (mirrors
-          :func:`_fragments_from_chunk_metadata`), so post-filter accumulation
-          within a group starts from the right position.
+        - a bin, ``per_row_group_offsets=False`` (**the common case**) → **one**
+          fragment naming all of the bin's row groups, at offset 0. The base
+          coalesces here so PyArrow can merge reads across the groups; we
+          coalesce so the crate makes one call instead of N, which is the whole
+          of old TODO 1l, obtained by following the base rather than inventing
+          our own coalescing;
+        - a bin, ``per_row_group_offsets=True`` (``include_row_hash``) → one
+          fragment per row group, each seeded with that group's **absolute**
+          pre-filter file row offset.
+
+        The offsets in the fan-out case are absolute prefix sums indexed by
+        physical row-group id, *not* an accumulation across the bin's groups.
+        Upstream statistics pruning can leave the surviving set non-contiguous
+        (e.g. groups 0, 3, 7), and only the absolute position makes a row hash
+        match the row's true physical location — accumulating would silently
+        renumber every group after a pruned one. This mirrors ``prefix[rg_id]``
+        in :func:`_fragments_from_row_group_ids`.
 
         ``alignment`` is the file's post-decode fixup plan, embedded in every
         fragment so it survives the threaded fragment dispatch.
@@ -1151,68 +1209,62 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         if chunk_metadata is None:
             return [(_NativeParquetFragment(path, None, alignment), 0)]
 
-        from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (  # noqa: E501
-            _calculate_row_group_range,
-        )
-
-        # ``chunk_metadata`` carries a *relative* chunk descriptor
-        # (``chunk_idx``/``total_num_chunks``), not absolute row-group indices.
-        # Resolve it to a ``[start, end)`` row-group range with the same helper
-        # the base reader uses, so native fragments line up byte-for-byte with
-        # the PyArrow path (identical ``row_hash`` offsets and limit slicing).
-        rg_range = _calculate_row_group_range(
-            chunk_metadata["chunk_idx"],
-            chunk_metadata["total_num_chunks"],
-            len(row_group_num_rows),
-        )
-        if rg_range is None:
+        # The bin names the exact physical row groups for this file: predicate
+        # pruning and packing already happened upstream in ``ListFiles``, so there
+        # is no relative chunk descriptor left to reconcile against a row-group
+        # count, and no over-estimate that could silently drop a slice.
+        row_group_ids = sorted(chunk_metadata["row_group_ids"])
+        if not row_group_ids:
             return []
-        start, end = rg_range
-        fragments: List[Tuple[_NativeParquetFragment, int]] = []
-        file_row_offset = sum(row_group_num_rows[:start])
-        for rg in range(start, end):
-            fragments.append(
-                (_NativeParquetFragment(path, [rg], alignment), file_row_offset)
-            )
-            file_row_offset += row_group_num_rows[rg]
-        return fragments
+
+        if not per_row_group_offsets:
+            return [(_NativeParquetFragment(path, row_group_ids, alignment), 0)]
+
+        # Absolute pre-filter offset at the start of each physical row group.
+        prefix = [0] * (len(row_group_num_rows) + 1)
+        for i, num_rows in enumerate(row_group_num_rows):
+            prefix[i + 1] = prefix[i] + num_rows
+        return [
+            (_NativeParquetFragment(path, [rg], alignment), prefix[rg])
+            for rg in row_group_ids
+        ]
 
     @staticmethod
     def _native_count_fragments(
         path: str,
         chunk_metadata: Optional[dict],
         row_group_num_rows: List[int],
+        *,
+        per_row_group_offsets: bool = False,
     ) -> List[Tuple[_NativeCountFragment, int]]:
         """Build zero-decode count fragments for one file (empty projection, no
         predicate), at the same granularity/offsets as
         :meth:`_native_fragments_for_file` so ``limit`` slicing and any
-        synthesized columns (``path``, partitions) behave identically."""
+        synthesized columns (``path``, partitions) behave identically.
+
+        Row counts come from the footer we already read, summed over the bin's
+        named groups — so a count still touches no data page.
+        """
         if chunk_metadata is None:
             return [(_NativeCountFragment(path, sum(row_group_num_rows)), 0)]
 
-        from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (  # noqa: E501
-            _calculate_row_group_range,
-        )
-
-        # See ``_native_fragments_for_file``: resolve the relative chunk
-        # descriptor to an absolute ``[start, end)`` row-group range so count
-        # fragments share the base reader's granularity and offsets.
-        rg_range = _calculate_row_group_range(
-            chunk_metadata["chunk_idx"],
-            chunk_metadata["total_num_chunks"],
-            len(row_group_num_rows),
-        )
-        if rg_range is None:
+        # See ``_native_fragments_for_file``: the bin names the exact physical row
+        # groups, and offsets must be absolute so pruning gaps don't renumber.
+        row_group_ids = sorted(chunk_metadata["row_group_ids"])
+        if not row_group_ids:
             return []
-        start, end = rg_range
-        fragments: List[Tuple[_NativeCountFragment, int]] = []
-        file_row_offset = sum(row_group_num_rows[:start])
-        for rg in range(start, end):
-            fragments.append(
-                (_NativeCountFragment(path, row_group_num_rows[rg]), file_row_offset)
-            )
-            file_row_offset += row_group_num_rows[rg]
-        return fragments
+
+        if not per_row_group_offsets:
+            total = sum(row_group_num_rows[rg] for rg in row_group_ids)
+            return [(_NativeCountFragment(path, total), 0)]
+
+        prefix = [0] * (len(row_group_num_rows) + 1)
+        for i, num_rows in enumerate(row_group_num_rows):
+            prefix[i + 1] = prefix[i] + num_rows
+        return [
+            (_NativeCountFragment(path, row_group_num_rows[rg]), prefix[rg])
+            for rg in row_group_ids
+        ]
 
     @cached_property
     def _tuning(self) -> _ArrowRsTuning:

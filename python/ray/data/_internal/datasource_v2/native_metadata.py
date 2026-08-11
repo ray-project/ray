@@ -1,11 +1,20 @@
 """Shared helpers for reading Parquet footers through the arrow-rs native crate.
 
-Both the read path (``ArrowRsParquetFileReader``) and the listing-stage chunker
-(``ParquetFileChunker``) need to read a file's footer via the native crate so a
-supported file's footer is read by arrow-rs *end to end* — no PyArrow footer read
-for Local/S3 files when ``DataContext.use_arrow_rs_parquet_reader`` is on. This
-module holds the logic they share (filesystem eligibility, S3 config bridging,
-and the actual ``read_metadata`` call) so neither layer imports the other.
+Used by the read path (``ArrowRsParquetFileReader``), which reads each file's
+footer via the crate so a supported file is opened by arrow-rs *end to end* — no
+PyArrow footer read for Local/S3 files when
+``DataContext.use_arrow_rs_parquet_reader`` is on. The logic is factored out here
+(filesystem eligibility, S3 config bridging, and the actual ``read_metadata``
+call) rather than inlined in the reader because it is also what a listing-stage
+caller would need.
+
+**There is currently only one caller.** This module's docstring previously named
+``ParquetFileChunker`` as a second one; that was never true on any branch. The
+listing stage does now read footers — the footer-chunking path reads every file's
+footer on a pool of ``FooterReader`` actors to prune and bin-pack row groups — but
+it does so through PyArrow, not through this module. Wiring it to the crate is a
+separate, unstarted piece of work; until then, a native read still pays one footer
+read here on top of the one ``ListFiles`` already did.
 """
 
 from typing import TYPE_CHECKING, Optional

@@ -449,23 +449,28 @@ def test_coerce_int96_kwarg_routes_int96_file_to_fallback(tmp_path, monkeypatch)
 
 
 def test_native_chunked_read_row_hash_parity(tmp_path):
-    """A chunked file (one manifest row per ``(chunk_idx, total_num_chunks)``
-    descriptor, resolved to a ``[start, end)`` row-group range at read time) must
-    produce byte-identical ``row_hash`` values via the native path and PyArrow.
+    """A binned file (one manifest row per bin, each naming explicit physical
+    ``row_group_ids``) must produce byte-identical ``row_hash`` values via the
+    native path and PyArrow.
 
     ``row_hash`` is seeded by ``(fragment_path, file_row_offset)`` per sub-
     fragment (:func:`_compute_row_hashes`), so this is the load-bearing test for
-    :meth:`ArrowRsParquetFileReader._native_fragments_for_file`: it must emit one
-    native fragment *per row group* seeded with that group's cumulative pre-filter
-    row offset, exactly mirroring the base ``_fragments_from_chunk_metadata``. A
-    single off-by-one in the offset accumulation would shift the hashes and this
-    would catch it. We drive both readers on the *same* hand-built chunked
-    manifest so the only variable is the fragment-offset logic.
+    :meth:`ArrowRsParquetFileReader._native_fragments_for_file`: under
+    ``include_row_hash`` it must emit one native fragment *per row group* seeded
+    with that group's **absolute** pre-filter row offset, mirroring ``prefix[rg_id]``
+    in the base :func:`_fragments_from_row_group_ids`.
+
+    The bins here are deliberately **non-contiguous** — ``(0, 2)`` and ``(1, 3)`` —
+    because that is what upstream statistics pruning produces, and it is the case
+    that distinguishes a correct implementation from one that accumulates offsets
+    across the bin's own groups. Accumulating would place group 2 at offset 5_000
+    instead of its true 10_000, shifting every hash in that group. A contiguous bin
+    cannot tell the two apart.
     """
     from pyarrow.fs import LocalFileSystem
 
     from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-        ParquetFileChunkMetadata,
+        ParquetRowGroupChunkMetadata,
         create_chunk_metadata,
     )
     from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
@@ -481,16 +486,20 @@ def test_native_chunked_read_row_hash_parity(tmp_path):
     pq.write_table(table, str(path), write_page_index=True, row_group_size=5_000)
     assert pq.ParquetFile(str(path)).num_row_groups == 4
 
-    # Two chunks over the same file. With 4 row groups split into 2 chunks, the
-    # reader resolves chunk 0 -> row groups [0, 2) and chunk 1 -> [2, 4) via
-    # ``_calculate_row_group_range``; the 2nd chunk forces the per-row-group
-    # native fragment path with a non-zero file row offset.
+    # Two bins over the same file, each holding an interleaved pair of groups.
+    # Their union is all 4 groups, so the read is still lossless and comparable.
     chunks = [
         create_chunk_metadata(
-            ParquetFileChunkMetadata, chunk_idx=0, total_num_chunks=2
+            ParquetRowGroupChunkMetadata,
+            row_group_ids=(0, 2),
+            num_rows=10_000,
+            uncompressed_size=1,
         ),
         create_chunk_metadata(
-            ParquetFileChunkMetadata, chunk_idx=1, total_num_chunks=2
+            ParquetRowGroupChunkMetadata,
+            row_group_ids=(1, 3),
+            num_rows=10_000,
+            uncompressed_size=1,
         ),
     ]
     size = os.path.getsize(path)
@@ -510,6 +519,68 @@ def test_native_chunked_read_row_hash_parity(tmp_path):
     assert "row_hash" in rs_tbl.column_names
     assert rs_tbl.num_rows == table.num_rows
     assert rs_tbl.equals(pa_tbl)
+
+
+def test_native_bin_coalesces_into_one_call_without_row_hash():
+    """Without ``include_row_hash``, a bin's row groups become **one** native
+    fragment, not one per group.
+
+    This is the whole of old TODO 1l ("coalesce a chunk's contiguous row groups
+    into one native call"), obtained by following the base path rather than
+    inventing our own coalescing: the footer-chunking base collapses a file's
+    bin-assigned groups into a single sub-fragment so PyArrow can merge the reads,
+    and we collapse so the crate makes one call instead of N. Each extra call means
+    a fresh S3 client and its own footer/page-index fetch, so the fan-out is the
+    expensive shape on the transport every release regression came from.
+
+    Asserted at the fragment level rather than end-to-end because the row *data* is
+    identical either way — only the call count differs, and that is invisible to a
+    table comparison. The ``include_row_hash`` arm is covered by
+    :func:`test_native_chunked_read_row_hash_parity`; here it is the control showing
+    the fan-out still happens when offsets are actually needed.
+    """
+    from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+        ParquetRowGroupChunkMetadata,
+        create_chunk_metadata,
+    )
+    from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
+        ArrowRsParquetFileReader,
+    )
+
+    chunk = create_chunk_metadata(
+        ParquetRowGroupChunkMetadata,
+        row_group_ids=(0, 2, 3),
+        num_rows=15_000,
+        uncompressed_size=1,
+    )
+    row_group_num_rows = [5_000, 5_000, 5_000, 5_000]
+
+    coalesced = ArrowRsParquetFileReader._native_fragments_for_file(
+        "f.parquet", chunk, row_group_num_rows, None, per_row_group_offsets=False
+    )
+    assert len(coalesced) == 1, "bin fanned out into per-row-group native calls"
+    fragment, offset = coalesced[0]
+    assert offset == 0
+    assert fragment.row_groups == [0, 2, 3], "coalesced fragment lost a row group"
+
+    fanned = ArrowRsParquetFileReader._native_fragments_for_file(
+        "f.parquet", chunk, row_group_num_rows, None, per_row_group_offsets=True
+    )
+    # Absolute offsets, so the pruning gap at group 1 is preserved rather than
+    # closed up: 0, 10_000, 15_000 — not 0, 5_000, 10_000.
+    assert [(f.row_groups, off) for f, off in fanned] == [
+        ([0], 0),
+        ([2], 10_000),
+        ([3], 15_000),
+    ]
+
+    # Counts follow the same granularity, and the coalesced count is the sum over
+    # the named groups only — never the whole file.
+    counts = ArrowRsParquetFileReader._native_count_fragments(
+        "f.parquet", chunk, row_group_num_rows, per_row_group_offsets=False
+    )
+    assert len(counts) == 1
+    assert counts[0][0].num_rows == 15_000
 
 
 def test_native_read_include_paths_parity(tmp_path):
