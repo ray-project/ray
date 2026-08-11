@@ -1072,6 +1072,7 @@ contourpy==1.3.3 \
     --hash=sha256:fd914713266421b7536de2bfa8181aa8c699432b6763a0ea64195ebe28bff6a9 \
     --hash=sha256:fde6c716d51c04b1c25d0b90364d0be954624a0ee9d60e23e850e8d48353d07a
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   bokeh
     #   matplotlib
@@ -1552,7 +1553,9 @@ et-xmlfile==2.0.0 \
 etils==1.14.0 \
     --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
     --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
-    # via mujoco
+    # via
+    #   -r python/requirements/ml/dl-gpu-requirements.txt
+    #   mujoco
 evaluate==0.4.6 \
     --hash=sha256:bca85bc294f338377b7ac2f861e21c308b11b2a285f510d7d5394d5df437db29 \
     --hash=sha256:e07036ca12b3c24331f83ab787f21cc2dbf3631813a1631e63e40897c69a3f21
@@ -2280,11 +2283,11 @@ grpcio==1.75.0 \
     #   ray
     #   tensorboard
     #   tensorflow
-grpcio-status==1.75.0 ; python_full_version < '3.14' or sys_platform != 'linux' \
+grpcio-status==1.75.0 ; python_full_version < '3.14' \
     --hash=sha256:69d5b91be1b8b926f086c1c483519a968c14640773a0ccdd6c04282515dbedf7 \
     --hash=sha256:de62557ef97b7e19c3ce6da19793a12c5f6c1fbbb918d233d9671aba9d9e1d78
     # via -r python/requirements/test-requirements.txt
-grpcio-tools==1.75.0 ; python_full_version < '3.14' or sys_platform != 'linux' \
+grpcio-tools==1.75.0 ; python_full_version < '3.14' \
     --hash=sha256:05087b1879b3f32a2182f1365e34233236c22e1a1e8cc448b5d29ea58d661846 \
     --hash=sha256:08cc1b8a1364a5b8f975e6a7273684d13630caab76c209a201464ad05f826eb9 \
     --hash=sha256:0a0c899175dd23e96f61b3ab8153642e0ae0182b9c9a582cd0cc4702a056d845 \
@@ -2852,7 +2855,9 @@ jupytext==1.19.3 \
 keras==3.14.0 \
     --hash=sha256:19ce94b798caaba4d404ab6ef4753b44219170e5c2868156de8bb0494a260114 \
     --hash=sha256:86fcf8249a25264a566ac393c287c7ad657000e5e62615dcaad4b3472a17aeda
-    # via tensorflow
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   tensorflow
 kiwisolver==1.5.0 \
     --hash=sha256:012b1eb16e28718fa782b5e61dc6f2da1f0792ca73bd05d54de6cb9561665fc9 \
     --hash=sha256:01808c6d15f4c3e8559595d6d1fe6411c68e4a3822b4b9972b44473b24f4e679 \
@@ -4154,6 +4159,7 @@ networkx==3.6.1 \
     --hash=sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509 \
     --hash=sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   cfn-lint
     #   hyperopt
@@ -4648,7 +4654,9 @@ onnxruntime==1.24.4 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:e6214096e14b7b52e3bee1903dc12dc7ca09cb65e26664668a4620cc5e6f9a90 \
     --hash=sha256:e99a48078baaefa2b50fe5836c319499f71f13f76ed32d0211f39109147a49e0 \
     --hash=sha256:fbff2a248940e3398ae78374c5a839e49a2f39079b488bc64439fa0ec327a3e4
-    # via -r python/requirements/ml/rllib-test-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/rllib-test-requirements.txt
 onnxscript==0.7.1 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:309fb86484b11fa4ded90dba580e0d63f1a0827588e521cecaf2eeddb46d6e86 \
     --hash=sha256:544763b7fdef49940cdd9412ff5135cbae96d59ac6bc1921457f21280f40f4b7
@@ -7146,6 +7154,7 @@ scipy==1.17.1 \
     --hash=sha256:f8885db0bc2bffa59d5c1b72fad7a6a92d3e80e7257f967dd81abb553a90d293 \
     --hash=sha256:fcb310ddb270a06114bb64bbe53c94926b943f5b7f0842194d585c65eb4edd76
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   ax-platform
     #   bayesian-optimization

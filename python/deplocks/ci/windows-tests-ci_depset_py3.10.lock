@@ -238,7 +238,7 @@ asttokens==3.0.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   stack-data
-astunparse==1.6.3 ; python_full_version < '3.13' \
+astunparse==1.6.3 ; python_full_version < '3.12' \
     --hash=sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872 \
     --hash=sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8
     # via
@@ -260,6 +260,7 @@ async-timeout==5.0.1 ; python_full_version < '3.12' \
     --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
     --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiohttp
     #   redis
 attrs==26.1.0 \
@@ -957,7 +958,9 @@ et-xmlfile==2.0.0 \
 etils==1.5.2 ; python_full_version < '3.12' \
     --hash=sha256:6dc882d355e1e98a5d1a148d6323679dc47c9a5792939b9de72615aa4737eb0b \
     --hash=sha256:ba6a3e1aff95c769130776aa176c11540637f5dd881f3b79172a5149b6b1c446
-    # via -r python/requirements/ml/dl-cpu-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
 exceptiongroup==1.3.1 ; python_full_version < '3.11' \
     --hash=sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219 \
     --hash=sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598
@@ -968,7 +971,9 @@ exceptiongroup==1.3.1 ; python_full_version < '3.11' \
 execnet==2.1.2 ; python_full_version < '3.12' \
     --hash=sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd \
     --hash=sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec
-    # via pytest-shutil
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest-shutil
 executing==2.2.1 \
     --hash=sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4 \
     --hash=sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017
@@ -1101,7 +1106,7 @@ flask-cors==6.0.2 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow
     #   moto
-flatbuffers==25.12.19 ; python_full_version < '3.13' \
+flatbuffers==25.12.19 ; python_full_version < '3.12' \
     --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -1411,7 +1416,7 @@ google-crc32c==1.8.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-cloud-storage
     #   google-resumable-media
-google-pasta==0.2.0 ; python_full_version < '3.13' \
+google-pasta==0.2.0 ; python_full_version < '3.12' \
     --hash=sha256:4612951da876b1a10fe3960d7226f0c7682cf901e16ac06e473b267a5afa8954 \
     --hash=sha256:b32482794a366b5366a32c92a9a9201b107821889935a02b3e51f6b432ea84ed \
     --hash=sha256:c9f2c8dfc8f96d0d5808299920721be30c9eec37f2389f28904f454565c8a16e
@@ -1582,13 +1587,13 @@ grpcio==1.75.0 \
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
-grpcio-status==1.62.3 ; python_full_version < '3.13' \
+grpcio-status==1.62.3 ; python_full_version < '3.12' \
     --hash=sha256:289bdd7b2459794a12cf95dc0cb727bd4a1742c37bd823f760236c937e53a485 \
     --hash=sha256:f9049b762ba8de6b1086789d8315846e094edac2c50beaf462338b301a8fd4b8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-grpcio-tools==1.62.3 ; python_full_version < '3.13' \
+grpcio-tools==1.62.3 ; python_full_version < '3.12' \
     --hash=sha256:0a52cc9444df978438b8d2332c0ca99000521895229934a59f94f37ed896b133 \
     --hash=sha256:0a8c0c4724ae9c2181b7dbc9b186df46e4f62cb18dc184e46d06c0ebeccf569e \
     --hash=sha256:0cb3a3436ac119cbd37a7d3331d9bdf85dad21a6ac233a3411dff716dcbf401e \
@@ -1654,7 +1659,7 @@ h11==0.16.0 \
     #   -r python/requirements/test-requirements.txt
     #   httpcore
     #   uvicorn
-h5py==3.12.1 ; python_full_version < '3.13' \
+h5py==3.12.1 ; python_full_version < '3.12' \
     --hash=sha256:018a4597f35092ae3fb28ee851fdc756d2b88c96336b8480e124ce1ac6fb9166 \
     --hash=sha256:050a4f2c9126054515169c49cb900949814987f0c7ae74c341b0c9f9b5056834 \
     --hash=sha256:06a903a4e4e9e3ebbc8b548959c3c2552ca2d70dac14fcfa650d9261c66939ed \
@@ -1895,7 +1900,7 @@ jupytext==1.19.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-keras==3.12.1 ; python_full_version < '3.13' \
+keras==3.12.1 ; python_full_version < '3.12' \
     --hash=sha256:3cb760b3fec105db4d893dd717daafdd0e35457a8201502c1ba8bedfaf334a71 \
     --hash=sha256:c340f8a25362398b20500c64e290f6ee280c6aeec51e1044eb8d759b32dc272a
     # via tensorflow
@@ -2086,7 +2091,7 @@ lazy-object-proxy==1.12.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   openapi-spec-validator
-libclang==18.1.1 ; python_full_version < '3.13' \
+libclang==18.1.1 ; python_full_version < '3.12' \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
     --hash=sha256:4dd2d3b82fab35e2bf9ca717d7b63ac990a3519c7e312f19fa8e86dcc712f7fb \
@@ -2437,7 +2442,7 @@ microsoft-security-utilities-secret-masker==1.0.0b4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   azure-cli-core
-ml-dtypes==0.5.4 ; python_full_version < '3.13' or sys_platform != 'darwin' \
+ml-dtypes==0.5.4 ; python_full_version < '3.12' or sys_platform != 'darwin' \
     --hash=sha256:0d2ffd05a2575b1519dc928c0b93c06339eb67173ff53acb00724502cda231cf \
     --hash=sha256:11942cbf2cf92157db91e5022633c0d9474d4dfd813a909383bd23ce828a4b7d \
     --hash=sha256:14a4fd3228af936461db66faccef6e4f41c1d82fcc30e9f8d58a08916b1d811f \
@@ -2912,7 +2917,7 @@ mypy-extensions==1.0.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mypy
-namex==0.1.0 ; python_full_version < '3.13' \
+namex==0.1.0 ; python_full_version < '3.12' \
     --hash=sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306 \
     --hash=sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c
     # via
@@ -3162,27 +3167,27 @@ opentelemetry-api==1.27.0 \
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.27.0 ; python_full_version < '3.13' \
+opentelemetry-exporter-otlp-proto-common==1.27.0 ; python_full_version < '3.12' \
     --hash=sha256:159d27cf49f359e3798c4c3eb8da6ef4020e292571bd8c5604a2a573231dd5c8 \
     --hash=sha256:675db7fffcb60946f3a5c43e17d1168a3307a94a930ecf8d2ea1f286f3d4f79a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.27.0 ; python_full_version < '3.13' \
+opentelemetry-exporter-otlp-proto-grpc==1.27.0 ; python_full_version < '3.12' \
     --hash=sha256:56b5bbd5d61aab05e300d9d62a6b3c134827bbd28d0b12f2649c2da368006c9e \
     --hash=sha256:af6f72f76bcf425dfb5ad11c1a6d6eca2863b91e63575f89bb7b4b55099d968f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-opentelemetry-exporter-prometheus==0.48b0 ; python_full_version < '3.13' \
+opentelemetry-exporter-prometheus==0.48b0 ; python_full_version < '3.12' \
     --hash=sha256:46d2620b2b7223731103fd76faee2dd37d05316602574ce64ec376124aec7c29 \
     --hash=sha256:a54342b597bdaeb799fd5414a789df84bc0d2f033258702d141d731590ab3b2d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
-opentelemetry-instrumentation==0.48b0 ; python_full_version < '3.13' \
+opentelemetry-instrumentation==0.48b0 ; python_full_version < '3.12' \
     --hash=sha256:94929685d906380743a71c3970f76b5f07476eea1834abd5dd9d17abfe23cc35 \
     --hash=sha256:a69750dc4ba6a5c3eb67986a337185a25b739966d80479befe37b546fc870b44
     # via
@@ -3190,14 +3195,14 @@ opentelemetry-instrumentation==0.48b0 ; python_full_version < '3.13' \
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.48b0 ; python_full_version < '3.13' \
+opentelemetry-instrumentation-asgi==0.48b0 ; python_full_version < '3.12' \
     --hash=sha256:04c32174b23c7fa72ddfe192dad874954968a6a924608079af9952964ecdf785 \
     --hash=sha256:ddb1b5fc800ae66e85a4e2eca4d9ecd66367a8c7b556169d9e7b57e10676e44d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.48b0 ; python_full_version < '3.13' \
+opentelemetry-instrumentation-fastapi==0.48b0 ; python_full_version < '3.12' \
     --hash=sha256:21a72563ea412c0b535815aeed75fc580240f1f02ebc72381cfab672648637a2 \
     --hash=sha256:afeb820a59e139d3e5d96619600f11ce0187658b8ae9e3480857dd790bc024f2
     # via
@@ -3234,7 +3239,7 @@ opentelemetry-semantic-conventions==0.48b0 \
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.48b0 ; python_full_version < '3.13' \
+opentelemetry-util-http==0.48b0 ; python_full_version < '3.12' \
     --hash=sha256:60312015153580cc20f322e5cdc3d3ecad80a71743235bdb77716e742814623c \
     --hash=sha256:76f598af93aab50328d2a69c786beaedc8b6a7770f7a818cc307eb353debfffb
     # via
@@ -3242,14 +3247,14 @@ opentelemetry-util-http==0.48b0 ; python_full_version < '3.13' \
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opt-einsum==3.4.0 ; python_full_version < '3.13' or sys_platform != 'darwin' \
+opt-einsum==3.4.0 ; python_full_version < '3.12' or sys_platform != 'darwin' \
     --hash=sha256:69bb92469f86a1565195ece4ac0323943e83477171b91d24c35afe028a90d7cd \
     --hash=sha256:96ca72f1b886d148241348783498194c577fa30a8faac108586b14f1ba4473ac
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jax
     #   tensorflow
-optree==0.19.0 ; python_full_version < '3.13' \
+optree==0.19.0 ; python_full_version < '3.12' \
     --hash=sha256:0230ed9ba60fbe97ee23c000850c54308009ba51a129a1060137f329f460e42e \
     --hash=sha256:045cf112adaebc76c9c7cabde857c01babfc9fae8aa0a28d48f7c565fadf0cb9 \
     --hash=sha256:0461f796b4ade3fab519d821b0fa521f07e2af70206b76aac75fcfdc2e051fca \
@@ -3976,7 +3981,9 @@ py-spy==0.4.2 ; python_full_version < '3.12' \
     --hash=sha256:90e600b27bb6bb40479637baca5a5b4bc2ba3395c93d889e672315d93042c4ae \
     --hash=sha256:a0e6f6810ccf0fc5e64e85e0182a5b626c4496eec01b14fb8755154b363a4831 \
     --hash=sha256:aeb0323409199c785f730645e9f4bb7a7b9ca2c481f2c331a55642b5d13fa52f
-    # via -r python/requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements.txt
 py4j==0.10.9.7 \
     --hash=sha256:0b6e5315bb3ada5cf62ac651d107bb2ebc02def3dee9d9548e3baac644ea8dbb \
     --hash=sha256:85defdfd2b2376eb3abf5ca6474b51ab7e0de341c75a02f46dc9b5976f5a5c1b
@@ -4468,7 +4475,9 @@ pytest-docker-tools==3.1.3 \
 pytest-fixture-config==1.8.0 ; python_full_version < '3.12' \
     --hash=sha256:2324a4381a57afd2ca03188eed3fcb0faf38311893f9fb0d11a92003c332050b \
     --hash=sha256:c739895fe20851bdba53f246d0599aa389bc1a1cba48db2ecac0130576dc1b0e
-    # via pytest-virtualenv
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest-virtualenv
 pytest-forked==1.4.0 \
     --hash=sha256:8b67587c8f98cbbadfdd804539ed5455b6ed03802203485dd2f53c1422d7440e \
     --hash=sha256:bbbb6717efc886b9d64537b41fb1497cfaf3c9601276be8da2cccfea5a3c8ad8
@@ -4502,7 +4511,9 @@ pytest-rerunfailures==11.1.2 \
 pytest-shutil==1.8.1 ; python_full_version < '3.12' \
     --hash=sha256:0793e347e07b9296d814ce33377ed348ce376ffac76c0e57b28bf84235499f51 \
     --hash=sha256:7dcc02e8a372098d51a98737e7f662e6edfd75cec7070a11e904141de49d866b
-    # via pytest-virtualenv
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest-virtualenv
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx@c1ab2b33c784d04fa467211a15f89edf631107a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -4522,7 +4533,9 @@ pytest-timeout==2.1.0 \
 pytest-virtualenv==1.8.1 ; python_full_version < '3.12' \
     --hash=sha256:1bb6d4ad77d198ff19ba4259f78c685b24ec63a528037bc3a488f1c780bc6aa9 \
     --hash=sha256:7dca99d96d071e7f1a0073e9706cb165e11f15d80e24496ac26f4d9095471769
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
@@ -5397,7 +5410,7 @@ tensordict==0.8.3 ; sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-tensorflow==2.19.1 ; python_full_version < '3.13' \
+tensorflow==2.19.1 ; python_full_version < '3.12' \
     --hash=sha256:02c69369a82709827c6a5218c6697ee94dcd1397230319cc17c47a3342249354 \
     --hash=sha256:04f3b4dbb3ce4b507d853decfb2d116f8d0344d23413e2ad889e1e069fbeb54d \
     --hash=sha256:11377d4cecdc665515e370524b650a8ceb80b461f40f5e63993ed27d0ef931da \
@@ -5439,6 +5452,7 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_full_version < '3.12' \
     --hash=sha256:f0adfbcd264262797d429311843733da2d5c1ffb119fbfa6339269b6c0414113 \
     --hash=sha256:fbcfb4aa2eaa9a3038d2487e570ff93feb1dbe51c3a4663d7d9ab9f9a9f9a9d8
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow
 tensorflow-probability==0.24.0 \
@@ -5460,7 +5474,7 @@ testfixtures==7.0.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-tf-keras==2.19.0 ; python_full_version < '3.13' \
+tf-keras==2.19.0 ; python_full_version < '3.12' \
     --hash=sha256:4f339e800987b39d1548a8c76a7b33b6801a97ec7fcd89c299ec29741f7890bd \
     --hash=sha256:b09a407d87a4571ce1e8ca985cfc68483e3d63b2518a5d79a97ad92cb64dbe9c
     # via

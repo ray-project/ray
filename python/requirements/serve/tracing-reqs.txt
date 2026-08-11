@@ -1,2 +1,2 @@
-opentelemetry-sdk==1.27.0; python_version < '3.13'
-opentelemetry-sdk; python_version >= '3.13'
+opentelemetry-sdk==1.27.0; python_version < '3.12'
+opentelemetry-sdk; python_version >= '3.12'

@@ -42,22 +42,22 @@ mypy==1.7.0
 pyright==1.1.408
 numba==0.61.2
 openpyxl==3.0.10
-opentelemetry-api==1.27.0; python_version < '3.13'
-opentelemetry-sdk==1.27.0; python_version < '3.13'
-opentelemetry-api==1.39.0; python_version >= '3.13'
-opentelemetry-sdk==1.39.0; python_version >= '3.13'
+opentelemetry-api==1.27.0; python_version < '3.12'
+opentelemetry-sdk==1.27.0; python_version < '3.12'
+opentelemetry-api==1.39.0; python_version >= '3.12'
+opentelemetry-sdk==1.39.0; python_version >= '3.12'
 # proto and exporter-otlp-proto-grpc must match sdk/proto version or vllm
 # (rayllm depset) can't satisfy opentelemetry-exporter-otlp's in-family pins.
-opentelemetry-proto==1.27.0; python_version < '3.13'
-opentelemetry-exporter-otlp-proto-grpc==1.27.0; python_version < '3.13'
-opentelemetry-exporter-otlp-proto-common==1.27.0; python_version < '3.13'
-opentelemetry-exporter-prometheus==0.48b0; python_version < '3.13'
-opentelemetry-semantic-conventions==0.48b0; python_version < '3.13'
-opentelemetry-proto==1.39.0; python_version >= '3.13'
-opentelemetry-exporter-otlp-proto-grpc==1.39.0; python_version >= '3.13'
-opentelemetry-exporter-otlp-proto-common==1.39.0; python_version >= '3.13'
-opentelemetry-exporter-prometheus==0.60b0; python_version >= '3.13'
-opentelemetry-semantic-conventions==0.60b0; python_version >= '3.13'
+opentelemetry-proto==1.27.0; python_version < '3.12'
+opentelemetry-exporter-otlp-proto-grpc==1.27.0; python_version < '3.12'
+opentelemetry-exporter-otlp-proto-common==1.27.0; python_version < '3.12'
+opentelemetry-exporter-prometheus==0.48b0; python_version < '3.12'
+opentelemetry-semantic-conventions==0.48b0; python_version < '3.12'
+opentelemetry-proto==1.39.0; python_version >= '3.12'
+opentelemetry-exporter-otlp-proto-grpc==1.39.0; python_version >= '3.12'
+opentelemetry-exporter-otlp-proto-common==1.39.0; python_version >= '3.12'
+opentelemetry-exporter-prometheus==0.60b0; python_version >= '3.12'
+opentelemetry-semantic-conventions==0.60b0; python_version >= '3.12'
 pexpect==4.8.0
 Pillow>=10.4.0; platform_system != "Windows"
 proxy.py==2.4.3
@@ -90,10 +90,10 @@ werkzeug==2.3.8
 xlrd==2.0.1
 yq==3.2.2
 memray; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != 'aarch64'
-# TensorFlow 2.19 is needed by the Python 3.10–3.12 protobuf 4.25.8 pin
+# TensorFlow 2.19 is needed by the Python 3.10–3.11 protobuf 4.25.8 pin
 # below, and caps NumPy below 2.2.
-numpy==2.1.3; python_version < '3.13'
-numpy==2.2.6; python_version >= '3.13'
+numpy==2.1.3; python_version < '3.12'
+numpy==2.2.6; python_version >= '3.12'
 ipywidgets==8.1.3
 pyzmq>=27.1.0
 colorama
@@ -106,14 +106,14 @@ jupytext>1.13.6
 jinja2>=3.1.6
 pytest-docker-tools==3.1.3
 pytest-forked==1.4.0
-opentelemetry-instrumentation-fastapi==0.48b0; python_version < '3.13'
-opentelemetry-instrumentation==0.48b0; python_version < '3.13'
-opentelemetry-instrumentation-asgi==0.48b0; python_version < '3.13'
-opentelemetry-util-http==0.48b0; python_version < '3.13'
-opentelemetry-instrumentation-fastapi==0.60b0; python_version >= '3.13'
-opentelemetry-instrumentation==0.60b0; python_version >= '3.13'
-opentelemetry-instrumentation-asgi==0.60b0; python_version >= '3.13'
-opentelemetry-util-http==0.60b0; python_version >= '3.13'
+opentelemetry-instrumentation-fastapi==0.48b0; python_version < '3.12'
+opentelemetry-instrumentation==0.48b0; python_version < '3.12'
+opentelemetry-instrumentation-asgi==0.48b0; python_version < '3.12'
+opentelemetry-util-http==0.48b0; python_version < '3.12'
+opentelemetry-instrumentation-fastapi==0.60b0; python_version >= '3.12'
+opentelemetry-instrumentation==0.60b0; python_version >= '3.12'
+opentelemetry-instrumentation-asgi==0.60b0; python_version >= '3.12'
+opentelemetry-util-http==0.60b0; python_version >= '3.12'
 mlflow>=3.0.0
 
 # For dataset tests
@@ -142,13 +142,13 @@ backoff==1.10
 grpcio==1.75.0; python_version < '3.14'
 grpcio==1.76.0; python_version >= '3.14'
 # grpcio-{tools,status} 1.63.2 and later require protobuf>=5.26.1. Pin the
-# affected Python 3.10–3.12 CI jobs to the newest releases compatible with
+# affected Python 3.10–3.11 CI jobs to the newest releases compatible with
 # the Protobuf 4.25.8 latency workaround below.
-grpcio-tools==1.62.3; python_version < '3.13'
-grpcio-tools==1.75.0; python_version >= '3.13' and python_version < '3.14'
+grpcio-tools==1.62.3; python_version < '3.12'
+grpcio-tools==1.75.0; python_version >= '3.12' and python_version < '3.14'
 grpcio-tools==1.76.0; python_version >= '3.14'
-grpcio-status==1.62.3; python_version < '3.13'
-grpcio-status==1.75.0; python_version >= '3.13' and python_version < '3.14'
+grpcio-status==1.62.3; python_version < '3.12'
+grpcio-status==1.75.0; python_version >= '3.12' and python_version < '3.14'
 grpcio-status==1.76.0; python_version >= '3.14'
 
 # For test_basic.py::test_omp_threads_set
@@ -178,11 +178,13 @@ pyopenssl>=25.0.0
 starlette>=1.0.1
 requests>=2.32.3
 docker>=7.1.0
-# Revert #64257's Protobuf upgrade for Python 3.10–3.12. Protobuf 4.25.8 was
+# Revert #64257's Protobuf upgrade for Python 3.10–3.11. Protobuf 4.25.8 was
 # the version immediately before that PR;
 # Protobuf 5.28.0 and later regress grpc.aio 10 MB message latency.
-protobuf==4.25.8; python_version < '3.13'
-protobuf==6.33.6; python_version >= '3.13'
+# Python 3.12 keeps protobuf 6.33.6: the py3.12 rayllm depsets pull
+# vllm==0.26.0, which requires protobuf>=5.29.6.
+protobuf==4.25.8; python_version < '3.12'
+protobuf==6.33.6; python_version >= '3.12'
 # scipy 1.16 / contourpy 1.3.3 / networkx 3.5 all dropped py3.10 support (no
 # cp310 wheels or Requires-Python>=3.11). The py3.13 lock is consumed as a
 # constraint by py3.10 depsets, so these are dual-pinned here with markers to
