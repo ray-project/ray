@@ -27,13 +27,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Severities accepted by `ray.train.annotate`, each rendered as its own layer on
-# the Grafana train dashboard.
+# Severities accepted by `ray.train.annotate`
 _ANNOTATION_SEVERITIES = frozenset({"info", "warning", "error"})
-
-# Annotations are best-effort observability, and a failure here is typically
-# persistent (e.g. metrics that cannot be JSON-serialized), so it is reported
-# once per process rather than once per `ray.train.report` call.
+# Annotations are best-effort observability, so report once per process
 _annotation_failure_reported = False
 
 

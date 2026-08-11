@@ -276,7 +276,7 @@ RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR='{cluster_id="my-cluster-id"}'
 
 Both `RAY_GRAFANA_ANNOTATION_DATASOURCE_UID` and `RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR` are required. If either is unset, Ray omits annotations from the generated dashboards entirely, so a standard Prometheus and Grafana setup is unaffected. Emitting annotations always works and always writes the log lines, whether or not any of this is configured.
 
-To disable the annotations, set `RAY_TRAIN_ANNOTATIONS_ENABLED=0` on the driver. This is worth doing for training workloads that call `ray.train.report` very frequently, because rank 0 writes its annotation before entering the report barrier, so the other ranks wait on that write.
+To disable the Ray Train annotations, set `RAY_TRAIN_ANNOTATIONS_ENABLED=0` on the driver. This is worth doing for training workloads that call `ray.train.report` very frequently, because rank 0 writes its annotation before entering the report barrier, so the other ranks wait on that write.
 
 #### Troubleshooting
 
