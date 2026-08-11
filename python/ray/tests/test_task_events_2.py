@@ -288,8 +288,19 @@ def test_fault_tolerance_detached_actor(shutdown_only):
     )
 
 
-def test_fault_tolerance_job_failed(shutdown_only):
+def test_fault_tolerance_job_failed(shutdown_only, monkeypatch):
+    # These delays are read by the dashboard-head store from ray._config; set them via
+    # env vars so the head subprocess picks them up even if _system_config does not
+    # propagate to the head's ray._config.
+    monkeypatch.setenv("RAY_gcs_mark_task_failed_on_job_done_delay_ms", "1000")
+    monkeypatch.setenv("RAY_gcs_mark_task_failed_on_worker_dead_delay_ms", "30000")
     sys_config = _SYSTEM_CONFIG.copy()
+
+    # We set the config here again after setting env variables for the GCS path. If
+    # we don't set it then _SYSTEM_CONFIG takes effect, which has both the delays
+    # set to 1000ms. This is because system config overrides the env variable setting.
+    # Since, we specifically want the delays to be 1000 and 30000, we set the config
+    # again.
     config = {
         "gcs_mark_task_failed_on_job_done_delay_ms": 1000,
         # make worker failure not trigger task failure
@@ -451,7 +462,7 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
     )
 
 
-def test_ray_intentional_errors(shutdown_only):
+def test_ray_intentional_errors(shutdown_only, monkeypatch):
     """
     Test in the below cases, ray task should not be marked as failure:
     1. ray.actor_exit_actor()
@@ -475,6 +486,9 @@ def test_ray_intentional_errors(shutdown_only):
     # Avoid worker-dead marking racing with max_calls task completion.
     sys_config = _SYSTEM_CONFIG.copy()
     sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = 30000
+    # Read by the dashboard-head store from ray._config; set via env var so the head
+    # subprocess picks it up even if _system_config does not propagate to the head.
+    monkeypatch.setenv("RAY_gcs_mark_task_failed_on_worker_dead_delay_ms", "30000")
     ray.init(num_cpus=1, _system_config=sys_config)
 
     a = Actor.remote()
@@ -943,10 +957,14 @@ def test_task_logs_info_running_task(shutdown_only):
 
 
 @pytest.mark.asyncio
-async def test_task_events_gc_jobs(shutdown_only):
+async def test_task_events_gc_jobs(shutdown_only, monkeypatch):
     """
     Test that later jobs should override previous jobs' task events.
     """
+    # The dashboard-head store reads its cap from ray._config at import time. Set it via
+    # the env var so the head subprocess picks it up even if _system_config does not
+    # propagate to the head's ray._config.
+    monkeypatch.setenv("RAY_task_events_max_num_task_in_gcs", "3")
     ctx = ray.init(
         num_cpus=8,
         _system_config={
@@ -996,7 +1014,7 @@ ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
         )
 
 
-def test_task_events_gc_default_policy(shutdown_only):
+def test_task_events_gc_default_policy(shutdown_only, monkeypatch):
     @ray.remote
     def finish_task():
         pass
@@ -1020,6 +1038,9 @@ def test_task_events_gc_default_policy(shutdown_only):
     def error_task():
         raise ValueError("Expected to fail")
 
+    # Read by the dashboard-head store from ray._config; set via env var so the head
+    # subprocess picks it up even if _system_config does not propagate to the head.
+    monkeypatch.setenv("RAY_task_events_max_num_task_in_gcs", "5")
     ray_context = ray.init(
         num_cpus=8,
         _system_config={

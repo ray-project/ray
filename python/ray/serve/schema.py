@@ -34,6 +34,8 @@ from ray.serve._private.constants import (
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
+    RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+    RAY_SERVE_TRACING_SAMPLING_RATIO,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -41,6 +43,7 @@ from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
+    BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
@@ -220,6 +223,55 @@ class LoggingConfig(BaseModel):
         return self._compute_hash() == other._compute_hash()
 
 
+@PublicAPI(stability="alpha")
+class TracingConfig(BaseModel):
+    """Tracing config schema for configuring distributed tracing on Serve components.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.schema import TracingConfig
+
+            # Enable tracing with default exporter
+            serve.start(tracing_config=TracingConfig(enabled=True))
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH != "",
+        description=(
+            "Whether tracing is enabled. Defaults to True when the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable is set. "
+            "When enabled, spans will be exported using the configured exporter."
+        ),
+    )
+    exporter_import_path: str = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+        description=(
+            "Import path to a custom tracing exporter function. Defaults to the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable. "
+            "If empty and tracing is enabled, the default file-based exporter is used."
+        ),
+    )
+    sampling_ratio: float = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_SAMPLING_RATIO,
+        description=(
+            "Sampling ratio for traces (0.0 to 1.0). Defaults to the "
+            "RAY_SERVE_TRACING_SAMPLING_RATIO environment variable (0.01, i.e. 1%)."
+        ),
+    )
+
+    @field_validator("sampling_ratio")
+    @classmethod
+    def validate_sampling_ratio(cls, v):
+        if v < 0.0 or v > 1.0:
+            raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
+        return v
+
+
 @PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
@@ -341,8 +393,18 @@ class DeploymentSchema(BaseModel):
             "Maximum number of requests to this deployment that will be queued at "
             "each caller (proxy or DeploymentHandle). Once this limit is reached, "
             "subsequent requests will raise a BackPressureError (for handles) or "
-            "return an HTTP 503 status code (for HTTP requests). Defaults to -1 "
+            "return an HTTP 503 status code by default (configurable via "
+            "`backpressure_config.status_code`) for HTTP requests. Defaults to -1 "
             "(no limit)."
+        ),
+    )
+    backpressure_config: BackpressureConfig = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Configuration of the HTTP response returned when a request to "
+            "this deployment is rejected due to backpressure "
+            "(`max_queued_requests` exceeded): the status code (503 by "
+            "default, or 429) and an optional `Retry-After` header."
         ),
     )
     user_config: Optional[Dict] = Field(
@@ -666,6 +728,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         name=name,
         max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
+        # Dump to a plain dict (like autoscaling_config below) so the details
+        # API always returns the full, stable shape regardless of which fields
+        # were explicitly set.
+        backpressure_config=info.deployment_config.backpressure_config.model_dump(),
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
@@ -1041,6 +1107,10 @@ class ServeDeploySchema(BaseModel):
     logging_config: Optional[LoggingConfig] = Field(
         default=None,
         description="Logging config for configuring serve components logs.",
+    )
+    tracing_config: Optional[TracingConfig] = Field(
+        default=None,
+        description="Tracing config for configuring serve components tracing.",
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
