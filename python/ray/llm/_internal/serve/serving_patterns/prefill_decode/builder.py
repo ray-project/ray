@@ -28,6 +28,7 @@ from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_EVENTS_PORT_BASE,
+    DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET,
     DEFAULT_KV_TOKEN_PORT_BASE,
     KV_EVENTS_PORT_BASE_KEY,
     KV_TOKEN_PORT_BASE_KEY,
@@ -46,24 +47,110 @@ from ray.serve.deployment import Application
 logger = get_logger(__name__)
 
 
-def _pd_tokenizer_fingerprint(llm_config: LLMConfig) -> tuple:
-    """Fields that affect prompt rendering/token IDs before vLLM sees them.
+_MAX_TCP_PORT = 65535
 
-    This is intentionally conservative.  Matching model weights alone is not
-    sufficient: a different tokenizer source or chat template makes staged IDs
-    invalid for one side of the P/D pair.  Unknown renderer-affecting options
-    therefore opt out of the single-tokenization fast path.
-    """
-    loading = llm_config.model_loading_config
-    tokenizer_source = loading.tokenizer_source or loading.model_source or loading.model_id
-    engine_kwargs = llm_config.engine_kwargs
-    return (
-        str(tokenizer_source),
-        engine_kwargs.get("chat_template"),
-        engine_kwargs.get("chat_template_content_format"),
-        engine_kwargs.get("trust_remote_code"),
-        engine_kwargs.get("tokenizer_mode"),
+
+def _max_configured_replicas(llm_config: LLMConfig) -> int:
+    """Return the largest configured Serve replica count for one P/D leg."""
+    deployment_config = llm_config.deployment_config or {}
+    num_replicas = deployment_config.get("num_replicas")
+    if isinstance(num_replicas, int) and num_replicas > 0:
+        return num_replicas
+    if num_replicas not in (None, "auto"):
+        raise ValueError("P/D num_replicas must be a positive int or 'auto'")
+
+    autoscaling_config = deployment_config.get("autoscaling_config")
+    if autoscaling_config is None:
+        if num_replicas == "auto":
+            raise ValueError("P/D num_replicas='auto' requires autoscaling_config")
+        return 1
+    if isinstance(autoscaling_config, dict):
+        max_replicas = autoscaling_config.get("max_replicas")
+    else:
+        max_replicas = getattr(autoscaling_config, "max_replicas", None)
+    if not isinstance(max_replicas, int) or max_replicas < 1:
+        raise ValueError("P/D autoscaling_config.max_replicas must be a positive int")
+    return max_replicas
+
+
+def _port_span(llm_config: LLMConfig) -> int:
+    """Reserve a port lane for every configured replica and DP rank."""
+    data_parallel_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
+    if not isinstance(data_parallel_size, int) or data_parallel_size < 1:
+        raise ValueError("P/D data_parallel_size must be a positive int")
+    return _max_configured_replicas(llm_config) * data_parallel_size
+
+
+def _port_range(name: str, base: Any, span: int) -> tuple[str, int, int]:
+    try:
+        start = int(base)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{name} must be an integer TCP port") from e
+    end = start + span - 1
+    if start < 1 or end > _MAX_TCP_PORT:
+        raise ValueError(
+            f"{name} range {start}-{end} is outside the valid TCP port range"
+        )
+    return name, start, end
+
+
+def _validate_disjoint_port_ranges(ranges: list[tuple[str, int, int]]) -> None:
+    for index, (name, start, end) in enumerate(ranges):
+        for other_name, other_start, other_end in ranges[index + 1 :]:
+            if start <= other_end and other_start <= end:
+                raise ValueError(
+                    f"P/D port ranges overlap: {name} ({start}-{end}) and "
+                    f"{other_name} ({other_start}-{other_end})"
+                )
+
+
+def _configure_pd_kv_port_ranges(
+    prefill_config: LLMConfig, decode_config: LLMConfig
+) -> None:
+    """Assign and validate non-overlapping P/D KV event/token port ranges."""
+    p_span = _port_span(prefill_config)
+    d_span = _port_span(decode_config)
+    p_experimental = prefill_config.experimental_configs
+    d_experimental = decode_config.experimental_configs
+
+    p_event_base = p_experimental.get(
+        KV_EVENTS_PORT_BASE_KEY, DEFAULT_KV_EVENTS_PORT_BASE
     )
+    p_token_base = p_experimental.get(
+        KV_TOKEN_PORT_BASE_KEY, DEFAULT_KV_TOKEN_PORT_BASE
+    )
+    p_ranges = [
+        _port_range("prefill KV events", p_event_base, p_span),
+        _port_range(
+            "prefill KV event replay",
+            int(p_event_base) + DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET,
+            p_span,
+        ),
+        _port_range("prefill prompt tokens", p_token_base, p_span),
+    ]
+
+    # Respect user-provided decode bases. Defaults start after every prefill
+    # lane, then put decode prompt-token sockets after decode's replay lane.
+    # This scales with configured autoscaling and DP capacity instead of a
+    # fixed offset that silently overlaps as the fleet grows.
+    next_available_port = max(port_range[2] for port_range in p_ranges) + 1
+    d_event_base = d_experimental.setdefault(
+        KV_EVENTS_PORT_BASE_KEY, next_available_port
+    )
+    d_token_base = d_experimental.setdefault(
+        KV_TOKEN_PORT_BASE_KEY,
+        int(d_event_base) + DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET + d_span,
+    )
+    d_ranges = [
+        _port_range("decode KV events", d_event_base, d_span),
+        _port_range(
+            "decode KV event replay",
+            int(d_event_base) + DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET,
+            d_span,
+        ),
+        _port_range("decode prompt tokens", d_token_base, d_span),
+    ]
+    _validate_disjoint_port_ranges(p_ranges + d_ranges)
 
 
 class PDServingArgs(BaseModelExtended):
@@ -189,21 +276,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         pd_config.decode_config.experimental_configs.setdefault(
             "pd_ticket_ttl_s", 120.0
         )
-        # P and D deployments have independently numbered Serve replicas, so
-        # rank 0 exists in both fleets on a colocated node. Keep their KV-event
-        # PUB/replay and prompt-token port ranges disjoint in addition to the
-        # per-replica rank offset configured by the vLLM integration.
-        pd_config.decode_config.experimental_configs.setdefault(
-            KV_EVENTS_PORT_BASE_KEY, DEFAULT_KV_EVENTS_PORT_BASE + 100
-        )
-        pd_config.decode_config.experimental_configs.setdefault(
-            KV_TOKEN_PORT_BASE_KEY, DEFAULT_KV_TOKEN_PORT_BASE + 100
-        )
-        pd_config.decode_config.experimental_configs[
-            "pd_tokenizer_compatible"
-        ] = _pd_tokenizer_fingerprint(pd_config.prefill_config) == _pd_tokenizer_fingerprint(
-            pd_config.decode_config
-        )
+        _configure_pd_kv_port_ranges(pd_config.prefill_config, pd_config.decode_config)
 
     prefill_dp_size = pd_config.prefill_config.engine_kwargs.get(
         "data_parallel_size", 1

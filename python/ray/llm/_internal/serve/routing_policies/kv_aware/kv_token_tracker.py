@@ -98,27 +98,38 @@ class ReservationBroadcast(TypedDict):
 
 
 class ReservationBroadcastForwarder:
-    """Best-effort background replication of selected-worker reservations.
+    """Best-effort background replication of ingress control-plane events.
 
-    ``report`` only enqueues the selected-worker booking facts Dynamo already
-    returned. Sending the broadcast and waiting for its results happen on the
-    delivery task, off the request's selection and dispatch path.
+    ``report`` only enqueues an already-prepared event. Sending it and waiting
+    for results happen on the delivery task, off the selection and dispatch
+    path.
     """
 
-    def __init__(self, handle: Any):
+    def __init__(
+        self,
+        handle: Any,
+        pool: Optional[str] = None,
+        method_name: str = "on_reservations_created",
+        event_name: str = "KV reservation",
+    ):
         self._handle = handle
+        self._pool = pool
+        self._method_name = method_name
+        self._event_name = event_name
         if getattr(handle, "is_initialized", True) is False:
             # Keep broadcast routing off the ingress replica's request loop.
             handle._init(_run_router_in_separate_loop=True)
         self._reservations: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
 
-    def report(self, reservation: ReservationBroadcast) -> None:
+    def report(self, event: Dict[str, Any]) -> None:
         if self._delivery_task is None or self._delivery_task.done():
             self._delivery_task = asyncio.get_running_loop().create_task(
                 self._deliver()
             )
-        self._reservations.put_nowait(reservation)
+        if self._pool is not None:
+            event = dict(event, pool=self._pool)
+        self._reservations.put_nowait(event)
 
     async def _deliver(self) -> None:
         while True:
@@ -127,7 +138,7 @@ class ReservationBroadcastForwarder:
                 batch.append(self._reservations.get_nowait())
             try:
                 results = await self._handle.broadcast(
-                    "on_reservations_created", batch
+                    self._method_name, batch
                 ).results_async(
                     timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
                     return_exceptions=True,
@@ -135,16 +146,14 @@ class ReservationBroadcastForwarder:
                 errors = [r for r in results if isinstance(r, Exception)]
                 if errors:
                     logger.warning(
-                        "KV reservation broadcasts dropped on %d/%d ingress "
-                        "replicas: %s",
+                        "%s broadcasts dropped on %d/%d ingress replicas: %s",
+                        self._event_name,
                         len(errors),
                         len(results),
                         errors[0],
                     )
             except Exception as e:
-                logger.warning(
-                    "Dropping selection service reservation broadcast: %s", e
-                )
+                logger.warning("Dropping %s broadcast: %s", self._event_name, e)
             finally:
                 for _ in batch:
                     self._reservations.task_done()
@@ -238,9 +247,16 @@ class KVTokenTracker:
         """Return the KV-cache block size used for decode-block accounting."""
         return self._block_size
 
-    def start_reservation_broadcast(self, handle: Any) -> None:
+    def start_reservation_broadcast(
+        self, handle: Any, pool: Optional[str] = None
+    ) -> None:
         """Configure background reservation replication to this deployment."""
-        self._reservation_forwarder = ReservationBroadcastForwarder(handle)
+        self._reservation_forwarder = ReservationBroadcastForwarder(handle, pool)
+
+    async def flush_reservation_broadcast(self) -> None:
+        """Wait until this tracker's queued reservation broadcasts are delivered."""
+        if self._reservation_forwarder is not None:
+            await self._reservation_forwarder.flush()
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -562,6 +578,25 @@ class KVTokenTracker:
                 self._apply_reservation_updates()
             )
         self._reservation_updates.put_nowait(pending)
+
+    async def apply_reservations_from_peer(
+        self, reservations: List[ReservationBroadcast]
+    ) -> None:
+        """Synchronously apply peer bookings for a P/D reservation saga.
+
+        P/D waits for both pool bookings before sending its routing ticket. This
+        preserves the normal selection-service reservation semantics while
+        preventing a cross-pool lifecycle event from reaching a peer first.
+        """
+        if self._svc is None or self._block_size is None:
+            return
+        pending = [
+            reservation
+            for reservation in reservations
+            if reservation["source_ingress_replica_rank"] != self._ingress_replica_rank
+        ]
+        if pending:
+            await self._apply_reservations(pending)
 
     async def _apply_reservation_updates(self) -> None:
         while True:

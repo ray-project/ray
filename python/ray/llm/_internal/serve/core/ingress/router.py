@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
+_PD_REQUEST_PATH_HEADER = "x-serve-router-request-path"
+_PD_GENERATION_PATHS = frozenset({"/v1/chat/completions", "/v1/completions"})
 
 # A request body routes on one of these fields. Body-aware routers read it off
 # the namespace; a body without any of them degrades to load-balancing. Extend
@@ -139,9 +141,14 @@ class LLMRouter:
         # builder binds only for a KV-aware request router.
         if prefill_server is not None:
             if llm_config is None or prefill_llm_config is None:
-                raise ValueError("P/D LLMRouter requires both prefill and decode configs")
+                raise ValueError(
+                    "P/D LLMRouter requires both prefill and decode configs"
+                )
             from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
                 PDPairTracker,
+            )
+            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+                get_llm_router_handle,
             )
             from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
                 Tokenizer,
@@ -177,13 +184,16 @@ class LLMRouter:
             )
             self._pd_pair_tracker.start_cleanup()
             self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
-            if not llm_config.experimental_configs.get("pd_tokenizer_compatible"):
-                self._prefill_tokenizer = await asyncio.to_thread(
-                    Tokenizer, prefill_llm_config
-                )
+            # P/D KV transfer is valid only if both engines see exactly the
+            # same prompt IDs. Config-level tokenizer fingerprints are not a
+            # sufficient substitute for rendering the actual request.
+            self._prefill_tokenizer = await asyncio.to_thread(
+                Tokenizer, prefill_llm_config
+            )
             self._token_sender = token_channel.TokenSender()
-            self._pd_owner_replica_id = (
-                serve.get_replica_context().replica_id.unique_id
+            self._pd_owner_replica_id = serve.get_replica_context().replica_id.unique_id
+            self._pd_pair_tracker.start_reservation_broadcast(
+                get_llm_router_handle(), self._pd_owner_replica_id
             )
         elif llm_config is not None:
             # Build the tracker before _handle._init() below, which initializes
@@ -248,6 +258,20 @@ class LLMRouter:
                 )
             except TokenizeError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.message)
+        return await self._route_to_backend(
+            request=request,
+            routing_payload=routing_payload,
+            request_token_ids=request_token_ids,
+        )
+
+    async def _route_to_backend(
+        self,
+        *,
+        request: Request,
+        routing_payload: Optional[SimpleNamespace],
+        request_token_ids: Optional[List[int]],
+    ) -> Dict[str, Any]:
+        """Route to decode without creating a P/D ticket."""
         # HAProxy forwards the configured session header on the same name,
         # but use the same case-insensitive, separator-tolerant matcher as
         # proxy.py / ingress.py so a `-`/`_` rewrite anywhere in the path
@@ -287,10 +311,17 @@ class LLMRouter:
         self, request: Request, routing_payload: Optional[SimpleNamespace]
     ) -> Dict[str, Any]:
         """Select/reserve a P/D pair and return only the decode data-plane hop."""
+        if not self._is_pd_generation_request(request):
+            return await self._route_to_backend(
+                request=request,
+                routing_payload=routing_payload,
+                request_token_ids=None,
+            )
         if routing_payload is None:
-            raise HTTPException(
-                status_code=400,
-                detail="P/D routing requires a complete JSON prompt body",
+            return await self._route_to_backend(
+                request=request,
+                routing_payload=None,
+                request_token_ids=None,
             )
         from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
             PD_D_REPLICA_ID_HEADER,
@@ -308,13 +339,23 @@ class LLMRouter:
 
         try:
             decode_token_ids = await self._tokenizer.tokenize(vars(routing_payload))
-            prefill_token_ids = decode_token_ids
-            if self._prefill_tokenizer is not None:
-                prefill_token_ids = await self._prefill_tokenizer.tokenize(
-                    vars(routing_payload)
-                )
-        except TokenizeError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.message)
+            prefill_token_ids = await self._prefill_tokenizer.tokenize(
+                vars(routing_payload)
+            )
+        except TokenizeError:
+            # Preserve the established P/D path when pre-routing cannot render
+            # a prompt. It will tokenize in the engine and must not retain a
+            # reservation the ticket flow cannot safely describe.
+            return await self._route_to_backend(
+                request=request,
+                routing_payload=routing_payload,
+                request_token_ids=None,
+            )
+        if prefill_token_ids != decode_token_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="prefill and decode tokenizers produced different token IDs",
+            )
 
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
         expected_output_tokens = None
@@ -360,6 +401,15 @@ class LLMRouter:
             RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: headers,
         }
 
+    @staticmethod
+    def _is_pd_generation_request(request: Request) -> bool:
+        """Return whether HAProxy is routing one of the P/D generation APIs."""
+        path = request.headers.get(_PD_REQUEST_PATH_HEADER)
+        return path is not None and any(
+            path.rstrip("/").endswith(generation_path)
+            for generation_path in _PD_GENERATION_PATHS
+        )
+
     @router_app.get("/health")
     async def health(self):
         return {"status": "ok"}
@@ -393,14 +443,19 @@ class LLMRouter:
                         worker_id, [(hook_name, args)]
                     )
             return
-        events = [
-            (event[1], event[2]) if len(event) == 3 else event for event in batch
-        ]
+        events = [(event[1], event[2]) if len(event) == 3 else event for event in batch]
         return await self._kv_token_tracker.on_lifecycle_events(events)
 
     async def on_reservations_created(self, batch):
         """Ingress-facing intake for already-selected reservation bookings."""
+        if self._pd_pair_tracker is not None:
+            return await self._pd_pair_tracker.on_reservations_created(batch)
         return await self._kv_token_tracker.on_reservations_created(batch)
+
+    async def on_pd_reservation_events(self, batch) -> None:
+        """Ingress-facing intake for P/D transfer and compensation events."""
+        if self._pd_pair_tracker is not None:
+            await self._pd_pair_tracker.on_reservation_events(batch)
 
     async def claim_pd_ticket(self, headers: Dict[str, str]) -> Dict[str, Any]:
         """Validate and claim the selected prefill half of a direct P/D route."""
@@ -499,11 +554,7 @@ class LLMRouter:
         Partial delivery intentionally omits the key: correctness never depends
         on a best-effort staging channel and the orphaned entry expires quickly.
         """
-        if (
-            self._token_sender is None
-            or not p_token_endpoint
-            or not d_token_endpoint
-        ):
+        if self._token_sender is None or not p_token_endpoint or not d_token_endpoint:
             return None
         from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
 

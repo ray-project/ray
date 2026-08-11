@@ -601,7 +601,7 @@ class TestDirectStreamingPD:
     def _set_dp_size(llm_config, size):
         llm_config.engine_kwargs["data_parallel_size"] = size
 
-    def test_pd_uses_disjoint_decode_kv_port_ranges(
+    def test_pd_uses_disjoint_kv_port_ranges_sized_for_configured_capacity(
         self, pd_configs, disable_placement_bundles, monkeypatch
     ):
         self._enable_direct_streaming(monkeypatch)
@@ -613,11 +613,40 @@ class TestDirectStreamingPD:
         assert KV_EVENTS_PORT_BASE_KEY not in prefill.experimental_configs
         assert KV_TOKEN_PORT_BASE_KEY not in prefill.experimental_configs
         assert decode.experimental_configs[KV_EVENTS_PORT_BASE_KEY] == (
-            DEFAULT_KV_EVENTS_PORT_BASE + 100
+            DEFAULT_KV_TOKEN_PORT_BASE + 1
         )
         assert decode.experimental_configs[KV_TOKEN_PORT_BASE_KEY] == (
-            DEFAULT_KV_TOKEN_PORT_BASE + 100
+            DEFAULT_KV_TOKEN_PORT_BASE + 1002
         )
+
+    def test_pd_kv_port_ranges_scale_with_autoscaling_and_data_parallelism(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+        prefill.deployment_config = {"autoscaling_config": {"max_replicas": 400}}
+        decode.deployment_config = {"autoscaling_config": {"max_replicas": 200}}
+        prefill.engine_kwargs["data_parallel_size"] = 2
+        decode.engine_kwargs["data_parallel_size"] = 4
+
+        build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+
+        # P consumes 800 ports in each lane. D starts after P's highest
+        # configured lane and independently reserves its 800-port DP range.
+        assert decode.experimental_configs[KV_EVENTS_PORT_BASE_KEY] == 8357
+        assert decode.experimental_configs[KV_TOKEN_PORT_BASE_KEY] == 10157
+
+    def test_pd_rejects_overlapping_kv_port_ranges(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+        decode.experimental_configs[KV_EVENTS_PORT_BASE_KEY] = (
+            DEFAULT_KV_EVENTS_PORT_BASE
+        )
+
+        with pytest.raises(ValueError, match="P/D port ranges overlap"):
+            build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
 
     @pytest.mark.parametrize(
         ("prefill_dp", "decode_dp", "expected_prefill_cls", "expected_decode_cls"),

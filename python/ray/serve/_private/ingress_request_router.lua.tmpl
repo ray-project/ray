@@ -12,6 +12,9 @@ local FORWARD_BODY = ${FORWARD_BODY}
 -- Forwarding it makes the router's selection reservation use the same ID as
 -- the data-plane replica's engine lifecycle events.
 local REQUEST_ID_HEADER = "x-request-id"
+-- Trusted request metadata for endpoint-aware ingress routers. The frontend
+-- removes client values under this prefix before this Lua action runs.
+local REQUEST_PATH_HEADER = "x-serve-router-request-path"
 -- Name of the client header that carries the session id Serve should
 -- pin on. Filled from SERVE_SESSION_ID (set via the env var
 -- RAY_SERVE_SESSION_ID_HEADER_KEY) in lowercase form. Forwarded on the
@@ -29,7 +32,7 @@ local REPLICA_TARGETS = ${REPLICA_TARGETS}
 -- lua-load-per-thread, so rotation needs no cross-thread synchronization.
 local _rr_cursor = {}
 
-local function call_router(router, body, truncated_length, session_id, request_id)
+local function call_router(router, body, truncated_length, session_id, request_id, request_path)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
@@ -53,6 +56,11 @@ local function call_router(router, body, truncated_length, session_id, request_i
         request_id_header = REQUEST_ID_HEADER .. ": " .. request_id .. "\r\n"
     end
 
+    local request_path_header = ""
+    if request_path and request_path ~= "" then
+        request_path_header = REQUEST_PATH_HEADER .. ": " .. request_path .. "\r\n"
+    end
+
     -- Connection: close so sock:receive("*a") terminates on EOF.
     local req = "POST /internal/route HTTP/1.0\r\n"
         .. "Host: " .. router.host_header .. "\r\n"
@@ -62,6 +70,7 @@ local function call_router(router, body, truncated_length, session_id, request_i
         .. truncation_header
         .. session_header
         .. request_id_header
+        .. request_path_header
         .. "\r\n"
         .. body
 
@@ -151,6 +160,7 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- the separator doesn't silently drop session affinity, matching the
     -- Python-side `_matches_session_id_header` behavior in http_util.py.
     local hdrs = txn.http:req_get_headers()
+    local request_path = txn.sf:path()
     local request_id = nil
     local request_id_entry = hdrs and hdrs[REQUEST_ID_HEADER]
     if request_id_entry then
@@ -181,7 +191,9 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     local response = nil
     for i = 0, n - 1 do
         local router = pool[(start + i) % n + 1]
-        response = call_router(router, body, truncated, session_id, request_id)
+        response = call_router(
+            router, body, truncated, session_id, request_id, request_path
+        )
         if response then
             break
         end

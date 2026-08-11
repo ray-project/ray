@@ -8,9 +8,13 @@ and transfer-safe P completion releases P before D is activated.
 """
 
 import time
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 
+from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
     PDPairTracker,
     PDTicketState,
@@ -59,6 +63,12 @@ class _Pool:
     async def on_decode_progress(self, reservation_id, output_tokens):
         self.events.append(("decode_progress", reservation_id, output_tokens))
 
+    async def flush_reservation_broadcast(self):
+        pass
+
+    async def apply_reservations_from_peer(self, reservations):
+        self.events.append(("peer_reservations", reservations))
+
 
 def _tracker():
     # D worker 10 represents the lower-load decode choice; P worker 21
@@ -96,7 +106,10 @@ def _tracker():
     tracker._next_decode_index = 0
     tracker._tickets_by_d_reservation = {}
     tracker._d_reservation_by_request = {}
+    tracker._ticket_expiries = []
     tracker._cleanup_task = None
+    tracker._event_forwarder = None
+    tracker._ingress_replica_id = None
     return tracker, prefill, decode
 
 
@@ -111,7 +124,7 @@ async def test_pair_selection_uses_overlap_aware_p_and_lower_load_d(
     ticket = await tracker.reserve_pair(
         request_id="request-1",
         prefill_token_ids=[1, 2, 3, 4],
-        decode_token_ids=[101, 102, 103, 104],
+        decode_token_ids=[1, 2, 3, 4],
         expected_output_tokens=64,
     )
 
@@ -119,13 +132,101 @@ async def test_pair_selection_uses_overlap_aware_p_and_lower_load_d(
     assert ticket.d_route["replica_id"] == "d-low-load"
     # D is selected first and explicitly gets no prefix credit.  Its pending
     # load is controlled by the P/D-only scale, independently of P's overlap.
-    assert decode.select_calls[0]["token_ids"] == [101, 102, 103, 104]
+    assert decode.select_calls[0]["token_ids"] == [1, 2, 3, 4]
     assert decode.select_calls[0]["override"] == {
         "assume_kv_reuse": False,
+        "overlap_score_credit": 0.0,
         "prefill_load_scale": pending_decode_load_scale,
     }
     assert decode.select_calls[0]["expected_output_tokens"] == 64
     assert prefill.select_calls[0]["token_ids"] == [1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_pair_selection_rejects_different_token_ids_before_booking():
+    tracker, prefill, decode = _tracker()
+
+    with pytest.raises(ValueError, match="identical prefill and decode token IDs"):
+        await tracker.reserve_pair(
+            request_id="request-token-mismatch",
+            prefill_token_ids=[1, 2],
+            decode_token_ids=[1, 3],
+            expected_output_tokens=None,
+        )
+
+    assert not prefill.select_calls
+    assert not decode.select_calls
+
+
+@pytest.mark.asyncio
+async def test_peer_reservations_and_transfer_completion_stay_in_their_pd_pools():
+    tracker, prefill, decode = _tracker()
+    tracker._ingress_replica_id = "router-2"
+
+    await tracker.on_reservations_created(
+        [
+            {"pool": "prefill", "request_id": "request-1"},
+            {"pool": "decode", "request_id": "request-1"},
+        ]
+    )
+    await tracker.on_reservation_events(
+        [
+            {
+                "source_ingress_replica_id": "router-1",
+                "event": "prefill_complete",
+                "p_reservation_id": "request-1",
+                "d_reservation_id": "request-1",
+            }
+        ]
+    )
+
+    assert prefill.events == [
+        ("peer_reservations", [{"pool": "prefill", "request_id": "request-1"}]),
+        ("prefill_complete", "request-1"),
+        ("completed", "request-1"),
+    ]
+    assert decode.events == [
+        ("peer_reservations", [{"pool": "decode", "request_id": "request-1"}]),
+        ("prefill_complete", "request-1"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pd_ticketing_only_runs_for_generation_endpoints():
+    router = LLMRouter.__new__(LLMRouter)
+    router._pd_pair_tracker = SimpleNamespace(reserve_pair=AsyncMock())
+    fallback = AsyncMock(return_value={"replica_id": "decode-native"})
+    router._route_to_backend = fallback
+    request = SimpleNamespace(headers={"x-serve-router-request-path": "/tokenize"})
+
+    response = await router._route_pd(request, SimpleNamespace(prompt="hello"))
+
+    assert response == {"replica_id": "decode-native"}
+    router._pd_pair_tracker.reserve_pair.assert_not_awaited()
+    fallback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pd_ticketing_rejects_different_rendered_token_ids():
+    class _Tokenizer:
+        def __init__(self, token_ids):
+            self._token_ids = token_ids
+
+        async def tokenize(self, payload):
+            return self._token_ids
+
+    router = LLMRouter.__new__(LLMRouter)
+    router._pd_pair_tracker = SimpleNamespace(reserve_pair=AsyncMock())
+    router._tokenizer = _Tokenizer([1, 2])
+    router._prefill_tokenizer = _Tokenizer([1, 3])
+    request = SimpleNamespace(
+        headers={"x-serve-router-request-path": "/v1/completions"}
+    )
+
+    with pytest.raises(HTTPException, match="different token IDs"):
+        await router._route_pd(request, SimpleNamespace(prompt="hello"))
+
+    router._pd_pair_tracker.reserve_pair.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -169,6 +270,9 @@ async def test_prefill_completion_frees_p_then_activates_and_releases_d():
         d_replica_id="d-low-load",
         p_replica_id="p-high-overlap",
     )
+    # A claimed ticket uses normal request tracking TTL before prefill can
+    # finish; the short capability TTL cannot reclaim it mid-transfer.
+    assert ticket.expires_at - time.monotonic() > 3500
 
     await tracker.prefill_complete(ticket.d_reservation_id)
 
@@ -200,7 +304,7 @@ async def test_expired_ticket_is_cleaned_up_without_a_decode_dispatch():
         decode_token_ids=[1],
         expected_output_tokens=None,
     )
-    ticket.expires_at = time.monotonic() - 1
+    tracker._set_ticket_expiry(ticket, -1)
 
     await tracker.evict_expired()
 

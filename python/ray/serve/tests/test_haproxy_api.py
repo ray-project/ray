@@ -1028,13 +1028,16 @@ def _create_router_server(
 ):
     """Fake /internal/route. Captures request data forwarded by HAProxy."""
     app = FastAPI()
-    captured = {"bodies": [], "request_ids": []}
+    captured = {"bodies": [], "request_ids": [], "request_paths": []}
 
     @app.post("/internal/route")
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
         captured["request_ids"].append(req.headers.get("x-request-id", ""))
+        captured["request_paths"].append(
+            req.headers.get("x-serve-router-request-path", "")
+        )
         response = {"replica_id": replica_id_to_return}
         if extra_response:
             response.update(extra_response)
@@ -1052,6 +1055,7 @@ def _create_router_server(
     # Discard the readiness-probe data so callers see only client traffic.
     captured["bodies"].clear()
     captured["request_ids"].clear()
+    captured["request_paths"].clear()
     return server, thread, captured
 
 
@@ -1186,6 +1190,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 resp.headers.get("x-received-request-id")
             ]
             assert router_captured["request_ids"][0]
+            assert router_captured["request_paths"] == ["/predict"]
 
             # Direct streaming keeps a bounded request-body path for
             # prefix-cache-aware routing.
@@ -1202,6 +1207,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
             assert len(router_captured["request_ids"]) == 4
             assert all(router_captured["request_ids"])
+            assert router_captured["request_paths"] == ["/predict"] * 4
 
             # GET is not POST, so Lua routing never runs; the router should
             # have seen exactly the four POSTs above and nothing more.
