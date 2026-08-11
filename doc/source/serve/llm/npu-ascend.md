@@ -10,7 +10,7 @@ It is recommended to download the model weights to a shared directory accessible
 
 ## Step 2: Start the Docker Container
 
-This guide demonstrates deployment on an Atlas 800 A2 node. For A3 series deployment, refer to the [vLLM-Ascend DeepSeek-V4-Flash tutorial](https://docs.vllm.ai/projects/ascend/en/v0.18.0/tutorials/models/DeepSeek-V4-Flash.html).
+This guide demonstrates single-node deployment of DeepSeek-V4-Flash-w8a8-mtp on an Atlas 800 A2 node. For A3 series deployment, refer to the [vLLM-Ascend DeepSeek-V4-Flash tutorial](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/DeepSeek-V4-Flash.html). You can use the official Docker image to run DeepSeek-V4 directly — for the latest available versions, see the [vllm-ascend image tags](https://quay.io/repository/ascend/vllm-ascend) on Quay.io. The docker run command below is tailored to a single-node Atlas 800 A2. Adjust the --device entries and volume mounts to match your hardware and model, and refer to the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html) for model-specific guidance.
 
 You can use the official Docker image to run `DeepSeek-V4` directly. Adjust the component versions in the image as follows:
 
@@ -53,7 +53,9 @@ docker run --rm \
 
 ## Step 3: Set Environment Variables
 
-Set the following environment variables inside the Docker container:
+NPU environment variables are required, but specific values vary across models and deployment scenarios (single-node vs. multi-node, prefill-decode disaggregation, etc.). Refer to the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html) for the recommended values for your model.
+
+The following is an example for DeepSeek-V4-Flash-w8a8-mtp on an Atlas 800 A2 single-node deployment:
 
 ```sh
 export OMP_PROC_BIND=false
@@ -69,10 +71,10 @@ export HCCL_OP_EXPANSION_MODE="AIV"
 ## Step 4: Install Ray and Start the Ray Cluster
 
 ```sh
-pip install ray[llm]
+pip install "ray[llm]"
 ```
 
-> **Note:** The image includes Ray version 2.48.0, which does not support NPU. You need to install the latest version of Ray Serve to enable NPU accelerator type support. Daily builds can be obtained from [Daily Releases](https://docs.ray.io/en/latest/ray-overview/installation.html#daily-releases-nightlies). Before installing, confirm that the version includes NPU support.
+> **Note:** The image includes Ray version 2.48.0, which does not support NPU. You need to install a version of Ray that includes NPU support (NPUConfig, NPUAccelerator).
 
 Start the Ray cluster and verify that it is running:
 
