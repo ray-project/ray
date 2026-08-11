@@ -1,5 +1,27 @@
 # arrow-rs read probe — Linux + S3 regression reproduction
 
+## TL;DR — the grand experiment (fresh Linux box, one command)
+
+Maps the whole tuning surface of arrow-rs vs PyArrow on the NEW footer-based
+planner (#64985 series): environment setup, the two pytest suites as a
+correctness gate, 5 local fixture shapes, then sweeps over the new bin-packing
+knob, the decode budget, fragment threads, and (with `ARROW_RS_S3_BUCKET` set)
+S3 + fetch window. See the docstrings of `grand_experiment.py` /
+`gen_local_fixtures.py` for the stage/shape rationale.
+
+```bash
+git clone https://github.com/AarryaSaraf/ray.git ~/ray && cd ~/ray
+git checkout arrow-rs-on-64985
+bash release/nightly_tests/dataset/arrow_rs_probe/run_grand_experiment.sh
+# optional S3 stage: export AWS creds + ARROW_RS_S3_BUCKET=s3://... first
+# quick smoke run:   FIXTURE_SCALE=0.25 STAGES=A bash .../run_grand_experiment.sh
+```
+
+Results: `grand_runs/<ts>/summary.md` (ratio tables; R/P > 1.00 = arrow-rs worse),
+`summary.json`, one log per cell.
+
+---
+
 Single-node harness to measure the two cases where the arrow-rs Parquet reader was
 worse than PyArrow in the release run (build 102757), so we can optimize them:
 
