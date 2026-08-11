@@ -4,11 +4,10 @@ import pickle
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Set, Tuple
-
-import grpc
+from typing import Any, Dict, Optional, Set, Tuple, Union
 
 import ray
+from ray._private.grpc_utils import init_grpc_channel
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     DeploymentID,
@@ -194,7 +193,9 @@ class RunningReplica:
         # This avoids the borrower-of-borrower pattern while minimizing GCS lookups.
         actor_handle = replica_info.get_actor_handle()
         if replica_info.is_cross_language:
-            self._actor_handle = JavaActorHandleProxy(actor_handle)
+            self._actor_handle: Union[
+                ActorHandle, JavaActorHandleProxy
+            ] = JavaActorHandleProxy(actor_handle)
         else:
             self._actor_handle = actor_handle
 
@@ -204,7 +205,7 @@ class RunningReplica:
 
         # Replica wrappers
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
-        self._grpc_replica_wrapper = None
+        self._grpc_replica_wrapper: Optional[gRPCReplicaWrapper] = None
 
     def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
         """Update mutable fields from a new RunningReplicaInfo.
@@ -237,7 +238,9 @@ class RunningReplica:
     @property
     def node_id(self) -> str:
         """Node ID of the node this replica is running on."""
-        return self._replica_info.node_id
+        # NOTE: `RunningReplicaInfo.node_id` is `Optional[str]`, so this can
+        # actually return `None` despite the declared return type.
+        return self._replica_info.node_id  # type: ignore[return-value]
 
     @property
     def availability_zone(self) -> Optional[str]:
@@ -282,7 +285,10 @@ class RunningReplica:
     @property
     def stub(self):
         if self._stub is None:
-            self._channel = grpc.aio.insecure_channel(
+            # Created via the shared helper so that Ray's authentication client
+            # interceptors and TLS credentials are applied; a raw insecure
+            # channel would be rejected by the replica's authenticated server.
+            self._channel = init_grpc_channel(
                 f"{self._replica_info.node_ip}:{self._replica_info.port}",
                 options=[
                     (
@@ -290,6 +296,7 @@ class RunningReplica:
                         RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
                     )
                 ],
+                asynchronous=True,
             )
             self._stub = ASGIServiceStub(self._channel)
 
@@ -470,8 +477,8 @@ class ReplicaSelection:
         or None if this selection was created without a reservation.
         """
         if self._slot_token is None:
-            return
+            return  # type: ignore[return-value]
         if self._dispatched and not force:
-            return
+            return  # type: ignore[return-value]
 
         return await self._replica.release_slot(self._slot_token)

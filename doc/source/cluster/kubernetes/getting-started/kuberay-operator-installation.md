@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Install the KubeRay operator with Helm or Kustomize and validate the installation on a Kind or existing cluster."
+---
+
 (kuberay-operator-deploy)=
 
 # KubeRay Operator Installation

@@ -1,3 +1,6 @@
+.. meta::
+   :description: How Ray serializes data for the Plasma object store, with NumPy zero-copy reads, read-only array pitfalls, and custom serializers.
+
 .. _serialization-guide:
 
 Serialization

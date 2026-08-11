@@ -1,5 +1,5 @@
-name: "oss-ci-base_build-aarch64"
-froms: ["cr.ray.io/rayproject/oss-ci-base_test-aarch64"]
+name: "oss-ci-base_build-aarch64-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_test-aarch64-py$PYTHON"]
 dockerfile: ci/docker/base.build.Dockerfile
 srcs:
   - .bazelrc
@@ -11,7 +11,7 @@ srcs:
   - python/requirements_compiled.txt
   - python/requirements/test-requirements.txt
 build_args:
-  - DOCKER_IMAGE_BASE_TEST=cr.ray.io/rayproject/oss-ci-base_test-aarch64
+  - DOCKER_IMAGE_BASE_TEST=cr.ray.io/rayproject/oss-ci-base_test-aarch64-py$PYTHON
   - RAYCI_DISABLE_JAVA
 tags:
-  - cr.ray.io/rayproject/oss-ci-base_build-aarch64
+  - cr.ray.io/rayproject/oss-ci-base_build-aarch64-py$PYTHON

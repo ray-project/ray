@@ -8,6 +8,8 @@ from ray._common.utils import env_integer
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BlockPrefetcher,
+    FinalizedBatch,
+    FinalizedData,
 )
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
@@ -94,7 +96,9 @@ class BatchIterator:
     Args:
         ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
-        dataset_tag: The tag of the dataset to record timing and other statistics.
+        dataset_tags: The iterator's iteration-metric tags, a dict with keys
+            ``dataset`` (the dataset id) and ``split_index`` (the output split
+            index for stream-split iterators, or ``None`` for plain iterators).
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
@@ -135,12 +139,12 @@ class BatchIterator:
         ref_bundles: Iterator[RefBundle],
         *,
         stats: Optional[DatasetStats] = None,
-        dataset_tag: Optional[str] = None,
+        dataset_tags: Optional[Dict[str, Optional[str]]] = None,
         batch_size: Optional[int] = None,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-        finalize_fn: Optional[Callable[[Any], Any]] = None,
+        finalize_fn: Optional[Callable[[Any], FinalizedData]] = None,
         shuffle_buffer_min_size: Optional[int] = None,
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
@@ -150,7 +154,7 @@ class BatchIterator:
     ):
         self._ref_bundles = ref_bundles
         self._stats = stats
-        self._dataset_tag = dataset_tag
+        self._dataset_tags = dataset_tags
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._drop_last = drop_last
@@ -223,10 +227,7 @@ class BatchIterator:
     def _finalize_batches(
         self,
         batch_iter: Iterator[Batch],
-    ) -> Iterator[Batch]:
-        if self._finalize_fn is None:
-            return batch_iter
-
+    ) -> Iterator[FinalizedBatch]:
         return finalize_batches(
             batch_iter, finalize_fn=self._finalize_fn, stats=self._stats
         )
@@ -236,7 +237,7 @@ class BatchIterator:
     ) -> Iterator[Batch]:
         return restore_original_order(batches)
 
-    def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[Batch]:
+    def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[FinalizedBatch]:
         # Step 1: Prefetch logical batches locally.
         block_iter = self._prefetch_blocks(ref_bundles)
 
@@ -335,10 +336,14 @@ class BatchIterator:
         if self._prefetch_bytes_callback is not None:
             self._prefetch_bytes_callback(0)
 
-        if self._stats is None:
+        if self._stats is None or self._dataset_tags is None:
             return
 
-        _StatsManager.update_iteration_metrics(self._stats, self._dataset_tag)
+        _StatsManager.update_iteration_metrics(
+            self._stats,
+            self._dataset_tags["dataset"],
+            self._dataset_tags["split_index"],
+        )
 
     @contextmanager
     def get_next_batch_context(self):
@@ -362,9 +367,12 @@ class BatchIterator:
             self._yielded_first_batch = True
 
     @contextmanager
-    def yield_batch_context(self, batch: Batch):
+    def yield_batch_context(self, batch: FinalizedBatch):
         """Context around yielding a batch to the user: tracks user time
         and periodically flushes metrics."""
+        assert isinstance(batch, FinalizedBatch)
+        if batch.on_consume is not None:
+            batch.on_consume()
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
 
@@ -372,11 +380,15 @@ class BatchIterator:
         if self._prefetch_bytes_callback is not None and self._stats is not None:
             self._prefetch_bytes_callback(self._stats.iter_prefetched_bytes)
 
-        if self._stats is None:
+        if self._stats is None or self._dataset_tags is None:
             return
         now = time.time()
         if (now - self._metrics_last_updated) > self.UPDATE_METRICS_INTERVAL_S:
-            _StatsManager.update_iteration_metrics(self._stats, self._dataset_tag)
+            _StatsManager.update_iteration_metrics(
+                self._stats,
+                self._dataset_tags["dataset"],
+                self._dataset_tags["split_index"],
+            )
             self._metrics_last_updated = now
 
 

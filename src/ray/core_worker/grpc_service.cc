@@ -25,7 +25,8 @@ void CoreWorkerGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
-    std::shared_ptr<const AuthenticationToken> auth_token) {
+    std::shared_ptr<const AuthenticationToken> auth_token,
+    GrpcServerMetrics &server_metrics) {
   /// TODO(vitsai): Remove this when auth is implemented for node manager.
   /// Disable gRPC server metrics since it incurs too high cardinality.
   RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(CoreWorkerService,

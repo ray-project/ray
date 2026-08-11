@@ -498,6 +498,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CCoreWorker &GetCoreWorker()
 
         @staticmethod
+        optional[c_bool] ShouldInterruptTaskForCancellation()
+
+        @staticmethod
         void Shutdown()
 
         @staticmethod

@@ -207,7 +207,9 @@ def test_map_transformer_custom_op_stats():
     transformer = MapTransformer(
         [
             BlockMapTransformFn(
-                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
             )
         ]
     )
@@ -257,7 +259,9 @@ def test_map_task_carries_custom_op_stats_to_block_metadata(ray_start_regular_sh
     transformer = MapTransformer(
         [
             BlockMapTransformFn(
-                set_stats, disable_block_shaping=True, reports_custom_op_stats=True
+                set_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
             )
         ]
     )
@@ -296,7 +300,9 @@ def test_custom_op_stats_survives_operator_fusion(ray_start_regular_shared):
     upstream = MapTransformer(
         [
             BlockMapTransformFn(
-                report_stats, disable_block_shaping=True, reports_custom_op_stats=True
+                report_stats,
+                disable_block_shaping=True,
+                should_report_custom_op_stats=True,
             )
         ]
     )
@@ -588,7 +594,9 @@ def canonicalize(
     filter_global_stats: bool = True,
 ) -> str:
     # Dataset UUID expression.
-    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
+    canonicalized_stats = re.sub(r"(dataset_uuid=)[^,\n]+", r"\g<1>N", stats)
+    # Other UUID expressions.
+    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", canonicalized_stats)
     # Time expressions.
     canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
@@ -2005,10 +2013,20 @@ def test_stats_actor_iter_metrics():
     final_stats = update_fn.call_args_list[-1].args[0]
 
     assert final_stats == ds_stats
-    assert f"dataset_{ds._uuid}_0" == update_fn.call_args_list[-1].args[1]
+    assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
+    assert update_fn.call_args_list[-1].args[2] is None
 
 
-def test_update_iteration_metrics_exports_new_iter_metrics():
+@pytest.mark.parametrize(
+    "split_index_arg, expected_split_label",
+    [
+        ("3", "split_3"),
+        (None, "no_split"),
+    ],
+)
+def test_update_iteration_metrics_exports_new_iter_metrics(
+    split_index_arg, expected_split_label
+):
     stats = DatasetStats(metadata={}, parent=None)
     stats.iter_total_s.add(11.0)
     stats.iter_blocked_production_wait_s.add(1.0)
@@ -2064,9 +2082,9 @@ def test_update_iteration_metrics_exports_new_iter_metrics():
     ]:
         setattr(actor, attr, FakeGauge(attr))
 
-    actor.update_iteration_metrics(stats, "train_dataset_split_3")
+    actor.update_iteration_metrics(stats, "train_dataset", split_index_arg)
 
-    expected_tags = {"dataset": "train_dataset_split_3"}
+    expected_tags = {"dataset": "train_dataset", "split": expected_split_label}
     assert recorded["iter_total_s"] == (11.0, expected_tags)
     assert recorded["iter_blocked_production_wait_s"] == (1.0, expected_tags)
     assert recorded["iter_blocked_data_transfer_s"] == (1.5, expected_tags)
@@ -2209,7 +2227,6 @@ import ray
 
 ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
 ds.set_name("train")
-ds._set_uuid("1234")
 
 split = ds.streaming_split(1)[0]
 
@@ -2220,8 +2237,15 @@ for epoch in range({num_epochs}):
     # Need to run the code as s sub process, because the executor
     # runs on the SplitCoordinator actor.
     out = run_string_as_driver(driver_script)
+    match = re.search(
+        r"Starting execution of Dataset (train_[A-Za-z0-9]+)_0",
+        out,
+    )
+    assert match is not None
+    dataset_id_prefix = match.group(1)
+
     for i in range(num_epochs):
-        dataset_id = f"train_1234_{i}"
+        dataset_id = f"{dataset_id_prefix}_{i}"
         assert f"Starting execution of Dataset {dataset_id}" in out
 
 

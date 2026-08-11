@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Profile Ray workloads on Kubernetes with py-spy, viewing flame graphs in the dashboard from a SYS_PTRACE-capable RayCluster."
+---
+
 (kuberay-pyspy-integration)=
 
 # Profiling with py-spy
