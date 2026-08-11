@@ -700,7 +700,8 @@ async def run_controller_benchmark(
             hello_world = ControllerBenchHelloWorld.bind(signal_actor)
             app = ControllerBenchMetricsGenerator.options(
                 ray_actor_options={
-                    "num_cpus": _controller_replica_num_cpus(target_replicas)
+                    **(ControllerBenchMetricsGenerator.ray_actor_options or {}),
+                    "num_cpus": _controller_replica_num_cpus(target_replicas),
                 }
             ).bind(hello_world)
             handle = serve.run(app, name="default", route_prefix=None)
