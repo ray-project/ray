@@ -18,6 +18,22 @@ RAY_ANNOTATION_MAX_FILE_SIZE_BYTES = env_integer(
 RAY_ANNOTATION_MAX_BACKUP_COUNT = env_integer("RAY_ANNOTATION_MAX_BACKUP_COUNT", 5)
 
 
+def _get_session_name() -> str:
+    """Return the current Ray session name, or "" before Ray is initialized.
+
+    ``_global_node`` is set both in processes that called ``ray.init`` and in
+    worker processes (see ``default_worker.py``), so this resolves in drivers,
+    actors and tasks alike. Records emitted before Ray is up are dropped by
+    :class:`_AnnotationFileHandler`, so in practice a written record always
+    carries a session name.
+    """
+    from ray._private.worker import _global_node
+
+    if _global_node is None:
+        return ""
+    return _global_node.session_name
+
+
 class _AnnotationFileHandler(logging.Handler):
     """Write annotation records to a per-process file in the Ray session logs dir.
 
@@ -119,7 +135,9 @@ class Annotation:
             filtered per run in LogQL.
     """
 
-    _RESERVED_FIELDS = frozenset({"annotation_source", "timestamp_s", "event"})
+    _RESERVED_FIELDS = frozenset(
+        {"annotation_source", "timestamp_s", "event", "session_name"}
+    )
 
     def __init__(
         self,
@@ -193,6 +211,12 @@ class Annotation:
                 "annotation_source": self._source,
                 "timestamp_s": time.time(),
                 "event": event,
+                # Identifies the cluster that emitted the event. Dashboards scope
+                # annotations by this rather than by the log collector's stream
+                # labels, which Ray knows nothing about: a backend aggregating
+                # several clusters would otherwise leak one cluster's
+                # annotations onto another's dashboard.
+                "session_name": _get_session_name(),
                 **emitted_fields,
                 **self._base_tags,
             }

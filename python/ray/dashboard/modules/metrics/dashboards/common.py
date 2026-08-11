@@ -605,17 +605,22 @@ class Annotation:
     Annotations overlay event markers onto every panel's time axis. Each one runs
     a query against a log datasource and renders a marker per matching log line.
 
-    Ray does not provision a log datasource, so annotations are rendered only when
-    the cluster operator points Ray at one. Annotations declared here are dropped
-    from the generated dashboard JSON unless both
-    ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID`` and
-    ``RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR`` are set.
+    Ray does not provision a log datasource, so the query is rendered against
+    whichever datasource the ``annotation_datasource`` template variable resolves
+    to, unless the operator pins one with
+    ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID``. Annotations are omitted from the
+    generated dashboard JSON only when ``RAY_GRAFANA_ANNOTATIONS_ENABLED=0``.
+
+    A query must narrow to the session and, where applicable, the run it belongs
+    to, using fields Ray writes into the annotation records themselves rather
+    than the log collector's stream labels, which Ray knows nothing about.
 
     Attributes:
         name: Display name shown in the dashboard's annotation toggle.
         expr: The datasource query used to fetch annotation events. Must contain
-            the ``$__stream_selector`` placeholder, which is replaced with the
-            operator-supplied stream selector at generation time.
+            the ``$__stream_selector`` placeholder, which is replaced at
+            generation time with the stream selector that locates Ray's
+            annotation log lines in the datasource.
         icon_color: rgba/hex color for the annotation markers.
         ref_id: Grafana refId for the annotation's target query.
         tag_keys: Comma-separated label keys surfaced as annotation tags.
@@ -638,7 +643,8 @@ class Annotation:
             raise ValueError(
                 f"Annotation {self.name!r} query must contain the "
                 f"{ANNOTATION_STREAM_SELECTOR_PLACEHOLDER} placeholder so the "
-                "operator-configured stream selector can be substituted in."
+                "stream selector locating Ray's annotation log lines can be "
+                "substituted in."
             )
 
 

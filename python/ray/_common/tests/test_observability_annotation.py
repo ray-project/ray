@@ -96,6 +96,35 @@ def test_annotation_emits_json(captured_annotations):
     assert record["epoch"] == 3
     assert record["loss"] == 0.5
     assert isinstance(record["timestamp_s"], float)
+    # Empty here because Ray is not initialized; see
+    # ``test_annotation_records_session_name``.
+    assert record["session_name"] == ""
+
+
+def test_annotation_records_session_name(monkeypatch, captured_annotations):
+    """Dashboards scope annotations to a cluster with this field, so that a log
+    backend aggregating several clusters cannot leak one cluster's annotations
+    onto another cluster's dashboard."""
+
+    class _FakeNode:
+        session_name = "session_2020-01-01_00-00-00_000000_1"
+
+    monkeypatch.setattr(ray._private.worker, "_global_node", _FakeNode())
+
+    annotation = Annotation(source=TRAIN_ANNOTATION_SOURCE, base_tags={})
+    annotation.annotate(event="custom_event")
+
+    assert captured_annotations[0]["session_name"] == _FakeNode.session_name
+
+
+def test_annotation_cannot_spoof_session_name(captured_annotations, captured_warnings):
+    """``session_name`` is what isolates one cluster's annotations from another's,
+    so a caller-supplied field must never be able to overwrite it."""
+    annotation = Annotation(source=TRAIN_ANNOTATION_SOURCE, base_tags={})
+    annotation.annotate(event="custom_event", session_name="hijacked")
+
+    assert captured_annotations[0]["session_name"] != "hijacked"
+    assert len(captured_warnings) == 1
 
 
 def test_annotation_field_collision_drops_only_the_colliding_field(

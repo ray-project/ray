@@ -527,10 +527,20 @@ assert len(all_panel_ids) == len(
     set(all_panel_ids)
 ), f"Duplicated id found. Use unique id for each panel. {all_panel_ids}"
 
-# Ray Train annotations, queried from the operator-configured log datasource.
+# Ray Train annotations, queried from the annotation log datasource.
+#
+# Scoping is layered, and only the first layer is operator-specific:
+#   1. `$__stream_selector` finds Ray's annotation lines in whatever backend the
+#      operator's log collector ships them to. It is a static, fleet-wide value.
+#   2. `session_name` narrows to the cluster that emitted the event. Ray writes
+#      this field into every annotation record, so a backend aggregating many
+#      clusters cannot leak one cluster's annotations onto another's dashboard.
+#   3. The run filters narrow to a single Train run, which is what separates
+#      concurrent runs sharing one cluster, as in a workspace.
 _ANNOTATION_STREAM = (
     f'{ANNOTATION_STREAM_SELECTOR_PLACEHOLDER} |= "ray_train_annotation" '
-    '| json | annotation_source="ray_train_annotation"'
+    '| json | annotation_source="ray_train_annotation" '
+    '| session_name=~"$SessionName"'
 )
 _RUN_FILTERS = '| ray_train_run_name=~"$TrainRunName" | ray_train_run_id=~"$TrainRunId"'
 
