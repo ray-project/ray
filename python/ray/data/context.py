@@ -165,6 +165,10 @@ DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
     "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", False
 )
 
+DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S = env_float(
+    "RAY_DATA_EXECUTION_NO_PROGRESS_TIMEOUT_S", 30 * 60
+)
+
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
 # Globally enable or disable all progress bars.
@@ -675,6 +679,12 @@ class DataContext:
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        execution_no_progress_timeout_s: Maximum time in seconds that an execution may
+            go without any operator producing or consuming an output before it fails
+            with `ExecutionTimeoutError`. Doesn't apply to Datasets with an
+            all-to-all operation.
+            Raise this if your workload can wait a long time for cluster capacity.
+            Set to -1 to disable.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
@@ -944,6 +954,7 @@ class DataContext:
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
+    execution_no_progress_timeout_s: float = DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S
     log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
