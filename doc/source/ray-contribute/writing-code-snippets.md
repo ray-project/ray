@@ -350,13 +350,13 @@ pytest --doctest-modules doc/source/data/getting-started.rst
 
 ## How to debug a failing example
 
-When a code snippet fails in CI, two questions decide what to do about it: what kind of failure it is, and what the example was protecting. To find which step failed, see [Per-library docs example tests](ci.md#per-library-docs-example-tests), which maps each documentation path to the step that runs its examples.
+When a code snippet fails in CI, two questions decide what you need to do about it: what kind of failure is it, and what was the example protecting. To find which step failed, see [Per-library docs example tests](ci.md#per-library-docs-example-tests), which maps each documentation path to the step that runs its examples.
 
 ### What kind of failure is it?
 
 - **The example ran, but its output didn't match.** This is an ordinary test failure. Reproduce it locally with `pytest --doctest-modules <file>` and compare the actual output against the expected `testoutput` or `>>>` block. Either the code changed or the expected output is wrong.
 - **The build failed before your example ran.** An import error or a `conf.py` error can abort the build, and the rest of the log is unreliable after an abort. Fix that error first, then re-read the log.
-- **A Sphinx warning failed the build.** The Read the Docs render gate treats warnings as errors, so a malformed directive or a broken cross-reference fails the build even when your code is correct. This is a markup problem, not a code failure. See [The Read the Docs render gate](ci.md#the-read-the-docs-render-gate).
+- **A Sphinx warning failed the build.** The doc site host (Read the Docs) render gate treats warnings as errors, so a malformed directive or a broken cross-reference fails the build even when your code is correct. This is a markup problem, not a code failure. See [the Read the Docs render gate](ci.md#the-read-the-docs-render-gate).
 
 ### What was the example protecting?
 
