@@ -443,6 +443,11 @@ class WebDatasetDatasource(FileBasedDatasource):
         default_decoder = partial(
             _default_decoder, allow_unsafe=self._allow_unsafe_deserialization
         )
+
+        # Yield 1 dataframe per chunk of 512 samples. Last chunk may be smaller.
+        rows = []
+        chunk_size = 512
+
         for sample in samples:
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=default_decoder)
@@ -461,9 +466,15 @@ class WebDatasetDatasource(FileBasedDatasource):
                     if k not in sample:
                         sample[k] = []
                     sample[k].append(v)
-            yield pd.DataFrame(
+            rows.append(
                 {
-                    k: v if isinstance(v, list) and len(v) == 1 else [v]
+                    k: v[0] if isinstance(v, list) and len(v) == 1 else v
                     for k, v in sample.items()
                 }
             )
+            if len(rows) >= chunk_size:
+                yield pd.DataFrame.from_records(rows)
+                rows = []
+
+        if rows:
+            yield pd.DataFrame.from_records(rows)
