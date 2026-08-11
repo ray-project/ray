@@ -6,7 +6,11 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental import set_target_for_ref, wait_tensor_freed
+from ray.experimental import (
+    set_target_device_for_ref,
+    set_target_for_ref,
+    wait_tensor_freed,
+)
 from ray.experimental.rdt.util import get_tensor_transport_manager
 
 
@@ -605,6 +609,139 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
 
     result = actors[1].get_with_wrong_buffers.remote([ref])
     assert ray.get(result)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_cross_device_fetch(ray_start_regular):
+    """NIXL can fetch tensors onto a device that differs from the source device."""
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class CrossDeviceActor:
+        def put_cuda(self):
+            tensors = [
+                torch.tensor([1, 2, 3]).to("cuda"),
+                torch.tensor([4, 5, 6]).to("cuda"),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def put_cpu(self):
+            tensors = [
+                torch.tensor([1, 2, 3]),
+                torch.tensor([4, 5, 6]),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def fetch_on_device(self, refs, target_device):
+            set_target_device_for_ref(refs[0], target_device)
+            tensors = ray.get(refs[0])
+            expected_type = torch.device(target_device).type
+            for t in tensors:
+                assert t.device.type == expected_type
+            # Move to CPU so the driver can compare the values regardless of device.
+            return [t.cpu() for t in tensors]
+
+        def fetch_into_cross_device_buffers(self, refs):
+            # Source tensors are on CUDA; receive into caller-provided CPU
+            # buffers (cross-device fetch via target_buffer).
+            cpu_buffers = [
+                torch.empty(3, dtype=torch.int64),
+                torch.empty(3, dtype=torch.int64),
+            ]
+            set_target_for_ref(refs[0], cpu_buffers)
+            tensors = ray.get(refs[0])
+            for new_tensor, buffer in zip(tensors, cpu_buffers):
+                assert new_tensor.device.type == "cpu"
+                # Make sure we ray.get-ted into the provided buffers.
+                assert id(new_tensor) == id(buffer)
+            return [t.clone() for t in tensors]
+
+        def target_device_overrides_target_buffer(self, refs):
+            # Setting a target device after a target buffer should overwrite the
+            # target buffer so the two options stay mutually exclusive.
+            cuda_buffers = [
+                torch.empty(3, dtype=torch.int64).to("cuda"),
+                torch.empty(3, dtype=torch.int64).to("cuda"),
+            ]
+            set_target_for_ref(refs[0], cuda_buffers)
+            set_target_device_for_ref(refs[0], "cpu")
+            tensors = ray.get(refs[0])
+            for new_tensor, buffer in zip(tensors, cuda_buffers):
+                # The stale target buffer must not be used.
+                assert new_tensor.device.type == "cpu"
+                assert id(new_tensor) != id(buffer)
+            return [t.cpu() for t in tensors]
+
+    actors = [CrossDeviceActor.remote() for _ in range(2)]
+
+    # CUDA source -> CPU fetch.
+    cuda_ref = ray.get(actors[0].put_cuda.remote())
+    cpu_tensors = ray.get(actors[1].fetch_on_device.remote([cuda_ref], "cpu"))
+    assert torch.equal(cpu_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(cpu_tensors[1], torch.tensor([4, 5, 6]))
+
+    # CPU source -> CUDA fetch.
+    cpu_ref = ray.get(actors[0].put_cpu.remote())
+    cuda_tensors = ray.get(actors[1].fetch_on_device.remote([cpu_ref], "cuda"))
+    assert torch.equal(cuda_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(cuda_tensors[1], torch.tensor([4, 5, 6]))
+
+    # CUDA source -> receive into caller-provided CPU buffers (cross-device).
+    cuda_ref_buffers = ray.get(actors[0].put_cuda.remote())
+    buffer_tensors = ray.get(
+        actors[1].fetch_into_cross_device_buffers.remote([cuda_ref_buffers])
+    )
+    assert torch.equal(buffer_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(buffer_tensors[1], torch.tensor([4, 5, 6]))
+
+    # A later set_target_device_for_ref call overwrites an earlier
+    # set_target_for_ref call so target buffer and target device stay mutually
+    # exclusive across repeated calls on the same ref.
+    cuda_ref2 = ray.get(actors[0].put_cuda.remote())
+    override_tensors = ray.get(
+        actors[1].target_device_overrides_target_buffer.remote([cuda_ref2])
+    )
+    assert torch.equal(override_tensors[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(override_tensors[1], torch.tensor([4, 5, 6]))
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_target_device_not_leaked_to_borrower(ray_start_regular):
+    """A target device set for one consumer must not leak to a borrowing process.
+
+    The target device is a per-consumer receive target, so it should be stripped
+    when an RDT ObjectRef is serialized in-band for borrowing (like target
+    buffers). Otherwise a process that set a target device for its own ray.get
+    would force a different process's fetch onto that device.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class CrossDeviceActor:
+        def put_cuda(self):
+            tensors = [
+                torch.tensor([1, 2, 3]).to("cuda"),
+                torch.tensor([4, 5, 6]).to("cuda"),
+            ]
+            return ray.put(tensors, _tensor_transport="nixl")
+
+        def fetch_default(self, refs):
+            # No target device/buffer is set on this actor. The fetch should
+            # land on the source device (cuda), not the device the driver set
+            # for its own consumption.
+            tensors = ray.get(refs[0])
+            for t in tensors:
+                assert t.device.type == "cuda"
+            return [t.cpu() for t in tensors]
+
+    actors = [CrossDeviceActor.remote() for _ in range(2)]
+
+    cuda_ref = ray.get(actors[0].put_cuda.remote())
+    # The driver sets a target device for its own consumption of the ref.
+    set_target_device_for_ref(cuda_ref, "cpu")
+    # Borrow the ref in another actor by passing it in-band. The borrower must
+    # not inherit the driver's target device.
+    result = ray.get(actors[1].fetch_default.remote([cuda_ref]))
+    assert torch.equal(result[0], torch.tensor([1, 2, 3]))
+    assert torch.equal(result[1], torch.tensor([4, 5, 6]))
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
