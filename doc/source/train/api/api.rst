@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference index for Ray Train, covering the PyTorch, Lightning, Transformers, TensorFlow/Keras, XGBoost, and LightGBM trainers and configs.
+
 .. _train-api:
 
 Ray Train API
