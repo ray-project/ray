@@ -116,7 +116,13 @@ class RuntimeEnvContext:
                 ]
             )
             logger.debug("Exec'ing Python worker in image %s.", self.container["image"])
-            executable_path = shutil.which(container_command[0]) or container_command[0]
+            executable_path = shutil.which(container_command[0])
+            if not executable_path:
+                raise FileNotFoundError(
+                    f"'{container_command[0]}' was not found in PATH; it is "
+                    "required to start workers with the image_uri runtime "
+                    "environment."
+                )
             exec_env = os.environ.copy()
             exec_env.update(container_env)
             os.execve(executable_path, container_command, exec_env)
