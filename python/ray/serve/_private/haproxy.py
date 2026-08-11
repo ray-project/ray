@@ -1833,9 +1833,7 @@ class HAProxyManager(ProxyActorInterface):
 
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
-    # ProxyActorInterface declares shutdown sync, but this Ray-actor impl does
-    # async cleanup; Ray dispatches actor methods either way.
-    async def shutdown(self) -> None:  # type: ignore[override]  # pyrefly: ignore[bad-override]
+    async def shutdown(self) -> None:
         """Shutdown the HAProxyManager and clean up the HAProxy process.
 
         This method should be called before the actor is killed to ensure

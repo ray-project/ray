@@ -1605,7 +1605,7 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Shuts down proxy."""
         pass
 
@@ -1839,7 +1839,7 @@ class ProxyActor(ProxyActorInterface):
         """Wait for the proxy to be ready to serve requests."""
         return
 
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         return
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
