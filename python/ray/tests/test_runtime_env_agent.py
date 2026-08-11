@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import platform
@@ -516,17 +517,22 @@ def test_image_uri_delete_uri_respects_file_lock(tmp_path):
     uri = "image-pip://delete-key"
     cache_path = plugin._get_cache_path(uri)
     os.makedirs(cache_path)
+    with open(
+        os.path.join(cache_path, "manifest.json"), "w", encoding="utf-8"
+    ) as manifest_file:
+        json.dump({"schema_version": 1, "uri": uri, "size_bytes": 1234}, manifest_file)
 
-    # Deletion is skipped while another holder keeps the flock.
+    # Deletion is skipped while another holder keeps the flock, but the
+    # recorded size is still returned so cache accounting stays balanced.
     with open(cache_path + ".lock", "a+") as holder:
         fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        assert plugin.delete_uri(uri, logger) == 0
+        assert plugin.delete_uri(uri, logger) == 1234
         assert os.path.exists(cache_path)
         fcntl.flock(holder, fcntl.LOCK_UN)
 
     # Unlocked, deletion proceeds; the lock file stays so holders of the old
     # inode never coexist with holders of a recreated one.
-    plugin.delete_uri(uri, logger)
+    assert plugin.delete_uri(uri, logger) == 1234
     assert not os.path.exists(cache_path)
     assert os.path.exists(cache_path + ".lock")
 
