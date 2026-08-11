@@ -121,10 +121,12 @@ class AggregatorAgent(
         # (TaskEventsMetadataBuffer.get() pops), so a shared buffer would split the
         # dropped attempts across publishers instead of delivering them to both.
         self._task_metadata_buffer = TaskEventsMetadataBuffer(
-            common_metric_tags=self._common_tags
+            common_metric_tags=self._common_tags,
+            publisher_name="ray_gcs",
         )
         self._dashboard_head_task_metadata_buffer = TaskEventsMetadataBuffer(
-            common_metric_tags=self._common_tags
+            common_metric_tags=self._common_tags,
+            publisher_name="dashboard_head",
         )
 
         self._events_export_addr = (
