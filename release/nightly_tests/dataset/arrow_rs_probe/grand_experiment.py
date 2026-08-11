@@ -331,7 +331,8 @@ def main():
         )
     if "D" in stages:
         sweep_table(
-            "stage D: arrow-rs fragment threads (2 / 4; 1 default = stage A)",
+            "stage D: arrow-rs fragment threads (2 / 4; stage A = the "
+            "min(4, num_fragments) default since b73ee04ce9 — no threads=1 arm)",
             "D.{shape}.threads{v}.{reader}",
             [2, 4],
             [s for s in ("single_rg_files", "tiny_rgs") if s in shapes],
