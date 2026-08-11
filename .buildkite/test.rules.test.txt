@@ -1,7 +1,12 @@
-# Test cases for Ray CI test rules
-# Based on ci/pipeline/test_conditional_testing.py _TESTS_YAML
+# Unit tests for test.rules.txt
 #
-# Format: file: tag1 tag2 tag3
+# Format: file_path: tag1 tag2 tag3
+#
+# Run by `rayci test-rules`, which pairs each *.rules.txt in this directory
+# with its *.rules.test.txt companion by name. Each rules file is evaluated on
+# its own, so the tags expected below are the ones test.rules.txt emits by
+# itself; the "always lint" that always.rules.txt contributes to every real
+# build is covered by always.rules.test.txt instead.
 
 # === CI/Pipeline ===
 
