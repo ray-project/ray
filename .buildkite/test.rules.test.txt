@@ -96,6 +96,8 @@ doc/source/ray-observability/example.py: core_doc
 # The four ray-core notebooks whose targets are tagged team:ml route to ml_doc,
 # because the core step filters targets by team and would not execute them.
 doc/source/ray-core/examples/plot_hyperparameter.ipynb: ml_doc
+doc/source/ray-core/examples/batch_prediction.ipynb: ml_doc
+doc/source/ray-core/examples/plot_parameter_server.ipynb: ml_doc
 doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
 # highly_parallel.ipynb is the exception: the ml docs example step excludes its
 # tag, so no step runs it. It routes to the build instead.
