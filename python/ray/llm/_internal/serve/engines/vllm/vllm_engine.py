@@ -199,12 +199,54 @@ def _get_vllm_engine_config(
         vllm_engine_config = async_engine_args.create_engine_config(
             usage_context=UsageContext.OPENAI_API_SERVER
         )
+        # For accelerator-backed configurations this helper runs in the
+        # placement-group task that has the GPU assignment. The Serve replica
+        # actor itself is CPU-only, so this is the authoritative place to
+        # derive the per-engine port lane.
+        master_port = _set_single_engine_tcpstore_port(
+            vllm_engine_config,
+            ray.get_runtime_context().get_accelerator_ids(),
+        )
+        if master_port is not None:
+            logger.info(
+                "Using replica-local vLLM TCP-store master port %s.", master_port
+            )
     except Exception as e:
         # vLLM's ModelConfig is a pydantic dataclass; its ValidationError holds an
         # unpicklable ArgsKwargs and cannot cross the Ray task boundary. Re-raise as
         # a plain error so the real message propagates instead of a pickling failure.
         raise RuntimeError(f"Failed to create vLLM engine config: {e}") from None
     return async_engine_args, vllm_engine_config
+
+
+def _set_single_engine_tcpstore_port(
+    vllm_engine_config: "VllmConfig", accelerator_ids: Dict[str, List[str]]
+) -> Optional[int]:
+    """Give a colocated Ray-executor engine a replica-local TCP-store port.
+
+    vLLM defaults non-DP engines to ``VLLM_DP_MASTER_PORT=0`` and its Ray
+    executor then probes TCP port 100.  That is safe for one engine, but every
+    independently scheduled Serve replica on the same node probes the same
+    port.  Serve allocates disjoint GPU IDs to these replicas, so use the
+    first GPU ID as a stable node-local port lane.  The executor reserves a
+    32-port window after this value, hence the intentionally generous stride.
+
+    Multi-rank data parallel engines manage their own port allocation and are
+    left unchanged.
+    """
+    parallel_config = vllm_engine_config.parallel_config
+    if parallel_config.data_parallel_size != 1:
+        return None
+
+    gpu_ids = accelerator_ids.get("GPU", [])
+    try:
+        gpu_id = min(int(gpu_id) for gpu_id in gpu_ids)
+    except (TypeError, ValueError):
+        return None
+
+    master_port = 32000 + gpu_id * 512
+    parallel_config.data_parallel_master_port = master_port
+    return master_port
 
 
 def _clear_current_platform_cache():
@@ -388,6 +430,14 @@ class VLLMEngine(LLMEngine):
             vllm_frontend_args,
             vllm_engine_config,
         ) = self._prepare_engine_config(callback.ctx)
+        master_port = _set_single_engine_tcpstore_port(
+            vllm_engine_config,
+            ray.get_runtime_context().get_accelerator_ids(),
+        )
+        if master_port is not None:
+            logger.info(
+                "Using replica-local vLLM TCP-store master port %s.", master_port
+            )
 
         # Apply checkpoint info to the llm_config.
         # This is needed for capturing model capabilities
@@ -613,7 +663,17 @@ class VLLMEngine(LLMEngine):
         if is_kv_aware(self.llm_config):
             engine_cls = enable_token_tracking(
                 AsyncLLM,
-                report_decode_progress=RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
+                report_decode_progress=(
+                    RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS
+                    or bool(
+                        self.llm_config.experimental_configs.get(
+                            "pd_decode_track_output_blocks", False
+                        )
+                    )
+                ),
+                include_worker_id=bool(
+                    self.llm_config.experimental_configs.get("pd_kv_aware", False)
+                ),
             )
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,

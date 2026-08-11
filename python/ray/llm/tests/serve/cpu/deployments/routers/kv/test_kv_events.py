@@ -117,23 +117,25 @@ class TestConfigureKvEvents:
         assert extra_config == expected
 
     @pytest.mark.parametrize(
-        "engine_kwargs, local_rank, expected_port, expected_replay_port",
+        "engine_kwargs, replica_rank, expected_port, expected_replay_port",
         [
-            # Non-DP: offset the base port by the replica's node-local rank so
+            # Non-DP: offset the base port by the deployment replica rank so
             # colocated replicas don't bind the same ZMQ PUB port.
             ({}, 2, 5559, 6559),
             # DP: data_parallel_rank set -> offset 0 (the engine offsets the
-            # bound port by dp_rank itself), so local_rank must be ignored.
+            # bound port by dp_rank itself), so replica_rank must be ignored.
             ({"data_parallel_rank": 2}, 2, 5557, 6557),
         ],
     )
     def test_assign_replica_endpoint_offsets_port(
-        self, engine_kwargs, local_rank, expected_port, expected_replay_port
+        self, engine_kwargs, replica_rank, expected_port, expected_replay_port
     ):
-        """Per-replica endpoint offset: by node-local rank without DP, 0 with DP."""
+        """Per-replica endpoint offset: by deployment rank without DP, 0 with DP."""
         llm_config = make_kv_aware_llm_config(engine_kwargs=dict(engine_kwargs))
         configure_kv_events_for_kv_routing(llm_config)  # base ports 5557 / 6557
-        replica_context = SimpleNamespace(rank=SimpleNamespace(local_rank=local_rank))
+        replica_context = SimpleNamespace(
+            rank=SimpleNamespace(rank=replica_rank, local_rank=0)
+        )
         with mock.patch("ray.serve.get_replica_context", return_value=replica_context):
             assign_replica_kv_events_endpoint(llm_config)
         kv_events_config = llm_config.engine_kwargs["kv_events_config"]
@@ -184,7 +186,7 @@ class TestConfigureKvEvents:
         llm_config = make_kv_aware_llm_config(
             experimental_configs={"KV_TOKEN_PORT_BASE": 7700}
         )
-        replica_context = SimpleNamespace(rank=SimpleNamespace(local_rank=3))
+        replica_context = SimpleNamespace(rank=SimpleNamespace(rank=3, local_rank=0))
         with mock.patch("ray.serve.get_replica_context", return_value=replica_context):
             endpoints = get_token_channel_endpoints(llm_config)
 

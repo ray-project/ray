@@ -179,7 +179,11 @@ def _get_node_routable_endpoint(llm_config: LLMConfig, endpoint: str) -> str:
 
 
 def _get_replica_rank() -> int:
-    return serve.get_replica_context().rank.local_rank
+    # ``local_rank`` is the placement-group local rank and is 0 for each
+    # independently created single-GPU Serve replica.  ``rank`` is the
+    # deployment-wide replica ordinal and therefore distinguishes colocated
+    # P/D replicas as well as the prompt-token channel endpoints they expose.
+    return serve.get_replica_context().rank.rank
 
 
 def _default_kv_events_endpoint(llm_config: LLMConfig) -> str:

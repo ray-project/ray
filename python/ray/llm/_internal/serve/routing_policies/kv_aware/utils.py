@@ -36,9 +36,12 @@ def _maybe_setup_kv_aware_routing(
         return
 
     # Keep the engine's token-tracking gate which reads llm_config consistent
-    # with the router resolved here from the merged deployment options.
-    llm_config.deployment_config["request_router_config"] = deployment_options[
-        "request_router_config"
-    ]
+    # with the router resolved here from the merged deployment options.  Direct
+    # P/D selects in LLMRouter itself, so its deployment intentionally has no
+    # request_router_config to copy.
+    if "request_router_config" in deployment_options:
+        llm_config.deployment_config["request_router_config"] = deployment_options[
+            "request_router_config"
+        ]
 
     configure_kv_events_for_kv_routing(llm_config)

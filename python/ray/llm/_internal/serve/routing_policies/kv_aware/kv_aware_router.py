@@ -101,7 +101,15 @@ class KVAwareRouter(RequestRouter):
 
 
 def is_kv_aware(llm_config: LLMConfig) -> bool:
-    """Whether ``llm_config`` selects a ``KVAwareRouter`` for replica selection."""
+    """Whether an LLM deployment needs KV events and token staging.
+
+    Direct P/D applications select their pair in ``LLMRouter`` rather than in
+    the deployment's request router, but they still need the same engine KV
+    events and replica-local token channel as a regular ``KVAwareRouter``.
+    ``pd_kv_aware`` is set only by the direct P/D builder.
+    """
+    if llm_config.experimental_configs.get("pd_kv_aware"):
+        return True
     request_router_config = llm_config.deployment_config.get("request_router_config")
     if isinstance(request_router_config, dict):
         request_router_config = RequestRouterConfig(**request_router_config)

@@ -1,8 +1,9 @@
 import asyncio
 import json
+import time
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -122,16 +123,69 @@ class LLMRouter:
         self,
         server: DeploymentHandle,
         llm_config: Optional["LLMConfig"] = None,
+        prefill_server: Optional[DeploymentHandle] = None,
+        prefill_llm_config: Optional["LLMConfig"] = None,
     ):
         self._handle: DeploymentHandle = server
         self._tokenizer = None
+        self._prefill_tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
         # engine-facing on_lifecycle_events method can book load into it.
         self._kv_token_tracker = None
+        self._pd_pair_tracker = None
+        self._pd_owner_replica_id = None
         # A non-None llm_config signals pre-routing tokenization, which the
         # builder binds only for a KV-aware request router.
-        if llm_config is not None:
+        if prefill_server is not None:
+            if llm_config is None or prefill_llm_config is None:
+                raise ValueError("P/D LLMRouter requires both prefill and decode configs")
+            from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
+                PDPairTracker,
+            )
+            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+                Tokenizer,
+            )
+            from ray.llm._internal.serve.routing_policies.kv_aware import (
+                token_channel,
+            )
+
+            ticket_ttl_s = float(
+                llm_config.experimental_configs.get("pd_ticket_ttl_s", 120.0)
+            )
+            pending_decode_load_scale = float(
+                llm_config.experimental_configs.get("pending_decode_load_scale", 1.0)
+            )
+            selection_policy = llm_config.experimental_configs.get(
+                "pd_selection_policy", "kv_aware"
+            )
+            prefill_selection_policy = prefill_llm_config.experimental_configs.get(
+                "pd_selection_policy", selection_policy
+            )
+            if prefill_selection_policy != selection_policy:
+                raise ValueError(
+                    "prefill and decode pd_selection_policy values must match"
+                )
+            self._pd_pair_tracker = PDPairTracker(
+                prefill_config=prefill_llm_config,
+                decode_config=llm_config,
+                prefill_deployment_id=prefill_server.deployment_id,
+                decode_deployment_id=server.deployment_id,
+                ticket_ttl_s=ticket_ttl_s,
+                pending_decode_load_scale=pending_decode_load_scale,
+                selection_policy=selection_policy,
+            )
+            self._pd_pair_tracker.start_cleanup()
+            self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
+            if not llm_config.experimental_configs.get("pd_tokenizer_compatible"):
+                self._prefill_tokenizer = await asyncio.to_thread(
+                    Tokenizer, prefill_llm_config
+                )
+            self._token_sender = token_channel.TokenSender()
+            self._pd_owner_replica_id = (
+                serve.get_replica_context().replica_id.unique_id
+            )
+        elif llm_config is not None:
             # Build the tracker before _handle._init() below, which initializes
             # the KVAwareRouter that looks it up. server.deployment_id is the
             # tracked LLMServer deployment.
@@ -159,6 +213,8 @@ class LLMRouter:
 
             self._token_sender = token_channel.TokenSender()
         self._handle._init()
+        if prefill_server is not None:
+            prefill_server._init()
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
@@ -176,6 +232,8 @@ class LLMRouter:
                 "limit.",
                 body_truncated,
             )
+        if self._pd_pair_tracker is not None:
+            return await self._route_pd(request, routing_payload)
         # Tokenize only a parseable, routable body; a truncated or unparseable
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
@@ -225,6 +283,83 @@ class LLMRouter:
                 }
         return response
 
+    async def _route_pd(
+        self, request: Request, routing_payload: Optional[SimpleNamespace]
+    ) -> Dict[str, Any]:
+        """Select/reserve a P/D pair and return only the decode data-plane hop."""
+        if routing_payload is None:
+            raise HTTPException(
+                status_code=400,
+                detail="P/D routing requires a complete JSON prompt body",
+            )
+        from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
+            PD_D_REPLICA_ID_HEADER,
+            PD_D_RESERVATION_ID_HEADER,
+            PD_EXPIRY_MS_HEADER,
+            PD_OWNER_REPLICA_ID_HEADER,
+            PD_P_REPLICA_ID_HEADER,
+            PD_P_RESERVATION_ID_HEADER,
+            PD_TOKEN_KEY_HEADER,
+            PD_VERSION_HEADER,
+        )
+        from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+            TokenizeError,
+        )
+
+        try:
+            decode_token_ids = await self._tokenizer.tokenize(vars(routing_payload))
+            prefill_token_ids = decode_token_ids
+            if self._prefill_tokenizer is not None:
+                prefill_token_ids = await self._prefill_tokenizer.tokenize(
+                    vars(routing_payload)
+                )
+        except TokenizeError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+
+        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        expected_output_tokens = None
+        for field in ("max_completion_tokens", "max_tokens"):
+            value = getattr(routing_payload, field, None)
+            if isinstance(value, int) and value > 0:
+                expected_output_tokens = value
+                break
+        try:
+            ticket = await self._pd_pair_tracker.reserve_pair(
+                request_id=request_id,
+                prefill_token_ids=prefill_token_ids,
+                decode_token_ids=decode_token_ids,
+                expected_output_tokens=expected_output_tokens,
+            )
+            token_key = self._push_pd_prompt_tokens(
+                p_token_endpoint=ticket.p_route.get("token_endpoint"),
+                d_token_endpoint=ticket.d_route.get("token_endpoint"),
+                prefill_token_ids=prefill_token_ids,
+                decode_token_ids=decode_token_ids,
+            )
+            self._pd_pair_tracker.set_token_key(ticket, token_key)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except (RuntimeError, DeploymentUnavailableError) as e:
+            raise HTTPException(status_code=503, detail=str(e))
+
+        headers = {
+            PD_P_REPLICA_ID_HEADER: ticket.p_route["replica_id"],
+            PD_D_REPLICA_ID_HEADER: ticket.d_route["replica_id"],
+            PD_P_RESERVATION_ID_HEADER: ticket.p_reservation_id,
+            PD_D_RESERVATION_ID_HEADER: ticket.d_reservation_id,
+            PD_EXPIRY_MS_HEADER: str(ticket.expiry_ms),
+            PD_VERSION_HEADER: "1",
+            PD_OWNER_REPLICA_ID_HEADER: self._pd_owner_replica_id,
+        }
+        if token_key is not None:
+            headers[PD_TOKEN_KEY_HEADER] = token_key
+        return {
+            "host": ticket.d_route["host"],
+            "port": ticket.d_route["port"],
+            "replica_id": ticket.d_route["full_replica_id"],
+            RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: headers,
+        }
+
     @router_app.get("/health")
     async def health(self):
         return {"status": "ok"}
@@ -234,6 +369,9 @@ class LLMRouter:
         token_sender = getattr(self, "_token_sender", None)
         if token_sender is not None:
             token_sender.close()
+        pd_pair_tracker = getattr(self, "_pd_pair_tracker", None)
+        if pd_pair_tracker is not None:
+            pd_pair_tracker.close()
 
     async def on_lifecycle_events(self, batch):
         """Engine-facing intake for request lifecycle events.
@@ -242,11 +380,73 @@ class LLMRouter:
         book request load; this applies it to the KVTokenTracker on this
         ingress replica's event loop.
         """
-        return await self._kv_token_tracker.on_lifecycle_events(batch)
+        if self._pd_pair_tracker is not None:
+            # New token trackers include the emitting worker id.  Ignore P
+            # lifecycle events here: P is released only by the transfer-safe
+            # completion acknowledged by PDDecodeServer.
+            for event in batch:
+                if len(event) != 3:
+                    continue
+                worker_id, hook_name, args = event
+                if worker_id in self._pd_pair_tracker.decode._replica_id_by_worker:
+                    await self._pd_pair_tracker.on_decode_lifecycle_events(
+                        worker_id, [(hook_name, args)]
+                    )
+            return
+        events = [
+            (event[1], event[2]) if len(event) == 3 else event for event in batch
+        ]
+        return await self._kv_token_tracker.on_lifecycle_events(events)
 
     async def on_reservations_created(self, batch):
         """Ingress-facing intake for already-selected reservation bookings."""
         return await self._kv_token_tracker.on_reservations_created(batch)
+
+    async def claim_pd_ticket(self, headers: Dict[str, str]) -> Dict[str, Any]:
+        """Validate and claim the selected prefill half of a direct P/D route."""
+        if self._pd_pair_tracker is None:
+            raise RuntimeError("P/D tickets are not enabled for this application")
+        from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
+            PD_D_REPLICA_ID_HEADER,
+            PD_D_RESERVATION_ID_HEADER,
+            PD_EXPIRY_MS_HEADER,
+            PD_P_REPLICA_ID_HEADER,
+            PD_P_RESERVATION_ID_HEADER,
+            PD_VERSION_HEADER,
+        )
+
+        normalized = {key.lower(): value for key, value in headers.items()}
+        if normalized.get(PD_VERSION_HEADER) != "1":
+            raise ValueError("unsupported P/D ticket version")
+        try:
+            expiry_ms = int(normalized[PD_EXPIRY_MS_HEADER])
+        except (KeyError, ValueError) as e:
+            raise ValueError("P/D ticket has invalid expiry") from e
+        if expiry_ms < int(time.time() * 1000):
+            raise ValueError("P/D ticket expired")
+        ticket = self._pd_pair_tracker.claim_prefill(
+            d_reservation_id=normalized[PD_D_RESERVATION_ID_HEADER],
+            p_reservation_id=normalized[PD_P_RESERVATION_ID_HEADER],
+            d_replica_id=normalized[PD_D_REPLICA_ID_HEADER],
+            p_replica_id=normalized[PD_P_REPLICA_ID_HEADER],
+        )
+        # Do not trust a supplied token key.  The router's mutable ticket state
+        # is authoritative and makes a stale/mutated envelope harmless.
+        return {
+            "p_replica_id": ticket.p_route["replica_id"],
+            "p_reservation_id": ticket.p_reservation_id,
+            "d_reservation_id": ticket.d_reservation_id,
+            "token_key": ticket.token_key,
+        }
+
+    async def pd_prefill_complete(self, d_reservation_id: str) -> None:
+        if self._pd_pair_tracker is None:
+            raise RuntimeError("P/D tickets are not enabled for this application")
+        await self._pd_pair_tracker.prefill_complete(d_reservation_id)
+
+    async def release_pd_ticket(self, d_reservation_id: str) -> None:
+        if self._pd_pair_tracker is not None:
+            await self._pd_pair_tracker.release(d_reservation_id)
 
     def _push_prompt_tokens(
         self,
@@ -282,6 +482,43 @@ class LLMRouter:
         if self._token_sender.push(token_endpoint, key, payload):
             return key
         return None
+
+    def _push_pd_prompt_tokens(
+        self,
+        *,
+        p_token_endpoint: Optional[str],
+        d_token_endpoint: Optional[str],
+        prefill_token_ids: List[int],
+        decode_token_ids: List[int],
+    ) -> Optional[str]:
+        """Stage one key at both selected replicas or fall back at both.
+
+        The stores are replica-local, so compatible tokenizers receive the same
+        uint32 payload under the same key.  A mismatched but supported P/D
+        tokenizer pair receives separately-rendered IDs under that same key.
+        Partial delivery intentionally omits the key: correctness never depends
+        on a best-effort staging channel and the orphaned entry expires quickly.
+        """
+        if (
+            self._token_sender is None
+            or not p_token_endpoint
+            or not d_token_endpoint
+        ):
+            return None
+        from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+
+        key = uuid.uuid4().hex
+        try:
+            p_payload = token_channel.encode_prompt_token_ids(prefill_token_ids)
+            d_payload = token_channel.encode_prompt_token_ids(decode_token_ids)
+        except Exception as e:
+            logger.warning("Failed to encode staged P/D prompt tokens: %s", e)
+            return None
+        if not self._token_sender.push(p_token_endpoint, key, p_payload):
+            return None
+        if not self._token_sender.push(d_token_endpoint, key, d_payload):
+            return None
+        return key
 
     async def _pick_replica(
         self,

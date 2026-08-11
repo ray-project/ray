@@ -4,11 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.llm._internal.serve import _worker_process_setup_hook
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
 )
 from ray.llm._internal.serve.engines.vllm.vllm_engine import (
     VLLMEngine,
+    _set_single_engine_tcpstore_port,
 )
 from ray.serve.schema import ReplicaRank
 
@@ -48,6 +50,39 @@ class TestPDDisaggVLLMEngine:
         with patch("ray.serve.get_replica_context", return_value=replica_context):
             vllm_engine = VLLMEngine(llm_config)
         assert vllm_engine is not None
+
+
+def test_single_engine_tcpstore_port_uses_gpu_lane():
+    parallel_config = SimpleNamespace(
+        data_parallel_size=1,
+        data_parallel_master_port=0,
+    )
+    vllm_config = SimpleNamespace(parallel_config=parallel_config)
+
+    assert _set_single_engine_tcpstore_port(vllm_config, {"GPU": ["3"]}) == 33536
+    assert parallel_config.data_parallel_master_port == 33536
+
+
+def test_single_engine_tcpstore_port_leaves_data_parallel_config_unchanged():
+    parallel_config = SimpleNamespace(
+        data_parallel_size=2,
+        data_parallel_master_port=29500,
+    )
+    vllm_config = SimpleNamespace(parallel_config=parallel_config)
+
+    assert _set_single_engine_tcpstore_port(vllm_config, {"GPU": ["3"]}) is None
+    assert parallel_config.data_parallel_master_port == 29500
+
+
+def test_worker_setup_hook_can_disable_broken_cutedsl(monkeypatch):
+    from vllm.model_executor.kernels.linear.cute_dsl import ll_bf16
+
+    monkeypatch.setenv("RAY_SERVE_LLM_DISABLE_CUTEDSL", "1")
+    monkeypatch.setattr(ll_bf16, "_cutedsl_available", None)
+
+    _worker_process_setup_hook()
+
+    assert ll_bf16._cutedsl_available is False
 
 
 if __name__ == "__main__":

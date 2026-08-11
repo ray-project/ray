@@ -35,8 +35,21 @@ from ray.llm._internal.serve.core.ingress.utils import (
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
+from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
+    PD_D_REPLICA_ID_HEADER,
+    PD_D_RESERVATION_ID_HEADER,
+    PD_OWNER_REPLICA_ID_HEADER,
+    PD_P_REPLICA_ID_HEADER,
+    PD_P_RESERVATION_ID_HEADER,
+    PD_TOKEN_KEY_HEADER,
+    PD_VERSION_HEADER,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    get_llm_router_handle,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
+from ray import serve
 from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
@@ -180,6 +193,144 @@ class PDOrchestratorMixin:
         if self._pd_tokenize_once and hasattr(prefill_request, "return_token_ids"):
             prefill_request.return_token_ids = True
 
+    @staticmethod
+    def _pd_headers(raw_request_info: Optional[RawRequestInfo]) -> Dict[str, str]:
+        if raw_request_info is None:
+            return {}
+        return {key.lower(): value for key, value in raw_request_info.headers.items()}
+
+    async def _call_pd_ticket_owner(
+        self, method_name: str, owner_replica_id: str, *args
+    ) -> Any:
+        """Issue a control RPC to the LLMRouter replica that owns a ticket.
+
+        A ``ReplicaSelection`` cannot cross the HAProxy request boundary.  The
+        target-replica selection below instead acquires a fresh Serve slot on
+        the owner, invokes exactly one ticket transition, then releases that
+        slot through the normal handle lifecycle.
+        """
+        method_handle = getattr(get_llm_router_handle(), method_name)
+        async with method_handle.choose_replica(
+            _serve_target_replica_id=owner_replica_id
+        ) as selection:
+            response = method_handle.dispatch(selection, *args)
+            return await response
+
+    @staticmethod
+    def _raw_request_with_token_key(
+        raw_request_info: Optional[RawRequestInfo], token_key: Optional[str]
+    ) -> Optional[RawRequestInfo]:
+        if token_key is None:
+            return raw_request_info
+        headers = dict(raw_request_info.headers) if raw_request_info is not None else {}
+        headers[PD_TOKEN_KEY_HEADER] = token_key
+        return RawRequestInfo(headers=headers)
+
+    async def _dispatch_selected_prefill(
+        self,
+        *,
+        method: str,
+        request: RequestType,
+        raw_request_info: Optional[RawRequestInfo],
+        backend: BaseConnectorBackend,
+        prefill_handle_method: Any,
+        headers: Dict[str, str],
+    ) -> AsyncGenerator[
+        Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None
+    ]:
+        """Dispatch the prefill half of a trusted, router-selected P/D pair.
+
+        The recorded P replica is selected again only to acquire a *new* Serve
+        slot, then ``dispatch`` pins the request to that exact replica.  This
+        avoids re-running P selection and never serializes an ingress-owned
+        ``ReplicaSelection`` into the HAProxy envelope.
+        """
+        required = (
+            PD_VERSION_HEADER,
+            PD_OWNER_REPLICA_ID_HEADER,
+            PD_D_REPLICA_ID_HEADER,
+            PD_P_REPLICA_ID_HEADER,
+            PD_P_RESERVATION_ID_HEADER,
+            PD_D_RESERVATION_ID_HEADER,
+        )
+        if any(not headers.get(name) for name in required):
+            raise ValueError("incomplete P/D routing ticket")
+        if headers[PD_VERSION_HEADER] != "1":
+            raise ValueError("unsupported P/D routing ticket version")
+        actual_decode_replica_id = serve.get_replica_context().replica_id.unique_id
+        if headers[PD_D_REPLICA_ID_HEADER] != actual_decode_replica_id:
+            raise ValueError("P/D routing ticket was issued for another decode replica")
+
+        owner_replica_id = headers[PD_OWNER_REPLICA_ID_HEADER]
+        ticket = await self._call_pd_ticket_owner(
+            "claim_pd_ticket", owner_replica_id, headers
+        )
+        d_reservation_id = ticket["d_reservation_id"]
+        try:
+            async with prefill_handle_method.choose_replica(
+                _serve_target_replica_id=ticket["p_replica_id"]
+            ) as selection:
+                peer = selection.replica_metadata if backend.requires_peer_binding else None
+                prefill_request = backend.prepare_prefill_request(
+                    request=request, peer=peer
+                )
+                self._request_prefill_token_ids(prefill_request)
+                prefill_raw_request_info = self._raw_request_with_token_key(
+                    raw_request_info, ticket.get("token_key")
+                )
+                prefill_gen = prefill_handle_method.dispatch(
+                    selection, prefill_request, prefill_raw_request_info
+                )
+
+                if backend.concurrent_handoff:
+                    # Preserve the established concurrent connector behavior
+                    # while keeping the ticket pinned.  The generator is fully
+                    # drained by _concurrent_decode before we free P/activate D.
+                    decode_request = backend.prepare_decode_request(
+                        request=request, peer=peer, prefill_response=None
+                    )
+                    async for chunk in self._concurrent_decode(
+                        method,
+                        decode_request,
+                        prefill_gen,
+                        raw_request_info,
+                        cancel_on_failure=False,
+                    ):
+                        yield chunk
+                    await self._call_pd_ticket_owner(
+                        "pd_prefill_complete", owner_replica_id, d_reservation_id
+                    )
+                    return
+
+                prefill_chunk = await prefill_gen.__anext__()
+                # dispatch() owns P completion accounting.  Drain inside its
+                # selection context even though prefill is clamped to one token.
+                async for _ in prefill_gen:
+                    pass
+                if isinstance(prefill_chunk, ErrorResponse):
+                    yield prefill_chunk
+                    return
+                await self._call_pd_ticket_owner(
+                    "pd_prefill_complete", owner_replica_id, d_reservation_id
+                )
+                decode_request = backend.prepare_decode_request(
+                    request=request, peer=peer, prefill_response=prefill_chunk
+                )
+                with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
+                    local_gen = await getattr(super(), method)(
+                        decode_request, raw_request_info
+                    )
+                    async for chunk in local_gen:
+                        yield chunk
+        finally:
+            # Completion, cancellation, P/D death, and a failed handoff all
+            # converge on one idempotent compensation RPC.  Once active, this
+            # releases D when the SSE stream finishes; P is already free.
+            with contextlib.suppress(Exception):
+                await self._call_pd_ticket_owner(
+                    "release_pd_ticket", owner_replica_id, d_reservation_id
+                )
+
     # ---- Orchestrated Request Flow ----
 
     async def _pd_handle_request(
@@ -219,6 +370,19 @@ class PDOrchestratorMixin:
             if session_id:
                 prefill_handle = prefill_handle.options(session_id=session_id)
         prefill_handle_method = getattr(prefill_handle, method)
+
+        headers = self._pd_headers(raw_request_info)
+        if headers.get(PD_VERSION_HEADER):
+            async for chunk in self._dispatch_selected_prefill(
+                method=method,
+                request=request,
+                raw_request_info=raw_request_info,
+                backend=backend,
+                prefill_handle_method=prefill_handle_method,
+                headers=headers,
+            ):
+                yield chunk
+            return
 
         if backend.requires_peer_binding:
             # Connector needs to bind to the selected prefill replica *before*

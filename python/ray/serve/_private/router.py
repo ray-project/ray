@@ -1275,6 +1275,12 @@ class AsyncioRouter:
         # reserve_slot RPC and the rejection-retry loop; the configured
         # RequestRouter still drives ordering.
         reserve = request_kwargs.pop("_reserve", True)
+        # Internal pin used by the P/D direct-streaming control plane.  This
+        # is intentionally consumed before building PendingRequest, so it can
+        # never become a user method kwarg.  It acquires a *fresh* Serve slot
+        # on the recorded replica and does not retain/serialize a selection
+        # created by a different router process.
+        target_replica_id = request_kwargs.pop("_serve_target_replica_id", None)
 
         await self._request_router_initialized.wait()
 
@@ -1288,7 +1294,33 @@ class AsyncioRouter:
                 await self._resolve_args_with_metrics(pr)
             except ActorDiedError as e:
                 raise self._make_upstream_crash_error(e)
-            if reserve:
+            if target_replica_id is not None:
+                replica = next(
+                    (
+                        candidate
+                        for candidate in self.request_router.curr_replicas.values()
+                        if candidate.replica_id.unique_id == target_replica_id
+                    ),
+                    None,
+                )
+                if replica is None:
+                    raise ReplicaUnavailableError(
+                        f"target replica {target_replica_id} is unavailable"
+                    )
+                if reserve:
+                    slot_token, queue_info = await replica.reserve_slot(
+                        pr.metadata
+                    )
+                    self.request_router.on_new_queue_len_info(
+                        replica.replica_id, queue_info.num_ongoing_requests
+                    )
+                    if not queue_info.accepted:
+                        raise BackPressureError(
+                            f"target replica {target_replica_id} rejected its slot"
+                        )
+                else:
+                    slot_token = None
+            elif reserve:
                 replica, slot_token = await self._pick_and_reserve_replica(pr)
             else:
                 # Fast path: synchronously ask the configured RequestRouter to

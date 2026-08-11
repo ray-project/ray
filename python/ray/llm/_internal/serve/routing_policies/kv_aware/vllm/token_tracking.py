@@ -34,9 +34,16 @@ class LifecycleEventForwarder:
     the next one.
     """
 
-    def __init__(self, handle: DeploymentHandle, worker_id: int):
+    def __init__(
+        self,
+        handle: DeploymentHandle,
+        worker_id: int,
+        *,
+        include_worker_id: bool = False,
+    ):
         self.handle = handle
         self.worker_id = worker_id
+        self._include_worker_id = include_worker_id
         self._events: asyncio.Queue = asyncio.Queue()
         self._delivery_task: Optional[asyncio.Task] = None
 
@@ -45,7 +52,15 @@ class LifecycleEventForwarder:
             self._delivery_task = asyncio.get_running_loop().create_task(
                 self._deliver()
             )
-        self._events.put_nowait((method_name, args))
+        # Keep the established pair-shaped public hook contract for ordinary
+        # KV-aware deployments.  P/D opts into the worker envelope so its
+        # ingress can distinguish decode progress from prefill lifecycle noise.
+        event = (
+            (self.worker_id, method_name, args)
+            if self._include_worker_id
+            else (method_name, args)
+        )
+        self._events.put_nowait(event)
 
     async def _deliver(self) -> None:
         while True:
@@ -136,7 +151,9 @@ class RequestTokenTracker:
 
 
 def enable_token_tracking(
-    engine_cls: Type[AsyncLLM], report_decode_progress: bool = False
+    engine_cls: Type[AsyncLLM],
+    report_decode_progress: bool = False,
+    include_worker_id: bool = False,
 ) -> Type[AsyncLLM]:
     """Decorator adding KV-router request lifecycle tracking."""
 
@@ -144,6 +161,7 @@ def enable_token_tracking(
         _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
         _resolve_warned: bool = False
         _report_decode_progress: bool = report_decode_progress
+        _include_worker_id: bool = include_worker_id
 
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarder is None:
@@ -155,7 +173,9 @@ def enable_token_tracking(
                         serve.get_replica_context().replica_id.unique_id
                     )
                     self._lifecycle_forwarder = LifecycleEventForwarder(
-                        handle, worker_id
+                        handle,
+                        worker_id,
+                        include_worker_id=self._include_worker_id,
                     )
                 except Exception as e:
                     # Warn once: resolution is retried per request until it succeeds.

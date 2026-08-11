@@ -37,6 +37,12 @@ def clamp_request_to_single_token(request: "RequestType") -> None:
     request.max_tokens = 1
     if hasattr(request, "max_completion_tokens"):
         request.max_completion_tokens = 1
+    # A client can ask decode to generate a fixed output length (e.g.
+    # ``min_tokens=1024`` in a benchmark). Prefill is deliberately capped at
+    # one token merely to materialize transferable KV, so its copied request
+    # must not retain an incompatible decode-side minimum.
+    if hasattr(request, "min_tokens"):
+        request.min_tokens = 0
     request.stream = False
     if hasattr(request, "stream_options"):
         request.stream_options = None

@@ -1569,6 +1569,47 @@ class TestChooseReplica:
         # After context exit, slot should be released
         assert slot_token not in replica._reserved_slots
 
+    async def test_choose_target_replica_acquires_fresh_slot_on_that_replica(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """The private P/D pin never falls back to ordinary replica selection."""
+        router, fake_request_router = setup_router
+        first_id = ReplicaID(
+            unique_id="first", deployment_id=DeploymentID(name="test")
+        )
+        selected_id = ReplicaID(
+            unique_id="selected", deployment_id=DeploymentID(name="test")
+        )
+        first = FakeReplica(first_id)
+        selected = FakeReplica(selected_id)
+        fake_request_router.set_replica_to_return(first)
+        fake_request_router.set_replica_to_return_on_retry(selected)
+
+        async with router.choose_replica(
+            dummy_request_metadata(), _serve_target_replica_id="selected"
+        ) as selection:
+            assert selection.replica_id == "selected"
+            assert selection._replica is selected
+            assert selection._slot_token in selected._reserved_slots
+            assert not first._reserved_slots
+
+        assert not selected._reserved_slots
+
+    async def test_choose_target_replica_fails_when_replica_departed(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        router, fake_request_router = setup_router
+        replica_id = ReplicaID(
+            unique_id="live", deployment_id=DeploymentID(name="test")
+        )
+        fake_request_router.set_replica_to_return(FakeReplica(replica_id))
+
+        with pytest.raises(ReplicaUnavailableError, match="departed"):
+            async with router.choose_replica(
+                dummy_request_metadata(), _serve_target_replica_id="departed"
+            ):
+                pass
+
     async def test_choose_without_dispatch_does_not_fire_on_request_completed(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):

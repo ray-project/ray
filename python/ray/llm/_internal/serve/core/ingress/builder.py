@@ -88,7 +88,11 @@ def _get_tokenizing_router_runtime_env(llm_config: LLMConfig) -> Optional[dict]:
 
 
 def _build_openai_ingress_request_router(
-    *, server: Application, llm_config: LLMConfig
+    *,
+    server: Application,
+    llm_config: LLMConfig,
+    prefill_server: Optional[Application] = None,
+    prefill_llm_config: Optional[LLMConfig] = None,
 ) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
@@ -119,6 +123,8 @@ def _build_openai_ingress_request_router(
     return deployment.bind(
         server=server,
         llm_config=llm_config if is_kv_aware(llm_config) else None,
+        prefill_server=prefill_server,
+        prefill_llm_config=prefill_llm_config,
     )
 
 

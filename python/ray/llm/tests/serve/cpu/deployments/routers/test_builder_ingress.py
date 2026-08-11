@@ -21,6 +21,12 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_KV_EVENTS_PORT_BASE,
+    DEFAULT_KV_TOKEN_PORT_BASE,
+    KV_EVENTS_PORT_BASE_KEY,
+    KV_TOKEN_PORT_BASE_KEY,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_openai_app,
 )
@@ -594,6 +600,24 @@ class TestDirectStreamingPD:
     @staticmethod
     def _set_dp_size(llm_config, size):
         llm_config.engine_kwargs["data_parallel_size"] = size
+
+    def test_pd_uses_disjoint_decode_kv_port_ranges(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        monkeypatch.delenv("RAY_RUNTIME_ENV_HOOK", raising=False)
+        prefill, decode = pd_configs
+
+        build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+
+        assert KV_EVENTS_PORT_BASE_KEY not in prefill.experimental_configs
+        assert KV_TOKEN_PORT_BASE_KEY not in prefill.experimental_configs
+        assert decode.experimental_configs[KV_EVENTS_PORT_BASE_KEY] == (
+            DEFAULT_KV_EVENTS_PORT_BASE + 100
+        )
+        assert decode.experimental_configs[KV_TOKEN_PORT_BASE_KEY] == (
+            DEFAULT_KV_TOKEN_PORT_BASE + 100
+        )
 
     @pytest.mark.parametrize(
         ("prefill_dp", "decode_dp", "expected_prefill_cls", "expected_decode_cls"),

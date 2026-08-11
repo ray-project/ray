@@ -26,6 +26,12 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_KV_EVENTS_PORT_BASE,
+    DEFAULT_KV_TOKEN_PORT_BASE,
+    KV_EVENTS_PORT_BASE_KEY,
+    KV_TOKEN_PORT_BASE_KEY,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_deployment,
 )
@@ -38,6 +44,26 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
+
+
+def _pd_tokenizer_fingerprint(llm_config: LLMConfig) -> tuple:
+    """Fields that affect prompt rendering/token IDs before vLLM sees them.
+
+    This is intentionally conservative.  Matching model weights alone is not
+    sufficient: a different tokenizer source or chat template makes staged IDs
+    invalid for one side of the P/D pair.  Unknown renderer-affecting options
+    therefore opt out of the single-tokenization fast path.
+    """
+    loading = llm_config.model_loading_config
+    tokenizer_source = loading.tokenizer_source or loading.model_source or loading.model_id
+    engine_kwargs = llm_config.engine_kwargs
+    return (
+        str(tokenizer_source),
+        engine_kwargs.get("chat_template"),
+        engine_kwargs.get("chat_template_content_format"),
+        engine_kwargs.get("trust_remote_code"),
+        engine_kwargs.get("tokenizer_mode"),
+    )
 
 
 class PDServingArgs(BaseModelExtended):
@@ -152,6 +178,32 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             pd_config.ingress_deployment_config,
             pd_config.ingress_cls_config,
         )
+        # P/D direct routing selects the pair in LLMRouter, so both fleets need
+        # KV events and prompt-token receivers even though neither relies on a
+        # KVAwareRouter deployment policy for its final dispatch.
+        pd_config.prefill_config.experimental_configs["pd_kv_aware"] = True
+        pd_config.decode_config.experimental_configs["pd_kv_aware"] = True
+        pd_config.decode_config.experimental_configs.setdefault(
+            "pending_decode_load_scale", 1.0
+        )
+        pd_config.decode_config.experimental_configs.setdefault(
+            "pd_ticket_ttl_s", 120.0
+        )
+        # P and D deployments have independently numbered Serve replicas, so
+        # rank 0 exists in both fleets on a colocated node. Keep their KV-event
+        # PUB/replay and prompt-token port ranges disjoint in addition to the
+        # per-replica rank offset configured by the vLLM integration.
+        pd_config.decode_config.experimental_configs.setdefault(
+            KV_EVENTS_PORT_BASE_KEY, DEFAULT_KV_EVENTS_PORT_BASE + 100
+        )
+        pd_config.decode_config.experimental_configs.setdefault(
+            KV_TOKEN_PORT_BASE_KEY, DEFAULT_KV_TOKEN_PORT_BASE + 100
+        )
+        pd_config.decode_config.experimental_configs[
+            "pd_tokenizer_compatible"
+        ] = _pd_tokenizer_fingerprint(pd_config.prefill_config) == _pd_tokenizer_fingerprint(
+            pd_config.decode_config
+        )
 
     prefill_dp_size = pd_config.prefill_config.engine_kwargs.get(
         "data_parallel_size", 1
@@ -187,7 +239,10 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
         return decode_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
-                server=decode_deployment, llm_config=pd_config.decode_config
+                server=decode_deployment,
+                llm_config=pd_config.decode_config,
+                prefill_server=prefill_deployment,
+                prefill_llm_config=pd_config.prefill_config,
             )
         )
 

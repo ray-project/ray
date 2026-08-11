@@ -78,6 +78,7 @@ class TestConcreteBackendsProtocol:
             model="test-model",
             messages=[{"role": "user", "content": "hello"}],
             max_completion_tokens=32,
+            min_tokens=32,
             stream=True,
             stream_options={"include_usage": True},
         )
@@ -86,10 +87,12 @@ class TestConcreteBackendsProtocol:
         assert prefill.kv_transfer_params["do_remote_prefill"] is False
         assert prefill.max_tokens == 1
         assert prefill.max_completion_tokens == 1
+        assert prefill.min_tokens == 0
         assert prefill.stream is False
         assert prefill.stream_options is None
         # Original request untouched.
         assert request.max_completion_tokens == 32
+        assert request.min_tokens == 32
         assert request.stream is True
 
     def test_prepare_decode_forwards_params(self, backend_factory):

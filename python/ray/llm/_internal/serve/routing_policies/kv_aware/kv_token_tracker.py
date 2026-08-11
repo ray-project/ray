@@ -208,6 +208,11 @@ class KVTokenTracker:
         # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
         # to get candidate workers to route among.
         self._replica_id_by_worker: Dict[int, str] = {}
+        # Router-owned direct-streaming code needs the endpoint and token-channel
+        # metadata for a worker selected by the Dynamo service.  Keep this
+        # separate from ``_replica_id_by_worker``: the latter is deliberately a
+        # small stable map used by the existing lifecycle path.
+        self._replica_route_by_worker: Dict[int, Dict[str, Any]] = {}
         # Per-request state that the lifecycle hooks need, keyed by request id, serves
         # the following purposes:
         #   1. Block cursor: Turn cumulative decode tokens into add_output_block deltas.
@@ -326,6 +331,16 @@ class KVTokenTracker:
                 members[worker_id] = (
                     replica.replica_id.to_full_id_str(),
                     kv_event_metadata,
+                    {
+                        "replica_id": replica.replica_id.unique_id,
+                        "full_replica_id": replica.replica_id.to_full_id_str(),
+                        "host": replica.node_ip,
+                        "port": replica.backend_http_port,
+                        "replica_metadata": replica.replica_metadata,
+                        "token_endpoint": (
+                            replica.routing_stats.get("kv_token_metadata") or {}
+                        ).get("endpoint"),
+                    },
                 )
 
         registered = set(self._replica_id_by_worker)
@@ -335,13 +350,22 @@ class KVTokenTracker:
         for worker_id in removed:
             self.remove_worker(worker_id)
             self._replica_id_by_worker.pop(worker_id, None)
+            self._replica_route_by_worker.pop(worker_id, None)
         for worker_id in added:
-            replica_id, kv_event_metadata = members[worker_id]
+            replica_id, kv_event_metadata, replica_route = members[worker_id]
             self._register_block_size(kv_event_metadata["block_size"], replica_id)
             self._replica_id_by_worker[worker_id] = replica_id
+            self._replica_route_by_worker[worker_id] = replica_route
             self._schedule(
                 self._upsert_worker(worker_id, replica_id, kv_event_metadata)
             )
+
+        # A running replica can update its advertised routing stats without a
+        # membership change (for example while a token-channel receiver starts).
+        # Refresh those values on every snapshot so an otherwise healthy P/D
+        # selection does not keep a stale endpoint.
+        for worker_id in members.keys() & registered:
+            self._replica_route_by_worker[worker_id] = members[worker_id][2]
 
         if added or removed:
             logger.info(
@@ -411,6 +435,7 @@ class KVTokenTracker:
         token_ids: List[int],
         allowed_worker_ids: List[int],
         expected_output_tokens: Optional[int] = None,
+        router_config_override: Optional[Dict[str, Any]] = None,
     ) -> WorkerSelection:
         """Score the allowed workers for a request based on KV-cache overlap and
         load and pick the best one.
@@ -445,6 +470,8 @@ class KVTokenTracker:
             "allowed_worker_ids": allowed_worker_ids,
             "expected_output_tokens": expected_output_tokens,
         }
+        if router_config_override is not None:
+            request["router_config_override"] = router_config_override
         selection = await self._svc.select_and_reserve(request)
         self._track_request_state(
             request_id,
@@ -471,6 +498,19 @@ class KVTokenTracker:
             "overlap_tokens": selection["overlap"]["longest_matched"],
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
         }
+
+    def get_replica_route(self, worker_id: int) -> Dict[str, Any]:
+        """Return the current direct-routing information for ``worker_id``.
+
+        The entry is a copy because callers add request-scoped fields before
+        putting it in a ticket.  A missing route means the worker departed after
+        Dynamo selected it; callers must treat that as a failed selection saga
+        and release the reservation.
+        """
+        route = self._replica_route_by_worker.get(worker_id)
+        if route is None:
+            raise RuntimeError(f"selected worker {worker_id} is no longer available")
+        return dict(route)
 
     def _track_request_state(
         self,

@@ -18,6 +18,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
     PDServingArgs,
     build_pd_openai_app,
@@ -252,6 +253,7 @@ class TestPDOrchestratorMixin:
             model="test-model",
             messages=[{"role": "user", "content": "hello"}],
             max_completion_tokens=32,
+            min_tokens=32,
             stream=True,
             stream_options={"include_usage": True},
         )
@@ -261,9 +263,11 @@ class TestPDOrchestratorMixin:
 
         assert prefill_request.max_tokens == 1
         assert prefill_request.max_completion_tokens == 1
+        assert prefill_request.min_tokens == 0
         assert prefill_request.stream is False
         assert prefill_request.stream_options is None
         assert request.max_completion_tokens == 32
+        assert request.min_tokens == 32
         assert request.stream is True
 
     @pytest.mark.asyncio
@@ -588,6 +592,125 @@ class TestConnectorProtocolHook:
         assert chunks == ["decode-chunk"]
 
     @pytest.mark.asyncio
+    async def test_trusted_ticket_pins_prefill_and_keeps_token_key_off_data_path(self):
+        """A direct-streaming ticket must select P exactly once at D, while
+        preserving the staged key for P and leaving the response path at D."""
+        from ray.llm._internal.serve.core.protocol import RawRequestInfo
+        from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
+            PD_D_REPLICA_ID_HEADER,
+            PD_D_RESERVATION_ID_HEADER,
+            PD_OWNER_REPLICA_ID_HEADER,
+            PD_P_REPLICA_ID_HEADER,
+            PD_P_RESERVATION_ID_HEADER,
+            PD_VERSION_HEADER,
+        )
+
+        class _Backend:
+            requires_peer_binding = False
+            concurrent_handoff = False
+
+            def prepare_prefill_request(self, *, request, peer):
+                return request.model_copy(deep=True)
+
+            def prepare_decode_request(self, *, request, peer, prefill_response):
+                out = request.model_copy(deep=True)
+                out.kv_transfer_params = prefill_response.kv_transfer_params
+                return out
+
+        class _PinnedPrefillHandle:
+            def __init__(self):
+                self.calls = []
+
+            def options(self, **kwargs):
+                return self
+
+            @property
+            def completions(self):
+                handle = self
+
+                class _Selection:
+                    replica_metadata = {"ignored": True}
+
+                class _Ctx:
+                    async def __aenter__(self):
+                        return _Selection()
+
+                    async def __aexit__(self, *exc):
+                        return False
+
+                def choose_replica(**kwargs):
+                    handle.calls.append(("choose", kwargs))
+                    return _Ctx()
+
+                def dispatch(selection, request, raw_request_info):
+                    handle.calls.append(("dispatch", raw_request_info.headers))
+                    return _aiter([SimpleNamespace(kv_transfer_params={"kv": "p"})])
+
+                return SimpleNamespace(
+                    choose_replica=choose_replica,
+                    dispatch=dispatch,
+                )
+
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-model")
+        )
+        server._llm_config._kv_connector_backend = _Backend()
+        server._pd_tokenize_once = False
+        server._prefill_handle = _PinnedPrefillHandle()
+        ticket_calls = []
+
+        async def _ticket_call(method_name, owner_replica_id, *args):
+            ticket_calls.append((method_name, owner_replica_id, args))
+            if method_name == "claim_pd_ticket":
+                return {
+                    "p_replica_id": "p-selected",
+                    "d_reservation_id": "d-ticket",
+                    "token_key": "stage-key",
+                }
+            return None
+
+        server._call_pd_ticket_owner = _ticket_call
+        raw = RawRequestInfo(
+            headers={
+                PD_VERSION_HEADER: "1",
+                PD_OWNER_REPLICA_ID_HEADER: "router-owner",
+                PD_P_REPLICA_ID_HEADER: "p-selected",
+                PD_D_REPLICA_ID_HEADER: "d-selected",
+                PD_P_RESERVATION_ID_HEADER: "p-ticket",
+                PD_D_RESERVATION_ID_HEADER: "d-ticket",
+            }
+        )
+
+        async def _fake_super_completions(self, request, raw_request_info):
+            return _aiter(["decode-sse-chunk"])
+
+        replica_context = SimpleNamespace(
+            replica_id=SimpleNamespace(unique_id="d-selected")
+        )
+        request = CompletionRequest(model="test-model", prompt="hi")
+        with (
+            patch(
+                "ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server."
+                "serve.get_replica_context",
+                return_value=replica_context,
+            ),
+            patch.object(LLMServer, "completions", _fake_super_completions),
+        ):
+            chunks = [c async for c in server._pd_handle_request(request, raw)]
+
+        assert chunks == ["decode-sse-chunk"]
+        assert server._prefill_handle.calls == [
+            ("choose", {"_serve_target_replica_id": "p-selected"}),
+            ("dispatch", {**raw.headers, "x-serve-router-kv-token-key": "stage-key"}),
+        ]
+        assert [call[0] for call in ticket_calls] == [
+            "claim_pd_ticket",
+            "pd_prefill_complete",
+            "release_pd_ticket",
+        ]
+
+    @pytest.mark.asyncio
     async def test_concurrent_handoff_cancels_prefill_on_decode_failure(self):
         """In concurrent-handoff mode, if local decode raises, the background
         prefill task must be cancelled (no leak)."""
@@ -795,6 +918,17 @@ class TestBuildPDOpenaiApp:
         prefill, decode = pd_configs
         app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
 
+        if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+            # Direct streaming deliberately makes decode the ASGI ingress and
+            # attaches LLMRouter as its request router. There is no wrapping
+            # OpenAiIngress deployment in this graph.
+            decode_deployment = app._bound_deployment
+            assert decode_deployment.func_or_class.__name__ == "PDDecodeServer"
+            assert "prefill_server" in decode_deployment.init_kwargs
+            prefill_app = decode_deployment.init_kwargs["prefill_server"]
+            assert prefill_app._bound_deployment.func_or_class.__name__ == "PDPrefillServer"
+            return
+
         # The app should have an ingress deployment bound to the decode deployment
         ingress_deployment = app._bound_deployment
         llm_deployments = ingress_deployment.init_kwargs["llm_deployments"]
@@ -816,19 +950,26 @@ class TestBuildPDOpenaiApp:
     def test_ingress_deployment_config(self, pd_configs):
         """Test that ingress deployment configs are properly applied."""
         prefill, decode = pd_configs
-        app = build_pd_openai_app(
-            {
-                "prefill_config": prefill,
-                "decode_config": decode,
-                "ingress_deployment_config": {
-                    "num_replicas": 5,
-                    "ray_actor_options": {
-                        "num_cpus": 8,
-                        "memory": 4096,
-                    },
-                    "max_ongoing_requests": 300,
+        serving_args = {
+            "prefill_config": prefill,
+            "decode_config": decode,
+            "ingress_deployment_config": {
+                "num_replicas": 5,
+                "ray_actor_options": {
+                    "num_cpus": 8,
+                    "memory": 4096,
                 },
-            }
+                "max_ongoing_requests": 300,
+            },
+        }
+        if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+            # Direct mode has no separate ingress deployment; accepting these
+            # options would silently configure the wrong actor.
+            with pytest.raises(ValueError, match="ingress_deployment_config"):
+                build_pd_openai_app(serving_args)
+            return
+        app = build_pd_openai_app(
+            serving_args
         )
 
         ingress_deployment = app._bound_deployment
