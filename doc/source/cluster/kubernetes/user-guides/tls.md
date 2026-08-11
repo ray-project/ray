@@ -148,3 +148,7 @@ ray health-check --address $RAY_IP:6379
 # For KubeRay versions prior to 0.5.0, this step is necessary because Ray workers in earlier
 # versions use $RAY_IP to connect with Ray head.
 ```
+
+# Using mTLS with RayClusters
+
+For information on how to configure KubeRay to automatically provision and rotate certificates for mutual TLS, see the [KubeRay mTLS guide](mtls.md).
