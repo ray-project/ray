@@ -852,7 +852,12 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> int:
         cache_path = self._get_cache_path(uri)
-        size_bytes = 0
+        # The URI leaves this cache's tracking regardless of whether the
+        # directory is removed below, so its recorded contribution to the
+        # cache size must be subtracted either way; otherwise a skipped
+        # deletion followed by a re-add double-counts the directory.
+        manifest_size = self._read_manifest_size(cache_path)
+        size_bytes = manifest_size or 0
         lock_file = self._try_acquire_file_lock(cache_path + ".lock")
         if lock_file is None:
             # An agent sharing this directory is preparing the same key.
@@ -864,12 +869,8 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         else:
             try:
                 if os.path.exists(cache_path):
-                    manifest_size = self._read_manifest_size(cache_path)
-                    size_bytes = (
-                        manifest_size
-                        if manifest_size is not None
-                        else get_directory_size_bytes(cache_path)
-                    )
+                    if manifest_size is None:
+                        size_bytes = get_directory_size_bytes(cache_path)
                     # Renaming is fast; the tree removal happens on a thread
                     # so eviction never blocks the agent's event loop.
                     trash_path = cache_path + f".deleting-{uuid.uuid4().hex}"
@@ -882,7 +883,6 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                     ).start()
             except OSError as error:
                 logger.warning(f"Failed to delete {cache_path}: {error}")
-                size_bytes = 0
             finally:
                 fcntl.flock(lock_file, fcntl.LOCK_UN)
                 lock_file.close()
