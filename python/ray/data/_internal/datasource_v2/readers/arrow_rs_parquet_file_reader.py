@@ -39,7 +39,7 @@ Byte-budgeted decode (no reader-side accumulation)
 --------------------------------------------------
 The native reader sizes each decode batch *by bytes, not rows*: it reads each
 row group's uncompressed size / row count from the footer and picks a row count
-so ``rows × bytes_per_row ≈ decode_budget_bytes`` (2 MiB default,
+so ``rows × bytes_per_row ≈ decode_budget_bytes`` (32 MiB default,
 :data:`_ARROW_RS_DECODE_BUDGET_BYTES`). A wide-string group gets few rows/batch,
 a numeric group many — both land near the budget, so the decoded working set is
 flat across schemas (this is *why* arrow-rs memory doesn't scale with the data
@@ -328,8 +328,12 @@ _ARROW_RS_COLUMN_FETCH_MB = env_integer("RAY_DATA_ARROW_RS_COLUMN_FETCH_MB", 16)
 # compressed size (exact, from the footer) and releases them when the decoder
 # finishes (drops) that unit — so fetch concurrency self-adjusts to the
 # fetch:decode speed ratio (a slow network gets ~4 parallel GETs; a slow decoder
-# backpressures fetching to a halt) and peak prefetch memory is the bucket size
-# by construction, never an estimate. Decode itself stays one-unit-at-a-time
+# backpressures fetching to a halt). This is a THROUGHPUT control, not a memory
+# knob: the semaphore does cap in-flight *compressed prefetch* bytes, but that
+# term is small against decode scratch + retained output, so sweeping the
+# budget does not move per-task USS (non-monotone, inside the noise floor —
+# findings K2; ``fetch_window_mb``/``column_fetch_mb`` are the levers that do
+# move memory, by ablation). Decode itself stays one-unit-at-a-time
 # (bounds decode scratch; see ``column_fetch_mb`` for why that matters on wide
 # schemas). Explicitly setting this overrides the 4× derivation (benchmark
 # escape hatch); 0 = strictly sequential fetch->decode->fetch. ``-1`` sentinel =
