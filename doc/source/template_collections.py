@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 _TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
 _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
+# The only templates-repo branch whose builds may be rendered into these docs.
+_TEMPLATE_RELEASE_BRANCH = "main"
+
 # Hard timeouts on the templates.ci.ray.io HTTP calls. The doc build previously
 # stalled when the templates host was slow or unresponsive (#63112 revert);
 # explicit timeouts let urlopen surface a TimeoutError instead of hanging
@@ -188,7 +191,10 @@ _TEMPLATE_COLLECTIONS = {
 # `latest` let a template's notebook rename silently break an otherwise-unchanged
 # docs build the moment the rebuilt artifact was promoted.) Pins are bumped by
 # the auto-bump workflow in anyscale/docs from each template's
-# latest/channel.json `tmpl_build_id`; prefer that PR over hand-editing the JSON.
+# latest/channel.json `tmpl_build_id`, but only when that build came from the
+# templates repo's `main` branch -- `latest` tracks the most recent build on any
+# branch, including unmerged template PRs. Prefer that PR over hand-editing the
+# JSON.
 #
 # Pinning assumes templates.ci.ray.io retains per-build artifacts. If an old
 # build is removed, its stale pin no longer fetches.
@@ -205,6 +211,13 @@ def _resolve_template_url(name):
     channel API. A template not yet in ``_TEMPLATE_PINS`` -- e.g. one just added
     to ``_TEMPLATE_COLLECTIONS`` -- falls back to ``latest`` with a warning so
     it still builds until a pin is added.
+
+    That fallback accepts only a ``main`` build. ``latest`` tracks the most
+    recent build on *any* templates-repo branch, so it's regularly a build from
+    an unmerged template PR; rendering one would publish unreviewed content to
+    docs.ray.io, and nothing downstream would notice because that content builds
+    fine. templates.ci.ray.io exposes no main-only channel to ask instead, so
+    this fails the build with an error naming the fix (pin the template).
     """
     build_id = _TEMPLATE_PINS.get(name)
     if build_id is not None:
@@ -223,6 +236,18 @@ def _resolve_template_url(name):
     data = json.loads(
         _urlopen_read_with_retries(api_url, _TEMPLATE_CHANNEL_TIMEOUT_S)
     )
+    branch = data.get("tmpl_branch")
+    if branch != _TEMPLATE_RELEASE_BRANCH:
+        raise RuntimeError(
+            f"sphinx-collections: refusing to build unpinned template {name!r} "
+            f"from build {data.get('tmpl_build_id')!r}, which came from branch "
+            f"{branch!r} rather than {_TEMPLATE_RELEASE_BRANCH!r}. "
+            f"templates.ci.ray.io publishes 'latest' for whichever build ran "
+            f"most recently on any branch, so this would render content from an "
+            f"unmerged template PR into the published docs. Add a pin for "
+            f"{name!r} to template_pins.json (a build id from a "
+            f"{_TEMPLATE_RELEASE_BRANCH!r} build) instead of relying on 'latest'."
+        )
     # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL,
     # then append /build.zip to get the docs build archive.
     url = data["url"].replace("ascommon:///", _TEMPLATES_CI_BASE + "/")
