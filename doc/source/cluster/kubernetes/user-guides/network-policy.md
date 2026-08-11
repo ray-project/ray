@@ -30,7 +30,7 @@ helm install kuberay-operator kuberay/kuberay-operator \
 
 ## Enable NetworkPolicy
 
-Add a `networkPolicy` field to the `RayCluster` `spec` and choose a mode:
+Add a `networkPolicy` field to the `RayCluster` spec and choose a mode:
 
 ```yaml
 apiVersion: ray.io/v1
