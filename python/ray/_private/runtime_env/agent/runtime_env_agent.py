@@ -7,7 +7,7 @@ import traceback
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
@@ -326,7 +326,10 @@ class ReferenceTable:
             self._dynamic_uris.pop(serialized_env, None)
 
     def release_dynamic_uris_if_unreferenced(
-        self, serialized_env: str, source_process: str
+        self,
+        serialized_env: str,
+        source_process: str,
+        dynamic_uris: Optional[List[Tuple[str, UriType]]] = None,
     ) -> None:
         """Release dynamic URIs of an env dereferenced during its creation.
 
@@ -334,13 +337,22 @@ class ReferenceTable:
         reference can be dropped while the environment is still being
         created. The URIs and env cache entry published by the finished
         creation would then stay marked used forever; release them here.
+
+        ``dynamic_uris`` must carry the URIs resolved by the creation itself:
+        when the delete arrived after the URIs were bound, the binding in
+        ``_dynamic_uris`` was already popped by ``decrease_reference`` while
+        the URIs were not yet published to the cache, so the internal state
+        alone no longer knows what the finished creation published.
         """
         if source_process in self._reference_exclude_sources:
             return
         if serialized_env in self._runtime_env_reference:
             return
-        dynamic_uris = self._dynamic_uris.pop(serialized_env, [])
-        unused_uris = [uri for uri in dynamic_uris if uri[0] not in self._uri_reference]
+        candidates = list(self._dynamic_uris.pop(serialized_env, []))
+        for uri in dynamic_uris or []:
+            if uri not in candidates:
+                candidates.append(uri)
+        unused_uris = [uri for uri in candidates if uri[0] not in self._uri_reference]
         if unused_uris:
             default_logger.info(
                 "Runtime env %s lost all references during creation; "
@@ -514,6 +526,11 @@ class RuntimeEnvAgent:
             f"{request.serialized_runtime_env}."
         )
 
+        # Dynamic URIs resolved during this creation, kept aside so their
+        # cache references can be released if the env is deleted mid-creation
+        # (the reference table's own binding is popped by that delete).
+        created_dynamic_uris: List[Tuple[str, UriType]] = []
+
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
             runtime_env_config: RuntimeEnvConfig,
@@ -536,10 +553,15 @@ class RuntimeEnvAgent:
                         return
                     resolved_uris = await plugin.resolve_uris(runtime_env, per_job_logger)
                     if resolved_uris is not None:
+                        dynamic_uris = [
+                            (uri, UriType(plugin.name)) for uri in resolved_uris
+                        ]
                         self._reference_table.add_dynamic_uris(
-                            serialized_env,
-                            [(uri, UriType(plugin.name)) for uri in resolved_uris],
+                            serialized_env, dynamic_uris
                         )
+                        for dynamic_uri in dynamic_uris:
+                            if dynamic_uri not in created_dynamic_uris:
+                                created_dynamic_uris.append(dynamic_uri)
                     await create_for_plugin_if_needed(
                         runtime_env,
                         plugin,
@@ -769,7 +791,7 @@ class RuntimeEnvAgent:
                 # every reference while creation was in flight; release what
                 # the creation just cached in that case.
                 self._reference_table.release_dynamic_uris_if_unreferenced(
-                    serialized_env, request.source_process
+                    serialized_env, request.source_process, created_dynamic_uris
                 )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
