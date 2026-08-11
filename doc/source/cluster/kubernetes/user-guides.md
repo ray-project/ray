@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Index of KubeRay user guides covering cluster configuration, autoscaling, GPUs and TPUs, storage, observability, and security."
+---
+
 (kuberay-guides)=
 
 # User Guides
@@ -20,6 +26,7 @@ user-guides/configuring-ippr
 user-guides/label-based-scheduling
 user-guides/kuberay-gcs-ft
 user-guides/kuberay-gcs-persistent-ft
+user-guides/kuberay-gcs-rocksdb-ft
 user-guides/gke-gcs-bucket
 user-guides/persist-kuberay-custom-resource-logs
 user-guides/persist-kuberay-operator-logs
@@ -37,6 +44,8 @@ user-guides/uv
 user-guides/kuberay-dashboard
 user-guides/resource-isolation-with-writable-cgroups
 user-guides/kuberay-history-server
+user-guides/k8s-events
+user-guides/rayjob-sidecar-submitter-restart
 ```
 
 
@@ -59,6 +68,7 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-tpu`
 * {ref}`kuberay-gcs-ft`
 * {ref}`kuberay-gcs-persistent-ft`
+* {ref}`kuberay-gcs-rocksdb-ft`
 * {ref}`persist-kuberay-custom-resource-logs`
 * {ref}`persist-kuberay-operator-logs`
 * {ref}`kuberay-pod-command`
@@ -74,3 +84,5 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-dashboard`
 * {ref}`resource-isolation-with-writable-cgroups`
 * {ref}`kuberay-history-server`
+* {ref}`kuberay-k8s-events`
+* {ref}`kuberay-rayjob-sidecar-submitter-restart`

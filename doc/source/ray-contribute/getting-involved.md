@@ -17,7 +17,10 @@ myst:
 
 development
 ci
+dependency-management
 docs
+publishing-examples
+publishing-examples-legacy
 writing-style
 writing-code-snippets
 fake-autoscaler
@@ -84,6 +87,16 @@ You can combine labels in GitHub's search to find issues that match multiple cri
 
 To edit the Ray source code, fork the repository, clone it, and build Ray from source. Follow {ref}`these instructions for building <building-ray>` a local copy of Ray to make changes.
 
+## AI-assisted contributions
+
+If you contribute with the help of an AI coding agent, Ray ships an [`AGENTS.md`](https://github.com/ray-project/ray/blob/master/AGENTS.md) at the repository root. Tools that support the `AGENTS.md` convention load it into the agent's context automatically, and Claude Code loads it through `.claude/CLAUDE.md`. It defines the contribution policy AI-assisted PRs are expected to follow, including duplicate-work checks, no low-value busywork PRs, and a human accountability requirement.
+
+The file is reproduced below as an FYI, so you can see exactly what your tools are instructed to do:
+
+```{literalinclude} ../../../AGENTS.md
+:language: text
+```
+
 ## Submitting and merging a contribution
 
 To merge a contribution, complete the following steps:
@@ -95,7 +108,7 @@ To merge a contribution, complete the following steps:
    git pull . upstream/master
    ```
 
-2. Make sure all existing [tests](#testing) and [linters](#lint-and-formatting) pass. Run `setup_hooks.sh` to create a git hook that runs the linter before you push your changes.
+2. Make sure all existing [tests](#testing) and [linters](#lint-and-formatting) pass. Run `setup_hooks.sh` to install git hooks that run the linter before you push and add the `Signed-off-by` trailer to each commit. Every commit needs that trailer to pass the Developer Certificate of Origin (DCO) check. If you skip the hook, sign off manually with `git commit -s`.
 3. If introducing a new feature or patching a bug, be sure to add new test cases in the relevant file in `ray/python/ray/tests/`.
 4. Document the code. Document public functions, and remember to provide a usage example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
 5. Address comments on your PR. During the review process you may need to address merge conflicts with other changes. To resolve merge conflicts, run `git pull . upstream/master` on your branch. Don't use rebase, because it's less friendly to the GitHub review tool. We squash all commits on merge.

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Co-schedule groups of Serve replicas atomically with gang scheduling, using placement group PACK or SPREAD strategies and gang context."
+---
+
 (serve-gang-scheduling)=
 
 # Gang scheduling

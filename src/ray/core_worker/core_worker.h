@@ -50,6 +50,7 @@
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/util/clock.h"
@@ -185,41 +186,43 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// All member variables are injected either from CoreWorkerProcess or test code
 
-  CoreWorker(CoreWorkerOptions options,
-             std::unique_ptr<WorkerContext> worker_context,
-             instrumented_io_context &io_service,
-             instrumented_io_context &object_freed_callback_service,
-             std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-             std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
-             std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
-             std::unique_ptr<rpc::GrpcServer> core_worker_server,
-             rpc::Address rpc_address,
-             std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-             std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
-             boost::thread &io_thread,
-             boost::thread &object_freed_callback_thread,
-             std::shared_ptr<ReferenceCounterInterface> reference_counter,
-             std::shared_ptr<CoreWorkerMemoryStore> memory_store,
-             std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
-             std::shared_ptr<experimental::MutableObjectProviderInterface>
-                 experimental_mutable_object_provider,
-             std::unique_ptr<FutureResolver> future_resolver,
-             std::shared_ptr<TaskManager> task_manager,
-             std::shared_ptr<ActorCreatorInterface> actor_creator,
-             std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
-             std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
-             std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
-             std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
-             std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
-             std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
-             std::unique_ptr<ActorManager> actor_manager,
-             instrumented_io_context &task_execution_service,
-             std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
-             uint32_t pid,
-             ray::observability::MetricInterface &task_by_state_counter,
-             ray::observability::MetricInterface &actor_by_state_counter,
-             ClockInterface &clock);
+  CoreWorker(
+      CoreWorkerOptions options,
+      std::unique_ptr<WorkerContext> worker_context,
+      instrumented_io_context &io_service,
+      instrumented_io_context &object_freed_callback_service,
+      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+      std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
+      std::unique_ptr<rpc::GrpcServer> core_worker_server,
+      rpc::Address rpc_address,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
+      std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
+      boost::thread &io_thread,
+      boost::thread &object_freed_callback_thread,
+      std::shared_ptr<ReferenceCounterInterface> reference_counter,
+      std::shared_ptr<CoreWorkerMemoryStore> memory_store,
+      std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
+      std::shared_ptr<experimental::MutableObjectProviderInterface>
+          experimental_mutable_object_provider,
+      std::unique_ptr<FutureResolver> future_resolver,
+      std::shared_ptr<TaskManager> task_manager,
+      std::shared_ptr<ActorCreatorInterface> actor_creator,
+      std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
+      std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
+      std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
+      std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
+      std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
+      std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
+      std::unique_ptr<ActorManager> actor_manager,
+      instrumented_io_context &task_execution_service,
+      std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
+      std::unique_ptr<observability::RayEventRecorderInterface> ray_task_event_recorder,
+      uint32_t pid,
+      ray::observability::MetricInterface &task_by_state_counter,
+      ray::observability::MetricInterface &actor_by_state_counter,
+      ClockInterface &clock);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -356,8 +359,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * \param[in] generator_id The object ref id of the streaming generator task.
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
-   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
-   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   * \return Status InvalidArgument if the last requested ref is not ready, or
+   * if the requested range would exceed max_num_generator_returns. OK
+   * otherwise.
    */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
 
@@ -1578,6 +1582,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
   void SubscribeToNodeChanges();
 
+  /**
+   * @brief Subscribe to the GCS failure notification of a single owner worker
+   * so ``HandleOwnerDied`` can clean up generator backpressure state when that
+   * owner dies. Covers both per-task BP (unblock ``WaitUntilObjectConsumed``)
+   * and actor-wide BP (reclaim shared budget held by finished tasks).
+   *
+   * @param owner_worker_id The owner worker whose failure to watch.
+   */
+  void SubscribeToOwnerWorkerFailure(const WorkerID &owner_worker_id);
+
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 
@@ -2138,6 +2152,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
 
+  /// Records task events and exports them to the event aggregator.
+  std::unique_ptr<observability::RayEventRecorderInterface> ray_task_event_recorder_ =
+      nullptr;
+
   /// Worker's PID
   uint32_t pid_;
 
@@ -2166,6 +2184,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Used to ensure we only subscribe to node changes once.
   std::once_flag subscribe_to_node_changes_flag_;
+
+  /// Owners whose worker-failure notifications this worker is subscribed to
+  /// for generator-backpressure cleanup. An owner is inserted on the first
+  /// backpressure registration for one of its generator tasks and erased in
+  /// HandleOwnerDied (a dead owner's keyed subscription is useless; live
+  /// owners stay subscribed so churning generator tasks don't
+  /// unsubscribe/resubscribe).
+  absl::flat_hash_set<WorkerID> subscribed_bp_owners_ ABSL_GUARDED_BY(mutex_);
 
   // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
   // the shutdown procedure without exposing additional public APIs.
