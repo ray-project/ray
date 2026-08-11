@@ -231,6 +231,9 @@ class ReferenceTable:
         # URI reference table. The key is URI parsed from runtime env and the value
         # is reference count.
         self._uri_reference: Dict[str, int] = defaultdict(int)
+        # URIs whose identity can only be resolved on the node, keyed by the
+        # serialized runtime environment that owns their references.
+        self._dynamic_uris: Dict[str, List[Tuple[str, UriType]]] = {}
         self._uris_parser = uris_parser
         self._unused_uris_callback = unused_uris_callback
         self._unused_runtime_env_callback = unused_runtime_env_callback
@@ -290,8 +293,23 @@ class ReferenceTable:
         if source_process in self._reference_exclude_sources:
             return
         self._increase_reference_for_runtime_env(serialized_env)
-        uris = self._uris_parser(runtime_env)
+        uris = self._uris_parser(runtime_env) + self._dynamic_uris.get(
+            serialized_env, []
+        )
         self._increase_reference_for_uris(uris)
+
+    def add_dynamic_uris(
+        self, serialized_env: str, uris: List[Tuple[str, UriType]]
+    ) -> None:
+        """Bind node-resolved URIs to all current references for an environment."""
+        current = self._dynamic_uris.setdefault(serialized_env, [])
+        new_uris = [uri for uri in uris if uri not in current]
+        if not new_uris:
+            return
+        current.extend(new_uris)
+        reference_count = self._runtime_env_reference.get(serialized_env, 0)
+        for _ in range(reference_count):
+            self._increase_reference_for_uris(new_uris)
 
     def decrease_reference(
         self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
@@ -299,9 +317,39 @@ class ReferenceTable:
         """Decrease reference count for runtime env and uri. Throw exception if decrement reference count fails."""
         if source_process in self._reference_exclude_sources:
             return
+        uris = self._uris_parser(runtime_env) + self._dynamic_uris.get(
+            serialized_env, []
+        )
         self._decrease_reference_for_runtime_env(serialized_env)
-        uris = self._uris_parser(runtime_env)
         self._decrease_reference_for_uris(uris)
+        if serialized_env not in self._runtime_env_reference:
+            self._dynamic_uris.pop(serialized_env, None)
+
+    def release_dynamic_uris_if_unreferenced(
+        self, serialized_env: str, source_process: str
+    ) -> None:
+        """Release dynamic URIs of an env dereferenced during its creation.
+
+        DeleteRuntimeEnvIfPossible is not serialized with creation, so every
+        reference can be dropped while the environment is still being
+        created. The URIs and env cache entry published by the finished
+        creation would then stay marked used forever; release them here.
+        """
+        if source_process in self._reference_exclude_sources:
+            return
+        if serialized_env in self._runtime_env_reference:
+            return
+        dynamic_uris = self._dynamic_uris.pop(serialized_env, [])
+        unused_uris = [uri for uri in dynamic_uris if uri[0] not in self._uri_reference]
+        if unused_uris:
+            default_logger.info(
+                "Runtime env %s lost all references during creation; "
+                "releasing dynamic URIs %s.",
+                serialized_env,
+                unused_uris,
+            )
+            self._unused_uris_callback(unused_uris)
+        self._unused_runtime_env_callback(serialized_env)
 
     @property
     def runtime_env_refs(self) -> Dict[str, int]:
@@ -389,6 +437,7 @@ class RuntimeEnvAgent:
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir)
         self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
+        self._image_uri_plugin.set_resources_dir(self._runtime_env_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
@@ -478,6 +527,28 @@ class RuntimeEnvAgent:
             ) as per_job_logger:
                 context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
 
+                async def setup_plugin(plugin_setup_context):
+                    plugin = plugin_setup_context.class_instance
+                    if (
+                        plugin.name not in runtime_env
+                        or runtime_env[plugin.name] is None
+                    ):
+                        return
+                    resolved_uris = await plugin.resolve_uris(runtime_env, per_job_logger)
+                    if resolved_uris is not None:
+                        self._reference_table.add_dynamic_uris(
+                            serialized_env,
+                            [(uri, UriType(plugin.name)) for uri in resolved_uris],
+                        )
+                    await create_for_plugin_if_needed(
+                        runtime_env,
+                        plugin,
+                        plugin_setup_context.uri_cache,
+                        context,
+                        per_job_logger,
+                        resolved_uris=resolved_uris,
+                    )
+
                 # Warn about unrecognized fields in the runtime env.
                 for name, _ in runtime_env.plugins():
                     if name not in self._plugin_manager.plugins:
@@ -496,13 +567,7 @@ class RuntimeEnvAgent:
 
                 # First create working dir...
                 working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
-                await create_for_plugin_if_needed(
-                    runtime_env,
-                    working_dir_ctx.class_instance,
-                    working_dir_ctx.uri_cache,
-                    context,
-                    per_job_logger,
-                )
+                await setup_plugin(working_dir_ctx)
 
                 # Then within the working dir, create the other plugins.
                 working_dir_uri_or_none = runtime_env.working_dir_uri()
@@ -514,12 +579,21 @@ class RuntimeEnvAgent:
                         plugin_setup_context
                     ) in self._plugin_manager.sorted_plugin_setup_contexts():
                         plugin = plugin_setup_context.class_instance
-                        if plugin.name != WorkingDirPlugin.name:
-                            uri_cache = plugin_setup_context.uri_cache
-                            await create_for_plugin_if_needed(
-                                runtime_env, plugin, uri_cache, context, per_job_logger
-                            )
-                return context
+                        if (
+                            plugin.name != WorkingDirPlugin.name
+                            and not plugin.is_worker_launch_finalizer()
+                        ):
+                            await setup_plugin(plugin_setup_context)
+
+                    # Container plugins assemble the worker launch after other
+                    # plugins have finished modifying the context.
+                    for (
+                        plugin_setup_context
+                    ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                        plugin = plugin_setup_context.class_instance
+                        if plugin.is_worker_launch_finalizer():
+                            await setup_plugin(plugin_setup_context)
+            return context
 
         async def _create_runtime_env_with_retry(
             runtime_env: RuntimeEnv,
@@ -690,6 +764,13 @@ class RuntimeEnvAgent:
                 serialized_context if successful else error_message,
                 creation_time_ms,
             )
+            if successful:
+                # A concurrent DeleteRuntimeEnvIfPossible may have dropped
+                # every reference while creation was in flight; release what
+                # the creation just cached in that case.
+                self._reference_table.release_dynamic_uris_if_unreferenced(
+                    serialized_env, request.source_process
+                )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
