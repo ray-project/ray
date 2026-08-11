@@ -1,4 +1,5 @@
 from collections import Counter
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import pandas as pd
@@ -350,15 +351,20 @@ class CountVectorizer(SerializablePreprocessorBase):
                     # A missing document contributes no tokens to the
                     # vocabulary. Dropping the nulls rather than tokenizing them
                     # keeps the vocabulary from the remaining documents valid;
-                    # summing a series that still held one would fail on
-                    # `list + pd.NA`.
+                    # counting a series that still held one would fail on
+                    # `pd.NA` not being iterable.
+                    #
+                    # `chain.from_iterable` rather than `Series.sum()`: summing
+                    # object elements reduces with `list.__add__`, building a
+                    # progressively longer list once per document, which is
+                    # quadratic in the number of documents. Chaining streams the
+                    # tokens into `Counter` instead, and needs no special case
+                    # for an all-null column -- an empty chain yields an empty
+                    # `Counter`, where `Series.sum()` of nothing is `0`.
                     token_series = _tokenize_ignoring_nulls(
                         df[col], self._tokenization_fn
                     ).dropna()
-                    if token_series.empty:
-                        # `Series.sum()` of nothing is `0`, not `[]`.
-                        return Counter()
-                    return Counter(token_series.sum())
+                    return Counter(chain.from_iterable(token_series))
 
                 return {col: [get_token_counts(col)] for col in self._columns}
 

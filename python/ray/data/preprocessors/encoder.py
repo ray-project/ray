@@ -1237,8 +1237,14 @@ def compute_unique_value_indices(
                 col.map(update_counter)
                 return counter
             else:
-                # convert to tuples to make lists hashable
-                col = col.map(lambda x: tuple(x))
+                # convert to tuples to make lists hashable. A missing row has no
+                # list to convert: `tuple(pd.NA)` raises `TypeError: 'NAType'
+                # object is not iterable` here in `fit`, so `na_action="ignore"`
+                # carries the null through to `unique_post_fn` instead, where it
+                # reaches the documented "consider imputing missing values
+                # first" `ValueError`. This mirrors the `encode_lists=True`
+                # branch above.
+                col = col.map(lambda x: tuple(x), na_action="ignore")
         return Counter(col.value_counts(dropna=False).to_dict())
 
     def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Dict]]:

@@ -298,6 +298,6 @@ def _get_most_frequent_values(
         return ranked[0][0] if ranked else None
 
     return {
-        key_gen(column): most_frequent_value(final_counters[column])
+        key_gen(column): most_frequent_value(final_counters[column])  # noqa
         for column in columns
     }

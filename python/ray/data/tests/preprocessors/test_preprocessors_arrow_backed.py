@@ -43,6 +43,8 @@ Crashing is not refusing, which is why the refusal assertions check the message
 and not just the exception type.
 """
 
+from typing import Any, Dict
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -346,7 +348,7 @@ def test_tensor_preprocessor(name, dataset):
 @pytest.mark.parametrize("strategy", ["mean", "most_frequent", "constant"])
 def test_simple_imputer(strategy, dataset):
     shape, ds = dataset
-    kwargs = {"fill_value": 0.0} if strategy == "constant" else {}
+    kwargs: Dict[str, Any] = {"fill_value": 0.0} if strategy == "constant" else {}
     imputer = SimpleImputer(columns=["num"], strategy=strategy, **kwargs)
 
     if shape == "all_null" and strategy in ("mean", "most_frequent"):
@@ -454,6 +456,49 @@ def test_multi_hot_encoder(dataset):
     with pytest.raises(Exception) as excinfo:
         encoder.fit_transform(ds).take_all()
     assert "null values" in str(excinfo.value)
+
+
+# Encoders that treat a whole list as one category, rather than exploding it.
+# This is the ``encode_lists=False`` branch of `compute_unique_value_indices`,
+# which is reached separately from the ``True`` branch `MultiHotEncoder` uses.
+WHOLE_LIST_ENCODERS = {
+    "OneHotEncoder": lambda: OneHotEncoder(columns=["tokens"]),
+    "OrdinalEncoder": lambda: OrdinalEncoder(columns=["tokens"], encode_lists=False),
+}
+
+
+@pytest.mark.parametrize("name", list(WHOLE_LIST_ENCODERS))
+def test_whole_list_encoder_rejects_nulls_with_a_clear_error(name, dataset):
+    """A list column encoded whole refuses nulls with the *documented* error.
+
+    The ``encode_lists=False`` branch makes each list hashable with ``tuple(x)``.
+    A missing row has no list to convert, so that raises ``TypeError: 'NAType'
+    object is not iterable`` inside ``fit`` -- and because the fit runs in a Ray
+    task, the user sees it wrapped as ``UDF failed to process a data block``,
+    which names neither the column nor the nulls. Carrying the null through to
+    ``unique_post_fn`` instead reaches the same "consider imputing missing values
+    first" ``ValueError`` the scalar encoders raise.
+
+    ``MultiHotEncoder`` does not cover this: it takes the ``encode_lists=True``
+    branch, which was already guarded.
+    """
+    shape, ds = dataset
+    if shape == "numpy_nan":
+        pytest.skip("a pandas block cannot carry a list column; see the fixture")
+
+    encoder = WHOLE_LIST_ENCODERS[name]()
+
+    if shape == "no_nulls":
+        rows = encoder.fit_transform(ds).take_all()
+        assert len(rows) == 4
+        return
+
+    with pytest.raises(ValueError) as excinfo:
+        encoder.fit_transform(ds).take_all()
+    assert "null" in str(excinfo.value).lower(), (
+        f"{name} should explain that the column contains nulls; "
+        f"got {excinfo.value!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
