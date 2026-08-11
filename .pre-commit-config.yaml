@@ -13,7 +13,11 @@ exclude: |
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
     doc/external/|
-    doc/source/|
+    # Excludes doc/source, except the Markdown and rST prose under doc/source/data
+  # that the `vale` hook below lints. pre-commit ANDs this top-level `exclude`
+  # with each hook's own `files`, so a bare `doc/source/` here cancelled that
+  # hook out entirely and it silently matched zero files.
+  doc/source/(?!data/.*[.](md|rst)$)|
     doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
@@ -21,7 +25,15 @@ repos:
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
+        # Narrowing the top-level `exclude` above (so the `vale` hook can see
+        # doc/source/data prose) also exposed those files to this hook for the
+        # first time, which would rewrite 17 unrelated files. Keep them exempt
+        # here so enabling Vale stays a config-only change, and clean the
+        # whitespace up in its own PR.
+        exclude: ^doc/source/data/
       - id: end-of-file-fixer
+        # Same reason as trailing-whitespace above.
+        exclude: ^doc/source/data/
       - id: check-added-large-files
       - id: check-ast
         exclude: |
@@ -345,7 +357,7 @@ repos:
         args: [--config=semgrep.yml, --error]
 
   - repo: https://github.com/errata-ai/vale
-    rev: v3.4.1
+    rev: v3.17.1
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$
