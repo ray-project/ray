@@ -154,7 +154,11 @@ async def _capture_command(cmd: List[str]) -> Tuple[int, str, str]:
         process.kill()
         await process.wait()
         raise
-    return process.returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
+    return (
+        process.returncode,
+        stdout.decode("utf-8", errors="replace"),
+        stderr.decode("utf-8", errors="replace"),
+    )
 
 
 async def _remove_container(container_name: str) -> None:
@@ -590,7 +594,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             ) as manifest_file:
                 size_bytes = json.load(manifest_file).get("size_bytes")
             return size_bytes if isinstance(size_bytes, int) else None
-        except (OSError, ValueError):
+        except (OSError, ValueError, TypeError, AttributeError):
             return None
 
     @staticmethod
@@ -603,7 +607,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                 manifest.get("schema_version") == _CACHE_SCHEMA_VERSION
                 and manifest.get("uri") == uri
             )
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, AttributeError):
             return False
 
     @staticmethod

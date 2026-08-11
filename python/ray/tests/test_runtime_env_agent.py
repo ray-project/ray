@@ -190,6 +190,34 @@ def test_reference_table_releases_env_dereferenced_during_creation():
     assert unused_runtime_envs == []
 
 
+def test_reference_table_releases_uris_bound_before_delete():
+    unused_uris = []
+    unused_runtime_envs = []
+    reference_table = ReferenceTable(
+        lambda runtime_env: [],
+        unused_uris.extend,
+        unused_runtime_envs.append,
+    )
+    runtime_env = RuntimeEnv(image_uri="example/image:latest", pip=["package==1"])
+    serialized_env = runtime_env.serialize()
+    dynamic_uri = ("image-pip://cache-key", "image_uri")
+
+    # The delete arrives after the dynamic URI was bound but while the slow
+    # install is still running: the delete pops the binding while the URI is
+    # not yet in the cache, so the finished creation must pass the URIs it
+    # resolved to get them released.
+    reference_table.increase_reference(runtime_env, serialized_env, "raylet")
+    reference_table.add_dynamic_uris(serialized_env, [dynamic_uri])
+    reference_table.decrease_reference(runtime_env, serialized_env, "raylet")
+    unused_uris.clear()
+    unused_runtime_envs.clear()
+    reference_table.release_dynamic_uris_if_unreferenced(
+        serialized_env, "raylet", [dynamic_uri]
+    )
+    assert unused_uris == [dynamic_uri]
+    assert unused_runtime_envs == [serialized_env]
+
+
 def test_image_uri_cache_key_covers_image_python_and_requirements():
     metadata = _image_metadata_for_test()
     pip_config = {
