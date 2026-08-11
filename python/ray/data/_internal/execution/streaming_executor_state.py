@@ -176,9 +176,10 @@ class OutputBackpressureGuard:
         are rate-limited to at most one per interval per op. This is a pure
         query: the caller is responsible for calling ``notify_release_emitted``
         once the granted release actually yields output."""
-        # Evaluate first, unconditionally, so the idle-detection state inside
-        # keeps advancing (and its idle warning keeps firing) even while ``op``
-        # is being throttled. Only the release decision is gated below.
+        # Evaluate first, unconditionally so the idle-detection state advances
+        # (and its idle warning keeps firing) regardless of the throttle. The
+        # unblock it may authorize is still gated by the interval below; only the
+        # idle bookkeeping itself is not.
         if not self._evaluate_unblock_raw(op):
             return False
         if self._release_interval_s <= 0:
