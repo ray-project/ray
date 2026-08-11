@@ -88,6 +88,15 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
+        waitable = self.get_waitable()
+
+        try:
+            ray.cancel(waitable, recursive=True, force=force)
+        except ValueError:
+            # Actor tasks can't be force cancelled.
+            # If the task is an actor task, fallback to force=False.
+            ray.cancel(waitable, recursive=True, force=False)
+
         is_actor_task = not self.get_task_id().actor_id().is_nil()
 
         ray.cancel(
