@@ -44,6 +44,27 @@ class RuntimeEnvPlugin(ABC):
     def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         return []
 
+    async def resolve_uris(
+        self,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        logger: logging.Logger,
+    ) -> Optional[List[str]]:
+        """Resolve node-specific cache URIs before plugin setup.
+
+        Most plugins have URIs that can be computed on the driver and should
+        return ``None`` here. Plugins whose cache identity depends on local
+        state, such as an image digest, may return the URIs to use for setup.
+        """
+        return None
+
+    def is_worker_launch_finalizer(self) -> bool:
+        """Whether this plugin must modify the context after other plugins."""
+        return False
+
+    def set_resources_dir(self, resources_dir: str) -> None:
+        """Provide the agent's runtime resource directory to a plugin."""
+        return
+
     async def create(
         self,
         uri: Optional[str],
@@ -233,6 +254,7 @@ async def create_for_plugin_if_needed(
     uri_cache: URICache,
     context: RuntimeEnvContext,
     logger: logging.Logger = default_logger,
+    resolved_uris: Optional[List[str]] = None,
 ):
     """Set up the environment using the plugin if not already set up and cached."""
     if plugin.name not in runtime_env or runtime_env[plugin.name] is None:
@@ -240,7 +262,7 @@ async def create_for_plugin_if_needed(
 
     plugin.validate(runtime_env)
 
-    uris = plugin.get_uris(runtime_env)
+    uris = plugin.get_uris(runtime_env) if resolved_uris is None else resolved_uris
 
     if not uris:
         logger.debug(
