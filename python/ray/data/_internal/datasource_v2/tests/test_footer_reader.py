@@ -13,8 +13,8 @@ from ray.data._internal.datasource_v2.listing.footer_reader import FooterReader
 from ray.data.expressions import col
 
 
-def _write(path, table, row_group_size):
-    pq.write_table(table, path, row_group_size=row_group_size)
+def _write(path, table, row_group_size, **write_kwargs):
+    pq.write_table(table, path, row_group_size=row_group_size, **write_kwargs)
     return str(path), path.stat().st_size
 
 
@@ -27,6 +27,50 @@ def four_row_groups(tmp_path):
 
 def _reader(**kwargs):
     return FooterReader(filesystem=LocalFileSystem(), io_concurrency=2, **kwargs)
+
+
+def _has_filter_nulls(reader, metadata, rg_idx=0):
+    """Run the null guard the way ``_read_and_chunk`` does.
+
+    The predicate's leaf columns are resolved once per file and handed to every
+    row group, so tests go through the same two steps.
+    """
+    filter_leaves = reader._locate_filter_columns(metadata.row_group(0))
+    return reader._has_filter_nulls(metadata, rg_idx, filter_leaves)
+
+
+class _FakeStatistics:
+    def __init__(self, has_null_count, null_count):
+        self.has_null_count = has_null_count
+        self.null_count = null_count
+
+
+class _FakeColumn:
+    def __init__(self, path_in_schema, statistics):
+        self.path_in_schema = path_in_schema
+        self.statistics = statistics
+
+
+class _FakeMetadata:
+    """Enough of ``FileMetaData`` for ``_has_filter_nulls``: one row group.
+
+    Statistics states that no PyArrow writer emits -- notably a ``Statistics``
+    with ``has_null_count`` false -- are reachable in files written by other
+    Parquet implementations, so they are faked rather than written.
+    """
+
+    def __init__(self, *columns):
+        self._columns = columns
+
+    def row_group(self, rg_idx):
+        return self
+
+    @property
+    def num_columns(self):
+        return len(self._columns)
+
+    def column(self, j):
+        return self._columns[j]
 
 
 class TestReadAndChunk:
@@ -70,19 +114,18 @@ class TestReadAndChunk:
 
         assert chunks.row_groups == ()
 
-    def test_projection_shrinks_accounted_size(self, four_row_groups):
+    def test_projection_accounts_only_the_projected_columns(self, four_row_groups):
         path, size = four_row_groups
-
         full = _reader()._read_and_chunk(path, size)
-        projected = _reader(projected_cols=["id"])._read_and_chunk(path, size)
+        ids = _reader(projected_cols=["id"])._read_and_chunk(path, size)
+        pads = _reader(projected_cols=["pad"])._read_and_chunk(path, size)
 
-        # The reader only fetches projected columns, so bin sizing must account
-        # for those bytes alone -- otherwise bins are sized for data never read.
-        assert sum(rg.uncompressed_size for rg in projected.row_groups) < sum(
-            rg.uncompressed_size for rg in full.row_groups
-        )
-        # Row counts are a property of the file, not the projection.
-        assert [rg.num_rows for rg in projected.row_groups] == [
+        def total(c):
+            return sum(rg.uncompressed_size for rg in c.row_groups)
+
+        assert total(ids) + total(pads) == total(full)
+        assert 0 < total(ids) < total(full)
+        assert [rg.num_rows for rg in ids.row_groups] == [
             rg.num_rows for rg in full.row_groups
         ]
 
@@ -109,14 +152,22 @@ class TestNullsAreNeverExactSurvivors:
     """
 
     @pytest.mark.parametrize(
-        "values,expected_survivors",
+        "values,survivors,expected_exact_rows",
         [
-            pytest.param([35, 40, 45, None], 3, id="one-null-rest-satisfy"),
-            pytest.param([35, None, None, None], 1, id="mostly-null"),
-            pytest.param([35, 40, 45, 50], 4, id="no-nulls-is-exact"),
+            # ``survivors`` is how many rows really pass ``id >= 30``.
+            # ``expected_exact_rows`` is how many of those the footer alone can
+            # vouch for. A row group is all or nothing here -- either its whole
+            # ``num_rows`` is an exact survivor count or the group contributes
+            # nothing -- and a null makes ``num_rows`` an overstatement, so the
+            # first two files end up vouching for no rows at all.
+            pytest.param([35, 40, 45, None], 3, 0, id="one-null-rest-satisfy"),
+            pytest.param([35, None, None, None], 1, 0, id="mostly-null"),
+            pytest.param([35, 40, 45, 50], 4, 4, id="no-nulls-is-exact"),
         ],
     )
-    def test_never_over_counts(self, tmp_path, values, expected_survivors):
+    def test_exact_counts_come_only_from_null_free_groups(
+        self, tmp_path, values, survivors, expected_exact_rows
+    ):
         path, size = _write(
             tmp_path / "n.parquet",
             pa.table({"id": pa.array(values, pa.int64())}),
@@ -125,8 +176,13 @@ class TestNullsAreNeverExactSurvivors:
 
         chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
 
-        claimed = sum(rg.num_rows for rg in chunks.row_groups if rg.fully_matched)
-        assert claimed <= expected_survivors
+        # Measured rather than restated: this guard exists because a null row
+        # passes neither the filter nor its negation, so pin what the filter
+        # actually returns instead of trusting the number above.
+        assert pq.read_table(path, filters=[("id", ">=", 30)]).num_rows == survivors
+
+        exact_rows = sum(rg.num_rows for rg in chunks.row_groups if rg.fully_matched)
+        assert exact_rows == expected_exact_rows
 
     def test_null_free_group_is_still_exact(self, tmp_path):
         """The guard must not cost us the exact counts we legitimately have."""
@@ -151,14 +207,68 @@ class TestNullsAreNeverExactSurvivors:
         right and this case silently wrong: the guard finds no matching leaf,
         concludes "no nulls", and the group is marked fully matched.
         """
-        path, size = _write(
+        path, _ = _write(
             tmp_path / "dotted.parquet",
             pa.table({column: pa.array([35, 40, 45, None], pa.int64())}),
             row_group_size=4,
         )
         reader = _reader(filter_expr=col(column) >= 30)
 
-        assert reader._has_filter_nulls(pq.ParquetFile(path).metadata, 0)
+        assert _has_filter_nulls(reader, pq.ParquetFile(path).metadata)
+
+    def test_file_without_statistics_fails_closed(self, tmp_path):
+        """No statistics at all means nothing was verified, so assume nulls.
+
+        The data here is null-free; the point is that the footer does not say
+        so, and inferring "no nulls" from silence is what over-counts.
+        """
+        path, size = _write(
+            tmp_path / "nostats.parquet",
+            pa.table({"id": pa.array([35, 40, 45, 50], pa.int64())}),
+            row_group_size=4,
+            write_statistics=False,
+        )
+        reader = _reader(filter_expr=col("id") >= 30)
+
+        assert _has_filter_nulls(reader, pq.ParquetFile(path).metadata)
+        assert not any(
+            rg.fully_matched for rg in reader._read_and_chunk(path, size).row_groups
+        )
+
+    @pytest.mark.parametrize(
+        "statistics,expected",
+        [
+            pytest.param(None, True, id="no-statistics"),
+            pytest.param(
+                _FakeStatistics(has_null_count=False, null_count=0),
+                True,
+                id="null-count-absent",
+            ),
+            pytest.param(
+                _FakeStatistics(has_null_count=True, null_count=1),
+                True,
+                id="null-count-positive",
+            ),
+            pytest.param(
+                _FakeStatistics(has_null_count=True, null_count=0),
+                False,
+                id="null-count-zero",
+            ),
+        ],
+    )
+    def test_only_a_written_zero_null_count_counts_as_null_free(
+        self, statistics, expected
+    ):
+        """A null count is only trustworthy when the writer actually wrote one.
+
+        ``null_count`` reads as ``0`` on statistics that never recorded it, so
+        the value is meaningless unless ``has_null_count`` is set.
+        """
+        reader = _reader(filter_expr=col("id") >= 30)
+
+        metadata = _FakeMetadata(_FakeColumn("id", statistics))
+
+        assert _has_filter_nulls(reader, metadata) is expected
 
     def test_unlocatable_predicate_column_fails_closed(self, tmp_path):
         """Not finding a predicate column means unverified, not null-free."""
@@ -170,7 +280,7 @@ class TestNullsAreNeverExactSurvivors:
         reader = _reader(filter_expr=col("id") >= 30)
         reader.filter_columns = {"id", "not_in_this_file"}
 
-        assert reader._has_filter_nulls(pq.ParquetFile(path).metadata, 0)
+        assert _has_filter_nulls(reader, pq.ParquetFile(path).metadata)
 
     def test_survives_a_sharper_statistics_pruner(self, tmp_path):
         """Correctness must not rest on PyArrow declining to prune.
@@ -245,6 +355,7 @@ class TestProjectedLeafIndices:
 
         indices = _reader(projected_cols=["outer"])._projected_leaf_indices(row_group)
 
+        assert indices is not None
         paths = [row_group.column(j).path_in_schema for j in indices]
         assert paths == ["outer.a", "outer.b"]
 
@@ -266,9 +377,12 @@ class TestReadFootersBatching:
         self, three_files, result_batch_size, expected_batch_sizes
     ):
         # ``@ray.method`` only tags the function, so it stays directly callable
-        # as a generator -- no actor needed.
+        # as a generator -- no actor needed. Pyrefly still types it as a remote
+        # method shell, which is not callable.
         batches = list(
-            _reader().read_footers(three_files, result_batch_size=result_batch_size)
+            _reader().read_footers(  # pyrefly: ignore[not-callable]
+                three_files, result_batch_size=result_batch_size
+            )
         )
 
         assert [len(b) for b in batches] == expected_batch_sizes
@@ -277,6 +391,7 @@ class TestReadFootersBatching:
         assert sorted(paths) == sorted(p for p, _ in three_files)
 
     def test_empty_input_yields_nothing(self):
+        # pyrefly: ignore[not-callable]
         assert list(_reader().read_footers([], result_batch_size=1)) == []
 
 

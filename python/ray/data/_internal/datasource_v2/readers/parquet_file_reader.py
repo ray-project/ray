@@ -17,6 +17,7 @@ from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils impor
     _fragments_from_chunk_metadata,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.listing.footer_reader import _leaf_matches
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -91,15 +92,12 @@ def _estimate_batch_size_from_metadata(
         return None
 
     if columns is not None:
-        projected_columns = tuple(columns)
+        projected_columns = set(columns)
         target_column_indices = []
         for col_idx in range(row_group_meta.num_columns):
             leaf_path = row_group_meta.column(col_idx).path_in_schema
             # Account for nested columns
-            if any(
-                leaf_path == col_name or leaf_path.startswith(f"{col_name}.")
-                for col_name in projected_columns
-            ):
+            if _leaf_matches(leaf_path, projected_columns):
                 target_column_indices.append(col_idx)
         row_group_uncompressed_size = sum(
             row_group_meta.column(col_idx).total_uncompressed_size
