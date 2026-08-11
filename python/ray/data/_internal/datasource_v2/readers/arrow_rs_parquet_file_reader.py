@@ -118,8 +118,9 @@ from typing_extensions import override
 
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.native_metadata import (
-    read_native_metadata as _read_native_metadata_via_crate,
+    connect_native_s3 as _connect_native_s3,
     s3_config as _s3_config,
+    split_s3_path as _split_s3_path,
 )
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
@@ -235,8 +236,8 @@ _ARROW_RS_DECODE_BUDGET_BYTES = env_integer(
 # collapse the batch to a handful of rows and starve throughput.
 _ARROW_RS_MIN_DECODE_BATCH_ROWS = 2048
 
-# Was ``RAY_DATA_READ_FILES_NUM_THREADS`` set explicitly? This reader defaults the
-# fragment pool to 1 (see ``_num_fragment_read_threads``), but an explicit value
+# Was ``RAY_DATA_READ_FILES_NUM_THREADS`` set explicitly? This reader bounds the
+# fragment pool at 4 (see ``_num_fragment_read_threads``), but an explicit value
 # must still win — and ``env_integer`` cannot distinguish "4 because the user asked
 # for 4" from "4 because that is the fallback". Read once at import so that mutating
 # the environment after import has no effect, matching how the base reader's own
@@ -732,6 +733,13 @@ class _NativeParquetFragment(NamedTuple):
     path: str
     row_groups: Optional[List[int]]
     alignment: Optional[_ColumnAlignment] = None
+    # The crate's per-file ``NativeParquetFile`` handle (TODO 1r): the parsed
+    # footer + (for S3) the task's shared client, opened once at plan time.
+    # Decode goes through ``handle.read_row_groups`` so it never re-fetches the
+    # footer or rebuilds an HTTP client. ``None`` only in tests that build
+    # fragments by hand; the decode then falls back to the per-call entry
+    # points. Never serialized — fragments live and die inside one read task.
+    handle: Optional[Any] = None
 
 
 class _NativeCountFragment(NamedTuple):
@@ -758,54 +766,39 @@ class ArrowRsParquetFileReader(ParquetFileReader):
 
     @override
     def _num_fragment_read_threads(self, num_fragments: int) -> int:
-        """One. This reader already parallelises *inside* a fragment.
+        """``min(4, num_fragments)`` — a *bounded* fragment pool, against the
+        base path's one-worker-per-fragment *unbounded* pool.
 
-        Ray decodes fragments concurrently per read task to overlap
-        remote-filesystem latency — one worker per fragment, unbounded, on the
-        footer-chunking base path (it was ``RAY_DATA_READ_FILES_NUM_THREADS``,
-        default 4, before that env var and its cap were deleted upstream). That is
-        the right default for the PyArrow reader, whose per-fragment decode gives a
-        task no parallelism of its own. The arrow-rs path already overlaps fetch
-        with decode inside a single fragment — via the byte-budgeted prefetch loop
-        on S3, and ``k`` row-range workers on a lone big row group — so the pool
-        adds no throughput and multiplies the working set by the number of
-        fragments it holds in flight.
+        Two forces set this number. Down: the arrow-rs path already overlaps
+        fetch with decode inside a single fragment (the byte-budgeted prefetch
+        loop on S3, ``k`` row-range workers on a lone big row group), and every
+        additional in-flight fragment adds its own retention to the task's
+        working set — unbounded threads multiply the peak by the bin size. Up:
+        on the #64985 base a fragment is typically a multi-file *bin*, and a
+        single worker serialises the per-file setup latency (footer fetch +
+        first-byte) across the whole bin.
 
-        Measured 2026-08-07 (arrow_rs_docs/regression_testing.md §8.6, §8.9.4),
-        per-task USS at threads=1 vs threads=4:
+        Measured (findings K6, K10 in ``arrow_rs_docs/findings.md``):
 
-            transport   thr=1    thr=4    saved   wall cost
-            local        213 MiB  309 MiB   96 MiB    0.95x
-            s3           837 MiB  880 MiB   44 MiB    0.98x
+        - K6 (2026-08-07, old row-group-fragment base): threads=1 vs 4 saved
+          96 MiB local / 44 MiB S3 per task at 0.95-0.98x wall — on that base
+          serial was free, so the default was 1.
+        - K10 (2026-08-11, GE1 on the #64985 multi-file-bin base): threads=4
+          vs 1 cuts read-op time 1.6-3.3x on bin shapes at flat-to-+22% memory
+          — on this base serial is *not* free, so the default is a small pool.
 
-        Serial is free on time — 0.95-1.02x across every read-task size tried,
-        including tasks holding 49 fragments — so this is not a memory/throughput
-        trade. The PyArrow arm is the control and moves the other way (it *gains*
-        18 MiB from serialising on S3), which is what establishes that the cost is
-        the crate's per-in-flight-fragment retention rather than Ray's queueing.
+        4 matches the base path's pre-#64985 default and K10's measured point;
+        capping at ``num_fragments`` keeps a 1-fragment task on the sequential
+        branch (``_dispatch_fragment_reads`` takes it on ``num_workers <= 1``
+        and never constructs ``make_async_gen``), where the crate alone owns
+        parallelism — the lone-big-row-group case K6 tuned for.
 
-        Note this returns a value that changes the code *path*, not just the worker
-        count: ``_dispatch_fragment_reads`` takes the sequential branch on
-        ``num_workers <= 1`` and never constructs ``make_async_gen``. That is also
-        why the saving is not linear in threads — most of the 96 MiB arrives when
-        going from one worker to two, because the second worker buys a concurrent
-        decode and the whole queue apparatus at once.
-
-        An explicit ``RAY_DATA_READ_FILES_NUM_THREADS`` still wins: a user who set
-        it meant it, and the benchmark harness sweeps it.
-
-        **The comparison basis moved and this number has not been re-measured.**
-        The table above is 1 against 4. The base is now one worker per fragment,
-        *unbounded*, so on a bin holding many fragments the gap this override closes
-        is larger than 96 MiB and its wall-time cost is no longer bounded by the
-        4-thread result. Re-measure before treating 1 as settled — the direction is
-        very likely still right (the mechanism is per-in-flight-fragment retention,
-        which unbounded threads make worse, not better) but the magnitude is unknown.
-        Tracked as TODO 1t.
+        An explicit ``RAY_DATA_READ_FILES_NUM_THREADS`` still wins: a user who
+        set it meant it, and the benchmark harness sweeps it.
         """
         if _READ_FILES_NUM_THREADS_IS_EXPLICIT:
             return _READ_FILES_NUM_THREADS_EXPLICIT_VALUE
-        return 1
+        return max(1, min(4, num_fragments))
 
     @override
     def _resolve_batch_size(
@@ -968,7 +961,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         metadata that arrow-rs's IPC verifier rejects. Used only to recover the
         Arrow *logical* schema — including reconstructed extension types like
         Ray's cloudpickle-serialized tensor type — when the crate had to skip the
-        embedded arrow schema (:meth:`_read_native_metadata`). Footer-only (a few
+        embedded arrow schema (:meth:`_open_native_file`). Footer-only (a few
         KB); ``None`` on failure so the caller falls the file back to pyarrow."""
         import pyarrow.parquet as pq
 
@@ -978,31 +971,56 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             logger.debug("pyarrow footer schema read failed for %s: %s", path, e)
             return None
 
-    def _read_native_metadata(
-        self, path: str
-    ) -> Optional[Tuple[pa.Schema, List[int], List[str], Optional[pa.Schema]]]:
-        """Read one file's footer via the crate: ``(arrow schema, per-row-group
-        row counts, int96 root columns, extension-target schema)``, or ``None``
-        if the native footer read fails (caller then falls the whole split back
-        to pyarrow). Does *not* swallow a missing extension —
-        :meth:`_import_extension` raises that loudly. The int96 list lets
-        :meth:`_plan_column_alignment` realign the crate's decoded unit for those
-        columns to what PyArrow produces.
+    def _open_native_file(
+        self, path: str, s3_stores: Dict[str, Any]
+    ) -> Optional[Tuple[Any, pa.Schema, List[int], List[str], Optional[pa.Schema]]]:
+        """Open one file through the crate's per-file handle (TODO 1r):
+        ``(handle, arrow schema, per-row-group row counts, int96 root columns,
+        extension-target schema)``, or ``None`` if the native footer read fails
+        (caller then falls the whole split back to pyarrow). Does *not* swallow
+        a missing extension — :meth:`_import_extension` raises that loudly.
 
-        The 4th element is a per-file *target* schema, non-``None`` only when the
-        crate reports it had to skip the embedded arrow schema (non-UTF8 field
-        metadata, e.g. Ray's cloudpickle tensor type): then the crate decodes the
-        parquet *storage* types, and this pyarrow-read footer schema carries the
-        reconstructed extension types the base path would produce, so
-        :meth:`_plan_column_alignment` can cast storage → extension per file."""
+        The handle holds the parsed footer and (for S3) the task's shared
+        client, so the footer is fetched exactly once per file and the decode
+        call never rebuilds an HTTP client — the fix for the per-file S3 setup
+        cost on multi-file bins (findings T10). ``s3_stores`` is the caller's
+        per-bucket client cache, scoped to this one planned read so it can
+        never go stale. For S3 the page index is fetched at open (the decode's
+        row windows need it — a file that later falls back to pyarrow wastes
+        one range GET, which is cheaper than the footer re-fetch every native
+        file used to pay); locally it follows the same rule as the per-call
+        path: only a possible K-split (``k > 1``) needs it.
+
+        The int96 list lets :meth:`_plan_column_alignment` realign the crate's
+        decoded unit for those columns to what PyArrow produces. The last
+        element is a per-file *target* schema, non-``None`` only when the crate
+        reports it had to skip the embedded arrow schema (non-UTF8 field
+        metadata, e.g. Ray's cloudpickle tensor type): then the crate decodes
+        the parquet *storage* types, and this pyarrow-read footer schema
+        carries the reconstructed extension types the base path would produce,
+        so :meth:`_plan_column_alignment` can cast storage → extension per
+        file."""
         # Surfaces a missing extension loudly (import inside the crate call);
         # any *footer-read* failure below becomes a whole-split pyarrow fallback.
-        self._import_extension()
+        ray_data_arrow_rs = self._import_extension()
+
+        from pyarrow.fs import S3FileSystem
 
         try:
-            md = _read_native_metadata_via_crate(path, self._filesystem)
+            if isinstance(self._filesystem, S3FileSystem):
+                bucket, key = _split_s3_path(path)
+                store = s3_stores.get(bucket)
+                if store is None:
+                    store = _connect_native_s3(bucket, self._filesystem)
+                    s3_stores[bucket] = store
+                handle = store.open_file(key, page_index=True)
+            else:
+                handle = ray_data_arrow_rs.open_parquet_file(
+                    path, page_index=self._tuning.k > 1
+                )
+            md = handle.metadata()
         except Exception as e:  # noqa: BLE001 - any footer failure => fallback
-            logger.debug("arrow-rs native metadata read failed for %s: %s", path, e)
+            logger.debug("arrow-rs native file open failed for %s: %s", path, e)
             return None
 
         target_override: Optional[pa.Schema] = None
@@ -1015,6 +1033,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             if target_override is None:
                 return None
         return (
+            handle,
             pa.schema(md),
             list(md.row_group_num_rows),
             list(md.int96_columns),
@@ -1043,14 +1062,21 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         # raise (parity-of-error), before any native work happens.
         self._verify_footer_limits(unique_paths)
 
+        # One footer read per file, through a per-file handle that the decode
+        # step reuses; S3 files additionally share one client per bucket for
+        # the whole planned read (``s3_stores`` lives exactly as long as this
+        # plan's fragments). See :meth:`_open_native_file` / findings T10.
+        s3_stores: Dict[str, Any] = {}
+        handle_by_path: Dict[str, Any] = {}
         native_md: Dict[
             str, Tuple[pa.Schema, List[int], List[str], Optional[pa.Schema]]
         ] = {}
         for path in unique_paths:
-            md = self._read_native_metadata(path)
-            if md is None:
+            opened = self._open_native_file(path, s3_stores)
+            if opened is None:
                 return None  # whole-split pyarrow fallback
-            native_md[path] = md
+            handle_by_path[path] = opened[0]
+            native_md[path] = opened[1:]
 
         # Column split, mirroring the base reader's ``dataset.schema.names``:
         # with a pinned unified schema, ``pds.dataset(schema=...)`` reports
@@ -1153,6 +1179,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                         chunk_metadata,
                         native_md[path][1],
                         alignment_by_path[path],
+                        handle_by_path[path],
                         per_row_group_offsets=self._include_row_hash,
                     )
                 )
@@ -1177,6 +1204,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         chunk_metadata: Optional[dict],
         row_group_num_rows: List[int],
         alignment: Optional[_ColumnAlignment] = None,
+        handle: Optional[Any] = None,
         *,
         per_row_group_offsets: bool = False,
     ) -> List[Tuple[_NativeParquetFragment, int]]:
@@ -1207,7 +1235,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         fragment so it survives the threaded fragment dispatch.
         """
         if chunk_metadata is None:
-            return [(_NativeParquetFragment(path, None, alignment), 0)]
+            return [(_NativeParquetFragment(path, None, alignment, handle), 0)]
 
         # The bin names the exact physical row groups for this file: predicate
         # pruning and packing already happened upstream in ``ListFiles``, so there
@@ -1218,14 +1246,16 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             return []
 
         if not per_row_group_offsets:
-            return [(_NativeParquetFragment(path, row_group_ids, alignment), 0)]
+            return [(_NativeParquetFragment(path, row_group_ids, alignment, handle), 0)]
 
         # Absolute pre-filter offset at the start of each physical row group.
+        # The per-row-group fragments share ONE handle (one parsed footer),
+        # which is exactly the case the handle exists for.
         prefix = [0] * (len(row_group_num_rows) + 1)
         for i, num_rows in enumerate(row_group_num_rows):
             prefix[i + 1] = prefix[i] + num_rows
         return [
-            (_NativeParquetFragment(path, [rg], alignment), prefix[rg])
+            (_NativeParquetFragment(path, [rg], alignment, handle), prefix[rg])
             for rg in row_group_ids
         ]
 
@@ -1687,6 +1717,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 fragment.row_groups,
                 scanner_kwargs,
                 alignment=fragment.alignment,
+                handle=fragment.handle,
             )
             return
 
@@ -1728,6 +1759,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         scanner_kwargs: dict,
         alignment: Optional[_ColumnAlignment] = None,
         expected_schema: Optional[pa.Schema] = None,
+        handle: Optional[Any] = None,
     ) -> "Iterator[pa.Table]":
         """Decode ``row_groups`` of ``path`` via the native crate and yield
         ``pa.Table`` batches, applying the file's :class:`_ColumnAlignment`
@@ -1749,8 +1781,6 @@ class ArrowRsParquetFileReader(ParquetFileReader):
 
         from pyarrow.fs import S3FileSystem
 
-        columns = scanner_kwargs.get("columns")
-        filter_expr = scanner_kwargs.get("filter")
         batch_size = scanner_kwargs.get("batch_size") or _ARROW_DEFAULT_BATCH_SIZE
         read_columns = self._resolve_read_columns_for(scanner_kwargs)
         predicate_json = self._pushdown_predicate_json
@@ -1764,14 +1794,41 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 else _ARROW_RS_DEFAULT_SPLIT_THRESHOLD_BYTES
             )
 
+        # The prefetch bucket defaults to ~4 units: one decoding + ~3 in flight
+        # keeps the (single) decoder fed across fetch:decode ratios without a
+        # second knob to tune. Units are row windows (fetch_window_mb) or column
+        # groups (column_fetch_mb), so the bucket scales with the larger
+        # unit-size knob.
+        prefetch_budget_mb = (
+            tuning.prefetch_budget_mb
+            if tuning.prefetch_budget_mb is not None
+            else 4 * max(tuning.fetch_window_mb, tuning.column_fetch_mb)
+        )
+
+        if handle is not None:
+            # Planned-path decode (TODO 1r): the footer was parsed — and for S3
+            # the client built — once at plan time; this call reuses both. The
+            # handle knows its own transport, so there is no local-vs-S3 branch.
+            reader = handle.read_row_groups(
+                row_groups=row_groups,
+                columns=read_columns,
+                batch_size=batch_size,
+                decode_budget_bytes=tuning.decode_budget_bytes,
+                k=tuning.k,
+                split_threshold_bytes=split_threshold,
+                predicate_json=predicate_json,
+                fetch_window_mb=tuning.fetch_window_mb,
+                column_fetch_mb=tuning.column_fetch_mb,
+                prefetch_budget_mb=prefetch_budget_mb,
+            )
+            yield from self._yield_native_batches(
+                reader, scanner_kwargs, alignment, expected_schema
+            )
+            return
+
         fs = self._filesystem
         if isinstance(fs, S3FileSystem):
-            # pyarrow filesystem paths are normally scheme-less ("bucket/key"),
-            # but strip a leading "s3://" defensively so we never split it into
-            # a bogus "s3:" bucket.
-            if path.startswith("s3://"):
-                path = path[len("s3://") :]
-            bucket, _, key = path.partition("/")
+            bucket, key = _split_s3_path(path)
             cfg = _s3_config(fs)
             reader = ray_data_arrow_rs.read_row_groups_s3(
                 bucket,
@@ -1793,16 +1850,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 split_threshold_bytes=split_threshold,
                 predicate_json=predicate_json,
                 column_fetch_mb=tuning.column_fetch_mb,
-                # The prefetch bucket defaults to ~4 units: one decoding + ~3 in
-                # flight keeps the (single) decoder fed across fetch:decode
-                # ratios without a second knob to tune. Units are row windows
-                # (fetch_window_mb) or column groups (column_fetch_mb), so the
-                # bucket scales with the larger unit-size knob.
-                prefetch_budget_mb=(
-                    tuning.prefetch_budget_mb
-                    if tuning.prefetch_budget_mb is not None
-                    else 4 * max(tuning.fetch_window_mb, tuning.column_fetch_mb)
-                ),
+                prefetch_budget_mb=prefetch_budget_mb,
             )
         else:
             reader = ray_data_arrow_rs.read_row_groups(
@@ -1815,6 +1863,22 @@ class ArrowRsParquetFileReader(ParquetFileReader):
                 split_threshold,
                 predicate_json,
             )
+
+        yield from self._yield_native_batches(
+            reader, scanner_kwargs, alignment, expected_schema
+        )
+
+    def _yield_native_batches(
+        self,
+        reader: Any,
+        scanner_kwargs: dict,
+        alignment: Optional[_ColumnAlignment],
+        expected_schema: Optional[pa.Schema],
+    ) -> "Iterator[pa.Table]":
+        """Consume a crate stream and yield aligned, filtered ``pa.Table``
+        batches. Shared by the handle path and the per-call entry points."""
+        columns = scanner_kwargs.get("columns")
+        filter_expr = scanner_kwargs.get("filter")
 
         record_batch_reader = pa.RecordBatchReader.from_stream(reader)
 

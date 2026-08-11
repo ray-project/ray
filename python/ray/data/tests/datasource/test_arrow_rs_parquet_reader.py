@@ -221,12 +221,58 @@ def _make_manifest(paths, sizes, chunk_metadatas):
     return FileManifest.construct_manifest(paths, sizes, chunk_metadatas)
 
 
+class _HandleProxy:
+    """Wraps a crate ``NativeParquetFile`` handle so tests can count decode
+    calls — pyo3 methods can't be monkeypatched, but the reader only sees the
+    object ``open_parquet_file`` / ``open_file`` returned, so a forwarding
+    proxy is observationally identical."""
+
+    def __init__(self, handle, counters, on_decode=None):
+        self._handle = handle
+        self._counters = counters
+        self._on_decode = on_decode
+
+    def read_row_groups(self, *a, **k):
+        self._counters["decode"] += 1
+        self._counters["decode_calls"].append((a, k))
+        if self._on_decode is not None:
+            self._on_decode(self._counters)
+        return self._handle.read_row_groups(*a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self._handle, name)
+
+
+def _spy_native_decode(monkeypatch, on_decode=None):
+    """Count planned-path native activity on local files: ``open`` = per-file
+    handle opens (footer parses), ``decode`` = ``read_row_groups`` calls on
+    those handles. Since the per-file handle API (TODO 1r) this — not the
+    module-level ``read_row_groups`` — is how a planned read decodes.
+    ``on_decode(counters)`` runs before each decode, so tests can inject
+    failures (raise) at exactly the point the crate would start reading.
+    ``decode_calls`` holds each decode's ``(args, kwargs)`` so tests can
+    assert which tuning knobs reached the crate."""
+    counters = {"open": 0, "decode": 0, "decode_calls": []}
+    orig_open = ray_data_arrow_rs.open_parquet_file
+
+    def spy_open(*a, **k):
+        counters["open"] += 1
+        return _HandleProxy(orig_open(*a, **k), counters, on_decode)
+
+    monkeypatch.setattr(ray_data_arrow_rs, "open_parquet_file", spy_open)
+    return counters
+
+
 def test_native_read_is_pyarrow_free(tmp_path, monkeypatch):
     """The whole point of the ``read()`` rewrite: for a file the native reader
     supports, PyArrow must *never open it*. The footer, row-group layout, and
-    decode all come from the crate (``read_metadata`` + ``read_row_groups``);
-    ``pyarrow.dataset.dataset`` — the only way the base reader opens a Parquet
-    file — must not be called at all.
+    decode all come from the crate — since the per-file handle API (TODO 1r),
+    via ``open_parquet_file`` (one footer parse per file) whose handle then
+    serves both ``metadata()`` and ``read_row_groups()``; the old per-call
+    entry points (``read_metadata`` / ``read_row_groups``) must NOT run on a
+    planned read, or the footer is being parsed twice. ``pyarrow.dataset.dataset``
+    — the only way the base reader opens a Parquet file — must not be called
+    at all.
 
     We drive ``reader.read(manifest)`` directly (not through
     ``ray.data.read_parquet``) so the assertion is scoped to the *read* stage:
@@ -256,9 +302,10 @@ def test_native_read_is_pyarrow_free(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pds, "dataset", spy_dataset)
 
-    # Spy: the native crate must actually run (metadata footer read + decode),
-    # so a "0 pyarrow calls" result can't be a silent no-op.
-    native_calls = {"read_metadata": 0, "read_row_groups": 0}
+    # Spy: the native crate must actually run (one handle open per file), so a
+    # "0 pyarrow calls" result can't be a silent no-op — and the per-call entry
+    # points must stay cold (each would re-parse the footer the handle holds).
+    native_calls = {"open_parquet_file": 0, "read_metadata": 0, "read_row_groups": 0}
     for name in native_calls:
         orig = getattr(ray_data_arrow_rs, name)
 
@@ -281,8 +328,17 @@ def test_native_read_is_pyarrow_free(tmp_path, monkeypatch):
         "pyarrow.dataset.dataset was called during a supported native read "
         "(pyarrow opened the file — the read is not pyarrow-free)"
     )
-    assert native_calls["read_metadata"] > 0, "native footer read never ran"
-    assert native_calls["read_row_groups"] > 0, "native decode never ran"
+    assert native_calls["open_parquet_file"] == 1, (
+        "expected exactly one native handle open for the one-file read, got "
+        f"{native_calls['open_parquet_file']}"
+    )
+    assert native_calls["read_metadata"] == 0, (
+        "per-call footer entry point ran on a planned read — the footer was "
+        "parsed twice instead of reused from the handle"
+    )
+    assert (
+        native_calls["read_row_groups"] == 0
+    ), "per-call decode entry point ran on a planned read instead of the handle"
     assert got.sort_by("id").equals(table.sort_by("id"))
 
 
@@ -328,14 +384,7 @@ def test_native_read_rejects_pickle_object_columns(tmp_path, monkeypatch):
     # Spy: the raise must come from the NATIVE path — if the file fell back,
     # the pyarrow reader's own guard would fire and this test would prove
     # nothing about the native one.
-    native_calls = {"n": 0}
-    orig = ray_data_arrow_rs.read_row_groups
-
-    def spy(*a, **k):
-        native_calls["n"] += 1
-        return orig(*a, **k)
-
-    monkeypatch.setattr(ray_data_arrow_rs, "read_row_groups", spy)
+    native_calls = _spy_native_decode(monkeypatch)
 
     reader = ArrowRsParquetFileReader(
         filesystem=LocalFileSystem(), target_block_size=128 * 1024 * 1024
@@ -344,7 +393,7 @@ def test_native_read_rejects_pickle_object_columns(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="arrow_pickled_object"):
         pa.concat_tables(list(reader.read(manifest)))
 
-    assert native_calls["n"] > 0, "native decode never ran (pyarrow fallback?)"
+    assert native_calls["decode"] > 0, "native decode never ran (pyarrow fallback?)"
     assert not marker.exists(), "pickle.load executed attacker code"
 
 
@@ -432,14 +481,7 @@ def test_coerce_int96_kwarg_routes_int96_file_to_fallback(tmp_path, monkeypatch)
     path = tmp_path / "int96.parquet"
     _write_int96_file(path)
 
-    native_calls = {"n": 0}
-    orig = ray_data_arrow_rs.read_row_groups
-
-    def spy(*a, **k):
-        native_calls["n"] += 1
-        return orig(*a, **k)
-
-    monkeypatch.setattr(ray_data_arrow_rs, "read_row_groups", spy)
+    native_calls = _spy_native_decode(monkeypatch)
 
     def run(parquet_format_kwargs):
         reader = ArrowRsParquetFileReader(
@@ -450,14 +492,14 @@ def test_coerce_int96_kwarg_routes_int96_file_to_fallback(tmp_path, monkeypatch)
         manifest = _make_manifest([str(path)], [os.path.getsize(path)], [None])
         return pa.concat_tables(list(reader.read(manifest)))
 
-    native_calls["n"] = 0
+    native_calls["decode"] = 0
     with_kwarg = run({"coerce_int96_timestamp_unit": "ms"})
-    assert native_calls["n"] == 0, "int96 file went native despite the kwarg"
+    assert native_calls["decode"] == 0, "int96 file went native despite the kwarg"
     assert with_kwarg.schema.field("ts").type == pa.timestamp("ms")
 
-    native_calls["n"] = 0
+    native_calls["decode"] = 0
     without_kwarg = run(None)
-    assert native_calls["n"] > 0, "int96 file without the kwarg should stay native"
+    assert native_calls["decode"] > 0, "int96 file without the kwarg should stay native"
     assert without_kwarg.schema.field("ts").type == pa.timestamp("ns")
 
 
@@ -705,19 +747,14 @@ def test_empty_projection_counts_natively_with_zero_decode(tmp_path, monkeypatch
     pq.write_table(table, str(path), write_page_index=True)
     manifest = _make_manifest([str(path)], [os.path.getsize(path)], [None])
 
-    calls = {"decode": 0, "pds": 0}
-    orig_decode = ray_data_arrow_rs.read_row_groups
+    calls = _spy_native_decode(monkeypatch)
+    pds_calls = {"pds": 0}
     orig_dataset = pds.dataset
 
-    def decode_spy(*a, **k):
-        calls["decode"] += 1
-        return orig_decode(*a, **k)
-
     def dataset_spy(*a, **k):
-        calls["pds"] += 1
+        pds_calls["pds"] += 1
         return orig_dataset(*a, **k)
 
-    monkeypatch.setattr(ray_data_arrow_rs, "read_row_groups", decode_spy)
     monkeypatch.setattr(pds, "dataset", dataset_spy)
 
     reader = ArrowRsParquetFileReader(
@@ -732,7 +769,7 @@ def test_empty_projection_counts_natively_with_zero_decode(tmp_path, monkeypatch
     # The whole answer came from the footer: nothing was decoded, and pyarrow
     # never opened the file.
     assert calls["decode"] == 0
-    assert calls["pds"] == 0
+    assert pds_calls["pds"] == 0
 
 
 def test_native_fragment_read_retries_transient_error(tmp_path, monkeypatch):
@@ -740,9 +777,10 @@ def test_native_fragment_read_retries_transient_error(tmp_path, monkeypatch):
     recovered exactly like the PyArrow path — the native ``_NativeParquetFragment``
     flows through the same ``iterate_with_retry`` wrapper in
     ``_read_fragments_sequential``. We inject a one-shot retryable error (matching
-    a default ``retried_io_errors`` pattern) into the crate's ``read_row_groups``
-    and assert the read still returns byte-correct data and that the crate was
-    re-invoked (the retry fired)."""
+    a default ``retried_io_errors`` pattern) into the handle's decode call and
+    assert the read still returns byte-correct data and that the crate was
+    re-invoked (the retry fired) — reusing the same handle, so the retry does
+    not pay a second footer parse."""
     from pyarrow.fs import LocalFileSystem
 
     from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
@@ -754,25 +792,20 @@ def test_native_fragment_read_retries_transient_error(tmp_path, monkeypatch):
     pq.write_table(table, str(path), write_page_index=True)
     manifest = _make_manifest([str(path)], [os.path.getsize(path)], [None])
 
-    calls = {"n": 0}
-    orig = ray_data_arrow_rs.read_row_groups
-
-    def flaky_read_row_groups(*a, **k):
-        calls["n"] += 1
-        if calls["n"] == 1:
+    def fail_first_decode(counters):
+        if counters["decode"] == 1:
             # A default-retryable message (context.DEFAULT_RETRIED_IO_ERRORS), so
             # no context mutation is needed. Raised before any batch is yielded.
             raise OSError("AWS Error SLOW_DOWN: injected transient failure")
-        return orig(*a, **k)
 
-    monkeypatch.setattr(ray_data_arrow_rs, "read_row_groups", flaky_read_row_groups)
+    calls = _spy_native_decode(monkeypatch, on_decode=fail_first_decode)
 
     reader = ArrowRsParquetFileReader(
         filesystem=LocalFileSystem(), target_block_size=128 * 1024 * 1024
     )
     got = pa.concat_tables(list(reader.read(manifest)))
 
-    assert calls["n"] >= 2, "native read was not retried after a transient error"
+    assert calls["decode"] >= 2, "native read was not retried after a transient error"
     assert got.sort_by("id").equals(table.sort_by("id"))
 
 
@@ -1819,6 +1852,90 @@ def test_arrow_rs_s3_native_path_runs(s3_fs, s3_path):
     assert got.sort_by("id").equals(table.sort_by("id"))
 
 
+def test_arrow_rs_s3_planned_read_shares_one_client(s3_fs, s3_path, monkeypatch):
+    """A planned S3 read (TODO 1r) builds ONE ``object_store`` client per
+    (bucket, read task) via ``connect_s3`` and opens one handle per file
+    (one footer + page-index fetch); the per-call entry points — which rebuilt
+    the HTTP client and re-fetched the footer on *every* call (findings T10) —
+    must stay cold. In-process so the spies can observe the calls."""
+    from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
+        ArrowRsParquetFileReader,
+    )
+
+    table = _flat_table()
+    half = table.num_rows // 2
+    uri_a = _s3_write(table.slice(0, half), s3_fs, s3_path, name="a.parquet")
+    uri_b = _s3_write(table.slice(half), s3_fs, s3_path, name="b.parquet")
+
+    calls = {
+        "connect": 0,
+        "open_file": 0,
+        "read_row_groups_s3": 0,
+        "read_metadata_s3": 0,
+    }
+
+    class _StoreProxy:
+        """Counts per-file handle opens; forwards everything else — pyo3
+        methods can't be monkeypatched directly."""
+
+        def __init__(self, store):
+            self._store = store
+
+        def open_file(self, *a, **k):
+            calls["open_file"] += 1
+            return self._store.open_file(*a, **k)
+
+        def __getattr__(self, name):
+            return getattr(self._store, name)
+
+    orig_connect = ray_data_arrow_rs.connect_s3
+
+    def spy_connect(*a, **k):
+        calls["connect"] += 1
+        return _StoreProxy(orig_connect(*a, **k))
+
+    def spy_entry(name):
+        orig = getattr(ray_data_arrow_rs, name)
+
+        def spy(*a, **k):
+            calls[name] += 1
+            return orig(*a, **k)
+
+        return spy
+
+    monkeypatch.setattr(ray_data_arrow_rs, "connect_s3", spy_connect)
+    monkeypatch.setattr(
+        ray_data_arrow_rs, "read_row_groups_s3", spy_entry("read_row_groups_s3")
+    )
+    monkeypatch.setattr(
+        ray_data_arrow_rs, "read_metadata_s3", spy_entry("read_metadata_s3")
+    )
+
+    paths = [_unwrap_protocol(uri_a), _unwrap_protocol(uri_b)]
+    sizes = [s3_fs.get_file_info(p).size for p in paths]
+    manifest = _make_manifest(paths, sizes, [None, None])
+
+    reader = ArrowRsParquetFileReader(
+        filesystem=s3_fs, target_block_size=128 * 1024 * 1024
+    )
+    got = pa.concat_tables(list(reader.read(manifest)))
+
+    assert calls["connect"] == 1, (
+        f"expected ONE S3 client for a 2-file same-bucket read, got "
+        f"{calls['connect']}"
+    )
+    assert (
+        calls["open_file"] == 2
+    ), f"expected one handle (footer fetch) per file, got {calls['open_file']}"
+    assert (
+        calls["read_row_groups_s3"] == 0
+    ), "per-call S3 decode entry point ran — client/footer were rebuilt"
+    assert (
+        calls["read_metadata_s3"] == 0
+    ), "per-call S3 footer entry point ran — footer fetched twice"
+    assert got.sort_by("id").equals(table.sort_by("id"))
+
+
 def test_arrow_rs_s3_sum(s3_fs, s3_path, restore_ctx):
     """The `ds.sum()` aggregation workload (§3.3) over S3 must match PyArrow and
     ground truth — decode-heavy / output-light through the native S3 path."""
@@ -1981,8 +2098,8 @@ def _read_manifest_with_path_verdict(path, monkeypatch):
 
     In-process (not via ``ray.data.read_parquet``) so the crate/pyarrow spies
     actually observe the decode — Ray would run it in a worker where a
-    driver-side monkeypatch is invisible. ``took_native_decode`` is True iff the
-    crate's ``read_row_groups`` ran (the file took the native path); a fallback
+    driver-side monkeypatch is invisible. ``took_native_decode`` is True iff a
+    native handle decode ran (the file took the native path); a fallback
     instead opens the file via ``pyarrow.dataset.dataset``."""
     from pyarrow.fs import LocalFileSystem
 
@@ -1990,21 +2107,14 @@ def _read_manifest_with_path_verdict(path, monkeypatch):
         ArrowRsParquetFileReader,
     )
 
-    calls = {"read_row_groups": 0}
-    orig = ray_data_arrow_rs.read_row_groups
-
-    def spy(*a, **k):
-        calls["read_row_groups"] += 1
-        return orig(*a, **k)
-
-    monkeypatch.setattr(ray_data_arrow_rs, "read_row_groups", spy)
+    calls = _spy_native_decode(monkeypatch)
 
     reader = ArrowRsParquetFileReader(
         filesystem=LocalFileSystem(), target_block_size=128 * 1024 * 1024
     )
     manifest = _make_manifest([str(path)], [os.path.getsize(path)], [None])
     table = pa.concat_tables(list(reader.read(manifest))).sort_by("id")
-    return table, calls["read_row_groups"] > 0
+    return table, calls["decode"] > 0
 
 
 def test_int96_no_arrow_hint_reads_native_as_ns(tmp_path, restore_ctx, monkeypatch):
@@ -2102,14 +2212,7 @@ def _read_both_in_process(paths, monkeypatch, **reader_kwargs):
         ParquetFileReader,
     )
 
-    calls = {"decode": 0}
-    orig = ray_data_arrow_rs.read_row_groups
-
-    def spy(*a, **k):
-        calls["decode"] += 1
-        return orig(*a, **k)
-
-    monkeypatch.setattr(ray_data_arrow_rs, "read_row_groups", spy)
+    calls = _spy_native_decode(monkeypatch)
 
     paths = [str(p) for p in paths]
     manifest = _make_manifest(
@@ -2626,17 +2729,10 @@ def test_arrow_rs_tuning_kwargs_reach_crate(tmp_path, monkeypatch):
     table = _flat_table(10_000)
     pq.write_table(table, str(path), write_page_index=True, row_group_size=10_000)
 
-    # Capture the crate call args underneath the helper's own decode spy.
-    # Local signature (positional): (path, row_groups, columns, batch_size,
-    # decode_budget_bytes, k, split_threshold_bytes, predicate_json).
-    captured = []
-    orig = ray_data_arrow_rs.read_row_groups
-
-    def capture(*a, **k):
-        captured.append(a)
-        return orig(*a, **k)
-
-    monkeypatch.setattr(ray_data_arrow_rs, "read_row_groups", capture)
+    # Capture the crate call kwargs underneath the helper's own decode spy:
+    # stack a second _spy_native_decode whose proxy records each handle
+    # decode's (args, kwargs) — the planned path passes all knobs by keyword.
+    captured = _spy_native_decode(monkeypatch)
 
     rs, pa_tbl, native_decodes = _read_both_in_process(
         [path],
@@ -2649,11 +2745,11 @@ def test_arrow_rs_tuning_kwargs_reach_crate(tmp_path, monkeypatch):
     )
     assert native_decodes >= 1, "tuning kwargs must not force fallback"
     assert rs.sort_by("id").equals(pa_tbl.sort_by("id"))
-    assert captured, "crate decode call was not captured"
-    for args in captured:
-        assert args[4] == 4 * 1024 * 1024  # decode_budget_bytes
-        assert args[5] == 2  # k
-        assert args[6] == 0  # split_threshold_bytes
+    assert captured["decode_calls"], "crate decode call was not captured"
+    for _, kwargs in captured["decode_calls"]:
+        assert kwargs["decode_budget_bytes"] == 4 * 1024 * 1024
+        assert kwargs["k"] == 2
+        assert kwargs["split_threshold_bytes"] == 0
 
 
 def test_arrow_rs_tuning_kwarg_typo_raises(tmp_path):
@@ -2727,9 +2823,9 @@ def test_unified_only_column_not_dropped_natively(tmp_path, monkeypatch):
     assert rs.sort_by("id").equals(pa_tbl.sort_by("id"))
 
 
-def _dispatch_two_fragments(reader, monkeypatch):
-    """Run ``_dispatch_fragment_reads`` over two stub fragments, reporting whether
-    the concurrent path was taken.
+def _dispatch_fragments(reader, monkeypatch, n=2):
+    """Run ``_dispatch_fragment_reads`` over ``n`` stub fragments, reporting
+    whether the concurrent path was taken.
 
     Asserting on ``_num_fragment_read_threads()`` alone would be too weak: the
     value it returns changes the code *path*, because ``num_workers <= 1`` returns
@@ -2747,8 +2843,6 @@ def _dispatch_two_fragments(reader, monkeypatch):
         return orig(*a, **k)
 
     monkeypatch.setattr(fr_mod, "make_async_gen", spy)
-    # Two fragments, so min(threads, len(fragments)) cannot clamp the pool to 1
-    # for the unrelated reason that there was nothing to parallelise.
     monkeypatch.setattr(
         type(reader),
         "_iter_fragment_tables",
@@ -2759,28 +2853,27 @@ def _dispatch_two_fragments(reader, monkeypatch):
     class _Frag:
         path = "stub.parquet"
 
-    tables = list(reader._dispatch_fragment_reads([(_Frag(), 0), (_Frag(), 1)], {}))
+    tables = list(reader._dispatch_fragment_reads([(_Frag(), i) for i in range(n)], {}))
     return used["async"], tables
 
 
-def test_arrow_rs_defaults_one_fragment_thread(monkeypatch):
-    """The arrow-rs reader decodes fragments SEQUENTIALLY by default; the PyArrow
-    reader still uses the pool.
+def test_arrow_rs_defaults_bounded_fragment_pool(monkeypatch):
+    """The arrow-rs reader decodes fragments on a pool BOUNDED at 4 workers;
+    the PyArrow reader keeps the base path's unbounded one-worker-per-fragment
+    pool. A single-fragment task stays on the sequential branch, where the
+    crate alone owns parallelism.
 
-    Ray decodes fragments concurrently per read task to hide remote-filesystem
-    latency — one worker per fragment, unbounded, on the footer-chunking base path.
-    The arrow-rs path already overlaps fetch with decode inside one fragment, so the
-    pool buys no throughput and multiplies the working set: measured 2026-08-07,
-    threads=1 saved 96 MiB per task on local disk and 44 MiB on S3 at 0.95-1.02x wall
-    against the then-current 4-thread cap
-    (arrow_rs_docs/regression_testing.md §8.6, §8.9.4). The PyArrow arm is the
-    control and must be unaffected — this is a per-reader default, not a change to
-    Ray's.
+    Both bounds are measured (findings K6, K10 in arrow_rs_docs/findings.md):
+    each in-flight fragment adds its own retention to the task's working set,
+    so unbounded is wrong for this reader (K6) — but on the #64985 base a
+    fragment is a multi-file bin and one worker serialises per-file setup
+    latency across it, so threads=4 cuts read-op time 1.6-3.3x at
+    flat-to-+22% memory (K10, which re-measured and replaced K6's default
+    of 1).
 
-    The assertion on the PyArrow arm is deliberately ``>= len(fragments)`` rather
-    than a literal: the base is now unbounded, so pinning a number here would fail
-    the moment the fragment count changes and would also have hidden the regression
-    this test exists to catch (a cap leaking back onto the base path).
+    The assertion on the PyArrow arm is deliberately ``== len(fragments)``
+    at two sizes rather than a literal: the base is unbounded, and a cap
+    leaking back onto it is the regression this arm exists to catch.
     """
     from pyarrow.fs import LocalFileSystem
 
@@ -2794,23 +2887,34 @@ def test_arrow_rs_defaults_one_fragment_thread(monkeypatch):
     kwargs = dict(filesystem=LocalFileSystem(), target_block_size=128 * 1024 * 1024)
 
     rs_reader = ArrowRsParquetFileReader(**kwargs)
-    assert rs_reader._num_fragment_read_threads(2) == 1
-    used_async, tables = _dispatch_two_fragments(rs_reader, monkeypatch)
-    assert not used_async, "arrow-rs took the concurrent path; the pool is back"
-    assert len(tables) == 2, "sequential path dropped fragments"
+    # min(4, num_fragments): tracks the fragment count up to the cap.
+    assert rs_reader._num_fragment_read_threads(1) == 1
+    assert rs_reader._num_fragment_read_threads(2) == 2
+    assert rs_reader._num_fragment_read_threads(4) == 4
+    assert rs_reader._num_fragment_read_threads(64) == 4
+    used_async, tables = _dispatch_fragments(rs_reader, monkeypatch, n=2)
+    assert used_async, "arrow-rs multi-fragment dispatch lost its bounded pool"
+    assert len(tables) == 2, "concurrent path dropped fragments"
+    used_async, tables = _dispatch_fragments(rs_reader, monkeypatch, n=1)
+    assert not used_async, (
+        "a single-fragment task took the concurrent path — the sequential "
+        "branch (crate-owned parallelism, no make_async_gen) is gone"
+    )
+    assert len(tables) == 1
 
     pa_reader = ParquetFileReader(**kwargs)
     # Unbounded on the base path: one worker per fragment.
     assert pa_reader._num_fragment_read_threads(2) == 2
     assert pa_reader._num_fragment_read_threads(17) == 17
-    used_async, tables = _dispatch_two_fragments(pa_reader, monkeypatch)
+    used_async, tables = _dispatch_fragments(pa_reader, monkeypatch, n=2)
     assert used_async, "the PyArrow reader lost its fragment pool"
     assert len(tables) == 2
 
 
 def test_explicit_num_threads_env_overrides_arrow_rs_default(monkeypatch):
     """An explicitly set ``RAY_DATA_READ_FILES_NUM_THREADS`` beats the per-reader
-    default of 1 — a user who set it meant it, and the benchmark harness sweeps it.
+    ``min(4, num_fragments)`` default — a user who set it meant it, and the
+    benchmark harness sweeps it.
 
     Both the env read and the "was it explicit?" flag happen at import time, so this
     patches the two module attributes rather than ``os.environ``.

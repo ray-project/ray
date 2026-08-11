@@ -61,6 +61,15 @@
 //!                      decode_budget_bytes=2*1024*1024, fetch_window_mb=16, k=1,
 //!                      split_threshold_bytes=128*1024*1024, predicate_json=None,
 //!                      column_fetch_mb=16, prefetch_budget_mb=64)
+//!
+//! Per-file handles (TODO 1r — open once, decode many; see the "Per-file native
+//! handles" section for why):
+//!
+//!   connect_s3(bucket, region, anonymous, ...creds...) -> NativeS3Store
+//!   NativeS3Store.open_file(key, page_index=True)      -> NativeParquetFile
+//!   open_parquet_file(path, page_index=False)          -> NativeParquetFile
+//!   NativeParquetFile.metadata()                       -> ParquetFileMetadata (no I/O)
+//!   NativeParquetFile.read_row_groups(...)             -> Arrow C-stream
 
 mod predicate;
 
@@ -829,6 +838,36 @@ fn open_local_reader(
         PageIndexPolicy::Skip
     };
     let (meta, _skipped) = load_meta_local(&File::open(&path)?, policy)?;
+    build_local_reader(
+        path,
+        meta,
+        row_groups,
+        columns,
+        batch_size,
+        budget_bytes,
+        k,
+        split_threshold_bytes,
+        predicate_json,
+    )
+}
+
+/// The metadata-independent half of the local read: everything after the footer
+/// load. Shared by [`open_local_reader`] (loads the footer per call — the
+/// original API) and [`NativeParquetFile::read_row_groups`] (footer loaded once
+/// at open, reused across calls — TODO 1r). Whether the K-split can fire depends
+/// on the page-index policy the *caller* loaded `meta` under, exactly as before.
+#[allow(clippy::too_many_arguments)]
+fn build_local_reader(
+    path: String,
+    meta: ArrowReaderMetadata,
+    row_groups: Option<Vec<usize>>,
+    columns: Option<Vec<String>>,
+    batch_size: usize,
+    budget_bytes: u64,
+    k: usize,
+    split_threshold_bytes: u64,
+    predicate_json: Option<String>,
+) -> Result<Box<dyn RecordBatchReader + Send>, ParquetError> {
     let mask = projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
     let selected: Vec<usize> = match row_groups {
         Some(v) => v,
@@ -1619,35 +1658,72 @@ fn read_row_groups_s3(
     .map_err(to_py)?;
     let obj_path = ObjPath::from(key);
 
-    let rt = shared_runtime();
-
     // Load footer + page index ONCE (Optional so a window's RowSelection can skip
-    // unselected pages by byte range), and build the projected output schema up
-    // front from an empty stream (no network). Reporting the projected schema is
-    // what keeps it matching the projected batches at the FFI boundary.
-    // Blocking async footer fetch; release the GIL so sibling Python read
-    // threads (Ray's fragment pool) issue their own S3 requests in parallel.
-    let (meta, mask, schema) = py
+    // unselected pages by byte range). Blocking async footer fetch; release the
+    // GIL so sibling Python read threads (Ray's fragment pool) issue their own
+    // S3 requests in parallel.
+    let reader = py
         .allow_threads(|| {
-            rt.block_on(async {
-                let (meta, _skipped) =
-                    load_meta_s3(store.clone(), obj_path.clone(), PageIndexPolicy::Optional)
-                        .await?;
-                let mask =
-                    projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
-                let schema = ParquetRecordBatchStreamBuilder::new_with_metadata(
-                    ParquetObjectReader::new(store.clone(), obj_path.clone()),
-                    meta.clone(),
-                )
-                .with_projection(mask.clone())
-                .with_row_groups(vec![])
-                .build()?
-                .schema()
-                .clone();
-                Ok::<_, parquet::errors::ParquetError>((meta, mask, schema))
-            })
+            let (meta, _skipped) = shared_runtime().block_on(load_meta_s3(
+                store.clone(),
+                obj_path.clone(),
+                PageIndexPolicy::Optional,
+            ))?;
+            build_s3_reader(
+                store,
+                obj_path,
+                meta,
+                row_groups,
+                columns,
+                batch_size,
+                decode_budget_bytes,
+                fetch_window_mb,
+                k,
+                split_threshold_bytes,
+                predicate_json,
+                column_fetch_mb,
+                prefetch_budget_mb,
+            )
         })
         .map_err(to_py)?;
+    Ok(into_py_stream(Box::new(reader)))
+}
+
+/// The metadata-independent half of the S3 read: everything after the store
+/// construction and footer load. Shared by [`read_row_groups_s3`] (fresh client
+/// + footer per call — the original API) and
+/// [`NativeParquetFile::read_row_groups`] (client and parsed footer opened once
+/// and reused across a read task's calls — TODO 1r, the fix for the
+/// per-file S3 setup cost on multi-file bins). Builds the projected output
+/// schema up front from an empty stream (no network); reporting the projected
+/// schema is what keeps it matching the projected batches at the FFI boundary.
+#[allow(clippy::too_many_arguments)]
+fn build_s3_reader(
+    store: Arc<dyn ObjectStore>,
+    obj_path: ObjPath,
+    meta: ArrowReaderMetadata,
+    row_groups: Option<Vec<usize>>,
+    columns: Option<Vec<String>>,
+    batch_size: usize,
+    decode_budget_bytes: u64,
+    fetch_window_mb: u64,
+    k: usize,
+    split_threshold_bytes: u64,
+    predicate_json: Option<String>,
+    column_fetch_mb: u64,
+    prefetch_budget_mb: u64,
+) -> Result<S3ChannelReader, ParquetError> {
+    let rt = shared_runtime();
+    let mask = projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
+    let schema = ParquetRecordBatchStreamBuilder::new_with_metadata(
+        ParquetObjectReader::new(store.clone(), obj_path.clone()),
+        meta.clone(),
+    )
+    .with_projection(mask.clone())
+    .with_row_groups(vec![])
+    .build()?
+    .schema()
+    .clone();
 
     let selected: Vec<usize> = match row_groups {
         Some(v) => v,
@@ -1725,11 +1801,234 @@ fn read_row_groups_s3(
         ));
     }
 
-    Ok(into_py_stream(Box::new(S3ChannelReader {
+    Ok(S3ChannelReader {
         schema,
         receivers,
         cur: 0,
-    })))
+    })
+}
+
+// --------------------------------------------------------------------------- //
+// Per-file native handles (TODO 1r): open once, decode many
+// --------------------------------------------------------------------------- //
+// The original entry points above pay a fixed setup cost on EVERY call: a fresh
+// `AmazonS3Builder` client (new connection pool, no TLS session reuse) plus a
+// footer — and, for decode calls, page-index — fetch. PyArrow reads one footer
+// per file and shares one HTTP client across the whole read. On the #64985
+// planner a read task's fragment is a multi-file *bin*, so the reader makes
+// 2 calls per file (metadata at plan time, decode at read time): a 16-file S3
+// bin paid 32 client builds and 32 footer round trips, measured as a 3.5×
+// read-op loss vs PyArrow (findings T10). The handles below restore parity of
+// mechanism: `connect_s3` builds ONE client per (bucket, config) for the whole
+// task, `open_file` fetches the footer+page index ONCE per file, and
+// `read_row_groups` / `metadata` reuse both.
+//
+// Deliberately NO global/process-level cache behind these: the handle's
+// lifetime is owned by the Python caller (one read task), so there is no
+// staleness (rotated credentials, replaced objects) and no unbounded growth in
+// a long-lived reused worker.
+
+/// Where a [`NativeParquetFile`]'s bytes live. Local files re-open the path per
+/// reader (cheap, and `File` isn't shareable across the K-split threads anyway);
+/// S3 files hold the shared client.
+enum FileSource {
+    Local(String),
+    S3 {
+        store: Arc<dyn ObjectStore>,
+        path: ObjPath,
+    },
+}
+
+/// One S3 client (connection pool + credentials) for one bucket, shared across
+/// every file opened through it. Construct via [`connect_s3`].
+#[pyclass]
+struct NativeS3Store {
+    store: Arc<dyn ObjectStore>,
+}
+
+#[pymethods]
+impl NativeS3Store {
+    /// Open one object as a [`NativeParquetFile`]: fetches and parses the
+    /// footer (and, when `page_index` — the page index) exactly once, on this
+    /// store's shared client. `page_index=true` is what the S3 decode path
+    /// needs (row windows skip pages via the offset index); pass `false` for
+    /// metadata-only handles.
+    #[pyo3(signature = (key, page_index=true))]
+    fn open_file(
+        &self,
+        py: Python<'_>,
+        key: String,
+        page_index: bool,
+    ) -> PyResult<NativeParquetFile> {
+        let policy = if page_index {
+            PageIndexPolicy::Optional
+        } else {
+            PageIndexPolicy::Skip
+        };
+        let store = self.store.clone();
+        let path = ObjPath::from(key);
+        // Blocking async footer fetch; release the GIL for sibling read threads.
+        let (meta, skipped) = py
+            .allow_threads(|| {
+                shared_runtime().block_on(load_meta_s3(store.clone(), path.clone(), policy))
+            })
+            .map_err(to_py)?;
+        Ok(NativeParquetFile {
+            source: FileSource::S3 { store, path },
+            meta,
+            arrow_schema_skipped: skipped,
+        })
+    }
+}
+
+/// Build the per-bucket S3 client once. Same config contract as
+/// [`read_row_groups_s3`] (recovered from the pyarrow `S3FileSystem` on the
+/// Python side); the returned store is what every `open_file` shares.
+#[pyfunction]
+#[pyo3(signature = (bucket, region, anonymous, endpoint=None, access_key_id=None,
+                    secret_access_key=None, session_token=None, allow_http=false,
+                    virtual_hosted_style=false))]
+#[allow(clippy::too_many_arguments)]
+fn connect_s3(
+    bucket: String,
+    region: String,
+    anonymous: bool,
+    endpoint: Option<String>,
+    access_key_id: Option<String>,
+    secret_access_key: Option<String>,
+    session_token: Option<String>,
+    allow_http: bool,
+    virtual_hosted_style: bool,
+) -> PyResult<NativeS3Store> {
+    let store = build_s3_store(
+        &bucket,
+        &region,
+        anonymous,
+        endpoint,
+        access_key_id,
+        secret_access_key,
+        session_token,
+        allow_http,
+        virtual_hosted_style,
+    )
+    .map_err(to_py)?;
+    Ok(NativeS3Store { store })
+}
+
+/// Local counterpart of [`NativeS3Store::open_file`]: parse the footer once and
+/// reuse it across `metadata()` and every `read_row_groups` call. `page_index`
+/// mirrors the lean-footer-parse rule of [`open_local_reader`]: only the K-split
+/// needs it, so callers pass `k > 1`.
+#[pyfunction]
+#[pyo3(signature = (path, page_index=false))]
+fn open_parquet_file(
+    py: Python<'_>,
+    path: String,
+    page_index: bool,
+) -> PyResult<NativeParquetFile> {
+    let policy = if page_index {
+        PageIndexPolicy::Optional
+    } else {
+        PageIndexPolicy::Skip
+    };
+    // Blocking file I/O; release the GIL for sibling read threads.
+    let (meta, skipped) = py
+        .allow_threads(|| load_meta_local(&File::open(&path)?, policy))
+        .map_err(to_py)?;
+    Ok(NativeParquetFile {
+        source: FileSource::Local(path),
+        meta,
+        arrow_schema_skipped: skipped,
+    })
+}
+
+/// One opened Parquet file: the parsed footer plus (for S3) the shared client.
+/// `metadata()` is free (no I/O); `read_row_groups` skips the footer fetch the
+/// original entry points pay per call.
+#[pyclass]
+struct NativeParquetFile {
+    source: FileSource,
+    meta: ArrowReaderMetadata,
+    arrow_schema_skipped: bool,
+}
+
+#[pymethods]
+impl NativeParquetFile {
+    /// The same footer summary `read_metadata` / `read_metadata_s3` return,
+    /// built from the already-parsed footer — zero I/O.
+    fn metadata(&self) -> ParquetFileMetadata {
+        build_file_metadata(&self.meta, self.arrow_schema_skipped)
+    }
+
+    /// Decode row groups through the held footer + client. Argument semantics
+    /// are identical to `read_row_groups` / `read_row_groups_s3`; the S3-only
+    /// knobs (`fetch_window_mb`, `column_fetch_mb`, `prefetch_budget_mb`) are
+    /// inert on a local handle, so one uniform signature serves both.
+    #[pyo3(signature = (row_groups=None, columns=None, batch_size=131072,
+                        decode_budget_bytes=2*1024*1024, k=1,
+                        split_threshold_bytes=134217728, predicate_json=None,
+                        fetch_window_mb=16, column_fetch_mb=16,
+                        prefetch_budget_mb=64))]
+    #[allow(clippy::too_many_arguments)]
+    fn read_row_groups(
+        &self,
+        py: Python<'_>,
+        row_groups: Option<Vec<usize>>,
+        columns: Option<Vec<String>>,
+        batch_size: usize,
+        decode_budget_bytes: u64,
+        k: usize,
+        split_threshold_bytes: u64,
+        predicate_json: Option<String>,
+        fetch_window_mb: u64,
+        column_fetch_mb: u64,
+        prefetch_budget_mb: u64,
+    ) -> PyResult<ArrowStream> {
+        match &self.source {
+            FileSource::Local(path) => {
+                let (path, meta) = (path.clone(), self.meta.clone());
+                let reader = py
+                    .allow_threads(|| {
+                        build_local_reader(
+                            path,
+                            meta,
+                            row_groups,
+                            columns,
+                            batch_size,
+                            decode_budget_bytes,
+                            k,
+                            split_threshold_bytes,
+                            predicate_json,
+                        )
+                    })
+                    .map_err(to_py)?;
+                Ok(into_py_stream(reader))
+            }
+            FileSource::S3 { store, path } => {
+                let (store, path, meta) = (store.clone(), path.clone(), self.meta.clone());
+                let reader = py
+                    .allow_threads(|| {
+                        build_s3_reader(
+                            store,
+                            path,
+                            meta,
+                            row_groups,
+                            columns,
+                            batch_size,
+                            decode_budget_bytes,
+                            fetch_window_mb,
+                            k,
+                            split_threshold_bytes,
+                            predicate_json,
+                            column_fetch_mb,
+                            prefetch_budget_mb,
+                        )
+                    })
+                    .map_err(to_py)?;
+                Ok(into_py_stream(Box::new(reader)))
+            }
+        }
+    }
 }
 
 // --------------------------------------------------------------------------- //
@@ -1825,7 +2124,11 @@ fn ray_data_arrow_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read_metadata, m)?)?;
     m.add_function(wrap_pyfunction!(read_metadata_s3, m)?)?;
     m.add_function(wrap_pyfunction!(select_row_groups, m)?)?;
+    m.add_function(wrap_pyfunction!(connect_s3, m)?)?;
+    m.add_function(wrap_pyfunction!(open_parquet_file, m)?)?;
     m.add_class::<ParquetFileMetadata>()?;
+    m.add_class::<NativeS3Store>()?;
+    m.add_class::<NativeParquetFile>()?;
     Ok(())
 }
 

@@ -199,24 +199,61 @@ def _gb(b: Optional[float]) -> Optional[float]:
 
 
 def collect_read_op_metrics(ds) -> Dict[str, Any]:
-    """Pull the read operator's wall time / output bytes / avg-max-USS from Ray stats."""
+    """Pull the read operator's wall time / output bytes / per-task USS from
+    Ray stats.
+
+    GE1 (2026-08-11) returned ``read_avg_max_uss_gb=None`` in most cells with
+    no way to tell whether the metric was absent (no USS samples on the read
+    op) or present on a *different* summary node than the one carrying the
+    "Read" operator name. So this now (a) scans every node and records a
+    per-node ``uss_debug`` dump, (b) also reports ``max_uss_per_task`` (the
+    worst task, often the OOM-relevant number), and (c) when the read node has
+    no USS, surfaces the first other node that does as an explicitly labeled
+    ``uss_fallback_*`` pair — never silently substituted into
+    ``read_avg_max_uss_gb``, which stays the metric of record."""
     from ray.data._internal.stats import DatasetStatsSummary
 
     out: Dict[str, Any] = {}
+    debug = []
     try:
         summary = ds.get_stats_summary(detail=True)
-        for node in DatasetStatsSummary._collect_dataset_stats_summaries(summary):
+        nodes = DatasetStatsSummary._collect_dataset_stats_summaries(summary)
+        read_hit = None  # (op_summary, extra_metrics) of the first Read node
+        for node in nodes:
             extra = getattr(node, "extra_metrics", {}) or {}
-            uss = extra.get("average_max_uss_per_task")
-            for op in node.operators_stats or []:
-                if "Read" in (op.operator_name or ""):
-                    out["read_operator_name"] = op.operator_name
-                    out["read_wall_s"] = op.wall_time.sum if op.wall_time else None
-                    out["read_output_gb"] = _gb(
-                        op.output_size_bytes.sum if op.output_size_bytes else None
+            op_names = [op.operator_name or "" for op in (node.operators_stats or [])]
+            debug.append(
+                {
+                    "operators": op_names,
+                    "average_max_uss_bytes": extra.get("average_max_uss_per_task"),
+                    "max_uss_bytes": extra.get("max_uss_per_task"),
+                    "num_extra_metrics": len(extra),
+                }
+            )
+            if read_hit is None:
+                for op in node.operators_stats or []:
+                    if "Read" in (op.operator_name or ""):
+                        read_hit = (op, extra)
+                        break
+        if read_hit is not None:
+            op, extra = read_hit
+            out["read_operator_name"] = op.operator_name
+            out["read_wall_s"] = op.wall_time.sum if op.wall_time else None
+            out["read_output_gb"] = _gb(
+                op.output_size_bytes.sum if op.output_size_bytes else None
+            )
+            out["read_avg_max_uss_gb"] = _gb(extra.get("average_max_uss_per_task"))
+            out["read_max_uss_gb"] = _gb(extra.get("max_uss_per_task"))
+        if out.get("read_avg_max_uss_gb") is None:
+            for i, row in enumerate(debug):
+                if row["average_max_uss_bytes"]:
+                    out["uss_fallback_avg_gb"] = _gb(row["average_max_uss_bytes"])
+                    out["uss_fallback_max_gb"] = _gb(row["max_uss_bytes"])
+                    out["uss_fallback_source"] = (
+                        ",".join(row["operators"]) or f"node_{i}"
                     )
-                    out["read_avg_max_uss_gb"] = _gb(uss)
-                    return out
+                    break
+        out["uss_debug"] = debug
     except Exception as e:  # best-effort
         out["read_op_metrics_error"] = repr(e)
     return out

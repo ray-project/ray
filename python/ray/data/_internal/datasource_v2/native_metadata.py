@@ -77,6 +77,47 @@ def s3_config(fs: "S3FileSystem") -> dict:
     }
 
 
+def split_s3_path(path: str) -> tuple:
+    """Split a pyarrow-style S3 path into ``(bucket, key)``.
+
+    pyarrow filesystem paths are normally scheme-less (``bucket/key``), but a
+    leading ``s3://`` is stripped defensively so it can never be split into a
+    bogus ``s3:`` bucket.
+    """
+    if path.startswith("s3://"):
+        path = path[len("s3://") :]
+    bucket, _, key = path.partition("/")
+    return bucket, key
+
+
+def connect_native_s3(bucket: str, filesystem: "S3FileSystem"):
+    """Build the crate's per-bucket S3 client (``NativeS3Store``), configured
+    identically to the pyarrow ``S3FileSystem`` (see :func:`s3_config`).
+
+    This is the expensive per-call setup the original ``read_metadata_s3`` /
+    ``read_row_groups_s3`` entry points paid on *every* call (fresh HTTP client,
+    no TLS session reuse — findings T10). Callers construct one store per
+    (bucket, read task) and open every file of the task through it
+    (``store.open_file(key)``), so the client's connection pool is shared the
+    way pyarrow's own S3 client is. Deliberately not cached beyond the caller's
+    scope: credentials rotate, and a task-scoped store can never go stale.
+    """
+    import ray_data_arrow_rs
+
+    cfg = s3_config(filesystem)
+    return ray_data_arrow_rs.connect_s3(
+        bucket,
+        cfg["region"],
+        cfg["anonymous"],
+        endpoint=cfg["endpoint"],
+        access_key_id=cfg["access_key_id"],
+        secret_access_key=cfg["secret_access_key"],
+        session_token=cfg["session_token"],
+        allow_http=cfg["allow_http"],
+        virtual_hosted_style=cfg["virtual_hosted_style"],
+    )
+
+
 def read_native_metadata(path: str, filesystem: Optional["FileSystem"]):
     """Read one Parquet file's footer via the native crate.
 
