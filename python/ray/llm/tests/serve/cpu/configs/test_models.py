@@ -578,28 +578,23 @@ class TestAcceleratorConfigLogic:
         assert llm_config.accelerator_type == "Ascend910B"
         assert llm_config.accelerator_config.kind == "npu"
 
-    def test_npu_accelerator_type_hardware_mismatch_with_gpu_config(self):
-        """Test that passing a NPU accelerator_type with a GPU config raises a hardware mismatch error."""
+    @pytest.mark.parametrize(
+        "accelerator_type,config_kind",
+        [
+            ("Ascend910B", "gpu"),  # NPU accelerator_type with GPU config
+            ("L4", "npu"),  # GPU accelerator_type with NPU config
+        ],
+    )
+    def test_accelerator_type_hardware_mismatch(self, accelerator_type, config_kind):
+        """Test that a mismatch between accelerator_type and accelerator_config.kind raises a hardware mismatch error."""
         with pytest.raises(
             pydantic.ValidationError,
             match="Hardware mismatch",
         ):
             LLMConfig(
                 model_loading_config={"model_id": "test_model"},
-                accelerator_type="Ascend910B",
-                accelerator_config={"kind": "gpu"},
-            )
-
-    def test_gpu_accelerator_type_hardware_mismatch_with_npu_config(self):
-        """Test that passing a GPU accelerator_type with a NPU config raises a hardware mismatch error."""
-        with pytest.raises(
-            pydantic.ValidationError,
-            match="Hardware mismatch",
-        ):
-            LLMConfig(
-                model_loading_config={"model_id": "test_model"},
-                accelerator_type="L4",
-                accelerator_config={"kind": "npu"},
+                accelerator_type=accelerator_type,
+                accelerator_config={"kind": config_kind},
             )
 
 
