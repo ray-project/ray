@@ -236,7 +236,18 @@ def _resolve_template_url(name):
     data = json.loads(
         _urlopen_read_with_retries(api_url, _TEMPLATE_CHANNEL_TIMEOUT_S)
     )
-    branch = data.get("tmpl_branch")
+    # A channel response with no `tmpl_branch` is schema drift, not a
+    # feature-branch build, and it needs a different fix than "add a pin" -- so
+    # say so rather than reporting a branch of None. Either way the build stops:
+    # if the branch can't be confirmed as `main`, the content isn't publishable.
+    if "tmpl_branch" not in data:
+        raise RuntimeError(
+            f"sphinx-collections: {api_url} returned no 'tmpl_branch', so the "
+            f"build for unpinned template {name!r} can't be confirmed to come "
+            f"from {_TEMPLATE_RELEASE_BRANCH!r}. The templates.ci.ray.io channel "
+            f"schema has probably changed; update this branch check to match it."
+        )
+    branch = data["tmpl_branch"]
     if branch != _TEMPLATE_RELEASE_BRANCH:
         raise RuntimeError(
             f"sphinx-collections: refusing to build unpinned template {name!r} "
