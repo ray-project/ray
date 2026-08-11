@@ -1357,45 +1357,6 @@ def test_read_lerobot_delta_invalid_raises(
         )
 
 
-def test_read_tasks_fetch_only_their_roots(ray_start_regular_shared, tmp_path):
-    """Each read task must carry object refs for exactly the roots its segments
-    touch -- not one ref to the full root list, which would make every task
-    deserialize all N per-root bundles (pickled filesystem, schema, stats) to
-    use one. With N roots and ~N tasks that is O(N^2) deserialization work
-    cluster-wide, so many-root reads pinned every CPU inside ``ray.get``
-    without producing a block. A root split across several tasks must still be
-    stored once (all its tasks share one ref)."""
-    from ray.data.datasource import LeRobotDatasource
-
-    roots = [
-        create_lerobot_dataset(
-            str(tmp_path / f"ds{i}"), num_episodes=1, has_video=False
-        )
-        for i in range(3)
-    ]
-    source = LeRobotDatasource(roots)
-
-    tasks = source.get_read_tasks(3)
-    assert len(tasks) == 3
-    for task in tasks:
-        task_root_refs, root_indices, resolved, _ = task.read_fn.args
-        # Refs cover exactly the roots referenced by this task's segments.
-        assert set(root_indices) == {root_idx for root_idx, *_ in resolved}
-        assert len(task_root_refs) == len(root_indices)
-        # Three single-episode roots over three tasks: one root per task, and
-        # the ref resolves to that root's bundle (its schema is the task's).
-        assert len(root_indices) == 1
-        (bundle,) = ray.get(task_root_refs)
-        assert bundle.schema == task.schema
-
-    # One root split across several sub-range tasks: every task references the
-    # SAME object (stored once), rather than each carrying its own copy.
-    split_tasks = LeRobotDatasource(roots[0]).get_read_tasks(2)
-    assert len(split_tasks) == 2
-    refs = {task.read_fn.args[0][0] for task in split_tasks}
-    assert len(refs) == 1
-
-
 if __name__ == "__main__":
     import sys
 

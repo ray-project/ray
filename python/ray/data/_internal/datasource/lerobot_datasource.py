@@ -627,14 +627,11 @@ def _build_lerobot_read_task(
     Each ``segment`` is a ``(root_index, start, end)`` triple over a contiguous
     row range within one root. ``roots`` (slim per-root constants) is used here
     to compute BlockMetadata; ``root_refs`` holds one object ref per root, of
-    which the task captures refs for **only the roots its segments touch** --
-    the read function fetches just those. Handing every task a single ref to
-    the full list would make each task deserialize all N per-root bundles
-    (pickled filesystem, schema, stats) to use one: O(tasks x roots) work that
-    degrades quadratically when many roots are read together. Roots split
+    which the task captures refs for only the roots its segments touch,
+    the read function fetches just those. Roots split
     across several tasks still share one object. ``episodes`` is the
     driver-side list of projected episode tables, used here only to cut each
-    segment's slice -- it is NOT shipped; only the per-segment slice travels
+    segment's slice, it is NOT shipped; only the per-segment slice travels
     with the task.
     """
     total_rows = 0
@@ -1778,13 +1775,6 @@ class LeRobotDatasource(Datasource):
 
         task_plan = [self._merge_segments(group) for group in groups]
 
-        # One object per root -- NOT one object holding every root. Each read
-        # task then captures refs for only the roots it reads, so a task
-        # deserializes O(its roots) bundles instead of all N (with N roots and
-        # ~N tasks, a single shared list is O(N^2) deserialization work
-        # cluster-wide). Put count scales with the number of roots, which
-        # driver-side resolution already bounds; a root spanning many tasks is
-        # still stored once and shared via its ref.
         root_refs = [ray.put(root) for root in self.distilled_metas]
         max_block_bytes = self._max_block_bytes(data_context)
         return [
