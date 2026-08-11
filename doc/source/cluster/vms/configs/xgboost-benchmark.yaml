@@ -9,8 +9,14 @@ cluster_name: ray-cluster-xgboost-benchmark
 max_workers: 9
 
 docker:
-  image: "rayproject/ray-ml:2.0.0"
+  image: "rayproject/ray:2.57.0"
   container_name: "ray_container"
+
+# The rayproject/ray images don't include XGBoost, so install it in the container.
+# The constraint file ships in the image and pins the version Ray tested against
+# for this release.
+setup_commands:
+  - pip install -c /home/ray/requirements_compiled.txt xgboost
 
 provider:
   type: aws

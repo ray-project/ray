@@ -318,6 +318,28 @@ Docker Source Images
 Users can pull a Docker image from the ``rayproject/ray`` `Docker Hub repository <https://hub.docker.com/r/rayproject/ray>`__.
 The images include Ray and all required dependencies. It comes with anaconda and various versions of Python.
 
+.. note::
+
+  The ``rayproject/ray-ml`` images are deprecated. Ray no longer publishes them: the last standard
+  release tag is ``2.30.0``, and publishing stopped entirely as of Ray 2.50. The ``latest`` and
+  ``latest-gpu`` tags still resolve, but they haven't moved since Ray 2.30.0, so a build that pulls
+  them gets an old Ray without any error. See `Deprecating ray-ml images
+  <https://github.com/ray-project/ray/issues/46378>`__ for the reasoning.
+
+  The ``rayproject/ray`` images don't ship machine learning libraries such as PyTorch, TensorFlow,
+  or XGBoost. To get them, either build an image on a ``rayproject/ray`` base:
+
+  .. code-block:: dockerfile
+
+    FROM rayproject/ray:2.57.0-py311-gpu
+    RUN pip install torch -c /home/ray/requirements_compiled.txt
+
+  or declare the packages in a :ref:`runtime environment <runtime-environments>`.
+
+  Every ``rayproject/ray`` image ships the constraint file at ``/home/ray/requirements_compiled.txt``.
+  Passing it with ``-c`` installs the exact library version that Ray tested against for that release.
+  Drop the flag to get the newest version instead.
+
 Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platform}]``. ``Ray version`` tag can be one of the following:
 
 .. list-table::
