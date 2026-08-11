@@ -937,6 +937,61 @@ TEST_F(SyncerTest, Test1ToN) {
   ASSERT_TRUE(TestCorrectness(get_cluster_view, servers, g));
 }
 
+TEST_F(SyncerTest, ResourceViewFanoutTargets) {
+  // A hub with restricted RESOURCE_VIEW fan-out only relays other nodes' views to
+  // the designated targets; fan-in to the hub itself is unaffected.
+  size_t base_port = 18990;
+  std::vector<SyncerServerTest *> servers;
+  for (int i = 0; i < 4; ++i) {
+    servers.push_back(&MakeServer(std::to_string(i + base_port)));
+  }
+  // servers[0] is the hub; only servers[1] receives the resource view. Setting the
+  // targets before connecting also covers the initial-snapshot push.
+  servers[0]->syncer->SetResourceViewFanoutTargets(
+      {servers[1]->syncer->GetLocalNodeID()});
+  for (size_t i = 1; i < servers.size(); ++i) {
+    servers[0]->syncer->Connect(servers[i]->syncer->GetLocalNodeID(),
+                                MakeChannel(servers[i]->server_port));
+  }
+
+  auto get_cluster_view = [](RaySyncer &syncer) {
+    std::promise<TClusterView> p;
+    auto f = p.get_future();
+    syncer.GetIOContext().post(
+        [&p, &syncer]() mutable { p.set_value(syncer.node_state_->GetClusterView()); },
+        "TEST");
+    return f.get();
+  };
+
+  // The designated target eventually sees every node through the hub.
+  for (int i = 0; i < 100; ++i) {
+    if (get_cluster_view(*servers[1]->syncer).size() == servers.size()) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  ASSERT_EQ(get_cluster_view(*servers[1]->syncer).size(), servers.size());
+  // Fan-in is unaffected: the hub sees every node.
+  ASSERT_EQ(get_cluster_view(*servers[0]->syncer).size(), servers.size());
+  // The non-designated nodes never receive other nodes' resource views.
+  ASSERT_EQ(get_cluster_view(*servers[2]->syncer).size(), 1UL);
+  ASSERT_EQ(get_cluster_view(*servers[3]->syncer).size(), 1UL);
+
+  // A node designated after it connected (e.g. replacing a dead view holder) is
+  // backfilled with the view it missed.
+  servers[0]->syncer->SetResourceViewFanoutTargets(
+      {servers[1]->syncer->GetLocalNodeID(), servers[2]->syncer->GetLocalNodeID()});
+  for (int i = 0; i < 100; ++i) {
+    if (get_cluster_view(*servers[2]->syncer).size() == servers.size()) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  ASSERT_EQ(get_cluster_view(*servers[2]->syncer).size(), servers.size());
+  // The still-undesignated node remains untouched.
+  ASSERT_EQ(get_cluster_view(*servers[3]->syncer).size(), 1UL);
+}
+
 TEST_F(SyncerTest, TestMToN) {
   size_t base_port = 18990;
   std::vector<SyncerServerTest *> servers;

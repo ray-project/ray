@@ -749,5 +749,37 @@ def test_no_resource_oversubscription_during_shutdown(shutdown_only):
     assert result2 == "Worker B completed"
 
 
+def test_tasks_fail_loudly_under_restricted_resource_view_fanout(ray_start_cluster):
+    # With the resource view fanned out to designated raylets only, the cluster
+    # is actor-only: a task lease is cancelled with an error that names the
+    # config, while actor creation keeps working.
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        _system_config={"ray_syncer_resource_view_fanout_node_count": 1},
+    )
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            return "pong"
+
+    @ray.remote(num_cpus=1)
+    def task():
+        return 1
+
+    actor = Actor.remote()
+    assert ray.get(actor.ping.remote()) == "pong"
+
+    with pytest.raises(
+        ray.exceptions.TaskUnschedulableError,
+        match="ray_syncer_resource_view_fanout_node_count",
+    ):
+        ray.get(task.remote())
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

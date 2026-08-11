@@ -141,6 +141,9 @@ void RaySyncer::Connect(std::shared_ptr<RaySyncerBidiReactor> reactor) {
             if (!message) {
               continue;
             }
+            if (!ShouldFanOutTo(*message, reactor->GetRemoteNodeID())) {
+              continue;
+            }
             RAY_LOG(DEBUG) << "Push init view from: "
                            << NodeID::FromBinary(GetLocalNodeID()) << " to "
                            << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " about "
@@ -218,10 +221,54 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
           return;
         }
         for (auto &reactor : sync_reactors_) {
+          if (!ShouldFanOutTo(*message, reactor.first)) {
+            continue;
+          }
           reactor.second->PushToSendingQueue(message);
         }
       },
       "RaySyncer.BroadcastMessage");
+}
+
+void RaySyncer::SetResourceViewFanoutTargets(std::vector<std::string> node_ids) {
+  io_context_.dispatch(
+      [this, node_ids = std::move(node_ids)]() {
+        absl::flat_hash_set<std::string> new_targets(node_ids.begin(), node_ids.end());
+        // A node that becomes a target after it connected (e.g. it replaces a dead
+        // view holder) missed the updates that were filtered out earlier, and the
+        // version-gated broadcast would never resend them. Push the current view to
+        // it; the reactor's version bookkeeping drops anything it already knows.
+        for (const auto &target : new_targets) {
+          if (resource_view_fanout_targets_.contains(target)) {
+            continue;
+          }
+          auto reactor_it = sync_reactors_.find(target);
+          if (reactor_it == sync_reactors_.end()) {
+            continue;
+          }
+          for (const auto &[_, messages] : node_state_->GetClusterView()) {
+            for (const auto &message : messages) {
+              if (message != nullptr &&
+                  message->message_type() == MessageType::RESOURCE_VIEW) {
+                reactor_it->second->PushToSendingQueue(message);
+              }
+            }
+          }
+        }
+        resource_view_fanout_targets_ = std::move(new_targets);
+        RAY_LOG(INFO) << "Restricted RESOURCE_VIEW fan-out to "
+                      << resource_view_fanout_targets_.size() << " nodes.";
+      },
+      "RaySyncer.SetResourceViewFanoutTargets");
+}
+
+bool RaySyncer::ShouldFanOutTo(const RaySyncMessage &message,
+                               const std::string &remote_node_id) const {
+  if (resource_view_fanout_targets_.empty() ||
+      message.message_type() != MessageType::RESOURCE_VIEW) {
+    return true;
+  }
+  return resource_view_fanout_targets_.contains(remote_node_id);
 }
 
 ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {

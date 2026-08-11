@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_server.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -354,6 +355,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
                      metrics_.task_events_dropped_gauge,
                      metrics_.task_events_stored_gauge);
   InstallEventListeners();
+  // Designate the resource-view fan-out nodes for nodes restored from storage;
+  // the node-added listener handles nodes that register afterwards.
+  UpdateResourceViewFanoutNodes();
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitGcsResourceLoadPuller();
   InitUsageStatsClient();
@@ -619,7 +623,7 @@ void GcsServer::InitGcsActorManager(
     gcs_actor_manager_->OnActorCreationSuccess(actor, reply);
   };
 
-  scheduler =
+  auto actor_scheduler =
       std::make_unique<GcsActorScheduler>(io_context_provider_.GetDefaultIOContext(),
                                           gcs_table_storage_->ActorTable(),
                                           *gcs_node_manager_,
@@ -629,6 +633,8 @@ void GcsServer::InitGcsActorManager(
                                           worker_client_pool_,
                                           metrics_.scheduler_placement_time_ms_histogram,
                                           clock_);
+  gcs_actor_scheduler_ = actor_scheduler.get();
+  scheduler = std::move(actor_scheduler);
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
@@ -991,6 +997,47 @@ void GcsServer::InitGcsTaskManager(
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 
+void GcsServer::UpdateResourceViewFanoutNodes() {
+  const int64_t fanout_node_count =
+      RayConfig::instance().ray_syncer_resource_view_fanout_node_count();
+  if (fanout_node_count <= 0) {
+    return;
+  }
+  // The head node plus the (count - 1) alive worker nodes with the earliest start
+  // times hold the resource view. Recomputing from scratch keeps the designation
+  // deterministic across node arrivals, departures, and GCS restarts.
+  std::vector<NodeID> designated;
+  std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> workers;
+  for (const auto &[node_id, node] : gcs_node_manager_->GetAllAliveNodes()) {
+    if (node->is_head_node()) {
+      designated.push_back(node_id);
+    } else {
+      workers.push_back(node);
+    }
+  }
+  std::sort(workers.begin(), workers.end(), [](const auto &lhs, const auto &rhs) {
+    return std::make_pair(lhs->start_time_ms(), lhs->node_id()) <
+           std::make_pair(rhs->start_time_ms(), rhs->node_id());
+  });
+  for (const auto &worker : workers) {
+    if (static_cast<int64_t>(designated.size()) >= fanout_node_count) {
+      break;
+    }
+    designated.push_back(NodeID::FromBinary(worker->node_id()));
+  }
+  if (designated == resource_view_fanout_node_ids_) {
+    return;
+  }
+  resource_view_fanout_node_ids_ = designated;
+  std::vector<std::string> binary_node_ids;
+  binary_node_ids.reserve(designated.size());
+  for (const auto &node_id : designated) {
+    binary_node_ids.push_back(node_id.Binary());
+  }
+  ray_syncer_->SetResourceViewFanoutTargets(std::move(binary_node_ids));
+  gcs_actor_scheduler_->SetViewHolderNodes(std::move(designated));
+}
+
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener(
@@ -998,6 +1045,9 @@ void GcsServer::InstallEventListeners() {
         // Because a new node has been added, we need to try to schedule the pending
         // placement groups and the pending actors.
         auto node_id = NodeID::FromBinary(node->node_id());
+        // Re-designate before anything below schedules onto the new node, so
+        // scheduling always sees the current view holders.
+        UpdateResourceViewFanoutNodes();
         gcs_resource_manager_->OnNodeAdd(*node);
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
@@ -1032,6 +1082,9 @@ void GcsServer::InstallEventListeners() {
       [this](const std::shared_ptr<const rpc::GcsNodeInfo> &node) {
         auto node_id = NodeID::FromBinary(node->node_id());
         const auto node_ip_address = node->node_manager_address();
+        // Re-designate before the dead node's actors are rescheduled below, so
+        // their leases are not sharded to the node that just died.
+        UpdateResourceViewFanoutNodes();
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);

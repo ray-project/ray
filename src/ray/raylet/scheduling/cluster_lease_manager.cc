@@ -42,29 +42,6 @@ ClusterLeaseManager::ClusterLeaseManager(
           leases_to_schedule_, infeasible_leases_, local_lease_manager_),
       internal_stats_(*this, local_lease_manager_) {}
 
-void ClusterLeaseManager::QueueAndScheduleLease(
-    RayLease lease,
-    bool grant_or_reject,
-    bool is_selected_based_on_locality,
-    std::vector<internal::ReplyCallback> reply_callbacks) {
-  RAY_LOG(DEBUG) << "Queuing and scheduling lease "
-                 << lease.GetLeaseSpecification().LeaseId();
-  const auto scheduling_class = lease.GetLeaseSpecification().GetSchedulingClass();
-  auto work = std::make_shared<internal::Work>(std::move(lease),
-                                               grant_or_reject,
-                                               is_selected_based_on_locality,
-                                               std::move(reply_callbacks));
-  // If the scheduling class is infeasible, just add the work to the infeasible queue
-  // directly.
-  auto infeasible_leases_iter = infeasible_leases_.find(scheduling_class);
-  if (infeasible_leases_iter != infeasible_leases_.end()) {
-    infeasible_leases_iter->second.emplace_back(std::move(work));
-  } else {
-    leases_to_schedule_[scheduling_class].emplace_back(std::move(work));
-  }
-  ScheduleAndGrantLeases();
-}
-
 namespace {
 void ReplyCancelled(const internal::Work &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -78,6 +55,52 @@ void ReplyCancelled(const internal::Work &work,
   }
 }
 }  // namespace
+
+void ClusterLeaseManager::QueueAndScheduleLease(
+    RayLease lease,
+    bool grant_or_reject,
+    bool is_selected_based_on_locality,
+    std::vector<internal::ReplyCallback> reply_callbacks) {
+  RAY_LOG(DEBUG) << "Queuing and scheduling lease "
+                 << lease.GetLeaseSpecification().LeaseId();
+  const auto scheduling_class = lease.GetLeaseSpecification().GetSchedulingClass();
+  auto work = std::make_shared<internal::Work>(std::move(lease),
+                                               grant_or_reject,
+                                               is_selected_based_on_locality,
+                                               std::move(reply_callbacks));
+  if (RayConfig::instance().ray_syncer_resource_view_fanout_node_count() > 0 &&
+      !work->lease_.GetLeaseSpecification().IsActorCreationTask()) {
+    // Under restricted resource-view fan-out only actor creation is routed to a
+    // raylet that can place it. A task lease lands on the submitter's raylet,
+    // which may see no node but itself, so it would wait or hang instead of
+    // being placed. Fail it where the submitter can see it.
+    ReplyCancelled(*work,
+                   rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                   "Tasks are not supported while "
+                   "ray_syncer_resource_view_fanout_node_count is set: only actor "
+                   "creation is scheduled in this mode. Unset it to run tasks.");
+    return;
+  }
+  // If the scheduling class is infeasible, just add the work to the infeasible queue
+  // directly.
+  auto infeasible_leases_iter = infeasible_leases_.find(scheduling_class);
+  if (infeasible_leases_iter != infeasible_leases_.end()) {
+    if (work->grant_or_reject_ &&
+        RayConfig::instance().ray_syncer_resource_view_fanout_node_count() > 0) {
+      // Under restricted resource-view fan-out this raylet has no view of other
+      // nodes, so a lease queued here could wait forever; reject it back so the
+      // view-holding raylet re-decides with a fresh view.
+      RAY_LOG(DEBUG) << "Rejecting infeasible grant-or-reject lease "
+                     << work->lease_.GetLeaseSpecification().LeaseId();
+      work->Reject();
+      return;
+    }
+    infeasible_leases_iter->second.emplace_back(std::move(work));
+  } else {
+    leases_to_schedule_[scheduling_class].emplace_back(std::move(work));
+  }
+  ScheduleAndGrantLeases();
+}
 
 bool ClusterLeaseManager::CancelLeases(
     std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
@@ -257,6 +280,20 @@ void ClusterLeaseManager::ScheduleAndGrantPendingLeases() {
           continue;
         }
 
+        if (!is_infeasible && work->grant_or_reject_ &&
+            RayConfig::instance().ray_syncer_resource_view_fanout_node_count() > 0) {
+          // Every node this raylet can see is full. Without other nodes'
+          // resource views it cannot wait for room elsewhere, so hand the lease
+          // back for the view-holding raylet to re-decide with a fresh view.
+          // (An infeasible lease is rejected by the infeasible handling below.)
+          RAY_LOG(DEBUG) << "Rejecting grant-or-reject lease "
+                         << lease.GetLeaseSpecification().LeaseId()
+                         << " that no visible node can fit";
+          work->Reject();
+          work_it = work_queue.erase(work_it);
+          continue;
+        }
+
         break;
       }
 
@@ -267,6 +304,25 @@ void ClusterLeaseManager::ScheduleAndGrantPendingLeases() {
 
     if (is_infeasible) {
       RAY_CHECK(!work_queue.empty());
+      if (RayConfig::instance().ray_syncer_resource_view_fanout_node_count() > 0) {
+        // Under restricted resource-view fan-out, reject grant-or-reject leases
+        // instead of parking them infeasible on this raylet (see
+        // QueueAndScheduleLease above).
+        for (auto it = work_queue.begin(); it != work_queue.end();) {
+          if ((*it)->grant_or_reject_) {
+            RAY_LOG(DEBUG) << "Rejecting infeasible grant-or-reject lease "
+                           << (*it)->lease_.GetLeaseSpecification().LeaseId();
+            (*it)->Reject();
+            it = work_queue.erase(it);
+          } else {
+            ++it;
+          }
+        }
+        if (work_queue.empty()) {
+          leases_to_schedule_.erase(shapes_it++);
+          continue;
+        }
+      }
       // Only announce the first item as infeasible.
       auto &cur_work_queue = shapes_it->second;
       const auto &work = cur_work_queue[0];
@@ -430,10 +486,7 @@ void ClusterLeaseManager::ScheduleOnNode(const NodeID &spillback_to,
   }
 
   if (work->grant_or_reject_) {
-    for (const auto &reply_callback : work->reply_callbacks_) {
-      reply_callback.reply_->set_rejected(true);
-      reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
-    }
+    work->Reject();
     return;
   }
 
