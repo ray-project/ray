@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Ray inside Jupyter Notebook and JupyterLab, covering notebook setup and connecting to an existing cluster.
+
 Working with Jupyter Notebooks & JupyterLab
 ===========================================
 

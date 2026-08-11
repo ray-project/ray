@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray physical and logical resources: define custom resources, set node capacity, and request fractional resources per task or actor.
+
 .. _core-resources:
 
 Resources
