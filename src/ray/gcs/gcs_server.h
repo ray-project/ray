@@ -82,6 +82,7 @@ struct GcsServerConfig {
 
 class GcsNodeManager;
 class GcsActorManager;
+class GcsActorScheduler;
 class GcsJobManager;
 class GcsWorkerManager;
 class GcsPlacementGroupScheduler;
@@ -263,6 +264,14 @@ class GcsServer {
   /// Install event listeners.
   void InstallEventListeners();
 
+  /// Update the raylets that receive the resource view when
+  /// `ray_syncer_resource_view_fanout_node_count` > 0: the head node, the still
+  /// alive previously designated nodes, and enough of the earliest-started alive
+  /// workers to reach the count. If the set changed, update the syncer's fan-out
+  /// targets and the actor scheduler's lease sharding. A no-op when the config is
+  /// 0 (the default).
+  void UpdateResourceViewFanoutNodes();
+
  private:
   /// Gets the type of KV storage to use from config.
   StorageType GetStorageType() const;
@@ -344,6 +353,15 @@ class GcsServer {
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
+
+  /// The actor scheduler, owned by `gcs_actor_manager_`; used to update lease
+  /// sharding when the resource-view fan-out designation changes.
+  GcsActorScheduler *gcs_actor_scheduler_ = nullptr;
+
+  /// The currently designated resource-view fan-out nodes, in designation order
+  /// (head first, then workers in the order they were designated). Empty unless
+  /// `ray_syncer_resource_view_fanout_node_count` > 0 and nodes have registered.
+  std::vector<NodeID> resource_view_fanout_node_ids_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
 
   /// The local node ID where the GCS is running.

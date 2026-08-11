@@ -1239,6 +1239,174 @@ TEST_F(ClusterLeaseManagerTest, TestGrantOrReject) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterLeaseManagerTest, TestGrantOrRejectUnderRestrictedResourceViewFanout) {
+  // With `ray_syncer_resource_view_fanout_node_count` > 0 this raylet does not
+  // receive other nodes' resource views, so a grant-or-reject lease it cannot fit
+  // is rejected back to the view-holding raylet instead of being queued locally.
+  // Actor-creation leases are what the GCS routes here in this mode; an actor
+  // that acquires resources for its lifetime is also the case where the policy
+  // may report no node with room, which must reject rather than park.
+  // `initialize` resets every field before applying overrides, so keep the
+  // fixture's top-k override alongside the flag under test.
+  RayConfig::instance().initialize(
+      "{\"scheduler_top_k_absolute\": 1, "
+      "\"ray_syncer_resource_view_fanout_node_count\": 1}");
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  int num_callbacks = 0;
+  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  auto actor_lease = [](double num_cpus) {
+    return CreateLease({{ray::kCPU_ResourceLabel, num_cpus}},
+                       0,
+                       {},
+                       nullptr,
+                       rpc::SchedulingStrategy(),
+                       LeaseID::FromRandom(),
+                       {},
+                       {},
+                       /*is_actor_creation=*/true);
+  };
+
+  // Fill the local node (the only node in the cluster).
+  auto lease1 = actor_lease(8);
+  rpc::RequestWorkerLeaseReply reply1;
+  lease_manager_.QueueAndScheduleLease(
+      lease1,
+      /*grant_or_reject=*/false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply1)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+
+  // A grant-or-reject lease that does not fit locally is rejected immediately
+  // instead of waiting for local resources to free up, whether the policy hands
+  // back the busy local node or no node at all.
+  auto lease2 = actor_lease(1);
+  rpc::RequestWorkerLeaseReply reply2;
+  lease_manager_.QueueAndScheduleLease(
+      lease2,
+      /*grant_or_reject=*/true,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_TRUE(reply2.rejected());
+
+  // An infeasible lease without grant_or_reject parks in the infeasible queue as
+  // usual.
+  auto lease3 = actor_lease(999);
+  rpc::RequestWorkerLeaseReply reply3;
+  lease_manager_.QueueAndScheduleLease(
+      lease3,
+      /*grant_or_reject=*/false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply3)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+
+  // A grant-or-reject lease joining an already-infeasible shape is rejected at
+  // enqueue time.
+  auto lease4 = actor_lease(999);
+  rpc::RequestWorkerLeaseReply reply4;
+  lease_manager_.QueueAndScheduleLease(
+      lease4,
+      /*grant_or_reject=*/true,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply4)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 3);
+  ASSERT_TRUE(reply4.rejected());
+
+  // A grant-or-reject lease whose shape is newly classified as infeasible is
+  // rejected instead of parked.
+  auto lease5 = actor_lease(888);
+  rpc::RequestWorkerLeaseReply reply5;
+  lease_manager_.QueueAndScheduleLease(
+      lease5,
+      /*grant_or_reject=*/true,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply5)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 4);
+  ASSERT_TRUE(reply5.rejected());
+
+  ASSERT_TRUE(lease_manager_.CancelLease(lease3.GetLeaseSpecification().LeaseId()));
+  while (!leased_workers_.empty()) {
+    local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
+    leased_workers_.erase(leased_workers_.begin());
+  }
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterLeaseManagerTest, TaskLeasesAreCancelledUnderRestrictedResourceViewFanout) {
+  // With `ray_syncer_resource_view_fanout_node_count` > 0 the cluster is
+  // actor-only: a task lease is cancelled with an error naming the config, on
+  // every raylet, while actor creation keeps working.
+  RayConfig::instance().initialize(
+      "{\"scheduler_top_k_absolute\": 1, "
+      "\"ray_syncer_resource_view_fanout_node_count\": 1}");
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  int num_callbacks = 0;
+  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+
+  auto task_lease = CreateLease({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply task_reply;
+  lease_manager_.QueueAndScheduleLease(
+      task_lease,
+      /*grant_or_reject=*/false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &task_reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_TRUE(task_reply.canceled());
+  ASSERT_EQ(task_reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  ASSERT_NE(task_reply.scheduling_failure_message().find(
+                "ray_syncer_resource_view_fanout_node_count"),
+            std::string::npos);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(lease_manager_.GetPendingQueueSize(), 0);
+  ASSERT_EQ(lease_manager_.GetInfeasibleQueueSize(), 0);
+
+  auto actor_lease = CreateLease({{ray::kCPU_ResourceLabel, 1}},
+                                 0,
+                                 {},
+                                 nullptr,
+                                 rpc::SchedulingStrategy(),
+                                 LeaseID::FromRandom(),
+                                 {},
+                                 {},
+                                 /*is_actor_creation=*/true);
+  rpc::RequestWorkerLeaseReply actor_reply;
+  lease_manager_.QueueAndScheduleLease(
+      actor_lease,
+      /*grant_or_reject=*/false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(callback, &actor_reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_FALSE(actor_reply.canceled());
+  ASSERT_EQ(leased_workers_.size(), 1);
+
+  while (!leased_workers_.empty()) {
+    local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
+    leased_workers_.erase(leased_workers_.begin());
+  }
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterLeaseManagerTest, TestSpillAfterAssigned) {
   /*
     Test the race condition in which a lease is assigned to the local node, but

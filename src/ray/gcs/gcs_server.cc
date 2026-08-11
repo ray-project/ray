@@ -14,11 +14,13 @@
 
 #include "ray/gcs/gcs_server.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
@@ -370,6 +372,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
                      metrics_.task_events_dropped_gauge,
                      metrics_.task_events_stored_gauge);
   InstallEventListeners();
+  // Designate the resource-view fan-out nodes for nodes restored from storage;
+  // the node-added listener handles nodes that register afterwards.
+  UpdateResourceViewFanoutNodes();
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitGcsResourceLoadPuller();
   InitUsageStatsClient();
@@ -714,7 +719,7 @@ void GcsServer::InitGcsActorManager(
     gcs_actor_manager_->OnActorCreationSuccess(actor, reply);
   };
 
-  scheduler =
+  auto actor_scheduler =
       std::make_unique<GcsActorScheduler>(io_context_provider_.GetDefaultIOContext(),
                                           gcs_table_storage_->ActorTable(),
                                           *gcs_node_manager_,
@@ -724,6 +729,8 @@ void GcsServer::InitGcsActorManager(
                                           worker_client_pool_,
                                           metrics_.scheduler_placement_time_ms_histogram,
                                           clock_);
+  gcs_actor_scheduler_ = actor_scheduler.get();
+  scheduler = std::move(actor_scheduler);
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
@@ -1054,6 +1061,66 @@ void GcsServer::InitGcsTaskManager(
   // Service registration is centralized in RegisterRpcServices().
 }
 
+void GcsServer::UpdateResourceViewFanoutNodes() {
+  const int64_t fanout_node_count =
+      RayConfig::instance().ray_syncer_resource_view_fanout_node_count();
+  if (fanout_node_count <= 0) {
+    return;
+  }
+  // The head node plus (count - 1) alive worker nodes hold the resource view. An
+  // alive holder is never displaced: a lease waiting at a designated raylet is
+  // re-evaluated only when that raylet's view changes, so a raylet that stopped
+  // receiving the view would hold its waiting leases forever. Only vacancies
+  // (the count not reached yet, or a holder that died) are filled, with the
+  // earliest-started alive worker first so the choice is deterministic. The one
+  // exception is the head node, which is always designated: if it registers
+  // after the slots are full, the last worker is dropped.
+  const auto alive_nodes = gcs_node_manager_->GetAllAliveNodes();
+  std::vector<NodeID> designated;
+  absl::flat_hash_set<NodeID> designated_set;
+  for (const auto &[node_id, node] : alive_nodes) {
+    if (node->is_head_node()) {
+      designated.push_back(node_id);
+      designated_set.insert(node_id);
+    }
+  }
+  for (const auto &node_id : resource_view_fanout_node_ids_) {
+    if (alive_nodes.contains(node_id) && designated_set.insert(node_id).second) {
+      designated.push_back(node_id);
+    }
+  }
+  std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> candidates;
+  for (const auto &[node_id, node] : alive_nodes) {
+    if (!designated_set.contains(node_id)) {
+      candidates.push_back(node);
+    }
+  }
+  std::sort(candidates.begin(), candidates.end(), [](const auto &lhs, const auto &rhs) {
+    return std::make_pair(lhs->start_time_ms(), lhs->node_id()) <
+           std::make_pair(rhs->start_time_ms(), rhs->node_id());
+  });
+  for (const auto &candidate : candidates) {
+    if (static_cast<int64_t>(designated.size()) >= fanout_node_count) {
+      break;
+    }
+    designated.push_back(NodeID::FromBinary(candidate->node_id()));
+  }
+  if (static_cast<int64_t>(designated.size()) > fanout_node_count) {
+    designated.resize(fanout_node_count);
+  }
+  if (designated == resource_view_fanout_node_ids_) {
+    return;
+  }
+  resource_view_fanout_node_ids_ = designated;
+  std::vector<std::string> binary_node_ids;
+  binary_node_ids.reserve(designated.size());
+  for (const auto &node_id : designated) {
+    binary_node_ids.push_back(node_id.Binary());
+  }
+  ray_syncer_->SetResourceViewFanoutTargets(std::move(binary_node_ids));
+  gcs_actor_scheduler_->SetViewHolderNodes(std::move(designated));
+}
+
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener(
@@ -1061,6 +1128,9 @@ void GcsServer::InstallEventListeners() {
         // Because a new node has been added, we need to try to schedule the pending
         // placement groups and the pending actors.
         auto node_id = NodeID::FromBinary(node->node_id());
+        // Re-designate before anything below schedules onto the new node, so
+        // scheduling always sees the current view holders.
+        UpdateResourceViewFanoutNodes();
         gcs_resource_manager_->OnNodeAdd(*node);
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
@@ -1095,6 +1165,9 @@ void GcsServer::InstallEventListeners() {
       [this](const std::shared_ptr<const rpc::GcsNodeInfo> &node) {
         auto node_id = NodeID::FromBinary(node->node_id());
         const auto node_ip_address = node->node_manager_address();
+        // Re-designate before the dead node's actors are rescheduled below, so
+        // their leases are not sharded to the node that just died.
+        UpdateResourceViewFanoutNodes();
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);

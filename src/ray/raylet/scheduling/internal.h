@@ -18,11 +18,22 @@
 #include <utility>
 
 #include "ray/common/lease/lease.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/status.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray::raylet::internal {
+
+/// Whether `ray_syncer_resource_view_fanout_node_count` restricts the resource
+/// view to designated raylets. This raylet may then see no node but itself, so
+/// it must reject a grant-or-reject lease it cannot fit instead of queueing it,
+/// and task leases (which the GCS does not route to a designated raylet) are
+/// cancelled with an error.
+inline bool IsResourceViewFanoutRestricted() {
+  return RayConfig::instance().ray_syncer_resource_view_fanout_node_count() > 0;
+}
 
 enum class WorkStatus {
   /// Waiting to be scheduled.
@@ -84,6 +95,16 @@ class Work {
   Work(const Work &Work) = delete;
   Work &operator=(const Work &work) = delete;
   ~Work() = default;
+
+  /// Reject the lease back to its submitter: set `rejected` on every pending
+  /// reply and send them. The caller is responsible for removing this work from
+  /// its queue.
+  void Reject() {
+    for (const auto &reply_callback : reply_callbacks_) {
+      reply_callback.reply_->set_rejected(true);
+      reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
+    }
+  }
 
   /// Set the state as waiting with the cause.
   void SetStateWaiting(const UnscheduledWorkCause &cause) {
