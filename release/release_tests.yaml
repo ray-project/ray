@@ -2141,6 +2141,45 @@
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=recsys --dataloader_type=ray_data --num_workers=8 --train_batch_size=8192 --validation_batch_size=16384 --num_epochs=1
 
+# P0 LLM perf-regression test (Qwen3-0.6B + DeepSpeed on 4x L40S).
+# See train_tests/benchmark/core/README.md for the harness details.
+- name: train_benchmark-qwen3_06b_deepspeed
+  # Matches the gpu_cu130_py3.10.lock depset below.
+  python: "3.10"
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      # gpu-cu130: the anyscale/ray CUDA-13 image (ray-ml is deprecated). The
+      # depset pins the CUDA-matched torch; the post-build script layers the
+      # benchmark deps (transformers/datasets/deepspeed) on top.
+      type: gpu-cu130
+      python_depset: gpu_cu130_py3.10.lock
+      post_build_script: byod_train_benchmark_deepspeed.sh
+    anyscale_sdk_2026: true
+    cluster_compute: compute_configs/compute_gpu_4xL40S_aws.yaml
+
+  run:
+    timeout: 2400
+    script: python -m core.runner --experiment experiments/qwen3_06b_deepspeed.yaml
+    wait_for_nodes:
+      num_nodes: 2
+
+  smoke_test:
+    frequency: manual
+    cluster:
+      anyscale_sdk_2026: true
+      cluster_compute: compute_configs/compute_gpu_1x1_aws.yaml
+    run:
+      timeout: 900
+      script: python -m core.runner --experiment experiments/qwen3_06b_deepspeed_smoke.yaml
+      wait_for_nodes:
+        num_nodes: 1
+
 - name: training_ingest_benchmark-soak_test
   python: "3.10"
   group: Train tests
