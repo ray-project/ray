@@ -228,7 +228,7 @@ spec:
 
 ## Custom rules
 
-Add rules under `head` or `worker` to target that role's policy. The operator appends `head` rules only to the head pod's policy, and `worker` rules only to worker pods' policy.
+Add rules under `head`, `worker`, or `workerGroups` to target specific policies. The operator appends `head` rules only to the head pod's policy, and `worker` rules to all worker pods' policies by default. To override rules for a specific worker group, use `workerGroups`.
 
 ### Allow Prometheus to scrape metrics
 
@@ -264,6 +264,31 @@ spec:
         - port: 443
           protocol: TCP
 ```
+
+### Per-worker-group rules
+
+Each worker group defaults to the rules defined in `worker`. To override rules for a specific group, add an entry under `workerGroups`. This replaces the `worker` rules entirely for that group.
+```yaml
+spec:
+  networkPolicy:
+    mode: DenyAll
+    worker:
+      egressRules:
+      - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+        ports:
+        - port: 443
+          protocol: TCP
+    workerGroups:
+    - groupName: gpu-group
+      egressRules:
+      - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        ports:
+        - port: 8080
+          protocol: TCP
 
 ## Full example
 
