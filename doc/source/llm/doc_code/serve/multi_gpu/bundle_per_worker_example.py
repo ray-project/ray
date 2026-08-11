@@ -11,7 +11,6 @@ Structure:
 import time
 from ray import serve
 from ray.serve.schema import ApplicationStatus
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve import llm
 
 _original_serve_run = serve.run
@@ -76,7 +75,7 @@ start_time = time.time()
 while (
     status != ApplicationStatus.RUNNING and time.time() - start_time < timeout_seconds
 ):
-    status = serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+    status = next(iter(serve.status().applications.values())).status
 
     if status in [ApplicationStatus.DEPLOY_FAILED, ApplicationStatus.UNHEALTHY]:
         raise AssertionError(f"Deployment failed with status: {status}")
