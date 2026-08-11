@@ -8,7 +8,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import List, Literal, Optional, Union
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import pyarrow as pa
@@ -2162,6 +2162,40 @@ class TestDataOpTask:
         # Total backpressure = 2.5s + 1.5s = 4.0s
         bp_time = captured_stats["task_exec_driver_stats"].task_output_backpressure_s
         assert bp_time == pytest.approx(4.0)
+
+
+class TestOpTaskCancel:
+    def test_forwards_force_for_normal_task(self, ray_start_regular_shared):
+        @ray.remote
+        def f():
+            return 1
+
+        ref = f.remote()
+        task = MetadataOpTask(0, ref, lambda: None)
+
+        # Temporary replace ray.cancel with MagicMock to verify that the correct arguments are passed.
+        with patch.object(ray, "cancel") as mock_cancel:
+            task._cancel(force=True)
+
+        # Normal tasks should forward the force argument to ray.cancel.
+        mock_cancel.assert_called_once_with(ref, recursive=True, force=True)
+
+    def test_falls_back_when_force_is_rejected(self, ray_start_regular_shared):
+        @ray.remote
+        class Actor:
+            def f(self):
+                return 1
+
+        ref = Actor.remote().f.remote()
+        task = MetadataOpTask(0, ref, lambda: None)
+
+        with patch.object(ray, "cancel", side_effect=[ValueError, None]) as mock_cancel:
+            task._cancel(force=True)
+
+        assert mock_cancel.call_args_list == [
+            call(ref, recursive=True, force=True),
+            call(ref, recursive=True, force=False),
+        ]
 
 
 def test_streaming_executor_logs_relevant_env_vars(
