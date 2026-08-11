@@ -12,6 +12,12 @@
 #   @ tag1 tag2 tag3  # Tags to emit for a rule. A rule without tags is a skipping rule.
 #
 #   ;  # Semicolon to separate rules
+#
+# Scope: these rules apply to every changed file in every pull request, on top
+# of .buildkite/test.rules.txt. That makes this the widest-reaching rule file
+# in the repository -- a change here affects all contributors' builds, so treat
+# an edit as a repo-wide change rather than a local one. See the scope notes at
+# the top of test.rules.txt, which apply here too.
 
 ! always lint
 
