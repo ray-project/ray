@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Example Ray workloads to run on a Kubernetes cluster, spanning training, batch inference, and model serving."
+---
+
 (kuberay-examples)=
 
 # Examples

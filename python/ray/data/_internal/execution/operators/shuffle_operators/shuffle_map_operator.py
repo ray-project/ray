@@ -18,7 +18,6 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
-    ObjectStoreUsage,
     OpTask,
     estimate_total_num_of_blocks,
 )
@@ -81,6 +80,8 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         map_runtime_env: Optional runtime_env for map tasks; useful to
             isolate map workers from other ops.
         map_cpus: CPU request per map task.
+        peak_memory_multiplier: Multiplier applied to a task's input bytes to
+            derive its memory request.
         name: Display name shown in progress bars and logs.
     """
 
@@ -96,6 +97,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
+        peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleMap",
     ):
         super().__init__(
@@ -111,6 +113,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
+        self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Pre-map merge ---------------------------------------------------
         # Buffered blocks are coalesced per node into a single map task once
@@ -217,7 +220,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
-            resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+            resources["memory"] = int(estimated_bytes * self._peak_memory_multiplier)
 
         ray_options: Dict[str, Any] = {
             **resources,
@@ -425,12 +428,14 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             memory=self._map_resource_usage.memory,
         )
 
-    def estimate_object_store_usage(self, state) -> ObjectStoreUsage:
-        return ObjectStoreUsage(internal=0, outputs=0)
+    def estimate_object_store_usage(self) -> int:
+        # Map outputs are intermediate partitions consumed by the reduce
+        # stage; backpressure is driven by the reduce side instead.
+        return 0
 
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
-        memory = int(avg_input * SHUFFLE_PEAK_MEMORY_MULTIPLIER) if avg_input else 0
+        memory = int(avg_input * self._peak_memory_multiplier) if avg_input else 0
         return ExecutionResources(
             cpu=self._shuffle_map_task_num_cpus,
             memory=memory,

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Internals of Ray object spilling: primary and secondary copies, reactive and threshold-based triggers, object pinning, and data flow.
+
 .. _object-spilling-internals:
 
 Object Spilling
