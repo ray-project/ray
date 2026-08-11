@@ -677,12 +677,8 @@ def _read_lerobot_task(
     segments_resolved: List[tuple],
     max_block_bytes: int,
 ) -> Iterator[pa.Table]:
-    """Stream decoded rows as Arrow tables, iterating over all segments.
-
-    Runs on a worker: fetches the slim per-root state for **this task's roots
-    only** (``root_refs[i]`` is the bundle for root ``root_indices[i]``), then
-    reads each pre-resolved segment.
-    """
+    """Stream decoded rows as Arrow tables, iterating over all segments."""
+    # Get only the roots this task needs.
     roots: Dict[int, _LeRobotRoot] = dict(zip(root_indices, ray.get(root_refs)))
     for root_idx, start, end, parquet_segs, ep_slice in segments_resolved:
         yield from _read_lerobot_segment(
