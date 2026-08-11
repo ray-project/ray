@@ -202,15 +202,22 @@ def collect_read_op_metrics(ds) -> Dict[str, Any]:
     """Pull the read operator's wall time / output bytes / per-task USS from
     Ray stats.
 
-    GE1 (2026-08-11) returned ``read_avg_max_uss_gb=None`` in most cells with
-    no way to tell whether the metric was absent (no USS samples on the read
-    op) or present on a *different* summary node than the one carrying the
-    "Read" operator name. So this now (a) scans every node and records a
-    per-node ``uss_debug`` dump, (b) also reports ``max_uss_per_task`` (the
-    worst task, often the OOM-relevant number), and (c) when the read node has
-    no USS, surfaces the first other node that does as an explicitly labeled
-    ``uss_fallback_*`` pair — never silently substituted into
-    ``read_avg_max_uss_gb``, which stays the metric of record."""
+    GE1 (2026-08-11) returned ``read_avg_max_uss_gb=None`` in most cells.
+    Root-caused 2026-08-11 (reproduced locally with a faked-USS
+    MemoryProfiler): the workers always reported USS; the loss was a
+    driver-side snapshot race. ``Dataset._execute_to_iterator`` caches
+    ``executor.get_stats()`` right after the FIRST bundle, and
+    ``iter_internal_ref_bundles()`` passes ``capture_executor=False`` — so
+    ``get_stats_summary()`` fell back to that mid-execution snapshot, taken
+    before the last read task's ``on_task_finished`` populated
+    ``average_max_uss_per_task``. ListFiles always had values because it
+    finishes long before consumption ends. Fixed in ``main()`` by consuming
+    via ``_execute_to_iterator(capture_executor=True)`` so this reads the
+    post-shutdown final stats. The instrumentation stays: (a) per-node
+    ``uss_debug`` dump, (b) ``max_uss_per_task`` (the worst task, often the
+    OOM-relevant number), (c) labeled ``uss_fallback_*`` when the read node
+    has no USS — never silently substituted into ``read_avg_max_uss_gb``,
+    which stays the metric of record."""
     from ray.data._internal.stats import DatasetStatsSummary
 
     out: Dict[str, Any] = {}
@@ -315,7 +322,16 @@ def main():
             if args.consume == "count":
                 ds.count()
             else:
-                for _ in ds.iter_internal_ref_bundles():
+                # Same zero-copy consumption as ds.iter_internal_ref_bundles(),
+                # but with capture_executor=True so ds.get_stats_summary() can
+                # read the executor's post-shutdown final stats.
+                # iter_internal_ref_bundles() drops the executor
+                # (capture_executor=False), which pins get_stats_summary() to a
+                # stats snapshot cached after the FIRST bundle — taken before
+                # the last read task finishes, so average_max_uss_per_task is
+                # still empty in it (the GE1 "read_avg_max_uss_gb=None" bug).
+                bundle_iter, _, _ = ds._execute_to_iterator(capture_executor=True)
+                for _ in bundle_iter:
                     pass
             wall = time.perf_counter() - t0
 
