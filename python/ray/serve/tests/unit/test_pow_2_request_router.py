@@ -3,6 +3,7 @@ import importlib
 import os
 import random
 import sys
+import threading
 import time
 from typing import Optional, Set
 
@@ -2074,7 +2075,7 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
         max_ongoing_requests=10,
         multiplexed_model_ids=["m1"],
     )
-    router._update_running_replicas([info_v1])
+    await router._update_running_replicas([info_v1])
     assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
     assert "m2" not in router._multiplexed_model_id_to_replica_ids
 
@@ -2088,9 +2089,76 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
         max_ongoing_requests=10,
         multiplexed_model_ids=["m1", "m2"],
     )
-    router._update_running_replicas([info_v2])
+    await router._update_running_replicas([info_v2])
     assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
     assert router._multiplexed_model_id_to_replica_ids.get("m2") == {replica_id}
+
+
+def configure_running_replica_factories(
+    router: PowerOfTwoChoicesRequestRouter,
+) -> None:
+    def create_replica(replica_info: RunningReplicaInfo) -> FakeRunningReplica:
+        return FakeRunningReplica(
+            replica_info.replica_id.unique_id,
+            node_id=replica_info.node_id or "",
+            availability_zone=replica_info.availability_zone,
+            model_ids=set(replica_info.multiplexed_model_ids),
+        )
+
+    router._create_replica_wrapper_func = create_replica
+    router._create_replica_wrapper_from_handle_func = (
+        lambda replica_info, _: create_replica(replica_info)
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_running_replicas_resolves_handles_off_event_loop(
+    pow_2_router, monkeypatch
+):
+    configure_running_replica_factories(pow_2_router)
+    deployment_id = DeploymentID(name="TEST_DEPLOYMENT")
+    r1_id = ReplicaID(unique_id="r1", deployment_id=deployment_id)
+    r2_id = ReplicaID(unique_id="r2", deployment_id=deployment_id)
+    r1_info = RunningReplicaInfo(
+        replica_id=r1_id,
+        node_id="node-1",
+        node_ip="127.0.0.1",
+        availability_zone="az-1",
+        actor_name="actor-r1",
+        max_ongoing_requests=10,
+    )
+    r2_info = RunningReplicaInfo(
+        replica_id=r2_id,
+        node_id="node-2",
+        node_ip="127.0.0.2",
+        availability_zone="az-2",
+        actor_name="actor-r2",
+        max_ongoing_requests=10,
+    )
+    resolution_started = threading.Event()
+    allow_resolution = threading.Event()
+
+    def get_actor_handle(replica_info):
+        if replica_info.replica_id == r2_id:
+            resolution_started.set()
+            allow_resolution.wait(timeout=5)
+        return object()
+
+    monkeypatch.setattr(RunningReplicaInfo, "get_actor_handle", get_actor_handle)
+    await pow_2_router._update_running_replicas([r1_info])
+
+    update_task = asyncio.create_task(
+        pow_2_router._update_running_replicas([r1_info, r2_info])
+    )
+    assert await asyncio.to_thread(resolution_started.wait, 5)
+
+    await asyncio.sleep(0)
+    assert not update_task.done()
+    assert set(pow_2_router.curr_replicas) == {r1_id}
+
+    allow_resolution.set()
+    await update_task
+    assert set(pow_2_router.curr_replicas) == {r1_id, r2_id}
 
 
 @pytest.mark.asyncio

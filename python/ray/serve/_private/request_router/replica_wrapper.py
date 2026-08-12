@@ -185,13 +185,19 @@ class RunningReplica:
     Also defines the interface for a request router to talk to a replica.
     """
 
-    def __init__(self, replica_info: RunningReplicaInfo):
+    def __init__(
+        self,
+        replica_info: RunningReplicaInfo,
+        *,
+        actor_handle: Optional[ActorHandle] = None,
+    ):
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
 
         # Fetch and cache the actor handle once per RunningReplica instance.
         # This avoids the borrower-of-borrower pattern while minimizing GCS lookups.
-        actor_handle = replica_info.get_actor_handle()
+        if actor_handle is None:
+            actor_handle = replica_info.get_actor_handle()
         if replica_info.is_cross_language:
             self._actor_handle: Union[
                 ActorHandle, JavaActorHandleProxy

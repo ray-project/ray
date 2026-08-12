@@ -1,8 +1,10 @@
 import asyncio
+import concurrent.futures
 import enum
 import logging
 import math
 import random
+import threading
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -32,6 +34,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
+    RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS,
     RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
@@ -48,6 +51,23 @@ from ray.util import metrics
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_replica_handle_resolver: Optional[concurrent.futures.ThreadPoolExecutor] = None
+_replica_handle_resolver_lock = threading.Lock()
+
+
+def _get_replica_handle_resolver() -> concurrent.futures.ThreadPoolExecutor:
+    """Return the process-wide executor for blocking actor handle lookups."""
+    global _replica_handle_resolver
+    if _replica_handle_resolver is None:
+        with _replica_handle_resolver_lock:
+            if _replica_handle_resolver is None:
+                _replica_handle_resolver = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS,
+                    thread_name_prefix="serve-replica-handle-resolver",
+                )
+
+    return _replica_handle_resolver
 
 
 class LocalityScope(str, enum.Enum):
@@ -472,6 +492,9 @@ class RequestRouter(ABC):
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
+        create_replica_wrapper_from_handle_func: Optional[
+            Callable[[RunningReplicaInfo, ActorHandle], RunningReplica]
+        ] = None,
         initial_backoff_s: float = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
         backoff_multiplier: float = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
         max_backoff_s: float = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -483,6 +506,9 @@ class RequestRouter(ABC):
         self._self_actor_handle = self_actor_handle
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
+        self._create_replica_wrapper_from_handle_func = (
+            create_replica_wrapper_from_handle_func
+        )
         self._get_curr_time_s = get_curr_time_s if get_curr_time_s else time.time
 
         # Backoff parameters for request routing, from RequestRouterConfig.
@@ -497,6 +523,8 @@ class RequestRouter(ABC):
         # Cached list of replicas to avoid O(n) dict-to-list conversion on every
         # routing iteration. Updated only when replicas change via `update_replicas`.
         self._replicas_list: List[RunningReplica] = []
+        self._running_replicas_update_generation = 0
+        self._desired_running_replica_infos: Dict[ReplicaID, RunningReplicaInfo] = {}
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
@@ -776,6 +804,11 @@ class RequestRouter(ABC):
         self, replica_info: RunningReplicaInfo
     ) -> RunningReplica:
         return self._create_replica_wrapper_func(replica_info)
+
+    def create_replica_wrapper_from_handle(
+        self, replica_info: RunningReplicaInfo, actor_handle: ActorHandle
+    ) -> RunningReplica:
+        return self._create_replica_wrapper_from_handle_func(replica_info, actor_handle)
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
@@ -1332,31 +1365,104 @@ class RequestRouter(ABC):
 
         return replica
 
-    def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
-        """Compatibility shim for RunningReplicaInfo datatype."""
-        replica_wrappers = []
-        for r in running_replicas:
-            # Reuse existing wrapper for known replicas to avoid O(n) create_replica_wrapper
-            # calls on every update (e.g. during scaling storms).
-            if r.replica_id in self._replicas:
-                wrapper = self._replicas[r.replica_id]
-                wrapper.update_replica_info(r)
-                replica_wrappers.append(wrapper)
-            else:
-                try:
-                    replica_wrappers.append(self.create_replica_wrapper(r))
-                except ValueError:
-                    # NOTE(abrar): ValueError is raised when the actor handle is not found
-                    # by ray.get_actor.
+    async def _update_running_replicas(
+        self, running_replicas: List[RunningReplicaInfo]
+    ) -> None:
+        """Apply a replica update without blocking the router event loop."""
+        generation = self._running_replicas_update_generation + 1
+        self._running_replicas_update_generation = generation
+        self._desired_running_replica_infos = {
+            replica.replica_id: replica for replica in running_replicas
+        }
 
-                    # Actor has died (e.g., due to node failure) but controller hasn't
-                    # detected it yet. Skip this replica; controller will send an update
-                    # when it detects the failure.
-                    logger.warning(
-                        f"Failed to get handle to replica {r.replica_id} during router "
-                        "update. The replica actor may have died. Skipping this replica."
-                    )
-        return self.update_replicas(replica_wrappers)
+        retained_wrappers = []
+        for replica_info in running_replicas:
+            wrapper = self._replicas.get(replica_info.replica_id)
+            if wrapper is not None:
+                wrapper.update_replica_info(replica_info)
+                retained_wrappers.append(wrapper)
+
+        # Remove stale replicas before waiting for blocking GCS lookups. Retained
+        # replicas remain available to route requests while new handles resolve.
+        self.update_replicas(retained_wrappers)
+
+        missing_infos = [
+            replica_info
+            for replica_info in running_replicas
+            if replica_info.replica_id not in self._replicas
+        ]
+        resolved_wrappers = await self._resolve_replica_wrappers(missing_infos)
+
+        if generation != self._running_replicas_update_generation:
+            return
+
+        self._commit_resolved_replica_wrappers(resolved_wrappers)
+
+    async def _resolve_replica_wrappers(
+        self, replica_infos: List[RunningReplicaInfo]
+    ) -> Dict[ReplicaID, RunningReplica]:
+        """Resolve actor handles concurrently outside the router event loop."""
+        if not replica_infos:
+            return {}
+
+        loop = asyncio.get_running_loop()
+        resolver = _get_replica_handle_resolver()
+        has_handle_factory = (
+            getattr(self, "_create_replica_wrapper_from_handle_func", None) is not None
+        )
+
+        def resolve(replica_info: RunningReplicaInfo) -> RunningReplica:
+            if has_handle_factory:
+                return self.create_replica_wrapper_from_handle(
+                    replica_info, replica_info.get_actor_handle()
+                )
+
+            # Compatibility fallback for directly constructed custom routers.
+            return self.create_replica_wrapper(replica_info)
+
+        results = await asyncio.gather(
+            *[
+                loop.run_in_executor(resolver, resolve, replica_info)
+                for replica_info in replica_infos
+            ],
+            return_exceptions=True,
+        )
+
+        resolved: Dict[ReplicaID, RunningReplica] = {}
+        for replica_info, result in zip(replica_infos, results):
+            if isinstance(result, Exception):
+                # NOTE(abrar): ValueError is raised when the actor handle is not
+                # found by ray.get_actor.
+
+                # Actor has died (e.g., due to node failure) but controller hasn't
+                # detected it yet. Skip this replica; controller will send an update
+                # when it detects the failure.
+                logger.warning(
+                    f"Failed to get handle to replica {replica_info.replica_id} "
+                    "during router update. The replica actor may have died. "
+                    "Skipping this replica."
+                )
+            else:
+                resolved[replica_info.replica_id] = result
+
+        return resolved
+
+    def _commit_resolved_replica_wrappers(
+        self, resolved_wrappers: Dict[ReplicaID, RunningReplica]
+    ) -> None:
+        """Merge resolved wrappers into the latest desired replica snapshot."""
+        wrappers = []
+        for replica_id, replica_info in self._desired_running_replica_infos.items():
+            wrapper = resolved_wrappers.get(replica_id) or self._replicas.get(
+                replica_id
+            )
+            if wrapper is None:
+                continue
+
+            wrapper.update_replica_info(replica_info)
+            wrappers.append(wrapper)
+
+        self.update_replicas(wrappers)
 
     def select_available_replicas(
         self, candidates: Optional[List[RunningReplica]] = None

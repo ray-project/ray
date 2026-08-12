@@ -204,6 +204,41 @@ async def test_client_threadsafe(serve_instance):
     await e.wait()
 
 
+@pytest.mark.asyncio
+async def test_client_waits_for_async_callback_before_polling_next(serve_instance):
+    host = ray.remote(LongPollHost).remote()
+    ray.get(host.notify_changed.remote({"key_1": 1}))
+
+    callback_started = asyncio.Event()
+    allow_callback_to_finish = asyncio.Event()
+    callback_results = []
+
+    async def callback(result):
+        callback_results.append(result)
+        if result == 1:
+            callback_started.set()
+            await allow_callback_to_finish.wait()
+
+    client = LongPollClient(
+        host,
+        {"key_1": callback},
+        call_in_event_loop=get_or_create_event_loop(),
+        client_id="test_client_async_callback",
+    )
+
+    await asyncio.wait_for(callback_started.wait(), timeout=5)
+    ray.get(host.notify_changed.remote({"key_1": 2}))
+    await asyncio.sleep(0.1)
+
+    assert callback_results == [1]
+    allow_callback_to_finish.set()
+    await async_wait_for_condition(
+        lambda: callback_results == [1, 2],
+        timeout=5,
+    )
+    assert client.snapshot_ids["key_1"] != -1
+
+
 def test_listen_for_change_java(serve_instance):
     host = ray.remote(LongPollHost).remote()
     ray.get(host.notify_changed.remote({"key_1": 999}))
