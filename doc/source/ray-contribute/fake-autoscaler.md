@@ -186,13 +186,11 @@ For the Ray OSS Buildkite environment, we set the following environment variable
 
 Lastly, Docker Compose requires a Docker image. The default is `rayproject/ray:nightly-py<major><minor>-cpu`, resolved against the Python version you run the tests with. Nightly is deliberate here: the fake multi-node provider tests the autoscaler on the current master branch, not on a release.
 
-The image also needs `openssh-server` installed and enabled. Without it, every node installs the package on startup, which is slow. Build an image that already has it, then set
+The image also needs `openssh-server` installed and enabled. Without it, every node installs the package on startup, which is slow. Build an image that already has it, then set the following to use that image and inform the multinode infrastructure that SSH is already installed:
 
 * `RAY_DOCKER_IMAGE="<your-image>"`
 
 * `RAY_HAS_SSH=1`
-
-to use that image and inform the multinode infrastructure that SSH is already installed.
 
 ## Local development
 
