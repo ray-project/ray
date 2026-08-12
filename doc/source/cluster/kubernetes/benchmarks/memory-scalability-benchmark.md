@@ -70,7 +70,7 @@ This benchmark is based on three benchmark experiments:
 * Experiment 2: Create a Kubernetes cluster, with only 1 RayCluster. Add 5 new worker Pods to this RayCluster every 60 seconds until the total reaches 150 Pods.
 * Experiment 3: Create a 5-node (1 head + 4 workers) RayCluster every 60 seconds up to 30 RayCluster custom resources.
 
-Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, the benchmark target is set at 150 Pods to cover most use cases.
+Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, the benchmark target is set at 150 Pods in the Ray clusters to cover most use cases.
 
 ## Experiment results (KubeRay v0.6.0)
 

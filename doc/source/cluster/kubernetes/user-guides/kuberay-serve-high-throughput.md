@@ -18,7 +18,7 @@ Take advantage of major upgrades to Ray Serve, delivering online inference with 
 
 With Ray 2.56 and later, high throughput config options are available for Ray Serve by setting the following environment variables:
 
-- `RAY_SERVE_ENABLE_HA_PROXY=1`: Enables HAProxy ingress for each Pod's proxy ingress (serving on port 8000 by default), which is a highly optimized, battle-tested open-source load balancer written in C.
+- `RAY_SERVE_ENABLE_HA_PROXY=1`: Enables HAProxy ingress for the proxy ingress on each of the Ray cluster's Pods (serving on port 8000 by default), which is a highly optimized, battle-tested open-source load balancer written in C.
 - `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`: Enables multiple high throughput serving optimizations, including direct gRPC data-plane communications between Ray Serve replicas, improving the performance of inter-deployment traffic.
 - `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1`: Enables direct streaming, allowing requests and responses to stream directly to the backend server instead of passing through an ingress.
 - `VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1`: Configures vLLM to use the Ray V2 executor backend.

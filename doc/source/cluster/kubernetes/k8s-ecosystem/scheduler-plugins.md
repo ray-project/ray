@@ -54,7 +54,7 @@ kubectl get podgroups.scheduling.x-k8s.io
 # NAME              PHASE     MINMEMBER   RUNNING   SUCCEEDED   FAILED   AGE
 # test-podgroup-0   Running   3           3                              2m25s
 
-# All Pods (1 head and 2 workers) belong to the same PodGroup.
+# The Ray cluster's Pods (1 head and 2 workers) belong to the same PodGroup.
 kubectl get pods -L scheduling.x-k8s.io/pod-group
 # NAME                                  READY   STATUS    RESTARTS   AGE     POD-GROUP
 # test-podgroup-0-head                  1/1     Running   0          3m30s   test-podgroup-0

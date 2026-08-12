@@ -49,7 +49,7 @@ kubectl apply -f ray-cluster.tls.yaml
 `ray-cluster.tls.yaml` will create:
 
 * A Kubernetes Secret containing the CA's private key (`ca.key`) and self-signed certificate (`ca.crt`) (**Step 1**)
-* A Kubernetes ConfigMap containing the scripts `gencert_head.sh` and `gencert_worker.sh`, which allow Pods to generate private keys (`tls.key`) and self-signed certificates (`tls.crt`) (**Step 2**)
+* A Kubernetes ConfigMap containing the scripts `gencert_head.sh` and `gencert_worker.sh`, which allow the head and worker Pods to generate private keys (`tls.key`) and self-signed certificates (`tls.crt`) (**Step 2**)
 * A RayCluster with proper TLS environment variables configurations (**Step 3**)
 
 The certificate (`tls.crt`) for a Pod is encrypted using the CA's private key (`ca.key`). Additionally, all Pods have the CA's public key included in `ca.crt`, which allows them to decrypt certificates from other Pods.
@@ -84,7 +84,7 @@ kubectl create secret generic ca-tls --from-file=ca.key --from-file=ca.crt
 
 This step is optional because the `ca.key` and `ca.crt` files have already been included in the Kubernetes Secret specified in [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml).
 
-# Step 2: Create separate private key and self-signed certificate for Pods
+# Step 2: Create separate private key and self-signed certificate for the head and worker Pods
 
 In [ray-cluster.tls.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.tls.yaml), each Pod (both head and workers) generates its own private key file (`tls.key`) and self-signed certificate file (`tls.crt`) in its init container. We generate separate files for each Pod because worker Pods do not have deterministic DNS names, and we cannot use the same certificate across different Pods.
 

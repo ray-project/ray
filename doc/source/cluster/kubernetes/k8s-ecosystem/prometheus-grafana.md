@@ -85,7 +85,7 @@ kubectl get service -l ray.io/cluster=raycluster-embed-grafana
 # NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                                                    AGE
 # raycluster-embed-grafana-head-svc   ClusterIP   None            <none>        44217/TCP,10001/TCP,44227/TCP,8265/TCP,6379/TCP,8080/TCP   13m
 
-# Wait until all Pods are ready.
+# Wait until the Ray cluster's Pods are ready.
 kubectl wait pods -l ray.io/cluster=raycluster-embed-grafana --timeout 2m --for condition=Ready
 
 # pod/raycluster-embed-grafana-head-2jk7c condition met

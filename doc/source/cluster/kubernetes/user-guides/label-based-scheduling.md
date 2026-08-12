@@ -92,7 +92,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 ### Step 4: Verify the Kubernetes cluster status
 
 ```bash
-# Step 4.1: List all Pods in the `default` namespace.
+# Step 4.1: List the Ray cluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
