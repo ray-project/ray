@@ -102,6 +102,7 @@
         cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: azure
       env: azure
+      frequency: manual
       cluster:
         anyscale_sdk_2026: true
         cluster_compute: hello_world_compute_config_azure.yaml
