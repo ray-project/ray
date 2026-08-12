@@ -523,7 +523,6 @@ class RequestRouter(ABC):
         # Cached list of replicas to avoid O(n) dict-to-list conversion on every
         # routing iteration. Updated only when replicas change via `update_replicas`.
         self._replicas_list: List[RunningReplica] = []
-        self._running_replicas_update_generation = 0
         self._desired_running_replica_infos: Dict[ReplicaID, RunningReplicaInfo] = {}
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
@@ -1369,8 +1368,6 @@ class RequestRouter(ABC):
         self, running_replicas: List[RunningReplicaInfo]
     ) -> None:
         """Apply a replica update without blocking the router event loop."""
-        generation = self._running_replicas_update_generation + 1
-        self._running_replicas_update_generation = generation
         self._desired_running_replica_infos = {
             replica.replica_id: replica for replica in running_replicas
         }
@@ -1391,19 +1388,30 @@ class RequestRouter(ABC):
             for replica_info in running_replicas
             if replica_info.replica_id not in self._replicas
         ]
-        resolved_wrappers = await self._resolve_replica_wrappers(missing_infos)
+        resolved_wrappers, resolution_error = await self._resolve_replica_wrappers(
+            missing_infos
+        )
 
-        if generation != self._running_replicas_update_generation:
-            return
-
+        # Commit whatever resolved successfully before surfacing any error. A
+        # single unexpected resolution failure must not drop healthy replicas
+        # and leave the router under-populated (or empty on first init) until
+        # the next target broadcast.
         self._commit_resolved_replica_wrappers(resolved_wrappers)
+        if resolution_error is not None:
+            raise resolution_error
 
     async def _resolve_replica_wrappers(
         self, replica_infos: List[RunningReplicaInfo]
-    ) -> Dict[ReplicaID, RunningReplica]:
-        """Resolve actor handles concurrently outside the router event loop."""
+    ) -> Tuple[Dict[ReplicaID, RunningReplica], Optional[BaseException]]:
+        """Resolve actor handles concurrently outside the router event loop.
+
+        Returns the wrappers that resolved successfully along with the first
+        unexpected error encountered (if any). The caller is responsible for
+        committing the resolved wrappers before re-raising the error so that a
+        single failure does not discard healthy replicas.
+        """
         if not replica_infos:
-            return {}
+            return {}, None
 
         loop = asyncio.get_running_loop()
         resolver = _get_replica_handle_resolver()
@@ -1429,8 +1437,9 @@ class RequestRouter(ABC):
         )
 
         resolved: Dict[ReplicaID, RunningReplica] = {}
+        resolution_error: Optional[BaseException] = None
         for replica_info, result in zip(replica_infos, results):
-            if isinstance(result, Exception):
+            if isinstance(result, ValueError):
                 # NOTE(abrar): ValueError is raised when the actor handle is not
                 # found by ray.get_actor.
 
@@ -1442,10 +1451,16 @@ class RequestRouter(ABC):
                     "during router update. The replica actor may have died. "
                     "Skipping this replica."
                 )
+            elif isinstance(result, BaseException):
+                # Capture the first unexpected error but keep processing the
+                # remaining results so successfully resolved wrappers are not
+                # dropped. The caller re-raises after committing them.
+                if resolution_error is None:
+                    resolution_error = result
             else:
                 resolved[replica_info.replica_id] = result
 
-        return resolved
+        return resolved, resolution_error
 
     def _commit_resolved_replica_wrappers(
         self, resolved_wrappers: Dict[ReplicaID, RunningReplica]
@@ -1453,7 +1468,7 @@ class RequestRouter(ABC):
         """Merge resolved wrappers into the latest desired replica snapshot."""
         wrappers = []
         for replica_id, replica_info in self._desired_running_replica_infos.items():
-            wrapper = resolved_wrappers.get(replica_id) or self._replicas.get(
+            wrapper = self._replicas.get(replica_id) or resolved_wrappers.get(
                 replica_id
             )
             if wrapper is None:

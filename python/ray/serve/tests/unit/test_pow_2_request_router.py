@@ -2162,6 +2162,146 @@ async def test_update_running_replicas_resolves_handles_off_event_loop(
 
 
 @pytest.mark.asyncio
+async def test_concurrent_running_replica_updates_merge_completed_resolutions(
+    pow_2_router, monkeypatch
+):
+    configure_running_replica_factories(pow_2_router)
+    deployment_id = DeploymentID(name="TEST_DEPLOYMENT")
+    r1_id = ReplicaID(unique_id="r1", deployment_id=deployment_id)
+    r2_id = ReplicaID(unique_id="r2", deployment_id=deployment_id)
+    r1_info = RunningReplicaInfo(
+        replica_id=r1_id,
+        node_id="node-1",
+        node_ip="127.0.0.1",
+        availability_zone="az-1",
+        actor_name="actor-r1",
+        max_ongoing_requests=10,
+    )
+    r2_info = RunningReplicaInfo(
+        replica_id=r2_id,
+        node_id="node-2",
+        node_ip="127.0.0.2",
+        availability_zone="az-2",
+        actor_name="actor-r2",
+        max_ongoing_requests=10,
+    )
+    first_resolution_started = threading.Event()
+    second_update_started = threading.Event()
+    allow_first_resolution = threading.Event()
+    allow_second_update = threading.Event()
+    r1_resolution_count = 0
+    resolution_count_lock = threading.Lock()
+
+    def get_actor_handle(replica_info):
+        nonlocal r1_resolution_count
+        if replica_info.replica_id == r1_id:
+            with resolution_count_lock:
+                r1_resolution_count += 1
+                resolution_number = r1_resolution_count
+
+            if resolution_number == 1:
+                first_resolution_started.set()
+                allow_first_resolution.wait(timeout=5)
+            else:
+                allow_second_update.wait(timeout=5)
+        else:
+            second_update_started.set()
+            allow_second_update.wait(timeout=5)
+
+        return object()
+
+    monkeypatch.setattr(RunningReplicaInfo, "get_actor_handle", get_actor_handle)
+
+    first_update = asyncio.create_task(pow_2_router._update_running_replicas([r1_info]))
+    assert await asyncio.to_thread(first_resolution_started.wait, 5)
+
+    second_update = asyncio.create_task(
+        pow_2_router._update_running_replicas([r1_info, r2_info])
+    )
+    assert await asyncio.to_thread(second_update_started.wait, 5)
+
+    allow_first_resolution.set()
+    await first_update
+    first_r1_wrapper = pow_2_router.curr_replicas[r1_id]
+    assert not second_update.done()
+
+    allow_second_update.set()
+    await second_update
+    assert set(pow_2_router.curr_replicas) == {r1_id, r2_id}
+    assert pow_2_router.curr_replicas[r1_id] is first_r1_wrapper
+
+
+@pytest.mark.asyncio
+async def test_update_running_replicas_propagates_unexpected_resolution_error(
+    pow_2_router, monkeypatch
+):
+    configure_running_replica_factories(pow_2_router)
+    deployment_id = DeploymentID(name="TEST_DEPLOYMENT")
+    replica_info = RunningReplicaInfo(
+        replica_id=ReplicaID(unique_id="r1", deployment_id=deployment_id),
+        node_id="node-1",
+        node_ip="127.0.0.1",
+        availability_zone="az-1",
+        actor_name="actor-r1",
+        max_ongoing_requests=10,
+    )
+
+    def get_actor_handle(_):
+        raise RuntimeError("unexpected resolution failure")
+
+    monkeypatch.setattr(RunningReplicaInfo, "get_actor_handle", get_actor_handle)
+
+    with pytest.raises(RuntimeError, match="unexpected resolution failure"):
+        await pow_2_router._update_running_replicas([replica_info])
+
+
+@pytest.mark.asyncio
+async def test_update_running_replicas_commits_successes_despite_resolution_error(
+    pow_2_router, monkeypatch
+):
+    """A single unexpected resolution error must not drop healthy replicas.
+
+    Regression test: previously _resolve_replica_wrappers raised on the first
+    unexpected error, discarding wrappers that had already resolved. The router
+    would then be marked initialized with an under-populated replica set (empty
+    on first init) until the next target broadcast.
+    """
+    configure_running_replica_factories(pow_2_router)
+    deployment_id = DeploymentID(name="TEST_DEPLOYMENT")
+    good_id = ReplicaID(unique_id="good", deployment_id=deployment_id)
+    bad_id = ReplicaID(unique_id="bad", deployment_id=deployment_id)
+    good_info = RunningReplicaInfo(
+        replica_id=good_id,
+        node_id="node-1",
+        node_ip="127.0.0.1",
+        availability_zone="az-1",
+        actor_name="actor-good",
+        max_ongoing_requests=10,
+    )
+    bad_info = RunningReplicaInfo(
+        replica_id=bad_id,
+        node_id="node-2",
+        node_ip="127.0.0.2",
+        availability_zone="az-2",
+        actor_name="actor-bad",
+        max_ongoing_requests=10,
+    )
+
+    def get_actor_handle(replica_info):
+        if replica_info.replica_id == bad_id:
+            raise RuntimeError("unexpected resolution failure")
+        return object()
+
+    monkeypatch.setattr(RunningReplicaInfo, "get_actor_handle", get_actor_handle)
+
+    with pytest.raises(RuntimeError, match="unexpected resolution failure"):
+        await pow_2_router._update_running_replicas([good_info, bad_info])
+
+    # The healthy replica must still be committed even though the other failed.
+    assert set(pow_2_router.curr_replicas) == {good_id}
+
+
+@pytest.mark.asyncio
 async def test_rank_replicas_via_multiplex(
     pow_2_router: PowerOfTwoChoicesRequestRouter,
 ):

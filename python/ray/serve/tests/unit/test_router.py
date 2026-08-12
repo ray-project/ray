@@ -24,6 +24,7 @@ from ray.exceptions import (
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
+    DeploymentTargetInfo,
     ReplicaID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
@@ -388,6 +389,33 @@ async def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
     )
     yield router, fake_request_router
     await router.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_deployment_target_update_schedules_replica_resolution(setup_router):
+    router, fake_request_router = setup_router
+    update_started = asyncio.Event()
+    finish_update = asyncio.Event()
+
+    async def update_running_replicas(_):
+        update_started.set()
+        await finish_update.wait()
+
+    fake_request_router._update_running_replicas = update_running_replicas
+
+    result = router.update_deployment_targets(
+        DeploymentTargetInfo(is_available=True, running_replicas=[])
+    )
+
+    assert result is None
+    await asyncio.wait_for(update_started.wait(), timeout=5)
+    assert len(router._request_router_update_tasks) == 1
+
+    finish_update.set()
+    await async_wait_for_condition(
+        lambda: not router._request_router_update_tasks,
+        timeout=5,
+    )
 
 
 def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:

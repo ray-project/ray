@@ -1,6 +1,5 @@
 import asyncio
 import contextvars
-import inspect
 import logging
 import os
 import random
@@ -13,7 +12,6 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import (
     Any,
-    Awaitable,
     Callable,
     DefaultDict,
     Dict,
@@ -82,7 +80,7 @@ class UpdatedObject:
 # Type signature for the update state callbacks. E.g.
 # async def update_state(updated_object: Any):
 #     do_something(updated_object)
-UpdateStateCallable = Callable[[Any], Union[None, Awaitable[None]]]
+UpdateStateCallable = Callable[[Any], None]
 KeyType = Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]]
 
 
@@ -310,24 +308,11 @@ class LongPollClient:
 
             # Bind the parameters because closures are late-binding.
             # https://docs.python-guide.org/writing/gotchas/#late-binding-closures # noqa: E501
-            async def chained(
-                callback=callback, arg=update.object_snapshot, callback_key=key
-            ):
-                try:
-                    result = callback(arg)
-                    if inspect.isawaitable(result):
-                        await result
-                except Exception:
-                    logger.exception(
-                        "LongPollClient callback failed for key %r.", callback_key
-                    )
-                finally:
-                    self._on_callback_completed(trigger_at=len(updates))
+            def chained(callback=callback, arg=update.object_snapshot):
+                callback(arg)
+                self._on_callback_completed(trigger_at=len(updates))
 
-            def schedule_chained(chained=chained):
-                self.event_loop.create_task(chained())
-
-            self._schedule_to_event_loop(schedule_chained)
+            self._schedule_to_event_loop(chained)
 
 
 class LongPollHost:
