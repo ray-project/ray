@@ -85,6 +85,7 @@ def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
         lambda ds: ds.map_batches(lambda batch: batch, scheduling_strategy="SPREAD"),
         lambda ds: ds.flat_map(lambda row: [row], scheduling_strategy="SPREAD"),
         lambda ds: ds.with_column("copy", col("id"), scheduling_strategy="SPREAD"),
+        lambda ds: ds.with_columns({"copy": col("id")}, scheduling_strategy="SPREAD"),
         lambda ds: ds.filter(expr=col("id") >= 0, scheduling_strategy="SPREAD"),
         lambda ds: ds.add_column(
             "copy", lambda batch: batch["id"], scheduling_strategy="SPREAD"
@@ -98,6 +99,7 @@ def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
         "map_batches",
         "flat_map",
         "with_column",
+        "with_columns",
         "filter",
         "add_column",
         "drop_columns",
@@ -125,10 +127,11 @@ def test_transform_ray_remote_args_deprecation_warning(
 @pytest.mark.parametrize(
     "transform_fn",
     [
+        lambda ds, **opts: ds.with_column("copy", col("id"), **opts),
         lambda ds, **opts: ds.add_column("copy", lambda b: b["id"], **opts),
         lambda ds, **opts: ds.drop_columns(["id"], **opts),
     ],
-    ids=["add_column", "drop_columns"],
+    ids=["with_column", "add_column", "drop_columns"],
 )
 def test_column_named_remote_args_no_warning(
     ray_start_regular_shared, transform_fn: Callable[..., Dataset]

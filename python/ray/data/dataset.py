@@ -219,8 +219,8 @@ def _warn_on_ray_remote_args_fn(
 
 def _warn_on_ray_remote_args(ray_remote_args: Dict[str, Any]) -> None:
     if ray_remote_args:
-        # add_column and drop_columns call other Dataset methods. Skip those calls so
-        # the warning points to where add_column or drop_columns was called.
+        # with_column, add_column, and drop_columns call other Dataset methods. Skip
+        # those calls so the warning points to where the public API was called.
         stacklevel = 1
         frame = inspect.currentframe()
         while frame is not None and frame.f_code.co_filename == __file__:
@@ -1017,6 +1017,16 @@ class Dataset:
         exprs: Mapping[str, "Expr"],
         *,
         compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -1043,13 +1053,29 @@ class Dataset:
                 defines its values. Column order follows the mapping's
                 insertion order.
             compute: The compute strategy to use for the projection operation.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             **ray_remote_args: Additional resource requirements to request from
-                Ray for the map tasks (e.g., ``num_gpus=1``).
+                Ray for the map tasks (e.g., ``num_gpus=1``). This argument is
+                deprecated and will be removed in Ray 2.64.
 
         Returns:
             A new dataset with the added or overwritten columns.
         """
         from ray.data.expressions import DownloadExpr
+
+        _warn_on_ray_remote_args(ray_remote_args)
 
         if not exprs:
             return self
@@ -1060,6 +1086,22 @@ class Dataset:
             )
 
         from ray.data._internal.logical.operators import Project
+
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
+        ray_remote_args = _merge_named_ray_remote_args(
+            ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+        )
 
         project_op = Project(
             exprs=[StarExpr(), *(expr.alias(name) for name, expr in exprs.items())],
@@ -1173,24 +1215,23 @@ class Dataset:
         # TODO: Once the expression API supports UDFs, we can clean up the code here.
         from ray.data.expressions import DownloadExpr
 
-        _warn_on_ray_remote_args(ray_remote_args)
-        ray_remote_args = merge_resources_to_ray_remote_args(
-            num_cpus,
-            num_gpus,
-            memory,
-            ray_remote_args,
-        )
-        ray_remote_args = _merge_named_ray_remote_args(
-            ray_remote_args,
-            label_selector=label_selector,
-            fallback_strategy=fallback_strategy,
-            max_calls=max_calls,
-            resources=resources,
-            accelerator_type=accelerator_type,
-            runtime_env=runtime_env,
-        )
-
         if isinstance(expr, DownloadExpr):
+            _warn_on_ray_remote_args(ray_remote_args)
+            ray_remote_args = merge_resources_to_ray_remote_args(
+                num_cpus,
+                num_gpus,
+                memory,
+                ray_remote_args,
+            )
+            ray_remote_args = _merge_named_ray_remote_args(
+                ray_remote_args,
+                label_selector=label_selector,
+                fallback_strategy=fallback_strategy,
+                max_calls=max_calls,
+                resources=resources,
+                accelerator_type=accelerator_type,
+                runtime_env=runtime_env,
+            )
             download_op = Download(
                 uri_column_names=[expr.uri_column_name],
                 output_bytes_column_names=[column_name],
@@ -1202,7 +1243,18 @@ class Dataset:
             return Dataset._from_parent(self, logical_plan)
 
         return self.with_columns(
-            {column_name: expr}, compute=compute, **ray_remote_args
+            {column_name: expr},
+            compute=compute,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            **ray_remote_args,
         )
 
     @Deprecated(message="Use `with_column` API instead")
