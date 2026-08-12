@@ -4,7 +4,6 @@ import hashlib
 import logging
 from typing import Any, Dict, Optional
 
-import transformers
 from pydantic import Field, field_validator, model_validator
 
 import ray
@@ -24,13 +23,6 @@ from ray.llm._internal.batch.processor.utils import (
     build_cpu_stage_map_kwargs,
     get_value_or_fallback,
 )
-from ray.llm._internal.batch.stages import (
-    ChatTemplateStage,
-    DetokenizeStage,
-    PrepareMultimodalStage,
-    TokenizeStage,
-    vLLMEngineStage,
-)
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
@@ -40,11 +32,6 @@ from ray.llm._internal.batch.stages.configs import (
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.placement import PlacementGroupConfig
-from ray.llm._internal.common.utils.download_utils import (
-    STREAMING_LOAD_FORMATS,
-    NodeModelDownloadable,
-    download_model_files,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +141,22 @@ def build_vllm_engine_processor(
     Returns:
         The constructed processor.
     """
+    # Defer vLLM, Transformers, and Torch imports until this processor is constructed.
+    import transformers
+
+    from ray.llm._internal.batch.stages import (
+        ChatTemplateStage,
+        DetokenizeStage,
+        PrepareMultimodalStage,
+        TokenizeStage,
+        vLLMEngineStage,
+    )
+    from ray.llm._internal.common.utils.download_utils import (
+        STREAMING_LOAD_FORMATS,
+        NodeModelDownloadable,
+        download_model_files,
+    )
+
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []

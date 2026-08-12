@@ -1,3 +1,6 @@
+.. meta::
+   :description: Elastic training that adapts to changing resource availability, continuing through node preemption and scaling up as new nodes join.
+
 .. _train-elastic-training:
 
 Elastic training

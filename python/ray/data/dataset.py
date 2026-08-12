@@ -2593,7 +2593,6 @@ class Dataset:
         blocks, metadata = _split_at_indices(
             [(entry.ref, entry.metadata) for entry in bundle.blocks],
             indices,
-            False,
         )
         split_duration = time.perf_counter() - start_time
         parent_stats = self._raw_stats()
@@ -6918,11 +6917,7 @@ class Dataset:
         import dask
         import dask.dataframe as dd
         import pandas as pd
-
-        try:
-            import pyarrow as pa
-        except Exception:
-            pa = None
+        import pyarrow as pa
 
         from ray.data._internal.pandas_block import PandasBlockSchema
         from ray.util.client.common import ClientObjectRef
@@ -6958,7 +6953,7 @@ class Dataset:
                         for col, dtype in zip(schema.names, schema.types)
                     }
                 )
-            elif pa is not None and isinstance(schema, pa.Schema):
+            elif isinstance(schema, pa.Schema):
                 arrow_tensor_ext_types = get_arrow_extension_fixed_shape_tensor_types()
 
                 if any(

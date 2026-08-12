@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Entry point for Ray debugging guides covering failures, hangs, memory issues, the interactive debugger, and performance optimization."
+---
+
 (observability-debug-apps)=
 
 # Debugging Applications
