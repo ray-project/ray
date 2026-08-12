@@ -398,6 +398,8 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         )
         for node_spec, requested_count in requested_node_counts.items():
             current_count = current_node_counts.get(node_spec, 0)
+            if requested_count <= current_count:
+                continue
             message += f" [{node_spec}: {current_count} -> {requested_count}]"
 
         if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING or not self._autoscaling_enabled:

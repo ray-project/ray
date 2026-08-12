@@ -236,7 +236,9 @@ class TestClusterAutoscaling:
 
             assert resources_reserved == expected_resources
 
-    def test_cpu_pressure_does_not_scale_gpu_nodes_when_cpu_nodes_exist(self):
+    def test_cpu_pressure_does_not_scale_gpu_nodes_when_cpu_nodes_exist(
+        self, propagate_logs, caplog
+    ):
         """CPU-only pressure should not request accelerator nodes in a mixed cluster.
 
         This covers the failure mode from ray-project/ray#56431 where Ray Data
@@ -248,29 +250,31 @@ class TestClusterAutoscaling:
         cpu_node_spec = _NodeResourceSpec.of(cpu=32, gpu=0, mem=16 * GiB)
         gpu_node_spec = _NodeResourceSpec.of(cpu=1, gpu=8, mem=64 * GiB)
 
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            resource_limits=ExecutionResources.inf(),
-            execution_id="test_cpu_only_pressure_mixed_cluster",
-            cluster_scaling_up_delta=scale_up_delta,
-            resource_utilization_calculator=StubUtilizationGauge(
-                ExecutionResources(
-                    cpu=0.95,
-                    gpu=0.1,
-                    memory=0.1,
-                    object_store_memory=0.1,
-                )
-            ),
-            cluster_scaling_up_util_threshold=scale_up_threshold,
-            min_gap_between_autoscaling_requests_s=0,
-            autoscaling_coordinator=FakeAutoscalingCoordinator(),
-            get_node_counts=lambda: {
-                cpu_node_spec: 10,
-                gpu_node_spec: 2,
-            },
-        )
+        with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=True):
+            autoscaler = DefaultClusterAutoscalerV2(
+                resource_manager=MagicMock(),
+                resource_limits=ExecutionResources.inf(),
+                execution_id="test_cpu_only_pressure_mixed_cluster",
+                cluster_scaling_up_delta=scale_up_delta,
+                resource_utilization_calculator=StubUtilizationGauge(
+                    ExecutionResources(
+                        cpu=0.95,
+                        gpu=0.1,
+                        memory=0.1,
+                        object_store_memory=0.1,
+                    )
+                ),
+                cluster_scaling_up_util_threshold=scale_up_threshold,
+                min_gap_between_autoscaling_requests_s=0,
+                autoscaling_coordinator=FakeAutoscalingCoordinator(),
+                get_node_counts=lambda: {
+                    cpu_node_spec: 10,
+                    gpu_node_spec: 2,
+                },
+            )
 
-        autoscaler.try_trigger_scaling()
+        with caplog.at_level(logging.INFO):
+            autoscaler.try_trigger_scaling()
 
         resources_reserved = autoscaler.get_total_resources()
         assert resources_reserved.cpu == (
@@ -279,6 +283,15 @@ class TestClusterAutoscaling:
         assert resources_reserved.gpu == gpu_node_spec.gpu * 2
         assert resources_reserved.memory == (
             cpu_node_spec.mem * (10 + scale_up_delta) + gpu_node_spec.mem * 2
+        )
+        log_messages = [record.message for record in caplog.records]
+        assert any(
+            "[{CPU: 32, GPU: 0, memory: 16.0GiB}: 10 -> 11]" in message
+            for message in log_messages
+        )
+        assert all(
+            "[{CPU: 1, GPU: 8, memory: 64.0GiB}: 2 -> 2]" not in message
+            for message in log_messages
         )
 
     def test_cpu_pressure_scales_gpu_nodes_if_no_cpu_node_type_exists(self):
