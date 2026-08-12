@@ -131,6 +131,27 @@ TRACING_CONFIG_CHECKPOINT_KEY = "serve-tracing-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
+def _coerce_tracing_config(
+    tracing_config: Union[None, Dict, TracingConfig],
+) -> TracingConfig:
+    """Normalize an optional dict / model into a validated TracingConfig.
+
+    Defaults to an env-var-sourced ``TracingConfig`` so the global tracing
+    config is never None, and validates eagerly because the config is
+    broadcast to every proxy.
+    """
+    if tracing_config is None:
+        return TracingConfig()
+    if isinstance(tracing_config, TracingConfig):
+        return tracing_config
+    if isinstance(tracing_config, dict):
+        return TracingConfig(**tracing_config)
+    raise TypeError(
+        "tracing_config must be a dict, TracingConfig, or None; got "
+        f"{type(tracing_config).__name__}."
+    )
+
+
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -197,8 +218,8 @@ class ServeController:
         tracing_config_checkpoint = self.kv_store.get(TRACING_CONFIG_CHECKPOINT_KEY)
         if tracing_config_checkpoint is not None:
             global_tracing_config = pickle.loads(tracing_config_checkpoint)
-        self.global_tracing_config: TracingConfig = (
-            global_tracing_config or TracingConfig()
+        self.global_tracing_config: TracingConfig = _coerce_tracing_config(
+            global_tracing_config
         )
         if tracing_config_checkpoint is None:
             self.kv_store.put(
@@ -375,13 +396,7 @@ class ServeController:
         The config is validated/coerced here because it is broadcast to every
         proxy, which would otherwise fail on a malformed payload.
         """
-        if isinstance(global_tracing_config, dict):
-            global_tracing_config = TracingConfig(**global_tracing_config)
-        elif not isinstance(global_tracing_config, TracingConfig):
-            raise TypeError(
-                "global_tracing_config must be a dict or TracingConfig; got "
-                f"{type(global_tracing_config).__name__}."
-            )
+        global_tracing_config = _coerce_tracing_config(global_tracing_config)
 
         if self.global_tracing_config == global_tracing_config:
             return

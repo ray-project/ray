@@ -1495,6 +1495,10 @@ class ProxyActorInterface(ABC):
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
         self._tracing_config = tracing_config
+        # Whether setup_tracing has already succeeded in this process. Tracing is
+        # set up at most once: OpenTelemetry only honors the first
+        # set_tracer_provider call per process.
+        self._tracing_setup_succeeded = False
         self._log_buffer_size = log_buffer_size
 
         self._update_logging_config(logging_config)
@@ -1623,22 +1627,31 @@ class ProxyActorInterface(ABC):
         Called with the initial long-poll snapshot and again whenever the global
         tracing config changes at runtime.
         """
-        if tracing_config == self._tracing_config:
-            # Already set up with this config. Re-running setup_tracing would
-            # not take effect anyway: OpenTelemetry only honors the first
-            # set_tracer_provider call in a process.
+        if self._tracing_setup_succeeded:
+            # OpenTelemetry only honors the first set_tracer_provider call in a
+            # process, so re-running setup here would keep the old sampler and
+            # attach duplicate span processors. Surface the ignored change
+            # instead of silently misapplying it.
+            if tracing_config != self._tracing_config:
+                logger.warning(
+                    "Tracing is already set up in this proxy, so the updated "
+                    "tracing config will only take effect once it restarts."
+                )
             return
+
         self._tracing_config = tracing_config
 
         # Never let this raise: it runs as a long poll callback, and an
         # exception would stop the proxy's long poll client from being
-        # rescheduled, freezing route table updates.
+        # rescheduled, freezing route table updates. Leave
+        # _tracing_setup_succeeded unset so a later update can retry.
         try:
             if setup_tracing(
                 component_name="proxy",
                 component_id=self._node_ip_address,
                 tracing_config=tracing_config,
             ):
+                self._tracing_setup_succeeded = True
                 logger.info("Successfully set up tracing for proxy")
         except Exception:
             logger.exception("Failed to set up tracing for proxy.")
