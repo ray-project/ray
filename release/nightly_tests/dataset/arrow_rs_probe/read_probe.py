@@ -83,7 +83,20 @@ def parse_args() -> argparse.Namespace:
         help="Cap read tasks. Use 1 for the CPU-bound-vs-IO diagnostic.",
     )
     p.add_argument(
-        "--consume", choices=["iter_bundles", "count"], default="iter_bundles"
+        "--consume",
+        choices=["iter_bundles", "count", "write_parquet"],
+        default="iter_bundles",
+        help=(
+            "write_parquet replicates the release write_parquet test (1aa): the "
+            "read fuses into the write task, stats come from ds._write_ds (which "
+            "materializes, so no capture_executor race). Output is deleted after "
+            "the run."
+        ),
+    )
+    p.add_argument(
+        "--write-path",
+        default=None,
+        help="Output dir for --consume write_parquet (default: <tmp>/probe_write_out).",
     )
     # 50 Hz (20 ms): a 5000-column decode's builder-flush spike is short; at the
     # old 10 Hz it was caught on some runs and missed on others, giving ~1.5 GB of
@@ -321,6 +334,22 @@ def main():
             ds = ray.data.read_parquet(args.path, **read_kwargs)
             if args.consume == "count":
                 ds.count()
+            elif args.consume == "write_parquet":
+                import shutil
+                import tempfile
+
+                write_out = args.write_path or os.path.join(
+                    tempfile.gettempdir(), "probe_write_out"
+                )
+                shutil.rmtree(write_out, ignore_errors=True)
+                try:
+                    ds.write_parquet(write_out)
+                finally:
+                    # The fused read->write op's stats live on ds._write_ds
+                    # (dataset.py: get_stats_summary falls through to it), which
+                    # is materialized — read them via collect_read_op_metrics
+                    # below as usual; only the bytes on disk need cleanup.
+                    shutil.rmtree(write_out, ignore_errors=True)
             else:
                 # Same zero-copy consumption as ds.iter_internal_ref_bundles(),
                 # but with capture_executor=True so ds.get_stats_summary() can

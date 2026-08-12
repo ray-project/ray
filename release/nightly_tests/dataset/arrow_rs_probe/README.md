@@ -20,6 +20,25 @@ bash release/nightly_tests/dataset/arrow_rs_probe/run_grand_experiment.sh
 Results: `grand_runs/<ts>/summary.md` (ratio tables; R/P > 1.00 = arrow-rs worse),
 `summary.json`, one log per cell.
 
+## Replication matrix — the 2026-08-12 release-A/B trusted signals (TODO 1ab phase 1)
+
+Replicates the multi-node A/B's *trusted* (wall / decode task-s) good/bad list on one
+Linux box: `tensors` (item 1y, decode 5.59×), `binsweep` (item 10 — bins from 1 row
+group up to 10× a file, plus a PyArrow `pre_buffer=off` arm), `write` (item 1aa),
+`fatcol` (item 1o). Stage rationale in `replication_matrix.py`'s docstring; the
+predictions each stage falsifies are in `arrow_rs_docs/TODO.md` items 1ab/10.
+
+```bash
+python gen_local_fixtures.py --root ~/arrow_rs_repl_fixtures \
+    --shapes bin_sweep,tensors_wide,fat_col
+python replication_matrix.py --fixture-root ~/arrow_rs_repl_fixtures            # all
+python replication_matrix.py --fixture-root ~/arrow_rs_repl_fixtures \
+    --only binsweep --repeat 3                                                   # subset
+```
+
+Results: `replication_runs/<ts>/summary.json` + per-cell logs; the summary block
+prints R = arrow_rs/pyarrow per cell pair and the pre_buffer on/off deltas.
+
 ---
 
 Single-node harness to measure the two cases where the arrow-rs Parquet reader was

@@ -167,12 +167,90 @@ def gen_fat_col(d, scale):
     return {"files": 1, "rows": n_rows, "uncompressed_bytes": t.nbytes}
 
 
+def gen_bin_sweep(d, scale):
+    """8 files x 8 row groups x ~64 MiB each (~512 MiB/file, ~4 GiB total at scale=1).
+
+    The bin-sweep fixture (TODO 1ab/R2, item 10): sized so the sweep grid can span
+    all three C9 regimes — sub-file bins (1 RG, 4 RGs), exactly one file, and
+    MULTI-FILE bins (5x / 10x the file size — the release yaml's 1 GiB bin never
+    crossed a file boundary, so mechanism (i), N sub-fragments on the base's
+    unbounded thread pool, has never been measured). replication_matrix.py derives
+    the actual byte grid from this manifest entry's rg/file stats, so --scale
+    changes sizes without breaking the regimes.
+    """
+    rng = np.random.default_rng(5)
+    pool = _str_pool(rng)
+    n_files = 8
+    rgs_per_file = 8
+    rows_per_rg = max(1024, int(258_000 * scale))  # ~64 MiB uncompressed at scale=1
+    total = 0
+    for f in range(n_files):
+        n_rows = rgs_per_file * rows_per_rg
+        t = _string_table(rng, pool, n_rows, id_start=f * n_rows)
+        pq.write_table(
+            t,
+            os.path.join(d, f"part{f}.parquet"),
+            write_page_index=True,
+            row_group_size=rows_per_rg,
+        )
+        total += t.nbytes
+    return {
+        "files": n_files,
+        "rows": n_files * rgs_per_file * rows_per_rg,
+        "uncompressed_bytes": total,
+        "rgs_per_file": rgs_per_file,
+        "rows_per_rg": rows_per_rg,
+    }
+
+
+def gen_tensors_wide(d, scale):
+    """4 files, 5000 fixed_size_list<float32, 2> columns (~40 KiB/row, ~40 MiB RGs).
+
+    Local lookalike for the wide_schema_pipeline_tensors regression (T15, item 1y:
+    native decode task-seconds 5.59x). The release dataset lives in
+    ray-benchmark-data-internal-* (unreadable to us), so parity is mechanism-level:
+    many small fixed-size-list columns decoded natively. Plain storage type, no
+    extension metadata — the release run confirmed the native (non-fallback) path,
+    and extension-tagged columns would fall back and measure nothing.
+    """
+    rng = np.random.default_rng(6)
+    n_files = 4
+    n_cols = 5000
+    list_size = 2
+    rows_per_file = max(256, int(10_000 * scale))
+    row_group_size = max(64, int(1_000 * scale))  # ~40 MiB uncompressed at scale=1
+    total = 0
+    for f in range(n_files):
+        cols = {}
+        for c in range(n_cols):
+            flat = rng.random(rows_per_file * list_size, dtype=np.float32)
+            cols[f"t{c}"] = pa.FixedSizeListArray.from_arrays(
+                pa.array(flat, type=pa.float32()), list_size
+            )
+        t = pa.table(cols)
+        pq.write_table(
+            t,
+            os.path.join(d, f"part{f}.parquet"),
+            write_page_index=True,
+            row_group_size=row_group_size,
+        )
+        total += t.nbytes
+    return {
+        "files": n_files,
+        "rows": n_files * rows_per_file,
+        "uncompressed_bytes": total,
+        "columns": n_cols,
+    }
+
+
 SHAPES = {
     "lone_big_rg": gen_lone_big_rg,
     "single_rg_files": gen_single_rg_files,
     "tiny_rgs": gen_tiny_rgs,
     "wide": gen_wide,
     "fat_col": gen_fat_col,
+    "bin_sweep": gen_bin_sweep,
+    "tensors_wide": gen_tensors_wide,
 }
 
 

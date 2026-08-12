@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
 
@@ -64,6 +65,20 @@ _ARROW_RS_KWARG_PREFIX = "arrow_rs_"
 # amortizes per-request latency across meaningful payload sizes.
 _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
     "RAY_DATA_PARQUET_FRAGMENT_BUFFER_SIZE", 8 * MiB
+)
+
+# Experimental override for pyarrow's ``pre_buffer`` scan option. Unset (the
+# default) leaves pyarrow's own default (``True``) in place — identical
+# behavior to before this knob existed. ``0`` disables the coalesced
+# whole-fragment prefetch; with the footer-based planner a fragment is all of
+# a file's bin-assigned row groups, so ``pre_buffer=True`` stages that entire
+# compressed span per fragment. Exists for the bin-size sweep's memory
+# attribution; disabling it trades memory for (potentially many) uncoalesced
+# range requests, so it is not a recommended production setting.
+_PARQUET_PRE_BUFFER_OVERRIDE: Optional[int] = (
+    env_integer("RAY_DATA_PARQUET_PRE_BUFFER", -1)
+    if "RAY_DATA_PARQUET_PRE_BUFFER" in os.environ
+    else None
 )
 
 # Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
@@ -625,6 +640,12 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             "use_buffered_stream": True,
             "buffer_size": _PARQUET_FRAGMENT_BUFFER_SIZE,
         }
+        # Experimental: honor RAY_DATA_PARQUET_PRE_BUFFER when set (see the
+        # module-level knob). Unset leaves pyarrow's default in place, so the
+        # explicit ``fragment_scan_options`` below stays byte-identical to the
+        # pre-knob behavior.
+        if _PARQUET_PRE_BUFFER_OVERRIDE is not None:
+            scan_opts["pre_buffer"] = bool(_PARQUET_PRE_BUFFER_OVERRIDE)
         # ``page_checksum_verification`` is a *scan* option, not a format option.
         # ``_make_format`` sets it on the format's ``default_fragment_scan_options``,
         # but the explicit ``fragment_scan_options`` we hand the scanner below

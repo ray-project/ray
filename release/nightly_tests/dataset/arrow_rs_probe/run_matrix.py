@@ -49,13 +49,17 @@ def find_jemalloc():
     return None
 
 
-def run_cell(logdir, name, path, reader, concurrency, columns, extra_env):
+def run_cell(
+    logdir, name, path, reader, concurrency, columns, extra_env, extra_args=None
+):
     """Run one read_probe.py invocation; tee output to a log; return parsed RESULT dict."""
     cmd = [PY, PROBE, "--path", path, "--reader", reader]
     if concurrency is not None:
         cmd += ["--concurrency", str(concurrency)]
     if columns:
         cmd += ["--columns", *columns]
+    if extra_args:
+        cmd += list(extra_args)
 
     env = dict(os.environ)
     env.update(extra_env)
