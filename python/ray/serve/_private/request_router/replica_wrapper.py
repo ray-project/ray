@@ -183,6 +183,11 @@ class gRPCReplicaWrapper(ReplicaWrapper):
 class RunningReplica:
     """Contains info on a running replica.
     Also defines the interface for a request router to talk to a replica.
+
+    Args:
+        replica_info: Metadata for the running replica.
+        actor_handle: Pre-resolved actor handle. If not provided, the handle is
+            resolved from ``replica_info``.
     """
 
     def __init__(

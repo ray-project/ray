@@ -443,7 +443,24 @@ class FIFOMixin:
 
 @PublicAPI(stability="alpha")
 class RequestRouter(ABC):
-    """Abstract interface for a request router (how the router calls it)."""
+    """Abstract interface for a request router (how the router calls it).
+
+    Args:
+        deployment_id: ID of the deployment this router sends requests to.
+        handle_source: Source of the handle using this router.
+        self_actor_id: Actor ID of the process hosting this router.
+        self_actor_handle: Handle to the actor hosting this router.
+        use_replica_queue_len_cache: Whether to cache replica queue lengths.
+        get_curr_time_s: Callable returning the current time in seconds.
+        create_replica_wrapper_func: Factory for a running replica wrapper.
+        create_replica_wrapper_from_handle_func: Factory for a running replica
+            wrapper using a pre-resolved actor handle.
+        initial_backoff_s: Initial request-routing retry backoff in seconds.
+        backoff_multiplier: Multiplier applied to each retry backoff.
+        max_backoff_s: Maximum request-routing retry backoff in seconds.
+        *args: Additional positional arguments for subclasses.
+        **kwargs: Additional keyword arguments for subclasses.
+    """
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
@@ -792,6 +809,15 @@ class RequestRouter(ABC):
     def create_replica_wrapper_from_handle(
         self, replica_info: RunningReplicaInfo, actor_handle: ActorHandle
     ) -> RunningReplica:
+        """Create a running replica wrapper from a resolved actor handle.
+
+        Args:
+            replica_info: Metadata for the running replica.
+            actor_handle: Resolved handle for the replica actor.
+
+        Returns:
+            The running replica wrapper.
+        """
         return self._create_replica_wrapper_from_handle_func(replica_info, actor_handle)
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
