@@ -8,7 +8,7 @@ myst:
 
 # Scheduling on Kubernetes
 
-KubeRay runs each Ray node (head or worker) as a Kubernetes Pod. While Ray nodes can generally be VMs or physical machines, this guide uses "Pod" when referring to the Kubernetes object and "Ray node" when referring to Ray's perspective.
+KubeRay runs each Ray node, head or worker, as a Kubernetes Pod. While Ray nodes can generally be VMs or physical machines, this guide uses "Pod" when referring to the Kubernetes object and "Ray node" when referring to Ray's perspective.
 
 Two schedulers act on that arrangement, one on each half of it. Kubernetes decides which machine each Pod runs on. Ray decides which Pod each task and actor runs on. Knowing which of the two is holding up your workload is the difference between a quick fix and an afternoon of guessing.
 
@@ -36,9 +36,9 @@ The following table summarizes the split:
 
 The two layers need to agree on how much capacity each Pod has. KubeRay establishes that agreement when it starts each Ray container, deriving Ray's logical resource capacity from the Kubernetes container spec. Three details matter, because this is where the layers most often disagree:
 
-- KubeRay reads the CPU, memory, and GPU **limits** from the main Ray container, which must be the first container in the Pod's `containers` list, and uses them as the Pod's logical capacity. Limits you set on a sidecar don't count toward it. Starting with KubeRay 1.3.0, it falls back to the CPU request when no CPU limit is set.
+- KubeRay reads the CPU, memory, and GPU `limits` from the main Ray container, which must be the first container in the Pod's `containers` list, and uses them as the Pod's logical capacity. Limits you set on a sidecar don't count toward it. Starting with KubeRay 1.3.0, it falls back to the CPU request when you don't set a CPU limit.
 - KubeRay rounds CPU quantities up to the nearest integer. A container limit of `500m` becomes one logical CPU to Ray.
-- KubeRay ignores memory and GPU **requests**. Set those requests equal to their limits so both layers see the same numbers.
+- KubeRay ignores memory and GPU `requests`. Set those requests equal to their limits so both layers see the same numbers.
 
 Override any of these with `rayStartParams`. See {ref}`rayStartParams` for the full list. The common override is `num-cpus: "0"` on the head group, which tells Ray the head Pod has no CPU capacity and so keeps CPU-requiring workloads off it. The head Pod still has real CPU from Kubernetes' point of view. You're only changing what Ray believes it can schedule there.
 
@@ -46,7 +46,7 @@ Override any of these with `rayStartParams`. See {ref}`rayStartParams` for the f
 Check the capacity KubeRay derived before you suspect either scheduler. A Pod that Kubernetes considers healthy and well-provisioned can still look full, or empty, to Ray, because the two layers are reading different numbers for the same Pod.
 :::
 
-## Deciding which layer to investigate
+## Decide which layer to investigate
 
 Start from what the Pods are doing. The Pod state separates the cases cleanly.
 
@@ -54,15 +54,15 @@ Start from what the Pods are doing. The Pod state separates the cases cleanly.
 
 **Pods stuck in `Pending`**: The Kubernetes layer is holding the work. Run `kubectl describe pod <pod-name>` and read the scheduler events at the bottom. Typical causes are insufficient allocatable capacity, unsatisfied node selectors or taints, exhausted resource quotas, or a queueing controller holding the workload back. Nothing in your Ray code changes the outcome.
 
-**Pods stuck in `Pending` on an autoscaling cluster**: Both layers are in play, in sequence. The Ray autoscaler decides it needs more Ray nodes and asks KubeRay to create Pods. The Kubernetes Cluster Autoscaler then provisions machines so those Pods can be placed. A stall can come from either step. See {ref}`ray-k8s-autoscaler-comparison` for how the two autoscalers relate, including why the Ray autoscaler scales on logical resources from your task and actor annotations rather than on observed CPU and memory the way the Horizontal Pod Autoscaler does.
+**Pods stuck in `Pending` on an autoscaling cluster**: Both layers are in play, in sequence. The Ray autoscaler decides it needs more Ray nodes and asks KubeRay to create Pods. The Kubernetes Cluster Autoscaler then provisions machines so Kubernetes can place those Pods. A stall can come from either step. See {ref}`ray-k8s-autoscaler-comparison` for how the two autoscalers relate, including why the Ray autoscaler scales on logical resources from your task and actor annotations rather than on observed CPU and memory the way the Horizontal Pod Autoscaler does.
 
-## Choosing where to express a constraint
+## Choose where to express a constraint
 
 Express a constraint in Kubernetes when it's about machines: which hardware a Pod may land on, which team's quota it draws from, or whether to admit a workload at all. Node selectors, taints, tolerations, and resource quotas are the tools. Ray integrates with five batch schedulers for queueing, priority, and gang scheduling at the Pod level. See {ref}`kuberay-kueue`, {ref}`kuberay-kai-scheduler`, {ref}`kuberay-volcano`, {ref}`kuberay-yunikorn`, and {ref}`kuberay-scheduler-plugins`.
 
 Express a constraint in Ray when it's about your application: which tasks need accelerators, which actors must sit together for low-latency communication, and how work spreads across the nodes you already have. Use resource requirements, {ref}`scheduling strategies <ray-scheduling-strategies>`, {ref}`placement groups <ray-placement-group-doc-ref>` for gang scheduling within a Ray cluster, and {ref}`label-based scheduling <kuberay-label-scheduling>` to target nodes by label rather than by ID.
 
-A useful rule of thumb: if the constraint would still make sense with your application code deleted, it belongs in Kubernetes.
+As a rule of thumb, if the constraint would still make sense with your application code deleted, it belongs in Kubernetes.
 
 ## See also
 
