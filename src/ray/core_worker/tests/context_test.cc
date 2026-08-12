@@ -21,7 +21,6 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 
 namespace ray {
@@ -64,10 +63,11 @@ TaskSpecification MakeTaskSpec(const TaskID &task_id, uint64_t num_returns) {
 
 }  // namespace
 
-// WorkerContext keeps its per-thread state in a static thread_local, so that state
-// outlives any one WorkerContext and is shared by every test on this thread. Reset it
-// after each test: SetCurrentTask requires the put counter to be zero, so a test that
-// leaves it dirty would crash the next one.
+// ResetCurrentTask zeroes the per-thread task index and put counter, which is what
+// SetCurrentTask requires to be zero. The counters live in a static thread_local that
+// outlives any one WorkerContext, so without this a test that advances the put counter
+// would crash the next test that sets a task. It leaves the current task spec in place;
+// no test here reads a task it did not set itself.
 class WorkerContextTest : public ::testing::Test {
  protected:
   void TearDown() override { context_.ResetCurrentTask(); }
@@ -91,9 +91,9 @@ TEST_F(WorkerContextTest, GeneratorReturnIdUsesBothSuppliedArguments) {
   EXPECT_EQ(object_id, ObjectID::FromIndex(task_id, 1));
 }
 
-// Omitting both is the form the production callers use: the task ID and the put index
-// both come from the worker context. Asserting the deduced values, not a literal
-// index, keeps this independent of the max_num_generator_returns config.
+// Omitting both is the form the production callers use: the task ID comes from the
+// current task and the index from the thread's put counter. Assert those two properties
+// rather than the index GetNextPutIndex computes, which would just restate its formula.
 TEST_F(WorkerContextTest, GeneratorReturnIdDeducesBothWhenOmitted) {
   const TaskID task_id = TaskID::FromRandom(JobID::FromInt(kTestJobId));
   const uint64_t num_returns = 1;
@@ -101,13 +101,16 @@ TEST_F(WorkerContextTest, GeneratorReturnIdDeducesBothWhenOmitted) {
 
   const ObjectID object_id =
       context_.GetGeneratorReturnId(TaskID::Nil(), /*put_index=*/std::nullopt);
+  const ObjectID next_object_id =
+      context_.GetGeneratorReturnId(TaskID::Nil(), /*put_index=*/std::nullopt);
 
+  // The task came from the context, not from the Nil() we passed.
   EXPECT_EQ(object_id.TaskId(), task_id);
-  // GetNextPutIndex reserves the generator window, so the deduced index lands past
-  // both the return indices and that window.
-  EXPECT_EQ(object_id.ObjectIndex(),
-            static_cast<ObjectIDIndexType>(
-                num_returns + RayConfig::instance().max_num_generator_returns() + 1));
+  EXPECT_EQ(next_object_id.TaskId(), task_id);
+  // The index came from the put counter: it advances per call and stays clear of the
+  // indices reserved for the task's own returns.
+  EXPECT_GT(object_id.ObjectIndex(), num_returns);
+  EXPECT_EQ(next_object_id.ObjectIndex(), object_id.ObjectIndex() + 1);
 }
 
 // Supplying a task ID without a put index would take the index from this thread's put

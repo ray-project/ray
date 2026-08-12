@@ -28,7 +28,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_context",
     ],
