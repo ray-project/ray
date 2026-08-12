@@ -24,7 +24,7 @@ Use the following table to choose the best option for your workload and infrastr
 
 | Feature / Dimension | `SubslicePlacementGroup` (Ray Core) | RayCluster Subslicing (KubeRay) | Dynamic Slicing (GKE) |
 | :--- | :--- | :--- | :--- |
-| **Target Audience** | Machine Learning Engineers (MLEs) | Platform Admins / Users | Platform Admins |
+| **Target Audience** | Machine Learning Engineers / Researchers | Platform Admins / Users | Platform Admins |
 | **Control Interface** | Python API | KubeRay YAML (`RayCluster` CR) | Kubernetes (Kueue/Provisioning Requests) |
 | **Provisioning** | **Static**: Uses already-provisioned TPU nodes in a Ray cluster. | **Static**: Uses a pre-provisioned GKE nodepool. | **Dynamic**: Provisions GKE nodes on-demand. |
 | **TPU Generations** | All TPU generations (v4, v5e, v5p, v6e, etc.) | TPU v6e and earlier | TPU v7x and later |
