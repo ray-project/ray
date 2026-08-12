@@ -527,11 +527,17 @@ def test_profile_events_gcs_and_head_paths_return_same_data(monkeypatch):
     assert result_gcs[binary_to_hex(component_id)][0]["event_type"] == "task:execute"
 
 
+# Tasks the parity driver runs; each one produces exactly one task:execute profile event,
+# so this is also the task:execute count each routing path must report.
+_TIMELINE_PARITY_NUM_TASKS = 5
+
 # Driver for the GCS-vs-head timeline parity e2e. Run once per backend via
 # run_string_as_driver
-_TIMELINE_PARITY_DRIVER = """
+_TIMELINE_PARITY_DRIVER = f"""
 import ray
 from ray._common.test_utils import wait_for_condition
+
+NUM_TASKS = {_TIMELINE_PARITY_NUM_TASKS}
 
 
 @ray.remote
@@ -542,7 +548,7 @@ def f():
 
 
 ray.init(num_cpus=4)
-ray.get([f.remote() for _ in range(5)])
+ray.get([f.remote() for _ in range(NUM_TASKS)])
 
 
 def task_execute_count():
@@ -550,23 +556,31 @@ def task_execute_count():
 
 
 # Profile events propagate asynchronously; wait until every task-execute span lands.
-wait_for_condition(lambda: task_execute_count() >= 5, timeout=90, retry_interval_ms=3000)
+wait_for_condition(
+    lambda: task_execute_count() >= NUM_TASKS, timeout=90, retry_interval_ms=3000
+)
 print("TASK_EXECUTE_COUNT:" + str(task_execute_count()))
 """
 
 # Task-event routing flags this test sets explicitly; stripped from the inherited env so
 # the event_routing_config fixture's settings don't leak into the driver subprocesses.
-_TASK_EVENT_FLAG_ENV = (
-    "RAY_enable_ray_event",
-    "RAY_enable_ray_task_event_recorder",
-    "RAY_enable_task_events_to_dashboard_head",
-    "RAY_enable_core_worker_task_event_to_gcs",
-    "RAY_enable_core_worker_ray_event_to_aggregator",
+# Matched upper-cased: Windows upper-cases every os.environ key, so we don't want to
+# do a case-sensitive comparison.
+_TASK_EVENT_FLAG_ENV = frozenset(
+    name.upper()
+    for name in (
+        "RAY_enable_ray_event",
+        "RAY_enable_ray_task_event_recorder",
+        "RAY_enable_task_events_to_dashboard_head",
+        "RAY_enable_core_worker_task_event_to_gcs",
+        "RAY_enable_core_worker_ray_event_to_aggregator",
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS",
+    )
 )
 
 
 def _run_timeline_parity_driver(flag_overrides):
-    env = {k: v for k, v in os.environ.items() if k not in _TASK_EVENT_FLAG_ENV}
+    env = {k: v for k, v in os.environ.items() if k.upper() not in _TASK_EVENT_FLAG_ENV}
     # ray.timeline() only records profile events when profiling is on (see
     # GlobalState.chrome_tracing_dump).
     env["RAY_PROFILING"] = "1"
@@ -580,12 +594,18 @@ def _run_timeline_parity_driver(flag_overrides):
 
 def test_timeline_gcs_and_head_paths_produce_same_events():
     """End-to-end parity: the same workload run through the GCS path and through the
-    dashboard-head path (recorder -> aggregator -> head) surfaces the same number of
-    ray.timeline() task-execute events. Two driver subprocesses are used because the
-    read/publish switches are baked at `import ray` and can't be flipped in-process.
+    dashboard-head path (recorder -> aggregator -> head) each surface one
+    ray.timeline() task-execute event per task. Two driver subprocesses are used because
+    the read/publish switches are baked at `import ray` and can't be flipped in-process.
     """
     gcs_count = _run_timeline_parity_driver(
-        {"RAY_enable_core_worker_task_event_to_gcs": "1"}
+        {
+            "RAY_enable_core_worker_task_event_to_gcs": "1",
+            "RAY_enable_core_worker_ray_event_to_aggregator": "0",
+            "RAY_enable_ray_event": "0",
+            "RAY_enable_ray_task_event_recorder": "0",
+            "RAY_enable_task_events_to_dashboard_head": "0",
+        }
     )
     head_count = _run_timeline_parity_driver(
         {
@@ -593,13 +613,18 @@ def test_timeline_gcs_and_head_paths_produce_same_events():
             "RAY_enable_ray_task_event_recorder": "1",
             "RAY_enable_task_events_to_dashboard_head": "1",
             "RAY_enable_core_worker_task_event_to_gcs": "0",
+            "RAY_enable_core_worker_ray_event_to_aggregator": "0",
         }
     )
 
-    assert (
-        gcs_count >= 5
-    ), f"GCS-path timeline had too few task:execute events: {gcs_count}"
-    assert gcs_count == head_count
+    assert gcs_count == _TIMELINE_PARITY_NUM_TASKS, (
+        "GCS-path timeline task:execute events: "
+        f"{gcs_count}, expected {_TIMELINE_PARITY_NUM_TASKS}"
+    )
+    assert head_count == _TIMELINE_PARITY_NUM_TASKS, (
+        "dashboard-head-path timeline task:execute events: "
+        f"{head_count}, expected {_TIMELINE_PARITY_NUM_TASKS}"
+    )
 
 
 def test_state_init_multiple_threads(shutdown_only):
