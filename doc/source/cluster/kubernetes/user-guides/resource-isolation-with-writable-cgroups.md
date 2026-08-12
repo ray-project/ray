@@ -6,7 +6,7 @@ myst:
 
 (resource-isolation-with-writable-cgroups)=
 
-# Resource Isolation with Writable Cgroups on Google Kubernetes Engine (GKE)
+# Resource isolation with writable cgroups on Google Kubernetes Engine (GKE)
 
 This guide covers how to enable Ray resource isolation on GKE using [writable cgroups](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups). Ray resource isolation (introduced in v2.51.0) significantly improves Ray's reliability by using cgroups v2 to reserve dedicated CPU and memory resources for critical system processes.
 

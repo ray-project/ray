@@ -54,7 +54,7 @@ kind create cluster --image=kindest/node:v1.29.0
 ```
 We use `v1.29.0` which is known to be compatible with recent Istio versions.
 
-2. Install istio
+2. Install Istio
 ```
 istioctl install --set profile=demo -y
 ```
