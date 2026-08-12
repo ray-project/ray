@@ -64,8 +64,11 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             logger.debug("No instances to terminate.")
             return
 
-        # Terminate the instances.
-        cloud_instance_ids = [event.cloud_instance_id for event in new_terminations]
+        # Terminate each cloud instance at most once. Multiple instance manager
+        # records can refer to the same cloud instance after a raylet restart.
+        cloud_instance_ids = list(
+            dict.fromkeys(event.cloud_instance_id for event in new_terminations)
+        )
 
         # This is an async call.
         self._cloud_provider.terminate(
