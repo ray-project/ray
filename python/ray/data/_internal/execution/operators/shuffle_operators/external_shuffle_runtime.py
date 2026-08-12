@@ -348,6 +348,12 @@ def _make_flight_server(host: str, base_dir: str):
                 fpath = os.path.join(base_dir, os.path.basename(path))
                 with open(fpath, "rb") as f:
                     for off, length in ranges:
+                        # Empty ranges still emit a u64(0) header so the client's
+                        # framed stream stays aligned with _compute_prefetch_layout
+                        # (which reserves 8 bytes per range including length==0).
+                        if length == 0:
+                            yield flight.Result(pa.py_buffer(struct.pack(">Q", 0)))
+                            continue
                         f.seek(off)
                         # Chunk the frame so no single Result materializes a whole
                         # large frame in the server's RAM. The u64 length header
@@ -374,7 +380,7 @@ def _make_flight_server(host: str, base_dir: str):
     return _ShuffleFlightServer(_grpc_location(host, 0))
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(num_cpus=0, max_restarts=-1)
 class ShuffleFileServer:
     """Per-node file fetch service: owns an Arrow Flight server that serves
     byte-ranges of local shuffle files to remote reducers. Survives individual

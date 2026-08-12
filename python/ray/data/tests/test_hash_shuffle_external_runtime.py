@@ -116,27 +116,50 @@ def test_shuffle_file_server_lifecycle(ray_start_regular_shared_2_cpus, tmp_path
 
 
 # ------------------------------------------------ Arrow Flight fetch transport
-def test_flight_fetch_wire_format(tmp_path):
-    # do_action streams each range as [u64 len][frame bytes] into the sink,
-    # back-to-back, in request order.
-    payload = b"HELLO_WORLD_" * 4  # 48 bytes
-    (tmp_path / "s.bin").write_bytes(payload)
+@pytest.mark.parametrize(
+    "members_spec",
+    [
+        [("s.bin", [(0, 12)])],
+        [("s.bin", [(0, 12), (12, 12)])],
+        [("s.bin", [(0, 0)])],
+        [("s.bin", [(0, 0), (0, 8), (8, 0)])],
+        [("a.bin", [(0, 10)]), ("b.bin", [(0, 20)])],
+    ],
+)
+def test_layout_vs_wire(tmp_path, members_spec):
+    # _compute_prefetch_layout predicts framed bytes written into a group's
+    # region; stream the same group via Flight and assert bytes-written matches
+    # (and that the wire bytes are [u64 len][payload] in request order).
+    file_bytes = {}
+    members = []
+    for path, ranges in members_spec:
+        need = max((off + length for off, length in ranges), default=0)
+        payload = bytes((i % 256) for i in range(need))
+        (tmp_path / path).write_bytes(payload)
+        file_bytes[path] = payload
+        members.append(_FileRanges(path=path, ranges=list(ranges)))
 
-    fd, sink = _open_sink(tmp_path)
+    group = _NodeGroup("shuffle-0", "node-1", members=members)
+    total, _base_offsets, sizes = _compute_prefetch_layout([group])
+    expected = b"".join(
+        struct.pack(">Q", length) + file_bytes[path][off : off + length]
+        for path, ranges in members_spec
+        for off, length in ranges
+    )
+    assert len(expected) == sizes[0] == total
+
+    fd, sink = _open_sink(tmp_path, size=max(total, 1))
     try:
         with _running_flight_server(tmp_path) as endpoint:
             _stream_members_flight(
                 endpoint,
-                [_FileRanges(path="s.bin", ranges=[(0, 12), (12, 12)])],
+                members,
                 max_bytes=1 << 20,
                 sink=sink,
             )
-        # Record 1: u64(12) + payload[0:12]  (8-byte length prefix)
-        assert struct.unpack(">Q", os.pread(fd, 8, 0))[0] == 12
-        assert os.pread(fd, 12, 8) == payload[0:12]
-        # Record 2: u64(12) + payload[12:24] immediately after (at offset 8+12=20)
-        assert struct.unpack(">Q", os.pread(fd, 8, 20))[0] == 12
-        assert os.pread(fd, 12, 28) == payload[12:24]
+        written = sink._pos - sink._base_offset
+        assert written == sizes[0] == len(expected)
+        assert os.pread(fd, written, sink._base_offset) == expected
     finally:
         os.close(fd)
 
