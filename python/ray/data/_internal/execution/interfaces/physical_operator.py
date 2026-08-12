@@ -1086,13 +1086,17 @@ class PhysicalOperator(Operator):
 
     def min_max_resource_requirements(
         self,
+        num_pending_input_bundles: Optional[int] = None,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         """Returns lower/upper boundary of resource requirements for this operator:
 
         - Minimal: lower bound (min) of resources required to start this operator
-        (for most operators this is 0, except the ones that utilize actors)
+          (for most operators this is 0, except the ones that utilize actors)
         - Maximum: upper bound (max) of how many resources this operator could
-        utilize.
+          utilize.
+
+        If ``num_pending_input_bundles`` is provided, operators may tighten the maximum
+        based on the work currently available to them.
         """
         return ExecutionResources.zero(), ExecutionResources.inf()
 

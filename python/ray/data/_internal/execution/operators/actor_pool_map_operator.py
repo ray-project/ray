@@ -559,6 +559,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def min_max_resource_requirements(
         self,
+        num_pending_input_bundles: Optional[int] = None,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         min_actors = self._actor_pool.min_size()
         max_actors = self._actor_pool.max_size()
