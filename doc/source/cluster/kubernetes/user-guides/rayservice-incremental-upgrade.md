@@ -28,7 +28,7 @@ Before you can use this feature, you **must** have the following set up in your 
 
     The RayService controller utilizes GA Gateway API resources such as a [Gateway](https://kubernetes.io/docs/concepts/services-networking/gateway/#api-kind-gateway) and [HTTPRoute](https://kubernetes.io/docs/concepts/services-networking/gateway/#api-kind-httproute) to safely split traffic during the upgrade.
 
-2.  **A Gateway Controller:** Users must install a Gateway controller that implements the Gateway API, such as Istio, Contour, or a cloud-native implementation like GKE's Gateway controller. This feature should support any controller that implements Gateway API with support for `Gateway` and `HTTPRoute` CRDs, but is an alpha feature that's primarily been tested utilizing [Istio](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/).
+2.  **A Gateway Controller:** Users must install a Gateway controller that implements the Gateway API, such as Istio, Contour, or a cloud-native implementation such as GKE's Gateway controller. This feature should support any controller that implements Gateway API with support for `Gateway` and `HTTPRoute` CRDs, but is an alpha feature that's primarily been tested using [Istio](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api/).
 3.  **A `GatewayClass` Resource:** Your cluster admin must create a `GatewayClass` resource that defines which controller to use. KubeRay will use this to create `Gateway` and `HTTPRoute` objects.
 
     **Example: Istio `GatewayClass`**
@@ -40,7 +40,7 @@ Before you can use this feature, you **must** have the following set up in your 
     spec:
         controllerName: istio.io/gateway-controller
     ```
-    You will need to use the `metadata.name` (e.g. `istio`) in the `gatewayClassName` field of the `RayService` spec.
+    Use the `metadata.name`, for example `istio`, in the `gatewayClassName` field of the `RayService` spec.
 
 4.  **Ray Autoscaler:** Incremental upgrades require the Ray Autoscaler to be enabled in your `RayCluster` spec, as KubeRay manages the upgrade by adjusting the `target_capacity` for Ray Serve which adjusts the number of Serve replicas for each deployment. These Serve replicas are translated into a resource load which the Ray autoscaler considers when determining the number of Pods to provision with KubeRay. For information on enabling and configuring Ray autoscaling on Kubernetes, see [KubeRay Autoscaling](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/configuring-autoscaling.html).
 
