@@ -21,6 +21,15 @@ Ray exports a number of system metrics, which provide introspection into the sta
   - `recommended`: Drop high-cardinality labels. Ray internally determines specific labels; currently this includes only `WorkerId`. (This is the default behavior since Ray 2.53.)
   - `low`: Same as `recommended`, but also drops the Name label for tasks and actors.
 
+.. note::
+
+  Ray uses an optional NVML API to collect per-process GPU SM utilization. If an
+  NVML-compatible library doesn't safely support this API, set
+  ``RAY_SKIP_PROCESS_UTIL_API=true`` on each affected Ray node. Ray continues to
+  report GPU process IDs, allocated GPU memory, and device-level utilization,
+  memory, power, and temperature metrics. Only per-process GPU utilization is
+  unavailable.
+
 .. list-table:: Ray System Metrics
    :header-rows: 1
 
