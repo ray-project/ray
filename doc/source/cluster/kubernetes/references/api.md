@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Generated reference for the KubeRay ray.io/v1 custom resource definitions, covering every field of RayCluster, RayJob, RayService, and RayCronJob."
+    description: "Generated reference for the KubeRay ray.io/v1 custom resource definitions, covering every field of RayCluster, RayCronJob, RayJob, and RayService."
 ---
 
 <!--
@@ -26,17 +26,12 @@ overwritten by the next sync.
 (kuberay-crd-api-reference)=
 # KubeRay CRD API reference
 
-This page documents the `ray.io/v1` custom resource definitions as of KubeRay v1.6.2. Fields added to KubeRay after that release don't appear here.
+This page is the generated field reference for the `ray.io/v1` custom resource definitions. It covers `RayCluster`, `RayCronJob`, `RayJob`, and `RayService`, along with the supporting types their fields refer to.
 
-## Packages
-- [ray.io/v1](#rayiov1)
+The fields are those of KubeRay v1.6.2. Fields added to KubeRay after that release don't appear here.
 
 
-## ray.io/v1
-
-Package v1 contains API Schema definitions for the ray v1 API group
-
-### Resource Types
+## Resource Types
 - [RayCluster](#raycluster)
 - [RayCronJob](#raycronjob)
 - [RayJob](#rayjob)
@@ -44,7 +39,7 @@ Package v1 contains API Schema definitions for the ray v1 API group
 
 
 
-#### AuthMode
+## AuthMode
 
 _Underlying type:_ _string_
 
@@ -61,7 +56,7 @@ _Appears in:_
 | `token` | AuthModeToken enables token-based authentication.<br /> |
 
 
-#### AuthOptions
+## AuthOptions
 
 
 
@@ -79,7 +74,7 @@ _Appears in:_
 | `mode` _[AuthMode](#authmode)_ | Mode specifies the authentication mode.<br />Supported values are "disabled" and "token".<br />Defaults to "token". |  | Enum: [disabled token] <br /> |
 
 
-#### AutoscalerOptions
+## AutoscalerOptions
 
 
 
@@ -104,7 +99,7 @@ _Appears in:_
 | `volumeMounts` _[VolumeMount](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#volumemount-v1-core) array_ | Optional list of volumeMounts.  This is needed for enabling TLS for the autoscaler container. |  |  |
 
 
-#### AutoscalerVersion
+## AutoscalerVersion
 
 _Underlying type:_ _string_
 
@@ -122,7 +117,7 @@ _Appears in:_
 | `v2` |  |
 
 
-#### ClusterUpgradeOptions
+## ClusterUpgradeOptions
 
 
 
@@ -141,7 +136,7 @@ _Appears in:_
 | `gatewayClassName` _string_ | The name of the Gateway Class installed by the Kubernetes Cluster admin. |  |  |
 
 
-#### DeletionCondition
+## DeletionCondition
 
 
 
@@ -160,7 +155,7 @@ _Appears in:_
 | `ttlSeconds` _integer_ | TTLSeconds is the time in seconds from when the JobStatus or JobDeploymentStatus<br />reaches the specified terminal state to when this deletion action should be triggered.<br />The value must be a non-negative integer. | 0 | Minimum: 0 <br /> |
 
 
-#### DeletionPolicy
+## DeletionPolicy
 
 
 
@@ -177,7 +172,7 @@ _Appears in:_
 | `policy` _[DeletionPolicyType](#deletionpolicytype)_ | Policy is the action to take when the condition is met.<br />This field is logically required when using the legacy OnSuccess/OnFailure policies.<br />It is marked as '+optional' at the API level to allow the 'deletionRules' field to be used instead. |  | Enum: [DeleteCluster DeleteWorkers DeleteSelf DeleteNone] <br /> |
 
 
-#### DeletionPolicyType
+## DeletionPolicyType
 
 _Underlying type:_ _string_
 
@@ -197,7 +192,7 @@ _Appears in:_
 | `DeleteNone` |  |
 
 
-#### DeletionRule
+## DeletionRule
 
 
 
@@ -215,7 +210,7 @@ _Appears in:_
 | `condition` _[DeletionCondition](#deletioncondition)_ | The condition under which this deletion rule is triggered. This field is required. |  |  |
 
 
-#### DeletionStrategy
+## DeletionStrategy
 
 
 
@@ -250,7 +245,7 @@ _Appears in:_
 
 
 
-#### GcsFaultToleranceOptions
+## GcsFaultToleranceOptions
 
 
 
@@ -269,7 +264,7 @@ _Appears in:_
 | `redisAddress` _string_ |  |  |  |
 
 
-#### HeadGroupSpec
+## HeadGroupSpec
 
 
 
@@ -293,7 +288,7 @@ _Appears in:_
 
 
 
-#### JobSubmissionMode
+## JobSubmissionMode
 
 _Underlying type:_ _string_
 
@@ -312,7 +307,7 @@ _Appears in:_
 | `SidecarMode` |  |
 
 
-#### RayCluster
+## RayCluster
 
 
 
@@ -332,7 +327,7 @@ RayCluster is the Schema for the RayClusters API
 
 
 
-#### RayClusterSpec
+## RayClusterSpec
 
 
 
@@ -360,7 +355,7 @@ _Appears in:_
 | `workerGroupSpecs` _[WorkerGroupSpec](#workergroupspec) array_ | WorkerGroupSpecs are the specs for the worker pods |  |  |
 
 
-#### RayClusterUpgradeStrategy
+## RayClusterUpgradeStrategy
 
 
 
@@ -376,7 +371,7 @@ _Appears in:_
 | `type` _[RayClusterUpgradeType](#rayclusterupgradetype)_ | Type represents the strategy used when upgrading the RayCluster Pods. Currently supports `Recreate` and `None`. |  | Enum: [Recreate None] <br /> |
 
 
-#### RayClusterUpgradeType
+## RayClusterUpgradeType
 
 _Underlying type:_ _string_
 
@@ -394,7 +389,7 @@ _Appears in:_
 | `None` | No new pod will be created while the strategy is set to None<br /> |
 
 
-#### RayCronJob
+## RayCronJob
 
 
 
@@ -412,7 +407,7 @@ RayCronJob is the Schema for the raycronjobs API
 | `spec` _[RayCronJobSpec](#raycronjobspec)_ |  |  |  |
 
 
-#### RayCronJobSpec
+## RayCronJobSpec
 
 
 
@@ -430,7 +425,7 @@ _Appears in:_
 | `suspend` _boolean_ | Suspend tells the controller to suspend the scheduling, it does not apply to<br />scheduled RayJob. |  |  |
 
 
-#### RayJob
+## RayJob
 
 
 
@@ -448,7 +443,7 @@ RayJob is the Schema for the rayjobs API
 | `spec` _[RayJobSpec](#rayjobspec)_ |  |  |  |
 
 
-#### RayJobSpec
+## RayJobSpec
 
 
 
@@ -488,7 +483,7 @@ _Appears in:_
 
 
 
-#### RayService
+## RayService
 
 
 
@@ -510,7 +505,7 @@ RayService is the Schema for the rayservices API
 
 
 
-#### RayServiceSpec
+## RayServiceSpec
 
 
 
@@ -536,7 +531,7 @@ _Appears in:_
 
 
 
-#### RayServiceUpgradeStrategy
+## RayServiceUpgradeStrategy
 
 
 
@@ -553,7 +548,7 @@ _Appears in:_
 | `clusterUpgradeOptions` _[ClusterUpgradeOptions](#clusterupgradeoptions)_ | ClusterUpgradeOptions defines the behavior of a NewClusterWithIncrementalUpgrade type.<br />RayServiceIncrementalUpgrade feature gate must be enabled to set ClusterUpgradeOptions. |  |  |
 
 
-#### RayServiceUpgradeType
+## RayServiceUpgradeType
 
 _Underlying type:_ _string_
 
@@ -571,7 +566,7 @@ _Appears in:_
 | `None` | No new cluster will be created while the strategy is set to None<br /> |
 
 
-#### RedisCredential
+## RedisCredential
 
 
 
@@ -588,7 +583,7 @@ _Appears in:_
 | `value` _string_ |  |  |  |
 
 
-#### ScaleStrategy
+## ScaleStrategy
 
 
 
@@ -604,7 +599,7 @@ _Appears in:_
 | `workersToDelete` _string array_ | WorkersToDelete workers to be deleted |  |  |
 
 
-#### SubmitterConfig
+## SubmitterConfig
 
 
 
@@ -620,7 +615,7 @@ _Appears in:_
 | `backoffLimit` _integer_ | BackoffLimit of the submitter k8s job. |  |  |
 
 
-#### UpscalingMode
+## UpscalingMode
 
 _Underlying type:_ _string_
 
@@ -634,7 +629,7 @@ _Appears in:_
 
 
 
-#### WorkerGroupSpec
+## WorkerGroupSpec
 
 
 
