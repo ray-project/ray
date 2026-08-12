@@ -96,8 +96,7 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
         # Sample actions from current policy for current observations
         action_dist_class = self.catalog.get_action_dist_cls(framework=self.framework)
         action_dist_curr = action_dist_class.from_logits(pi_out)
-        actions_curr = action_dist_curr.rsample()
-        logp_curr = action_dist_curr.logp(actions_curr)
+        actions_curr, logp_curr = action_dist_curr.rsample_and_logp()
 
         output["actions_curr"] = actions_curr
         output["logp_curr"] = logp_curr
@@ -110,12 +109,31 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
         )
         output[QF_PREDS] = qf_out  # (batch, n_critics, n_quantiles)
 
-        # Compute Q-values for resampled actions (for actor loss)
+        # Compute Q-values for resampled actions (for the actor loss).
+        # Freeze the critic parameters for this pass (the same "straight-through"
+        # trick SAC uses): the actor loss must produce gradients w.r.t. the
+        # policy (through the sampled actions) but not w.r.t. the critics.
+        # Without it, the actor loss's critic gradients leak into the critic
+        # optimizer's update and push the critics to inflate Q-values at the
+        # policy's actions. We toggle `requires_grad` rather than using
+        # `torch.no_grad()`/`.detach()` on purpose: those would sever the graph
+        # and also block the policy gradient that must flow back through the
+        # (frozen) critics. Restore each parameter's original `requires_grad`
+        # afterwards, so a critic parameter the user intentionally froze stays
+        # frozen.
+        all_qf_params = list(self.qf_encoders.parameters()) + list(
+            self.qf_heads.parameters()
+        )
+        original_requires_grad = [param.requires_grad for param in all_qf_params]
+        for param in all_qf_params:
+            param.requires_grad = False
         qf_curr = self._qf_forward_all_critics(
             batch[Columns.OBS],
             actions_curr,
             use_target=False,
         )
+        for param, requires_grad in zip(all_qf_params, original_requires_grad):
+            param.requires_grad = requires_grad
         output["qf_curr"] = qf_curr
 
         # For next state Q-values (target computation)
@@ -128,8 +146,7 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
 
             # Sample actions for next state
             action_dist_next = action_dist_class.from_logits(pi_out_next)
-            actions_next = action_dist_next.rsample()
-            logp_next = action_dist_next.logp(actions_next)
+            actions_next, logp_next = action_dist_next.rsample_and_logp()
 
             output["actions_next"] = actions_next
             output["logp_next"] = logp_next

@@ -46,10 +46,12 @@ if is_v2_enabled():
     from ray.train.v2.api.context import TrainContext  # noqa: F811
     from ray.train.v2.api.exceptions import (  # noqa: F811
         ControllerError,
+        PreemptionError,
         NCCLHangError,
         TrainingFailedError,
         WorkerGroupError,
     )
+    from ray.train.v2.api.preemption import PreemptionInfo  # noqa: F811
     from ray.train.v2.api.report_config import (  # noqa: F811
         CheckpointConsistencyMode,
         CheckpointUploadMode,
@@ -64,6 +66,7 @@ if is_v2_enabled():
         get_checkpoint,
         get_context,
         get_dataset_shard,
+        get_preemption_info,
         report,
     )
     from ray.train.v2.api.validation_config import (  # noqa: F811
@@ -117,6 +120,8 @@ if is_v2_enabled():
             "ControllerError",
             "NCCLHangError",
             "LoggingConfig",
+            "PreemptionError",
+            "PreemptionInfo",
             "ReportedCheckpoint",
             "ReportedCheckpointStatus",
             "UserCallback",
@@ -125,6 +130,7 @@ if is_v2_enabled():
             "ValidationFn",
             "ValidationTaskConfig",
             "get_all_reported_checkpoints",
+            "get_preemption_info",
         ]
     )
 
@@ -133,6 +139,8 @@ if is_v2_enabled():
     ControllerError.__module__ = "ray.train"
     NCCLHangError.__module__ = "ray.train"
     LoggingConfig.__module__ = "ray.train"
+    PreemptionError.__module__ = "ray.train"
+    PreemptionInfo.__module__ = "ray.train"
     ReportedCheckpoint.__module__ = "ray.train"
     ReportedCheckpointStatus.__module__ = "ray.train"
     UserCallback.__module__ = "ray.train"
@@ -141,6 +149,7 @@ if is_v2_enabled():
     ValidationFn.__module__ = "ray.train"
     ValidationTaskConfig.__module__ = "ray.train"
     get_all_reported_checkpoints.__module__ = "ray.train"
+    get_preemption_info.__module__ = "ray.train"
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.

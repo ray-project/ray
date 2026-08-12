@@ -114,7 +114,7 @@ class ActorPoolStrategy(ComputeStrategy):
         max_size: Optional[int] = None,
         initial_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
-        enable_true_multi_threading: bool = False,
+        enable_true_multi_threading: Optional[bool] = None,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
@@ -130,9 +130,10 @@ class ActorPoolStrategy(ComputeStrategy):
                 opportunities for pipelining task dependency prefetching with
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
-            enable_true_multi_threading: If enable_true_multi_threading=False, no more than 1 UDF
-                runs per actor. Otherwise, respects the `max_concurrency` argument. For more details, see
-                the `ActorPoolStrategy` class docstring.
+            enable_true_multi_threading: If enable_true_multi_threading=False, no more
+                than 1 UDF runs per actor. Otherwise, respects the `max_concurrency` argument.
+                By default, this flag is `None`, which gets translated to `False`.
+                For more details, see the `ActorPoolStrategy` class docstring.
         """
         if size is not None:
             if size < 1:
@@ -178,9 +179,23 @@ class ActorPoolStrategy(ComputeStrategy):
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         self.num_workers = 0
         self.ready_to_total_workers_ratio = 0.8
-        self.enable_true_multi_threading = enable_true_multi_threading
+        self._enable_true_multi_threading = enable_true_multi_threading
+
+    @property
+    def enable_true_multi_threading(self) -> bool:
+        # backwards compatibility from serialization: instances pickled
+        # before this became a property carry the value under the public
+        # name instead.
+        return bool(
+            self.__dict__.get(
+                "_enable_true_multi_threading",
+                self.__dict__.get("enable_true_multi_threading"),
+            )
+        )
 
     def __eq__(self, other: Any) -> bool:
+        # intentionally compare resolved enable_true_multi_threading values
+        # because the two strategy classes are effectively the same.
         return isinstance(other, ActorPoolStrategy) and (
             self.min_size == other.min_size
             and self.max_size == other.max_size
