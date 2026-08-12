@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <optional>
+
 #include "absl/time/time.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -58,13 +61,16 @@ class RayEvent : public RayEventInterface {
            ray::rpc::events::RayEvent::EventType event_type,
            ray::rpc::events::RayEvent::Severity severity,
            const std::string &message,
-           const std::string &session_name)
+           const std::string &session_name,
+           std::optional<int64_t> event_timestamp_nanos = std::nullopt)
       : source_type_(source_type),
         event_type_(event_type),
         severity_(severity),
         message_(message),
         session_name_(session_name) {
-    event_timestamp_ = absl::Now();
+    event_timestamp_ = event_timestamp_nanos.has_value()
+                           ? absl::FromUnixNanos(*event_timestamp_nanos)
+                           : absl::Now();
   }
 
   T data_;  // The nested event message within the RayEvent proto.

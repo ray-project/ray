@@ -114,7 +114,7 @@ rules:
   - id: unknown-document
     title: "{doc}/toctree reference to an unknown document"
     tier: 3
-    safety: mechanical
+    safety: judgment
     match: any
     categories:
       - ref.doc
@@ -219,7 +219,7 @@ rules:
   - id: docutils-inline-markup
     title: "Unbalanced inline emphasis/strong markup"
     tier: 3
-    safety: mechanical
+    safety: judgment
     match: any
     categories:
       - docutils

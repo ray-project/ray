@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Monitor Ray clusters on Kubernetes with Prometheus and Grafana, using PodMonitors for Ray nodes and a ServiceMonitor for KubeRay."
+---
+
 (kuberay-prometheus-grafana)=
 
 # Using Prometheus and Grafana

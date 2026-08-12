@@ -1,5 +1,8 @@
 :orphan:
 
+.. meta::
+   :description: Fine-tune Llama 3.1 8B on AWS Trainium with Ray Train and PyTorch Lightning, covering the Docker image, cluster config, and job launch.
+
 Distributed fine-tuning of Llama 3.1 8B on AWS Trainium with Ray and PyTorch Lightning
 ======================================================================================
 

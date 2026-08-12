@@ -1,3 +1,6 @@
+.. meta::
+   :description: Submit and monitor a Ray job with the Jobs CLI, including remote clusters, Kubernetes, and dependency management.
+
 .. _jobs-quickstart:
 
 =================================

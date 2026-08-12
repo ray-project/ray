@@ -56,12 +56,14 @@ class TaskReceiver {
 
   TaskReceiver(instrumented_io_context &task_execution_service,
                worker::TaskEventBuffer &task_event_buffer,
+               ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
                TaskHandler task_handler,
                ActorTaskExecutionArgWaiter &actor_task_execution_arg_waiter,
                std::function<std::function<void()>()> initialize_thread_callback)
       : task_handler_(std::move(task_handler)),
         task_execution_service_(task_execution_service),
         task_event_buffer_(task_event_buffer),
+        ray_task_event_recorder_(ray_task_event_recorder),
         waiter_(actor_task_execution_arg_waiter),
         initialize_thread_callback_(std::move(initialize_thread_callback)),
         execute_task_callback_([this](TaskToExecute &task) { ExecuteTask(task); }),
@@ -142,6 +144,10 @@ class TaskReceiver {
   instrumented_io_context &task_execution_service_;
 
   worker::TaskEventBuffer &task_event_buffer_;
+
+  /// Records task events to the event aggregator; forwarded to the actor execution
+  /// queues.
+  ray::observability::RayEventRecorderInterface &ray_task_event_recorder_;
 
   /// Shared waiter for dependencies required by incoming tasks.
   ActorTaskExecutionArgWaiter &waiter_;

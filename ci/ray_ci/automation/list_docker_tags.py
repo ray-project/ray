@@ -5,10 +5,13 @@ import click
 from ci.ray_ci.automation.docker_tags_lib import list_image_tags
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
+    ARCHITECTURES_RAY_LLM,
     ARCHITECTURES_RAY_ML,
     PLATFORMS_RAY,
+    PLATFORMS_RAY_LLM,
     PLATFORMS_RAY_ML,
     PYTHON_VERSIONS_RAY,
+    PYTHON_VERSIONS_RAY_LLM,
     PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
@@ -29,6 +32,14 @@ def main(prefix, ray_type):
             PYTHON_VERSIONS_RAY_ML,
             PLATFORMS_RAY_ML,
             ARCHITECTURES_RAY_ML,
+        )
+    elif ray_type == RayType.RAY_LLM:
+        tags = list_image_tags(
+            prefix,
+            ray_type,
+            PYTHON_VERSIONS_RAY_LLM,
+            PLATFORMS_RAY_LLM,
+            ARCHITECTURES_RAY_LLM,
         )
     for tag in tags:
         sys.stdout.write(tag + "\n")

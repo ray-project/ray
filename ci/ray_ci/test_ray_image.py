@@ -54,6 +54,13 @@ class TestWandaImageName:
                 f"ray-llm-py3.12-{DEFAULT_TEST_CUDA_PLATFORM}",
             ),
             (
+                RayType.RAY_LLM,
+                "3.12",
+                "cu13.0.0-cudnn",
+                "aarch64",
+                "ray-llm-py3.12-cu13.0.0-cudnn-aarch64",
+            ),
+            (
                 RayType.RAY_LLM_EXTRA,
                 "3.12",
                 DEFAULT_TEST_CUDA_PLATFORM,
@@ -143,6 +150,9 @@ class TestValidateValid:
     def test_ray_llm_extra(self):
         RayImage("ray-llm-extra", "3.12", "cu13.0.0-cudnn").validate()
 
+    def test_ray_llm_aarch64(self):
+        RayImage("ray-llm", "3.12", "cu13.0.0-cudnn", "aarch64").validate()
+
     def test_ray_aarch64(self):
         RayImage("ray", "3.10", "cpu", "aarch64").validate()
 
@@ -165,12 +175,6 @@ class TestValidateInvalid:
     def test_invalid_platform_for_ray(self):
         with pytest.raises(RayImageError, match="Invalid platform cu99.9.9 for ray"):
             RayImage("ray", "3.10", "cu99.9.9").validate()
-
-    def test_invalid_architecture_for_ray_llm(self):
-        with pytest.raises(
-            RayImageError, match="Invalid architecture aarch64 for ray-llm"
-        ):
-            RayImage("ray-llm", "3.12", "cu13.0.0-cudnn", "aarch64").validate()
 
 
 class TestImageTypeConfig:

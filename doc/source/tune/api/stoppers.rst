@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for tune.Stopper and Tune's built-in stoppers, which end trials or whole experiments on metric, time, or plateau criteria.
+
 .. _tune-stoppers:
 
 Tune Stopping Mechanisms (tune.stopper)

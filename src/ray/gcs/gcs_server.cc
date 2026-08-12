@@ -131,6 +131,20 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   });
             });
       }),
+      resource_load_pull_client_call_manager_(
+          io_context_provider_.GetIOContext<GcsResourceLoadPuller>(),
+          /*record_stats=*/true,
+          config.node_ip_address,
+          ClusterID::Nil(),
+          /*num_threads=*/1),
+      resource_load_pull_raylet_client_pool_([this](const rpc::Address &addr) {
+        // GetResourceLoad is not retryable, so the unavailable-timeout callback
+        // can never fire; the puller's snapshot diff evicts instead.
+        return std::make_shared<ray::rpc::RayletClient>(
+            addr,
+            this->resource_load_pull_client_call_manager_,
+            /*raylet_unavailable_timeout_callback=*/[]() {});
+      }),
       event_aggregator_client_call_manager_(
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
           /*record_stats=*/true,
@@ -154,6 +168,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       observability_pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::ObservabilityPublisher>())),
+      resource_load_pull_periodical_runner_(PeriodicalRunner::Create(
+          io_context_provider_.GetIOContext<GcsResourceLoadPuller>())),
       periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
@@ -339,6 +355,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
                      metrics_.task_events_stored_gauge);
   InstallEventListeners();
   InitGcsAutoscalerStateManager(gcs_init_data);
+  InitGcsResourceLoadPuller();
   InitUsageStatsClient();
 
   // Start RPC server when all tables have finished loading initial
@@ -499,36 +516,39 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       io_context_provider_.GetDefaultIOContext(),
       *gcs_resource_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+}
 
-  periodical_runner_->RunFnPeriodically(
+void GcsServer::InitGcsResourceLoadPuller() {
+  RAY_CHECK(gcs_node_manager_ && gcs_resource_manager_ && gcs_autoscaler_state_manager_);
+  resource_load_puller_ = std::make_unique<GcsResourceLoadPuller>(
+      io_context_provider_.GetIOContext<GcsResourceLoadPuller>(),
+      io_context_provider_.GetDefaultIOContext(),
+      resource_load_pull_raylet_client_pool_,
+      /*apply_on_main=*/
+      [this](rpc::ResourcesData resources) {
+        // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
+        // after verifying that non-autoscaler paths are taken care of.
+        // Currently, GcsResourceManager aggregates reporting from different
+        // sources at different intervals, leading to an obviously inconsistent
+        // view.
+        //
+        // Once autoscaler is completely moved to the new mode of consistent
+        // per-node reporting, remove this if it is not needed anymore.
+        gcs_resource_manager_->UpdateResourceLoads(resources);
+        gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(std::move(resources));
+      });
+  resource_load_pull_periodical_runner_->RunFnPeriodically(
       [this] {
-        for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
-          auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+        const auto alive_nodes = gcs_node_manager_->GetAllAliveNodes();
+        std::vector<rpc::Address> raylet_addresses;
+        raylet_addresses.reserve(alive_nodes.size());
+        for (const auto &alive_node : alive_nodes) {
+          raylet_addresses.push_back(rpc::RayletClientPool::GenerateRayletAddress(
               alive_node.first,
               alive_node.second->node_manager_address(),
-              alive_node.second->node_manager_port());
-          auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
-
-          // GetResourceLoad will also get usage. Historically it didn't.
-          raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
-            if (status.ok()) {
-              // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
-              // after verifying that non-autoscaler paths are taken care of.
-              // Currently, GcsResourceManager aggregates reporting from different
-              // sources at different intervals, leading to an obviously inconsistent
-              // view.
-              //
-              // Once autoscaler is completely moved to the new mode of consistent
-              // per-node reporting, remove this if it is not needed anymore.
-              gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
-              gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
-                  std::move(*load_and_usage.mutable_resources()));
-            } else {
-              RAY_LOG_EVERY_N(WARNING, 10)
-                  << "Failed to get the resource load: " << status.ToString();
-            }
-          });
+              alive_node.second->node_manager_port()));
         }
+        resource_load_puller_->Pull(std::move(raylet_addresses));
       },
       RayConfig::instance().gcs_pull_resource_loads_period_milliseconds(),
       "RayletLoadPulled");
@@ -536,7 +556,9 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext()),
+      // See https://github.com/ray-project/ray/pull/65271 for why the GCS
+      // resource view does not need the periodic reset that raylets run.
+      /*periodical_runner=*/nullptr,
       scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
@@ -871,8 +893,12 @@ void GcsServer::InitRuntimeEnvManager() {
 }
 
 void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
-  gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
-      *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
+  gcs_worker_manager_ =
+      std::make_unique<GcsWorkerManager>(*gcs_table_storage_,
+                                         io_context_provider_.GetDefaultIOContext(),
+                                         *gcs_publisher_,
+                                         *ray_event_recorder_,
+                                         config_.session_name);
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
       *gcs_worker_manager_,

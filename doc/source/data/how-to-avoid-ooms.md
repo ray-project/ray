@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Avoid Ray Data out-of-memory errors: recognize Ray and kernel OOM kills, tune batch size, and configure memory for reads and high-memory UDFs."
+---
+
 # How to avoid out-of-memory errors (OOMs)
 
 Out-of-memory errors (OOMs) are one of the most common issues Ray Data users encounter.
@@ -149,10 +155,10 @@ or disable the warning by setting value to -1. (current value: 30)
 
 Unless you specify a value, Ray Data assumes a UDF needs 0 ``memory``. So even if you've set ``memory`` correctly for some APIs, Ray Data can still oversubscribe tasks and actors for the ones you haven't.
 
-To avoid this, set ``DataContext.get_current().default_map_logical_memory = True``.
+To avoid this, set ``DataContext.get_current().default_map_logical_memory_enabled = True``.
 
 :::{versionadded} 2.56
-``DataContext.default_map_logical_memory``
+``DataContext.default_map_logical_memory_enabled``
 :::
 
 ### Start Ray with resource isolation

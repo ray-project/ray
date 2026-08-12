@@ -1,5 +1,8 @@
 :orphan:
 
+.. meta::
+   :description: Runnable example fine-tuning a text classifier with Hugging Face Transformers on Ray Train.
+
 .. _transformers_torch_trainer_basic_example:
 
 Fine-tune a Text Classifier with Hugging Face Transformers

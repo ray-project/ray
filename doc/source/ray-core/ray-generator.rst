@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray generators that yield values incrementally from tasks and actor methods, with error handling, asyncio, cancellation, and fault tolerance.
+
 .. _generators:
 
 Ray Generators

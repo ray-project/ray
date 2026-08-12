@@ -290,10 +290,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
         #   their own to_pandas_dtype() hooks. Note: native FixedShapeTensorType
         #   subclasses BaseExtensionType but not ExtensionType, so we check the
         #   broader BaseExtensionType.
+        # - Arrow's null type carries no type information, and pandas cannot box a
+        #   non-null value into a null[pyarrow] column, so fillna and masked
+        #   assignment raise ArrowInvalid (and can abort the worker from Arrow
+        #   C++). Fall back to pandas' default conversion; PandasBlockAccessor
+        #   .to_arrow() coerces all-null columns back to pa.null(), so the
+        #   round-trip is unchanged. A column that is all-null in every block
+        #   therefore stays null-typed rather than being promoted.
         def _types_mapper(t):
             if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(
                 t
             ):
+                return None
+            if pyarrow.types.is_null(t):
                 return None
             return pd.ArrowDtype(t)
 

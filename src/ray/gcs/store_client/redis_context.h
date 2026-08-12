@@ -24,6 +24,7 @@
 
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/gcs/store_client/redis_async_context.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/tag_defs.h"
@@ -183,9 +184,9 @@ class RedisContext {
   /// \return CallbackReply(The reply from redis).
   std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
 
-  void ValidateRedisDB();
+  Status ValidateRedisDB();
 
-  bool IsRedisSentinel();
+  StatusOr<bool> IsRedisSentinel();
 
   Status ConnectRedisCluster(const std::string &username,
                              const std::string &password,

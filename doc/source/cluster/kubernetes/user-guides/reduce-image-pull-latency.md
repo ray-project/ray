@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Reduce Ray image pull latency on Kubernetes by preloading images, using private registries, or enabling GKE image streaming."
+---
+
 (reduce-image-pull-latency)=
 
 # Reducing image pull latency on Kubernetes

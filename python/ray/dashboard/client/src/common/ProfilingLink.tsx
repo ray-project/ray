@@ -16,20 +16,26 @@ import {
 } from "@mui/material";
 import React, { PropsWithChildren, useEffect, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
+import { get } from "../service/requestHandlers";
 import { ClassNameProps } from "./props";
 
 let cachedProfilingEnabled: boolean | null = null;
 let fetchPromise: Promise<void> | null = null;
+
+// Exported for tests: reset the module-level cache so each test starts fresh.
+export const _resetProfilingEnabledCache = () => {
+  cachedProfilingEnabled = null;
+  fetchPromise = null;
+};
 
 const fetchProfilingEnabled = (): Promise<void> => {
   if (cachedProfilingEnabled !== null) {
     return Promise.resolve();
   }
   if (!fetchPromise) {
-    fetchPromise = fetch("/api/profiling_enabled")
-      .then((res) => res.json())
-      .then((data) => {
-        cachedProfilingEnabled = data.data.profilingEnabled;
+    fetchPromise = get("/api/profiling_enabled")
+      .then((res) => {
+        cachedProfilingEnabled = res.data?.data?.profilingEnabled ?? false;
       })
       .catch(() => {
         cachedProfilingEnabled = false;

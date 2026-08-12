@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Internals of Ray streaming generator tasks: return ObjectID handling, scheduling, reporting yielded values, and backpressure."
+---
+
 (streaming-generator)=
 
 # Streaming Generator

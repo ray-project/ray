@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve a Stable Diffusion model on GKE TPUs with RayService, from TPU node pool creation to text-to-image prompts."
+---
+
 (kuberay-tpu-stable-diffusion-example)=
 
 # Serve a Stable Diffusion model on GKE with TPUs

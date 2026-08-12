@@ -1,3 +1,6 @@
+.. meta::
+   :description: Set breakpoints in Ray tasks and actors and drop into a PDB session, including cluster use, stepping between tasks, and post-mortem debugging.
+
 .. _ray-debugger:
 
 Using the Ray Debugger

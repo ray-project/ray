@@ -118,10 +118,8 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     # Ensures another custom defined method is responding correctly.
     ping_grpc_another_method(channel, app1)
 
-    # TODO: gRPC streaming is not supported in direct ingress / haproxy
-    if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        # Ensure Streaming method is responding correctly.
-        ping_grpc_streaming(channel, app1)
+    # Ensure Streaming method is responding correctly.
+    ping_grpc_streaming(channel, app1)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

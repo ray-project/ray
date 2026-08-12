@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve DeepSeek R1 with Ray Serve LLM on GKE via RayService, from GPU cluster setup to the first request."
+---
+
 (kuberay-rayservice-deepseek-example)=
 
 # Serve Deepseek R1 using Ray Serve LLM

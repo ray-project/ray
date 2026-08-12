@@ -75,6 +75,7 @@ from ray.data.read_api import (  # noqa: F401
     read_mcap,
     read_mongo,
     read_numpy,
+    read_orc,
     read_parquet,
     read_snowflake,
     read_sql,
@@ -86,6 +87,7 @@ from ray.data.read_api import (  # noqa: F401
     read_zarr,
 )
 from ray.data.catalog import (
+    CatalogAccessMode,
     Catalog,
     ReaderFormat,
     ResolvedSource,
@@ -194,6 +196,7 @@ __all__ = [
     "read_mcap",
     "read_numpy",
     "read_mongo",
+    "read_orc",
     "read_parquet",
     "read_snowflake",
     "read_sql",
@@ -202,6 +205,7 @@ __all__ = [
     "read_videos",
     "read_zarr",
     "read_webdataset",
+    "CatalogAccessMode",
     "Catalog",
     "ReaderFormat",
     "ResolvedSource",

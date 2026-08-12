@@ -1,3 +1,6 @@
+.. meta::
+   :description: Common surprises when moving Python code to Ray: environment variables, filename scoping, placement group composition, and outdated function definitions.
+
 .. _observability-general-debugging:
 
 Common Issues

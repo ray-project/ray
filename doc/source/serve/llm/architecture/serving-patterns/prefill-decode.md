@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Prefill-decode disaggregation architecture in Ray Serve LLM: why to split the phases, their resource profiles, and the server components."
+---
+
 (serve-llm-architecture-prefill-decode)=
 # Prefill-decode disaggregation
 

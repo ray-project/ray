@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Install and use the experimental open-source KubeRay dashboard UI, available from KubeRay v1.4.0."
+---
+
 (kuberay-dashboard)=
 
 # Use KubeRay dashboard (experimental)

@@ -8,6 +8,8 @@ from ray._common.utils import env_integer
 from ray.data._internal.block_batching.interfaces import (
     Batch,
     BlockPrefetcher,
+    FinalizedBatch,
+    FinalizedData,
 )
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
@@ -97,11 +99,6 @@ class BatchIterator:
         dataset_tags: The iterator's iteration-metric tags, a dict with keys
             ``dataset`` (the dataset id) and ``split_index`` (the output split
             index for stream-split iterators, or ``None`` for plain iterators).
-        clear_block_after_read: Whether to clear the block from object store
-            manually (i.e. without waiting for Python's automatic GC) after it
-            is read. Doing so will reclaim memory faster and hence reduce the
-            memory footprint. However, the caller has to ensure the safety, i.e.
-            the block will never be accessed again.
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
@@ -143,12 +140,11 @@ class BatchIterator:
         *,
         stats: Optional[DatasetStats] = None,
         dataset_tags: Optional[Dict[str, Optional[str]]] = None,
-        clear_block_after_read: bool = False,
         batch_size: Optional[int] = None,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-        finalize_fn: Optional[Callable[[Any], Any]] = None,
+        finalize_fn: Optional[Callable[[Any], FinalizedData]] = None,
         shuffle_buffer_min_size: Optional[int] = None,
         shuffle_seed: Optional[int] = None,
         ensure_copy: bool = False,
@@ -170,9 +166,6 @@ class BatchIterator:
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
         self._preserve_order = preserve_order
-        self._eager_free = (
-            clear_block_after_read and DataContext.get_current().eager_free
-        )
 
         actor_prefetcher_enabled = (
             prefetch_batches > 0
@@ -199,7 +192,6 @@ class BatchIterator:
             prefetcher=self._prefetcher,
             num_batches_to_prefetch=self._prefetch_batches,
             batch_size=self._batch_size,
-            eager_free=self._eager_free,
             stats=self._stats,
         )
 
@@ -235,10 +227,7 @@ class BatchIterator:
     def _finalize_batches(
         self,
         batch_iter: Iterator[Batch],
-    ) -> Iterator[Batch]:
-        if self._finalize_fn is None:
-            return batch_iter
-
+    ) -> Iterator[FinalizedBatch]:
         return finalize_batches(
             batch_iter, finalize_fn=self._finalize_fn, stats=self._stats
         )
@@ -248,7 +237,7 @@ class BatchIterator:
     ) -> Iterator[Batch]:
         return restore_original_order(batches)
 
-    def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[Batch]:
+    def _pipeline(self, ref_bundles: Iterator[RefBundle]) -> Iterator[FinalizedBatch]:
         # Step 1: Prefetch logical batches locally.
         block_iter = self._prefetch_blocks(ref_bundles)
 
@@ -378,9 +367,12 @@ class BatchIterator:
             self._yielded_first_batch = True
 
     @contextmanager
-    def yield_batch_context(self, batch: Batch):
+    def yield_batch_context(self, batch: FinalizedBatch):
         """Context around yielding a batch to the user: tracks user time
         and periodically flushes metrics."""
+        assert isinstance(batch, FinalizedBatch)
+        if batch.on_consume is not None:
+            batch.on_consume()
         with self._stats.iter_user_s.timer() if self._stats else nullcontext():
             yield
 
@@ -464,7 +456,6 @@ def prefetch_batches_locally(
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
-    eager_free: bool = False,
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
@@ -477,7 +468,6 @@ def prefetch_batches_locally(
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
-        eager_free: Whether to eagerly free the object reference from the object store.
         stats: Dataset stats object used to store ref bundle retrieval time.
 
     Yields:
@@ -541,7 +531,7 @@ def prefetch_batches_locally(
                 entry.metadata.size_bytes or 0 for entry in sliding_window
             )
         yield entry.ref
-        trace_deallocation(entry.ref, loc="iter_batches", free=eager_free)
+        trace_deallocation(entry.ref, loc="iter_batches")
     prefetcher.stop()
 
 

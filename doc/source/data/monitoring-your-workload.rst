@@ -1,3 +1,6 @@
+.. meta::
+   :description: Monitor Ray Data execution with progress bars, the Ray Data dashboard, and Prometheus metrics for inputs, operators, and resource use.
+
 .. _monitoring-your-workload:
 
 Monitoring Your Workload

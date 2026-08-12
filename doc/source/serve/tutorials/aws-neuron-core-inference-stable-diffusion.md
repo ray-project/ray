@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Deploy a precompiled Stable Diffusion XL model on an AWS Inferentia2 instance using Ray Serve and FastAPI."
 ---
 
 # Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI

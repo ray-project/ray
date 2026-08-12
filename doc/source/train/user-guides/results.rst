@@ -1,3 +1,6 @@
+.. meta::
+   :description: Inspect the Result object returned by trainer.fit: reported metrics, a dataframe of all metrics, saved checkpoints, and the storage location.
+
 .. _train-inspect-results:
 
 Inspecting Training Results

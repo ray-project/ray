@@ -1,4 +1,7 @@
 
+.. meta::
+   :description: Advanced RLlib control: custom training workflows, curriculum learning, global coordination between actors, custom metrics, and tailored evaluation.
+
 .. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-advanced-api-doc:

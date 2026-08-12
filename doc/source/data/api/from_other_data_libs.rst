@@ -1,3 +1,6 @@
+.. meta::
+   :description: Map familiar pandas, PyArrow, and PyTorch Dataset and DataLoader operations onto their Ray Data equivalents.
+
 .. _api-guide-for-users-from-other-data-libs:
 
 API Guide for Users from Other Data Libraries

@@ -27,6 +27,8 @@ from ray.serve.llm import (
 from ray.serve.schema import ApplicationStatus
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
+from utils import shutdown_serve_and_wait_for_controller
+
 CONFIGS_DIR = pathlib.Path(__file__).parent / "configs"
 
 
@@ -34,7 +36,7 @@ CONFIGS_DIR = pathlib.Path(__file__).parent / "configs"
 def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
-    serve.shutdown()
+    shutdown_serve_and_wait_for_controller()
     ray.shutdown()
 
 
@@ -276,7 +278,7 @@ def test_llm_serve_data_parallelism_cleanup():
     master_keys = _internal_kv_list(GangMasterInfoRegistry._KEY_PREFIX)
     assert len(master_keys) > 0
 
-    serve.shutdown()
+    shutdown_serve_and_wait_for_controller()
 
 
 def test_llm_serve_data_parallelism_declarative():

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Turn Python classes into stateful Ray actors: declare resources, call methods, pass handles around, use generators, and cancel actor tasks.
+
 .. _ray-remote-classes:
 .. _actor-guide:
 
@@ -182,6 +185,10 @@ value.
             assert(*object_ref.Get() == 1);
 
 Methods called on different actors execute in parallel, and methods called on the same actor execute serially in the order you call them. Methods on the same actor share state with one another, as shown below.
+
+.. note::
+
+    Actor state is per actor instance. Each actor runs in its own process, so class variables and static fields aren't shared across actor instances. Mutations to class-level state stay local to that actor process. To share mutable state across actors, store it in another actor and pass that actor handle where it is needed. See :doc:`patterns/global-variables` for an anti-pattern and a replacement pattern.
 
 .. tab-set::
 

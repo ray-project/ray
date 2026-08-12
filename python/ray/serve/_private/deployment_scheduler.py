@@ -224,6 +224,9 @@ class ReplicaSchedulingRequest:
     # Bundle index inside gang_placement_group where this replica actor is scheduled.
     # Example: If each replica uses 2 bundles, ranks 0 and 1 use indices 0 and 2 respectively.
     gang_pg_index: Optional[int] = None
+    # If set, schedule this replica onto this node with hard node affinity. The
+    # ingress request router sets it to co-locate a replica with each proxy.
+    target_node_id: Optional[str] = None
 
     @property
     def requested_resources(self) -> RequestedResources:
@@ -589,15 +592,19 @@ class DeploymentScheduler(ABC):
         self,
         required_resources: RequestedResources,
         available_resources: Dict[str, AvailableNodeResources],
+        tie_break_key: Optional[Callable[[str], Any]] = None,
     ) -> Optional[str]:
         """Chooses a node using best fit strategy.
 
         This strategy picks the node where, if the required resources
         were to be scheduled on that node, it will leave the smallest
         remaining space. This minimizes fragmentation of resources.
+
+        If multiple nodes tie on remaining space and `tie_break_key` is
+        provided, the node with the smallest `tie_break_key` value wins.
         """
 
-        min_remaining_space = None
+        min_key = None
         chosen_node = None
 
         for node_id in available_resources:
@@ -607,8 +614,15 @@ class DeploymentScheduler(ABC):
             # TODO(zcin): We can make this better by only considering
             # custom resources that required_resources has.
             remaining_space = available_resources[node_id] - required_resources
-            if min_remaining_space is None or remaining_space < min_remaining_space:
-                min_remaining_space = remaining_space
+            # Tuple compares remaining space first, then the tie break key only on a tie.
+            current_key = (
+                (remaining_space, tie_break_key(node_id))
+                if tie_break_key
+                else (remaining_space,)
+            )
+
+            if min_key is None or current_key < min_key:
+                min_key = current_key
                 chosen_node = node_id
 
         return chosen_node
@@ -671,6 +685,13 @@ class DeploymentScheduler(ABC):
 
         scheduling_strategy = default_scheduling_strategy
 
+        # The request may carry an explicit node. The ingress request router
+        # pins each replica to a proxy node with hard affinity. It wins over any
+        # node the caller passed in.
+        pin_to_target_node = scheduling_request.target_node_id is not None
+        if pin_to_target_node:
+            target_node_id = scheduling_request.target_node_id
+
         if scheduling_request.gang_placement_group is not None:
             # Gang scheduling -- use the reserved gang placement group
             placement_group = scheduling_request.gang_placement_group
@@ -720,7 +741,9 @@ class DeploymentScheduler(ABC):
             target_labels = None
         elif target_node_id is not None:
             scheduling_strategy = NodeAffinitySchedulingStrategy(
-                node_id=target_node_id, soft=True, _spill_on_unavailable=True
+                node_id=target_node_id,
+                soft=not pin_to_target_node,
+                _spill_on_unavailable=not pin_to_target_node,
             )
             target_labels = None
         elif target_labels is not None:

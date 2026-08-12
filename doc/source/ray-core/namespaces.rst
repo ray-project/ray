@@ -1,3 +1,6 @@
+.. meta::
+   :description: Group jobs and named actors into namespaces so actor names need only be unique per namespace, including anonymous namespaces.
+
 .. _namespaces-guide:
 
 Using Namespaces

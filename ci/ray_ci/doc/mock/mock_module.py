@@ -1,4 +1,20 @@
 from ci.ray_ci.doc.api import _OVERRIDE_HOOK_MARKER, AnnotationType
+from ci.ray_ci.doc.mock._internal import (  # noqa: F401
+    MockInternalOnlyClass,
+    MockReexportedClass,
+)
+
+# Mirrors a library head module such as ray.data: the declared public surface
+# names a class whose implementation lives in a private module. Both classes
+# above are importable from here; only MockReexportedClass is exported, so the
+# pair covers the exempt and the still-flagged case.
+__all__ = [
+    "MockClass",
+    "MockDeprecatedClass",
+    "MockReexportedClass",
+    "mock_function",
+    "mock_w00t",
+]
 
 
 def PublicAPI(*args, **kwargs):
@@ -6,7 +22,7 @@ def PublicAPI(*args, **kwargs):
         return PublicAPI()(args[0])
 
     def wrap(obj):
-        obj._annotated = None
+        obj._annotated = obj.__name__
         obj._annotated_type = AnnotationType.PUBLIC_API
         return obj
 
@@ -18,7 +34,7 @@ def Deprecated(*args, **kwargs):
         return Deprecated()(args[0])
 
     def wrap(obj):
-        obj._annotated = None
+        obj._annotated = obj.__name__
         obj._annotated_type = AnnotationType.DEPRECATED
         return obj
 
@@ -64,6 +80,32 @@ class MockClass:
         detection of genuinely private symbols.
         """
         pass
+
+
+class InheritedAnnotation(MockClass):
+    """An undecorated subclass must not inherit MockClass's API annotation."""
+
+    pass
+
+
+@Deprecated
+class MockDeprecatedClass:
+    """
+    A directly-deprecated class. Documenting it is an error the check must catch.
+    """
+
+    pass
+
+
+class MockDeprecatedSubclass(MockDeprecatedClass):
+    """
+    An undecorated subclass of a deprecated class. It inherits ``_annotated_type``
+    as a plain class attribute, so reading that attribute without an ownership
+    check would classify it as deprecated and flag a documented name that nobody
+    deprecated.
+    """
+
+    pass
 
 
 @Deprecated

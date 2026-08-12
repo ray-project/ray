@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "vLLM features reachable through Ray Serve LLM: embeddings, transcriptions, structured JSON output, and vision language models."
+---
+
 (vllm-compatibility-guide)=
 # vLLM compatibility
 

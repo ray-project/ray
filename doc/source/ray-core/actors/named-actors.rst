@@ -1,3 +1,6 @@
+.. meta::
+   :description: Give an actor a unique name in its namespace so any job in the cluster can retrieve it, with get-or-create and actor lifetime options.
+
 Named Actors
 ============
 

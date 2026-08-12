@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Core Ray Serve LLM abstractions: the LLMEngine protocol, LLMConfig, deployment protocols, and the builder pattern for constructing deployments."
+---
+
 (serve-llm-architecture-core)=
 # Core components
 

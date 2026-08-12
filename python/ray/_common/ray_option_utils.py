@@ -10,11 +10,18 @@ from ray._private.label_utils import (
     validate_label_selector,
 )
 from ray._private.utils import get_ray_doc_version
+from ray.util.annotations import RayDeprecationWarning
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
+)
+
+# Shared deprecation message for the legacy dynamic generator API.
+DYNAMIC_NUM_RETURNS_WARNING = (
+    "num_returns='dynamic' is deprecated and will be removed in a future "
+    "Ray release. Use num_returns='streaming' instead."
 )
 
 
@@ -345,6 +352,7 @@ def validate_task_options(
     options: Dict[str, Any],
     in_options: bool,
     is_generator_callable: Optional[bool] = None,
+    stacklevel: int = 4,
 ):
     """Options check for Ray tasks.
 
@@ -355,6 +363,10 @@ def validate_task_options(
         is_generator_callable: Optional bool indicating whether the callable is a
             generator function. If provided and num_returns is 'streaming' or
             'dynamic', validates that the callable is a generator.
+        stacklevel: Stacklevel for deprecation warnings emitted when validating
+            num_returns. Defaults to 4 so warnings point at the user call site
+            through `_make_remote` / ``.options()`` → ``validate_task_options`` →
+            ``validate_num_returns``.
     """
     for k, v in options.items():
         if k not in task_options:
@@ -370,7 +382,9 @@ def validate_task_options(
     if is_generator_callable is not None:
         num_returns = options.get("num_returns")
         if num_returns is not None:
-            validate_num_returns(is_generator_callable, num_returns)
+            validate_num_returns(
+                is_generator_callable, num_returns, stacklevel=stacklevel
+            )
 
 
 def validate_actor_options(options: Dict[str, Any], in_options: bool):
@@ -411,18 +425,25 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
     _check_deprecate_placement_group(options)
 
 
-def validate_num_returns(is_generator_callable: bool, num_returns: Any) -> None:
+def validate_num_returns(
+    is_generator_callable: bool, num_returns: Any, stacklevel: int
+) -> None:
     """Validate num_returns for @ray.remote and @ray.method decorators.
 
     This function validates:
     1. If num_returns is an integer < 0, it should fail fast.
-    2. If num_returns='streaming' or 'dynamic' is used with a non-generator
+    2. If num_returns='dynamic', warn that it is deprecated.
+    3. If num_returns='streaming' or 'dynamic' is used with a non-generator
        function, it should fail fast.
 
     Args:
         is_generator_callable: Whether the callable is a generator function or
             async generator function.
         num_returns: The num_returns value to validate.
+        stacklevel: Stacklevel forwarded to ``warnings.warn`` so the warning is
+            attributed to the user call site. Use 3 for direct callers such as
+            ``@ray.method`` / ``ActorMethod.options``, and 4 when called through
+            ``validate_task_options``.
 
     Raises:
         ValueError: If num_returns < 0, or if num_returns is 'streaming' or 'dynamic'
@@ -434,6 +455,13 @@ def validate_num_returns(is_generator_callable: bool, num_returns: Any) -> None:
     # Validate num_returns < 0
     if isinstance(num_returns, int) and num_returns < 0:
         raise ValueError(f"num_returns must be >= 0, but got {num_returns}.")
+
+    if num_returns == "dynamic":
+        warnings.warn(
+            DYNAMIC_NUM_RETURNS_WARNING,
+            RayDeprecationWarning,
+            stacklevel=stacklevel,
+        )
 
     # Validate num_returns='streaming' or 'dynamic' for generator functions
     if num_returns in ("streaming", "dynamic") and not is_generator_callable:

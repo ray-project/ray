@@ -44,6 +44,7 @@ from ray._raylet import (
     get_session_key_from_storage,
     wait_for_persisted_port,
 )
+from ray.core.generated import autoscaler_pb2
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
@@ -56,6 +57,12 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray configures it by default automatically
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
+
+# Upper bound on how long to wait for a SIGKILLed Ray process to be reaped when
+# the caller asked to wait for it. Reaping is normally immediate; a process that
+# is still around after this long is parked in an uninterruptible syscall and
+# will never be reaped by waiting longer.
+KILLED_PROCESS_REAP_TIMEOUT_SECONDS = 30
 
 
 class Node:
@@ -111,6 +118,13 @@ class Node:
             ray_params.resource_isolation_config
         )
         self.all_processes: dict = {}
+        # Processes that were SIGKILLed but could not be reaped within
+        # KILLED_PROCESS_REAP_TIMEOUT_SECONDS, keyed by process type. They are
+        # removed from `all_processes` like any other killed process, so
+        # restarts and `remaining_processes_alive` behave exactly as before,
+        # but `live_processes` still reports them while they are running so
+        # teardown assertions can see a process that outlived its kill.
+        self._unreaped_processes: dict = {}
         self.removal_lock = threading.Lock()
 
         self.ray_init_cluster = ray_init_cluster
@@ -623,11 +637,123 @@ class Node:
         # Register the handler to be called if we get a SIGTERM.
         # In this case, we want to exit with an error code (1) after
         # cleaning up child processes.
+        # `sigterm_received` guards against re-entrancy: a second SIGTERM that
+        # arrives while we are draining must not restart the drain wait.
+        sigterm_received = False
+
         def sigterm_handler(signum, frame):
+            nonlocal sigterm_received
+            if sigterm_received:
+                return
+            sigterm_received = True
+            # Mark the node as draining and give drain-aware components (e.g.
+            # Ray Serve proxies) a chance to stop accepting traffic and finish
+            # in-flight requests before we tear down local processes. Draining is
+            # best-effort: a failure here (e.g. SIGTERM arriving mid-startup,
+            # before the node is fully initialized) must never prevent local
+            # process cleanup.
+            try:
+                self._drain_node_before_shutdown()
+            except Exception:
+                logger.exception(
+                    "Error while draining node on SIGTERM; proceeding with shutdown."
+                )
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
+
+    def _drain_node_before_shutdown(self):
+        """Mark the local node as draining and wait before killing processes.
+
+        Invoked from the SIGTERM handler. Without this, receiving SIGTERM (e.g.
+        when `ray start --block` is PID 1 and Kubernetes deletes the pod during
+        a RayService upgrade) immediately kills the raylet and local Serve
+        replicas while old proxies are still routing to them, returning HTTP
+        500s. Marking the node as draining lets the Serve controller quiesce the
+        local proxy before its replicas disappear.
+
+        Controlled by ``RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S`` (seconds); a
+        value <= 0 disables draining and preserves immediate teardown.
+        """
+        timeout_s = ray_constants.RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S
+        if timeout_s <= 0:
+            return
+        # `_node_id` is assigned partway through Node.__init__, after the
+        # shutdown hooks are registered; if SIGTERM arrives before then there is
+        # nothing to drain (and the attribute may not exist yet).
+        if not getattr(self, "_node_id", None):
+            return
+        # The raylet is started later in Node.__init__ (after the shutdown hooks
+        # and the node id). If SIGTERM arrives before it exists there is no local
+        # node to drain, and nothing whose exit we could poll for -- so skip
+        # rather than sleep out the whole timeout.
+        if ray_constants.PROCESS_TYPE_RAYLET not in getattr(self, "all_processes", {}):
+            return
+
+        # One budget for the whole drain phase (GCS drain RPC + the poll below):
+        # compute the deadline up front so a slow RPC eats into the poll window
+        # instead of adding to it -- the total wait cannot exceed timeout_s.
+        deadline = time.monotonic() + timeout_s
+        logger.info(
+            "Node %s received SIGTERM. Draining for up to %s seconds before "
+            "shutting down local processes.",
+            self._node_id,
+            timeout_s,
+        )
+        try:
+            deadline_timestamp_ms = int(time.time() * 1000) + int(timeout_s * 1000)
+            # NOTE: drain_node expects the node id as a hex string (it decodes
+            # via FromHex); passing binary yields a nil id that the GCS silently
+            # accepts without ever draining the raylet.
+            is_accepted, rejection_message = self.get_gcs_client().drain_node(
+                self._node_id,
+                autoscaler_pb2.DrainNodeReason.DRAIN_NODE_REASON_PREEMPTION,
+                "Node received SIGTERM; draining before shutdown.",
+                deadline_timestamp_ms,
+                # Bound the RPC so a hung or unreachable GCS can't block the
+                # SIGTERM handler indefinitely and delay teardown; draining is
+                # best-effort and must never prevent shutdown.
+                timeout=timeout_s,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to mark the local node as draining on SIGTERM; "
+                "proceeding with immediate shutdown."
+            )
+            return
+
+        if not is_accepted:
+            # PREEMPTION drains are non-rejectable, so this is unexpected, but
+            # don't block shutdown on it.
+            logger.warning(
+                "Drain request for the local node was rejected (%s); "
+                "proceeding with immediate shutdown.",
+                rejection_message,
+            )
+            return
+
+        # Wait for the node to finish draining, using the timeout only as an
+        # upper bound. Once the node is draining AND idle -- all worker leases
+        # returned, i.e. Serve has quiesced the local proxy and migrated its
+        # replicas -- the raylet self-terminates, so we poll for the raylet
+        # process exiting. Whoever sent SIGTERM (e.g. Kubernetes) will SIGKILL
+        # us if we exceed the pod's termination grace period.
+        poll_interval_s = ray_constants.RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S
+        while time.monotonic() < deadline:
+            if any(
+                process_type == ray_constants.PROCESS_TYPE_RAYLET
+                for process_type, _ in self.dead_processes()
+            ):
+                logger.info("Local node finished draining; shutting down.")
+                return
+            time.sleep(min(poll_interval_s, max(0.0, deadline - time.monotonic())))
+        logger.warning(
+            "Node %s did not finish draining within %s seconds; aborting and "
+            "shutting down local processes ungracefully.",
+            self._node_id,
+            timeout_s,
+        )
 
     def _init_temp(self, node_to_connect_info: Optional[GcsNodeInfo]):
         # Create a dictionary to store temp file index.
@@ -1686,7 +1812,10 @@ class Node:
             check_alive: If true, then we expect the process to be alive
                 and will raise an exception if the process is already dead.
             wait: If true, then this method will not return until the
-                process in question has exited.
+                process in question has exited, except that a process which
+                does not die within KILLED_PROCESS_REAP_TIMEOUT_SECONDS of
+                being killed is logged and abandoned instead of waited on
+                indefinitely.
 
         Raises:
             This process raises an exception in the following cases:
@@ -1760,13 +1889,45 @@ class Node:
             # If the process did not exit, force kill it.
             if process.poll() is None:
                 process.kill()
-                # After kill, wait must be called
-                # The reason we usually don't set timeout=None here is that
-                # there's some chance we'd end up waiting a really long time.
+                # After kill, wait must be called so the process is reaped
+                # rather than left as a zombie, which would keep its workers
+                # from exiting.
+                #
+                # This wait is bounded even when wait=True. SIGKILL cannot
+                # reap a process parked in uninterruptible sleep (D state),
+                # which happens when it is blocked in a syscall such as the
+                # fsync the RocksDB GCS backend issues on every write. An
+                # unbounded wait here turned a single test failure into a
+                # whole-target CI timeout, because the fixture teardown hung
+                # for the remainder of the Bazel budget instead of failing.
+                # Bound it, log loudly, and let the caller's liveness check
+                # report a real error.
+                timeout = (
+                    KILLED_PROCESS_REAP_TIMEOUT_SECONDS
+                    if wait
+                    else wait_timeout_seconds
+                )
                 try:
-                    process.wait(timeout=None if wait else wait_timeout_seconds)
+                    process.wait(timeout=timeout)
                 except subprocess.TimeoutExpired:
-                    pass
+                    if wait:
+                        logger.warning(
+                            f"Process of type {process_type} (pid "
+                            f"{process.pid}) did not exit within {timeout}s of "
+                            "being killed. It is most likely stuck in an "
+                            "uninterruptible syscall, such as a blocking disk "
+                            "write. Continuing shutdown without it."
+                        )
+                        # Track it separately from `all_processes` so
+                        # `live_processes` still reports it while it runs.
+                        # Leaving it in `all_processes` instead would block a
+                        # later restart of this process type and would make
+                        # `remaining_processes_alive` report a failure once the
+                        # process finally died, even though it was killed on
+                        # purpose.
+                        self._unreaped_processes.setdefault(process_type, []).append(
+                            process_info
+                        )
 
         del self.all_processes[process_type]
 
@@ -1867,7 +2028,10 @@ class Node:
             allow_graceful: Send a SIGTERM first and give each process time
                 to exit gracefully before falling back to SIGKILL.
             wait: If true, then this method will not return until the
-                process in question has exited.
+                process in question has exited, except that a process which
+                does not die within KILLED_PROCESS_REAP_TIMEOUT_SECONDS of
+                being killed is logged and abandoned instead of waited on
+                indefinitely.
         """
         # Kill the raylet first. This is important for suppressing errors at
         # shutdown because we give the raylet a chance to exit gracefully and
@@ -1919,6 +2083,13 @@ class Node:
         """
         result = []
         for process_type, process_infos in self.all_processes.items():
+            for process_info in process_infos:
+                if process_info.process.poll() is None:
+                    result.append((process_type, process_info.process))
+        # Processes that outlived their SIGKILL are no longer in
+        # `all_processes`, but they are still running and callers checking
+        # liveness need to see them.
+        for process_type, process_infos in list(self._unreaped_processes.items()):
             for process_info in process_infos:
                 if process_info.process.poll() is None:
                     result.append((process_type, process_info.process))

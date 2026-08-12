@@ -386,7 +386,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
         A new dictionary containing only the columns allowed by the schema.
     """
     filtered_data = {}
-    columns = state_dataclass.columns() if detail else state_dataclass.base_columns()
+    columns = state_dataclass.list_columns(detail=detail)
     for col in columns:
         if col in data:
             filtered_data[col] = data[col]
@@ -567,7 +567,7 @@ class PlacementGroupState(StateSchema):
     #: The topology strategy for this placement group: a dict mapping each
     #: topology label key (e.g. "ray.io/gpu-domain") to a placement strategy
     #: (e.g. "STRICT_PACK"). Empty dict if the placement group does not use
-    #: topology-aware scheduling.
+    #: a topology strategy.
     #:
     #: NOTE: This field is experimental and may change in the future.
     topology_strategy: Optional[dict] = state_column(filterable=False, detail=True)
@@ -1688,6 +1688,13 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     for src, keys in mappings:
         for key in keys:
             task_state[key] = src.get(key)
+
+    task_log_info = task_state["task_log_info"]
+    if task_log_info:
+        # The offsets are int64, which MessageToDict renders as strings.
+        for field in ("stdout_start", "stdout_end", "stderr_start", "stderr_end"):
+            if field in task_log_info:
+                task_log_info[field] = int(task_log_info[field])
 
     task_state["creation_time_ms"] = None
     task_state["start_time_ms"] = None

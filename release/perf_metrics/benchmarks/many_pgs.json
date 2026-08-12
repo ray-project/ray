@@ -1,31 +1,31 @@
 {
-    "_dashboard_memory_usage_mb": 79.745024,
+    "_dashboard_memory_usage_mb": 80.777216,
     "_dashboard_test_success": true,
-    "_peak_memory": 2.63,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3660\t0.83GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n2982\t0.59GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n5085\t0.35GiB\tpython distributed/test_many_pgs.py\n590\t0.22GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n4371\t0.15GiB\tray::DashboardAgent\n3887\t0.14GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n1392\t0.11GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3149\t0.11GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/python3_9_x86_64-unknown-\n4373\t0.09GiB\tray::RuntimeEnvAgent\n3791\t0.08GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da",
+    "_peak_memory": 2.75,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n4151\t0.85GiB\t/home/ray/anaconda3/lib/python3.10/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/\n3187\t0.69GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n5491\t0.39GiB\tpython distributed/test_many_pgs.py\n602\t0.26GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n4355\t0.15GiB\tray-dashboard-NodeHead-0 (/home/ray/anaconda3/bin/python3.10 -c \"from multiprocessing.spawn import s\n4810\t0.14GiB\tray::DashboardAgent\n3412\t0.12GiB\t/app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/_main/infra/dataplane/web\n1412\t0.12GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n4812\t0.09GiB\tray::RuntimeEnvAgent\n4283\t0.08GiB\t/home/ray/anaconda3/bin/python3.10 /home/ray/anaconda3/lib/python3.10/site-packages/ray/dashboard/da",
     "num_pgs": 1000,
     "perf_metrics": [
         {
             "perf_metric_name": "pgs_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 80.95254123918434
+            "perf_metric_value": 80.5479506142037
         },
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 6.74
+            "perf_metric_value": 5.549
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 147.311
+            "perf_metric_value": 123.178
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 1879.035
+            "perf_metric_value": 1232.673
         }
     ],
-    "pgs_per_second": 80.95254123918434,
-    "time": 12.352916717529297
+    "pgs_per_second": 80.5479506142037,
+    "time": 12.414965152740479
 }

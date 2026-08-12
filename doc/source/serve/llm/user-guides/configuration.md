@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Reference for LLMConfig, the central Ray Serve LLM configuration object: model loading, engine arguments, accelerators, scaling, and LoRA."
+---
+
 (serve-llm-configuration)=
 
 # Configuration reference

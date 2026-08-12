@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -31,6 +32,19 @@
 #include "ray/util/clock.h"
 
 namespace ray {
+
+// A publisher that counts how many messages have been published, so tests can
+// observe *when* (relative to the durable write) node death is broadcast.
+class RecordingPublisher : public pubsub::FakePublisher {
+ public:
+  explicit RecordingPublisher(std::atomic_int *publish_count)
+      : publish_count_(publish_count) {}
+  void Publish(rpc::PubMessage pub_message) override { ++(*publish_count_); }
+
+ private:
+  std::atomic_int *publish_count_;
+};
+
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
@@ -170,6 +184,94 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                 .death_info()
                 .reason_message(),
             "mock reason message");
+}
+
+TEST_F(GcsNodeManagerTest, TestNodeFailurePublishesDeathBeforePersist) {
+  // Regression test for the lost-wakeup fixed in this PR (root-cause proof in
+  // the provenance PR #64187, not merged): a health-check node failure must
+  // broadcast DEAD on the pub/sub layer *before* (and independent of) the
+  // durable node-table write completing, so that a slow backend (e.g. RocksDB
+  // fsync) cannot delay cluster-wide death detection.
+  std::atomic_int publish_count{0};
+  auto gcs_publisher = std::make_unique<pubsub::GcsPublisher>(
+      std::make_unique<RecordingPublisher>(&publish_count));
+  gcs::GcsNodeManager node_manager(gcs_publisher.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  NodeID node_id = NodeID::FromBinary(node->node_id());
+  node_manager.AddNode(node);
+  while (io_context_->poll() > 0) {
+  }
+  publish_count = 0;
+
+  bool persist_completed = false;
+  node_manager.OnNodeFailure(node_id,
+                             [&persist_completed]() { persist_completed = true; });
+
+  // The publish is posted onto io_context ahead of the durable write's
+  // completion callback. Executing exactly one queued handler must run the
+  // publish -- and must NOT have run the persist-completion callback yet.
+  ASSERT_EQ(io_context_->run_one(), 1u);
+  ASSERT_GT(publish_count.load(), 0);
+  ASSERT_FALSE(persist_completed);
+
+  // Draining the rest runs the persist completion afterwards.
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_TRUE(persist_completed);
+}
+
+TEST_F(GcsNodeManagerTest, TestUnregisterNodePublishesDeathBeforePersist) {
+  // Same guarantee as above for the graceful-unregistration path
+  // (HandleUnregisterNode): death is published before the durable write, whose
+  // completion callback is what writes the DEAD export event.
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
+  std::atomic_int publish_count{0};
+  auto gcs_publisher = std::make_unique<pubsub::GcsPublisher>(
+      std::make_unique<RecordingPublisher>(&publish_count));
+  gcs::GcsNodeManager node_manager(gcs_publisher.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  node_manager.AddNode(node);
+  while (io_context_->poll() > 0) {
+  }
+  fake_ray_event_recorder_->FlushBuffer();
+  publish_count = 0;
+
+  rpc::UnregisterNodeRequest unregister_request;
+  unregister_request.set_node_id(node->node_id());
+  unregister_request.mutable_node_death_info()->set_reason(
+      rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  rpc::UnregisterNodeReply unregister_reply;
+  node_manager.HandleUnregisterNode(
+      unregister_request,
+      &unregister_reply,
+      [](ray::Status, std::function<void()>, std::function<void()>) {},
+      "");
+
+  // One queued handler runs the publish; the DEAD export event (written from
+  // the persist-completion callback) must not have fired yet.
+  ASSERT_EQ(io_context_->run_one(), 1u);
+  ASSERT_GT(publish_count.load(), 0);
+  ASSERT_TRUE(fake_ray_event_recorder_->FlushBuffer().empty());
+
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_FALSE(fake_ray_event_recorder_->FlushBuffer().empty());
 }
 
 TEST_F(GcsNodeManagerTest, TestManagement) {

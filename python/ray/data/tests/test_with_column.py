@@ -1017,6 +1017,96 @@ def test_with_column_async_generator_udf_multiple_yields(ray_start_regular_share
     assert rows_same(result_df, expected_after_fix)
 
 
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
+def test_with_columns_multiple(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Verify `with_columns` adds multiple columns in one projection."""
+    ds = ray.data.range(5).with_columns(
+        {
+            "plus_one": col("id") + 1,
+            "times_two": col("id") * 2,
+        }
+    )
+    result_df = ds.to_pandas()
+    expected_df = pd.DataFrame(
+        {
+            "id": [0, 1, 2, 3, 4],
+            "plus_one": [1, 2, 3, 4, 5],
+            "times_two": [0, 2, 4, 6, 8],
+        }
+    )
+    expected_df = expected_df.astype(result_df.dtypes.to_dict())
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
+def test_with_columns_preserves_order(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Verify new columns follow the mapping's insertion order."""
+    ds = ray.data.range(3).with_columns(
+        {
+            "c": col("id") + 100,
+            "a": col("id") + 1,
+            "b": col("id") + 10,
+        }
+    )
+    assert ds.schema().names == ["id", "c", "a", "b"]
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
+def test_with_columns_overwrite_existing(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Verify `with_columns` can overwrite an existing column."""
+    ds = ray.data.range(5).with_columns({"id": col("id") + 1})
+    result_df = ds.to_pandas()
+    expected_df = pd.DataFrame({"id": [1, 2, 3, 4, 5]})
+    expected_df = expected_df.astype(result_df.dtypes.to_dict())
+    assert rows_same(result_df, expected_df)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("20.0.0"),
+    reason="with_columns requires PyArrow >= 20.0.0",
+)
+def test_with_column_delegates_to_with_columns(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    """Regression guard: single-column `with_column` still works via the wrapper."""
+    ds = ray.data.range(5).with_column("doubled", col("id") * 2)
+    result_df = ds.to_pandas()
+    expected_df = pd.DataFrame({"id": [0, 1, 2, 3, 4], "doubled": [0, 2, 4, 6, 8]})
+    expected_df = expected_df.astype(result_df.dtypes.to_dict())
+    assert rows_same(result_df, expected_df)
+
+
+def test_with_columns_empty_is_noop():
+    """Verify `with_columns` with an empty mapping returns the dataset unchanged."""
+    ds = ray.data.range(5)
+    result = ds.with_columns({})
+    assert result.take_all() == ds.take_all()
+
+
+def test_with_columns_rejects_download_expr(ray_start_regular_shared):
+    """Verify `with_columns` rejects DownloadExpr with a clear error."""
+    from ray.data.expressions import download
+
+    ds = ray.data.range(5)
+    with pytest.raises(ValueError, match="does not support DownloadExpr"):
+        ds.with_columns({"contents": download("id")})
+
+
 if __name__ == "__main__":
     import sys
 

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Authenticate private remote URIs in runtime_env with a netrc file or HTTPS bearer tokens, on VMs and with KubeRay secrets."
+---
+
 (runtime-env-auth)=
 # Authenticating Remote URIs in runtime_env
 

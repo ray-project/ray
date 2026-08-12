@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for every field in the Ray cluster launcher YAML: docker, auth, provider, security groups, and vSphere config.
+
 .. _cluster-config:
 
 Cluster YAML Configuration Options

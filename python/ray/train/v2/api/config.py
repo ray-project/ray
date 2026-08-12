@@ -249,7 +249,7 @@ class ScalingConfig(ScalingConfigV1):
                 workers_per_slice, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
                     accelerator_type=self.accelerator_type,
-                    resources_per_unit=self.resources_per_worker,
+                    resources_per_worker=self.resources_per_worker,
                     num_slices=1,
                 )
             except Exception as e:
@@ -287,6 +287,7 @@ class ScalingConfig(ScalingConfigV1):
 
     @property
     def _trainer_resources_not_none(self):
+        # V2 controller uses num_cpus=0; trainer_resources are V1-only.
         return {}
 
     @property
@@ -367,10 +368,16 @@ class FailureConfig(FailureConfigV1):
         controller_failure_limit: [DeveloperAPI] The maximum number of controller failures to tolerate.
             Setting to -1 will lead to infinite controller retries.
             Setting to 0 will disable controller retries. Defaults to -1.
+        max_preemption_failures: The maximum number of node-preemption interruptions
+            to recover from, counted separately from ``max_failures`` (which is
+            reserved for real failures). Will recover from the latest checkpoint
+            if present. Setting to -1 leads to infinite preemption retries;
+            setting to 0 disables them. Defaults to -1.
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
     controller_failure_limit: int = -1
+    max_preemption_failures: int = -1
 
     def __post_init__(self):
         if self.fail_fast != _DEPRECATED:

@@ -18,7 +18,6 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
-    ObjectStoreUsage,
     OpTask,
     estimate_total_num_of_blocks,
 )
@@ -27,6 +26,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+    BlockTransformer,
     PartitionFn,
     _shuffle_map_task,
 )
@@ -74,16 +74,18 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         data_context: Runtime configuration.
         num_partitions: Total number of output partitions.
         partition_fn: Function mapping a pa.Table to Dict[int, pa.Table].
-        pre_map_merge_threshold: Byte threshold per node at which buffered
-            blocks are merged into a single map task.  Set to 0 to disable.
+        block_transformer: Optional transform applied to each non-empty input
+            block before partitioning (e.g. map-side partial aggregation).
+            May change the block schema.
         map_runtime_env: Optional runtime_env for map tasks; useful to
             isolate map workers from other ops.
         map_cpus: CPU request per map task.
+        peak_memory_multiplier: Multiplier applied to a task's input bytes to
+            derive its memory request.
         name: Display name shown in progress bars and logs.
     """
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
-    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
     def __init__(
         self,
@@ -92,9 +94,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         *,
         num_partitions: int,
         partition_fn: PartitionFn,
-        pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
+        block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
+        peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleMap",
     ):
         super().__init__(
@@ -105,13 +108,17 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         self._num_partitions: int = num_partitions
         self._partition_fn: PartitionFn = partition_fn
+        self._block_transformer: Optional[BlockTransformer] = block_transformer
 
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
+        self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Pre-map merge ---------------------------------------------------
-        self._pre_map_merge_threshold: int = pre_map_merge_threshold
+        # Buffered blocks are coalesced per node into a single map task once
+        # this size is reached; <= 0 disables batching (one task per bundle).
+        self._input_batch_bytes: int = data_context.shuffle_input_batch_bytes
         self._merge_buffer_refs_by_node: Dict[
             str, List[ObjectRef[Block]]
         ] = defaultdict(list)
@@ -156,7 +163,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
-        if self._pre_map_merge_threshold > 0:
+        if self._input_batch_bytes > 0:
             preferred_locs = refs.get_preferred_object_locations()
             node_id = (
                 max(preferred_locs, key=lambda n: preferred_locs[n])
@@ -171,10 +178,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
-            if (
-                self._merge_buffer_bytes_by_node[node_id]
-                >= self._pre_map_merge_threshold
-            ):
+            if self._merge_buffer_bytes_by_node[node_id] >= self._input_batch_bytes:
                 self._flush_merge_buffer(node_id)
         else:
             self._submit_shuffle_map_task(
@@ -216,10 +220,11 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
-            resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+            resources["memory"] = int(estimated_bytes * self._peak_memory_multiplier)
 
         ray_options: Dict[str, Any] = {
             **resources,
+            "name": self.name,
             "num_returns": self._num_partitions + 1,
         }
         if target_node_id is not None:
@@ -234,6 +239,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
             compression=self.data_context.hash_shuffle_compression,
+            block_transformer=self._block_transformer,
         )
         metadata_ref = map_refs[0]
         partition_refs = list(map_refs[1:])
@@ -422,12 +428,14 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             memory=self._map_resource_usage.memory,
         )
 
-    def estimate_object_store_usage(self, state) -> ObjectStoreUsage:
-        return ObjectStoreUsage(internal=0, outputs=0)
+    def estimate_object_store_usage(self) -> int:
+        # Map outputs are intermediate partitions consumed by the reduce
+        # stage; backpressure is driven by the reduce side instead.
+        return 0
 
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
-        memory = int(avg_input * SHUFFLE_PEAK_MEMORY_MULTIPLIER) if avg_input else 0
+        memory = int(avg_input * self._peak_memory_multiplier) if avg_input else 0
         return ExecutionResources(
             cpu=self._shuffle_map_task_num_cpus,
             memory=memory,

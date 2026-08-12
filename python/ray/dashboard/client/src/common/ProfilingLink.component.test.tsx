@@ -2,8 +2,38 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import "@testing-library/jest-dom";
+import { get } from "../service/requestHandlers";
 import { TEST_APP_WRAPPER } from "../util/test-utils";
-import { ProfilerButton } from "./ProfilingLink";
+import {
+  _resetProfilingEnabledCache,
+  CpuProfilingLink,
+  ProfilerButton,
+} from "./ProfilingLink";
+
+jest.mock("../service/requestHandlers");
+
+const mockedGet = jest.mocked(get);
+
+describe("fetchProfilingEnabled", () => {
+  beforeEach(() => {
+    mockedGet.mockReset();
+    _resetProfilingEnabledCache();
+  });
+
+  it("calls get() with /api/profiling_enabled instead of raw fetch", async () => {
+    mockedGet.mockResolvedValueOnce({
+      data: { data: { profilingEnabled: false } },
+    });
+
+    render(<CpuProfilingLink pid={12345} nodeId="node-abc" type="" />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    await waitFor(() => {
+      expect(mockedGet).toHaveBeenCalledWith("/api/profiling_enabled");
+    });
+  });
+});
 
 describe("ProfilerButton", () => {
   const mockProps = {

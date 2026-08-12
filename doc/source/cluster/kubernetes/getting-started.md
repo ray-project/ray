@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Get started with KubeRay, the Kubernetes operator for Ray, and choose between the RayCluster, RayJob, and RayService CRDs."
+---
+
 (kuberay-quickstart)=
 
 # Getting Started with KubeRay

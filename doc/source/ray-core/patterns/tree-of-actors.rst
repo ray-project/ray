@@ -1,3 +1,6 @@
+.. meta::
+   :description: Pattern: use a supervisor actor to create and manage a tree of worker actors, centralizing lifecycle and failure handling.
+
 Pattern: Using a supervisor actor to manage a tree of actors
 ============================================================
 

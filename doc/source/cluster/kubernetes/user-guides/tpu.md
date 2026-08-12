@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Use TPUs with KubeRay: configure Ray pods for TPUs, TPU workload scheduling and default labels, and multi-host TPU autoscaling."
+---
+
 (kuberay-tpu)=
 
 # Use TPUs with KubeRay
@@ -153,7 +159,7 @@ Returns the total number of TPU chips on the current node. Returns 0 if none are
 
 ## Multi-Host TPU autoscaling
 
-Multi-host TPU autoscaling is supported in Kuberay versions 1.1.0 or later and Ray versions 2.32.0 or later. Ray multi-host TPU worker groups are worker groups, which specify "google.com/tpu" Kubernetes container limits or requests and have `numOfHosts` greater than 1. Ray treats each replica of a Ray multi-host TPU worker group as a TPU Pod slice and scales them atomically. When scaling up, multi-host worker groups create `numOfHosts` Ray workers per replica. Likewise, Ray scales down multi-host worker group replicas by `numOfHosts` workers. When Ray schedules a deletion of a single Ray worker in a multi-host TPU worker group, it terminates the entire replica to which the worker belongs. When scheduling TPU workloads on multi-host worker groups, ensure that Ray tasks or actors run on every TPU VM host in a worker group replica to avoid Ray from scaling down idle TPU workers.
+Multi-host TPU autoscaling is supported in KubeRay versions 1.1.0 or later and Ray versions 2.32.0 or later. Ray multi-host TPU worker groups are worker groups, which specify "google.com/tpu" Kubernetes container limits or requests and have `numOfHosts` greater than 1. Ray treats each replica of a Ray multi-host TPU worker group as a TPU Pod slice and scales them atomically. When scaling up, multi-host worker groups create `numOfHosts` Ray workers per replica. Likewise, Ray scales down multi-host worker group replicas by `numOfHosts` workers. When Ray schedules a deletion of a single Ray worker in a multi-host TPU worker group, it terminates the entire replica to which the worker belongs. When scheduling TPU workloads on multi-host worker groups, ensure that Ray tasks or actors run on every TPU VM host in a worker group replica to avoid Ray from scaling down idle TPU workers.
 
 Further reference and discussion
 --------------------------------

@@ -181,19 +181,10 @@ class ResourceManager:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):
-            if op is self._output_operator:
-                self._mem_op_internal[op] = 0
-                self._mem_op_outputs[op] = self._external_consumer_bytes
-                return self._external_consumer_bytes
             return 0
 
-        usage = op.estimate_object_store_usage(state)
-        self._mem_op_internal[op] = usage.internal
-        self._mem_op_outputs[op] = usage.outputs
-
-        # Attribute iterator / streaming_split prefetch to the executor sink only.
-        if op is self._output_operator:
-            self._mem_op_outputs[op] += self._external_consumer_bytes
+        self._mem_op_internal[op] = op.metrics.obj_store_mem_pending_task_outputs or 0
+        self._mem_op_outputs[op] = op.estimate_object_store_usage()
 
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 

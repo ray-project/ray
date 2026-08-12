@@ -18,11 +18,14 @@ from ci.ray_ci.automation.crane_lib import (
 from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
+    ARCHITECTURES_RAY_LLM,
     ARCHITECTURES_RAY_ML,
     GPU_PLATFORM,
     PLATFORMS_RAY,
+    PLATFORMS_RAY_LLM,
     PLATFORMS_RAY_ML,
     PYTHON_VERSIONS_RAY,
+    PYTHON_VERSIONS_RAY_LLM,
     PYTHON_VERSIONS_RAY_ML,
     RayType,
 )
@@ -42,6 +45,10 @@ def _check_python_version(python_version: str, ray_type: str) -> None:
         raise ValueError(
             f"Python version {python_version} not supported for ray-ml image."
         )
+    if ray_type == RayType.RAY_LLM and python_version not in PYTHON_VERSIONS_RAY_LLM:
+        raise ValueError(
+            f"Python version {python_version} not supported for ray-llm image."
+        )
 
 
 def _check_platform(platform: str, ray_type: str) -> None:
@@ -49,6 +56,8 @@ def _check_platform(platform: str, ray_type: str) -> None:
         raise ValueError(f"Platform {platform} not supported for ray image.")
     if ray_type == RayType.RAY_ML and platform not in PLATFORMS_RAY_ML:
         raise ValueError(f"Platform {platform} not supported for ray-ml image.")
+    if ray_type == RayType.RAY_LLM and platform not in PLATFORMS_RAY_LLM:
+        raise ValueError(f"Platform {platform} not supported for ray-llm image.")
 
 
 def _check_architecture(architecture: str, ray_type: str) -> None:
@@ -56,6 +65,10 @@ def _check_architecture(architecture: str, ray_type: str) -> None:
         raise ValueError(f"Architecture {architecture} not supported for ray image.")
     if ray_type == RayType.RAY_ML and architecture not in ARCHITECTURES_RAY_ML:
         raise ValueError(f"Architecture {architecture} not supported for ray-ml image.")
+    if ray_type == RayType.RAY_LLM and architecture not in ARCHITECTURES_RAY_LLM:
+        raise ValueError(
+            f"Architecture {architecture} not supported for ray-llm image."
+        )
 
 
 def _get_python_version_tag(python_version: str) -> str:
@@ -155,6 +168,14 @@ def check_image_ray_commit(prefix: str, ray_type: str, expected_commit: str) -> 
             PYTHON_VERSIONS_RAY_ML,
             PLATFORMS_RAY_ML,
             ARCHITECTURES_RAY_ML,
+        )
+    elif ray_type == RayType.RAY_LLM:
+        tags = list_image_tags(
+            prefix,
+            ray_type,
+            PYTHON_VERSIONS_RAY_LLM,
+            PLATFORMS_RAY_LLM,
+            ARCHITECTURES_RAY_LLM,
         )
     tags = [f"rayproject/{ray_type}:{tag}" for tag in tags]
 

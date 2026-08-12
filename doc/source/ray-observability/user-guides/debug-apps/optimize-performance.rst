@@ -1,3 +1,6 @@
+.. meta::
+   :description: Find and fix Ray performance problems: diagnose missing speedup, visualize execution with Ray Timeline, and profile CPU and GPU work.
+
 .. _observability-optimize-performance:
 
 Optimizing Performance

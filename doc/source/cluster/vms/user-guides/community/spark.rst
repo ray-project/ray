@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Ray on a Spark standalone cluster, including long-running clusters and the Ray on Spark APIs.
+
 .. _ray-Spark-deploy:
 
 Deploying on Spark Standalone cluster

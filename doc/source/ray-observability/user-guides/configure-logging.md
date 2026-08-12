@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure Ray's logging system: log directory layout, application and system logs, worker-to-driver redirection, and actor log prefixes."
+---
+
 (configure-logging)=
 
 # Configuring Logging

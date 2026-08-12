@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for ray.autoscaler.sdk.request_resources, which programmatically requests cluster capacity.
+
 .. _ref-autoscaler-sdk:
 
 Programmatic Cluster Scaling

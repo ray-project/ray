@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for Tune's LoggerCallback interface and built-in loggers, plus the MLflow, Weights & Biases, Comet, and Aim integrations.
+
 .. _loggers-docstring:
 
 Tune Loggers (tune.logger)

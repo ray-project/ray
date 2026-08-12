@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -22,6 +23,10 @@ from ray._common.test_utils import (
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
@@ -31,12 +36,14 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.exceptions import UserCodeException
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import extract_values
 from ray.exceptions import RayTaskError
 from ray.runtime_env import RuntimeEnv
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 
 
 def test_specifying_num_cpus_and_num_gpus_logs_warning(
@@ -51,6 +58,22 @@ def test_specifying_num_cpus_and_num_gpus_logs_warning(
             "Specifying both num_cpus and num_gpus for map tasks is experimental"
             in caplog.text
         ), caplog.text
+
+
+def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
+    ds = ray.data.range(1)
+
+    def ray_remote_args_fn():
+        return {}
+
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.map(lambda row: row, ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.map_batches(lambda batch: batch, ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.flat_map(lambda row: [row], ray_remote_args_fn=ray_remote_args_fn)
+    with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
+        ds.filter(expr=col("id") >= 0, ray_remote_args_fn=ray_remote_args_fn)
 
 
 def test_invalid_max_tasks_in_flight_raises_error():
@@ -1594,6 +1617,30 @@ def test_isolate_read_workers_preserves_runtime_env(
     ray.data.read_datasource(
         CheckEnvVarDatasource(), ray_remote_args={"runtime_env": runtime_env}
     ).materialize()
+
+
+@pytest.mark.parametrize("isolate_read_workers", [True, False])
+def test_isolate_read_workers_propagated_for_datasource_v2(
+    tmp_path, ray_start_regular_shared, restore_data_context, isolate_read_workers
+):
+    """DataContext.isolate_read_workers must land on the ReadFiles physical op (DSv2)."""
+    ctx = DataContext.get_current()
+    ctx.use_datasource_v2 = True
+    ctx.isolate_read_workers = isolate_read_workers
+
+    pq.write_table(pa.table({"a": [1]}), str(tmp_path / "data.parquet"))
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    physical_plan, _ = get_execution_plan(ds._logical_plan)
+    op = physical_plan.dag
+    while op is not None:
+        if isinstance(op, TaskPoolMapOperator) and "ReadFiles" in op.name:
+            assert op.isolate_workers is isolate_read_workers
+            return
+        deps = op.input_dependencies
+        op = deps[0] if deps else None
+
+    pytest.fail("Expected a ReadFiles TaskPoolMapOperator in the physical plan")
 
 
 if __name__ == "__main__":

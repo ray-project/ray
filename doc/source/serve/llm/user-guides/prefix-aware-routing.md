@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Route LLM requests by prompt prefix to exploit KV cache locality, with load balance checks and imbalanced-load fallback."
+---
+
 (prefix-aware-routing-guide)=
 # Prefix-aware routing
 

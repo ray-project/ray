@@ -1,3 +1,6 @@
+.. meta::
+   :description: Internals of a Ray Core task from definition through invocation, scheduling, execution, and returning its value to the caller.
+
 .. _task-lifecycle:
 
 Task Lifecycle

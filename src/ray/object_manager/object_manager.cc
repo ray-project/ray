@@ -369,14 +369,24 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(object_id)
       << "Push object on " << self_node_id_ << " to " << node_id << " of object";
-  if (local_objects_.count(object_id) != 0) {
-    return PushLocalObject(object_id, node_id);
+  // ObjectManager's local_objects_ is only a lagging mirror of plasma, so use it as
+  // a hint and let PushFromPlasma's read decide (false = not actually resident).
+  const bool in_plasma_mirror = local_objects_.count(object_id) != 0;
+  if (in_plasma_mirror && PushFromPlasma(object_id, node_id)) {
+    return;
   }
 
-  // Push from spilled object directly if the object is on local disk.
+  // Not in plasma: serve from the local spill file if present.
   auto object_url = get_spilled_object_url_(object_id);
   if (!object_url.empty() && RayConfig::instance().is_external_storage_type_fs()) {
     return PushFromFilesystem(object_id, node_id, object_url);
+  }
+
+  if (in_plasma_mirror) {
+    // Mirror said resident but read failed and no spill copy: already deleted, drop.
+    RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+        << "Ignoring stale read request for already deleted object: " << object_id;
+    return;
   }
 
   // Avoid setting duplicated timer for the same object and node pair.
@@ -410,7 +420,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   }
 }
 
-void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &node_id) {
+bool ObjectManager::PushFromPlasma(const ObjectID &object_id, const NodeID &node_id) {
   const ObjectInfo &object_info = local_objects_[object_id].object_info;
   uint64_t data_size = static_cast<uint64_t>(object_info.data_size);
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
@@ -425,9 +435,9 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
       buffer_pool_.CreateObjectReader(object_id, owner_address);
   Status status = reader_status.second;
   if (!status.ok()) {
-    RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
-        << "Ignoring stale read request for already deleted object: " << object_id;
-    return;
+    // Stale mirror: ObjectManager's local_objects_ said resident but the copy was
+    // already evicted.
+    return false;
   }
 
   auto object_reader = std::move(reader_status.first);
@@ -452,6 +462,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
                      std::make_shared<ChunkObjectReader>(std::move(object_reader),
                                                          config_.object_chunk_size),
                      /*from_disk=*/false);
+  return true;
 }
 
 void ObjectManager::PushFromFilesystem(const ObjectID &object_id,

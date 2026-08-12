@@ -245,9 +245,12 @@ class RouterMetricsManager:
             # - Requests 2,3,4 get rejected since queue appears full
             # - Request 1 gets assigned and frees queue slot (num_queued_requests=0)
             # - But we already rejected Request 2 which could have been queued
+            backpressure_config = self._deployment_config.backpressure_config
             e = BackPressureError(
                 num_queued_requests=self.num_queued_requests,
                 max_queued_requests=max_queued_requests,
+                status_code=backpressure_config.status_code,
+                retry_after_s=backpressure_config.retry_after_s,
             )
             logger.warning(e.message)
             raise e

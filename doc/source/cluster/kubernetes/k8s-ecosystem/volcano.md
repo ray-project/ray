@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Integrate KubeRay with Volcano for gang scheduling, job queues, and fair-share policies across RayCluster and RayJob."
+---
+
 (kuberay-volcano)=
 # KubeRay integration with Volcano
 

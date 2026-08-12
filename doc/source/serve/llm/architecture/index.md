@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How Ray Serve LLM is built: its components, how a request flows through them, and the patterns that scale serving across GPUs and nodes."
+---
+
 # Architecture
 
 How Ray Serve LLM is built: the components a deployment is made of, how a request flows through them, and the patterns that scale serving across GPUs and nodes. Read these to extend the system or to reason about performance. To deploy models, see the {doc}`User guides <../user-guides/index>` instead.

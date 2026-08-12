@@ -10,6 +10,7 @@ from ray_release.command_runner._anyscale_job_wrapper import (
     TIMEOUT_RETURN_CODE,
     main,
     run_bash_command,
+    run_obj_store_util_check,
     run_spilling_check,
 )
 
@@ -234,6 +235,71 @@ def test_run_spilling_check_non_dict_json(tmpdir, payload):
         json.dump(payload, f)
     with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
         assert run_spilling_check() == 1
+
+
+class TestRunObjStoreUtilCheck:
+    def test_peak_below_limit_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "79"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_peak_at_limit_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "80"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_peak_above_limit_fails(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "81"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 1
+
+    def test_earlier_sample_above_limit_fails(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps(
+                {"object_store_util_percent": [{"values": [[0, "81"], [1, "0"]]}]}
+            )
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 1
+
+    def test_no_samples_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(json.dumps({"object_store_util_percent": []}))
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_only_nan_samples_passes(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "NaN"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("80") == 0
+
+    def test_negative_limit_skips_check(self, tmp_path, monkeypatch):
+        metrics_path = tmp_path / "metrics.json"
+        metrics_path.write_text(
+            json.dumps({"object_store_util_percent": [{"values": [[0, "500"]]}]})
+        )
+        monkeypatch.setenv("METRICS_OUTPUT_JSON", str(metrics_path))
+
+        assert run_obj_store_util_check("-1") == 0
 
 
 if __name__ == "__main__":

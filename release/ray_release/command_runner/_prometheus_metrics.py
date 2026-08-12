@@ -97,6 +97,11 @@ async def _get_prometheus_metrics(
         if session_name
         else '{State="Spilled"}'
     )
+    sf_obj_store_capacity = (
+        f'{{Name="object_store_memory",SessionName="{session_name}"}}'
+        if session_name
+        else '{Name="object_store_memory"}'
+    )
     metrics = {
         "cpu_utilization": client.query_prometheus(
             query=f"ray_node_cpu_utilization{sf} * ray_node_cpu_count{sf} / 100",
@@ -173,6 +178,14 @@ async def _get_prometheus_metrics(
         # are point-in-time / transient); `> 0` drops always-emitted 0 points.
         "spilled_bytes": client.query_prometheus(
             query=f"sum(ray_spill_manager_objects_bytes{sf_spilled}) > 0",
+            **kwargs,
+        ),
+        # Cluster-wide object store utilization, as a percentage of total capacity.
+        "object_store_util_percent": client.query_prometheus(
+            query=(
+                f"sum(ray_object_store_memory{sf}) / on() "
+                f"sum(ray_resources{sf_obj_store_capacity}) * 100"
+            ),
             **kwargs,
         ),
     }

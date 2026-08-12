@@ -285,11 +285,15 @@ class ObjectManager : public ObjectManagerInterface,
  private:
   friend class ObjectManagerTest;
 
-  /// Pushing a known local object to a remote object manager.
+  /// Try to push an object to a remote object manager from this node's in-memory
+  /// object store.
   ///
   /// \param object_id The object's object id.
   /// \param node_id The remote node's id.
-  void PushLocalObject(const ObjectID &object_id, const NodeID &node_id);
+  /// \return true if the object was resident and the push was started; false if the
+  ///         store read failed (stale mirror from ObjectManager's local_objects_),
+  ///         so the caller should fall back to the spilled copy.
+  bool PushFromPlasma(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pushing a known spilled object to a remote object manager.
   /// \param object_id The object's object id.

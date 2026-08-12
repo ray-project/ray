@@ -27,6 +27,14 @@ def _list_all(indexer, paths, **kwargs):
     return sorted(results)
 
 
+def _list_all_file_infos(indexer, paths, **kwargs):
+    """Run list_file_infos and flatten into sorted (path, size) pairs."""
+    file_infos = indexer.list_file_infos(
+        pa.array(paths), filesystem=LocalFileSystem(), **kwargs
+    )
+    return sorted((fi.path, fi.size) for fi in file_infos)
+
+
 @pytest.fixture(params=[1, 2], ids=["sequential", "threaded"])
 def indexer(request):
     """Yield a NonSamplingFileIndexer using sequential or threaded listing."""
@@ -119,6 +127,67 @@ class TestListFiles:
         assert results == []
 
 
+class TestListFileInfos:
+    """``list_file_infos`` is the pre-chunk file stream ``list_files`` sits on.
+
+    It owns the zero-size skip and pruner filtering for both paths, so those
+    have to hold here directly and not just through ``list_files``.
+    """
+
+    def test_yields_path_and_size(self, tmp_path, indexer):
+        (tmp_path / "a.csv").write_bytes(b"x" * 10)
+        (tmp_path / "b.csv").write_bytes(b"x" * 20)
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "a.csv"), 10),
+            (str(tmp_path / "b.csv"), 20),
+        ]
+
+    def test_skips_zero_size_files(self, tmp_path, indexer):
+        (tmp_path / "empty.csv").write_bytes(b"")
+        (tmp_path / "real.csv").write_bytes(b"x" * 50)
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "real.csv"), 50)
+        ]
+
+    def test_applies_pruners(self, tmp_path, indexer):
+        (tmp_path / "keep.csv").write_bytes(b"x" * 10)
+        (tmp_path / "drop.json").write_bytes(b"x" * 10)
+
+        results = _list_all_file_infos(
+            indexer,
+            [str(tmp_path)],
+            pruners=[FileExtensionPruner(file_extensions=["csv"])],
+        )
+
+        assert results == [(str(tmp_path / "keep.csv"), 10)]
+
+    def test_does_not_chunk(self, tmp_path):
+        """One entry per file even when the chunker would split it."""
+        (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False,
+            num_workers=1,
+            file_chunker=LineDelimitedFileChunker(),
+        )
+
+        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
+            (str(tmp_path / "a.jsonl"), 10_000)
+        ]
+
+    def test_is_lazy(self, tmp_path, indexer):
+        """Consumers stop early under a limit, so nothing may be eager."""
+        for i in range(5):
+            (tmp_path / f"f{i}.csv").write_bytes(b"x" * 10)
+
+        stream = indexer.list_file_infos(
+            pa.array([str(tmp_path)]), filesystem=LocalFileSystem()
+        )
+
+        assert isinstance(next(iter(stream)).path, str)
+
+
 class TestPruners:
     @pytest.fixture
     def indexer(self):
@@ -179,6 +248,53 @@ class TestMissingPaths:
 
         results = _list_all(indexer, [str(real), missing])
         assert results == [(str(real), 10)]
+
+
+class TestSkipPaths:
+    def test_skips_named_existing_file(self, tmp_path):
+        a = tmp_path / "a.csv"
+        b = tmp_path / "b.csv"
+        a.write_bytes(b"x" * 10)
+        b.write_bytes(b"x" * 20)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(b)}
+        )
+
+        results = _list_all(indexer, [str(a), str(b)])
+        assert results == [(str(a), 10)]
+
+    def test_skips_missing_named_path_without_ignore_missing(self, tmp_path):
+        # ``skip_paths`` drops a named path *before* the existence check, so a
+        # missing entry is skipped even with ``ignore_missing_paths=False``.
+        a = tmp_path / "a.csv"
+        a.write_bytes(b"x" * 10)
+        missing = str(tmp_path / "gone.csv")
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={missing}
+        )
+
+        results = _list_all(indexer, [str(a), missing])
+        assert results == [(str(a), 10)]
+
+    def test_skips_file_discovered_under_directory(self, tmp_path):
+        a = tmp_path / "a.csv"
+        b = tmp_path / "b.csv"
+        a.write_bytes(b"x" * 10)
+        b.write_bytes(b"x" * 20)
+        indexer = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(a)}
+        )
+
+        results = _list_all(indexer, [str(tmp_path)])
+        assert results == [(str(b), 20)]
+
+    def test_empty_skip_paths_is_noop(self, tmp_path):
+        a = tmp_path / "a.csv"
+        a.write_bytes(b"x" * 10)
+        indexer = NonSamplingFileIndexer(ignore_missing_paths=False, skip_paths=None)
+
+        results = _list_all(indexer, [str(a)])
+        assert results == [(str(a), 10)]
 
 
 class TestManifestBatching:

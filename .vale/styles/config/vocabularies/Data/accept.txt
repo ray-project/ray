@@ -28,6 +28,7 @@ Modin
 [Ss]ubcluster(s)?
 ndarray(s)?
 NLP
+ORC
 [Oo]mni
 [Oo]utqueue(s)?
 PDFs

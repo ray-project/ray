@@ -1,3 +1,6 @@
+.. meta::
+   :description: Aggregate Ray Data Datasets with built-in aggregations and custom aggregators, including a worked example building a custom mean aggregator.
+
 .. _aggregations:
 
 Aggregating Data

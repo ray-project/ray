@@ -1,3 +1,6 @@
+.. meta::
+   :description: Work with Tune callbacks and metrics: hook into trial events, log custom metrics, and see which metrics Tune fills in automatically.
+
 A Guide To Callbacks & Metrics in Tune
 ======================================
 

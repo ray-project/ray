@@ -1,3 +1,6 @@
+.. meta::
+   :description: Concurrency for Ray actors: async actors built on asyncio, threaded actors, ObjectRefs as futures, and setting max concurrency.
+
 AsyncIO / Concurrency for Actors
 ================================
 

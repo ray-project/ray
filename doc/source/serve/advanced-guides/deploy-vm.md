@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Deploy a Ray Serve application to a VM-based cluster with serve deploy, including targeting a remote cluster."
+---
+
 (serve-in-production-deploying)=
 
 # Deploy on VM

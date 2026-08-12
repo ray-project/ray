@@ -162,5 +162,39 @@ void GcsSubscriber::SubscribeAllWorkerFailures(
       std::move(subscription_failure_callback));
 }
 
+void GcsSubscriber::SubscribeWorkerFailure(
+    const WorkerID &id,
+    const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+    const rpc::StatusCallback &done) {
+  auto subscribe_item_callback = [id, subscribe](rpc::PubMessage &&msg) {
+    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
+    RAY_CHECK(msg.key_id() == id.Binary());
+    subscribe(std::move(*msg.mutable_worker_delta_message()));
+  };
+  auto subscription_failure_callback = [id](const std::string &failed_id,
+                                            const Status &status) {
+    RAY_CHECK(failed_id == id.Binary());
+    RAY_LOG(WARNING).WithField(id)
+        << "Subscription to worker failure failed: " << status.ToString();
+  };
+  subscriber_->Subscribe(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+      gcs_address_,
+      /*key_id=*/id.Binary(),
+      [done](const Status &status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback));
+}
+
+void GcsSubscriber::UnsubscribeWorkerFailure(const WorkerID &id) {
+  subscriber_->Unsubscribe(
+      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL, gcs_address_, id.Binary());
+}
+
 }  // namespace pubsub
 }  // namespace ray

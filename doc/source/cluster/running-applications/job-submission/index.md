@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Overview of the Ray Jobs API for running applications on an already-deployed cluster, plus interactive execution."
+---
+
 (jobs-overview)=
 
 # Ray Jobs Overview

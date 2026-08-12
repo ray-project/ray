@@ -48,7 +48,7 @@ RELEASE_TEST_CONFIG_FILES = [
     "release/release_multimodal_inference_benchmarks_tests.yaml",
 ]
 
-ALLOWED_BYOD_TYPES = ["gpu", "gpu-cu130", "cpu", "cu123", "llm-cu130"]
+ALLOWED_BYOD_TYPES = ["gpu", "gpu-cu130", "cpu", "cu123", "llm-cu130", "torch-cu128"]
 
 NEW_COMPUTE_CONFIG_KEYS = {
     "cloud",
@@ -307,11 +307,14 @@ def validate_byod_type(byod_type: str, python_version: str) -> None:
         raise Exception("GPU BYOD tests must use Python 3.10")
     if byod_type == "llm-cu130" and python_version != "3.12":
         raise Exception("LLM cu130 BYOD tests must use Python 3.12")
+    if byod_type == "torch-cu128" and python_version != "3.14":
+        raise Exception(f"{byod_type} BYOD tests must use Python 3.14")
     if byod_type in ["cpu", "cu123"] and python_version not in [
         "3.10",
         "3.11",
         "3.12",
         "3.13",
+        "3.14",
     ]:
         raise Exception(
             f"Invalid Python version for BYOD type {byod_type}: {python_version}"

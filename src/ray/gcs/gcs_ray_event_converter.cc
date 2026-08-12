@@ -158,6 +158,28 @@ rpc::TaskEvents ConvertToTaskEvents(rpc::events::TaskLifecycleEvent &&event) {
   if (event.has_actor_repr_name()) {
     task_state_update->set_actor_repr_name(event.actor_repr_name());
   }
+  if (event.has_task_log_info()) {
+    rpc::events::TaskLifecycleEvent::TaskLogInfo &src = *event.mutable_task_log_info();
+    rpc::TaskLogInfo *dst = task_state_update->mutable_task_log_info();
+    if (src.has_stdout_file()) {
+      *dst->mutable_stdout_file() = std::move(*src.mutable_stdout_file());
+    }
+    if (src.has_stderr_file()) {
+      *dst->mutable_stderr_file() = std::move(*src.mutable_stderr_file());
+    }
+    if (src.has_stdout_start()) {
+      dst->set_stdout_start(src.stdout_start());
+    }
+    if (src.has_stdout_end()) {
+      dst->set_stdout_end(src.stdout_end());
+    }
+    if (src.has_stderr_start()) {
+      dst->set_stderr_start(src.stderr_start());
+    }
+    if (src.has_stderr_end()) {
+      dst->set_stderr_end(src.stderr_end());
+    }
+  }
 
   for (const auto &state_transition : event.state_transitions()) {
     int64_t ns = ProtoTimestampToAbslTimeNanos(state_transition.timestamp());

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Deploy data parallel attention with Ray Serve LLM, covering YAML configuration, required parameters, and replica coordination."
+---
+
 (data-parallel-attention-guide)=
 # Data parallel attention
 

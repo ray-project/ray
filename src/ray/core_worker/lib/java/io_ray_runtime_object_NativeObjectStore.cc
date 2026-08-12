@@ -158,18 +158,6 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeWait(JNIEnv *env,
       });
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
-    JNIEnv *env, jclass, jobject objectIds, jboolean localOnly) {
-  std::vector<ObjectID> object_ids;
-  JavaListToNativeVector<ObjectID>(
-      env, objectIds, &object_ids, [](JNIEnv *inner_env, jobject id) {
-        return JavaByteArrayToId<ObjectID>(inner_env, static_cast<jbyteArray>(id));
-      });
-  auto status =
-      CoreWorkerProcess::GetCoreWorker().Delete(object_ids, static_cast<bool>(localOnly));
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
-}
-
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(
     JNIEnv *env, jclass, jbyteArray objectId) {

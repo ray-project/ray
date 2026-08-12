@@ -1,3 +1,6 @@
+.. meta::
+   :description: First Ray Compiled Graph program: declare data dependencies, use asyncio, set execution timeouts, and move tensors between CPU and GPU.
+
 Quickstart
 ==========
 

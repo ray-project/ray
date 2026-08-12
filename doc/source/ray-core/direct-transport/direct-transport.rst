@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ray Direct Transport moves tensors between actors without going through the object store, using collective groups over Gloo or NCCL.
+
 .. _direct-transport:
 
 

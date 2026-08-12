@@ -35,6 +35,13 @@ class PrepareMultimodalUDF(StatefulStageUDF):
                 "`pip install ray[llm]` to install required dependencies."
             ) from e
 
+        model_config_kwargs = dict(model_config_kwargs)
+        if model_config_kwargs.get("dtype") in (None, "auto"):
+            # This CPU stage only uses ModelConfig to parse multimodal chat
+            # messages. Avoid vLLM's device-specific dtype auto-detection,
+            # which can fail on CPU-only nodes.
+            model_config_kwargs["dtype"] = "float32"
+
         self.model_config = ModelConfig(**model_config_kwargs)
         self.chat_template_content_format = chat_template_content_format
         self.apply_sys_msg_formatting = apply_sys_msg_formatting
