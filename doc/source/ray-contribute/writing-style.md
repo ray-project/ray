@@ -362,6 +362,8 @@ Write Kubernetes API object names in UpperCamelCase, matching the object as the 
 
 The same rule covers Kubernetes ecosystem API objects, such as Kueue's ClusterQueue and LocalQueue or the Prometheus Operator's PodMonitor and ServiceMonitor.
 
+Node is an API object too, but keep it lowercase in these pages. Kubernetes applies the same two-part rule it applies everywhere else, capitalizing Node only for the resource, as in "two Nodes can't have the same name," and lowercasing it for the machine, as in "each node is managed by the control plane." These pages almost always mean the machine: "size each Pod to take up the entire Kubernetes node." The resource sense shows up mostly inside `kubectl` commands, which are code rather than prose, so a capitalized Node is rare here and a sweep to add one is wrong.
+
 ### Disambiguate names Ray and Kubernetes share
 
 Deployment, Job, and Service each name both a Kubernetes API object and a distinct Ray concept. Capitalization is what tells them apart, so pick the case from which one you mean:
@@ -381,6 +383,20 @@ KubeRay's custom resources take UpperCamelCase: RayCluster, RayJob, RayService, 
 
 Write "head Pod" and "worker Pod" for the Kubernetes-hosted case rather than "head node" and "worker node." On Kubernetes a node is a machine, so "head node" invites the wrong reading. Reserve "head node" for generic Ray architecture that isn't specific to Kubernetes, and don't stack both vocabularies, as in "head node pod."
 
+### Qualify a Pod only when the qualifier distinguishes something
+
+Don't write "Ray Pod." A Pod is a Kubernetes host that contains a Ray node, along with any sidecars such as the autoscaler, a log shipper, or a job submitter, so naming the Pod after Ray overstates what it is. "TPU Pod" also already occupies the qualified-Pod form in these pages, and it means a group of interconnected TPU chips rather than a Kubernetes object.
+
+"Ray node" is correct, and the contrast explains the rule. A Ray node and a Kubernetes node are two different things. One is the process group the Ray scheduler and autoscaler operate on, and the other is a machine. The qualifier tells two referents apart, so it earns its place. Apply that test: qualify when the qualifier distinguishes two things, and don't qualify when it relabels one thing.
+
+Write one of these instead:
+
+- "head Pod" and "worker Pod" when you mean a specific role.
+- "the Ray cluster's Pods" or "Ray head and worker Pods" for the general case.
+- "Ray node" when you mean the Ray-level abstraction, such as what the autoscaler adds and removes.
+
+Drop the qualifier entirely where the sentence or a nearby command already scopes it. A bare "Pod" is clear on a page that describes nothing else, as in "each Pod generates its own private key." Keep the scope explicit where the page also describes Pods the RayCluster doesn't own, such as the operator, Redis, or a `curl` Pod, and where a nearby command filters by label. "List the Ray cluster's Pods" belongs above `kubectl get pods -l=ray.io/is-ray-node=yes`, and "List all Pods" belongs above a bare `kubectl get pods`. The two commands don't do the same thing, so the two sentences shouldn't read the same way.
+
 ### Specially-cased terms
 
 Look up the form here rather than deriving it. Generic nouns stay lowercase even next to a capitalized product name, per the capitalization rule earlier in this guide.
@@ -392,6 +408,8 @@ Look up the form here rather than deriving it. Generic nouns stay lowercase even
 | RayCluster, RayJob, RayService, RayCronJob | Raycluster, Rayjob, Rayservice, Raycronjob | The custom resources. |
 | Ray cluster, Ray job, Ray service | RayCluster as a concept, ray cluster, ray job, ray service | The things the custom resources produce. |
 | head Pod, worker Pod | head pod, Head Pod, head node | On Kubernetes. |
+| Pod, the Ray cluster's Pods | Ray Pod, Ray pod | A Pod hosts a Ray node. Qualify by role or by ownership, not by framework. |
+| Ray node, Kubernetes node | Ray Node, Kubernetes Node | Lowercase both. Capitalize Node only for the API object, which is rare in prose. |
 | worker group | Worker Group | The API field `workerGroupSpecs` keeps code style. |
 | Ray autoscaler | Ray Autoscaler | "Autoscaler" is a generic noun. |
 | GCS fault tolerance | GCS FT | Spell out "FT" as "fault tolerance". |
