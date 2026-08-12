@@ -31,6 +31,10 @@
 
 /doc/source/cluster/kubernetes/ @andrewsykim @ray-project/ray-core @ray-project/ray-docs
 
+# Generated file, vendored from ray-project/kuberay. Do not hand-edit; see the
+# header comment in the file itself.
+/doc/source/cluster/kubernetes/references/api.md @andrewsykim @ray-project/ray-docs
+
 # Public protobuf files.
 /src/ray/protobuf/public/ @edoakes @MengjinYan
 
