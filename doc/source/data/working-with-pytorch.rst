@@ -1,3 +1,6 @@
+.. meta::
+   :description: Use Ray Data with PyTorch: iterate torch tensors for training, integrate with Ray Train, apply built-in transforms, and migrate off DataLoader.
+
 .. _working_with_pytorch:
 
 Working with PyTorch
