@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 
+import grpc
 import pytest
 
 from ray._common.test_utils import run_string_as_driver
@@ -152,8 +153,11 @@ assert ray.is_initialized()
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason=("Cryptography (TLS dependency) doesn't install in Mac build pipeline"),
+    sys.platform == "darwin" or not hasattr(grpc, "dynamic_ssl_server_credentials"),
+    reason=(
+        "Cryptography (TLS dependency) doesn't install in Mac build pipeline, "
+        "or gRPC version does not support dynamic SSL credentials"
+    ),
 )
 @pytest.mark.parametrize("use_tls", [True], indirect=True)
 def test_tls_server_cert_rotation_without_restart(use_tls, call_ray_start):

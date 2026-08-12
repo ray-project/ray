@@ -89,14 +89,14 @@ class _ReloadableServerCertConfig:
         self._key_path = key_path
         self._ca_path = ca_path
         self._lock = threading.Lock()
-        self._mtimes: Optional[Tuple[float, ...]] = None
+        self._mtimes: Optional[Tuple[int, ...]] = None
         self._cached_config = None
         # Fail loudly if the initial load doesn't work, matching the
         # existing behavior of load_certs_from_env().
         self._reload_locked()
         self._mtimes = self._stat_mtimes()
 
-    def _stat_mtimes(self) -> Tuple[float, ...]:
+    def _stat_mtimes(self) -> Tuple[int, ...]:
         return tuple(
             os.stat(p).st_mtime_ns
             for p in (self._cert_path, self._key_path, self._ca_path)
@@ -156,19 +156,24 @@ def add_port_to_grpc_server(server, address):
     import grpc
 
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
-        # Validates that RAY_TLS_SERVER_CERT, RAY_TLS_SERVER_KEY and
-        # RAY_TLS_CA_CERT are all set, the same way the reloader will need.
-        load_certs_from_env()
-        reloader = _ReloadableServerCertConfig(
-            os.environ["RAY_TLS_SERVER_CERT"],
-            os.environ["RAY_TLS_SERVER_KEY"],
-            os.environ["RAY_TLS_CA_CERT"],
-        )
-        credentials = grpc.dynamic_ssl_server_credentials(
-            reloader.initial_config,
-            reloader.fetch,
-            require_client_authentication=True,
-        )
+        server_cert_chain, private_key, ca_cert = load_certs_from_env()
+        if hasattr(grpc, "dynamic_ssl_server_credentials"):
+            reloader = _ReloadableServerCertConfig(
+                os.environ["RAY_TLS_SERVER_CERT"],
+                os.environ["RAY_TLS_SERVER_KEY"],
+                os.environ["RAY_TLS_CA_CERT"],
+            )
+            credentials = grpc.dynamic_ssl_server_credentials(
+                reloader.initial_config,
+                reloader.fetch,
+                require_client_authentication=True,
+            )
+        else:
+            credentials = grpc.ssl_server_credentials(
+                [(private_key, server_cert_chain)],
+                root_certificates=ca_cert,
+                require_client_auth=ca_cert is not None,
+            )
         return server.add_secure_port(address, credentials)
     else:
         return server.add_insecure_port(address)

@@ -2,12 +2,15 @@ import os
 import sys
 import time
 
+import grpc
 import pytest
 
 from ray._common.tls_utils import (
     _ReloadableServerCertConfig,
     generate_self_signed_tls_certs,
 )
+
+_HAS_DYNAMIC_TLS = hasattr(grpc, "dynamic_ssl_server_credentials")
 
 
 def _write_cert_key_ca(tmp_path, suffix=""):
@@ -60,6 +63,10 @@ def test_generate_self_signed_tls_certs_usable_for_ssl():
         ctx.load_cert_chain(cf.name, kf.name)
 
 
+@pytest.mark.skipif(
+    not _HAS_DYNAMIC_TLS,
+    reason="gRPC version does not support dynamic SSL credentials",
+)
 def test_reloadable_server_cert_config_caches_when_unchanged(tmp_path, monkeypatch):
     import grpc
 
@@ -83,6 +90,10 @@ def test_reloadable_server_cert_config_caches_when_unchanged(tmp_path, monkeypat
     assert len(build_calls) == 1  # no re-read/re-build since nothing changed
 
 
+@pytest.mark.skipif(
+    not _HAS_DYNAMIC_TLS,
+    reason="gRPC version does not support dynamic SSL credentials",
+)
 def test_reloadable_server_cert_config_reloads_on_change(tmp_path, monkeypatch):
     import grpc
 
@@ -114,6 +125,10 @@ def test_reloadable_server_cert_config_reloads_on_change(tmp_path, monkeypatch):
     assert len(build_calls) == 2
 
 
+@pytest.mark.skipif(
+    not _HAS_DYNAMIC_TLS,
+    reason="gRPC version does not support dynamic SSL credentials",
+)
 def test_reloadable_server_cert_config_falls_back_on_reload_error(
     tmp_path, monkeypatch
 ):
@@ -140,6 +155,10 @@ def test_reloadable_server_cert_config_falls_back_on_reload_error(
     assert second_config is first_config
 
 
+@pytest.mark.skipif(
+    not _HAS_DYNAMIC_TLS,
+    reason="gRPC version does not support dynamic SSL credentials",
+)
 def test_reloadable_server_cert_config_falls_back_on_missing_files(tmp_path):
     cert_path, key_path, ca_path = _write_cert_key_ca(tmp_path)
 
