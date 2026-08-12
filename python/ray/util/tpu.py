@@ -979,7 +979,7 @@ def slice_placement_group(
 
 
 @PublicAPI(stability="alpha")
-def dispatch(
+def run_on_slice(
     fn: Any,
     *args: Any,
     topology: Optional[str] = None,
@@ -1057,7 +1057,7 @@ def dispatch(
         :skipif: True
 
         import ray
-        from ray.util.tpu import dispatch, slice_placement_group
+        from ray.util.tpu import run_on_slice, slice_placement_group
 
         @ray.remote
         def my_tpu_task():
@@ -1067,15 +1067,15 @@ def dispatch(
         # One-shot: reserve a v6e 4x4 slice, run on every host, then
         # release automatically when the driver exits.
         results = ray.get(
-            dispatch(my_tpu_task, topology="4x4", accelerator_version="v6e")
+            run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
         )
 
         # Reuse an existing slice across multiple calls.
         slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
         ray.get(slice_handle.slice_placement_group.ready())
 
-        results1 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
-        results2 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
+        results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
         slice_handle.shutdown()
     """
 
@@ -1187,6 +1187,11 @@ def dispatch(
             )
 
     return results
+
+
+# Deprecated alias: ``dispatch`` was the original name of the ``run_on_slice``
+# function. New code should use ``run_on_slice``.
+dispatch = run_on_slice
 
 
 @PublicAPI(stability="alpha")
