@@ -198,34 +198,14 @@ def test_gvisor_backend_readonly_rootfs():
         backend.delete_sandbox(sandbox_id)
 
 
-def test_gvisor_backend_ignore_cgroups_flag():
-    backend = GVisorSandboxBackend()
-    cfg_default = GVisorSandboxConfig(image="busybox:latest")
-    orig_env = os.environ.pop("RAY_SANDBOX_IGNORE_CGROUPS", None)
-    try:
-        args_default = backend._runsc_base_args(cfg_default)
-        assert "--ignore-cgroups" not in args_default
-
-        cfg_ignored = GVisorSandboxConfig(image="busybox:latest", _ignore_cgroups=True)
-        args_ignored = backend._runsc_base_args(cfg_ignored)
-        assert "--ignore-cgroups" in args_ignored
-    finally:
-        if orig_env is not None:
-            os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
-
-
-def test_gvisor_backend_create_without_ignore_cgroups_when_nested():
-    """When cgroup nesting is available, create a sandbox without --ignore-cgroups."""
-    if os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1":
-        pytest.skip("cgroup nesting unavailable; ignoring cgroups for this suite")
-
+def test_gvisor_backend_create_with_cgroup_limits():
+    """Create a sandbox with CPU/memory limits using nested cgroups."""
     backend = GVisorSandboxBackend()
     cfg = GVisorSandboxConfig(
         image="busybox:latest",
         workdir="/workspace",
         cpu=0.5,
         memory="128Mi",
-        _ignore_cgroups=False,
     )
     assert "--ignore-cgroups" not in backend._runsc_base_args(cfg)
 
