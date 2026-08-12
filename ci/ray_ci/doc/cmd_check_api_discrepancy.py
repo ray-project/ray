@@ -64,25 +64,12 @@ TEAM_API_CONFIGS = {
             "ray.data.llm.HttpRequestStageConfig",
             "ray.data.llm.ServeDeploymentProcessorConfig",
         },
-        # Documented public APIs whose canonical name resolves under a private
-        # (._internal.) module: the class is re-exported from ray.data.__all__
-        # while its implementation lives in _internal. They resolve fine and are
-        # correctly documented; only the resolve check's private-name heuristic
-        # flags them. doc_only_whitelist exempts them from that check
-        # (split_resolvable_and_broken_doc_apis) without touching the
-        # must-be-documented check. Permanent (implementation location, not debt).
-        "doc_only_whitelist": {
-            "ray.data._internal.compute.ActorPoolStrategy",
-            "ray.data._internal.compute.TaskPoolStrategy",
-            "ray.data._internal.execution.interfaces.execution_options.ExecutionOptions",
-            "ray.data._internal.execution.interfaces.execution_options.ExecutionResources",
-            "ray.data._internal.logical.operators.n_ary_operator.MixStoppingCondition",
-            "ray.data._internal.random_config.RandomSeedConfig",
-            # Same pattern under ray.data.llm: the @PublicAPI Processor is
-            # re-exported through ray.data.llm (documented in data/api/llm.rst)
-            # while its implementation lives under ray.llm._internal.
-            "ray.llm._internal.batch.processor.base.Processor",
-        },
+        # No doc_only_whitelist. The documented public APIs whose canonical name
+        # resolves under a private module (ActorPoolStrategy, ExecutionOptions,
+        # the ray.data.llm Processor, ...) were listed here until the resolve
+        # check learned to read __all__: each is exported from ray.data.__all__
+        # or ray.data.llm.__all__, so API._is_public_reexport now exempts them
+        # generically and a newly re-exported API needs no entry.
         # Canonical names intentionally documented in more than one place. Each
         # is listed both in the generated ray.data.Dataset.rst method table
         # (included by dataset.rst) and in saving_data.rst's save-topic grouping.

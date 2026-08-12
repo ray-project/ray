@@ -1,3 +1,6 @@
+.. meta::
+   :description: Experimental Ray Compiled Graph feature that overlaps GPU communication with computation to hide data transfer latency.
+
 .. _compiled-graph-overlap:
 
 Experimental: Overlapping communication and computation

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Atomically reserve resources across nodes with placement groups, Ray's gang scheduling primitive, using bundles and placement strategies.
+
 Placement Groups
 ================
 
