@@ -409,9 +409,7 @@ def _configure_key_pair(config):
                 key = ec2.create_key_pair(KeyName=key_name)
             except botocore.exceptions.ClientError as exc:
                 error_code = (
-                    exc.response.get("Error", {}).get("Code")
-                    if exc.response
-                    else None
+                    exc.response.get("Error", {}).get("Code") if exc.response else None
                 )
                 if error_code != "InvalidKeyPair.Duplicate":
                     raise
