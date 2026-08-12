@@ -150,10 +150,21 @@ def test_fetch_killed_actor_is_anomaly(ray_start_regular_shared_2_cpus, tmp_path
     # After ray.kill(no_restart=True) the name is gone, so _resolve's get_actor
     # raises ValueError (same mapping as unregistered, not ActorDiedError).
     import ray
+    from ray._common.test_utils import wait_for_condition
 
     shuffle_id, node_id = "killed", "node-1"
+    key = _file_server_name(shuffle_id, node_id)
     actor, _endpoint = _make_file_server(tmp_path, shuffle_id, node_id)
     ray.kill(actor, no_restart=True)
+
+    def _name_gone():
+        try:
+            ray.get_actor(key, namespace=_SHUFFLE_FILE_SERVER_NAMESPACE)
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(_name_gone)
     _clear_endpoint_cache(shuffle_id, node_id)
     fd, sink = _open_sink(tmp_path)
     try:
@@ -175,6 +186,7 @@ def test_fetch_restart_retry(ray_start_regular_shared_2_cpus, tmp_path):
     # new incarnation and retries.
     import signal
 
+    from ray._common.test_utils import wait_for_condition
     from ray._private.test_utils import wait_for_pid_to_exit
     from ray.util.state import list_actors
 
@@ -183,9 +195,13 @@ def test_fetch_restart_retry(ray_start_regular_shared_2_cpus, tmp_path):
     (tmp_path / "s.bin").write_bytes(payload)
     _actor, endpoint = _make_file_server(tmp_path, shuffle_id, node_id)
     key = _file_server_name(shuffle_id, node_id)
-    actors = list_actors(filters=[("name", "=", key)])
-    assert actors and actors[0].pid
-    pid = actors[0].pid
+
+    def _pid():
+        actors = list_actors(filters=[("name", "=", key)])
+        return actors[0].pid if actors and actors[0].pid else None
+
+    wait_for_condition(lambda: _pid() is not None)
+    pid = _pid()
     os.kill(pid, signal.SIGKILL)
     wait_for_pid_to_exit(pid)
     with _ENDPOINT_CACHE_LOCK:
