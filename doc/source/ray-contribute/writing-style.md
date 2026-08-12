@@ -397,6 +397,29 @@ Write one of these instead:
 
 Drop the qualifier entirely where the sentence or a nearby command already scopes it. A bare "Pod" is clear on a page that describes nothing else, as in "each Pod generates its own private key." Keep the scope explicit where the page also describes Pods the RayCluster doesn't own, such as the operator, Redis, or a `curl` Pod, and where a nearby command filters by label. "List the Ray cluster's Pods" belongs above `kubectl get pods -l=ray.io/is-ray-node=yes`, and "List all Pods" belongs above a bare `kubectl get pods`. The two commands don't do the same thing, so the two sentences shouldn't read the same way.
 
+### State the node-to-Pod mapping once, early
+
+A reader arriving from either direction needs the relationship between a Ray node and a Kubernetes Pod stated plainly, and stated before the page depends on it. Give it once, near the top, then use the shorter forms throughout the remainder of the page.
+
+- Use: "Each Ray node runs as a Kubernetes Pod."
+- Use: "KubeRay runs each Ray node as a Pod, so a Ray cluster's head node is its head Pod."
+
+Say it at the point where the two vocabularies first meet, then trust it. Once the page states the mapping, "head Pod" and "worker Pod" carry the meaning on their own. A page that restates the mapping in every section reads as though the author doesn't trust the reader to hold it.
+
+Orientation pages carry more of this weight than deep reference pages. The Ray on Kubernetes landing page and the getting-started pages are where a reader forms the model, so the mapping belongs there even when a page on TLS configuration can assume it.
+
+### Keep Pods out of Ray-general pages
+
+Pods belong on pages about Kubernetes. Everywhere else, write "node" and leave the deployment substrate out of it. A Ray node can be a Pod, a virtual machine, or a physical machine, and Ray Core, Ray Serve, and Ray Train documentation describes behavior that holds in all three cases. Naming Pods there narrows a general claim to one substrate and implies the behavior depends on Kubernetes.
+
+The split follows the audience. A reader on a Ray Core page is thinking about tasks and actors on nodes. A reader on a Kubernetes page is thinking about the objects an API server manages, and Pods are one of them. Write for the reader the page has.
+
+- Use, on a Ray Core page: "Ray schedules the actor on a node with a free CPU."
+- Not, on a Ray Core page: "Ray schedules the actor on a Pod with a free CPU."
+- Use, on a Kubernetes page: "The Ray autoscaler adds worker Pods when tasks are pending."
+
+When a Ray-general page genuinely needs the Kubernetes case, give it as an example rather than as the default: "On Kubernetes, each Ray node runs as a Pod."
+
 ### Specially-cased terms
 
 Look up the form here rather than deriving it. Generic nouns stay lowercase even next to a capitalized product name, per the capitalization rule earlier in this guide.
