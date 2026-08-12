@@ -1,0 +1,28 @@
+<!-- Section-scoped sidebar (Pattern B): a container that loads ONE shared nav
+     fragment for this section client-side, instead of server-rendering the whole nav
+     into every page. The fragment is generated once per section (see
+     _ext/api_sidebar.py) and hydrated/highlighted by _static/section-nav-loader.js.
+     Which fragment to load is set per page in that extension's html-page-context
+     handler. Reuses id="main-sidebar" so it inherits Ray's #main-sidebar CSS.
+
+     The container is NOT empty on arrival: it server-renders the section's top-level
+     pages. That is real navigation without JavaScript, and it gives assistive tech
+     and crawlers something at parse time instead of a loading message. The loader
+     swaps in the full tree on success and leaves this in place on failure, so a
+     failed fetch degrades to a shallower nav rather than to none. -->
+<nav id="main-sidebar" class="bd-docs-nav bd-links" aria-label="{{ section_nav_label }} {{ _('Navigation') }}">
+  <div id="section-nav-mount" class="bd-toc-item navbar-nav"
+       data-section-nav-url="{{ pathto('_static/' + section_nav_fragment, 1) }}"
+       data-pagename="{{ pagename }}"
+       aria-busy="true">
+    <ul class="nav bd-sidenav section-nav-fallback">
+      {%- for docname, title in section_nav_fallback %}
+      <li class="toctree-l1{% if docname == pagename %} current active{% endif %}">
+        <a class="reference internal{% if docname == pagename %} current{% endif %}"
+           href="{{ pathto(docname) }}">{{ title }}</a>
+      </li>
+      {%- endfor %}
+    </ul>
+  </div>
+</nav>
+<script src="{{ pathto('_static/section-nav-loader.js', 1) }}" defer></script>
