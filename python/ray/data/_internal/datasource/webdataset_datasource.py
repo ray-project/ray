@@ -18,6 +18,9 @@ ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
     "RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION"
 )
 
+# Number of samples accumulated into each emitted DataFrame block.
+WEBDATASET_READ_CHUNK_SIZE = 512
+
 
 if TYPE_CHECKING:
     import pyarrow
@@ -444,9 +447,8 @@ class WebDatasetDatasource(FileBasedDatasource):
             _default_decoder, allow_unsafe=self._allow_unsafe_deserialization
         )
 
-        # Yield 1 dataframe per chunk of 512 samples. Last chunk may be smaller.
+        # Accumulate samples into chunks.
         rows = []
-        chunk_size = 512
 
         for sample in samples:
             if self.decoder is not None:
@@ -472,7 +474,7 @@ class WebDatasetDatasource(FileBasedDatasource):
                     for k, v in sample.items()
                 }
             )
-            if len(rows) >= chunk_size:
+            if len(rows) >= WEBDATASET_READ_CHUNK_SIZE:
                 yield pd.DataFrame.from_records(rows)
                 rows = []
 
