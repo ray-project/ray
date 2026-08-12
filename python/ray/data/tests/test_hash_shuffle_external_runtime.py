@@ -13,6 +13,8 @@ import threading
 import pytest
 
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
+    _ENDPOINT_CACHE,
+    _ENDPOINT_CACHE_LOCK,
     ShuffleDiskError,
     ShuffleFileServer,
     ShuffleFileServerAnomalyError,
@@ -20,15 +22,13 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _compute_prefetch_layout,
     _encode_shard,
     _Endpoint,
-    _ENDPOINT_CACHE,
-    _ENDPOINT_CACHE_LOCK,
+    _fetch_from_file_server,
     _file_server_name,
     _FileRanges,
     _group_by_server,
     _make_flight_server,
     _NodeGroup,
     _PartitionWriter,
-    _fetch_from_file_server,
     _PwriteSink,
     _read_ipc,
     _SourceRef,
