@@ -309,7 +309,7 @@ Each pool serves a different purpose:
   transformations like reads.
 - **Object store** holds buffered blocks.
 - **System memory** is what's left for Ray Core (the raylet) and other processes outside
-  your tasks. 
+  your tasks.
 
 .. note::
 
@@ -322,8 +322,8 @@ Each pool serves a different purpose:
    :align: center
 
 When a UDF processes data, it uses heap memory to do the work. For example, a UDF that
-calls a Torch preprocessor holds the tensors on the heap. As the UDF produces output 
-rows or batches, Ray Data serializes them into PyArrow tables and stores them in the 
+calls a Torch preprocessor holds the tensors on the heap. As the UDF produces output
+rows or batches, Ray Data serializes them into PyArrow tables and stores them in the
 shared object store.
 
 .. image:: ./data-memory-model-3.svg
@@ -331,13 +331,13 @@ shared object store.
    :align: center
 
 To limit object store use, Ray Data applies backpressure and stops launching tasks once
-enough data is buffered. If Ray Data produces more data than fits, Ray Core *spills* 
-those objects to disk. 
+enough data is buffered. If Ray Data produces more data than fits, Ray Core *spills*
+those objects to disk.
 
 .. note::
 
-    A common misconception is that heavy queuing causes OOMs. While it's true that heavy 
-    object store use contributes to worker OOMs by leaving less memory for the heaps of 
+    A common misconception is that heavy queuing causes OOMs. While it's true that heavy
+    object store use contributes to worker OOMs by leaving less memory for the heaps of
     tasks and actors, heavy queuing doesn't cause OOMs directly because Ray spills objects
     to disk. If Ray Data queues too much data, you see out-of-disk errors instead.
 

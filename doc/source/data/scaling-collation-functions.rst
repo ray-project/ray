@@ -331,7 +331,7 @@ The following example demonstrates using tensor serialization when your collate 
                 return_tensors="pt",
             )
             outputs["labels"] = torch.LongTensor(batch["label"].to_numpy())
-            
+
             # Serialize to single-row table using the utility
             return serialize_tensors_to_table(outputs)
 
@@ -346,7 +346,7 @@ The following example demonstrates using tensor serialization when your collate 
 
     def train_func():
         collate_fn = IteratorCollateFn()
-        
+
         # Collate function only deserializes on the training worker
         for batch in ray.train.get_dataset_shard("train").iter_torch_batches(
             collate_fn=collate_fn,
