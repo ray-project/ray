@@ -202,8 +202,17 @@ ray_cc_test(
     name = "redis_context_test",
     size = "small",
     srcs = ["redis_context_test.cc"],
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client:redis_store_client",
     ],
 )
