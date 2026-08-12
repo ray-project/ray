@@ -162,8 +162,8 @@ class AvailableNodeResources(Resources):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get(self, key: str):  # type: ignore[override]  # pyrefly: ignore[bad-override]
-        val = super().get(key)
+    def get(self, key: str, default: Any = None):
+        val = super().get(key, default)
         if val is not None:
             return val
 
@@ -183,9 +183,9 @@ class RequestedResources(Resources):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get(self, key: str):  # type: ignore[override]  # pyrefly: ignore[bad-override]
+    def get(self, key: str, default: Any = None):
         # We DON'T inject implicit resources for required resources.
-        val = super().get(key)
+        val = super().get(key, default)
         if val is not None:
             return val
 
