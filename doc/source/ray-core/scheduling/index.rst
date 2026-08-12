@@ -1,3 +1,6 @@
+.. meta::
+   :description: How Ray schedules tasks and actors onto nodes: labels, resources, and the DEFAULT, SPREAD, placement group, and node affinity strategies.
+
 .. _ray-scheduling:
 
 Scheduling
