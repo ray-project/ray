@@ -36,8 +36,7 @@ For the officially supported, Redis-backed setup, see
 
 ## Prerequisites
 
-* A KubeRay version with embedded RocksDB support. KubeRay v1.6.2 and earlier don't have it,
-  so you need a build from KubeRay master until a release ships it.
+* KubeRay v1.7 or later, which is the first release that supports the embedded RocksDB backend.
 * Ray 2.57.0 or later, which is the first release that contains the embedded RocksDB backend.
 * Linux worker nodes (the RocksDB backend is Linux only).
 * A `StorageClass` that provisions a durable volume which can reattach to the node that runs
