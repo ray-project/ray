@@ -11,6 +11,9 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorBuilder,
     ProcessorConfig,
 )
+from ray.llm._internal.batch.stages import (
+    ServeDeploymentStage,
+)
 
 
 class ServeDeploymentProcessorConfig(ProcessorConfig):
@@ -71,9 +74,6 @@ def build_serve_deployment_processor(
     Returns:
         The constructed processor.
     """
-    # Defer Ray Serve imports until this processor is constructed.
-    from ray.llm._internal.batch.stages import ServeDeploymentStage
-
     stages = [
         ServeDeploymentStage(
             fn_constructor_kwargs=dict(

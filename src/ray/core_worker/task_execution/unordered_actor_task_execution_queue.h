@@ -43,7 +43,6 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
       instrumented_io_context &task_execution_service,
       ActorTaskExecutionArgWaiterInterface &waiter,
       worker::TaskEventBuffer &task_event_buffer,
-      ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
       bool is_asyncio,
@@ -80,8 +79,6 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   std::thread::id main_thread_id_;
   ActorTaskExecutionArgWaiterInterface &waiter_;
   worker::TaskEventBuffer &task_event_buffer_;
-  /// Records task events to the event aggregator.
-  ray::observability::RayEventRecorderInterface &ray_task_event_recorder_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
   /// Manage the running fiber states of actors in this worker. It works with

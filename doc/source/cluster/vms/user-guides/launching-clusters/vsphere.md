@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Launch a Ray cluster on vSphere, including the supervisor service and vSAN File Service for persistent storage."
----
-
 # Launching Ray Clusters on vSphere
 
 This guide details the steps needed to launch a Ray cluster in a vSphere environment.

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Submit Ray jobs programmatically with the Python SDK, covering long-running jobs, dependencies, resources, and TLS verification.
-
 .. _ray-job-sdk:
 
 Python SDK Overview

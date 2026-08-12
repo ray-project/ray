@@ -5,7 +5,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 class OpenAiIngress(_OpenAiIngress):
 
     """The implementation of the OpenAI compatible model router.

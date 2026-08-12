@@ -1,6 +1,3 @@
-.. meta::
-   :description: API reference for tune.Callback: the callback interface, initialization and setup, the available hooks, and stateful callbacks.
-
 .. _tune-callbacks-docs:
 
 Tune Callbacks (tune.Callback)

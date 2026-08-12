@@ -1,6 +1,3 @@
-.. meta::
-   :description: Obtain and aggregate training metrics reported from multiple Ray Train workers.
-
 .. _train-monitoring-and-logging:
 
 Monitoring and Logging Metrics

@@ -297,13 +297,6 @@ PROXY_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
 PROXY_READY_CHECK_TIMEOUT_S = get_env_float_positive(
     "RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", 5.0
 )
-# The maximum time in seconds that the controller waits for a proxy actor's
-# shutdown.remote() call to complete before force-killing it with ray.kill.
-# Note: This is distinct from DeploymentConfig.graceful_shutdown_timeout_s,
-# which applies to replica actors.
-PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S = get_env_float_positive(
-    "RAY_SERVE_PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S", 5.0
-)
 
 # Number of times in a row that a HTTP proxy must fail the health check before
 # being marked unhealthy.

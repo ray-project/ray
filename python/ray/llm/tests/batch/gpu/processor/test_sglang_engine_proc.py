@@ -92,10 +92,12 @@ class TestSGLangEngineProcessorConfig:
 
         with (
             patch(
-                "ray.llm._internal.common.utils.download_utils.download_model_files",
+                "ray.llm._internal.batch.processor.sglang_engine_proc."
+                "download_model_files",
                 return_value="/tmp/fake_model_dir",
             ),
             patch(
+                "ray.llm._internal.batch.processor.sglang_engine_proc."
                 "transformers.AutoConfig.from_pretrained",
                 side_effect=ModuleNotFoundError("custom modeling module missing"),
             ),
@@ -111,7 +113,8 @@ class TestSGLangEngineProcessorConfig:
         )
 
         with patch(
-            "ray.llm._internal.common.utils.download_utils.download_model_files",
+            "ray.llm._internal.batch.processor.sglang_engine_proc."
+            "download_model_files",
             side_effect=RuntimeError("download failed"),
         ):
             processor = build_sglang_engine_processor(config)

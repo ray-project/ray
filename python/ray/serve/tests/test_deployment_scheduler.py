@@ -15,7 +15,6 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.test_utils import check_apps_running, get_node_id
 from ray.serve._private.utils import get_head_node_id
-from ray.serve.schema import DeploymentSchema, ServeApplicationSchema, ServeDeploySchema
 from ray.tests.conftest import *  # noqa
 
 
@@ -184,22 +183,6 @@ def A():
 
 
 app_A = A.bind()
-
-
-@serve.deployment
-class BuildTaskNodeReporter:
-    def __init__(self, build_task_node_id):
-        self._build_task_node_id = build_task_node_id
-
-    def get_node_ids(self):
-        return (
-            self._build_task_node_id,
-            ray.get_runtime_context().get_node_id(),
-        )
-
-
-def build_task_node_reporter_app(_):
-    return BuildTaskNodeReporter.bind(ray.get_runtime_context().get_node_id())
 
 
 @pytest.mark.skipif(
@@ -680,42 +663,6 @@ async def test_e2e_serve_label_selector(serve_instance_with_labeled_nodes):
     handle_spread = serve.run(DeploymentPGSpread.bind(), name="pg_spread_app")
     assert await handle_spread.get_node_id.remote() == us_east_node_id
     serve.delete("pg_spread_app")
-
-
-def test_e2e_serve_build_app_task_label_selector(
-    serve_instance_with_labeled_nodes,
-):
-    """The application build task uses the deployment's shared label selector."""
-    client, us_west_node_id, _, _ = serve_instance_with_labeled_nodes
-    app_name = "build_task_label_selector_app"
-
-    client.deploy_apps(
-        ServeDeploySchema(
-            applications=[
-                ServeApplicationSchema(
-                    name=app_name,
-                    route_prefix="/build-task-label-selector",
-                    import_path=(
-                        "ray.serve.tests.test_deployment_scheduler:"
-                        "build_task_node_reporter_app"
-                    ),
-                    deployments=[
-                        DeploymentSchema(
-                            name="BuildTaskNodeReporter",
-                            ray_actor_options={"label_selector": {"region": "us-west"}},
-                        )
-                    ],
-                )
-            ]
-        ),
-        _blocking=True,
-    )
-
-    handle = serve.get_app_handle(app_name)
-    build_task_node_id, replica_node_id = handle.get_node_ids.remote().result()
-    assert build_task_node_id == us_west_node_id
-    assert replica_node_id == us_west_node_id
-    serve.delete(app_name)
 
 
 @pytest.mark.asyncio

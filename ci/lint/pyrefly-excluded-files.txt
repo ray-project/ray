@@ -1,4 +1,3 @@
-python/ray/data/_internal/arrow_aggregation.py
 python/ray/data/_internal/arrow_block.py
 python/ray/data/_internal/arrow_ops/transform_polars.py
 python/ray/data/_internal/arrow_ops/transform_pyarrow.py

@@ -1,8 +1,5 @@
 :orphan:
 
-.. meta::
-   :description: Runnable example training a PyTorch model on Fashion MNIST with Ray Train.
-
 .. _train-pytorch-fashion-mnist:
 
 Train a PyTorch model on Fashion MNIST

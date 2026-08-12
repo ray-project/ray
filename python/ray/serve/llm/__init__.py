@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Optional, Type
 
+from ray._common.deprecation import Deprecated
 from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LLMConfig as _LLMConfig,
@@ -9,7 +10,14 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs as _LLMServingArgs,
 )
-from ray.serve.llm.deployment import LLMServer
+from ray.llm._internal.serve.core.ingress.ingress import (
+    OpenAiIngress as _OpenAiIngress,
+)
+
+# For backward compatibility
+from ray.llm._internal.serve.core.server.llm_server import (
+    LLMServer as _LLMServer,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -21,38 +29,59 @@ if TYPE_CHECKING:
 ##########
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 class LLMConfig(_LLMConfig):
     """The configuration for starting an LLM deployment."""
 
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 class LLMServingArgs(_LLMServingArgs):
     """The configuration for starting an LLM deployment application."""
 
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 class ModelLoadingConfig(_ModelLoadingConfig):
     """The configuration for loading an LLM model."""
 
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 class CloudMirrorConfig(_CloudMirrorConfig):
     """The configuration for mirroring an LLM model from cloud storage."""
 
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 class LoraConfig(_LoraConfig):
     """The configuration for loading an LLM model with LoRA."""
 
+    pass
+
+
+#############
+# Deployments
+#############
+
+
+@Deprecated(
+    old="ray.serve.llm.LLMServer", new="ray.serve.llm.deployment.LLMServer", error=False
+)
+class LLMServer(_LLMServer):
+    pass
+
+
+@Deprecated(
+    old="ray.serve.llm.LLMRouter",
+    new="ray.serve.llm.ingress.OpenAIIngress",
+    error=False,
+)
+class LLMRouter(_OpenAiIngress):
     pass
 
 
@@ -61,7 +90,7 @@ class LoraConfig(_LoraConfig):
 ##########
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 def build_llm_deployment(
     llm_config: "LLMConfig",
     *,
@@ -145,7 +174,7 @@ def build_llm_deployment(
     )
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 def build_openai_app(llm_serving_args: dict) -> "Application":
     """Helper to build an OpenAI compatible app with the llm deployment setup from
     the given llm serving args. This is the main entry point for users to create a
@@ -250,7 +279,7 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
     return build_openai_app(builder_config=llm_serving_args)
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     """Build a deployable application utilizing P/D disaggregation.
 
@@ -340,7 +369,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     return build_pd_openai_app(pd_serving_args=pd_serving_args)
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def build_dp_deployment(
     llm_config: "LLMConfig",
     *,
@@ -375,7 +404,7 @@ def build_dp_deployment(
     )
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def build_dp_openai_app(dp_serving_args: dict) -> "Application":
     """Build an OpenAI compatible app with the DP attention deployment
     setup from the given builder configuration.
@@ -406,4 +435,5 @@ __all__ = [
     "build_dp_deployment",
     "build_dp_openai_app",
     "LLMServer",
+    "LLMRouter",
 ]

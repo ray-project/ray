@@ -1,50 +1,34 @@
+load("//bazel:python.bzl", "py_test_run_all_notebooks")
+
 filegroup(
     name = "core_examples",
     srcs = glob(["*.ipynb"]),
-    visibility = ["//doc:__subpackages__"],
+    visibility = ["//doc:__subpackages__"]
 )
 
 # --------------------------------------------------------------------
-# This package declares no notebook tests.
-#
-# Every notebook here has a hand-written py_test in doc/BUILD.bazel so
-# it can carry its own size, team, and tags. This package used to also
-# run a py_test_run_all_notebooks glob over *.ipynb, which meant any
-# notebook the glob's exclude list missed got a second target and ran
-# twice in the same job. Since the exclude list had grown to cover
-# every file in the package, the glob was declaring nothing and the
-# macro is gone.
-#
-# When you add a notebook to this directory, declare its py_test in
-# doc/BUILD.bazel explicitly. Don't reintroduce a glob here: a new
-# notebook would silently inherit size = "large" and team:core whether
-# or not either fits it, and Ray Core is the wrong default owner for a
-# notebook that exercises another library.
-#
-# Where each notebook runs today, and what makes it need a bespoke
-# target:
-#
-#   gentle_walkthrough.ipynb    //doc:gentle_walkthrough    (team:core)
-#   map_reduce.ipynb            //doc:map_reduce            (team:core)
-#   web_crawler.ipynb           //doc:web_crawler           (team:core)
-#                                 Makes live network requests.
-#   batch_prediction.ipynb      //doc:batch_prediction      (team:ml)
-#                                 Imports torch. The @ray.remote(num_gpus=1)
-#                                 function is defined but never called, so
-#                                 despite the name it schedules no GPU task.
-#   plot_hyperparameter.ipynb   //doc:plot_hyperparameter   (team:ml)
-#                                 Imports torch and torchvision.
-#   plot_parameter_server.ipynb //doc:plot_parameter_server (team:ml)
-#                                 Imports torch and torchvision.
-#   plot_pong_example.ipynb     //doc:plot_pong_example     (team:ml)
-#                                 Imports gymnasium.
-#   highly_parallel.ipynb       //doc:highly_parallel       (team:ml)
-#                                 Needs a live multi-node cluster and belongs
-#                                 in a release test. The target carries a
-#                                 highly_parallel tag that the ml docs example
-#                                 step excludes, so unlike every other notebook
-#                                 above this one runs in no CI job today.
+# Test the lightweight, CPU-only Ray Core example notebooks. The
+# excluded notebooks need GPU, long-running training, or live network
+# access and aren't runnable in the standard CPU CI job.
 # --------------------------------------------------------------------
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["*.ipynb"],
+    exclude = [
+        "batch_prediction.ipynb",  # Requires GPU (num_gpus=1) and torch.
+        "highly_parallel.ipynb",  # Needs an existing multi-node cluster and belongs in a release test.
+        "plot_hyperparameter.ipynb",  # Model-training loop.
+        "plot_parameter_server.ipynb",  # Torch training loop; slow/non-deterministic.
+        "plot_pong_example.ipynb",  # Long-running RL (Pong) training.
+        "web_crawler.ipynb",  # Makes live network requests.
+    ],
+    data = ["//doc/source/ray-core/examples:core_examples"],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+)
 
 filegroup(
     name = "core_examples_ci_configs",

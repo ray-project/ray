@@ -1,6 +1,3 @@
-.. meta::
-   :description: How Tune works internally: what Tuner.fit does, the lifecycle of a trial, resource management, and the TuneController architecture.
-
 How does Tune work?
 ===================
 

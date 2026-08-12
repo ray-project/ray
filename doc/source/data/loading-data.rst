@@ -1,6 +1,3 @@
-.. meta::
-   :description: Load data into Ray Data from local and cloud storage, compressed files, URIs, single-node libraries, distributed DataFrames, and Hugging Face.
-
 .. _loading_data:
 
 ============

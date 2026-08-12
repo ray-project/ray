@@ -1,6 +1,3 @@
-.. meta::
-   :description: Read, transform, run inference on, and save large image datasets with Ray Data.
-
 .. _working_with_images:
 
 Working with Images

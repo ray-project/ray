@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Deploy Ray Serve applications on Kubernetes with RayService, covering what it provides and a two-application example."
----
-
 (kuberay-rayservice)=
 
 # Deploy Ray Serve Applications

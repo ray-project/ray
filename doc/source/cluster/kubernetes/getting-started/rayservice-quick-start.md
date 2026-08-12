@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Serve Ray Serve applications on Kubernetes with the RayService custom resource, deploying two applications as an example."
----
-
 (kuberay-rayservice-quickstart)=
 # RayService Quickstart
 

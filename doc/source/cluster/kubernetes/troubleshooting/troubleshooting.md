@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Common KubeRay problems: Ray version mismatches, ARM images on Apple silicon, worker init containers, and cluster domain issues."
----
-
 (kuberay-troubleshooting-guides)=
 
 # Troubleshooting guide

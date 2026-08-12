@@ -31,21 +31,6 @@ class SupportsFilterPushdown(ABC):
         """
         ...
 
-    def pushed_predicate(self) -> Optional["Expr"]:
-        """The predicate this scanner will apply at read time, if any.
-
-        This is the accepted result of :meth:`push_filters`, not the predicate
-        that was offered to it. Planning derives upstream listing-time pruning
-        from this value, so it must never be stronger than what the scanner
-        actually evaluates -- returning ``None`` is always safe, returning a
-        predicate the reader does not apply drops rows.
-
-        Deliberately concrete rather than abstract: the safe answer is ``None``,
-        and defaulting to it means an existing scanner keeps working (just
-        without listing-time pruning) instead of failing to instantiate.
-        """
-        return None
-
 
 @DeveloperAPI
 class SupportsColumnPruning(ABC):
@@ -99,18 +84,6 @@ class SupportsLimitPushdown(ABC):
         """
         ...
 
-    def pushed_limit(self) -> Optional[int]:
-        """The row limit this scanner will stop at, if any.
-
-        This is the accepted result of :meth:`push_limit`. Planning derives
-        early-stop listing from it, so it must never be smaller than the limit
-        the scanner actually honors.
-
-        Concrete rather than abstract, for the same reason as
-        :meth:`SupportsFilterPushdown.pushed_predicate`.
-        """
-        return None
-
 
 @DeveloperAPI
 class SupportsPartitionPruning(ABC):
@@ -147,35 +120,3 @@ class SupportsPartitionPruning(ABC):
             New Scanner instance with partition pruning applied.
         """
         ...
-
-
-def derive_list_files_pushdown(
-    scanner: Optional["Scanner"],
-) -> Tuple[Optional["Expr"], Optional[List[str]], Optional[int]]:
-    """Read the pushed-down state a scanner accepted, for upstream listing.
-
-    Returns ``(predicate, projected_columns, limit)`` -- the constraints a
-    ``ListFiles`` feeding this scanner's ``ReadFiles`` may safely apply while
-    listing (see :class:`~ray.data._internal.logical.rules.
-    derive_list_files_pushdown.DeriveListFilesPushdown`). Each element is
-    ``None`` unless the scanner both implements the corresponding ``Supports*``
-    mixin and reports state it actually accepted, so a datasource that ignores
-    a pushdown can never cause listing-time pruning.
-
-    ``scanner`` may be ``None`` (no downstream reader), which yields all-``None``:
-    nothing downstream applies these constraints, so listing must not either.
-    """
-    predicate = (
-        scanner.pushed_predicate()
-        if isinstance(scanner, SupportsFilterPushdown)
-        else None
-    )
-    if isinstance(scanner, SupportsColumnPruning):
-        pruned = scanner.pruned_column_names()
-        projected_columns = list(pruned) if pruned is not None else None
-    else:
-        projected_columns = None
-    limit = (
-        scanner.pushed_limit() if isinstance(scanner, SupportsLimitPushdown) else None
-    )
-    return predicate, projected_columns, limit

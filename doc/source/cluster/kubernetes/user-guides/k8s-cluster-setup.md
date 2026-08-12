@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Links for setting up managed Kubernetes clusters with GPU nodes, for the KubeRay examples that need them."
----
-
 (kuberay-k8s-setup)=
 
 # Managed Kubernetes services

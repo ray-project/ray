@@ -1,6 +1,3 @@
-.. meta::
-   :description: Connect an interactive Python session to a remote Ray cluster with Ray Client, including when to use it and its limitations.
-
 .. _ray-client-ref:
 
 Ray Client

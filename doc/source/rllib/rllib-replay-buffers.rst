@@ -1,6 +1,3 @@
-.. meta::
-   :description: Replay buffers in RLlib: sampling and eviction strategies, the ReplayBuffer base class, configuration, and building a custom buffer.
-
 .. include:: /_includes/rllib/new_api_stack.rst
 
 .. _replay-buffer-reference-docs:

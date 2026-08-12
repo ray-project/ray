@@ -2806,7 +2806,6 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
 
 
 cdef CRayStatus check_signals() nogil:
-    cdef optional[c_bool] should_interrupt
     with gil:
         # The Python exceptions are not handled if it is raised from cdef,
         # so we have to handle it here.
@@ -2840,15 +2839,7 @@ cdef CRayStatus check_signals() nogil:
         # signal to worker threads (CancelActorTaskOnExecutor for non-async actors).
         # Unblock nogil backpressure waits. Uses job/task guards so periodic io threads
         # do not call GetCurrentTaskID() without a job (WorkerContext CHECK).
-        #
-        # Empty means the core worker is gone, which background threads polling here run
-        # into while ray.shutdown() clears it. Report that the same way the
-        # sys.is_finalizing() branch above does and let the caller stop; reaching the core
-        # worker through GetCoreWorker() instead would exit the process outright.
-        should_interrupt = CCoreWorkerProcess.ShouldInterruptTaskForCancellation()
-        if not should_interrupt.has_value():
-            return CRayStatus.IntentionalSystemExit(b"The core worker is shut down.")
-        if should_interrupt.value():
+        if CCoreWorkerProcess.GetCoreWorker().ShouldInterruptTaskForCancellation():
             return CRayStatus.Interrupted(b"")
 
     return CRayStatus.OK()
@@ -3766,6 +3757,14 @@ cdef class CoreWorker:
                 not_ready.append(object_ref_or_generator)
 
         return ready, not_ready
+
+    def free_objects(self, object_refs, c_bool local_only):
+        cdef:
+            c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(CCoreWorkerProcess.GetCoreWorker().
+                         Delete(free_ids, local_only))
 
     def get_local_ongoing_lineage_reconstruction_tasks(self):
         cdef:

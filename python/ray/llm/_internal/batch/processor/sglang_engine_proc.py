@@ -4,6 +4,7 @@ import hashlib
 import logging
 from typing import Any, Dict, Optional
 
+import transformers
 from pydantic import Field, root_validator
 
 import ray
@@ -23,6 +24,12 @@ from ray.llm._internal.batch.processor.utils import (
     build_cpu_stage_map_kwargs,
     get_value_or_fallback,
 )
+from ray.llm._internal.batch.stages import (
+    ChatTemplateStage,
+    DetokenizeStage,
+    SGLangEngineStage,
+    TokenizeStage,
+)
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
@@ -30,6 +37,10 @@ from ray.llm._internal.batch.stages.configs import (
     resolve_stage_config,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    download_model_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,20 +113,6 @@ def build_sglang_engine_processor(
     Returns:
         The constructed processor.
     """
-    # Defer SGLang and Transformers imports until this processor is constructed.
-    import transformers
-
-    from ray.llm._internal.batch.stages import (
-        ChatTemplateStage,
-        DetokenizeStage,
-        SGLangEngineStage,
-        TokenizeStage,
-    )
-    from ray.llm._internal.common.utils.download_utils import (
-        NodeModelDownloadable,
-        download_model_files,
-    )
-
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
@@ -140,7 +137,9 @@ def build_sglang_engine_processor(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
                     model=chat_template_stage_cfg.model_source,
-                    chat_template=chat_template_stage_cfg.chat_template,
+                    chat_template=get_value_or_fallback(
+                        chat_template_stage_cfg.chat_template, config.chat_template
+                    ),
                     chat_template_kwargs=get_value_or_fallback(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
@@ -153,7 +152,7 @@ def build_sglang_engine_processor(
 
     # Resolve and build TokenizeStage if enabled
     tokenize_stage_cfg = resolve_stage_config(
-        config.tokenize_stage,
+        getattr(config, "tokenize_stage", config.tokenize),
         TokenizerStageConfig,
         processor_defaults,
     )
@@ -199,7 +198,7 @@ def build_sglang_engine_processor(
 
     # Resolve and build DetokenizeStage if enabled
     detokenize_stage_cfg = resolve_stage_config(
-        config.detokenize_stage,
+        getattr(config, "detokenize_stage", config.detokenize),
         DetokenizeStageConfig,
         processor_defaults,
     )

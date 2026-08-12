@@ -18,7 +18,7 @@
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
 ! linux_wheels macos_wheels docker doc doc_api python_dependencies min_build tools windows
-! release_tests spark_on_ray rocksdb_tests redis_tests sandbox_tests
+! release_tests spark_on_ray rocksdb_tests redis_tests
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 
 # Per-team API reference pages. Editing these can change the documented public
@@ -209,10 +209,6 @@ python/ray/runtime_env/
 @ core_python runtime_env_container
 ;
 
-python/ray/experimental/sandbox/
-@ core_python sandbox_tests
-;
-
 python/
 # Run library tests on core Python code change.
 @ core_python llm ml tune train data serve
@@ -347,27 +343,6 @@ doc/source/train/examples.yml
 # build renders it (`nb_execution_mode` is `off`, so render-and-lint only, no
 # execution), which is the only validation premerge actually offers here.
 doc/source/ray-core/examples/highly_parallel.ipynb
-# Snippet sources that a rendered page pulls in with `literalinclude`. No bazel
-# target executes any of them, so the docs example steps have nothing to run;
-# but Sphinx reads them at build time, so renaming or deleting one breaks the
-# page that includes it. Route them to the build, which is the only check that
-# can catch that. Same reasoning as highly_parallel.ipynb above: render-and-lint
-# is the validation premerge actually offers for these files.
-#
-# Images and prose under these directories are unaffected -- the leading skip
-# rule matches them first, as it does everywhere else in the tree. So the
-# dreambooth page's `.. image::` targets stay skipped, consistent with every
-# other doc image, even though a rename would break the build the same way.
-# Widening the image policy is a separate decision and belongs in that rule.
-#
-# These are directory rules, matching how doc/external/ is handled below, so a
-# few non-included assets under 05 (its Dockerfile, compute configs, and
-# requirements.txt) start the build too. That is a deliberate trade: the build
-# is the cheap step, and enumerating individual include targets would rot the
-# moment someone adds a literalinclude.
-doc/source/templates/05_dreambooth_finetuning/
-doc/source/cluster/doc_code/
-doc/source/ray-contribute/doc_code/
 @ doc
 ;
 
@@ -436,25 +411,9 @@ doc/external/
 @ ml_doc
 ;
 
-# Starter-template sources and the notebook authoring boilerplate. Sphinx never
-# reads any of these: `exclude_patterns` in doc/source/conf.py drops
-# `templates/*` from the build outright, and `_templates/template.ipynb` is a
-# file contributors copy, not a page. Nothing includes them either -- 01 through
-# 03 have no reference anywhere in the repo, and 04 is cited only as a GitHub
-# URL, from train/deepspeed.rst, train/huggingface-accelerate.rst, and the train
-# examples gallery, none of which any build step resolves. They also back no bazel target: doc/BUILD.bazel names
-# source/templates/ exactly once, as a doctest exclusion. So the catch-all was
-# starting the core docs example step for files that step cannot run and the
-# build does not read. 05_dreambooth_finetuning is the exception and is routed
-# to `doc` above, because a rendered Train page literalincludes it.
-doc/source/templates/
-doc/source/_templates/
-# pass
-;
-
-# Any remaining executable doc asset (other unowned doc dirs, and any example
-# BUILD.bazel outside the library dirs above) falls to the core docs example
-# step as the catch-all owner.
+# Any remaining executable doc asset (cluster/, ray-contribute/, other
+# unowned doc dirs, and any example BUILD.bazel outside the library dirs
+# above) falls to the core docs example step as the catch-all owner.
 #
 # `doc/test_myst_doc.py` lands here too. It is the shared notebook runner behind
 # every library's example targets, so a change to it could in principle break

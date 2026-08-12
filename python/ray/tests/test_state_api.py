@@ -122,13 +122,7 @@ def state_source_client(gcs_address):
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
     gcs_client = GcsClient(address=gcs_address)
-    node = ray._private.worker.global_worker.node
-    client = StateDataSourceClient(
-        gcs_channel=gcs_channel,
-        gcs_client=gcs_client,
-        dashboard_socket_dir=os.path.join(node.get_session_dir_path(), "sockets"),
-        dashboard_session_name=node.session_name,
-    )
+    client = StateDataSourceClient(gcs_channel=gcs_channel, gcs_client=gcs_client)
     return client
 
 
@@ -1396,10 +1390,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     # Set environment
     with monkeypatch.context() as m:
         m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", "3")
-        # Pin the read path to GCS so list_tasks stays a delayable GCS
-        # GetTaskEvents query.
-        m.setenv("RAY_enable_task_events_to_dashboard_head", "0")
-        # These make list_tasks, list_workers, list_actors never return in 20secs
+        # These make list_nodes, list_workers, list_actors never return in 20secs
         m.setenv(
             "RAY_testing_asio_delay_us",
             (

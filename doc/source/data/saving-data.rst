@@ -1,6 +1,3 @@
-.. meta::
-   :description: Write Ray Data Datasets to local or cloud storage, control the output file count, write partitioned datasets, and convert back to pandas.
-
 .. _saving-data:
 
 ===========

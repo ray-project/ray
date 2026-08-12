@@ -135,65 +135,6 @@ def test_lance_read_with_scanner_fragments(data_path, ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_read_lance_multi_uri_null_fills_missing_columns(
-    data_path, ray_start_regular_shared
-):
-    # Heterogeneous multi-URI read: each block must null-fill the columns
-    # that exist only in the other dataset so it matches the unified schema.
-    setup_data_path = _unwrap_protocol(data_path)
-    p1 = os.path.join(setup_data_path, "part1.lance")
-    p2 = os.path.join(setup_data_path, "part2.lance")
-    lance.write_dataset(pa.table({"a": [1, 2], "b": ["x", "y"]}), p1)
-    lance.write_dataset(pa.table({"a": [3, 4], "c": [True, False]}), p2)
-
-    ds = ray.data.read_lance([p1, p2])
-    assert set(ds.schema().names) == {"a", "b", "c"}
-
-    collected = ds.take_all()
-    assert len(collected) == 4
-    for row in collected:
-        assert set(row.keys()) == {"a", "b", "c"}
-        if row["a"] <= 2:
-            assert row["b"] in ("x", "y")
-            assert row["c"] is None
-        else:
-            assert row["b"] is None
-            assert row["c"] in (True, False)
-
-
-@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_read_lance_block_columns_match_unified_schema_order(
-    data_path, ray_start_regular_shared
-):
-    # Per-dataset scanners return columns in their own order; _fill_missing_columns
-    # must reorder every block to the unified ReadTask schema so positional
-    # consumers (Table.cast, RecordBatchReader.from_batches) see a stable order.
-    from ray.data._internal.datasource.lance_datasource import _fill_missing_columns
-
-    schema = pa.schema([("a", pa.int64()), ("b", pa.string())])
-
-    # Missing column is appended in schema order.
-    out = _fill_missing_columns(pa.table({"a": [1]}), schema, {})
-    assert out.schema.names == ["a", "b"]
-
-    # A reversed column order is reordered to the unified schema order.
-    out = _fill_missing_columns(pa.table({"b": ["x"], "a": [1]}), schema, {})
-    assert out.schema.names == ["a", "b"]
-
-    # Missing + reversed: appends in schema order, then reorders the block.
-    out = _fill_missing_columns(pa.table({"b": ["x"]}), schema, {})
-    assert out.schema.names == ["a", "b"]
-
-    # Already-ordered blocks are left in place (no-op).
-    out = _fill_missing_columns(pa.table({"a": [1], "b": ["x"]}), schema, {})
-    assert out.schema.names == ["a", "b"]
-
-    # Under `columns=` projection the block is returned untouched.
-    out = _fill_missing_columns(pa.table({"b": ["x"]}), schema, {"columns": ["b"]})
-    assert out.schema.names == ["b"]
-
-
-@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
 def test_lance_read_many_files(data_path, ray_start_regular_shared):
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")

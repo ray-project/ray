@@ -1,6 +1,3 @@
-.. meta::
-   :description: Use Ray Data with PyTorch: iterate torch tensors for training, integrate with Ray Train, apply built-in transforms, and migrate off DataLoader.
-
 .. _working_with_pytorch:
 
 Working with PyTorch
@@ -488,7 +485,7 @@ The following table describes how the arguments for PyTorch DataLoader map to Ra
    * - ``shuffle``
      - ``local_shuffle_buffer_size`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
    * - ``collate_fn``
-     - ``collate_fn`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Use a callable class such as :class:`~ray.data.collate_fn.ArrowBatchCollateFn`, :class:`~ray.data.collate_fn.NumpyBatchCollateFn`, or :class:`~ray.data.collate_fn.PandasBatchCollateFn` for custom iterator collation. For expensive transformations, see :ref:`scaling collation functions <scaling_collation_functions>`.
+     - ``collate_fn`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
    * - ``sampler``
      - Not supported. Can be manually implemented after iterating through the dataset with :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
    * - ``batch_sampler``

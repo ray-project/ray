@@ -4,8 +4,6 @@ myst:
     description: "How to contribute to the Ray documentation: building the docs locally, the Google developer style guide enforced by Vale, and the conventions for writing and previewing pages. Use this when editing or adding Ray documentation."
 ---
 
-(docs-contribute)=
-
 # Contributing to the Ray documentation
 
 There are many ways to contribute to the Ray documentation, and we're always looking for new contributors. Even if you want to fix a typo or expand a section, feel free to do so!
@@ -18,8 +16,6 @@ This document walks you through everything you need to do to get started.
 The Ray documentation follows a house style guide that covers voice, word choice, sentence structure, headings, lists, links, and formatting. Read it before you write or edit a page. See {ref}`documentation-style`.
 
 The house guide builds on the [Google developer documentation style guide](https://developers.google.com/style), which is the fallback for anything the house guide doesn't cover. Vale enforces an automated subset of the Google guide in CI. For more information, see [How to use Vale](vale).
-
-(build-ray-docs)=
 
 ## Building the Ray documentation
 
@@ -223,11 +219,7 @@ For this to work, you must add the new document explicitly to a parent document'
 
 Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](https://docs.ray.io/en/latest/tune/tutorials/overview.html) as a panel, and the same goes for [all Tune examples](https://docs.ray.io/en/latest/tune/examples/index.html). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
 
-(creating-notebook-example)=
-
 ## Creating a notebook example
-
-This section covers authoring a notebook. To publish a finished example and set up CI so it keeps working, see {ref}`publishing-examples`.
 
 To add a new executable example to the Ray documentation, you can start from our [MyST notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) or [Jupyter notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.ipynb). You could also download the document you're reading right now and start modifying it. Click the download button at the top of this page to get the `.ipynb` file. All the example notebooks in Ray Tune are automatically tested by our CI system, provided you place them in the [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples). If you have questions about how to test your notebook when contributing to other Ray sub-projects, ask in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub when opening your pull request.
 

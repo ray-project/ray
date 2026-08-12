@@ -35,9 +35,9 @@ class HttpRequestProcessorConfig(ProcessorConfig):
     )
     headers: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="The request headers. JSON payloads default to "
-        "'Content-Type: application/json'. Payloads with a file field use "
-        "multipart/form-data with an aiohttp-generated boundary.",
+        description="The query header. Note that we will add "
+        "'Content-Type: application/json' to be the header for sure "
+        "because we only deal with requests body in JSON.",
     )
     qps: Optional[int] = Field(
         default=None,

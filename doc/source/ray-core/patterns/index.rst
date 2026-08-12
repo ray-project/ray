@@ -1,6 +1,3 @@
-.. meta::
-   :description: Catalog of Ray Core design patterns and anti-patterns for structuring tasks, actors, and object passing.
-
 .. _core-patterns:
 
 Design Patterns & Anti-patterns

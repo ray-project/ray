@@ -1,41 +1,10 @@
 group: lint
-# The lint matrix is split in two by tag so a documentation-prose pull request
-# skips the checks that cannot apply to it. See the prose rule in
-# always.rules.txt for the mechanism: `always` is emitted for every changed
-# file, `lint` only for files that are not prose.
 steps:
-  # Lint checks a Markdown or reStructuredText change can actually fail. These
-  # keep `always`, so they run on every pull request.
-  #
-  # The pre-commit whitespace and end-of-file hooks are deliberately not here.
-  # `.pre-commit-config.yaml` excludes `doc/source/` globally, so those hooks
-  # cannot see the prose a documentation change actually touches; a step
-  # running them would be theater. Removing that exclude is worth doing, but
-  # it is a separate change with a large mechanical diff.
-  - label: ":lint-roller: lint: {{matrix}}"
-    key: lint-small-prose
-    tags:
-      - lint
-      - always
-    depends_on:
-      - forge
-    commands:
-      - ./ci/lint/lint.sh {{matrix}}
-    matrix:
-      - banned_words
-      - doc_readme
-      - documentation_style
-      - doc_no_new_rst
-
-  # Code-oriented lint checks. These carry `lint` without `always`, so they are
-  # filtered out when every changed file is documentation prose. Selects and
-  # rule-emitted tags are ANDed in rayci's step filter, so the microcheck
-  # pipeline's hardcoded `tag:lint` selector does not resurrect them: it only
-  # makes them eligible, and the rules still have to emit `lint`.
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-small
     tags:
       - lint
+      - always
     depends_on:
       - forge
     commands:
@@ -44,40 +13,27 @@ steps:
       - clang_format
       - pre_commit
       - semgrep_lint
+      - banned_words
+      - doc_readme
       - dashboard_format
       - copyright_format
       - bazel_team
       - bazel_buildifier
       - pytest_format
       - test_coverage
+      - documentation_style
+      - doc_no_new_rst
 
   - label: ":lint-roller: pre-commit pydoclint"
     key: pydoclint-small
     tags:
       - oss
       - lint
+      - always
     depends_on:
       - forge
     commands:
       - ./ci/lint/lint.sh pre_commit_pydoclint
-
-  # Diff-scoped @PublicAPI parameter-coverage check: fails when a PR adds a new
-  # public API, or a new parameter on an existing one, without a docstring
-  # Args: entry. Pre-existing gaps are grandfathered. Static (no docbuild), so
-  # it runs in the lint group. `soft_fail: true` keeps it visible but
-  # non-blocking during the warn phase; remove `soft_fail` to make it a
-  # required check once the false-positive rate is confirmed low.
-  - label: ":lint-roller: lint: API param coverage"
-    key: api-param-coverage
-    tags:
-      - oss
-      - lint
-      - always
-    depends_on:
-      - forge
-    soft_fail: true
-    commands:
-      - ./ci/lint/lint.sh api_param_coverage --blocking
 
   # Scope guard for the "docs-go" label: runs only when the label is present,
   # and fails unless the PR is content-only (changes under doc/, excluding

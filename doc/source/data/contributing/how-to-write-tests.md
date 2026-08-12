@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Write non-flaky Ray Data tests: prefer unit tests and fixtures, avoid assuming output order, and don't depend on block count or repr output."
----
-
 (how-to-write-tests)=
 # How to write tests
 

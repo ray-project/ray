@@ -1,6 +1,3 @@
-.. meta::
-   :description: Build lazy computation graphs with the Ray DAG API over functions, classes, and actor methods, using InputNode and MultiOutputNode.
-
 .. _ray-dag-guide:
 
 Lazy Computation Graphs with the Ray DAG API

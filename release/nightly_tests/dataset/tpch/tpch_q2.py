@@ -74,7 +74,7 @@ def main(args):
 
         nation_region = region_filtered.join(
             nation,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("r_regionkey",),
             right_on=("n_regionkey",),
@@ -84,7 +84,7 @@ def main(args):
         # in both Branch B and the main pipeline (Ray Data has no CSE).
         regional_suppliers = nation_region.join(
             supplier,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("n_nationkey",),
             right_on=("s_nationkey",),
@@ -93,7 +93,7 @@ def main(args):
         # ── Branch B: min supply cost per part from regional suppliers ──
         regional_partsupp = partsupp.join(
             regional_suppliers.select_columns(["s_suppkey"]),
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("ps_suppkey",),
             right_on=("s_suppkey",),
@@ -118,7 +118,7 @@ def main(args):
         # Join part with partsupp
         part_partsupp = part_filtered.join(
             partsupp,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("p_partkey",),
             right_on=("ps_partkey",),
@@ -141,7 +141,7 @@ def main(args):
                     "n_name",
                 ]
             ),
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("ps_suppkey",),
             right_on=("s_suppkey",),
@@ -164,7 +164,7 @@ def main(args):
         # source via to_f64, and Min preserves the exact float64 value.
         ds = part_regional.join(
             min_cost,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("p_partkey",),
             right_on=("ps_partkey",),

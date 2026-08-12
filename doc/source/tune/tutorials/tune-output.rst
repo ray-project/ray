@@ -1,6 +1,3 @@
-.. meta::
-   :description: Control Tune logging and output: configure loggers, log to TensorBoard, set console verbosity, and redirect trainable logs to files.
-
 Logging and Outputs in Tune
 ===========================
 

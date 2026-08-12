@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Enable Ray token authentication backed by Kubernetes RBAC, including external IAM access to the cluster."
----
-
 (kuberay-auth-rbac)=
 
 # Configure Ray clusters to use Kubernetes RBAC authentication

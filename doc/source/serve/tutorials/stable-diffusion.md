@@ -1,8 +1,5 @@
 ---
 orphan: true
-myst:
-  html_meta:
-    description: "Deploy a Stable Diffusion image generation model as a Ray Serve application."
 ---
 
 (serve-stable-diffusion-tutorial)=

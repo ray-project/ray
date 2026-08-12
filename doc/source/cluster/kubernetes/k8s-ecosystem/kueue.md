@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Integrate KubeRay with Kueue for gang scheduling, priority scheduling, and autoscaling across the KubeRay CRDs."
----
-
 (kuberay-kueue)=
 # Gang scheduling, Priority scheduling, and Autoscaling for KubeRay CRDs with Kueue
 

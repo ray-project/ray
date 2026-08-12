@@ -58,7 +58,6 @@ steps:
       JDK_SUFFIX: "-jdk"
       RAY_JAVA_IMAGE: "cr.ray.io/rayproject/ray-java-build"
       RAY_DASHBOARD_IMAGE: "cr.ray.io/rayproject/ray-dashboard"
-      WHEEL_NAME_SUFFIX: ""
     tags:
       - release_wheels
       - linux_wheels
@@ -67,10 +66,6 @@ steps:
       - ray-java-build
       - ray-dashboard-build
 
-  # Exercises the no-java/no-dashboard wheel build path. WHEEL_NAME_SUFFIX
-  # keeps its wanda image name distinct from the real py3.13 wheel: both
-  # builds otherwise publish to the same name, and whichever finishes last
-  # silently replaces the full wheel for every downstream consumer.
   - name: ray-wheel-minimal-build
     label: "wanda: wheel-minimal py3.13 (x86_64)"
     wanda: ci/docker/ray-wheel.wanda.yaml
@@ -82,7 +77,6 @@ steps:
       JDK_SUFFIX: ""
       RAY_JAVA_IMAGE: "scratch"
       RAY_DASHBOARD_IMAGE: "scratch"
-      WHEEL_NAME_SUFFIX: "-minimal"
     tags:
       - release_wheels
       - linux_wheels

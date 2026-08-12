@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Configure RayService high availability with GCS fault tolerance so Serve keeps handling requests when the head pod fails."
----
-
 (kuberay-rayservice-ha)=
 # RayService high availability
 

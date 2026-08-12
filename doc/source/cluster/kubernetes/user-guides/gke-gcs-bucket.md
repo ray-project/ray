@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Give a RayCluster access to a Google Cloud Storage bucket on GKE using Workload Identity and a Kubernetes service account."
----
-
 (kuberay-gke-bucket)=
 # Configuring KubeRay to use Google Cloud Storage Buckets in GKE
 

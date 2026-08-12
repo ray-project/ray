@@ -39,8 +39,7 @@ void SubscriberChannel::Subscribe(
   const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
 
   if (key_id) {
-    // Last subscribe wins
-    subscription_map_[publisher_id].per_entity_subscription.insert_or_assign(
+    subscription_map_[publisher_id].per_entity_subscription.try_emplace(
         *key_id,
         SubscriptionInfo(std::move(subscription_callback),
                          std::move(subscription_failure_callback)));

@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Deploy your first LLM with Ray Serve through OpenAiIngress, then move the same configuration to a production deployment."
----
-
 (quick-start)=
 # Quickstart
 

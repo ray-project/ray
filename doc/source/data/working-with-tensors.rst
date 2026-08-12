@@ -1,6 +1,3 @@
-.. meta::
-   :description: Work with n-dimensional array data in Ray Data, covering fixed- and variable-shape tensor batches, transformations, and saving.
-
 .. _working_with_tensors:
 
 Working with Tensors / NumPy

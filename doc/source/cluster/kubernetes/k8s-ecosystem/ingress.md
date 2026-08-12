@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Expose Ray clusters on Kubernetes through AWS ALB ingress on EKS, GKE Ingress, or the GKE Gateway API."
----
-
 (kuberay-ingress)=
 
 # Ingress

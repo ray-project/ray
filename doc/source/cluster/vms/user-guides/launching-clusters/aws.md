@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Launch a Ray cluster on AWS with the cluster launcher, covering Boto3 setup, EFS, IAM roles, S3 access, and CloudWatch."
----
-
 
 # Launching Ray Clusters on AWS
 

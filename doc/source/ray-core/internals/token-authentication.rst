@@ -1,6 +1,3 @@
-.. meta::
-   :description: How Ray token authentication works: authentication modes, token sources and precedence, and propagation across C++, Python, and HTTP.
-
 .. _token-authentication:
 
 Token Authentication

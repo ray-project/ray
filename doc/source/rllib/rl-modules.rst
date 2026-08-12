@@ -1,6 +1,3 @@
-.. meta::
-   :description: Define custom neural network logic with RLModule: default MLP, CNN, and LSTM configuration, RLModuleSpecs, and multi-network multi-agent setups.
-
 .. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rlmodule-guide:

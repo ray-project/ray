@@ -1,6 +1,3 @@
-.. meta::
-   :description: Prometheus metrics Ray Train exports for controller state, worker group startup, and checkpoint timing, viewable in the Ray Dashboard.
-
 .. _train-metrics:
 
 Ray Train Metrics

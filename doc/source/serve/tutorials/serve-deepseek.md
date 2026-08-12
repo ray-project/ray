@@ -1,8 +1,5 @@
 ---
 orphan: true
-myst:
-  html_meta:
-    description: "Deploy DeepSeek R1 or V3 with Ray Serve LLM, from a quick local deployment to a production KubeRay setup."
 ---
 
 (serve-deepseek-tutorial)=

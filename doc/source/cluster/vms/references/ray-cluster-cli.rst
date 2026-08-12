@@ -1,6 +1,3 @@
-.. meta::
-   :description: Ray cluster launcher commands: ray up, exec, submit, attach, rsync-up and rsync-down, and dashboard or status monitoring.
-
 .. _cluster-commands:
 
 Cluster Launcher Commands

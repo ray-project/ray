@@ -16,7 +16,6 @@ from typing import (
 
 import numpy as np
 import pandas as pd
-import pyarrow
 from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
@@ -41,6 +40,12 @@ from ray.data.block import (
 )
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.expressions import Expr
+
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 
 if TYPE_CHECKING:
     import pandas
@@ -158,6 +163,8 @@ class ArrowRow(Mapping):
 
 class ArrowBlockBuilder(TableBlockBuilder):
     def __init__(self):
+        if pyarrow is None:
+            raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__((pyarrow.Table, bytes))
 
     @staticmethod
@@ -213,6 +220,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
     def __init__(self, table: "pyarrow.Table"):
+        if pyarrow is None:
+            raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
         self._max_chunk_size: Optional[int] = None
 

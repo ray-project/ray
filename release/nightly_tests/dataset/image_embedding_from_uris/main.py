@@ -203,14 +203,12 @@ def main(args: argparse.Namespace):
     print("Creating metadata")
     metadata = create_metadata(scale_factor=args.scale_factor)
 
-    weights = ViT_B_16_Weights.DEFAULT
-    model = vit_b_16(weights=weights)
-    transform = weights.transforms()
-    model_ref = ray.put(model)
-
-    ds_holder = {}
-
     def benchmark_fn():
+        weights = ViT_B_16_Weights.DEFAULT
+        model = vit_b_16(weights=weights)
+        transform = weights.transforms()
+        model_ref = ray.put(model)
+
         ds = (
             ray.data.from_pandas(metadata)
             .with_column("channel0", download("channel0_uris"))
@@ -230,14 +228,11 @@ def main(args: argparse.Namespace):
             )
         )
         ds.write_parquet(WRITE_PATH)
-        ds_holder["ds"] = ds
+        metrics = collect_dataset_stats(ds)
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
-
-    metrics = collect_dataset_stats(ds_holder["ds"])
-    metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-    benchmark.result["main"].update(metrics)
-
     benchmark.write_result()
 
 

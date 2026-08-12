@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import warnings
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -100,6 +101,9 @@ class TestPDServingArgs:
         assert isinstance(args.prefill_config, LLMConfig)
         assert isinstance(args.decode_config, LLMConfig)
 
+        # TODO(Kourosh): Deprecated, remove in Ray 2.58.
+        assert args.proxy_cls_config is None
+        assert args.proxy_deployment_config is None
         assert isinstance(args.ingress_cls_config, IngressClsConfig)
         assert args.ingress_cls_config.ingress_cls == OpenAiIngress
         assert args.ingress_deployment_config == {}
@@ -121,6 +125,46 @@ class TestPDServingArgs:
         args = PDServingArgs(prefill_config=config_dict, decode_config=config_dict)
         assert isinstance(args.prefill_config, LLMConfig)
         assert isinstance(args.decode_config, LLMConfig)
+
+    # TODO(Kourosh): Deprecated, remove in Ray 2.58.
+    def test_proxy_config_deprecated(self, pd_configs):
+        """Test proxy_cls_config and proxy_deployment_config emit deprecation warnings."""
+        prefill, decode = pd_configs
+
+        # proxy_cls_config as dict should warn
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            PDServingArgs(
+                prefill_config=prefill,
+                decode_config=decode,
+                proxy_cls_config={"proxy_extra_kwargs": {"key": "value"}},
+            )
+            deprecation_msgs = [
+                str(warning.message)
+                for warning in w
+                if issubclass(warning.category, DeprecationWarning)
+            ]
+            assert any(
+                "proxy_cls_config is deprecated" in msg for msg in deprecation_msgs
+            )
+
+        # proxy_deployment_config should warn
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            PDServingArgs(
+                prefill_config=prefill,
+                decode_config=decode,
+                proxy_deployment_config={"num_replicas": 2},
+            )
+            deprecation_msgs = [
+                str(warning.message)
+                for warning in w
+                if issubclass(warning.category, DeprecationWarning)
+            ]
+            assert any(
+                "proxy_deployment_config is deprecated" in msg
+                for msg in deprecation_msgs
+            )
 
     def test_ingress_config_flexibility(self, pd_configs):
         """Test ingress_cls_config: defaults, dict input, object input, and class loading."""
@@ -836,6 +880,25 @@ class TestBuildPDOpenaiApp:
         assert ingress_deployment.ray_actor_options["num_cpus"] == 8
         assert ingress_deployment.ray_actor_options["memory"] == 4096
         assert ingress_deployment._deployment_config.max_ongoing_requests == 300
+
+    # TODO(Kourosh): Deprecated, remove in Ray 2.58.
+    def test_deprecated_proxy_config_ignored(self, pd_configs):
+        """Test that deprecated proxy configs are accepted but ignored."""
+        prefill, decode = pd_configs
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            app = build_pd_openai_app(
+                {
+                    "prefill_config": prefill,
+                    "decode_config": decode,
+                    "proxy_deployment_config": {
+                        "num_replicas": 99,
+                    },
+                }
+            )
+            # App should still be valid — proxy config is just ignored
+            assert app is not None
 
 
 if __name__ == "__main__":

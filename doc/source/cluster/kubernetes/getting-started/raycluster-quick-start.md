@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Deploy a RayCluster on Kubernetes, run a job in the head pod or through the job submission SDK, and open the Ray Dashboard."
----
-
 (kuberay-raycluster-quickstart)=
 
 # RayCluster Quickstart

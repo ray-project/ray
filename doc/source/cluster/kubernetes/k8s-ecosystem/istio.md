@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Enable Istio mTLS and L7 traffic observability for a RayCluster, including the headless service Ray requires."
----
-
 (kuberay-istio)=
 # mTLS and L7 observability with Istio
 

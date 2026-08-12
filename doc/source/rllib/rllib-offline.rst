@@ -1,6 +1,3 @@
-.. meta::
-   :description: Offline RL in RLlib: record expert data, train on saved experiences, convert tabular data to episode format, and scale offline I/O throughput.
-
 Working with offline data
 =========================
 

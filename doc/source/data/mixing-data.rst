@@ -1,6 +1,3 @@
-.. meta::
-   :description: Combine multiple Ray Data Datasets into one streaming dataset with weighted mixing strategies, block size control, and stopping conditions.
-
 .. _mixing_data:
 
 Weighted Dataset Mixing

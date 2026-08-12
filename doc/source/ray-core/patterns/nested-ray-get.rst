@@ -1,6 +1,3 @@
-.. meta::
-   :description: Anti-pattern: calling ray.get on task arguments serializes execution; pass ObjectRefs and let Ray resolve them.
-
 .. _nested-ray-get:
 
 Anti-pattern: Calling ray.get on task arguments harms performance

@@ -62,7 +62,7 @@ def main(args):
 
         lineitem_part = lineitem.join(
             part,
-            num_partitions=200,
+            num_partitions=16,
             # Empirical value to balance parallelism and shuffle overhead
             join_type="inner",
             on=("l_partkey",),
@@ -86,7 +86,7 @@ def main(args):
         # Join lineitem with partsupp on part key and supplier key
         lineitem_partsupp = lineitem_part.join(
             partsupp,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("l_partkey", "l_suppkey"),
             right_on=("ps_partkey", "ps_suppkey"),
@@ -103,7 +103,7 @@ def main(args):
 
         lineitem_supplier = lineitem_partsupp.join(
             supplier,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
@@ -120,7 +120,7 @@ def main(args):
 
         lineitem_nation = lineitem_supplier.join(
             nation,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),
@@ -137,7 +137,7 @@ def main(args):
 
         ds = lineitem_nation.join(
             orders,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),

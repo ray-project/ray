@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Example Ray workloads to try out on a cloud VM cluster, including a distributed XGBoost training run."
----
-
 (vm-cluster-examples)=
 
 # Examples

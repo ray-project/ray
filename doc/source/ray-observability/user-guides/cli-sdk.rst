@@ -1,6 +1,3 @@
-.. meta::
-   :description: Monitor cluster and application state with ray status and the Ray State CLI and SDK, covering node status, resource usage, and task and actor queries.
-
 .. _observability-programmatic:
 
 Monitoring with the CLI or SDK

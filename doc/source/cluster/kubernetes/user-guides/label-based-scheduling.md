@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Direct Ray tasks, actors, and placement groups to specific pods with label-based scheduling on Kubernetes."
----
-
 (kuberay-label-scheduling)=
 
 # KubeRay label-based scheduling

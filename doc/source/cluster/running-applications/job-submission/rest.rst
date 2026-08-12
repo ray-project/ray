@@ -1,6 +1,3 @@
-.. meta::
-   :description: The HTTP endpoints behind the Ray Jobs CLI and SDK, with beta OpenAPI documentation, for submitting jobs directly.
-
 .. _ray-job-rest-api:
 
 Ray Jobs REST API

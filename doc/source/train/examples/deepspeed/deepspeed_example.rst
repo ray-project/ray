@@ -1,8 +1,5 @@
 :orphan:
 
-.. meta::
-   :description: Runnable example of training a model with DeepSpeed ZeRO-3 on Ray Train.
-
 Train with DeepSpeed ZeRO-3 and Ray Train
 =========================================
 

@@ -68,7 +68,7 @@ def main(args):
         joined = lineitem.join(
             orders,
             join_type="inner",
-            num_partitions=200,
+            num_partitions=16,
             on=("l_orderkey",),
             right_on=("o_orderkey",),
         )

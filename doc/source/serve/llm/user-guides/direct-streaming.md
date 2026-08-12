@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Lower streaming latency by routing requests straight to model replicas, bypassing the ingress proxy hop, with body-aware routers."
----
-
 (direct-streaming-guide)=
 # Direct streaming
 

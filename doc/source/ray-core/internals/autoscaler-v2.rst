@@ -1,6 +1,3 @@
-.. meta::
-   :description: Internals of Ray's autoscaler v2: worker group configuration, periodic reconciliation, bin packing, and the instance manager.
-
 .. _autoscaler-v2:
 
 Autoscaler v2

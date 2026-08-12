@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Control where Ray Serve places replicas using max_replicas_per_node, placement groups, and node labels, plus downscaling behavior."
----
-
 (serve-replica-scheduling)=
 
 # Replica scheduling

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Schedule GPU workloads on KubeRay: request GPUs, GPU autoscaling, override Ray GPU capacity, and use taints and node selectors.
-
 .. _kuberay-gpu:
 
 Using GPUs

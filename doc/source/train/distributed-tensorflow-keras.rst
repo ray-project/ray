@@ -1,6 +1,3 @@
-.. meta::
-   :description: Distribute TensorFlow and Keras training with TensorflowTrainer: adapt the training function, load data, report results, and checkpoint.
-
 .. _train-tensorflow-overview:
 
 Get Started with Distributed Training using TensorFlow/Keras

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Anti-pattern: global variables don't propagate between Ray workers; pass state explicitly or hold it in an actor.
-
 Anti-pattern: Using global variables to share state between tasks and actors
 ============================================================================
 

@@ -1,6 +1,3 @@
-.. meta::
-   :description: How Ray orders actor method execution, and how that differs between synchronous single-threaded actors and async or threaded actors.
-
 .. _actor-task-order:
 
 Actor Task Execution Order

@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Pass data into Tune trainables through search spaces and tune.with_parameters, and get metrics, checkpoints, and artifacts back out."
----
-
 # Getting Data in and out of Tune
 
 Often, you will find yourself needing to pass data into Tune [Trainables](tune_60_seconds_trainables) (datasets, models, other large parameters) and get data out of them (metrics, checkpoints, other artifacts). In this guide, we'll explore different ways of doing that and see in what circumstances they should be used.

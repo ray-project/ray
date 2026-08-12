@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Run a Ray Train XGBoostTrainer workload on an AWS VM cluster, from cluster deploy through job submission and progress."
----
-
 (clusters-vm-ml-example)=
 
 # Ray Train XGBoostTrainer on VMs

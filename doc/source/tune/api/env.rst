@@ -1,7 +1,4 @@
 
-.. meta::
-   :description: Reference for the environment variables that configure Ray Tune, covering storage, retries, reporting intervals, and debugging toggles.
-
 .. _tune-env-vars:
 
 Environment variables used by Ray Tune

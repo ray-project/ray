@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Index of KubeRay integrations with the Kubernetes ecosystem: ingress, service mesh, batch schedulers, and observability stacks."
----
-
 (kuberay-ecosystem-integration)=
 
 # KubeRay Ecosystem

@@ -1,6 +1,3 @@
-.. meta::
-   :description: API reference for Ray Direct Transport (RDT): usage with the core APIs, collective tensor transports, and advanced APIs.
-
 Ray Direct Transport (RDT) API
 ==============================
 

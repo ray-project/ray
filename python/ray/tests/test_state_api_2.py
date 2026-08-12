@@ -6,21 +6,17 @@ import tempfile
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 
 import ray
-import ray._private.state
-from ray._common.test_utils import run_string_as_driver, wait_for_condition
-from ray._common.utils import binary_to_hex
+from ray._common.test_utils import wait_for_condition
 from ray._private.profiling import chrome_tracing_dump
 from ray._private.test_utils import (
     check_call_subprocess,
     wait_for_aggregator_agent_if_enabled,
 )
-from ray.core.generated import gcs_pb2, gcs_service_pb2
 from ray.util.state import (
     get_actor,
     list_actors,
@@ -407,224 +403,6 @@ def test_ray_timeline(shutdown_only):
             return True
 
         wait_for_condition(verify, timeout=20, retry_interval_ms=1000)
-
-
-def _profile_task_event(component_type, component_id, event_name):
-    task_event = gcs_pb2.TaskEvents()
-    profile = task_event.profile_events
-    profile.component_type = component_type
-    profile.component_id = component_id
-    profile.node_ip_address = "1.2.3.4"
-    entry = profile.events.add()
-    entry.event_name = event_name
-    entry.start_time = 1
-    entry.end_time = 2
-    entry.extra_data = "{}"
-    return task_event
-
-
-def test_profile_events_reads_from_dashboard_head(monkeypatch):
-    """With the migration flag on, profile_events() fetches task events from the dashboard
-    head through a reused client that resolves the address once and reuses its session."""
-    monkeypatch.setattr(
-        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
-    )
-
-    component_id = b"\x01" * 28
-    reply = gcs_service_pb2.GetTaskEventsReply()
-    reply.status.SetInParent()
-    reply.events_by_task.add().CopyFrom(
-        _profile_task_event("worker", component_id, "task:execute")
-    )
-
-    gs = ray._private.state.GlobalState()
-    accessor = MagicMock()
-    accessor.get_internal_kv.return_value = b"127.0.0.1:8265"
-    monkeypatch.setattr(gs, "_connect_and_get_accessor", lambda: accessor)
-    # The client getter reads _global_state_accessor directly so set it too.
-    gs._global_state_accessor = accessor
-
-    session = MagicMock()
-    session.post.return_value = MagicMock(
-        status_code=200, content=reply.SerializeToString()
-    )
-    with patch("requests.Session", return_value=session):
-        result = gs.profile_events()
-        gs.profile_events()  # second call reuses the cached endpoint + session
-
-    accessor.get_task_events.assert_not_called()
-    # Address resolved once and the session reused across both timeline calls.
-    assert accessor.get_internal_kv.call_count == 1
-    assert session.post.call_count == 2
-    assert session.post.call_args.args[0].endswith("/api/task_events/query")
-    assert result[binary_to_hex(component_id)][0]["event_type"] == "task:execute"
-
-
-def test_profile_events_reads_from_gcs_by_default(monkeypatch):
-    """With the migration flag off, profile_events() reads from GCS via the accessor and
-    never builds the dashboard-head client."""
-    monkeypatch.setattr(
-        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", False
-    )
-
-    component_id = b"\x02" * 28
-    task_event = _profile_task_event("driver", component_id, "driver:startup")
-
-    gs = ray._private.state.GlobalState()
-    accessor = MagicMock()
-    accessor.get_task_events.return_value = [task_event.SerializeToString()]
-    monkeypatch.setattr(gs, "_connect_and_get_accessor", lambda: accessor)
-
-    with patch("requests.Session") as mock_session_cls:
-        result = gs.profile_events()
-
-    accessor.get_task_events.assert_called_once()
-    mock_session_cls.assert_not_called()
-    assert result[binary_to_hex(component_id)][0]["event_type"] == "driver:startup"
-
-
-def test_profile_events_gcs_and_head_paths_return_same_data(monkeypatch):
-    """Migration parity: the GCS read path and the dashboard-head read path return the
-    same profile_events() output for the same set of stored task events."""
-    component_id = b"\x03" * 28
-    events = [
-        _profile_task_event("worker", component_id, "task:execute"),
-        _profile_task_event("driver", component_id, "driver:startup"),
-    ]
-
-    # GCS path (flag off): the accessor returns serialized TaskEvents.
-    monkeypatch.setattr(
-        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", False
-    )
-    gs_gcs = ray._private.state.GlobalState()
-    gcs_accessor = MagicMock()
-    gcs_accessor.get_task_events.return_value = [e.SerializeToString() for e in events]
-    monkeypatch.setattr(gs_gcs, "_connect_and_get_accessor", lambda: gcs_accessor)
-    result_gcs = gs_gcs.profile_events()
-
-    # Dashboard-head path (flag on): the head returns the same events in a reply.
-    monkeypatch.setattr(
-        "ray._private.state._READ_TASK_EVENTS_FROM_DASHBOARD_HEAD", True
-    )
-    reply = gcs_service_pb2.GetTaskEventsReply()
-    reply.status.SetInParent()
-    for e in events:
-        reply.events_by_task.add().CopyFrom(e)
-    gs_head = ray._private.state.GlobalState()
-    head_accessor = MagicMock()
-    head_accessor.get_internal_kv.return_value = b"127.0.0.1:8265"
-    monkeypatch.setattr(gs_head, "_connect_and_get_accessor", lambda: head_accessor)
-    gs_head._global_state_accessor = head_accessor
-    session = MagicMock()
-    session.post.return_value = MagicMock(
-        status_code=200, content=reply.SerializeToString()
-    )
-    with patch("requests.Session", return_value=session):
-        result_head = gs_head.profile_events()
-
-    # Both read paths surface identical profiling data.
-    assert result_gcs == result_head
-    assert result_gcs[binary_to_hex(component_id)][0]["event_type"] == "task:execute"
-
-
-# Tasks the parity driver runs; each one produces exactly one task:execute profile event,
-# so this is also the task:execute count each routing path must report.
-_TIMELINE_PARITY_NUM_TASKS = 5
-
-# Driver for the GCS-vs-head timeline parity e2e. Run once per backend via
-# run_string_as_driver
-_TIMELINE_PARITY_DRIVER = f"""
-import ray
-from ray._common.test_utils import wait_for_condition
-
-NUM_TASKS = {_TIMELINE_PARITY_NUM_TASKS}
-
-
-@ray.remote
-def f():
-    import time
-
-    time.sleep(0.2)
-
-
-ray.init(num_cpus=4)
-ray.get([f.remote() for _ in range(NUM_TASKS)])
-
-
-def task_execute_count():
-    return sum(1 for event in ray.timeline() if event.get("cat") == "task:execute")
-
-
-# Profile events propagate asynchronously; wait until every task-execute span lands.
-wait_for_condition(
-    lambda: task_execute_count() >= NUM_TASKS, timeout=90, retry_interval_ms=3000
-)
-print("TASK_EXECUTE_COUNT:" + str(task_execute_count()))
-"""
-
-# Task-event routing flags this test sets explicitly; stripped from the inherited env so
-# the event_routing_config fixture's settings don't leak into the driver subprocesses.
-# Matched upper-cased: Windows upper-cases every os.environ key, so we don't want to
-# do a case-sensitive comparison.
-_TASK_EVENT_FLAG_ENV = frozenset(
-    name.upper()
-    for name in (
-        "RAY_enable_ray_event",
-        "RAY_enable_ray_task_event_recorder",
-        "RAY_enable_task_events_to_dashboard_head",
-        "RAY_enable_core_worker_task_event_to_gcs",
-        "RAY_enable_core_worker_ray_event_to_aggregator",
-        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS",
-    )
-)
-
-
-def _run_timeline_parity_driver(flag_overrides):
-    env = {k: v for k, v in os.environ.items() if k.upper() not in _TASK_EVENT_FLAG_ENV}
-    # ray.timeline() only records profile events when profiling is on (see
-    # GlobalState.chrome_tracing_dump).
-    env["RAY_PROFILING"] = "1"
-    env.update(flag_overrides)
-    out = run_string_as_driver(_TIMELINE_PARITY_DRIVER, env=env)
-    marker = "TASK_EXECUTE_COUNT:"
-    matches = [line for line in out.splitlines() if line.startswith(marker)]
-    assert matches, f"driver did not report a count; output:\n{out}"
-    return int(matches[-1][len(marker) :])
-
-
-def test_timeline_gcs_and_head_paths_produce_same_events():
-    """End-to-end parity: the same workload run through the GCS path and through the
-    dashboard-head path (recorder -> aggregator -> head) each surface one
-    ray.timeline() task-execute event per task. Two driver subprocesses are used because
-    the read/publish switches are baked at `import ray` and can't be flipped in-process.
-    """
-    gcs_count = _run_timeline_parity_driver(
-        {
-            "RAY_enable_core_worker_task_event_to_gcs": "1",
-            "RAY_enable_core_worker_ray_event_to_aggregator": "0",
-            "RAY_enable_ray_event": "0",
-            "RAY_enable_ray_task_event_recorder": "0",
-            "RAY_enable_task_events_to_dashboard_head": "0",
-        }
-    )
-    head_count = _run_timeline_parity_driver(
-        {
-            "RAY_enable_ray_event": "1",
-            "RAY_enable_ray_task_event_recorder": "1",
-            "RAY_enable_task_events_to_dashboard_head": "1",
-            "RAY_enable_core_worker_task_event_to_gcs": "0",
-            "RAY_enable_core_worker_ray_event_to_aggregator": "0",
-        }
-    )
-
-    assert gcs_count == _TIMELINE_PARITY_NUM_TASKS, (
-        "GCS-path timeline task:execute events: "
-        f"{gcs_count}, expected {_TIMELINE_PARITY_NUM_TASKS}"
-    )
-    assert head_count == _TIMELINE_PARITY_NUM_TASKS, (
-        "dashboard-head-path timeline task:execute events: "
-        f"{head_count}, expected {_TIMELINE_PARITY_NUM_TASKS}"
-    )
 
 
 def test_state_init_multiple_threads(shutdown_only):

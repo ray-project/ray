@@ -66,27 +66,6 @@ class ParquetFileChunkMetadata(ChunkMetadata):
     total_num_chunks: int
 
 
-class ParquetRowGroupChunkMetadata(ChunkMetadata):
-    """Metadata for a Parquet chunk described by explicit row-group indices.
-
-    Produced by the footer-based chunking path (``ListFiles`` reads each file's
-    footer, prunes/bin-packs its row groups, and emits one manifest row per file
-    per bin), so it carries the exact physical row groups the reader should scan
-    for the file in that bin -- no size-based reconciliation needed.
-
-    ``row_group_ids`` are physical row-group indices into the file; any
-    coalescing/splitting the bin packer applied is already expanded away here.
-    ``num_rows`` is the summed footer row count of those groups (for sizing /
-    limit accounting). ``uncompressed_size`` is their summed, projection-scoped
-    uncompressed byte size, carried so the reader can size batches without
-    re-reading the footer ``ListFiles`` already read.
-    """
-
-    row_group_ids: Tuple[int, ...]
-    num_rows: int
-    uncompressed_size: int
-
-
 @DeveloperAPI
 class FileChunker(abc.ABC):
     """Abstract base class for chunking files into smaller pieces for parallel processing.

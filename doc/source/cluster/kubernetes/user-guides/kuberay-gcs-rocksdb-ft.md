@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Alpha GCS fault tolerance using an embedded RocksDB backend instead of Redis, enabled behind an operator feature gate."
----
-
 (kuberay-gcs-rocksdb-ft)=
 # GCS fault tolerance with embedded RocksDB (alpha)
 

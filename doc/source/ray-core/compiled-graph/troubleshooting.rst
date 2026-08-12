@@ -1,6 +1,3 @@
-.. meta::
-   :description: Common Ray Compiled Graph problems: current limitations, returning NumPy arrays, and tearing down before reusing the same actors.
-
 Troubleshooting
 ===============
 

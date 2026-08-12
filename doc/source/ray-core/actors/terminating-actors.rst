@@ -1,6 +1,3 @@
-.. meta::
-   :description: Terminate Ray actors from a handle or from inside the actor, and how actor cleanup runs when ray.shutdown is called.
-
 Terminating Actors
 ==================
 

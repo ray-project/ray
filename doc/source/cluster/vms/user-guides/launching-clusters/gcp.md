@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Launch a Ray cluster on GCP with the cluster launcher, including service account configuration for worker nodes."
----
-
 # Launching Ray Clusters on GCP
 
 This guide details the steps needed to start a Ray cluster in GCP.

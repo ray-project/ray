@@ -14,25 +14,6 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.exceptions import BackPressureError
 
-# (deployment options, expected rejection status, expected Retry-After header).
-BACKPRESSURE_RESPONSE_CASES = [
-    pytest.param({}, 503, None, id="default_503"),
-    pytest.param(
-        {"backpressure_config": {"status_code": 429, "retry_after_s": 7}},
-        429,
-        "7",
-        id="429_with_retry_after",
-    ),
-]
-
-
-def check_rejection_response(response, expected_status: int, expected_retry_after):
-    assert response.status_code == expected_status
-    if expected_retry_after is None:
-        assert "retry-after" not in response.headers
-    else:
-        assert response.headers["retry-after"] == expected_retry_after
-
 
 def test_handle_backpressure(serve_instance):
     """Requests should raise a BackPressureError once the limit is reached."""
@@ -78,15 +59,8 @@ def test_handle_backpressure(serve_instance):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
-@pytest.mark.parametrize(
-    "backpressure_options,expected_status,expected_retry_after",
-    BACKPRESSURE_RESPONSE_CASES,
-)
-def test_http_backpressure(
-    serve_instance, backpressure_options, expected_status, expected_retry_after
-):
-    """Requests should be rejected with the configured response once the limit
-    is reached (503 with no Retry-After header by default)."""
+def test_http_backpressure(serve_instance):
+    """Requests should return a 503 once the limit is reached."""
 
     signal_actor = SignalActor.remote()
 
@@ -97,11 +71,12 @@ def test_http_backpressure(
             await signal_actor.wait.remote()
             return msg
 
-    serve.run(Deployment.options(**backpressure_options).bind())
+    serve.run(Deployment.bind())
 
     def send_request(msg: str = "hi"):
         application_url = get_application_url()
-        return httpx.request("GET", application_url, json={"msg": msg}, timeout=30.0)
+        r = httpx.request("GET", application_url, json={"msg": msg}, timeout=30.0)
+        return r.status_code, r.text
 
     with ThreadPoolExecutor(max_workers=5) as exc:
         # First response should block. Until the signal is sent, all subsequent
@@ -122,33 +97,21 @@ def test_http_backpressure(
         # backpressure.
         for _ in range(10):
             rejected_fut = exc.submit(send_request, "hi-err")
-            response = rejected_fut.result()
-            check_rejection_response(response, expected_status, expected_retry_after)
-            assert response.text.startswith("Request dropped due to backpressure")
+            status_code, text = rejected_fut.result()
+            assert status_code == 503
+            assert text.startswith("Request dropped due to backpressure")
 
         # Send the signal; the first request will be unblocked and the second
         # should subsequently get scheduled and executed.
         ray.get(signal_actor.send.remote())
-        assert (first_fut.result().status_code, first_fut.result().text) == (
-            200,
-            "hi-1",
-        )
-        assert (second_fut.result().status_code, second_fut.result().text) == (
-            200,
-            "hi-2",
-        )
+        assert first_fut.result() == (200, "hi-1")
+        assert second_fut.result() == (200, "hi-2")
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
-@pytest.mark.parametrize(
-    "backpressure_options,expected_status,expected_retry_after",
-    BACKPRESSURE_RESPONSE_CASES,
-)
-def test_model_composition_backpressure(
-    serve_instance, backpressure_options, expected_status, expected_retry_after
-):
+def test_model_composition_backpressure(serve_instance):
     signal_actor = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
@@ -168,7 +131,7 @@ def test_model_composition_backpressure(
     def send_request():
         return httpx.get(get_application_url())
 
-    serve.run(Parent.bind(child=Child.options(**backpressure_options).bind()))
+    serve.run(Parent.bind(child=Child.bind()))
     with ThreadPoolExecutor(max_workers=3) as exc:
         # Send first request, wait for it to be blocked while executing.
         executing_fut = exc.submit(send_request)
@@ -185,9 +148,7 @@ def test_model_composition_backpressure(
 
         # Send third request, it should get rejected.
         rejected_fut = exc.submit(send_request)
-        check_rejection_response(
-            rejected_fut.result(), expected_status, expected_retry_after
-        )
+        assert rejected_fut.result().status_code == 503
 
         # Send signal, check the two requests succeed.
         ray.get(signal_actor.send.remote(clear=False))
@@ -200,25 +161,15 @@ def test_model_composition_backpressure(
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
 
 
-@pytest.mark.parametrize(
-    "backpressure_options,expected_status,expected_retry_after",
-    BACKPRESSURE_RESPONSE_CASES,
-)
 @pytest.mark.parametrize("request_type", ["async_non_gen", "sync_non_gen"])
-def test_model_composition_backpressure_with_fastapi(
-    serve_instance,
-    request_type,
-    backpressure_options,
-    expected_status,
-    expected_retry_after,
-):
+def test_model_composition_backpressure_with_fastapi(serve_instance, request_type):
     """Tests backpressure behavior with FastAPI model composition.
 
     Tests that when a Child deployment with max_ongoing_requests=1 and max_queued_requests=1
     is called through a Parent FastAPI deployment:
     1. First request blocks while executing
     2. Second request gets queued
-    3. Third request gets rejected with the configured status code (503 by default)
+    3. Third request gets rejected with 503 status code
     4. After unblocking, first two requests complete successfully
 
     Tests both async and sync non-generator endpoints.
@@ -256,7 +207,7 @@ def test_model_composition_backpressure_with_fastapi(
         resp = httpx.get(url_map[request_type])
         return resp
 
-    serve.run(Parent.bind(child=Child.options(**backpressure_options).bind()))
+    serve.run(Parent.bind(child=Child.bind()))
 
     with ThreadPoolExecutor(max_workers=3) as exc:
         executing_fut = exc.submit(send_request)
@@ -271,9 +222,7 @@ def test_model_composition_backpressure_with_fastapi(
         assert len(done) == 0
 
         rejected_fut = exc.submit(send_request)
-        check_rejection_response(
-            rejected_fut.result(), expected_status, expected_retry_after
-        )
+        assert rejected_fut.result().status_code == 503
 
         # Send signal, let the two requests succeed.
         ray.get(signal_actor.send.remote())

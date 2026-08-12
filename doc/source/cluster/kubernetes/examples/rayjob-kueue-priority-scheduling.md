@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Priority-schedule queued RayJob workloads with Kueue so higher-priority jobs move ahead of ones already waiting."
----
-
 (kuberay-kueue-priority-scheduling-example)=
 
 # Priority Scheduling with RayJob and Kueue

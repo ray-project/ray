@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Run multiple Ray Data Datasets in one cluster without contention by labeling worker nodes and tagging each Dataset with a label selector."
----
-
 (data_concurrent_execution)=
 
 # Run multiple Datasets in one cluster

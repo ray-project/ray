@@ -477,7 +477,7 @@ def test_chat_completion_with_default_chat_template_kwargs():
     assert response.status_code == 200, response.text
     assert response.json()["choices"][0]["message"]["content"]
 
-    shutdown_serve_and_wait_for_controller()
+    serve.shutdown()
     time.sleep(1)
 
 

@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Entry point for Ray's API reference, with per-library API documentation for Core, Data, Train, Tune, Serve, and RLlib."
----
-
 (ray-apis)=
 # Ray APIs
 

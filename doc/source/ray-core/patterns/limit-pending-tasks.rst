@@ -1,6 +1,3 @@
-.. meta::
-   :description: Pattern: use ray.wait to bound the number of in-flight tasks so the submission loop doesn't outrun the cluster.
-
 .. _core-patterns-limit-pending-tasks:
 
 Pattern: Using ray.wait to limit the number of pending tasks

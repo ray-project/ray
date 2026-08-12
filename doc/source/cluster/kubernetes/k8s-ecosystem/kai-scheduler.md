@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Use NVIDIA KAI Scheduler with RayClusters for hierarchical queues with quotas, gang scheduling, and GPU sharing."
----
-
 (kuberay-kai-scheduler)=
 # Gang scheduling, queue priority, and GPU sharing for RayClusters using KAI Scheduler
 

@@ -1,8 +1,5 @@
 :orphan:
 
-.. meta::
-   :description: Runnable example of distributed training with Hugging Face Accelerate on Ray Train.
-
 Distributed Training with Hugging Face Accelerate
 =================================================
 

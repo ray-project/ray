@@ -1,6 +1,3 @@
-.. meta::
-   :description: Distribute LightGBM training with Ray Train: build the training function, shard data with Ray Data, and configure scale, GPUs, and storage.
-
 .. _train-lightgbm:
 
 Get Started with Distributed Training using LightGBM

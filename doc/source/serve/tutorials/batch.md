@@ -1,8 +1,5 @@
 ---
 orphan: true
-myst:
-  html_meta:
-    description: "Deploy a text generator that batches concurrent queries, with CLI and Python deployment options and parallel HTTP querying."
 ---
 
 (serve-batch-tutorial)=

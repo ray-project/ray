@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Serve a gRPC service with Ray Serve: define the service, enable the gRPC proxy, send requests, and use streaming and model composition."
----
-
 (serve-set-up-grpc-service)=
 # Set Up a gRPC Service
 

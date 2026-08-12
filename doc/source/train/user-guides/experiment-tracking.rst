@@ -1,6 +1,3 @@
-.. meta::
-   :description: Use experiment tracking libraries such as MLflow and Weights & Biases with distributed Ray Train runs, covering credentials and per-worker logging.
-
 .. _train-experiment-tracking-native:
 
 ===================

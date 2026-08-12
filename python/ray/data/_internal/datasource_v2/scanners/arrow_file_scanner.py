@@ -111,10 +111,6 @@ class ArrowFileScanner(
         return replace(self, predicate=combined), None
 
     @override
-    def pushed_predicate(self) -> Optional["Expr"]:
-        return self.predicate
-
-    @override
     def prune_columns(self, columns: List[str]) -> "ArrowFileScanner":
         """Prune to only the specified columns.
 
@@ -147,10 +143,6 @@ class ArrowFileScanner(
         current = self.limit
         new_limit = min(current, limit) if current is not None else limit
         return replace(self, limit=new_limit)
-
-    @override
-    def pushed_limit(self) -> Optional[int]:
-        return self.limit
 
     @override
     def prune_partitions(self, predicate: "Expr") -> "ArrowFileScanner":

@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Serve multiple small models on one GPU with fractional GPU allocation, covering placement groups and memory management."
----
-
 (fractional-gpu-guide)=
 # Fractional GPU serving
 

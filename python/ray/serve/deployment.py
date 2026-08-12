@@ -12,7 +12,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import (
     AutoscalingConfig,
-    BackpressureConfig,
     DeploymentActorConfig,
     GangSchedulingConfig,
 )
@@ -182,11 +181,6 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
-    def backpressure_config(self) -> BackpressureConfig:
-        """Config of the HTTP response for requests rejected due to backpressure."""
-        return self._deployment_config.backpressure_config
-
-    @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
         return self._replica_config.ray_actor_options
@@ -236,9 +230,6 @@ class Deployment:
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
         max_queued_requests: Default[int] = DEFAULT.VALUE,
-        backpressure_config: Default[
-            Union[Dict, BackpressureConfig, None]
-        ] = DEFAULT.VALUE,
         autoscaling_config: Default[
             Union[Dict, AutoscalingConfig, None]
         ] = DEFAULT.VALUE,
@@ -330,9 +321,6 @@ class Deployment:
 
         if max_queued_requests is not DEFAULT.VALUE:
             new_deployment_config.max_queued_requests = max_queued_requests
-
-        if backpressure_config is not DEFAULT.VALUE:
-            new_deployment_config.backpressure_config = backpressure_config
 
         if max_constructor_retry_count is not DEFAULT.VALUE:
             new_deployment_config.max_constructor_retry_count = (
@@ -500,7 +488,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         else d.num_replicas,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
-        "backpressure_config": d.backpressure_config,
         "user_config": d.user_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
         "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
@@ -570,7 +557,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         user_config=s.user_config,
         max_ongoing_requests=s.max_ongoing_requests,
         max_queued_requests=s.max_queued_requests,
-        backpressure_config=s.backpressure_config,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,

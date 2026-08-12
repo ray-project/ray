@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "How Ray Serve LLM routes requests to replicas: Power of Two Choices, prefix-aware routing, and patterns for custom routing policies."
----
-
 (routing-policies-guide)=
 # Request routing
 

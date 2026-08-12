@@ -1,6 +1,3 @@
-.. meta::
-   :description: Limit nondeterminism in Ray Train with ray.train.torch.enable_reproducibility, and the caveats on fully reproducible PyTorch results.
-
 .. _train-reproducibility:
 
 Reproducibility

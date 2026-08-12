@@ -1,6 +1,3 @@
-.. meta::
-   :description: Four performance habits for new Ray users: delay ray.get, avoid tiny tasks, don't repeatedly pass the same object, and pipeline data.
-
 Tips for first-time users
 =========================
 

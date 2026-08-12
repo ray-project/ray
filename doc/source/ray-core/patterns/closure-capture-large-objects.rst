@@ -1,6 +1,3 @@
-.. meta::
-   :description: Anti-pattern: capturing large objects in a remote function's closure copies them to every worker; put them in the object store instead.
-
 Anti-pattern: Closure capturing large objects harms performance
 ===============================================================
 

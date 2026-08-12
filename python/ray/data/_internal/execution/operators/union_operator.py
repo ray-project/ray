@@ -119,12 +119,6 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         # Check if the output buffer still contains at least one block.
         return len(self._output_buffer) > 0
 
-    def throttling_disabled(self) -> bool:
-        """Union doesn't produce new blocks, so it should not be considered
-        for backpressure or resource budgeting.
-        Instead, upstream inputs are backpressured independently."""
-        return True
-
     def _get_next_inner(self) -> RefBundle:
         refs = self._output_buffer.get_next()
         self._metrics.on_output_dequeued(refs)

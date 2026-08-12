@@ -1,6 +1,3 @@
-.. meta::
-   :description: Configure persistent storage for Tune with cloud object storage or NFS, plus what changes when running without external storage.
-
 .. _tune-storage-options:
 
 How to Configure Persistent Storage in Ray Tune

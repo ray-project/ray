@@ -1,6 +1,3 @@
-.. meta::
-   :description: Launch DeepSpeed training across a Ray cluster with TorchTrainer, using ZeRO optimization stages to train large models efficiently.
-
 .. _train-deepspeed:
 
 Get Started with DeepSpeed

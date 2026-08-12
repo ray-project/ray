@@ -57,7 +57,7 @@ def main(args):
         ds = orders_filtered.join(
             lineitem_late,
             join_type="left_semi",
-            num_partitions=200,
+            num_partitions=16,
             on=("o_orderkey",),
             right_on=("l_orderkey",),
         )

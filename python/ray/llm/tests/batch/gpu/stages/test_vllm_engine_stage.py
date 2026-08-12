@@ -326,6 +326,7 @@ def _make_bare_wrapper():
     wrapper.request_id = 0
     wrapper.idx_in_batch_column = "__idx_in_batch"
     wrapper.task_type = vLLMTaskType.GENERATE
+    wrapper._image_row_column_warning_logged = False
     wrapper.model = "test-model"
     wrapper.lora_lock = asyncio.Lock()
     wrapper.lora_name_to_request = {}
@@ -333,21 +334,102 @@ def _make_bare_wrapper():
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_uses_explicit_multimodal_data():
-    """Explicit multimodal data is propagated to the engine request."""
+async def test_vllm_wrapper_legacy_image_warns_and_routes():
+    """Legacy `image` row column should warn once and be routed to multimodal_data."""
     wrapper = _make_bare_wrapper()
 
     sentinel_image = object()
     row = {
         "__idx_in_batch": 0,
         "prompt": "hi",
-        "multimodal_data": {"image": [sentinel_image]},
+        "image": [sentinel_image],
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.logger.warning"
+    ) as mock_warning:
+        request = await wrapper._prepare_llm_request(row)
+
+    assert request.multimodal_data == {"image": [sentinel_image]}
+    assert any(
+        "image" in str(call.args[0]) and "deprecated" in str(call.args[0]).lower()
+        for call in mock_warning.call_args_list
+    )
+    assert wrapper._image_row_column_warning_logged is True
+
+    # Second call must not log the deprecation warning again.
+    with patch(
+        "ray.llm._internal.batch.stages.vllm_engine_stage.logger.warning"
+    ) as mock_warning2:
+        await wrapper._prepare_llm_request(
+            {
+                "__idx_in_batch": 1,
+                "prompt": "hi again",
+                "image": [sentinel_image],
+                "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+            }
+        )
+    assert not any(
+        "deprecated" in str(call.args[0]).lower()
+        for call in mock_warning2.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_merges_into_existing_multimodal_data():
+    """Legacy `image` should merge into an explicit multimodal_data dict."""
+    wrapper = _make_bare_wrapper()
+
+    img = object()
+    audio = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [img],
+        "multimodal_data": {"audio": [audio]},
         "sampling_params": {"max_tokens": 1, "temperature": 0.0},
     }
 
     request = await wrapper._prepare_llm_request(row)
+    assert request.multimodal_data == {"audio": [audio], "image": [img]}
 
-    assert request.multimodal_data == {"image": [sentinel_image]}
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_conflict_with_multimodal_data_raises():
+    """Setting both legacy `image` and multimodal_data['image'] must raise."""
+    wrapper = _make_bare_wrapper()
+
+    legacy_img = object()
+    modern_img = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [legacy_img],
+        "multimodal_data": {"image": [modern_img]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    with pytest.raises(ValueError, match="multimodal_data"):
+        await wrapper._prepare_llm_request(row)
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_legacy_image_empty_list_is_noop():
+    """Empty legacy `image=[]` should be skipped, not merged or conflict."""
+    wrapper = _make_bare_wrapper()
+
+    modern_img = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "image": [],
+        "multimodal_data": {"image": [modern_img]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+    assert request.multimodal_data == {"image": [modern_img]}
 
 
 @pytest.mark.asyncio

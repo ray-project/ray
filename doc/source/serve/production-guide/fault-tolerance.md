@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "End-to-end Serve fault tolerance: replica health checks, constructor retries, worker node recovery, and GCS-backed head node recovery."
----
-
 (serve-e2e-ft)=
 # Add End-to-End Fault Tolerance
 

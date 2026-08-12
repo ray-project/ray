@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Distribute LLM inference across GPUs and nodes with tensor and pipeline parallelism, including custom placement group bundles."
----
-
 (cross-node-parallelism)=
 # Cross-node parallelism
 

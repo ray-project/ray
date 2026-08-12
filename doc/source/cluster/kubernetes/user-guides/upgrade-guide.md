@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "KubeRay and Ray version compatibility, CRD versioning, and how to upgrade a KubeRay installation."
----
-
 (kuberay-upgrade-guide)=
 
 # KubeRay upgrade guide

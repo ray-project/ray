@@ -1,6 +1,3 @@
-.. meta::
-   :description: Ray Compiled Graph (beta) for programming multi-GPU distributed systems with a static execution graph and low per-call overhead.
-
 .. _ray-compiled-graph:
 
 Ray Compiled Graph (beta)

@@ -1,8 +1,5 @@
 :orphan:
 
-.. meta::
-   :description: Fine-tune Stable Diffusion with DreamBooth on Ray Train, covering data loading, distributed training, scale configuration, and throughput.
-
 Fine-tuning of Stable Diffusion with DreamBooth and Ray Train
 =============================================================
 

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Lifetime of processes your code spawns inside Ray workers, including killing them on worker exit and zombie reaping behavior.
-
 Lifetimes of a User-Spawn Process
 =================================
 

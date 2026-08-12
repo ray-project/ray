@@ -77,7 +77,7 @@ class StreamSplitDataIterator(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], None]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool, None]:
         def gen_blocks() -> Iterator[RefBundle]:
             logger.debug(f"Split {self._output_split_idx}: requesting new epoch.")
             cur_epoch = ray.get(
@@ -129,7 +129,7 @@ class StreamSplitDataIterator(DataIterator):
 
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
-        return gen_blocks(), self._iter_stats, None
+        return gen_blocks(), self._iter_stats, False, None
 
     def _on_iteration_end(self, executor) -> None:
         """Fire ``notify_split_finished`` from the consumer's thread.

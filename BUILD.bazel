@@ -224,7 +224,7 @@ filegroup(
         "python/ray/*.py",
         "python/ray/cloudpickle/*.py",
         "python/ray/dashboard/**/*.py",
-        "python/ray/experimental/**/*.py",
+        "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
     ]) + [

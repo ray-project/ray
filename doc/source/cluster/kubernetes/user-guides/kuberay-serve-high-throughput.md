@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Enable high throughput mode for Ray Serve on KubeRay, demonstrated by serving Qwen on a GKE GPU node pool."
----
-
 (kuberay-serve-high-throughput)=
 # Enable High Throughput on Ray Serve with KubeRay
 

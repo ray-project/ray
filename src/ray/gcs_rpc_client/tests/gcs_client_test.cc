@@ -447,17 +447,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool SubscribeToWorkerFailure(
-      const WorkerID &worker_id,
-      const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
-    std::promise<bool> promise;
-    gcs_client_->Workers().AsyncSubscribeToWorkerFailure(
-        worker_id, subscribe, [&promise](Status status) {
-          promise.set_value(status.ok());
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool ReportWorkerFailure(
       const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
     std::promise<bool> promise;
@@ -741,44 +730,6 @@ TEST_P(GcsClientTest, TestWorkerInfo) {
   // Report a worker failure to GCS when this worker is actually exist.
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
   WaitForExpectedCount(worker_failure_count, 2);
-}
-
-TEST_P(GcsClientTest, TestWorkerFailureKeyedSubscription) {
-  // A keyed subscription must only deliver failures of the subscribed
-  // worker, so a worker death fans out to the subscribers interested in that
-  // worker instead of every subscriber on the channel.
-  const auto owner_worker_id = WorkerID::FromRandom();
-  std::atomic<int> owner_failure_count(0);
-  auto on_owner_failure = [&owner_failure_count,
-                           owner_worker_id](const rpc::WorkerDeltaData &delta) {
-    // Any misrouted delivery of another worker's failure fails here.
-    EXPECT_EQ(WorkerID::FromBinary(delta.worker_id()), owner_worker_id);
-    ++owner_failure_count;
-  };
-  ASSERT_TRUE(SubscribeToWorkerFailure(owner_worker_id, on_owner_failure));
-
-  // Report failures of unrelated workers first, then the subscribed one.
-  // Publishes are processed in order, so once the subscribed worker's
-  // failure arrives, any (erroneous) delivery of the earlier unrelated
-  // failures would already have fired the EXPECT_EQ above.
-  for (int i = 0; i < 10; i++) {
-    auto worker_data = GenWorkerTableData();
-    worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
-    ASSERT_TRUE(ReportWorkerFailure(worker_data));
-  }
-  auto owner_data = GenWorkerTableData();
-  owner_data->mutable_worker_address()->set_worker_id(owner_worker_id.Binary());
-  ASSERT_TRUE(ReportWorkerFailure(owner_data));
-  WaitForExpectedCount(owner_failure_count, 1);
-
-  // After unsubscribing and resubscribing, delivery resumes exactly once per
-  // failure. The unsubscribe and subsequent subscribe commands are sequenced
-  // through the same command queue, so this also verifies the unsubscribe
-  // path leaves the channel in a clean state.
-  gcs_client_->Workers().AsyncUnsubscribeFromWorkerFailure(owner_worker_id);
-  ASSERT_TRUE(SubscribeToWorkerFailure(owner_worker_id, on_owner_failure));
-  ASSERT_TRUE(ReportWorkerFailure(owner_data));
-  WaitForExpectedCount(owner_failure_count, 2);
 }
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {

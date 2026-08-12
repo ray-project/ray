@@ -1,6 +1,3 @@
-.. meta::
-   :description: Define stopping criteria for a Tune experiment: metric thresholds, per-trial and experiment timeouts, failure limits, and scheduler early stopping.
-
 .. _tune-stopping-guide:
 .. _tune-stopping-ref:
 

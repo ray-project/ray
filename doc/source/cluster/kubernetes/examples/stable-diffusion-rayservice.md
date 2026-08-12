@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Serve a Stable Diffusion text-to-image model on a GPU Kubernetes cluster with RayService."
----
-
 (kuberay-stable-diffusion-rayservice-example)=
 
 # Serve a StableDiffusion text-to-image model on Kubernetes

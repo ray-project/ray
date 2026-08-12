@@ -1,6 +1,3 @@
-.. meta::
-   :description: How Ray assigns and discovers ports across raylet, agents, and core workers, plus GCS-side discovery via the node and actor tables.
-
 .. _ray-port-service-discovery:
 
 Port Service Discovery

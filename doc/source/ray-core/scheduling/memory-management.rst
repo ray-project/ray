@@ -1,6 +1,3 @@
-.. meta::
-   :description: How Ray manages memory: ObjectRef reference counting, inspecting usage with ray memory, and memory-aware scheduling.
-
 .. _memory:
 
 Memory Management

@@ -1,8 +1,5 @@
 ---
 orphan: true
-myst:
-  html_meta:
-    description: "Train models with TensorFlow, PyTorch, or scikit-learn and deploy each of them to Ray Serve."
 ---
 
 (serve-ml-models-tutorial)=

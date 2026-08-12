@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Tune Redis persistence and backups so a KubeRay cluster's GCS state survives head pod loss and Redis restarts."
----
-
 (kuberay-gcs-persistent-ft)=
 
 # Tuning Redis for a Persistent Fault Tolerant GCS

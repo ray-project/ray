@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Create an Aliyun ACK cluster with GPU node pools for KubeRay, including node labels, taints, and driver upgrades."
----
-
 (kuberay-ack-gpu-cluster-setup)=
 
 # Start an Aliyun ACK cluster with GPUs for KubeRay

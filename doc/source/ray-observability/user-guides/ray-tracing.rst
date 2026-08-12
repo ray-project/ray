@@ -1,6 +1,3 @@
-.. meta::
-   :description: Export Ray traces to OpenTelemetry backends such as Jaeger, covering startup hooks, tracer providers, remote span processors, and custom traces.
-
 .. _ray-tracing:
 
 Tracing

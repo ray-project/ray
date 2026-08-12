@@ -141,6 +141,11 @@ class MockCoreWorkerClientInterface : public CoreWorkerClientInterface {
                const ClientCallback<RegisterMutableObjectReaderReply> &callback),
               (override));
   MOCK_METHOD(void,
+              DeleteObjects,
+              (const DeleteObjectsRequest &request,
+               const ClientCallback<DeleteObjectsReply> &callback),
+              (override));
+  MOCK_METHOD(void,
               RayletNotifyGCSRestart,
               (const RayletNotifyGCSRestartRequest &request,
                const ClientCallback<RayletNotifyGCSRestartReply> &callback),

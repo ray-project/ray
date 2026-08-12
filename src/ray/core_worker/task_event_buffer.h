@@ -30,9 +30,6 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/observability/ray_event_interface.h"
-#include "ray/observability/ray_event_recorder_interface.h"
-#include "ray/observability/task_state_update.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
@@ -122,7 +119,45 @@ class TaskEvent {
 /// TaskStatusEvent is generated when a task changes its status.
 class TaskStatusEvent : public TaskEvent {
  public:
-  using TaskStateUpdate = observability::TaskStateUpdate;
+  /// A class that contain data that will be converted to rpc::TaskStateUpdate
+  struct TaskStateUpdate {
+    TaskStateUpdate() = default;
+
+    explicit TaskStateUpdate(const std::optional<const rpc::RayErrorInfo> &error_info)
+        : error_info_(error_info) {}
+
+    TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
+        : node_id_(node_id), worker_id_(worker_id) {}
+
+    explicit TaskStateUpdate(rpc::TaskLogInfo task_log_info)
+        : task_log_info_(std::move(task_log_info)) {}
+
+    TaskStateUpdate(std::string actor_repr_name, uint32_t pid)
+        : actor_repr_name_(std::move(actor_repr_name)), pid_(pid) {}
+
+    explicit TaskStateUpdate(uint32_t pid) : pid_(pid) {}
+
+    explicit TaskStateUpdate(bool is_debugger_paused)
+        : is_debugger_paused_(is_debugger_paused) {}
+
+   private:
+    friend class TaskStatusEvent;
+
+    /// Node id if it's a SUBMITTED_TO_WORKER status change.
+    std::optional<NodeID> node_id_ = std::nullopt;
+    /// Worker id if it's a SUBMITTED_TO_WORKER status change.
+    std::optional<WorkerID> worker_id_ = std::nullopt;
+    /// Task error info.
+    std::optional<rpc::RayErrorInfo> error_info_ = std::nullopt;
+    /// Task log info.
+    std::optional<rpc::TaskLogInfo> task_log_info_ = std::nullopt;
+    /// Actor task repr name.
+    std::string actor_repr_name_;
+    /// Worker's pid if it's a RUNNING status change.
+    std::optional<uint32_t> pid_ = std::nullopt;
+    /// If the task is paused by the debugger.
+    std::optional<bool> is_debugger_paused_ = std::nullopt;
+  };
 
   explicit TaskStatusEvent(
       TaskID task_id,
@@ -153,15 +188,19 @@ class TaskStatusEvent : public TaskEvent {
   /// to be filled.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
-  /// Convert this status event into RayEventInterface objects for recording through
-  /// RayEventRecorder. Produces a TaskLifecycleEvent always, plus a
-  /// (Actor)TaskDefinitionEvent when task_spec_ is set.
-  std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
-  ToRayEventInterfaces();
-
   bool IsProfileEvent() const override { return false; }
 
  private:
+  // Helper functions to populate the task definition event of rpc::events::RayEvent
+  // This function assumes task_spec_ is not null.
+  template <typename T>
+  void PopulateRpcRayTaskDefinitionEvent(T &definition_event_data);
+
+  // Helper functions to populate the task lifecycle event of rpc::events::RayEvent
+  void PopulateRpcRayTaskLifecycleEvent(
+      rpc::events::TaskLifecycleEvent &lifecycle_event_data,
+      google::protobuf::Timestamp timestamp);
+
   // Helper functions to populate the base fields of rpc::events::RayEvent
   void PopulateRpcRayEventBaseFields(rpc::events::RayEvent &ray_event,
                                      bool is_definition_event,
@@ -203,11 +242,6 @@ class TaskProfileEvent : public TaskEvent {
   /// Note: The extra data will be moved when this is called and will no longer be usable.
   void ToRpcRayEvents(RayEventsTuple &ray_events_tuple) override;
 
-  /// Convert this profile event into a RayEventInterface for recording through
-  /// RayEventRecorder.
-  std::vector<std::unique_ptr<ray::observability::RayEventInterface>>
-  ToRayEventInterfaces();
-
   bool IsProfileEvent() const override { return true; }
 
   void SetEndTime(int64_t end_time) { end_time_ = end_time; }
@@ -235,35 +269,6 @@ class TaskProfileEvent : public TaskEvent {
   /// The current Ray session name.
   std::string session_name_;
 };
-
-/**
- * @brief Build the RayEventInterface objects for a task status change and record them to
- * the task-event recorder. No-op when task events are disabled for the task or the
- * recorder path is disabled.
- *
- * @param timestamp The status-change time in Unix nanoseconds (from an injected clock).
- * @param include_task_info Whether to attach the task spec (the definition event); true
- * only for the first/submission event of an attempt.
- * @param state_update Optional lifecycle details (node/worker/error/log) for this change.
- */
-// TODO(karticam): expose this as a method on RayEventRecorderInterface so call
-//  sites do recorder.RecordTaskStatusEvent(...) instead of a free function. Kept free for
-//  now because it builds the event from a TaskSpecification; folding it into the
-//  observability-layer recorder would make that layer depend on core_worker task types.
-//  core-worker already depends on observabillity right now. this might lead to circular
-//  dependencies.
-void RecordTaskStatusEventToRecorderIfNeeded(
-    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
-    const TaskID &task_id,
-    const JobID &job_id,
-    int32_t attempt_number,
-    const TaskSpecification &spec,
-    rpc::TaskStatus status,
-    int64_t timestamp,
-    const std::string &session_name,
-    const NodeID &node_id,
-    bool include_task_info = false,
-    std::optional<const TaskStatusEvent::TaskStateUpdate> state_update = std::nullopt);
 
 /// @brief An enum class defining counters to be used in TaskEventBufferImpl.
 enum TaskEventBufferCounter {
@@ -383,9 +388,6 @@ class TaskEventBuffer {
 
   /// Return the node ID.
   virtual NodeID GetNodeID() const = 0;
-
-  /// Return the current timestamp in nanoseconds from the injected clock.
-  virtual int64_t GetCurrentTimestampNanos() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -437,8 +439,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::string GetSessionName() const override { return session_name_; }
 
   NodeID GetNodeID() const override { return node_id_; }
-
-  int64_t GetCurrentTimestampNanos() const override { return clock_.NowUnixNanos(); }
 
  private:
   /// Add a task status event to be reported.
@@ -581,11 +581,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
-  /// True while at least one destination below is live. Owns whether events are
-  /// recorded; enabled_ owns the io thread and GCS client lifecycle, so Stop() still
-  /// tears them down when nothing is being recorded.
-  std::atomic<bool> recording_enabled_ = false;
-
   /// Circular buffered task status events.
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_
       ABSL_GUARDED_BY(mutex_);
@@ -631,7 +626,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   bool send_task_events_to_gcs_enabled_ = true;
 
   /// If true, ray events from the event buffer are sent to the event aggregator
-  bool task_event_buffer_to_aggregator_enabled_ = false;
+  bool send_ray_events_to_aggregator_enabled_ = false;
 
   /// The current Ray session name. Passed in from the core worker
   std::string session_name_ = "";
@@ -661,8 +656,6 @@ class TaskEventBufferImpl : public TaskEventBuffer {
               TestStopWaitsForInflightThenFlushes);
   FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
               TestFlushSendsDroppedAttemptsWithoutEvents);
-  FRIEND_TEST(TaskEventBufferTestRecorderSwitch, TestRecorderTakesOverAggregatorSend);
-  FRIEND_TEST(TaskEventBufferTestNoDestination, TestNoRecordingWhenNoDestination);
 };
 
 }  // namespace worker

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Call Java from Python and Python from Java in one Ray application, covering driver setup, data serialization, and exception stacks.
-
 .. _cross_language:
 
 Cross-language programming

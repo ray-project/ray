@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Launch a Ray cluster on Azure with the cluster launcher or from the Azure portal."
----
-
 
 # Launching Ray Clusters on Azure
 

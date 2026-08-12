@@ -1,6 +1,3 @@
-.. meta::
-   :description: Write RLlib MultiAgentEnv environments: per-agent observation and action spaces, step and reward dictionaries, turn-based play, and agent grouping.
-
 .. _rllib-multi-agent-environments-doc:
 
 Multi-Agent Environments

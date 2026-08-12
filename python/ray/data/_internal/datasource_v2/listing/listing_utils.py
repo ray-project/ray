@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.datasource.partitioning import PathPartitionFilter
-    from ray.data.expressions import Expr
 
 
 def partition_files(
@@ -63,9 +62,6 @@ def list_files_for_each_block(
     file_extensions: Optional[List[str]] = None,
     partition_filter: Optional["PathPartitionFilter"] = None,
     preserve_order: bool = False,
-    predicate: Optional["Expr"] = None,
-    limit: Optional[int] = None,
-    projected_columns: Optional[List[str]] = None,
 ) -> Iterable[Block]:
     """Expand path blocks into ``FileManifest`` blocks.
 
@@ -75,11 +71,6 @@ def list_files_for_each_block(
     Pruners are constructed once per task from ``file_extensions`` /
     ``partition_filter`` — keeps pruner construction out of the
     ``_read_datasource_v2`` entry point.
-
-    Pushed-down ``predicate`` / ``limit`` / ``projected_columns`` are forwarded
-    to the indexer; metadata-aware indexers (e.g. the footer-based Parquet
-    indexer) use them to skip row groups, stop early, and size projected
-    columns, while the plain indexer ignores them.
     """
     pruners = _build_pruners(file_extensions, partition_filter)
     for block in blocks:
@@ -88,9 +79,6 @@ def list_files_for_each_block(
             filesystem=filesystem,
             pruners=pruners,
             preserve_order=preserve_order,
-            predicate=predicate,
-            limit=limit,
-            projected_columns=projected_columns,
         ):
             if len(manifest) > 0:
                 yield manifest.as_block()

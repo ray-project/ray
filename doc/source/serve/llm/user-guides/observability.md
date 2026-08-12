@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Monitor Ray Serve LLM deployments with service-level and engine metrics, a Grafana dashboard, and usage data collection."
----
-
 (observability-guide)=
 # Observability and monitoring
 

@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Choose between async def and def in Serve deployments, size the threadpool, and avoid blocking I/O behind a FastAPI ingress."
----
-
 (serve-asyncio-best-practices)=
 
 # Asyncio and concurrency best practices in Ray Serve

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Build env-to-module ConnectorV2 pipelines that turn environment observations into RLModule input, with observation preprocessors and custom columns.
-
 .. _env-to-module-pipeline-docs:
 
 .. grid:: 1 2 3 4

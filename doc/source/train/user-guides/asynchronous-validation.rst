@@ -1,6 +1,3 @@
-.. meta::
-   :description: Validate checkpoints asynchronously so training continues while validation runs, with TorchTrainer and Ray Data approaches and subcluster isolation.
-
 .. _train-validating-checkpoints:
 
 Validating checkpoints asynchronously

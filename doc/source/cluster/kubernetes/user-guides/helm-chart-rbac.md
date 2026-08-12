@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Configure the KubeRay Helm chart's RBAC resources to watch all namespaces, only the operator's namespace, or a specific set."
----
-
 (kuberay-helm-chart-rbac)=
 
 # Helm Chart RBAC

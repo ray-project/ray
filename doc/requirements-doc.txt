@@ -1,13 +1,6 @@
 # Production requirements. This is what readthedocs.com picks up
 
-# Declared explicitly because Python 3.12 and later no longer ship setuptools,
-# and sphinxcontrib-redoc imports pkg_resources at module load.
-# Don't bump to 82 or later: setuptools 82.0.0 removed pkg_resources, and the
-# docs build then fails at extension load with
-# "Could not import extension sphinxcontrib.redoc".
-# No released sphinxcontrib-redoc fixes this. 1.6.0 is the latest release and
-# dates from 2020; the 2.0.0a1 alpha still imports pkg_resources. Lifting this
-# ceiling means replacing or vendoring that extension.
+# Required to build the docs on 3.12 due to pkg_resources deprecation
 setuptools==80.9.0
 
 # Syntax highlighting
@@ -19,6 +12,7 @@ sphinx-click==5.1.0
 sphinx-copybutton==0.5.2
 sphinxemoji>=0.3.2
 sphinx-jsonschema==1.19.2
+sphinx-llms-txt==0.7.1
 sphinx-sitemap==2.9.0
 sphinxcontrib-redoc==1.6.0
 sphinx-remove-toctrees==0.0.3

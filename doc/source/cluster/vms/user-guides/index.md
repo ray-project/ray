@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Index of in-depth guides for deploying Ray on cloud VMs and on-premises hardware."
----
-
 (vm-cluster-guides)=
 
 # User Guides

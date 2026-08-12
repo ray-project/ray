@@ -1,8 +1,5 @@
 ---
 orphan: true
-myst:
-  html_meta:
-    description: "Build a production video analysis pipeline with Ray Serve that processes videos from S3 and extracts embeddings on GPU encoders."
 ---
 
 # Video analysis inference pipeline with Ray Serve

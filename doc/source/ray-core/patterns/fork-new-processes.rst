@@ -1,6 +1,3 @@
-.. meta::
-   :description: Anti-pattern: forking processes inside a Ray task or actor breaks Ray's process management and resource accounting.
-
 .. _forking-ray-processes-antipattern:
 
 Anti-pattern: Forking new processes in application code

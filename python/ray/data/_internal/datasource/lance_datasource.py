@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, Union
+import logging
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import numpy as np
 
@@ -13,12 +14,15 @@ if TYPE_CHECKING:
     import pyarrow
 
 
+logger = logging.getLogger(__name__)
+
+
 class LanceDatasource(Datasource):
     """Lance datasource, for reading Lance dataset."""
 
     def __init__(
         self,
-        uri: Union[str, List[str]],
+        uri: str,
         version: Optional[Union[int, str]] = None,
         columns: Optional[List[str]] = None,
         filter: Optional[str] = None,
@@ -31,33 +35,16 @@ class LanceDatasource(Datasource):
         import lance
 
         self._projection_map = None
-        if isinstance(uri, str):
-            self.uris = [uri]
-        else:
-            self.uris = list(uri)
-        if len(self.uris) == 0:
-            raise ValueError("`uri` must not be empty.")
+        self.uri = uri
         self.scanner_options = scanner_options or {}
         if columns is not None:
             self.scanner_options["columns"] = columns
         if filter is not None:
             self.scanner_options["filter"] = filter
         self.storage_options = storage_options
-        self.lance_datasets = [
-            lance.dataset(uri=u, version=version, storage_options=storage_options)
-            for u in self.uris
-        ]
-        # Use the dataset-level (not fragment-level) schema: Lance fills nulls
-        # for columns missing from older fragments under schema evolution, so
-        # only the dataset schema is a correct output contract.
-        if len(self.lance_datasets) > 1:
-            from ray.data._internal.util import unify_schemas_with_validation
-
-            self._schema = unify_schemas_with_validation(
-                [ds.schema for ds in self.lance_datasets]
-            )
-        else:
-            self._schema = self.lance_datasets[0].schema
+        self.lance_ds = lance.dataset(
+            uri=uri, version=version, storage_options=storage_options
+        )
 
         data_context = DataContext.get_current()
         lance_config = data_context.lance_config
@@ -81,6 +68,9 @@ class LanceDatasource(Datasource):
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         read_tasks = []
+        ds_fragments = self.scanner_options.get("fragments")
+        if ds_fragments is None:
+            ds_fragments = self.lance_ds.get_fragments()
 
         # Lance scanner's filter attr accepts only a string (SQL).
         # See: https://github.com/lance-format/lance/blob/aac74b441cdb6df7d78700dbba33c521e6379ca5/python/python/lance/lance/__init__.pyi#L230
@@ -97,62 +87,14 @@ class LanceDatasource(Datasource):
                 else f"({filter_expr}) AND ({filter_from_arg})"
             )
 
-        fragments_override = self.scanner_options.get("fragments")
-        if fragments_override is not None and len(self.lance_datasets) > 1:
-            raise ValueError(
-                "scanner_options['fragments'] is not supported when reading "
-                "multiple Lance datasets."
-            )
-        if fragments_override is not None:
-            fragments_per_dataset = [fragments_override]
-        else:
-            fragments_per_dataset = [
-                lance_ds.get_fragments() for lance_ds in self.lance_datasets
-            ]
-
-        total_fragments = sum(len(fragments) for fragments in fragments_per_dataset)
-        if total_fragments == 0:
-            return read_tasks
-
-        fragment_entries = [
-            (lance_ds, fragment)
-            for lance_ds, fragments in zip(self.lance_datasets, fragments_per_dataset)
-            for fragment in fragments
-        ]
-
-        def _make_read_fn(groups, opts, retry, schema):
-            return lambda: _read_fragments_with_retry(groups, opts, retry, schema)
-
-        # Cap at the fragment count, since we can't create more non-empty read tasks
-        # than fragments. Guard against parallelism <= 0 to avoid ZeroDivisionError
-        # in np.array_split.
-        num_read_tasks = max(1, min(parallelism, total_fragments))
-        for chunk_indices in np.array_split(range(total_fragments), num_read_tasks):
-            if len(chunk_indices) <= 0:
+        for fragments in np.array_split(ds_fragments, parallelism):
+            if len(fragments) <= 0:
                 continue
 
-            dataset_fragment_groups = []
-            current_lance_ds = None
-            current_fragment_ids = []
-            chunk_fragments = []
-            for index in chunk_indices:
-                lance_ds, fragment = fragment_entries[index]
-                if current_lance_ds is not None and lance_ds is not current_lance_ds:
-                    dataset_fragment_groups.append(
-                        (current_lance_ds, current_fragment_ids)
-                    )
-                    current_fragment_ids = []
-                current_lance_ds = lance_ds
-                current_fragment_ids.append(fragment.metadata.id)
-                chunk_fragments.append(fragment)
-            if current_lance_ds is not None:
-                dataset_fragment_groups.append((current_lance_ds, current_fragment_ids))
-
-            num_rows = sum(fragment.count_rows() for fragment in chunk_fragments)
+            fragment_ids = [f.metadata.id for f in fragments]
+            num_rows = sum(f.count_rows() for f in fragments)
             input_files = [
-                data_file.path()
-                for fragment in chunk_fragments
-                for data_file in fragment.data_files()
+                data_file.path() for f in fragments for data_file in f.data_files()
             ]
 
             # TODO(chengsu): Take column projection into consideration for schema.
@@ -162,21 +104,22 @@ class LanceDatasource(Datasource):
                 input_files=input_files,
                 exec_stats=None,
             )
-            # Use a copy per task to avoid mutation races when tasks run in parallel.
+            # Use a copy per task to avoid mutation races when tasks run in parallel
             task_scanner_options = dict(self.scanner_options)
             if filter_expr is not None:
                 task_scanner_options["filter"] = filter_expr
+            lance_ds = self.lance_ds
             retry_params = self._retry_params
 
             read_task = ReadTask(
-                _make_read_fn(
-                    dataset_fragment_groups,
-                    task_scanner_options,
+                lambda f=fragment_ids, opts=task_scanner_options: _read_fragments_with_retry(
+                    f,
+                    lance_ds,
+                    opts,
                     retry_params,
-                    self._schema,
                 ),
                 metadata,
-                schema=self._schema,
+                schema=fragments[0].schema,
                 per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
@@ -188,21 +131,21 @@ class LanceDatasource(Datasource):
 
 
 def _read_fragments_with_retry(
-    dataset_fragment_groups,
+    fragment_ids,
+    lance_ds,
     scanner_options,
     retry_params,
-    schema,
 ) -> Iterator["pyarrow.Table"]:
     return call_with_retry(
-        lambda: _read_fragments(dataset_fragment_groups, scanner_options, schema),
+        lambda: _read_fragments(fragment_ids, lance_ds, scanner_options),
         **retry_params,
     )
 
 
 def _read_fragments(
-    dataset_fragment_groups: List[Tuple[Any, List[int]]],
+    fragment_ids,
+    lance_ds,
     scanner_options,
-    schema,
 ) -> Iterator["pyarrow.Table"]:
     """Read Lance fragments in batches.
 
@@ -211,34 +154,12 @@ def _read_fragments(
     """
     import pyarrow
 
-    for lance_ds, fragment_ids in dataset_fragment_groups:
-        fragments = [lance_ds.get_fragment(id) for id in fragment_ids]
-        task_scanner_options = dict(scanner_options)
-        task_scanner_options["fragments"] = fragments
-        scanner = lance_ds.scanner(**task_scanner_options)
-        for batch in scanner.to_reader():
-            table = pyarrow.Table.from_batches([batch])
-            # When you unpickle untrusted data, attackers can execute arbitrary code. To
-            # avoid exposing our users, raise unless the user has explicitly opted in.
-            raise_on_pickle_object_columns(table)
-            table = _fill_missing_columns(table, schema, task_scanner_options)
-            yield table
-
-
-def _fill_missing_columns(table, schema, scanner_options) -> "pyarrow.Table":
-    """Null-fill and reorder each block to the unified ReadTask schema; skipped under `columns=` projection."""
-    if scanner_options.get("columns") is not None:
-        # Projection already trims to the requested columns.
-        return table
-    import pyarrow as pa
-
-    missing = [f.name for f in schema if f.name not in table.schema.names]
-    if missing:
-        for name in missing:
-            table = table.append_column(
-                name, pa.nulls(len(table), type=schema.field(name).type)
-            )
-    # Scanners return columns out of unified-schema order; reorder via select.
-    if table.schema.names != schema.names:
-        table = table.select(schema.names)
-    return table
+    fragments = [lance_ds.get_fragment(id) for id in fragment_ids]
+    scanner_options["fragments"] = fragments
+    scanner = lance_ds.scanner(**scanner_options)
+    for batch in scanner.to_reader():
+        table = pyarrow.Table.from_batches([batch])
+        # When you unpickle untrusted data, attackers can execute arbitrary code. To
+        # avoid exposing our users, raise unless the user has explicitly opted in.
+        raise_on_pickle_object_columns(table)
+        yield table

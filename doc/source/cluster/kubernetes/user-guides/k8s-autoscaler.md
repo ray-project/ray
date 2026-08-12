@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "How the Ray autoscaler differs from the Horizontal Pod Autoscaler, and how it interacts with the Kubernetes cluster autoscaler."
----
-
 (ray-k8s-autoscaler-comparison)=
 # (Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes
 We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes ecosystem.

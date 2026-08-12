@@ -69,12 +69,16 @@ def main(args):
     # Get the preprocessing transforms from the pre-trained weights.
     transform = weights.transforms()
 
-    if smoke_test:
-        compute = ActorPoolStrategy(size=4)
-        num_gpus = 0
-    else:
-        compute = None
-        num_gpus = 1
+    start_time = time.time()
+
+    if data_format == "raw":
+        if smoke_test:
+            data_url += "/dog_1.jpg"
+        ds = ray.data.read_images(data_url, size=(256, 256))
+    elif data_format == "parquet":
+        if smoke_test:
+            data_url += "/8cc8856e16c343829ef320fef4b353b1_000000.parquet"
+        ds = ray.data.read_parquet(data_url)
 
     # Preprocess the images using standard preprocessing
     def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -96,42 +100,28 @@ def main(args):
                 output = self.model(torch.as_tensor(batch["image"], device=device))
                 return {"predictions": output.cpu().numpy()}
 
-    holder = {}
+    start_time_without_metadata_fetching = time.time()
 
-    def benchmark_fn():
-        url = data_url
-        if data_format == "raw":
-            if smoke_test:
-                url += "/dog_1.jpg"
-            ds = ray.data.read_images(url, size=(256, 256))
-        elif data_format == "parquet":
-            if smoke_test:
-                url += "/8cc8856e16c343829ef320fef4b353b1_000000.parquet"
-            ds = ray.data.read_parquet(url)
+    if smoke_test:
+        compute = ActorPoolStrategy(size=4)
+        num_gpus = 0
+    else:
+        compute = None
+        num_gpus = 1
+    ds = ds.map_batches(preprocess, batch_size="auto")
+    ds = ds.map_batches(
+        Predictor,
+        batch_size=INFERENCE_BATCH_SIZE,
+        compute=compute,
+        num_gpus=num_gpus,
+        fn_constructor_kwargs={"model": model_ref},
+    )
+    ds.write_parquet(WRITE_PATH)
 
-        # Secondary timer that excludes the read_* metadata fetch.
-        start_time_without_metadata_fetching = time.time()
+    end_time = time.time()
 
-        ds = ds.map_batches(preprocess, batch_size="auto")
-        ds = ds.map_batches(
-            Predictor,
-            batch_size=INFERENCE_BATCH_SIZE,
-            compute=compute,
-            num_gpus=num_gpus,
-            fn_constructor_kwargs={"model": model_ref},
-        )
-        ds.write_parquet(WRITE_PATH)
-
-        holder["ds"] = ds
-        holder["total_time_s_wo_metadata_fetch"] = (
-            time.time() - start_time_without_metadata_fetching
-        )
-
-    benchmark = Benchmark()
-    benchmark.run_fn("batch-inference", benchmark_fn)
-
-    total_time = benchmark.result["batch-inference"][BenchmarkMetric.RUNTIME.value]
-    total_time_without_metadata_fetch = holder["total_time_s_wo_metadata_fetch"]
+    total_time = end_time - start_time
+    total_time_without_metadata_fetch = end_time - start_time_without_metadata_fetching
 
     print("Total time (sec): ", total_time)
     print("Total time w/o metadata fetching (sec): ", total_time_without_metadata_fetch)
@@ -141,20 +131,21 @@ def main(args):
         assert dead_nodes
         print(f"Total chaos killed: {dead_nodes}")
 
-    results = collect_dataset_stats(holder["ds"])
-    results.update(
-        {
-            "data_directory": data_directory,
-            "data_format": data_format,
-            "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
-            "runtime_env_setup": RuntimeEnvSetupTracker.collect(),
-        }
-    )
-    benchmark.result["batch-inference"].update(results)
-    benchmark.write_result()
+    results = collect_dataset_stats(ds)
+    results = {
+        BenchmarkMetric.RUNTIME: total_time,
+        "data_directory": data_directory,
+        "data_format": data_format,
+        "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
+    }
+    results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+
+    return results
 
 
 if __name__ == "__main__":
     args = parse_args()
     ray.init(runtime_env={"py_modules": benchmark_py_modules()})
-    main(args)
+    benchmark = Benchmark()
+    benchmark.run_fn("batch-inference", main, args)
+    benchmark.write_result()

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Call remote functions from within remote functions, and how nested tasks yield their resources while blocked.
-
 Nested Remote Functions
 =======================
 

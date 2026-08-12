@@ -1,6 +1,3 @@
-.. meta::
-   :description: Ray remote objects and ObjectRefs: fetching data, passing objects as arguments, closure capture, nested objects, and fault tolerance.
-
 .. _objects-in-ray:
 
 Objects

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Limit concurrency per actor method with concurrency groups, including the default group and choosing a group at call time.
-
 Limiting Concurrency Per-Method with Concurrency Groups
 =======================================================
 

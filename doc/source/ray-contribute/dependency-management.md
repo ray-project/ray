@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "How Ray's three-layer Python dependency system works, how to add or update a package, and how to diagnose resolution conflicts."
----
-
 (dependency-management)=
 
 # Editing and managing Python dependencies
@@ -82,9 +76,9 @@ Every `compile` call inherits this default set of `uv pip compile` flags:
 
 Before each `compile` runs, raydepsets executes any declared **pre-hooks**. The common one is `ci/raydepsets/pre_hooks/remove-compiled-headers.sh`, which copies `requirements_compiled*.txt` to `/tmp/ray-deps/` after stripping `--extra-index-url` / `--find-links` lines, so the file is a clean version constraint and GPU index URLs don't leak into CPU locks.
 
-The locks are consumed verbatim. Docker image builds run `uv pip install -r <lock> --no-deps` against the matching lock — for example, the docs image installs `python/deplocks/docs/docbuild_depset_py3.11.lock`. Because `--no-deps` skips dependency resolution at install time, the pinned versions can't drift; every image built from the same lock gets the exact same package versions.
+The locks are consumed verbatim. Docker image builds run `uv pip install -r <lock> --no-deps` against the matching lock — for example, the docs image installs `python/deplocks/docs/docbuild_depset_py3.10.lock`. Because `--no-deps` skips dependency resolution at install time, the pinned versions can't drift; every image built from the same lock gets the exact same package versions.
 
-The Ray docs build is itself one of these locks: `doc/requirements-doc.lock.txt` is a symlink to `python/deplocks/docs/docbuild_depset_py3.11.lock`, so adding a Sphinx extension is a dependency change like any other. For the tool's full internals, see the [raydepsets README](https://github.com/ray-project/ray/tree/master/ci/raydepsets#readme).
+The Ray docs build is itself one of these locks: `doc/requirements-doc.lock.txt` is a symlink to `python/deplocks/docs/docbuild_depset_py3.10.lock`, so adding a Sphinx extension is a dependency change like any other. For the tool's full internals, see the [raydepsets README](https://github.com/ray-project/ray/tree/master/ci/raydepsets#readme).
 
 ## How to add or update a dependency
 

@@ -1,7 +1,12 @@
 from typing import TYPE_CHECKING, List
 
-import pyarrow
 from packaging.version import parse as parse_version
+
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey

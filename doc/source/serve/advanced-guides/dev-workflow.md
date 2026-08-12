@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Recommended Ray Serve development loop: iterate locally with serve.run, send HTTP requests, use local testing mode, then test on a cluster."
----
-
 (serve-dev-workflow)=
 
 # Development Workflow

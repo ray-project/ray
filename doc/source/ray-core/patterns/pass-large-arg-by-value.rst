@@ -1,6 +1,3 @@
-.. meta::
-   :description: Anti-pattern: passing the same large argument by value to many tasks re-serializes it each time; ray.put it once instead.
-
 .. _ray-pass-large-arg-by-value:
 
 Anti-pattern: Passing the same large argument by value repeatedly harms performance

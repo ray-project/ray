@@ -4,6 +4,7 @@ import math
 import pickle
 import re
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -21,16 +22,6 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from ray.data._internal.arrow_aggregation import (
-    ArrowAggSpec,
-    count_spec,
-    distinct_spec,
-    mean_spec,
-    minmax_spec,
-    missing_pct_spec,
-    sum_spec,
-    zero_pct_spec,
-)
 from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
@@ -40,6 +31,9 @@ from ray.data.block import (
     KeyType,
 )
 from ray.util.annotations import Deprecated, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.dataset import Schema
 
 
 class _SupportsRichComparison(Protocol):
@@ -153,17 +147,9 @@ class AggregateFn:
         self.accumulate_block = accumulate_block
         self.finalize = finalize
 
-    def _validate(self, schema: Optional[Union[type, "pa.Schema"]]) -> None:
+    def _validate(self, schema: Optional["Schema"]) -> None:
         """Raise an error if this cannot be applied to the given schema."""
         pass
-
-    def _arrow_agg_spec(self) -> Optional["ArrowAggSpec"]:
-        """Return this aggregation's Arrow-vectorized plan for the shuffle-v2
-        aggregate path, or ``None`` to use the Python engine (the default).
-
-        See ``ray.data._internal.arrow_aggregation``.
-        """
-        return None
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         """Return the PyArrow ``Field`` this aggregator produces.
@@ -351,7 +337,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
         """
         return accumulator
 
-    def _validate(self, schema: Optional[Union[type, "pa.Schema"]]) -> None:
+    def _validate(self, schema: Optional["Schema"]) -> None:
         if self._target_col_name:
             from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
@@ -470,9 +456,6 @@ class Count(AggregateFnV2[int, int]):
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return pa.field(self.name, pa.int64(), nullable=False)
-
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        return count_spec()  # Count() (no column) counts all rows -> count_all
 
 
 @PublicAPI
@@ -596,9 +579,6 @@ class Sum(AggregateFnV2[Union[int, float], Union[int, float]]):
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.sum)
 
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        return sum_spec() if isinstance(self._target_col_name, str) else None
-
 
 @PublicAPI
 class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
@@ -665,9 +645,6 @@ class Min(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.min)
 
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        return minmax_spec("min") if isinstance(self._target_col_name, str) else None
-
 
 @PublicAPI
 class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType]):
@@ -733,9 +710,6 @@ class Max(AggregateFnV2[SupportsRichComparisonType, SupportsRichComparisonType])
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.max)
-
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        return minmax_spec("max") if isinstance(self._target_col_name, str) else None
 
 
 @PublicAPI
@@ -820,9 +794,6 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return pa.field(self.name, pa.float64(), nullable=True)
-
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        return mean_spec() if isinstance(self._target_col_name, str) else None
 
 
 @PublicAPI
@@ -1199,17 +1170,6 @@ class Unique(AggregateFnV2[Set[Any], List[Any]]):
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
 
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        # Only the plain (scalar-column, no list-encoding) form vectorizes; the
-        # single-phase `distinct` kernel returns the per-group set of values.
-        if self._list_encoding_mode is not None or not isinstance(
-            self._target_col_name, str
-        ):
-            return None
-        return distinct_spec(
-            "distinct", lambda merged, component_cols: merged[component_cols[0]]
-        )
-
     def _compute_unique(self, block: Block) -> BlockColumn:
         column = block[self._target_col_name]
         column_accessor = BlockColumnAccessor.for_column(column)
@@ -1318,19 +1278,6 @@ class CountDistinct(Unique):
     def finalize(self, accumulator: Set[Any]) -> int:
         """Return the count of distinct values."""
         return len(accumulator)
-
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        # Same gate as Unique, but the `count_distinct` kernel returns the count.
-        if self._list_encoding_mode is not None or not isinstance(
-            self._target_col_name, str
-        ):
-            return None
-        return distinct_spec(
-            "count_distinct",
-            lambda merged, component_cols: pc.cast(
-                merged[component_cols[0]], pa.int64()
-            ),
-        )
 
 
 @PublicAPI
@@ -1621,9 +1568,6 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
 
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        return missing_pct_spec() if isinstance(self._target_col_name, str) else None
-
 
 @PublicAPI(stability="alpha")
 class ZeroPercentage(AggregateFnV2[List[int], float]):
@@ -1721,9 +1665,6 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
         if accumulator[1] == 0:
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
-
-    def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
-        return zero_pct_spec() if isinstance(self._target_col_name, str) else None
 
 
 @PublicAPI(stability="alpha")

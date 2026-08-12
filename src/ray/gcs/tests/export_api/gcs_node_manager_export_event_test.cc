@@ -59,13 +59,10 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
     gcs_table_storage_ = std::make_unique<gcs::GcsTableStorage>(
         std::make_unique<gcs::InMemoryStoreClient>());
 
-    // Pin ray events off so WriteNodeExportEvent exercises the export-API (file) path
-    // instead of short-circuiting to the RayEventRecorder.
     RayConfig::instance().initialize(
         R"(
 {
-  "enable_export_api_write": true,
-  "enable_ray_event": false
+  "enable_export_api_write": true
 }
   )");
     log_dir_ = GenerateLogDir();

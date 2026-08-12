@@ -54,7 +54,7 @@ def main(args):
         orders_customer = orders.join(
             customer.select_columns(["c_custkey", "c_name"]),
             join_type="inner",
-            num_partitions=200,
+            num_partitions=16,
             on=("o_custkey",),
             right_on=("c_custkey",),
         )
@@ -66,7 +66,7 @@ def main(args):
         lineitem_large = lineitem.join(
             large_orders,
             join_type="inner",
-            num_partitions=200,
+            num_partitions=16,
             on=("l_orderkey",),
         )
         lineitem_large = lineitem_large.select_columns(
@@ -77,7 +77,7 @@ def main(args):
         ds = lineitem_large.join(
             orders_customer,
             join_type="inner",
-            num_partitions=200,
+            num_partitions=16,
             on=("l_orderkey",),
             right_on=("o_orderkey",),
         )

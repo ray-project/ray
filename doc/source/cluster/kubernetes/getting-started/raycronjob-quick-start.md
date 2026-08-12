@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Run Ray jobs on a recurring schedule with the RayCronJob custom resource, including configuration and a worked example."
----
-
 (kuberay-raycronjob-quickstart)=
 
 # RayCronJob Quickstart

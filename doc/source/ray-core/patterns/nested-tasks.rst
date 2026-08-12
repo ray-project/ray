@@ -1,6 +1,3 @@
-.. meta::
-   :description: Pattern: call remote functions from inside remote functions to express nested parallelism such as divide-and-conquer.
-
 .. _nested-tasks:
 
 Pattern: Using nested tasks to achieve nested parallelism

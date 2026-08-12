@@ -1,6 +1,3 @@
-.. meta::
-   :description: Object fault tolerance in Ray: lineage-based recovery from data loss, recovery from owner failure, and understanding ObjectLostError.
-
 .. _fault-tolerance-objects:
 .. _object-fault-tolerance:
 

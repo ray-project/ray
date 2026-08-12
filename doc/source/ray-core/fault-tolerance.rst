@@ -1,6 +1,3 @@
-.. meta::
-   :description: How Ray classifies application-level and system-level failures, and where to find the per-component fault tolerance guarantees.
-
 .. _fault-tolerance:
 
 Fault tolerance

@@ -1,4 +1,0 @@
-Ray is an open-source unified compute framework for scaling AI and Python
-workloads, including data processing, model training, model serving,
-hyperparameter tuning, and reinforcement learning. The full documentation
-lives at https://docs.ray.io/.

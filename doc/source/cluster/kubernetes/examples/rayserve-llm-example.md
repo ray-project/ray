@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Serve a large language model with Ray Serve LLM on Kubernetes, including a Hugging Face token Secret and RayService deployment."
----
-
 (kuberay-rayservice-llm-example)=
 
 # Serve a Large Language Model using Ray Serve LLM on Kubernetes

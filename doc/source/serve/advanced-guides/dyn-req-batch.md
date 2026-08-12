@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Batch concurrent requests in a Serve deployment with @serve.batch, custom batch size functions, and streaming batched responses."
----
-
 (serve-performance-batching-requests)=
 # Dynamic Request Batching
 

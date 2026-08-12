@@ -1,6 +1,3 @@
-.. meta::
-   :description: Ray remote generators with a dynamic number of returns, set by either the caller or the executor, plus exception handling and limits.
-
 .. _dynamic_generators:
 
 Dynamic generators

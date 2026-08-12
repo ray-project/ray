@@ -1,6 +1,3 @@
-.. meta::
-   :description: Debug Ray out-of-memory errors: detect OOM, attribute memory to individual tasks and actors, reduce parallelism, and profile per-worker usage.
-
 .. _ray-core-mem-profiling:
 
 Debugging Memory Issues

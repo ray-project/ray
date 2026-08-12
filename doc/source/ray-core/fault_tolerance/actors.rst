@@ -1,6 +1,3 @@
-.. meta::
-   :description: Actor fault tolerance in Ray: process and creator failure, restarts and checkpointing, force-killing, and unavailable-actor errors.
-
 .. _fault-tolerance-actors:
 .. _actor-fault-tolerance:
 

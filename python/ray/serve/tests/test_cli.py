@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -20,7 +19,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.util.state import list_actors
@@ -104,61 +102,6 @@ def test_deploy_config_default_num_replicas_no_replica_restart(
 
     observed_pids = [get_pid() for _ in range(5)]
     assert observed_pids == [initial_pid] * len(observed_pids)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_config_tracing_config_declarative_flow(serve_instance, tmp_path):
-    """Tracing config in the serve config (declarative flow) is applied via `serve deploy`.
-
-    Deploys a config with a top-level ``tracing_config``, verifies the controller
-    applied it (i.e. ``get_tracing_config`` reflects the YAML), then sends traffic
-    and asserts that traces are actually produced for the replica.
-    """
-    client = serve_instance
-    config = {
-        "tracing_config": {"enabled": True, "sampling_ratio": 1.0},
-        "applications": [
-            {
-                "name": SERVE_DEFAULT_APP_NAME,
-                "import_path": "ray.serve.tests.test_config_files.pid.node",
-            }
-        ],
-    }
-    config_file_name = str(tmp_path / "serve_config.yaml")
-    with open(config_file_name, "w") as config_file:
-        yaml.safe_dump(config, config_file)
-
-    subprocess.check_output(["serve", "deploy", config_file_name])
-
-    def check_running() -> bool:
-        app_status = serve.status().applications.get(SERVE_DEFAULT_APP_NAME)
-        return app_status is not None and app_status.status == "RUNNING"
-
-    wait_for_condition(check_running, timeout=30)
-
-    # The tracing config from the serve config reached the controller.
-    tracing_config = ray.get(client._controller.get_tracing_config.remote())
-    assert tracing_config is not None
-    assert tracing_config.enabled is True
-    assert tracing_config.sampling_ratio == 1.0
-
-    # Send traffic and assert that traces are produced for the replica, proving
-    # the declarative tracing config is applied end-to-end (replicas started for
-    # this config fetch it from the controller and set up tracing).
-    url = get_application_url(app_name=SERVE_DEFAULT_APP_NAME)
-    assert httpx.get(url).status_code == 200
-
-    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
-
-    def replica_traces_created() -> bool:
-        return os.path.isdir(spans_dir) and any(
-            "replica" in f for f in os.listdir(spans_dir)
-        )
-
-    try:
-        wait_for_condition(replica_traces_created, timeout=20)
-    finally:
-        shutil.rmtree(spans_dir, ignore_errors=True)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

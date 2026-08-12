@@ -198,9 +198,8 @@ class LimitPushdownRule(Rule):
 
         # If we couldn't push through any operators, the Limit sits directly on
         # its input. For a V2 ``ReadFiles`` source we still push a per-block limit
-        # into it (and mirror the limit onto the upstream ``ListFiles`` so a
-        # footer-based indexer can stop listing early), keeping the ``Limit`` on
-        # top for exact enforcement. Other ops are left untouched.
+        # into it, keeping the ``Limit`` on top for exact enforcement. Other ops
+        # are left untouched.
         if not num_rows_preserving_ops:
             if isinstance(current_op, ReadFiles):
                 limit_input = self._apply_per_block_limit_if_supported(
@@ -245,11 +244,6 @@ class LimitPushdownRule(Rule):
                     )
 
                     if isinstance(op.scanner, SupportsLimitPushdown):
-                        # The pushed limit reaches the upstream ``ListFiles`` --
-                        # letting a footer-based indexer stop listing early once
-                        # enough exact-survivor rows are found -- via
-                        # ``DeriveListFilesPushdown``, which reads it off the
-                        # scanner once the plan is final.
                         return replace(op, scanner=op.scanner.push_limit(limit))
                     return op
                 assert len(op.input_dependencies) == 1, len(op.input_dependencies)

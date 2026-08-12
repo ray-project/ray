@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "API reference for the KubeRay custom resources, plus KubeRay's API compatibility and stability guarantees."
----
-
 (kuberay-api-reference)=
 # API Reference
 

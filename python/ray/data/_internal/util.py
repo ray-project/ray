@@ -834,12 +834,15 @@ def unify_schemas_with_validation(
     schemas_to_unify: Iterable["Schema"],
 ) -> Optional["Schema"]:
     if schemas_to_unify:
-        import pyarrow as pa
-
         from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
+        # Check valid pyarrow installation before attempting schema unification
+        try:
+            import pyarrow as pa
+        except ImportError:
+            pa = None
         # If the result contains PyArrow schemas, unify them
-        if all(isinstance(s, pa.Schema) for s in schemas_to_unify):
+        if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
             return unify_schemas(schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.

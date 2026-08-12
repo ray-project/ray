@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import logging
-import os
 import pprint
 import time
 import traceback
@@ -350,14 +349,8 @@ def get_state_api_manager(gcs_address: str) -> StateAPIManager:
     gcs_client = GcsClient(address=gcs_address)
     gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
     gcs_channel.connect()
-    # Task events are read from the dashboard head, which the client reaches over the
-    # subprocess module's socket rather than through the GCS channel.
-    node = ray._private.worker.global_worker.node
     state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(),
-        gcs_client,
-        dashboard_socket_dir=os.path.join(node.get_session_dir_path(), "sockets"),
-        dashboard_session_name=node.session_name,
+        gcs_channel.channel(), gcs_client
     )
     return StateAPIManager(
         state_api_data_source_client,

@@ -44,10 +44,10 @@ HTTP_EXPOSABLE_EVENT_TYPES = os.environ.get(
     DEFAULT_HTTP_EXPOSABLE_EVENT_TYPES,
 )
 
-# The task event types. Both the GCS publisher and the dashboard-head publisher expose
-# only these, since GCS and the dashboard-head task-events store only handle task events.
-# Not overridden by an environment variable.
-TASK_EVENT_TYPES = [
+# GCS Publisher specific configurations
+# List of event types that are allowed to be exposed to GCS, not overridden by environment variable
+# as GCS only supports Task event types
+GCS_EXPOSABLE_EVENT_TYPES = [
     "TASK_DEFINITION_EVENT",
     "TASK_LIFECYCLE_EVENT",
     "TASK_PROFILE_EVENT",

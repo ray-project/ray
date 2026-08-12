@@ -1,6 +1,3 @@
-.. meta::
-   :description: Internals of Ray's event exporter: event types and structure, the entity ID concept, and C++-side event recording and buffering.
-
 .. _ray-event-exporter:
 
 Ray Event Exporter Infrastructure

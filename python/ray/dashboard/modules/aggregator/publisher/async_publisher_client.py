@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -10,21 +9,16 @@ import aiohttp
 
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
-from ray._private import ray_constants
 from ray._private.protobuf_compat import message_to_json
 from ray._raylet import GcsClient
 from ray.core.generated import (
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
 )
-from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
-from ray.dashboard.modules.aggregator.publisher.authenticated_http_client import (
-    AuthenticatedHttpClient,
-)
 from ray.dashboard.modules.aggregator.publisher.configs import (
+    GCS_EXPOSABLE_EVENT_TYPES,
     HTTP_EXPOSABLE_EVENT_TYPES,
     PUBLISHER_TIMEOUT_SECONDS,
-    TASK_EVENT_TYPES,
 )
 
 logger = logging.getLogger(__name__)
@@ -209,7 +203,7 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
         self._executor = executor
         self._timeout_s = timeout_s
 
-        self._exposable_event_types_list = TASK_EVENT_TYPES
+        self._exposable_event_types_list = GCS_EXPOSABLE_EVENT_TYPES
 
     async def publish(
         self,
@@ -295,142 +289,3 @@ class AsyncGCSTaskEventsPublisherClient(PublisherClientInterface):
 
     async def close(self) -> None:
         pass
-
-
-class AsyncDashboardHeadPublisherClient(PublisherClientInterface):
-    """Client for publishing ray event batches to the dashboard head over HTTP.
-
-    The destination endpoint path and the set of event types this client may publish are
-    supplied by the caller, so the same client can serve any dashboard-head ingestion
-    endpoint."""
-
-    def __init__(
-        self,
-        gcs_client: GcsClient,
-        executor: ThreadPoolExecutor,
-        endpoint_path: str,
-        exposable_event_types: List[str],
-        timeout_s: float = PUBLISHER_TIMEOUT_SECONDS,
-    ) -> None:
-        super().__init__()
-        self._gcs_client = gcs_client
-        self._executor = executor
-        self._endpoint_path = endpoint_path
-        self._http_client = AuthenticatedHttpClient(timeout_s=timeout_s)
-        # Resolved lazily from InternalKV on first publish and cached.
-        self._endpoint = None
-
-        self._exposable_event_types_list = exposable_event_types
-
-    async def _get_endpoint(self) -> Optional[str]:
-        """Lazily resolve and cache the dashboard head's endpoint from InternalKV.
-        Returns None if the head has not registered its address yet, so the caller can
-        retry later."""
-        if self._endpoint:
-            return self._endpoint
-        address = await self._gcs_client.async_internal_kv_get(
-            ray_constants.DASHBOARD_ADDRESS.encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=GCS_RPC_TIMEOUT_SECONDS,
-        )
-        if not address:
-            return None
-        address = address.decode()
-        if not address.startswith(("http://", "https://")):
-            address = f"http://{address}"
-        self._endpoint = f"{address}{self._endpoint_path}"
-        return self._endpoint
-
-    async def publish(
-        self,
-        batch: PublishBatch,
-    ) -> PublishStats:
-        events = batch.events
-        task_events_metadata = batch.task_events_metadata
-        has_dropped_task_attempts = (
-            task_events_metadata and task_events_metadata.dropped_task_attempts
-        )
-        if not events and not has_dropped_task_attempts:
-            # Nothing to publish -> success but nothing published
-            return PublishStats(
-                is_publish_successful=True,
-                num_events_published=0,
-                num_events_filtered_out=0,
-            )
-
-        # Filter events based on exposable event types
-        filtered_events = [e for e in events if self._can_expose_event(e)]
-        num_filtered_out = len(events) - len(filtered_events)
-
-        if not filtered_events and not has_dropped_task_attempts:
-            # all events filtered out and no task events metadata -> success but nothing published
-            return PublishStats(
-                is_publish_successful=True,
-                num_events_published=0,
-                num_events_filtered_out=num_filtered_out,
-            )
-
-        try:
-            endpoint = await self._get_endpoint()
-            if endpoint is None:
-                logger.warning(
-                    "Dashboard head address not yet in InternalKV; will retry."
-                )
-                return PublishStats(
-                    is_publish_successful=False,
-                    num_events_published=0,
-                    num_events_filtered_out=0,
-                )
-            events_data = self._create_ray_events_data(
-                filtered_events, task_events_metadata
-            )
-            request = events_event_aggregator_service_pb2.AddEventsRequest(
-                events_data=events_data
-            )
-            serialized_request = await get_or_create_event_loop().run_in_executor(
-                self._executor,
-                lambda: request.SerializeToString(),
-            )
-
-            try:
-                async with self._http_client.post(endpoint, serialized_request) as resp:
-                    resp.raise_for_status()
-            except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
-                # Couldn't reach the endpoint; the dashboard head may have restarted at a
-                # new address. Drop the cached endpoint so the next publish re-resolves it
-                # from InternalKV.
-                self._endpoint = None
-                raise
-            return PublishStats(
-                is_publish_successful=True,
-                num_events_published=len(filtered_events),
-                num_events_filtered_out=num_filtered_out,
-            )
-        except Exception as e:
-            logger.error(f"Failed to send events to the dashboard head: {e}")
-            return PublishStats(
-                is_publish_successful=False,
-                num_events_published=0,
-                num_events_filtered_out=0,
-            )
-
-    def _create_ray_events_data(
-        self,
-        event_batch: List[events_base_event_pb2.RayEvent],
-        task_events_metadata: Optional[
-            events_event_aggregator_service_pb2.TaskEventsMetadata
-        ] = None,
-    ) -> events_event_aggregator_service_pb2.RayEventsData:
-        """
-        Helper method to create RayEventsData from event batch and metadata.
-        """
-        events_data = events_event_aggregator_service_pb2.RayEventsData()
-        events_data.events.extend(event_batch)
-
-        if task_events_metadata:
-            events_data.task_events_metadata.CopyFrom(task_events_metadata)
-
-        return events_data
-
-    async def close(self) -> None:
-        await self._http_client.close()

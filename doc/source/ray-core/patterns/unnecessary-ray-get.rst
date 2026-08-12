@@ -1,6 +1,3 @@
-.. meta::
-   :description: Anti-pattern: calling ray.get before the value is needed blocks the driver and forfeits overlap between tasks.
-
 .. _unnecessary-ray-get:
 
 Anti-pattern: Calling ray.get unnecessarily harms performance

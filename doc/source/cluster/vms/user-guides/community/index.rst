@@ -1,6 +1,3 @@
-.. meta::
-   :description: Index of community-supported cluster managers for Ray, including Slurm, LSF, YARN, and Spark.
-
 .. _ref-cluster-setup:
 
 Community Supported Cluster Managers

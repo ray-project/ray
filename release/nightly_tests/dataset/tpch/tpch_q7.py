@@ -63,7 +63,7 @@ def main(args):
 
         customer_nation = nations_of_interest.join(
             customer,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("n_nationkey",),
             right_on=("c_nationkey",),
@@ -73,7 +73,7 @@ def main(args):
 
         orders_customer = orders.join(
             customer_nation,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
@@ -86,7 +86,7 @@ def main(args):
         )
         lineitem_orders = lineitem_filtered.join(
             orders_customer,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
@@ -97,7 +97,7 @@ def main(args):
         # Keep supplier join and supplier-nation join in the same linear pipeline.
         lineitem_supplier = lineitem_orders.join(
             supplier,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
@@ -114,7 +114,7 @@ def main(args):
 
         ds = lineitem_supplier.join(
             nations_of_interest,
-            num_partitions=200,
+            num_partitions=16,
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),

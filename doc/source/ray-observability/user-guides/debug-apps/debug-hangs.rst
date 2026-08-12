@@ -1,6 +1,3 @@
-.. meta::
-   :description: Find where a Ray application is stuck by viewing worker stack traces in the Ray Dashboard or with the ray stack CLI command.
-
 .. _observability-debug-hangs:
 
 Debugging Hangs

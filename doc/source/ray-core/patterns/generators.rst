@@ -1,6 +1,3 @@
-.. meta::
-   :description: Pattern: yield results from a generator task instead of returning them all at once, to cap heap memory usage.
-
 .. _generator-pattern:
 
 Pattern: Using generators to reduce heap memory usage

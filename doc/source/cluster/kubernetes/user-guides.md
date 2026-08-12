@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Index of KubeRay user guides covering cluster configuration, autoscaling, GPUs and TPUs, storage, observability, and security."
----
-
 (kuberay-guides)=
 
 # User Guides
@@ -35,7 +29,6 @@ user-guides/tpu
 user-guides/pod-command
 user-guides/helm-chart-rbac
 user-guides/tls
-user-guides/network-policy
 user-guides/k8s-autoscaler
 user-guides/kubectl-plugin
 user-guides/kuberay-auth
@@ -46,7 +39,6 @@ user-guides/kuberay-dashboard
 user-guides/resource-isolation-with-writable-cgroups
 user-guides/kuberay-history-server
 user-guides/k8s-events
-user-guides/rayjob-sidecar-submitter-restart
 ```
 
 
@@ -75,7 +67,6 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-pod-command`
 * {ref}`kuberay-helm-chart-rbac`
 * {ref}`kuberay-tls`
-* {ref}`kuberay-network-policy`
 * {ref}`kuberay-gke-bucket`
 * {ref}`ray-k8s-autoscaler-comparison`
 * {ref}`kubectl-plugin`
@@ -87,4 +78,3 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`resource-isolation-with-writable-cgroups`
 * {ref}`kuberay-history-server`
 * {ref}`kuberay-k8s-events`
-* {ref}`kuberay-rayjob-sidecar-submitter-restart`

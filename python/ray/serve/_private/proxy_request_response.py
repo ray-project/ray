@@ -281,9 +281,6 @@ class ResponseStatus:
     code: Union[str, grpc.StatusCode]  # Must be convertible to a string.
     is_error: bool = False
     message: str = ""
-    # Extra response headers, only used on the HTTP path (e.g. `Retry-After`
-    # on backpressure rejections). Ignored by the gRPC path.
-    headers: Optional[List[Tuple[bytes, bytes]]] = None
 
 
 # Yields protocol-specific messages followed by a final `ResponseStatus`.

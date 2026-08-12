@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Run sandboxed code execution with KubeRay and Agent Sandbox on GKE with gVisor, covering RBAC and sandbox infrastructure."
----
-
 (kuberay-agent-sandbox)=
 
 # Sandboxed Code Execution with Ray and Agent Sandbox

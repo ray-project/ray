@@ -54,7 +54,7 @@ def main(args):
             part_filtered.join(
                 lineitem,
                 join_type="inner",
-                num_partitions=200,
+                num_partitions=16,
                 on=("p_partkey",),
                 right_on=("l_partkey",),
             )
@@ -73,7 +73,7 @@ def main(args):
         ds = joined.join(
             avg_qty,
             join_type="inner",
-            num_partitions=200,
+            num_partitions=16,
             on=("p_partkey",),
         ).select_columns(["l_quantity", "l_extendedprice", "avg_quantity"])
 

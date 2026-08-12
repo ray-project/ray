@@ -88,9 +88,6 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
-    hf_token = get_hf_token()
-    ds_holder = {}
-
     def benchmark_fn():
         ds = (
             ray.data.read_parquet(INPUT_PREFIX, schema=SCHEMA)
@@ -100,18 +97,15 @@ def main(args: argparse.Namespace):
                 concurrency=tuple(args.inference_concurrency),
                 num_gpus=1,
                 batch_size=BATCH_SIZE,
-                fn_constructor_kwargs={"model": "BAAI/bge-m3", "token": hf_token},
+                fn_constructor_kwargs={"model": "BAAI/bge-m3", "token": get_hf_token()},
             )
         )
         ds.write_parquet(OUTPUT_PREFIX, mode="overwrite")
-        ds_holder["ds"] = ds
+        metrics = collect_dataset_stats(ds)
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
-
-    metrics = collect_dataset_stats(ds_holder["ds"])
-    metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-    benchmark.result["main"].update(metrics)
-
     benchmark.write_result()
 
 

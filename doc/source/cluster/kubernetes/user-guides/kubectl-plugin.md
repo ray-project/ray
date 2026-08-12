@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Use the kubectl ray plugin to simplify RayCluster management and RayJob submission, with Krew installation and examples."
----
-
 (kubectl-plugin)=
 
 # Use kubectl plugin (beta)

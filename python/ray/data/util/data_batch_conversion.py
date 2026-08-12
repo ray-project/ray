@@ -13,7 +13,10 @@ if TYPE_CHECKING:
     import pandas as pd
 
 # TODO: Consolidate data conversion edges for arrow bug workaround.
-import pyarrow
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 # Lazy import to avoid ray init failures without pandas installed and allow
 # dataset to import modules in this file.
@@ -84,7 +87,7 @@ def _convert_batch_type_to_pandas(
                 )
             tensor_dict[col_name] = _ndarray_to_column(col)
         data = pd.DataFrame(tensor_dict)
-    elif isinstance(data, pyarrow.Table):
+    elif pyarrow is not None and isinstance(data, pyarrow.Table):
         data = data.to_pandas()
     else:
         # Handle cudf.DataFrame (lazy check to avoid import when not used)
@@ -133,6 +136,12 @@ def _convert_pandas_to_batch_type(
                 output_dict[column] = data[column].to_numpy()
             return output_dict
     elif type == BatchFormat.ARROW:
+        if not pyarrow:
+            raise ValueError(
+                "Attempted to convert data to Pyarrow Table but Pyarrow "
+                "is not installed. Please do `pip install pyarrow` to "
+                "install Pyarrow."
+            )
         return pyarrow.Table.from_pandas(data)
     elif type == BatchFormat.CUDF:
         cudf = _lazy_import_cudf()
@@ -173,7 +182,7 @@ def _convert_batch_type_to_numpy(
                     f"instead."
                 )
         return data
-    elif isinstance(data, pyarrow.Table):
+    elif pyarrow is not None and isinstance(data, pyarrow.Table):
         from ray.data._internal.arrow_ops import transform_pyarrow
         from ray.data._internal.tensor_extensions.arrow import (
             get_arrow_extension_fixed_shape_tensor_types,

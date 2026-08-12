@@ -1,6 +1,3 @@
-.. meta::
-   :description: Configuration options that control Ray Data execution on top of the Ray Core cluster, including job-level checkpointing.
-
 .. _execution_configurations:
 
 ========================

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Why Ray head node memory grows and how to mitigate it: keep work off the head node, disable the dashboard, and size the head pod.
-
 .. _head-node-memory-management:  
   
 Head Node Memory Management  

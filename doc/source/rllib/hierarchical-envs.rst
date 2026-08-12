@@ -1,6 +1,3 @@
-.. meta::
-   :description: Implement hierarchical reinforcement learning in RLlib as a multi-agent problem, with a top-level policy issuing tasks to lower-level policies.
-
 .. _rllib-hierarchical-environments-doc:
 
 Hierarchical Environments

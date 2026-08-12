@@ -1,6 +1,3 @@
-.. meta::
-   :description: Tune Ray Data performance: batch transforms, Polars sorts, read block and resource tuning, Parquet projection pushdown, and memory reduction.
-
 .. _data_performance_tips:
 
 Advanced: Performance Tips and Tuning

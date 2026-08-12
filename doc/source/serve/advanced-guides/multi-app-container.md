@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Run Serve applications in separate containers with Podman-backed runtime environments, including compatibility notes and troubleshooting."
----
-
 (serve-container-runtime-env-guide)=
 # Run Multiple Applications in Different Containers
 

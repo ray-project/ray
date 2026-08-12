@@ -1,6 +1,3 @@
-.. meta::
-   :description: Assorted Ray Core topics: dynamic remote parameters, overloaded functions, inspecting cluster state, and OS tuning for large clusters.
-
 Miscellaneous Topics
 ====================
 

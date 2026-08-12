@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Use deployment-scoped actors to share state across replicas, covering actor recreation, rollout, health, and lifecycle limits."
----
-
 (serve-deployment-scoped-actors)=
 # Use deployment-scoped actors
 

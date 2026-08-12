@@ -34,7 +34,6 @@ from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
     AggregationFunction,
     AutoscalingConfig,
-    BackpressureConfig,
     DeploymentActorConfig,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
@@ -43,7 +42,6 @@ from ray.serve.config import (
 )
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
-    BackpressureConfig as BackpressureConfigProto,
     DeploymentActorConfig as DeploymentActorConfigProto,
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
@@ -133,13 +131,9 @@ class DeploymentConfig(BaseModel):
             a response. Defaults to 5.
         max_queued_requests: Maximum number of requests to this deployment that will be
             queued at each *caller* (proxy or DeploymentHandle). Once this limit is
-            reached, subsequent requests will raise a BackPressureError (for handles)
-            or return an HTTP 503 status code by default (configurable via
-            `backpressure_config.status_code`) for HTTP requests. Defaults to
-            -1 (no limit).
-        backpressure_config: Configuration of the HTTP response returned for
-            requests rejected due to backpressure (`max_queued_requests`
-            exceeded). See `BackpressureConfig` for options.
+            reached, subsequent requests will raise a BackPressureError (for handles) or
+            return an HTTP 503 status code (for HTTP requests). Defaults to -1 (no
+            limit).
         user_config: Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
             user_config is not None. Must be JSON-serializable.
@@ -175,13 +169,6 @@ class DeploymentConfig(BaseModel):
     max_queued_requests: int = Field(
         default=-1,
         update_type=DeploymentOptionUpdateType.LightWeight,
-    )
-    # NeedsActorReconfigure (not LightWeight): the direct-ingress path reads
-    # this from the replica actor's local deployment config, so runtime
-    # updates must trigger reconfigure() to reach it.
-    backpressure_config: BackpressureConfig = Field(
-        default_factory=BackpressureConfig,
-        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
     )
     user_config: Any = Field(
         default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
@@ -346,13 +333,6 @@ class DeploymentConfig(BaseModel):
 
     def to_proto(self):
         data = self.model_dump()
-        if data.get("backpressure_config"):
-            if data["backpressure_config"].get("retry_after_s") is None:
-                # Leave the `optional` proto field unset rather than passing None.
-                data["backpressure_config"].pop("retry_after_s", None)
-            data["backpressure_config"] = BackpressureConfigProto(
-                **data["backpressure_config"]
-            )
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])

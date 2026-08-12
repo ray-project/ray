@@ -1,6 +1,3 @@
-.. meta::
-   :description: Configure the Ray autoscaler with the cluster launcher: config parameters, upscaling and downscaling speed, and programmatic scaling.
-
 .. _vms-autoscaling:
 
 Configuring Autoscaling

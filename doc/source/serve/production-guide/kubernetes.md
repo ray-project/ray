@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Deploy Ray Serve on Kubernetes with the KubeRay operator and a RayService resource, covering queries, status, and config updates."
----
-
 (serve-in-production-kubernetes)=
 
 # Deploy on Kubernetes

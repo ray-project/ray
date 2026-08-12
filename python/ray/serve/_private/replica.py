@@ -20,21 +20,14 @@ from importlib import import_module
 from typing import (
     Any,
     AsyncGenerator,
-    Awaitable,
     Callable,
-    DefaultDict,
-    Deque,
     Dict,
-    FrozenSet,
     Generator,
-    Hashable,
     List,
-    NoReturn,
     Optional,
     Set,
     Tuple,
     Union,
-    cast,
 )
 
 import grpc
@@ -63,7 +56,6 @@ from ray.serve._private.common import (
     RequestProtocol,
     ServeComponentType,
     StreamingHTTPRequest,
-    TimeSeries,
     gRPCRequest,
     gRPCStreamingRequest,
 )
@@ -135,7 +127,6 @@ from ray.serve._private.http_util import (
     parse_disconnect_disabled_header,
     parse_request_timeout_header,
     parse_session_id_header,
-    retry_after_headers,
     start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
@@ -157,7 +148,6 @@ from ray.serve._private.rolling_window import (
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
-    RoutePattern,
     extract_route_patterns,
     get_asgi_route_name,
 )
@@ -327,10 +317,10 @@ ReplicaMetadata = Tuple[
     Optional[float],
     Optional[int],
     Optional[str],
-    Optional[int],  # http_port
-    Optional[int],  # grpc_port
+    int,
+    int,
     ReplicaRank,  # rank
-    Optional[List[RoutePattern]],  # route_patterns
+    Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
     bool,  # has_user_routing_stats_method
     Optional[GangContext],  # gang_context
@@ -347,8 +337,7 @@ def _load_deployment_def_from_import_path(import_path: str) -> Callable:
     if isinstance(deployment_def, RemoteFunction):
         deployment_def = deployment_def._function
     elif isinstance(deployment_def, ActorClass):
-        # `__ray_metadata__` is set dynamically on actor classes.
-        deployment_def = deployment_def.__ray_metadata__.modified_class  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        deployment_def = deployment_def.__ray_metadata__.modified_class
     elif isinstance(deployment_def, Deployment):
         logger.warning(
             f'The import path "{import_path}" contains a '
@@ -398,9 +387,7 @@ class ReplicaMetricsManager:
         self._custom_metrics_enabled = False
         # On first call to _fetch_custom_autoscaling_metrics. Failing validation disables _custom_metrics_enabled
         self._checked_custom_metrics = False
-        self._record_autoscaling_stats_fn: Optional[
-            Callable[[], Optional[concurrent.futures.Future]]
-        ] = None
+        self._record_autoscaling_stats_fn = None
 
         # Tracks in-flight metrics push to controller. Skip if new one is sent.
         self._pending_metrics_push_ref: Optional[ObjectRef] = None
@@ -428,21 +415,17 @@ class ReplicaMetricsManager:
             tag_keys=("route",),
         )
         if self._cached_metrics_enabled:
-            self._cached_request_counter: DefaultDict[str, int] = defaultdict(int)
+            self._cached_request_counter = defaultdict(int)
 
         self._error_counter = metrics.Counter(
             "serve_deployment_error_counter",
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            # `tag_keys` is annotated as `Tuple[str]` upstream but accepts any
-            # tuple of strings at runtime.
-            tag_keys=("route", "exception_type"),  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+            tag_keys=("route", "exception_type"),
         )
         if self._cached_metrics_enabled:
-            self._cached_error_counter: DefaultDict[Tuple[str, str], int] = defaultdict(
-                int
-            )
+            self._cached_error_counter = defaultdict(int)
 
         # log REQUEST_LATENCY_BUCKET_MS
         logger.debug(f"REQUEST_LATENCY_BUCKETS_MS: {REQUEST_LATENCY_BUCKETS_MS}")
@@ -453,13 +436,11 @@ class ReplicaMetricsManager:
             tag_keys=("route",),
         )
         if self._cached_metrics_enabled:
-            self._cached_latencies: DefaultDict[str, Deque[float]] = defaultdict(deque)
+            self._cached_latencies = defaultdict(deque)
             self._event_loop.create_task(self._report_cached_metrics_forever())
 
         # Track maximum processing latency over a rolling window.
-        self._max_processing_latency_trackers: DefaultDict[
-            str, RollingWindowMax
-        ] = defaultdict(
+        self._max_processing_latency_trackers = defaultdict(
             lambda: RollingWindowMax(
                 window_duration_s=RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S,
                 num_buckets=RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS,
@@ -536,19 +517,18 @@ class ReplicaMetricsManager:
 
             if self._cached_metrics_enabled:
                 # Mapping from protocol -> {request_tags -> value}.
-                self._cached_ingress_request_counter: DefaultDict[
-                    RequestProtocol, DefaultDict[FrozenSet[Tuple[str, str]], int]
-                ] = defaultdict(lambda: defaultdict(int))
-                self._cached_ingress_request_error_counter: DefaultDict[
-                    RequestProtocol, DefaultDict[FrozenSet[Tuple[str, str]], int]
-                ] = defaultdict(lambda: defaultdict(int))
-                self._cached_deployment_request_error_counter: DefaultDict[
-                    RequestProtocol, DefaultDict[FrozenSet[Tuple[str, str]], int]
-                ] = defaultdict(lambda: defaultdict(int))
-                self._cached_ingress_processing_latencies: DefaultDict[
-                    RequestProtocol,
-                    DefaultDict[FrozenSet[Tuple[str, str]], Deque[float]],
-                ] = defaultdict(lambda: defaultdict(deque))
+                self._cached_ingress_request_counter = defaultdict(
+                    lambda: defaultdict(int)
+                )
+                self._cached_ingress_request_error_counter = defaultdict(
+                    lambda: defaultdict(int)
+                )
+                self._cached_deployment_request_error_counter = defaultdict(
+                    lambda: defaultdict(int)
+                )
+                self._cached_ingress_processing_latencies = defaultdict(
+                    lambda: defaultdict(deque)
+                )
 
     @property
     def _is_direct_ingress(self) -> bool:
@@ -669,27 +649,23 @@ class ReplicaMetricsManager:
         await self._metrics_pusher.graceful_shutdown()
 
     def start_metrics_pusher(self):
-        # Invariant: only called when an autoscaling config is set (checked at
-        # every call site), so narrow the Optional for the type checkers.
-        assert self._autoscaling_config is not None
-        autoscaling_config = self._autoscaling_config
         self._metrics_pusher.start()
 
         # Push autoscaling metrics to the controller periodically.
         self._metrics_pusher.register_or_update_task(
             self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
             self._push_autoscaling_metrics,
-            autoscaling_config.metrics_interval_s,
+            self._autoscaling_config.metrics_interval_s,
         )
         # Collect autoscaling metrics locally periodically.
         record_interval_s = (
-            autoscaling_config.look_back_period_s
+            self._autoscaling_config.look_back_period_s
             * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR
         )
         self._metrics_pusher.register_or_update_task(
             self.RECORD_METRICS_TASK_NAME,
             self._add_autoscaling_metrics_point_async,
-            min(record_interval_s, autoscaling_config.metrics_interval_s),
+            min(record_interval_s, self._autoscaling_config.metrics_interval_s),
         )
 
     def should_collect_ongoing_requests(self) -> bool:
@@ -955,16 +931,12 @@ class ReplicaMetricsManager:
                 deployment_name=deployment_name,
             )
 
-    def _push_autoscaling_metrics(self) -> None:
-        # Invariant: this task is only registered (`start_metrics_pusher`) when an
-        # autoscaling config is set.
-        assert self._autoscaling_config is not None
+    def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
 
         new_aggregated_metrics = {}
-        # The store keys are `Hashable`; this replica only ever records `str` keys.
-        new_metrics = cast(Dict[str, TimeSeries], {**self._metrics_store.data})
+        new_metrics = {**self._metrics_store.data}
 
         if self.should_collect_ongoing_requests():
             # Keep the legacy window_avg ongoing requests in the merged metrics dict
@@ -984,8 +956,7 @@ class ReplicaMetricsManager:
                 if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
                     return  # Previous push still in flight, skip and try again later
             self._pending_metrics_push_ref = (
-                # Actor methods are resolved dynamically on the actor handle.
-                self._controller_handle.record_autoscaling_metrics_from_replica.remote(  # type: ignore[attr-defined]
+                self._controller_handle.record_autoscaling_metrics_from_replica.remote(
                     compress_metric_report(replica_metric_report)
                 )
             )
@@ -993,16 +964,10 @@ class ReplicaMetricsManager:
     async def _fetch_custom_autoscaling_metrics(
         self,
     ) -> Optional[Dict[str, Union[int, float]]]:
-        # Only reached with `_custom_metrics_enabled`, which guarantees the fn is set.
-        # cast (not assert) also refines its return to an awaitable, which the
-        # declared attribute type does not capture.
-        record_autoscaling_stats_fn = cast(
-            Callable[[], Awaitable[Any]], self._record_autoscaling_stats_fn
-        )
         try:
             start_time = time.time()
             res = await asyncio.wait_for(
-                record_autoscaling_stats_fn(),
+                self._record_autoscaling_stats_fn(),
                 timeout=RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
             )
             latency_ms = (time.time() - start_time) * 1000
@@ -1047,7 +1012,7 @@ class ReplicaMetricsManager:
         return None
 
     async def _add_autoscaling_metrics_point_async(self) -> None:
-        metrics_dict: Dict[str, float] = {}
+        metrics_dict = {}
         if self.should_collect_ongoing_requests():
             metrics_dict = {RUNNING_REQUESTS_KEY: self._num_ongoing_requests}
 
@@ -1058,9 +1023,7 @@ class ReplicaMetricsManager:
                 metrics_dict.update(custom_metrics)
 
         self._metrics_store.add_metrics_point(
-            # cast: the store accepts `Hashable` keys and `Dict` is invariant in
-            # its key type, so the `str`-keyed dict is not directly assignable.
-            cast(Dict[Hashable, float], metrics_dict),
+            metrics_dict,
             time.time(),
         )
 
@@ -1098,9 +1061,7 @@ class Replica:
         self._configure_logger_and_profilers(self._deployment_config.logging_config)
         self._event_loop = get_or_create_event_loop()
 
-        # This always runs inside a replica actor, so the actor ID is set.
         actor_id = ray.get_runtime_context().get_actor_id()
-        assert actor_id is not None
         self._user_callable_wrapper = UserCallableWrapper(
             deployment_def,
             init_args,
@@ -1185,23 +1146,23 @@ class Replica:
         # Silence spammy false positive errors from gRPC Python
         self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
 
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
+
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
-
-        tracing_config = ray.get(
-            self._controller_handle.get_tracing_config.remote()  # type: ignore[attr-defined]
-        )
-        is_tracing_setup_successful = setup_tracing(
-            component_type=ServeComponentType.REPLICA,
-            component_name=self._component_name,
-            component_id=self._component_id,
-            # ray.get of the ActorHandle result is mistyped as list; it is a
-            # TracingConfig | None at runtime.
-            tracing_config=tracing_config,  # type: ignore[arg-type]
-        )
-        if is_tracing_setup_successful:
-            logger.info("Successfully set up tracing for replica")
 
         # get node ID
         self._node_id = ray.get_runtime_context().get_node_id()
@@ -1317,7 +1278,7 @@ class Replica:
 
         # Use _PyObjScanner to find all DeploymentHandle objects in:
         # The init_args and init_kwargs (handles might be passed as init args)
-        scanner: _PyObjScanner = _PyObjScanner(source_type=DeploymentHandle)
+        scanner = _PyObjScanner(source_type=DeploymentHandle)
         try:
             handles = scanner.find_nodes((init_args, init_kwargs))
 
@@ -1330,10 +1291,7 @@ class Replica:
         return list(seen_deployment_ids)
 
     def _set_internal_replica_context(
-        self,
-        *,
-        servable_object: Optional[Callable] = None,
-        rank: Optional[ReplicaRank] = None,
+        self, *, servable_object: Callable = None, rank: ReplicaRank = None
     ):
         # Calculate world_size from deployment config instead of storing it
         world_size = self._deployment_config.num_replicas
@@ -1343,15 +1301,13 @@ class Replica:
             self._dynamically_created_handles.add(deployment_id)
 
         code_version = self._version.code_version
-        # The context setter's param annotations are stale (non-Optional, wrong
-        # callback arity); these values are correct at runtime, hence the ignores.
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
-            servable_object=servable_object,  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+            servable_object=servable_object,
             _deployment_config=self._deployment_config,
-            rank=rank,  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
-            world_size=world_size,  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
-            handle_registration_callback=register_handle_callback,  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+            rank=rank,
+            world_size=world_size,
+            handle_registration_callback=register_handle_callback,
             gang_context=self._gang_context,
             code_version=code_version,
         )
@@ -1434,7 +1390,7 @@ class Replica:
         self, request_metadata: RequestMetadata
     ) -> Generator[StatusCodeCallback, None, None]:
         start_time = time.time()
-        user_exception: Optional[BaseException] = None
+        user_exception = None
 
         status_code = None
 
@@ -1518,10 +1474,7 @@ class Replica:
                     service=self._deployment_id.name,
                 )
             if user_exception is not None:
-                # `user_exception` may be an `asyncio.CancelledError`
-                # (a BaseException); `set_span_exception` annotates `exc:
-                # Exception` too narrowly for that.
-                set_span_exception(user_exception, escaped=False)  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+                set_span_exception(user_exception, escaped=False)
 
         # Record ingress metrics for direct ingress requests
         if request_metadata.is_direct_ingress and status_code is not None:
@@ -1550,9 +1503,9 @@ class Replica:
     def _unpack_proxy_args(
         self,
         request_metadata: RequestMetadata,
-        request_args: Tuple[Any, ...],
+        request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
-    ) -> Tuple[Tuple[Any, ...], Dict[str, Any], Any]:
+    ) -> Tuple[Tuple[Any], Dict[str, Any], Any]:
         # Extract _ray_trace_ctx from kwargs at the entry point.
         #
         # Context: When tracing is enabled, Ray's tracing decorators inject
@@ -1599,12 +1552,12 @@ class Replica:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
                 )
-                grpc_request: gRPCRequest = request_args[0]
+                request: gRPCRequest = request_args[0]
 
                 method_info = self._user_callable_wrapper.get_user_method_info(
                     request_metadata.call_method
                 )
-                request_args = (grpc_request.user_request_proto,)
+                request_args = (request.user_request_proto,)
                 request_kwargs = (
                     {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
                     if method_info.takes_grpc_context_kwarg
@@ -1617,7 +1570,7 @@ class Replica:
         self,
         request_metadata: RequestMetadata,
         streaming_request: gRPCStreamingRequest,
-    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
         """Set up request args for gRPC client/bidirectional streaming.
 
         Creates a gRPCInputStream that wraps the callback to the proxy,
@@ -1671,8 +1624,7 @@ class Replica:
 
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
-    ) -> Any:
-        # Returns the arbitrary user method result, hence Any.
+    ) -> Tuple[bytes, Any]:
         request_args, request_kwargs, ray_trace_ctx = self._unpack_proxy_args(
             request_metadata, request_args, request_kwargs
         )
@@ -1740,7 +1692,7 @@ class Replica:
 
     def _raise_user_exception(
         self, e: BaseException, request_metadata: RequestMetadata
-    ) -> NoReturn:
+    ) -> None:
         wrapped_exception = self._maybe_wrap_grpc_exception(e, request_metadata)
         if wrapped_exception is e:
             raise e
@@ -1748,7 +1700,7 @@ class Replica:
 
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
-    ) -> AsyncGenerator[Any, None]:
+    ):
         # Reject new requests once quiescing so the router retries them on
         # another replica.
         if self._is_replica_quiescing(request_metadata):
@@ -1884,10 +1836,7 @@ class Replica:
                     # this is never polled and is treated as immutable.
                     if self._user_callable_wrapper.has_user_replica_metadata_method:
                         self._replica_metadata = _validate_replica_metadata(
-                            # Never None: guarded by
-                            # `has_user_replica_metadata_method` above.
-                            # pyrefly: ignore[not-async]
-                            await self._user_callable_wrapper.call_user_record_replica_metadata()  # type: ignore[misc]
+                            await self._user_callable_wrapper.call_user_record_replica_metadata()
                         )
                     if self._user_callable_asgi_app:
                         self._docs_path = (
@@ -1983,12 +1932,7 @@ class Replica:
                 rank=rank,
             )
 
-            # NOTE: `DeploymentVersion.route_prefix` is Optional and
-            # `from_deployment_version` overwrites it with this method's
-            # `route_prefix` argument even when that argument is None, while
-            # `_route_prefix` is typed and used as `str` elsewhere. Preserving
-            # runtime behavior; see the type-checking report.
-            self._route_prefix = self._version.route_prefix  # type: ignore[assignment]
+            self._route_prefix = self._version.route_prefix
 
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
@@ -2158,9 +2102,6 @@ class Replica:
             try:
                 # On timeout, `wait_for` cancels the server task (abrupt close).
                 await asyncio.wait_for(
-                    # Always set together with `_direct_ingress_http_server`
-                    # (checked above).
-                    # pyrefly: ignore[bad-argument-type]
                     self._direct_ingress_http_server_task,
                     timeout=remaining_grace_s(),
                 )
@@ -2233,10 +2174,6 @@ class Replica:
     @property
     def max_queued_requests(self) -> int:
         return self._deployment_config.max_queued_requests
-
-    @property
-    def backpressure_config(self):
-        return self._deployment_config.backpressure_config
 
     async def _maybe_start_direct_ingress_servers(self):
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
@@ -2417,10 +2354,8 @@ class Replica:
         """
 
         with self._tracing_context(request_metadata):
-            # `_serve_request_context` is declared without a type parameter and
-            # with `default=None`, so checkers infer `ContextVar[None]`.
             ray.serve.context._serve_request_context.set(
-                ray.serve.context._RequestContext(  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+                ray.serve.context._RequestContext(
                     route=request_metadata.route,
                     request_id=request_metadata.request_id,
                     _internal_request_id=request_metadata.internal_request_id,
@@ -2688,11 +2623,6 @@ class Replica:
 
             result_gen = call_unary()
 
-        # Invariant: gRPC direct-ingress requests are only served after
-        # `_maybe_start_direct_ingress_servers` populated `_grpc_options`.
-        assert self._grpc_options is not None
-        grpc_options = self._grpc_options
-
         with (
             self._wrap_request(request_metadata) as status_code_callback,
             self._track_queued_request() as release_queue_slot,
@@ -2704,7 +2634,7 @@ class Replica:
                 # Use the generic disconnect/timeout detecting wrapper.
                 replica_response_generator = ReplicaResponseGenerator(
                     result_gen,
-                    timeout_s=grpc_options.request_timeout_s,
+                    timeout_s=self._grpc_options.request_timeout_s,
                 )
                 status = ResponseStatus(code=grpc.StatusCode.OK)
                 try:
@@ -2718,10 +2648,7 @@ class Replica:
                     e = self._maybe_wrap_grpc_exception(e, request_metadata)
                     status = get_grpc_response_status(
                         e,
-                        # `request_timeout_s` may be None (no timeout configured);
-                        # the callee only formats it into an error message but
-                        # annotates it as `float`.
-                        grpc_options.request_timeout_s,  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+                        self._grpc_options.request_timeout_s,
                         request_metadata.request_id,
                     )
                     raise e
@@ -2733,12 +2660,7 @@ class Replica:
                     await result_gen.aclose()
                     # Record the status code for both success and error paths so
                     # ingress metrics are emitted for successful gRPC requests.
-                    code_name = (
-                        status.code.name
-                        if isinstance(status.code, grpc.StatusCode)
-                        else status.code
-                    )
-                    status_code_callback(code_name)
+                    status_code_callback(status.code.name)
                     set_grpc_code_and_details(context, status)
 
     async def _maybe_handle_builtin_grpc_service(
@@ -2979,11 +2901,9 @@ class Replica:
         If the header is missing or invalid, returns the default request timeout
         from HttpOptions. If the header is non-positive, timeout is disabled.
         """
-        # Invariant: only called while serving direct-ingress HTTP requests, after
-        # `_maybe_start_direct_ingress_servers` populated `_http_options`.
-        assert self._http_options is not None
-        http_options = self._http_options
-        return parse_request_timeout_header(headers, http_options.request_timeout_s)
+        return parse_request_timeout_header(
+            headers, self._http_options.request_timeout_s
+        )
 
     async def _direct_ingress_asgi(
         self,
@@ -3010,8 +2930,6 @@ class Replica:
 
         # Handle health check or routes request.
         if route in ["/-/healthz", "/-/routes"]:
-            # `message` holds the health-check string, or the routes dict below.
-            message: Union[str, Dict[str, str]]
             healthy, message = await self._dataplane_health_check()
             status_code = 200 if healthy else 503
             if route == "/-/routes" and healthy:
@@ -3100,10 +3018,7 @@ class Replica:
             # because between incrementing and decrementing the queued requests, we yield to the event loop.
             for msg in convert_object_to_asgi_messages(
                 "Request dropped due to backpressure",
-                status_code=self.backpressure_config.status_code,
-                extra_headers=retry_after_headers(
-                    self.backpressure_config.retry_after_s
-                ),
+                status_code=503,
             ):
                 await send(msg)
             return
@@ -3217,9 +3132,6 @@ class Replica:
                     receive_task.cancel()
                 status_code_callback("408")
                 if not response_started:
-                    # `_http_options` is always set while the direct ingress
-                    # server is running.
-                    assert self._http_options is not None
                     msg = (
                         f"Request {request_id} timed out after "
                         f"{self._http_options.request_timeout_s}s."
@@ -3259,9 +3171,7 @@ class ReplicaActor:
     `UserCallableWrapper` class.
     """
 
-    # Ray actors support `async def __init__` even though type checkers require
-    # `__init__` to return None.
-    async def __init__(  # type: ignore[misc]
+    async def __init__(
         self,
         replica_id: ReplicaID,
         serialized_deployment_def: bytes,
@@ -3294,8 +3204,7 @@ class ReplicaActor:
     def push_proxy_handle(self, handle: ActorHandle):
         # NOTE(edoakes): it's important to call a method on the proxy handle to
         # initialize its state in the C++ core worker.
-        # (Actor methods are resolved dynamically on the actor handle.)
-        handle.pong.remote()  # type: ignore[attr-defined]
+        handle.pong.remote()
 
     def get_num_ongoing_requests(self) -> int:
         """Fetch the number of ongoing requests at this replica (queue length).
@@ -3315,7 +3224,7 @@ class ReplicaActor:
         """Release capacity reserved by choose_replica()."""
         return self._replica_impl.release_slot(slot_token)
 
-    async def is_allocated(self) -> Tuple[Any, ...]:
+    async def is_allocated(self) -> str:
         """poke the replica to check whether it's alive.
 
         When calling this method on an ActorHandle, it will complete as
@@ -3362,9 +3271,9 @@ class ReplicaActor:
 
     async def initialize_and_get_metadata(
         self,
-        deployment_config: Optional[DeploymentConfig] = None,
-        rank: Optional[ReplicaRank] = None,
-        gang_context: Optional[GangContext] = None,
+        deployment_config: DeploymentConfig = None,
+        rank: ReplicaRank = None,
+        gang_context: GangContext = None,
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -3408,10 +3317,8 @@ class ReplicaActor:
         pickled_request_metadata: bytes,
         *request_args,
         **request_kwargs,
-    ) -> Any:
+    ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
-        # Returns the user result, or (grpc_context, serialized_bytes) for gRPC
-        # requests -- arbitrary either way, hence Any.
         request_metadata, request_args = self._preprocess_request_args(
             pickled_request_metadata, request_args
         )
@@ -3546,9 +3453,7 @@ class UserCallableWrapper:
                 f"{type(deployment_def)}."
             )
 
-        # The user-provided function or class; `Any` because classes are accessed
-        # via `__new__`/`__init__` below, which `Callable` does not cover.
-        self._deployment_def: Any = deployment_def
+        self._deployment_def = deployment_def
         self._init_args = init_args
         self._init_kwargs = init_kwargs
         self._is_function = inspect.isfunction(deployment_def)
@@ -3561,9 +3466,8 @@ class UserCallableWrapper:
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
         # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
-        # Will be populated in `initialize_callable` with the user's function or
-        # class instance (duck-typed throughout, hence `Any`).
-        self._callable: Any = None
+        # Will be populated in `initialize_callable`.
+        self._callable = None
         self._user_health_check: Optional[Callable] = None
         self._user_loop_probe_consecutive_fail_count: int = 0
         self._user_loop_probe_task: Optional[asyncio.Task] = None
@@ -3583,7 +3487,7 @@ class UserCallableWrapper:
             # Start event loop monitoring for the user code event loop.
             # We create the monitor here but start it inside the thread function
             # so the task is created on the correct thread.
-            self._user_code_loop_monitor: Optional[EventLoopMonitor] = EventLoopMonitor(
+            self._user_code_loop_monitor = EventLoopMonitor(
                 component=EventLoopMonitor.COMPONENT_REPLICA,
                 loop_type=EventLoopMonitor.LOOP_TYPE_USER_CODE,
                 actor_id=actor_id,
@@ -3599,8 +3503,6 @@ class UserCallableWrapper:
                 asyncio.set_event_loop(self._user_code_event_loop)
                 self._configure_user_code_threadpool()
                 # Start monitoring before run_forever so the task is scheduled.
-                # The monitor is always set on this (separate-thread) branch.
-                # pyrefly: ignore[missing-attribute]
                 self._user_code_loop_monitor.start(self._user_code_event_loop)
                 self._user_code_event_loop.run_forever()
 
@@ -3700,9 +3602,7 @@ class UserCallableWrapper:
         )
         self._user_code_event_loop.set_default_executor(self._user_code_threadpool)
 
-    # This is a decorator applied to methods of this class at class-definition
-    # time, so it intentionally has no `self` parameter.
-    def _run_user_code(f: Callable) -> Callable:  # type: ignore[misc]
+    def _run_user_code(f: Callable) -> Callable:
         """Decorator to run a coroutine method on the user code event loop.
 
         The method will be modified to be a sync function that returns a
@@ -3790,7 +3690,7 @@ class UserCallableWrapper:
         self,
         callable: Callable,
         *,
-        args: Optional[Tuple[Any, ...]] = None,
+        args: Optional[Tuple[Any]] = None,
         kwargs: Optional[Dict[str, Any]] = None,
         is_streaming: bool = False,
         generator_result_callback: Optional[Callable] = None,
@@ -3836,10 +3736,6 @@ class UserCallableWrapper:
                 result = callable(*args, **kwargs)
                 if is_generator:
                     for r in result:
-                        # `generator_result_callback` is always provided for
-                        # streaming calls, and generators are rejected above
-                        # unless `is_streaming=True`.
-                        # pyrefly: ignore[not-callable]
                         generator_result_callback(r)
 
                     result = None
@@ -3875,6 +3771,8 @@ class UserCallableWrapper:
         return self._callable
 
     async def _initialize_asgi_callable(self) -> None:
+        self._callable: ASGIAppReplicaWrapper
+
         build_asgi_app = getattr(self._callable, SERVE_BUILD_ASGI_APP_METHOD, None)
         is_late_bound = not hasattr(self._callable, "_asgi_app")
         if is_late_bound and build_asgi_app is None:
@@ -3893,7 +3791,7 @@ class UserCallableWrapper:
                 )
             self._callable._set_asgi_app(app)
 
-        app: ASGIApp = self._callable.app  # type: ignore[no-redef]
+        app: ASGIApp = self._callable.app
 
         if hasattr(app, "add_exception_handler"):
             # The reason we need to do this is because BackPressureError is a serve
@@ -3983,7 +3881,7 @@ class UserCallableWrapper:
                 f"`initialize_callable` must be called before `{method_name}`."
             )
 
-    def call_user_health_check(self) -> Optional[Awaitable[Any]]:
+    def call_user_health_check(self) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_user_health_check")
 
         # If the user provided a health check, call it on the user code thread. If user
@@ -4011,7 +3909,7 @@ class UserCallableWrapper:
         """Whether the user has defined a record_routing_stats method."""
         return self._user_record_routing_stats is not None
 
-    def call_user_record_routing_stats(self) -> Optional[Awaitable[Any]]:
+    def call_user_record_routing_stats(self) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_user_record_routing_stats")
 
         if self._user_record_routing_stats is not None:
@@ -4026,7 +3924,7 @@ class UserCallableWrapper:
 
     def call_user_record_replica_metadata(
         self,
-    ) -> Optional[Awaitable[Any]]:
+    ) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_user_record_replica_metadata")
 
         if self._user_record_replica_metadata is not None:
@@ -4042,29 +3940,22 @@ class UserCallableWrapper:
 
         return None
 
-    # NOTE: the `_call_user_*` methods below are only invoked when the
-    # corresponding user-defined hook exists (checked by their `call_*`
-    # counterparts), so the Optionals are narrowed with `assert`.
     @_run_user_code
     async def _call_user_health_check(self):
-        assert self._user_health_check is not None
         await self._call_func_or_gen(self._user_health_check)
 
     @_run_user_code
     async def _call_user_record_routing_stats(self) -> Dict[str, Any]:
-        assert self._user_record_routing_stats is not None
         result, _ = await self._call_func_or_gen(self._user_record_routing_stats)
         return result
 
     @_run_user_code
     async def _call_user_record_replica_metadata(self) -> Dict[str, Any]:
-        assert self._user_record_replica_metadata is not None
         result, _ = await self._call_func_or_gen(self._user_record_replica_metadata)
         return result
 
     @_run_user_code
     async def _call_user_autoscaling_stats(self) -> Dict[str, Union[int, float]]:
-        assert self._user_autoscaling_stats is not None
         result, _ = await self._call_func_or_gen(self._user_autoscaling_stats)
         return result
 
@@ -4091,9 +3982,11 @@ class UserCallableWrapper:
                 )
             elif not hasattr(self._callable, RECONFIGURE_METHOD):
                 raise RayServeException(
-                    f"user_config or rank specified but deployment "
-                    f"{self._deployment_id} missing "
-                    f"{RECONFIGURE_METHOD} method"
+                    "user_config or rank specified but deployment "
+                    + self._deployment_id
+                    + " missing "
+                    + RECONFIGURE_METHOD
+                    + " method"
                 )
             kwargs = {}
             if user_subscribed_to_rank:
@@ -4113,8 +4006,8 @@ class UserCallableWrapper:
         is_streaming: bool,
         is_http_request: bool,
         sync_gen_consumed: bool,
-        generator_result_callback: Callable,
-        asgi_args: ASGIArgs,
+        generator_result_callback: Optional[Callable],
+        asgi_args: Optional[ASGIArgs],
     ) -> Any:
         """Postprocess the result of a user method.
 
@@ -4237,7 +4130,7 @@ class UserCallableWrapper:
             )
 
         if user_method_info.is_asgi_app:
-            request_args: Tuple[Any, ...] = (scope, receive, send)
+            request_args = (scope, receive, send)
         elif not user_method_info.takes_any_args:
             # Edge case to support empty HTTP handlers: don't pass the Request
             # argument if the callable has no parameters.
@@ -4298,7 +4191,7 @@ class UserCallableWrapper:
     async def call_user_generator(
         self,
         request_metadata: RequestMetadata,
-        request_args: Tuple[Any, ...],
+        request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
     ) -> AsyncGenerator[Any, None]:
         """Calls a user method for a streaming call and yields its results.
@@ -4353,12 +4246,10 @@ class UserCallableWrapper:
                     call_future.cancel()
 
     @_run_user_code
-    # mypy requires an explicit `return None` even for an Optional return type;
-    # the enqueue branches intentionally fall off the end.
-    async def _call_user_generator(  # type: ignore[return]
+    async def _call_user_generator(
         self,
         request_metadata: RequestMetadata,
-        request_args: Tuple[Any, ...],
+        request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
         *,
         enqueue: Optional[Callable] = None,
@@ -4425,9 +4316,6 @@ class UserCallableWrapper:
             gen = callable(*request_args, **request_kwargs)
             if inspect.isgenerator(gen):
                 for result in gen:
-                    # `_call_generator_sync` is only invoked when `enqueue` is
-                    # provided (see below).
-                    # pyrefly: ignore[not-callable]
                     enqueue(result)
             else:
                 raise TypeError(
@@ -4451,7 +4339,7 @@ class UserCallableWrapper:
     async def call_user_method(
         self,
         request_metadata: RequestMetadata,
-        request_args: Tuple[Any, ...],
+        request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
     ) -> Any:
         """Call a (unary) user method.
@@ -4483,16 +4371,7 @@ class UserCallableWrapper:
         return result
 
     def handle_exception(self, exc: Exception):
-        if isinstance(exc, BackPressureError):
-            headers = retry_after_headers(exc.retry_after_s)
-            return starlette.responses.Response(
-                exc.message,
-                status_code=exc.status_code,
-                headers=(
-                    {k.decode(): v.decode() for k, v in headers} if headers else None
-                ),
-            )
-        elif isinstance(exc, self.service_unavailable_exceptions):
+        if isinstance(exc, self.service_unavailable_exceptions):
             return starlette.responses.Response(exc.message, status_code=503)
         else:
             return starlette.responses.Response(

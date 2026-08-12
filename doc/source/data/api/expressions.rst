@@ -1,6 +1,3 @@
-.. meta::
-   :description: Reference for Ray Data expressions: use col and lit to build column-based operations for filtering and transforms, with classes and namespaces.
-
 .. _expressions-api:
 
 Expressions API

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Run Python functions asynchronously as Ray tasks: request resources, pass ObjectRefs, wait for partial results, and cancel tasks.
-
 .. _ray-remote-functions:
 
 Tasks

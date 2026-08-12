@@ -1,6 +1,3 @@
-.. meta::
-   :description: Index of advanced Ray Core topics that go beyond the basic task, actor, and object APIs.
-
 Advanced topics
 ===============
 

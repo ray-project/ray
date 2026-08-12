@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Serve a MobileNet image classifier on Kubernetes with RayService, from Kind cluster setup to a live classification request."
----
-
 (kuberay-mobilenet-rayservice-example)=
 
 # Serve a MobileNet image classifier on Kubernetes

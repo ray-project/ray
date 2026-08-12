@@ -99,12 +99,6 @@ class SubprocessModule(abc.ABC):
         """
         return False
 
-    @classmethod
-    def is_enabled(cls) -> bool:
-        """Return True if the module should be loaded. Subclasses can override to gate
-        loading behind a feature flag."""
-        return True
-
     async def run(self):
         """
         Start running the module.

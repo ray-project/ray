@@ -4,7 +4,6 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
-import pyarrow
 from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
@@ -17,6 +16,12 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 
 # Minimum version support {String,List,Binary}View types
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")

@@ -70,11 +70,6 @@ def plan_list_files_op(
 
     shuffle_config = op.shuffle_config_factory()
 
-    # Some indexers (e.g. the footer-based Parquet indexer) already emit
-    # bin-packed read units from ``list_files`` -- they need the whole file
-    # stream on one task to pack globally, and there's nothing left to partition.
-    produces_partitioned_manifests = indexer.produces_partitioned_manifests
-
     transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(
             partial(
@@ -84,11 +79,6 @@ def plan_list_files_op(
                 file_extensions=file_extensions,
                 partition_filter=partition_filter,
                 preserve_order=data_context.execution_options.preserve_order,
-                # Pushed-down read constraints; metadata-aware indexers use them
-                # to prune row groups, stop early, and size projected columns.
-                predicate=op.predicate,
-                limit=op.limit,
-                projected_columns=op.projected_columns,
             ),
             # Disable block-shaping: produce manifest blocks as-is.
             disable_block_shaping=True,
@@ -107,7 +97,7 @@ def plan_list_files_op(
             )
         )
 
-    if partitioner is not None and not produces_partitioned_manifests:
+    if partitioner is not None:
         transform_fns.append(
             BlockMapTransformFn(
                 partial(partition_files, partitioner=partitioner),
@@ -122,11 +112,9 @@ def plan_list_files_op(
         _create_input_data_buffer(
             op,
             data_context,
-            # A single task is required when shuffle needs one global RNG over
-            # the full listing, or when the indexer bin-packs read units itself
-            # (it must see the whole file stream to pack globally).
-            should_parallelize=shuffle_config is None
-            and not produces_partitioned_manifests,
+            # Shuffle needs every manifest on a single task to compute one
+            # global RNG over the full listing.
+            should_parallelize=shuffle_config is None,
         ),
         data_context,
         name="ListFiles",

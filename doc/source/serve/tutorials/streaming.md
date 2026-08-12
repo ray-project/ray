@@ -1,8 +1,5 @@
 ---
 orphan: true
-myst:
-  html_meta:
-    description: "Deploy a chatbot that streams responses back to the caller, including WebSocket streaming and batched streaming output."
 ---
 (serve-streaming-tutorial)=
 

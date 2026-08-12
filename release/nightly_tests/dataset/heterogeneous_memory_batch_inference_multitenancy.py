@@ -192,62 +192,13 @@ def verify_placement() -> dict:
     }
 
 
-def run_workload(args: argparse.Namespace) -> dict:
-    """Run the solo and concurrent dataset pipelines. Returns raw timings."""
+def main(args: argparse.Namespace) -> dict:
+    """Returns the benchmark dict. Errors are recorded under "_errors" so
+    metrics can be written first; the caller raises after write_result."""
+    errors: List[str] = []
+
     solo_time = run_solo(args)
     per_tenant = run_concurrent(args)
-    return {
-        "solo_runtime_s": solo_time,
-        "per_tenant": per_tenant,
-    }
-
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Heterogeneous memory batch inference multitenancy benchmark"
-    )
-    p.add_argument("--num-rows", type=int, default=400_000)
-    p.add_argument("--gen-batch-size", type=int, default=1024)
-    p.add_argument("--cpu-batch-size", type=int, default=1024)
-    p.add_argument("--gpu-batch-size", type=int, default=256)
-    p.add_argument("--gpu-concurrency", type=int, default=8)
-    p.add_argument(
-        "--set-memory",
-        action="store_true",
-        help=(
-            "Set per-operator memory requirements and enable logical memory "
-            "accounting. Otherwise, leave memory unset (None)."
-        ),
-    )
-    return p.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
-    name = "heterogeneous-memory-batch-inference-multitenancy"
-    # Ship both benchmark.py and heterogeneous_memory_batch_inference.py to
-    # workers: when this script is run as ``__main__``, the UDF classes
-    # (FakeGPUInference, etc.) live in the imported
-    # ``heterogeneous_memory_batch_inference`` module, so cloudpickle
-    # serializes them by reference and each worker needs to import the
-    # module to deserialize.
-    ray.init(
-        runtime_env={
-            "py_modules": benchmark_py_modules() + [os.path.abspath(hmbi.__file__)],
-        }
-    )
-    benchmark = Benchmark()
-    holder = {}
-
-    def benchmark_fn():
-        holder["timings"] = run_workload(args)
-
-    benchmark.run_fn(name, benchmark_fn)
-
-    # Post-run analysis stays outside the timed section.
-    errors: List[str] = []
-    solo_time = holder["timings"]["solo_runtime_s"]
-    per_tenant = holder["timings"]["per_tenant"]
     multi_time = max(per_tenant.values()) if per_tenant else float("nan")
     overhead_ratio = multi_time / solo_time if solo_time > 0 else float("inf")
     per_tenant_str = ", ".join(
@@ -289,12 +240,50 @@ if __name__ == "__main__":
     result.update(placement_metrics)
     if errors:
         result["_errors"] = errors
-    benchmark.result[name].update(result)
+    return result
 
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Heterogeneous memory batch inference multitenancy benchmark"
+    )
+    p.add_argument("--num-rows", type=int, default=400_000)
+    p.add_argument("--gen-batch-size", type=int, default=1024)
+    p.add_argument("--cpu-batch-size", type=int, default=1024)
+    p.add_argument("--gpu-batch-size", type=int, default=256)
+    p.add_argument("--gpu-concurrency", type=int, default=8)
+    p.add_argument(
+        "--set-memory",
+        action="store_true",
+        help=(
+            "Set per-operator memory requirements and enable logical memory "
+            "accounting. Otherwise, leave memory unset (None)."
+        ),
+    )
+    return p.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    name = "heterogeneous-memory-batch-inference-multitenancy"
+    # Ship both benchmark.py and heterogeneous_memory_batch_inference.py to
+    # workers: when this script is run as ``__main__``, the UDF classes
+    # (FakeGPUInference, etc.) live in the imported
+    # ``heterogeneous_memory_batch_inference`` module, so cloudpickle
+    # serializes them by reference and each worker needs to import the
+    # module to deserialize.
+    ray.init(
+        runtime_env={
+            "py_modules": benchmark_py_modules() + [os.path.abspath(hmbi.__file__)],
+        }
+    )
+    benchmark = Benchmark()
+    benchmark.run_fn(name, main, args)
     benchmark.write_result()
 
     # Raise after metrics have been written so the dashboard still records
     # the failed run (matches the sort_benchmark.py "print then raise"
     # convention).
+    errors = benchmark.result.get(name, {}).get("_errors", [])
     if errors:
         raise AssertionError("; ".join(errors))

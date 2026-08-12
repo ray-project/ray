@@ -1,6 +1,3 @@
-.. meta::
-   :description: Communicate between actors outside method calls: wrapping library processes, Ray Collective, and running an HTTP server in an actor.
-
 Out-of-band Communication
 =========================
 

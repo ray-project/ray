@@ -1,6 +1,3 @@
-.. meta::
-   :description: Scale a laptop Python application to a cloud VM cluster with the Ray cluster launcher, then tear the cluster down.
-
 .. _vm-cluster-quick-start:
 
 Getting Started

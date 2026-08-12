@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Observe KubeRay and Ray on Kubernetes: operator logs, custom resource status and events, the Ray Dashboard, and the State CLI."
----
-
 (kuberay-observability)=
 
 # KubeRay Observability

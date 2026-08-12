@@ -1,6 +1,3 @@
-.. meta::
-   :description: Task fault tolerance in Ray: catch application-level errors, configure retries for failed tasks, and cancel misbehaving tasks.
-
 .. _fault-tolerance-tasks:
 .. _task-fault-tolerance:
 

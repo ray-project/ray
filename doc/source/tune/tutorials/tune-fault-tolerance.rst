@@ -1,6 +1,3 @@
-.. meta::
-   :description: Enable experiment- and trial-level fault tolerance in Tune: restore a run, configure auto-resume, and recover from node and trial failures.
-
 .. _tune-fault-tolerance-ref:
 
 How to Enable Fault Tolerance in Ray Tune

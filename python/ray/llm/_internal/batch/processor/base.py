@@ -1,4 +1,6 @@
 import logging
+import threading
+import weakref
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
@@ -28,6 +30,11 @@ class ProcessorConfig(BaseModelExtended):
         "You can tune the batch size to balance the throughput and fault-tolerance "
         "based on your use case. Defaults to 32.",
     )
+    resources_per_bundle: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="[DEPRECATED] This parameter is deprecated and will be removed in a future version. ",
+        deprecated=True,
+    )
     accelerator_type: Optional[str] = Field(
         default=None,
         description="The accelerator type used by the LLM stage in a processor. "
@@ -41,6 +48,16 @@ class ProcessorConfig(BaseModelExtended):
         "If ``concurrency`` is an ``int`` ``n``, Ray uses either a fixed pool of ``n`` "
         "workers or an autoscaling pool from ``1`` to ``n`` workers, depending on "
         "the processor and stage.",
+    )
+
+    experimental: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="[Experimental] Experimental configurations. "
+        "Supported keys:\n"
+        "`max_tasks_in_flight_per_actor`: [DEPRECATED] Prefer the top-level "
+        "`max_tasks_in_flight_per_actor` field on `OfflineProcessorConfig`. "
+        "Setting it here is still respected (and overridden by the top-level "
+        "field if both are set), but logs a deprecation warning.",
     )
 
     @field_validator("concurrency")
@@ -164,7 +181,26 @@ class OfflineProcessorConfig(ProcessorConfig):
         "If False (default), any inference error will raise an exception.",
     )
 
-    # Nested stage configuration (bool | dict | typed config).
+    # Processor stage configurations (legacy booleans, will be deprecated).
+    # TODO (jeffreywang): Remove apply_chat_template, chat_template, tokenize,
+    # detokenize in Ray 2.57.0 in favor of the *_stage fields below.
+    apply_chat_template: bool = Field(
+        default=True,
+        description="[DEPRECATED] Prefer `chat_template_stage`. Whether to apply chat template.",
+    )
+    chat_template: Optional[str] = Field(
+        default=None,
+        description="[DEPRECATED] Prefer `chat_template_stage.chat_template`. The chat template to use.",
+    )
+    tokenize: bool = Field(
+        default=True,
+        description="[DEPRECATED] Prefer `tokenize_stage`. Whether to tokenize input before engine.",
+    )
+    detokenize: bool = Field(
+        default=True,
+        description="[DEPRECATED] Prefer `detokenize_stage`. Whether to detokenize the output.",
+    )
+    # New nested stage configuration (bool | dict | typed config).
     chat_template_stage: Any = Field(
         default=True,
         description="Chat templating stage config (bool | dict | ChatTemplateStageConfig).",
@@ -181,6 +217,75 @@ class OfflineProcessorConfig(ProcessorConfig):
         default=False,
         description="Prepare multimodal stage config (bool | dict | PrepareMultimodalStageConfig).",
     )
+
+    @model_validator(mode="before")
+    def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        # Only set stage fields if not explicitly provided.
+        # Emit deprecation warnings when legacy boolean flags are used.
+
+        # Chat template stage: special case (handles both apply_chat_template and chat_template fields)
+        if "chat_template_stage" not in values:
+            if "apply_chat_template" in values or "chat_template" in values:
+                logger.warning(
+                    "The `apply_chat_template` and `chat_template` fields are deprecated. "
+                    "Use `chat_template_stage` instead. For example: "
+                    "`chat_template_stage=ChatTemplateStageConfig(enabled=True, chat_template='...')` "
+                    "or `chat_template_stage={'enabled': True, 'chat_template': '...'}`. "
+                    "This will raise an error in a future version."
+                )
+                enabled_value = values.get("apply_chat_template")
+                enabled = enabled_value if enabled_value is not None else True
+                stage: Dict[str, Any] = {"enabled": enabled}
+                if values.get("chat_template") is not None:
+                    stage["chat_template"] = values["chat_template"]
+                values["chat_template_stage"] = stage
+
+        # Other stages: simple boolean-to-stage mapping
+        stage_mappings = [
+            ("tokenize_stage", "tokenize", True, "TokenizerStageConfig"),
+            ("detokenize_stage", "detokenize", True, "DetokenizeStageConfig"),
+        ]
+        for (
+            stage_field,
+            legacy_field,
+            default_enabled,
+            config_class_name,
+        ) in stage_mappings:
+            if stage_field not in values and legacy_field in values:
+                logger.warning(
+                    f"The `{legacy_field}` field is deprecated. "
+                    f"Use `{stage_field}` instead. For example: "
+                    f"`{stage_field}={config_class_name}(enabled=True)` "
+                    f"or `{stage_field}={{'enabled': True}}`. "
+                    "This will raise an error in a future version."
+                )
+                legacy_value = values.get(legacy_field)
+                enabled = default_enabled if legacy_value is None else legacy_value
+                values[stage_field] = {"enabled": enabled}
+
+        return values
+
+    @model_validator(mode="before")
+    def _migrate_experimental_max_tasks_in_flight_per_actor(
+        cls, values: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Migrate deprecated `experimental[max_tasks_in_flight_per_actor]` to
+        the top-level field; top-level wins if both are set."""
+        experimental = values.get("experimental") or {}
+        if "max_tasks_in_flight_per_actor" in experimental:
+            logger.warning(
+                "Setting `max_tasks_in_flight_per_actor` via `experimental` is "
+                "deprecated; use the top-level `max_tasks_in_flight_per_actor` "
+                "field on `OfflineProcessorConfig` instead. The value in "
+                "`experimental` is still respected for now (and overridden by "
+                "the top-level field if both are set), but will be removed in "
+                "a future version."
+            )
+            if values.get("max_tasks_in_flight_per_actor") is None:
+                values["max_tasks_in_flight_per_actor"] = experimental[
+                    "max_tasks_in_flight_per_actor"
+                ]
+        return values
 
     @model_validator(mode="after")
     def _warn_if_max_tasks_in_flight_underutilizes_actor(self):
@@ -199,11 +304,14 @@ class OfflineProcessorConfig(ProcessorConfig):
         return self
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="beta")
 class Processor:
     """A processor is composed of a preprocess stage, followed by one or more
     processing stages, and finally a postprocess stage. We use processor as a
     paradigm for processing data using LLMs.
+
+    When ``close_fn`` is set, call ``close()`` or use as a context manager after
+    derived Datasets have been fully consumed so reserved resources are released.
 
     Args:
         config: The processor config.
@@ -217,6 +325,7 @@ class Processor:
             preprocess stage (e.g., num_cpus, memory, concurrency).
         postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
             postprocess stage (e.g., num_cpus, memory, concurrency).
+        close_fn: Optional callback invoked by ``close()`` to release reserved resources.
     """
 
     # The internal used data column name ("__data"). Your input
@@ -232,6 +341,7 @@ class Processor:
         postprocess: Optional[UserDefinedFunction] = None,
         preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
         postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+        close_fn: Optional[Callable[[], None]] = None,
     ):
         self.config = config
         self.preprocess = None
@@ -239,6 +349,14 @@ class Processor:
         self.preprocess_map_kwargs = preprocess_map_kwargs or {}
         self.postprocess_map_kwargs = postprocess_map_kwargs or {}
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
+        self._close_fn = close_fn
+        self._closed = False
+        self._lock = threading.Lock()
+        self._finalizer = None
+        if close_fn is not None:
+            self._finalizer = weakref.finalize(
+                self, Processor._warn_unclosed, close_fn, type(self).__name__
+            )
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column
@@ -263,6 +381,50 @@ class Processor:
         for stage in stages:
             self._append_stage(stage)
 
+    @staticmethod
+    def _warn_unclosed(close_fn: Callable[[], None], cls_name: str) -> None:
+        try:
+            # Release first: logging may already be torn down at interpreter exit.
+            close_fn()
+        except Exception:
+            try:
+                logger.exception("Failed to release resources during finalization.")
+            except Exception:
+                pass
+            return
+        try:
+            logger.warning(
+                "%s was garbage-collected without close(); released reserved "
+                "resources during finalization. Call close() or use a context "
+                "manager after materializing derived Datasets.",
+                cls_name,
+            )
+        except Exception:
+            # Logging may already be torn down during interpreter shutdown.
+            pass
+
+    def close(self) -> None:
+        """Release ``close_fn`` resources and mark this processor closed.
+
+        Materialize derived Datasets before calling close(). ``_close_fn`` is
+        cleared only after a successful call so shutdown can be retried.
+        """
+        with self._lock:
+            self._closed = True
+            if self._close_fn is None:
+                return
+            self._close_fn()
+            self._close_fn = None
+            if self._finalizer is not None:
+                self._finalizer.detach()
+                self._finalizer = None
+
+    def __enter__(self) -> "Processor":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
     def __call__(self, dataset: Dataset) -> Dataset:
         """Execute the processor:
         preprocess -> stages -> postprocess.
@@ -274,6 +436,11 @@ class Processor:
         Returns:
             The output dataset.
         """
+        with self._lock:
+            if self._closed:
+                raise RuntimeError(
+                    "Processor is closed. Cannot execute new datasets on a closed processor."
+                )
         if self.preprocess is not None:
             dataset = dataset.map(self.preprocess, **self.preprocess_map_kwargs)
 

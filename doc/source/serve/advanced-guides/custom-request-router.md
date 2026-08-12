@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Write a custom Ray Serve request router, from a uniform router to a throughput-aware one, using the request routing utility mixins."
----
-
 (custom-request-router-guide)=
 # Use Custom Algorithm for Request Routing
 

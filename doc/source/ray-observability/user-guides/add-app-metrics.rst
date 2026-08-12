@@ -1,6 +1,3 @@
-.. meta::
-   :description: Define and export custom application metrics from Ray tasks and actors using the Counter, Gauge, and Histogram APIs.
-
 .. _application-level-metrics:
 
 Adding Application-Level Metrics

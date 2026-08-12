@@ -15,50 +15,6 @@
 
 ! always lint
 
-# Documentation prose (.md and .rst) and static image assets do not need the
-# code-oriented lint checks. A Markdown-only pull request cannot produce a
-# clang-format violation, a misplaced copyright header, a malformed pytest
-# invocation, or a dashboard formatting error, so it emits `always` without
-# `lint`.
-#
-# `always` is emitted for every file by the catch-all below, so the split is
-# carried entirely by `lint`: steps that must run on a prose change keep the
-# `always` tag, and the code-oriented steps in lint.rayci.yml carry `lint`
-# alone. `lint` therefore means "the diff contains a file that is not
-# documentation prose."
-#
-# Fail-safe by construction. Tags union across changed files, so a single
-# non-prose file anywhere in the diff re-emits `lint` from the catch-all and
-# the full matrix runs; a mixed pull request loses no coverage. Non-pull-request
-# builds bypass rule evaluation entirely (rayci treats master, release
-# branches, and manual builds as run-all), so post-merge lint coverage is
-# unchanged.
-#
-# This is deliberately narrower than the "doc-only" definition the docs-go
-# label uses (all of doc/ except BUILD files, enforced by
-# ci/lint/validate_docs_go_scope.sh). That label is an author-asserted escape
-# hatch; this exemption is automatic, so it stays limited to file types that
-# cannot carry code. Notably, executable assets under doc/ such as .py and
-# .ipynb are absent: `pre_commit` runs black, ruff, and mypy with
-# `--all-files`, and it is the only premerge check that lints doc/source/*.py
-# at all.
-#
-# The path set matches the prose skip rule in test.rules.txt so the two files
-# agree on what prose is. Keep them in sync when either changes. doc/.claude/
-# holds Claude Code skills and agent files, which participate in no build and
-# define no targets.
-doc/.claude/
-doc/*.md
-doc/*.rst
-doc/*.png
-doc/*.svg
-doc/*.jpg
-doc/*.jpeg
-doc/*.gif
-doc/*.webp
-@ always
-;
-
 *
 @ always lint
 ;

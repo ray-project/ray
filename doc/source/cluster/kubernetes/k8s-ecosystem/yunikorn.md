@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Integrate KubeRay with Apache YuniKorn for fine-grained multi-tenant resource sharing and gang scheduling."
----
-
 (kuberay-yunikorn)=
 
 # KubeRay integration with Apache YuniKorn

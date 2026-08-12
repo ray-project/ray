@@ -169,8 +169,7 @@ class RayTaskEventRecorderTest : public ::testing::Test {
 
 // Status events within capacity are all exported, with node_id stamped, no drops.
 TEST_F(RayTaskEventRecorderTest, TestStatusEventsExported) {
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})");
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
   recorder_->StartExportingEvents();
 
   AddOne(StatusEvent("task1", 0));
@@ -190,8 +189,7 @@ TEST_F(RayTaskEventRecorderTest, TestStatusEventsExported) {
 // Overflowing the status ring reports the evicted attempts as dropped and does not
 // export their events.
 TEST_F(RayTaskEventRecorderTest, TestStatusRingOverflowReportsDroppedAttempts) {
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})");
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
   recorder_->StartExportingEvents();
 
   // Capacity is 3; adding 5 distinct attempts evicts the two oldest (task1, task2).
@@ -223,8 +221,7 @@ TEST_F(RayTaskEventRecorderTest, TestStatusRingOverflowReportsDroppedAttempts) {
 
 // Once an attempt is dropped, later events for it are dropped on add (sticky).
 TEST_F(RayTaskEventRecorderTest, TestStickyDropForDroppedAttempt) {
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})");
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
   recorder_->StartExportingEvents();
 
   // Fill the ring, then evict task1 by adding task4.
@@ -250,8 +247,7 @@ TEST_F(RayTaskEventRecorderTest, TestStickyDropForDroppedAttempt) {
 // All-or-none per attempt: a buffered event whose attempt was dropped (via eviction of an
 // earlier event of the same attempt) is skipped on export, and the attempt is reported.
 TEST_F(RayTaskEventRecorderTest, TestAllOrNoneSkipsBufferedEventForDroppedAttempt) {
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})");
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
   recorder_->StartExportingEvents();
 
   // Two events for task1 fill 2 of 3 slots; task2 fills the ring.
@@ -277,8 +273,7 @@ TEST_F(RayTaskEventRecorderTest, TestAllOrNoneSkipsBufferedEventForDroppedAttemp
 // (events_size()==0 but dropped_task_attempts>0), exercising the has_aggregator_payload
 // guard's "send anyway" branch.
 TEST_F(RayTaskEventRecorderTest, TestMetadataOnlySendForFullyDroppedAttempt) {
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})");
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
   FakeAggregatorClient client;
   FakeCounter counter;
   RayTaskEventRecorder recorder(client,
@@ -305,7 +300,6 @@ TEST_F(RayTaskEventRecorderTest, TestMetadataOnlySendForFullyDroppedAttempt) {
 TEST_F(RayTaskEventRecorderTest, TestProfilePerTaskCap) {
   RayConfig::instance().initialize(
       R"({"enable_ray_event": true,
-          "enable_ray_task_event_recorder": true,
           "task_events_max_num_profile_events_per_task": 2,
           "task_events_max_num_profile_events_buffer_on_worker": 1000})");
   recorder_->StartExportingEvents();
@@ -329,7 +323,6 @@ TEST_F(RayTaskEventRecorderTest, TestProfilePerTaskCap) {
 TEST_F(RayTaskEventRecorderTest, TestProfileGlobalCap) {
   RayConfig::instance().initialize(
       R"({"enable_ray_event": true,
-          "enable_ray_task_event_recorder": true,
           "task_events_max_num_profile_events_per_task": 1000,
           "task_events_max_num_profile_events_buffer_on_worker": 2})");
   recorder_->StartExportingEvents();
@@ -357,26 +350,6 @@ TEST_F(RayTaskEventRecorderTest, TestDisabled) {
 
   EXPECT_TRUE(fake_client_->GetRecordedEvents().empty());
   EXPECT_TRUE(fake_client_->GetDroppedAttempts().empty());
-}
-
-// Enabled() is true only when both enable_ray_event and enable_ray_task_event_recorder
-// are set; it is false for the other three flag combinations.
-TEST_F(RayTaskEventRecorderTest, TestEnabledRequiresBothFlags) {
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": false, "enable_ray_task_event_recorder": false})");
-  EXPECT_FALSE(RayTaskEventRecorder::Enabled());
-
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": true, "enable_ray_task_event_recorder": false})");
-  EXPECT_FALSE(RayTaskEventRecorder::Enabled());
-
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": false, "enable_ray_task_event_recorder": true})");
-  EXPECT_FALSE(RayTaskEventRecorder::Enabled());
-
-  RayConfig::instance().initialize(
-      R"({"enable_ray_event": true, "enable_ray_task_event_recorder": true})");
-  EXPECT_TRUE(RayTaskEventRecorder::Enabled());
 }
 
 }  // namespace observability

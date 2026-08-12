@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Build custom Docker images for Ray Serve by extending the Ray image with your application, and use them with KubeRay."
----
-
 (serve-custom-docker-images)=
 
 # Custom Docker Images

@@ -1,6 +1,3 @@
-.. meta::
-   :description: Read and write custom file types in Ray Data by implementing your own datasource for formats the built-in readers don't cover.
-
 .. _custom_datasource:
 
 Advanced: Read and Write Custom File Types

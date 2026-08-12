@@ -1,6 +1,3 @@
-.. meta::
-   :description: SingleAgentEpisode, RLlib's trajectory data container: construction, getter APIs, numpy'ized episodes, and cut() with lookback buffers.
-
 .. _single-agent-episode-docs:
 
 Episodes

@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Speed up Ray Serve LLM startup: load models from Hugging Face or remote storage, handle gated models, and use the RunAI Streamer."
----
-
 (deployment-initialization-guide)=
 # Deployment Initialization
 

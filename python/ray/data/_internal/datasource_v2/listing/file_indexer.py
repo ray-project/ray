@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Iterable, List, Optional, Tuple, Union
 
 from pyarrow.fs import FileSystem
 
@@ -21,9 +21,6 @@ from ray.data._internal.dynamic_work_queue import parallel_process_work_stealing
 from ray.data.block import BlockColumn
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
-if TYPE_CHECKING:
-    from ray.data.expressions import Expr
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,19 +31,6 @@ class FileIndexer(ABC):
         """The file chunker that this indexer uses."""
         ...
 
-    @property
-    def produces_partitioned_manifests(self) -> bool:
-        """Whether ``list_files`` already produces partitioned manifests.
-
-        ``False`` (default) means the indexer yields per-file / per-chunk
-        manifests that still need size-balanced partitioning downstream. An
-        indexer that bin-packs internally (e.g. the footer-based Parquet indexer,
-        which reads footers and packs row groups into ~one-block manifests)
-        returns ``True``; ``ListFiles`` then skips the partitioner and runs
-        listing as a single task so packing sees the whole file stream.
-        """
-        return False
-
     @abstractmethod
     def list_files(
         self,
@@ -55,9 +39,6 @@ class FileIndexer(ABC):
         filesystem: "FileSystem",
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
-        predicate: Optional["Expr"] = None,
-        limit: Optional[int] = None,
-        projected_columns: Optional[List[str]] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
 
@@ -66,13 +47,6 @@ class FileIndexer(ABC):
             filesystem: A PyArrow filesystem object.
             pruners: A list of file pruners to apply.
             preserve_order: Whether to preserve order in file listing.
-            predicate: Pushed-down row filter. Indexers that read file
-                metadata (e.g. the footer-based Parquet indexer) use it to skip
-                row groups; others ignore it.
-            limit: Pushed-down row limit, for indexers that can stop listing
-                early. Others ignore it.
-            projected_columns: Pushed-down column projection, for metadata-aware
-                sizing. Others ignore it.
 
         Returns:
             An iterator of `FileManifest` objects, each of which contains a file path
@@ -195,12 +169,7 @@ class NonSamplingFileIndexer(FileIndexer):
         filesystem: "FileSystem",
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
-        predicate: Optional["Expr"] = None,
-        limit: Optional[int] = None,
-        projected_columns: Optional[List[str]] = None,
     ) -> Iterable[FileManifest]:
-        # This per-file listing path ignores predicate/limit/projected_columns;
-        # they're consumed by metadata-aware indexers (e.g. the footer indexer).
         # ``list_file_infos`` already skips zero-size files and applies pruners,
         # so the manifest builder only has to chunk.
         file_infos = self.list_file_infos(

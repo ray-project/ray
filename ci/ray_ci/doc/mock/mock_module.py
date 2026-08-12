@@ -1,20 +1,4 @@
 from ci.ray_ci.doc.api import _OVERRIDE_HOOK_MARKER, AnnotationType
-from ci.ray_ci.doc.mock._internal import (  # noqa: F401
-    MockInternalOnlyClass,
-    MockReexportedClass,
-)
-
-# Mirrors a library head module such as ray.data: the declared public surface
-# names a class whose implementation lives in a private module. Both classes
-# above are importable from here; only MockReexportedClass is exported, so the
-# pair covers the exempt and the still-flagged case.
-__all__ = [
-    "MockClass",
-    "MockDeprecatedClass",
-    "MockReexportedClass",
-    "mock_function",
-    "mock_w00t",
-]
 
 
 def PublicAPI(*args, **kwargs):

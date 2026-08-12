@@ -1,8 +1,5 @@
 ---
 orphan: true
-myst:
-  html_meta:
-    description: "Deploy a text classification model as a Ray Serve application."
 ---
 (serve-text-classification-tutorial)=
 

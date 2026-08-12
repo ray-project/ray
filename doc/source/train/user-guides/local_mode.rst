@@ -1,6 +1,3 @@
-.. meta::
-   :description: Run a Ray Train training function without launching worker actors, for faster iteration, testing, and single-node multi-GPU runs.
-
 .. _train-local-mode:
 
 Local Mode

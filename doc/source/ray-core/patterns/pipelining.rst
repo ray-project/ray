@@ -1,6 +1,3 @@
-.. meta::
-   :description: Pattern: pipeline task submission and result processing so compute overlaps with data transfer and throughput rises.
-
 Pattern: Using pipelining to increase throughput
 ================================================
 

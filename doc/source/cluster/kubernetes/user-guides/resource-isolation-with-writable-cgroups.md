@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Enable Ray resource isolation on GKE with writable cgroups, reserving system resources and verifying the cgroup hierarchy."
----
-
 (resource-isolation-with-writable-cgroups)=
 
 # Resource Isolation with Writable Cgroups on Google Kubernetes Engine (GKE)

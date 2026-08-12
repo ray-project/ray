@@ -6,7 +6,6 @@ from common import parse_tpch_args, load_table, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
-        join_num_partitions = 200
         # Q13: Customer Distribution Query
         # Find the distribution of customers by number of orders,
         # excluding orders with comments matching '%[WORD1]%[WORD2]%'
@@ -44,7 +43,7 @@ def main(args):
         joined = customers.join(
             orders,
             join_type="left_outer",
-            num_partitions=join_num_partitions,
+            num_partitions=128,
             on=("c_custkey",),
             right_on=("o_custkey",),
         )

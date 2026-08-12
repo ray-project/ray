@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Deploy Ray Serve LLM with separated prefill and decode phases using NIXLConnector or LMCacheConnectorV1."
----
-
 (prefill-decode-guide)=
 # Prefill/decode disaggregation
 

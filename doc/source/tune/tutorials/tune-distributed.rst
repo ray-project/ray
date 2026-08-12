@@ -1,6 +1,3 @@
-.. meta::
-   :description: Run Tune experiments across a multi-node Ray cluster, covering launch on cloud VMs, storage options, spot instances, and failure recovery.
-
 .. _tune-distributed-ref:
 
 Running Distributed Experiments with Ray Tune

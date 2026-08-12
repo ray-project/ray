@@ -1,9 +1,3 @@
----
-myst:
-  html_meta:
-    description: "Create a GKE cluster with a GPU node pool for KubeRay, including optional manual driver installation."
----
-
 (kuberay-gke-gpu-cluster-setup)=
 
 # Start Google Cloud GKE Cluster with GPUs for KubeRay
