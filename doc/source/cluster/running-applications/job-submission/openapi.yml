@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ray Jobs API
-  version: 4.0.0
+  version: 5.0.0
   description: |
     This is the specification for the Ray Jobs REST API.
     See the Ray Jobs documentation for details:
@@ -253,6 +253,28 @@ paths:
               schema:
                 description: The error message.
                 type: string
+        503:
+          summary: Job Logs Unavailable
+          description: |
+            The job exists, but its node-local logs are unavailable because the
+            driver agent cannot be reached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error_code:
+                    type: string
+                    enum:
+                      - JOB_LOGS_UNAVAILABLE
+                  message:
+                    type: string
+                  submission_id:
+                    type: string
+                required:
+                  - error_code
+                  - message
+                  - submission_id
         404:
           summary: Job Not Found
           description: |

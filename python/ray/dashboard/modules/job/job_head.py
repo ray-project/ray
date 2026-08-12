@@ -9,6 +9,7 @@ import traceback
 from datetime import datetime
 from typing import AsyncIterator, Dict, Optional, Tuple
 
+import aiohttp
 import aiohttp.web
 from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response, StreamResponse
@@ -57,6 +58,8 @@ from ray.dashboard.utils import get_head_node_id
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+JOB_LOGS_UNAVAILABLE_ERROR_CODE = "JOB_LOGS_UNAVAILABLE"
 
 
 class RayActivityStatus(str, enum.Enum):
@@ -568,6 +571,8 @@ class JobHead(SubprocessModule):
 
         try:
             job_agent_client = self.get_job_driver_agent_client(job)
+            if job_agent_client and not await self._is_job_driver_agent_registered(job):
+                return self._job_logs_unavailable_response(job.submission_id)
             payload = (
                 await job_agent_client.get_job_logs_internal(job.submission_id)
                 if job_agent_client
@@ -577,11 +582,40 @@ class JobHead(SubprocessModule):
                 text=json.dumps(dataclasses.asdict(payload)),
                 content_type="application/json",
             )
+        except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as error:
+            logger.info(
+                "Job logs are unavailable because the driver agent cannot be reached.",
+                exc_info=error,
+            )
+            return self._job_logs_unavailable_response(job.submission_id)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
+
+    async def _is_job_driver_agent_registered(self, job: JobDetails) -> bool:
+        if job.driver_node_id is None:
+            return False
+        try:
+            await self._fetch_agent_info(NodeID.from_hex(job.driver_node_id))
+            return True
+        except KeyError:
+            return False
+
+    @staticmethod
+    def _job_logs_unavailable_response(submission_id: str) -> Response:
+        return aiohttp.web.json_response(
+            {
+                "error_code": JOB_LOGS_UNAVAILABLE_ERROR_CODE,
+                "message": (
+                    f"Logs for job {submission_id} are unavailable because "
+                    "the driver agent cannot be reached."
+                ),
+                "submission_id": submission_id,
+            },
+            status=aiohttp.web.HTTPServiceUnavailable.status_code,
+        )
 
     @routes.get(
         "/api/jobs/{job_or_submission_id}/logs/tail", resp_type=ResponseType.WEBSOCKET
