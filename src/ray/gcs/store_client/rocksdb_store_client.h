@@ -79,20 +79,6 @@ namespace gcs {
 /// `fsync` actually flushes to media is a property of the underlying
 /// volume; operators should verify substrate honesty on their storage
 /// class before relying on this contract.
-///
-/// *Soft-durability tables.* A small, hardcoded set of tables (see
-/// `SoftDurableTables()` in the .cc) is written with `sync = false`
-/// instead. GCS publishes death notifications (node down, actor dead)
-/// from inside the write's completion callback, so the per-write fsync
-/// delays those cluster-wide notifications and widens a pre-existing
-/// Ray-core reconstruction race. Relaxing the fsync on the
-/// death-notification tables removes that delay while keeping durability
-/// at least on par with Ray's recommended Redis GCS, which runs
-/// `appendfsync everysec` (periodic, not per-write). The affected state
-/// (node liveness, actor state) is re-derived after a GCS restart anyway.
-/// This set is a fixed design property rather than a config knob; see
-/// `SoftDurableTables()` for the full rationale and the follow-up to
-/// remove the workaround once the root-cause GCS-core race is fixed.
 class RocksDbStoreClient : public StoreClient {
  public:
   /// Open or create a RocksDB at \p db_path and validate the cluster-ID
@@ -178,11 +164,12 @@ class RocksDbStoreClient : public StoreClient {
   /// `expected_cluster_id` is non-empty; no-op when empty.
   void ValidateOrWriteClusterIdMarker(const std::string &expected_cluster_id);
 
-  /// WriteOptions for a mutating op on \p table_name. Uses `sync = true`
-  /// (fsync-on-WAL before ack) unless \p table_name is in
-  /// `SoftDurableTables()`, in which case it uses `sync = false`. Calls
-  /// with no table (cluster-id marker, job counter) always fsync.
-  rocksdb::WriteOptions SyncWriteOptions(const std::string &table_name = "") const;
+  /// WriteOptions for a mutating op. Uses `sync = true` (fsync-on-WAL
+  /// before ack) so every committed GCS write survives a GCS crash. The
+  /// options are identical for every synchronous write, so a reference to a
+  /// single shared constant instance is returned to avoid constructing a
+  /// WriteOptions on every mutating call.
+  const rocksdb::WriteOptions &SyncWriteOptions() const;
 
   /// Increment and durably persist the job counter under
   /// `job_id_mutex_`, returning the new value. The internal

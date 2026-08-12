@@ -99,11 +99,6 @@ class BatchIterator:
         dataset_tags: The iterator's iteration-metric tags, a dict with keys
             ``dataset`` (the dataset id) and ``split_index`` (the output split
             index for stream-split iterators, or ``None`` for plain iterators).
-        clear_block_after_read: Whether to clear the block from object store
-            manually (i.e. without waiting for Python's automatic GC) after it
-            is read. Doing so will reclaim memory faster and hence reduce the
-            memory footprint. However, the caller has to ensure the safety, i.e.
-            the block will never be accessed again.
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
@@ -145,7 +140,6 @@ class BatchIterator:
         *,
         stats: Optional[DatasetStats] = None,
         dataset_tags: Optional[Dict[str, Optional[str]]] = None,
-        clear_block_after_read: bool = False,
         batch_size: Optional[int] = None,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
@@ -172,9 +166,6 @@ class BatchIterator:
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
         self._preserve_order = preserve_order
-        self._eager_free = (
-            clear_block_after_read and DataContext.get_current().eager_free
-        )
 
         actor_prefetcher_enabled = (
             prefetch_batches > 0
@@ -201,7 +192,6 @@ class BatchIterator:
             prefetcher=self._prefetcher,
             num_batches_to_prefetch=self._prefetch_batches,
             batch_size=self._batch_size,
-            eager_free=self._eager_free,
             stats=self._stats,
         )
 
@@ -284,20 +274,19 @@ class BatchIterator:
 
         self.before_epoch_start()
 
-        try:
-            while True:
-                with self.get_next_batch_context():
-                    blocked_start_s = time.perf_counter()
-                    try:
-                        batch = next(batch_iter)
-                    except StopIteration:
-                        break
-                    blocked_end_s = time.perf_counter()
-                self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
-                with self.yield_batch_context(batch):
-                    yield batch.data
-        finally:
-            self.after_epoch_end()
+        while True:
+            with self.get_next_batch_context():
+                blocked_start_s = time.perf_counter()
+                try:
+                    batch = next(batch_iter)
+                except StopIteration:
+                    break
+                blocked_end_s = time.perf_counter()
+            self._attribute_blocked_time(batch, blocked_start_s, blocked_end_s)
+            with self.yield_batch_context(batch):
+                yield batch.data
+
+        self.after_epoch_end()
 
     def _attribute_blocked_time(
         self, batch: Batch, blocked_start_s: float, blocked_end_s: float
@@ -467,7 +456,6 @@ def prefetch_batches_locally(
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
-    eager_free: bool = False,
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterator of batched RefBundles, returns an iterator over the
@@ -480,7 +468,6 @@ def prefetch_batches_locally(
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
         batch_size: User specified batch size, or None to let the system pick.
-        eager_free: Whether to eagerly free the object reference from the object store.
         stats: Dataset stats object used to store ref bundle retrieval time.
 
     Yields:
@@ -544,7 +531,7 @@ def prefetch_batches_locally(
                 entry.metadata.size_bytes or 0 for entry in sliding_window
             )
         yield entry.ref
-        trace_deallocation(entry.ref, loc="iter_batches", free=eager_free)
+        trace_deallocation(entry.ref, loc="iter_batches")
     prefetcher.stop()
 
 

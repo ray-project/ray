@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure a RayCluster on Kubernetes: headGroupSpec and workerGroupSpecs, pod templates, the Ray version, and ray start parameters."
+---
+
 (kuberay-config)=
 
 # RayCluster Configuration

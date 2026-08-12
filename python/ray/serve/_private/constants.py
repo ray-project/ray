@@ -297,6 +297,13 @@ PROXY_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
 PROXY_READY_CHECK_TIMEOUT_S = get_env_float_positive(
     "RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", 5.0
 )
+# The maximum time in seconds that the controller waits for a proxy actor's
+# shutdown.remote() call to complete before force-killing it with ray.kill.
+# Note: This is distinct from DeploymentConfig.graceful_shutdown_timeout_s,
+# which applies to replica actors.
+PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_PROXY_GRACEFUL_SHUTDOWN_TIMEOUT_S", 5.0
+)
 
 # Number of times in a row that a HTTP proxy must fail the health check before
 # being marked unhealthy.
@@ -430,6 +437,11 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # ``http_util`` -- that helper tolerates intermediate proxies that swap
 # ``-`` and ``_`` (nginx, AWS API Gateway, ...).
 SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id")
+
+# Request headers under this prefix are owned by the ingress request router.
+# HAProxy strips client-supplied values before applying the trusted header map
+# returned by /internal/route.
+SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
@@ -967,6 +979,12 @@ RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS = get_env_int(
 RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
     "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False  # type: ignore[arg-type]
 )
+
+# Optional flat header map returned by /internal/route. HAProxy applies these
+# as trusted request headers before forwarding to the selected replica. Headers
+# managed by the router should use SERVE_INGRESS_ROUTER_HEADER_PREFIX so
+# client-supplied values can be stripped before this map is applied.
+RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD = "request_headers"
 
 # Emit per-request metrics from the ingress-request-router data path:
 # - truncated body counter
