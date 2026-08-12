@@ -20,7 +20,7 @@ Clone the [KubeRay repository](https://github.com/ray-project/kuberay) and check
 
 ## Step 1: Create a new Kubernetes cluster
 
-Create a GKE cluster with autoscaling enabled. The following command creates a Kubernetes cluster named `kuberay-benchmark-cluster` on Google GKE. The cluster can scale up to 16 nodes, and each node of type `e2-highcpu-16` has 16 CPUs and 16 GB of memory. The following experiments may create up to ~150 Pods in the Kubernetes cluster, and each Ray Pod requires 1 CPU and 1 GB of memory.
+Create a GKE cluster with autoscaling enabled. The following command creates a Kubernetes cluster named `kuberay-benchmark-cluster` on Google GKE. The cluster can scale up to 16 nodes, and each node of type `e2-highcpu-16` has 16 CPUs and 16 GB of memory. The following experiments may create up to ~150 Pods in the Kubernetes cluster, and each Pod requires 1 CPU and 1 GB of memory.
 
 ```sh
 gcloud container clusters create kuberay-benchmark-cluster \
@@ -70,7 +70,7 @@ This benchmark is based on three benchmark experiments:
 * Experiment 2: Create a Kubernetes cluster, with only 1 RayCluster. Add 5 new worker Pods to this RayCluster every 60 seconds until the total reaches 150 Pods.
 * Experiment 3: Create a 5-node (1 head + 4 workers) RayCluster every 60 seconds up to 30 RayCluster custom resources.
 
-Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, the benchmark target is set at 150 Ray Pods to cover most use cases.
+Based on [the survey](https://forms.gle/KtMLzjXcKoeSTj359) for KubeRay users, the benchmark target is set at 150 Pods to cover most use cases.
 
 ## Experiment results (KubeRay v0.6.0)
 

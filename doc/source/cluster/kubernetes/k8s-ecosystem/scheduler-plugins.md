@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Use the kubernetes-sigs scheduler-plugins with KubeRay for gang scheduling, verifying the Ray pods and resulting PodGroup."
+    description: "Use the kubernetes-sigs scheduler-plugins with KubeRay for gang scheduling, verifying the Ray cluster's Pods and resulting PodGroup."
 ---
 
 (kuberay-scheduler-plugins)=
@@ -45,16 +45,16 @@ helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0 --set bat
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-1.4/ray-operator/config/samples/ray-cluster.scheduler-plugins.yaml
 ```
 
-## Step 5: Verify Ray Pods and PodGroup
+## Step 5: Verify the Ray cluster's Pods and PodGroup
 
-Note that if you use "second scheduler mode," which KubeRay currently doesn't support, the following commands still show similar results. However, the Ray Pods don't get scheduled in a gang scheduling manner. Make sure to use "single scheduler mode" to enable gang scheduling.
+Note that if you use "second scheduler mode," which KubeRay currently doesn't support, the following commands still show similar results. However, the Pods don't get scheduled in a gang scheduling manner. Make sure to use "single scheduler mode" to enable gang scheduling.
 
 ```sh
 kubectl get podgroups.scheduling.x-k8s.io
 # NAME              PHASE     MINMEMBER   RUNNING   SUCCEEDED   FAILED   AGE
 # test-podgroup-0   Running   3           3                              2m25s
 
-# All Ray Pods (1 head and 2 workers) belong to the same PodGroup.
+# All Pods (1 head and 2 workers) belong to the same PodGroup.
 kubectl get pods -L scheduling.x-k8s.io/pod-group
 # NAME                                  READY   STATUS    RESTARTS   AGE     POD-GROUP
 # test-podgroup-0-head                  1/1     Running   0          3m30s   test-podgroup-0

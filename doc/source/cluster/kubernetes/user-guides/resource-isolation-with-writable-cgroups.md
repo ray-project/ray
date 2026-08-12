@@ -55,7 +55,7 @@ metadata:
     node.gke.io/enable-writable-cgroups.ray-head: "true"
 ```
 
-It also applies a node selector to ensure Ray pods are scheduled only on GKE nodes with this capability enabled:
+It also applies a node selector to ensure Pods are scheduled only on GKE nodes with this capability enabled:
 ```yaml
 nodeSelector:
   node.gke.io/enable-writable-cgroups: "true"
