@@ -214,5 +214,30 @@ def test_gvisor_backend_ignore_cgroups_flag():
             os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
 
 
+def test_gvisor_backend_create_without_ignore_cgroups_when_nested():
+    """When cgroup nesting is available, create a sandbox without --ignore-cgroups."""
+    if os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1":
+        pytest.skip("cgroup nesting unavailable; ignoring cgroups for this suite")
+
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        workdir="/workspace",
+        cpu=0.5,
+        memory="128Mi",
+        _ignore_cgroups=False,
+    )
+    assert "--ignore-cgroups" not in backend._runsc_base_args(cfg)
+
+    sandbox_id = backend.create_sandbox(cfg)
+    try:
+        assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
+        res = backend.exec_command(sandbox_id, "echo nested-cgroup-ok")
+        assert res.exit_code == 0
+        assert "nested-cgroup-ok" in res.stdout
+    finally:
+        backend.delete_sandbox(sandbox_id)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
