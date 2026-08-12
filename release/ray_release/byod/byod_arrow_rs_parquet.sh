@@ -16,7 +16,15 @@
 # measured runtime — it happens before the cluster boots.
 set -exo pipefail
 
-BRANCH="arrow-rs-parquet-reader-pr"
+# The crate source MUST match the Ray code under test: the reader passes
+# keyword args that only exist in matching crate versions, so a drifted .so
+# fails late (or worse, silently). Prefer the build's own commit
+# (BUILDKITE_COMMIT, if the release pipeline exports it into this layer) so
+# branch pushes during a build can't desync the pair; fall back to the branch
+# head otherwise. The echo makes the chosen ref auditable in the image-build
+# log — check it on the first run after any branch switch.
+BRANCH="arrow-rs-on-64985"
+REF="${BUILDKITE_COMMIT:-refs/heads/${BRANCH}}"
 CRATE_SUBDIR="python/ray/data/_internal/datasource_v2/native/ray_data_arrow_rs"
 
 # Minimal stable Rust toolchain (~1 min for rustup itself).
@@ -24,11 +32,15 @@ curl -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
 sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable
 export PATH="$HOME/.cargo/bin:$PATH"
 
-# Fetch the crate source from the branch head and build+install it. pip reads
+# Fetch the crate source at the pinned ref and build+install it. pip reads
 # the maturin build-backend from pyproject.toml and compiles the extension.
-curl -sL "https://github.com/AarryaSaraf/ray/archive/refs/heads/${BRANCH}.tar.gz" \
-  | tar xz -C /tmp
-pip3 install --no-cache-dir "/tmp/ray-${BRANCH}/${CRATE_SUBDIR}"
+# -f fails the pipe on HTTP errors (404 = bad ref) instead of feeding tar
+# an error page; --strip-components drops the ref-dependent top-level dir.
+echo "arrow-rs byod: fetching crate source at ${REF}"
+mkdir -p /tmp/ray-src
+curl -sfL "https://github.com/AarryaSaraf/ray/archive/${REF}.tar.gz" \
+  | tar xz -C /tmp/ray-src --strip-components=1
+pip3 install --no-cache-dir "/tmp/ray-src/${CRATE_SUBDIR}"
 
 # Fail the image build loudly if the crate isn't importable / is a partial
 # build, so it surfaces here instead of as a scanner error at test run time.
