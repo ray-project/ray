@@ -231,8 +231,8 @@ class DataParallelTrainer:
             callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
-        # The NCCL RAS hang detector builds on NCCL's RAS subsystem, enabled by default
-        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, True):
+        # TODO: The NCCLRASCallback is experiment, therefore, default-off for now
+        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
             callbacks.append(NCCLRASCallback())
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):

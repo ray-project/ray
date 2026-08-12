@@ -110,8 +110,6 @@ def run_ncclras(
         "-p",
         str(port),
         "-t",
-        # ncclras takes an *integer* number of seconds; a float string such as
-        # "5.0" is rejected by the 2.30.x client ("Invalid timeout: 5.0").
         str(int(timeout_s)),
     ]
     try:
@@ -221,8 +219,8 @@ class RASReport:
         """Communicator ids whose ranks have op counts that are mismatched and its ranks are RUNNING."""
         return {
             comm_id
-            for comm_id, ops in self.comm_op_skews.items()
-            if any(spread > 0 for spread in ops.values())
+            for comm_id, op_skews in self.comm_op_skews.items()
+            if any(skews > 0 for skews in op_skews.values())
             and all(
                 rank_status == "RUNNING"
                 for rank_status in self.comm_rank_status[comm_id].values()
@@ -342,7 +340,7 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
         return RASReport(data["timestamp"], comm_op_counts, comm_rank_status)
     except (KeyError, TypeError, ValueError) as e:
         logger.info(
-            "NCCL RAS JSON did not match the expected schema (please report this to Anyscale): %s",
+            "NCCL RAS JSON did not match the expected schema: %s",
             e,
         )
         return None
@@ -466,8 +464,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         except Exception:  # noqa: BLE001
             logger.exception(
                 "NCCL RAS hang detection hit an unexpected error, therefore, "
-                "disabling it for the rest of this training run. "
-                "Please report this exception to Anyscale."
+                "disabling it for the rest of this training run."
             )
             self._is_ras_degraded = True
 
@@ -505,9 +502,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 confirmed_comm_hangs.append(comm_id)
 
         # Handle confirmed comm hangs
-        if self._action == NCCL_RAS_ACTION_FAIL and confirmed_comm_hangs:
+        if confirmed_comm_hangs:
             ras_human_output = self.query_ras_on_workers("text")
-            logger.error("%s", ras_human_output)
+            logger.warning("%s", ras_human_output)
 
             try:
                 dump_dir = self.dump_workers_stack_traces()
@@ -515,19 +512,37 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 logger.exception("Trying to dump worker stack traces failed.")
                 dump_dir = None
 
-            raise NCCLHangError(
-                f"Anyscale NCCL hang detector: {len(confirmed_comm_hangs)} of "
-                f"{len(report.comm_op_counts)} communicators made no progress for "
-                f"{self._confirm_count * self._poll_interval_s:.0f} seconds "
-                f"({self._confirm_count} consecutive polls). "
-                "This usually means the ranks disagreed on a collective, e.g. a rank hit "
-                "a divergent code path or exited early, or a collective was launched with a "
-                "mismatched shape, dtype, or call order.\n"
-                "To debug:\n"
-                "  - NCCL report in the logs (identifies the stalled ranks/communicators).\n"
-                f"  - Folder with the per-rank stack traces: {dump_dir}\n",
-                worker_failures={},
-            )
+            if self._action == NCCL_RAS_ACTION_FAIL:
+                raise NCCLHangError(
+                    f"{len(confirmed_comm_hangs)} of "
+                    f"{len(report.comm_op_counts)} communicators have a "
+                    f"collective mismatch and made no progress for "
+                    f"{self._confirm_count * self._poll_interval_s:.0f} seconds "
+                    f"({self._confirm_count} consecutive polls). This usually means "
+                    f"that the collective is deadlocked / hanging, possible reason is "
+                    f"a rank hit a divergent code path, exited early, a GPU or network "
+                    f"hardware failure, or a collective was launched with a "
+                    "mismatched shape, dtype, or call order.\n"
+                    "To debug:\n"
+                    "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
+                    f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n",
+                    worker_failures={},
+                )
+            elif self._action == NCCL_RAS_ACTION_OBSERVE:
+                logger.warning(
+                    f"{len(confirmed_comm_hangs)} of "
+                    f"{len(report.comm_op_counts)} communicators have a "
+                    f"collective mismatch and made no progress for "
+                    f"{self._confirm_count * self._poll_interval_s:.0f} seconds "
+                    f"({self._confirm_count} consecutive polls). This usually means "
+                    f"that the collective is deadlocked / hanging, possible reason is "
+                    f"a rank hit a divergent code path, exited early, a GPU or network "
+                    f"hardware failure, or a collective was launched with a "
+                    "mismatched shape, dtype, or call order.\n"
+                    "To debug:\n"
+                    "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
+                    f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n",
+                )
 
         # Handle unfrozen comms
         for comm_id, count in self.comm_deadlock_count.items():
@@ -683,7 +698,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             except GetTimeoutError:
                 last_failure_reason = "query_timeout"
                 logger.debug(
-                    "NCCL RAS: `ncclras` query timed out on worker %s. "
+                    "`ncclras` query timed out on worker %s. "
                     "Cancelling and trying the next worker.",
                     worker,
                 )
@@ -692,7 +707,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             except Exception as e:  # noqa: BLE001
                 last_failure_reason = f"query_error: {e}"
                 logger.debug(
-                    "NCCL RAS: `ncclras` query failed on worker %s: %s. "
+                    "`ncclras` query failed on worker %s: %s. "
                     "Trying the next worker.",
                     worker,
                     e,
@@ -703,7 +718,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             if not result.get("ok"):
                 last_failure_reason = result.get("reason")
                 logger.debug(
-                    "NCCL RAS: `ncclras` on worker %s returned no data (%s). "
+                    "`ncclras` on worker %s returned no data (%s). "
                     "Trying the next worker.",
                     worker,
                     result.get("reason"),
@@ -712,7 +727,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
             if ras_format == "json":
                 # Stash the raw JSON for the pre-fail snapshot / soft-hang logs.
-                logger.debug("NCCL RAS: `ncclras` json output: %s", result["stdout"])
+                logger.debug("`ncclras` json output: %s", result["stdout"])
                 report = parse_ras_schema(result["stdout"])
                 if report is None:
                     last_failure_reason = "unparseable_json"
@@ -728,7 +743,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # detector. Anything else is treated as transient and retried next poll.
         if last_failure_reason == "binary_not_found":
             logger.warning(
-                "NCCL RAS: `ncclras` binary %r not found on any worker. "
+                "`ncclras` binary %r not found on any worker. "
                 "Disabling NCCL RAS hang detection for the rest of this run. "
                 "Set %s to a valid path.",
                 self._binary_path,
@@ -737,15 +752,15 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             self._is_ras_degraded = True
         elif last_failure_reason == "unsupported_f_option":
             logger.warning(
-                "NCCL RAS: `ncclras` binary %r rejected the `-f` format flag, "
+                "`ncclras` binary %r rejected the `-f` format flag, "
                 "which requires NCCL 2.28+. Disabling NCCL RAS hang detection "
-                "for the rest of this run. Please update ncclras to 2.28+.",
+                "for the rest of this run.",
                 self._binary_path,
             )
             self._is_ras_degraded = True
         else:
             logger.info(
-                "NCCL RAS: `ncclras` (%s) returned no usable data from any of "
+                "`ncclras` (%s) returned no usable data from any of "
                 "%d worker(s) this poll (last reason: %s). Will retry next poll.",
                 ras_format,
                 len(workers),
@@ -772,9 +787,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 logger.info("Failed to launch stack dump on worker %s: %s", worker, e)
 
         if not dump_refs:
-            logger.info(
-                "Could not launch a stack dump on any worker. Please report this to Anyscale."
-            )
+            logger.info("Could not launch a stack dump on any worker.")
             return None
 
         ready, not_ready = ray.wait(

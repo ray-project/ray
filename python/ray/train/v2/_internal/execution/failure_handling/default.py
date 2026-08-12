@@ -9,8 +9,8 @@ from ray.train.v2._internal.execution.worker_group.poll import _is_preempted_act
 from ray.train.v2.api.config import FailureConfig
 from ray.train.v2.api.exceptions import (
     ControllerError,
-    PreemptionError,
     NCCLHangError,
+    PreemptionError,
     TrainingFailedError,
     WorkerGroupError,
 )

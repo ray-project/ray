@@ -6,6 +6,10 @@ import ray
 from ray import runtime_context
 from ray._common import utils as ray_utils
 from ray.cluster_utils import Cluster
+
+# Re-exported so tests in this directory can request it to use caplog/capsys with
+# Ray's loggers, which do not propagate to the root logger by default.
+from ray.tests.conftest import propagate_logs  # noqa: F401
 from ray.train.v2._internal.constants import (
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
 )

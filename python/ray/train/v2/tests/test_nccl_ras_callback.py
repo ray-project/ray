@@ -536,7 +536,7 @@ def test_observe_mode_never_raises(monkeypatch):
 
     for _ in reports:
         callback.after_worker_group_poll_status(MagicMock())  # must not raise
-    assert not captured_stack_traces
+    assert len(captured_stack_traces) == 1
 
 
 def test_fail_mode_raises_after_confirm(monkeypatch):
@@ -821,7 +821,7 @@ def test_invalid_config_fails_fast(monkeypatch, env):
         NCCLRASCallback()
 
 
-def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog):
+def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagate_logs):
     # A frozen communicator builds a streak. confirm_count is high enough that no
     # hang is confirmed, so we can observe the escalating warnings on the way up.
     # First-suspicion fires at 1 poll, periodic reminder every 2 (helper defaults).
@@ -835,6 +835,7 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog):
             callback.after_worker_group_poll_status(MagicMock())
 
     text = caplog.text
+    assert len(text) > 0
     # New-suspicion announcement names the stalled communicator in a parenthetical.
     assert "Possible NCCL hang detected!" in text
     assert f"({_COMM_A}" in text
@@ -847,7 +848,7 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog):
     assert "NCCL RAS report:" not in text
 
 
-def test_escalation_absent_in_observe_mode(monkeypatch, caplog):
+def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
     # Observe mode still surfaces the suspicion/periodic warnings but must never
     # threaten to raise an error, since it only observes.
     reports = [create_single_comm_report({1: 5, 2: 4})] * 4
@@ -860,6 +861,7 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog):
             callback.after_worker_group_poll_status(MagicMock())
 
     text = caplog.text
+    assert len(text) > 0
     assert "Possible NCCL hang detected!" in text
     assert "NCCL hang still suspected!" in text
     assert "NCCLHangError will be raised" not in text

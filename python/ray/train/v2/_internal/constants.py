@@ -148,7 +148,7 @@ METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 # NCCL RAS hang detection.
 # ------------------------------------------------------------
 
-# Feature flag for the NCCL RAS hang detector callback. Default-on.
+# Feature flag for the NCCL RAS hang detector callback.
 ENABLE_NCCL_HANG_DETECTOR_ENV_VAR = "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR"
 # NCCL's standard RAS listen address (``host:port``, default localhost:28028).
 NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"

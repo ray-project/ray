@@ -46,8 +46,8 @@ if is_v2_enabled():
     from ray.train.v2.api.context import TrainContext  # noqa: F811
     from ray.train.v2.api.exceptions import (  # noqa: F811
         ControllerError,
-        PreemptionError,
         NCCLHangError,
+        PreemptionError,
         TrainingFailedError,
         WorkerGroupError,
     )
