@@ -333,6 +333,15 @@ class TestCloudInstanceUpdater:
                     instance_id="i-3",
                     cloud_instance_id="c2",
                 ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-4",
+                    cloud_instance_id="",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-5",
+                ),
             ]
         )
 
