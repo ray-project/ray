@@ -7,6 +7,8 @@ import os
 import pickle
 import tarfile
 
+import numpy as np
+import pandas as pd
 import pytest
 import webdataset as wds
 
@@ -396,20 +398,52 @@ def test_custom_decoder_bypasses_unsafe_guard(ray_start_2_cpus, tmp_path):
 
 @pytest.mark.parametrize("num_samples", [1, 511, 512, 513, 1000])
 def test_read_webdataset_chunked_samples(ray_start_2_cpus, tmp_path, num_samples):
-    # Verify the chunked emission reads every sample with
-    # correct values and order, regardless of shard size.
     path = os.path.join(tmp_path, "data-000000.tar")
     with wds.TarWriter(path) as writer:
         for i in range(num_samples):
             writer.write({"__key__": f"{i:06d}", "cls": str(i).encode("utf-8")})
 
-    rows = ray.data.read_webdataset([path], suffixes=["cls"], decoder=None).take_all()
+    actual = (
+        ray.data.read_webdataset([path], suffixes=["cls"], decoder=None)
+        .to_pandas()
+        .sort_values("__key__")
+        .reset_index(drop=True)
+    )
+    expected = pd.DataFrame(
+        {
+            "__key__": [f"{i:06d}" for i in range(num_samples)],
+            "cls": [str(i).encode("utf-8") for i in range(num_samples)],
+        }
+    )
+    pd.testing.assert_frame_equal(actual[["__key__", "cls"]], expected)
 
-    assert len(rows) == num_samples
-    assert [row["__key__"] for row in rows] == [f"{i:06d}" for i in range(num_samples)]
-    assert [row["cls"] for row in rows] == [
-        str(i).encode("utf-8") for i in range(num_samples)
-    ]
+
+def test_read_webdataset_chunked_heterogeneous_keys(ray_start_2_cpus, tmp_path):
+    path = os.path.join(tmp_path, "data-000000.tar")
+    n = 6
+    with wds.TarWriter(path) as writer:
+        for i in range(n):
+            sample = {"__key__": f"{i:06d}", "cls": str(i).encode("utf-8")}
+            if i % 2 == 0:
+                sample["aux"] = str(i * 10).encode("utf-8")
+            writer.write(sample)
+
+    actual = (
+        ray.data.read_webdataset([path], suffixes=["cls", "aux"], decoder=None)
+        .to_pandas()
+        .sort_values("__key__")
+        .reset_index(drop=True)
+    )
+    expected = pd.DataFrame(
+        {
+            "__key__": [f"{i:06d}" for i in range(n)],
+            "cls": [str(i).encode("utf-8") for i in range(n)],
+            "aux": [
+                str(i * 10).encode("utf-8") if i % 2 == 0 else np.nan for i in range(n)
+            ],
+        }
+    )
+    pd.testing.assert_frame_equal(actual[["__key__", "cls", "aux"]], expected)
 
 
 if __name__ == "__main__":
