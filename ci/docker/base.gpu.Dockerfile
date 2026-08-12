@@ -36,11 +36,9 @@ ln -s /usr/bin/clang-format-14 /usr/bin/clang-format
 ln -s /usr/bin/clang-tidy-14 /usr/bin/clang-tidy
 ln -s /usr/bin/clang-14 /usr/bin/clang
 
-apt-get install -y -qq --allow-change-held-packages --allow-downgrades \
-    "libnccl2=${NCCL_VERSION} libnccl-dev=${NCCL_VERSION}"
+apt-get install -y -qq --allow-change-held-packages --allow-downgrades "libnccl2=${NCCL_VERSION}" "libnccl-dev=${NCCL_VERSION}"
 apt-mark hold libnccl2 libnccl-dev
-# Fail the build if the pin did not stick or the client binary is missing.
-command -v ncclras
+command -v ncclras  # Fail the build if the pin did not stick or the client binary is missing.
 dpkg-query -W -f='${Package} ${Version}\n' libnccl2 libnccl-dev
 
 # Install docker CLI
