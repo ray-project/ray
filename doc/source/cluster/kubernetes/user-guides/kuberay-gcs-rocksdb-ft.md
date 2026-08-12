@@ -36,11 +36,9 @@ For the officially supported, Redis-backed setup, see
 
 ## Prerequisites
 
-* A KubeRay version with embedded RocksDB support. This backend is only on KubeRay master
-  (nightly) at the time of writing; it isn't in a stable KubeRay release yet. Once a release
-  ships with it, use that version.
-* A Ray image that contains the embedded RocksDB backend. It isn't in a stable Ray release
-  yet, so the manifest below uses `rayproject/ray:nightly`.
+* A KubeRay version with embedded RocksDB support. KubeRay v1.6.2 and earlier don't have it,
+  so you need a build from KubeRay master until a release ships it.
+* Ray 2.57.0 or later, which is the first release that contains the embedded RocksDB backend.
 * Linux worker nodes (the RocksDB backend is Linux only).
 * A `StorageClass` that provisions a durable volume which can reattach to the node that runs
   the recovered head Pod.
@@ -120,7 +118,7 @@ spec:
       spec:
         containers:
         - name: ray-head
-          image: rayproject/ray:nightly
+          image: rayproject/ray:2.57.0
   workerGroupSpecs:
   - groupName: small-group
     replicas: 1
@@ -131,7 +129,7 @@ spec:
       spec:
         containers:
         - name: ray-worker
-          image: rayproject/ray:nightly
+          image: rayproject/ray:2.57.0
 ```
 
 ```{admonition} Storage options
