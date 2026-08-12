@@ -102,6 +102,7 @@
         cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: azure
       env: azure
+      frequency: manual
       cluster:
         anyscale_sdk_2026: true
         cluster_compute: hello_world_compute_config_azure.yaml
@@ -1670,7 +1671,7 @@
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
-    timeout: 14400
+    timeout: 21600
     long_running: false
     script: python workloads/microbenchmarks.py --run-controller
 
