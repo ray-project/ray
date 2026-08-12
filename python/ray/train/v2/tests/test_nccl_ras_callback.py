@@ -19,8 +19,8 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_ACTION_ENV_VAR,
     NCCL_RAS_ACTION_FAIL,
     NCCL_RAS_ACTION_OBSERVE,
-    NCCL_RAS_CONFIRM_COUNT_ENV_VAR,
-    NCCL_RAS_POLL_INTERVAL_S_ENV_VAR,
+    NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
+    NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2.api.exceptions import NCCLHangError
 
@@ -451,20 +451,26 @@ def make_nccl_ras_callback(
 ):
     """Build a callback whose JSON RAS query yields the given sequence of reports.
 
-    The user-facing escalation thresholds are module constants tuned for
-    production (suspicion at 4 polls, periodic reminder every 8). Tests use small
-    ``confirm_count``s that never reach those, so override them to small values
-    to exercise the suspicion/periodic messaging paths.
+    The detector confirms hangs on consecutive frozen polls but is configured in
+    seconds, so a 1s poll interval makes every "seconds" knob equal a poll count:
+    ``confirm_count`` polls, and the escalation milestones (tuned for production
+    at 60s/120s, i.e. 4 and 8 polls) shrunk to values the small
+    ``confirm_count``s here actually reach. The poll interval is then zeroed on
+    the instance so back-to-back polls are never throttled.
     """
     monkeypatch.setenv(NCCL_RAS_ACTION_ENV_VAR, action)
-    monkeypatch.setenv(NCCL_RAS_CONFIRM_COUNT_ENV_VAR, str(confirm_count))
-    monkeypatch.setenv(NCCL_RAS_POLL_INTERVAL_S_ENV_VAR, "0")
-    monkeypatch.setattr(nccl_ras, "_FIRST_SUSPICION_POLLS", first_suspicion_polls)
+    monkeypatch.setenv(NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR, str(confirm_count))
+    monkeypatch.setenv(NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR, "1")
     monkeypatch.setattr(
-        nccl_ras, "_PERIODIC_WARN_EVERY_POLLS", periodic_warn_every_polls
+        nccl_ras, "_FIRST_SUSPICION_AFTER_S", float(first_suspicion_polls)
+    )
+    monkeypatch.setattr(
+        nccl_ras, "_PERIODIC_WARN_EVERY_S", float(periodic_warn_every_polls)
     )
 
     callback = NCCLRASCallback()
+    assert callback._confirm_poll_counts == confirm_count
+    callback._poll_interval_s = 0.0
     callback._worker_group = MagicMock()
     callback._executor = _SyncExecutor()
 
@@ -808,8 +814,10 @@ def test_hang_error_propagates_when_diagnostics_fail(monkeypatch):
     "env",
     [
         {NCCL_RAS_ACTION_ENV_VAR: "not-a-mode"},
-        {NCCL_RAS_CONFIRM_COUNT_ENV_VAR: "0"},
-        {NCCL_RAS_CONFIRM_COUNT_ENV_VAR: "-1"},
+        {NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR: "0"},
+        {NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR: "-1"},
+        {NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR: "0"},
+        {NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR: "-15"},
     ],
 )
 def test_invalid_config_fails_fast(monkeypatch, env):
@@ -819,6 +827,34 @@ def test_invalid_config_fails_fast(monkeypatch, env):
         monkeypatch.setenv(key, value)
     with pytest.raises(ValueError):
         NCCLRASCallback()
+
+
+@pytest.mark.parametrize(
+    "duration_s,interval_s,expected_polls",
+    [
+        # Defaults: 10 minutes at a 15s poll interval.
+        (None, None, 40),
+        # A shorter window is confirmed from proportionally fewer samples
+        ("60", "15", 4),
+        ("100", "15", 7),
+    ],
+)
+def test_confirm_duration_converts_to_poll_count(
+    monkeypatch, duration_s, interval_s, expected_polls
+):
+    # The public knob is a duration; the detector confirms on consecutive frozen
+    # polls, so the duration is converted once at construction.
+    if duration_s is not None:
+        monkeypatch.setenv(NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR, duration_s)
+    if interval_s is not None:
+        monkeypatch.setenv(NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR, interval_s)
+
+    callback = NCCLRASCallback()
+    assert callback._confirm_poll_counts == expected_polls
+    # Escalation milestones stay below the confirmation streak so a short window
+    # still warns before it fails.
+    assert 1 <= callback._suspicion_polls <= max(1, expected_polls - 1)
+    assert callback._periodic_warn_polls >= 1
 
 
 def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagate_logs):
@@ -835,7 +871,6 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
             callback.after_worker_group_poll_status(MagicMock())
 
     text = caplog.text
-    assert len(text) > 0
     # New-suspicion announcement names the stalled communicator in a parenthetical.
     assert "Possible NCCL hang detected!" in text
     assert f"({_COMM_A}" in text
@@ -861,7 +896,6 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
             callback.after_worker_group_poll_status(MagicMock())
 
     text = caplog.text
-    assert len(text) > 0
     assert "Possible NCCL hang detected!" in text
     assert "NCCL hang still suspected!" in text
     assert "NCCLHangError will be raised" not in text

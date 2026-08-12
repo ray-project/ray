@@ -13,6 +13,7 @@ the ranks and communicators.
 """
 import json
 import logging
+import math
 import os
 import re
 import subprocess
@@ -25,19 +26,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import ray
-from ray._private.ray_constants import env_float, env_integer
+from ray._private.ray_constants import env_float
 from ray.exceptions import GetTimeoutError
 from ray.train.v2._internal.constants import (
+    DEFAULT_NCCL_MIN_RAS_POLL_INTERVAL_S,
     DEFAULT_NCCL_RAS_ACTION,
-    DEFAULT_NCCL_RAS_CONFIRM_COUNT,
-    DEFAULT_NCCL_RAS_POLL_INTERVAL_S,
+    DEFAULT_NCCL_RAS_CONFIRM_DURATION_S,
     DEFAULT_NCCLRAS_BINARY_PATH,
     NCCL_RAS_ACTION_ENV_VAR,
     NCCL_RAS_ACTION_FAIL,
     NCCL_RAS_ACTION_OBSERVE,
     NCCL_RAS_ADDR_ENV_VAR,
-    NCCL_RAS_CONFIRM_COUNT_ENV_VAR,
-    NCCL_RAS_POLL_INTERVAL_S_ENV_VAR,
+    NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
+    NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
     NCCLRAS_BINARY_PATH_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import (
@@ -50,12 +51,13 @@ from ray.train.v2.api.exceptions import NCCLHangError
 
 logger = logging.getLogger(__name__)
 
+# Query timeout lengths
 _STACK_DUMP_TIMEOUT_S: float = 30.0
 _NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
 
-# User-facing escalation milestones, measured in consecutive frozen polls
-_FIRST_SUSPICION_POLLS: int = 4
-_PERIODIC_WARN_EVERY_POLLS: int = 8
+# User-facing escalation milestones
+_FIRST_SUSPICION_AFTER_S: float = 60.0
+_PERIODIC_WARN_EVERY_S: float = 120.0
 
 
 def parse_ras_addr(addr: str) -> Tuple[str, int]:
@@ -353,29 +355,47 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     Default-on: registered by the trainer unless the hang detector
     (``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR``).
 
-    To confirm that a NCCL anomaly isn't a single-snapshot blip, a hang must
-    persist for ``RAY_TRAIN_NCCL_RAS_CONFIRM_COUNT`` consecutive polls: a dead-
-    rank counter, a soft-divergence counter, and a per-communicator frozen-poll
-    streak (so each communicator is confirmed on its own). A healthy poll resets
-    all of them.
+    To confirm that a NCCL anomaly isn't a single-snapshot blip, a communicator
+    must stay frozen for consecutive polls, tracked as a per-communicator
+    frozen-poll streak (so each communicator is confirmed on its own) and
+    reset by any healthy poll. ``RAY_TRAIN_NCCL_RAS_HANG_CONFIRMATION_DURATION_S``
+    expresses how long that run should take and is converted to a poll count
+    with the poll interval.
     """
 
     def __init__(self):
-        self._poll_interval_s = env_float(
-            NCCL_RAS_POLL_INTERVAL_S_ENV_VAR, DEFAULT_NCCL_RAS_POLL_INTERVAL_S
-        )
-        self._confirm_count = env_integer(
-            NCCL_RAS_CONFIRM_COUNT_ENV_VAR, DEFAULT_NCCL_RAS_CONFIRM_COUNT
-        )
-        if self._confirm_count <= 0:
-            raise ValueError(
-                f"{NCCL_RAS_CONFIRM_COUNT_ENV_VAR} must be a positive integer, "
-                f"got {self._confirm_count}."
-            )
-
         self._binary_path = os.environ.get(
             NCCLRAS_BINARY_PATH_ENV_VAR, DEFAULT_NCCLRAS_BINARY_PATH
         )
+        self._poll_interval_s = env_float(
+            NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR, DEFAULT_NCCL_MIN_RAS_POLL_INTERVAL_S
+        )
+        if self._poll_interval_s <= 0:
+            raise ValueError(
+                f"{NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR} must be a positive number "
+                f"of seconds, got {self._poll_interval_s}."
+            )
+        self._confirm_duration_s = env_float(
+            NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR, DEFAULT_NCCL_RAS_CONFIRM_DURATION_S
+        )
+        if self._confirm_duration_s <= 0:
+            raise ValueError(
+                f"{NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR} must be a positive number "
+                f"of seconds, got {self._confirm_duration_s}."
+            )
+
+        # Escalation milestones, in polls
+        self._confirm_poll_counts = math.ceil(
+            self._confirm_duration_s / self._poll_interval_s
+        )
+        self._suspicion_polls = min(
+            math.ceil(_FIRST_SUSPICION_AFTER_S / self._poll_interval_s),
+            self._confirm_poll_counts - 1,
+        )
+        self._periodic_warn_polls = math.ceil(
+            _PERIODIC_WARN_EVERY_S / self._poll_interval_s
+        )
+
         self._action = os.environ.get(
             NCCL_RAS_ACTION_ENV_VAR, DEFAULT_NCCL_RAS_ACTION
         ).lower()
@@ -446,7 +466,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             else:  # Healthy with no mismatches
                 if self.comm_deadlock_count:
                     for comm_id, count in self.comm_deadlock_count.items():
-                        if count > _FIRST_SUSPICION_POLLS:
+                        if count > self._suspicion_polls:
                             logger.info(
                                 "NCCL communicator %s resumed making progress after "
                                 "being stalled for %.0fs (%d polls). It is no longer "
@@ -498,7 +518,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             count = self.comm_deadlock_count.get(comm_id, 0) + 1
             new_comm_deadlock_count[comm_id] = count
 
-            if count == self._confirm_count:
+            if count == self._confirm_poll_counts:
                 confirmed_comm_hangs.append(comm_id)
 
         # Handle confirmed comm hangs
@@ -512,43 +532,30 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 logger.exception("Trying to dump worker stack traces failed.")
                 dump_dir = None
 
+            message = (
+                f"{len(confirmed_comm_hangs)} of "
+                f"{len(report.comm_op_counts)} communicators have a "
+                f"collective mismatch and made no progress for "
+                f"{self._confirm_duration_s:.0f} seconds "
+                f"({self._confirm_poll_counts} polls)."
+                "This usually means that the collective is deadlocked / hanging. "
+                "The possible reasons for this is: a rank hit a divergent code "
+                "path, exited early, a GPU or network hardware failure, or a "
+                "collective was launched with a mismatched shape, dtype, or call order.\n"
+                "To debug:\n"
+                "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
+                f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n"
+            )
             if self._action == NCCL_RAS_ACTION_FAIL:
-                raise NCCLHangError(
-                    f"{len(confirmed_comm_hangs)} of "
-                    f"{len(report.comm_op_counts)} communicators have a "
-                    f"collective mismatch and made no progress for "
-                    f"{self._confirm_count * self._poll_interval_s:.0f} seconds "
-                    f"({self._confirm_count} consecutive polls). This usually means "
-                    f"that the collective is deadlocked / hanging, possible reason is "
-                    f"a rank hit a divergent code path, exited early, a GPU or network "
-                    f"hardware failure, or a collective was launched with a "
-                    "mismatched shape, dtype, or call order.\n"
-                    "To debug:\n"
-                    "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
-                    f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n",
-                    worker_failures={},
-                )
+                raise NCCLHangError(message, worker_failures={})
             elif self._action == NCCL_RAS_ACTION_OBSERVE:
-                logger.warning(
-                    f"{len(confirmed_comm_hangs)} of "
-                    f"{len(report.comm_op_counts)} communicators have a "
-                    f"collective mismatch and made no progress for "
-                    f"{self._confirm_count * self._poll_interval_s:.0f} seconds "
-                    f"({self._confirm_count} consecutive polls). This usually means "
-                    f"that the collective is deadlocked / hanging, possible reason is "
-                    f"a rank hit a divergent code path, exited early, a GPU or network "
-                    f"hardware failure, or a collective was launched with a "
-                    "mismatched shape, dtype, or call order.\n"
-                    "To debug:\n"
-                    "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
-                    f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n",
-                )
+                logger.warning(message)
 
         # Handle unfrozen comms
         for comm_id, count in self.comm_deadlock_count.items():
             if (
                 comm_id not in new_comm_deadlock_count
-                and self.comm_deadlock_count[comm_id] > _FIRST_SUSPICION_POLLS
+                and self.comm_deadlock_count[comm_id] > self._suspicion_polls
             ):
                 logger.info(
                     "NCCL communicator %s resumed making progress after being stalled "
@@ -564,7 +571,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # Handle suspected frozen comms
         if self.comm_deadlock_count:
             total_comms = len(report.comm_op_counts)
-            confirm_s = self._confirm_count * self._poll_interval_s
+            confirm_s = self._confirm_poll_counts * self._poll_interval_s
             escalation = (
                 f"A NCCLHangError will be raised after {confirm_s:.0f} seconds if this persists."
                 if self._action == NCCL_RAS_ACTION_FAIL
@@ -576,18 +583,18 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             new_suspicions = [
                 comm_id
                 for comm_id, count in self.comm_deadlock_count.items()
-                if count == _FIRST_SUSPICION_POLLS
+                if count == self._suspicion_polls
             ]
             if new_suspicions:
                 logger.warning(
                     "Possible NCCL hang detected! %d of %d communicators (%s) have "
-                    "made no progress for %.0f seconds (%d polls). Continuing to "
-                    "monitor, this might be a transient stall. %s",
+                    "made no progress over %.0f seconds (%d consecutive polls). "
+                    "Continuing to monitor, this might be a transient stall. %s",
                     len(new_suspicions),
                     total_comms,
                     ", ".join(new_suspicions),
-                    _FIRST_SUSPICION_POLLS * self._poll_interval_s,
-                    _FIRST_SUSPICION_POLLS,
+                    self._suspicion_polls * self._poll_interval_s,
+                    self._suspicion_polls,
                     escalation,
                 )
 
@@ -595,7 +602,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             # single message (with each one's stalled duration) and fetch the RAS
             # report once, rather than once per communicator.
             if any(
-                count % _PERIODIC_WARN_EVERY_POLLS == 0
+                count % self._periodic_warn_polls == 0
                 for count in self.comm_deadlock_count.values()
             ):
                 stalled = ", ".join(
@@ -605,12 +612,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 periodic_escalation = ""
                 if self._action == NCCL_RAS_ACTION_FAIL:
                     max_count = max(self.comm_deadlock_count.values())
-                    remaining_s = (
-                        self._confirm_count - max_count
-                    ) * self._poll_interval_s
+                    remaining_polls = self._confirm_poll_counts - max_count
+                    remaining_s = remaining_polls * self._poll_interval_s
                     periodic_escalation = (
-                        f"A NCCLHangError will be raised in {remaining_s:.0f} seconds "
-                        "if this persists."
+                        f"A NCCLHangError will be raised in {remaining_s} "
+                        f"({remaining_polls} more polls) if this persists."
                     )
                 logger.warning(
                     "NCCL hang still suspected! %d of %d communicators (%s) have made "

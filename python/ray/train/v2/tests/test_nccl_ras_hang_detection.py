@@ -30,10 +30,12 @@ if shutil.which(os.environ.get("RAY_TRAIN_NCCLRAS_PATH", "ncclras")) is None:
     )
 
 
-# Fast detection so a hang is confirmed in seconds instead of the ~10 min default.
+# Fast detection so a hang is confirmed in seconds instead of the 10 min default.
+# The confirmation window is converted to consecutive polls (a floor of
+# ``_MIN_CONFIRM_POLLS`` samples applies), so this confirms in ~8s.
 RAS_ENV = {
-    "RAY_TRAIN_NCCL_RAS_POLL_INTERVAL_S": "2",
-    "RAY_TRAIN_NCCL_RAS_CONFIRM_COUNT": "2",
+    "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S": "2",
+    "RAY_TRAIN_NCCL_RAS_HANG_CONFIRMATION_DURATION_S": "4",
 }
 
 # Step at which each scenario diverges, and a short loop so the non-hanging
@@ -233,12 +235,17 @@ def ray_start_4_cpus_4_gpus():
     ray.shutdown()
 
 
+def test_healthy_run_does_not_fail(ray_start_4_cpus_2_gpus):
+    err = run_train_fn(healthy_train_fn, num_workers=2)
+    assert err is None, f"healthy run must not fail, got {err!r}"
+
+
 HANG, FAIL, MAYBE = "hang", "fail", "maybe"
 # "hang"  -> a communicator deadlocks with a frozen straggler rank; the
 #            callback must raise NCCLHangError.
 # "fail"  -> a dead rank; that Ray's own worker health check fails the run
 #            with a WorkerGroupError. RAS can detect these missing ranks but
-#            we don't act on it currently.
+#            we don't act on it quickly enough by default.
 # "maybe" -> size-dependent or RAS-undetectable. On small tensors these often
 #            keep advancing; on large tensors they may truly deadlock and
 #            raise NCCLHangError.
@@ -254,21 +261,11 @@ TWO_WORKER_SCENARIOS = [
 
 def _assert_outcome(err, expectation):
     if expectation == HANG:
-        # The callback attributes the deadlocked communicator (by hash in the
-        # error message and the logged RAS report), not culprit ranks, so we
-        # only assert the run failed with NCCLHangError.
         assert isinstance(err, NCCLHangError), f"expected NCCLHangError, got {err!r}"
     elif expectation == FAIL:
         assert isinstance(err, WorkerGroupError), f"expected a failure, got {err!r}"
     else:  # MAYBE
         assert err is None or isinstance(err, NCCLHangError), f"unexpected: {err!r}"
-
-
-def test_healthy_run_does_not_fail(ray_start_4_cpus_2_gpus):
-    # Negative control: a correct run must complete cleanly so the callback is
-    # proven not to raise spurious hangs (no false positives).
-    err = run_train_fn(healthy_train_fn, num_workers=2)
-    assert err is None, f"healthy run must not fail, got {err!r}"
 
 
 @pytest.mark.parametrize("train_func, expectation", TWO_WORKER_SCENARIOS)
@@ -281,8 +278,7 @@ def test_hang_scenarios(train_func, expectation, ray_start_4_cpus_2_gpus):
     torch.cuda.device_count() < 4, reason="multi-communicator case needs >= 4 GPUs"
 )
 def test_multicomm_subset_detected(ray_start_4_cpus_4_gpus):
-    # One frozen subgroup next to one advancing subgroup -> deadlocked
-    # communicator -> hard hang.
+    # Two communicators, in which only one hangs
     err = run_train_fn(multicomm_subset_train_fn, num_workers=4)
     _assert_outcome(err, HANG)
 

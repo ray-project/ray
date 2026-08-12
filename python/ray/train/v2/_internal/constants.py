@@ -157,19 +157,16 @@ NCCLRAS_BINARY_PATH_ENV_VAR = "RAY_TRAIN_NCCLRAS_PATH"
 DEFAULT_NCCLRAS_BINARY_PATH = "ncclras"
 
 # How often (seconds) to query the NCCL RAS subsystem on a worker
-NCCL_RAS_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_POLL_INTERVAL_S"
-DEFAULT_NCCL_RAS_POLL_INTERVAL_S: float = 15.0
-# Number of consecutive RAS reports that must agree a hang is occurring before
-# the detector acts. Default settings means ~10 minutes before fully confirmed.
-NCCL_RAS_CONFIRM_COUNT_ENV_VAR = "RAY_TRAIN_NCCL_RAS_CONFIRM_COUNT"
-DEFAULT_NCCL_RAS_CONFIRM_COUNT: int = 40
+NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S"
+DEFAULT_NCCL_MIN_RAS_POLL_INTERVAL_S: float = 15.0
+# How long a communicator must make no progress before the detector acts.
+NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S"
+DEFAULT_NCCL_RAS_CONFIRM_DURATION_S: float = 10 * 60
 
-# Action to take on a confirmed hang. "fail" captures stack traces then raises
-# a terminal (non-retryable) NCCLHangError, failing the run. "observe" only
-# emits metrics and captures stacks without failing the run.
+# Action to take on a confirmed hang
 NCCL_RAS_ACTION_ENV_VAR = "RAY_TRAIN_NCCL_RAS_ACTION"
-NCCL_RAS_ACTION_FAIL = "fail"
-NCCL_RAS_ACTION_OBSERVE = "observe"
+NCCL_RAS_ACTION_FAIL = "fail"  # raises (non-retryable) NCCLHangError
+NCCL_RAS_ACTION_OBSERVE = "observe"  # only emits metrics and captures stacks
 DEFAULT_NCCL_RAS_ACTION = NCCL_RAS_ACTION_OBSERVE
 
 
