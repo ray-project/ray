@@ -8,7 +8,7 @@ myst:
 
 # Scheduling on Kubernetes
 
-KubeRay runs each Ray node as a Kubernetes Pod. A Ray cluster's head node is its head Pod, and its worker nodes are its worker Pods. Elsewhere in Ray's documentation a node is just a node, because a Ray node can equally be a VM or a physical machine. On Kubernetes it's a Pod, so this page says "Pod" where the Kubernetes object is the point and "Ray node" where Ray's view of it is.
+KubeRay runs each Ray node (head or worker) as a Kubernetes Pod. While Ray nodes can generally be VMs or physical machines, this guide uses "Pod" when referring to the Kubernetes object and "Ray node" when referring to Ray's perspective.
 
 Two schedulers act on that arrangement, one on each half of it. Kubernetes decides which machine each Pod runs on. Ray decides which Pod each task and actor runs on. Knowing which of the two is holding up your workload is the difference between a quick fix and an afternoon of guessing.
 
@@ -24,7 +24,7 @@ The two layers stack rather than run side by side. Ray only distributes resource
 
 The following table summarizes the split:
 
-|  | Kubernetes | Ray |
+| Scheduling aspect | Kubernetes | Ray |
 |---|---|---|
 | Unit it places | Pod | Task or actor |
 | Target it places onto | Kubernetes node | Ray node, which runs as a Pod |
@@ -42,7 +42,9 @@ The two layers need to agree on how much capacity each Pod has. KubeRay establis
 
 Override any of these with `rayStartParams`. See {ref}`rayStartParams` for the full list. The common override is `num-cpus: "0"` on the head group, which tells Ray the head Pod has no CPU capacity and so keeps CPU-requiring workloads off it. The head Pod still has real CPU from Kubernetes' point of view. You're only changing what Ray believes it can schedule there.
 
-Check this seam first when the layers seem to disagree. A Pod that Kubernetes considers healthy and well-provisioned can still look full, or empty, to Ray.
+:::{note}
+Check the capacity KubeRay derived before you suspect either scheduler. A Pod that Kubernetes considers healthy and well-provisioned can still look full, or empty, to Ray, because the two layers are reading different numbers for the same Pod.
+:::
 
 ## Deciding which layer to investigate
 
