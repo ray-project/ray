@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "KubeRay operator memory and scalability benchmark: setup with Prometheus and Grafana, the experiment procedure, and v0.6.0 results."
+---
+
 (kuberay-mem-scalability)=
 
 # KubeRay memory and scalability benchmark

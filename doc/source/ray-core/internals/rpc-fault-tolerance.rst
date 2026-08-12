@@ -1,3 +1,6 @@
+.. meta::
+   :description: Make Ray Core RPCs fault tolerant with the retryable gRPC client, including long-polling pitfalls and idempotency requirements.
+
 .. _rpc-fault-tolerance:
 
 RPC Fault Tolerance

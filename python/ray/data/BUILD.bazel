@@ -959,6 +959,20 @@ py_test(
 )
 
 py_test(
+    name = "test_orc",
+    size = "small",
+    srcs = ["tests/datasource/test_orc.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_pandas",
     size = "small",
     srcs = ["tests/datasource/test_pandas.py"],
@@ -1004,6 +1018,20 @@ py_test(
     name = "test_read_parquet_v2",
     size = "small",
     srcs = ["tests/datasource/test_read_parquet_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_placement_group_cluster_autoscaler",
+    size = "small",
+    srcs = ["tests/test_placement_group_cluster_autoscaler.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1746,6 +1774,20 @@ py_test(
     name = "test_streaming_executor",
     size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_no_progress_guard",
+    size = "medium",
+    srcs = ["tests/test_no_progress_guard.py"],
     tags = [
         "exclusive",
         "team:data",

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Why a RayService worker pod can stay not-ready with no Serve replica scheduled, and how to verify and update the apps in place."
+---
+
 (kuberay-rayservice-no-ray-serve-replica)=
 
 # RayService worker Pods aren't ready

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Export structured Ray events for tasks, actors, jobs, and nodes to an HTTP endpoint, with event format reference and reporting configuration.
+
 .. _ray-event-export:
 
 Ray Event Export

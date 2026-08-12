@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve a custom vLLM model architecture with Ray Serve LLM by writing, registering, and packaging a model plugin."
+---
+
 (custom-vllm-guide)=
 # Custom vLLM models
 
