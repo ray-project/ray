@@ -7,14 +7,17 @@ myst:
 <!--
 GENERATED FILE -- DO NOT EDIT.
 
-Vendored from ray-project/kuberay:docs/reference/api.md
-at release tag v1.6.2 (598eb66aa077c55ae04fa87b192238a3ec184e88)
-  https://github.com/ray-project/kuberay/blob/598eb66aa077c55ae04fa87b192238a3ec184e88/docs/reference/api.md
+Vendored from ray-project/kuberay:docs/reference/api.md at release tag v1.6.2.
+The permalink pins the commit that last modified the artifact at that ref:
+  https://github.com/ray-project/kuberay/blob/0a9eabde561ab59ab4bbe626072c359da9214484/docs/reference/api.md
 
 Upstream generates this file with elastic/crd-ref-docs from the Go CRD types in
 ray-operator/apis/ray/, and a consistency-check CI job fails the build if it
-drifts from those types. The ray.io/v1alpha1 section is stripped on the way in;
-that API version is deprecated and slated for removal.
+drifts from those types. That job runs on release-* branches as well as master,
+so a release tag's artifact is verified against that branch's CRD types.
+
+The ray.io/v1alpha1 section is stripped on the way in; that API version is
+deprecated and slated for removal.
 
 Edits belong upstream in the CRD Go types, not here. Changes made here are
 overwritten by the next sync.
