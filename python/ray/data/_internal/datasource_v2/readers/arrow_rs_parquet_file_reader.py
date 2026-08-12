@@ -244,11 +244,12 @@ _ARROW_RS_DECODE_BUDGET_BYTES = env_integer(
 # capping the crate below what the budget would allow.
 _ARROW_RS_MIN_DECODE_BATCH_ROWS = 2048
 
-# Was ``RAY_DATA_READ_FILES_NUM_THREADS`` set explicitly? This reader bounds the
-# fragment pool at 4 (see ``_num_fragment_read_threads``), but an explicit value
-# must still win — and ``env_integer`` cannot distinguish "4 because the user asked
-# for 4" from "4 because that is the fallback". Read once at import so that mutating
-# the environment after import has no effect, matching how the base reader's own
+# Was ``RAY_DATA_READ_FILES_NUM_THREADS`` set explicitly? This reader's fragment
+# pool defaults to one-worker-per-fragment, parity with the base (see
+# ``_num_fragment_read_threads``), but an explicit value must still win — and
+# ``env_integer`` cannot distinguish "4 because the user asked for 4" from "4
+# because that is the fallback". Read once at import so that mutating the
+# environment after import has no effect, matching how the base reader's own
 # module-level knobs behave.
 #
 # The base no longer reads this variable at all: the footer-chunking path deleted
@@ -781,39 +782,45 @@ class ArrowRsParquetFileReader(ParquetFileReader):
 
     @override
     def _num_fragment_read_threads(self, num_fragments: int) -> int:
-        """``min(4, num_fragments)`` — a *bounded* fragment pool, against the
-        base path's one-worker-per-fragment *unbounded* pool.
+        """``num_fragments`` — pool-width **parity** with the base path's
+        one-worker-per-fragment pool (decided 2026-08-12, revising the earlier
+        ``min(4, num_fragments)`` cap).
 
-        Two forces set this number. Down: the arrow-rs path already overlaps
-        fetch with decode inside a single fragment (the byte-budgeted prefetch
-        loop on S3, ``k`` row-range workers on a lone big row group), and every
-        additional in-flight fragment adds its own retention to the task's
-        working set — unbounded threads multiply the peak by the bin size. Up:
-        on the #64985 base a fragment is typically a multi-file *bin*, and a
-        single worker serialises the per-file setup latency (footer fetch +
-        first-byte) across the whole bin.
+        Why parity rather than a cap:
 
-        Measured (findings K6, K10 in ``arrow_rs_docs/findings.md``):
+        - A sub-fragment is one *file's* bin-assigned row groups, so
+          ``num_fragments`` = files spanned by the bin. At realistic bin
+          budgets (64 MiB-1.25 GiB in the release suite) that is a handful —
+          the "unbounded" pool is bounded by bin geometry in practice, which
+          is the same reason the base path tolerates it.
+        - A narrower pool than the base turns every multi-fragment A/B cell
+          into a pool-width comparison instead of a decode comparison. With
+          parity, an arrow-rs wall loss is decode; before, it was ambiguous.
+        - The memory cost of an extra in-flight fragment on this path is a
+          decode-budget transient (plus the S3 fetch window), not a whole
+          decoded row group — the multiplier the old cap guarded against is
+          the *base* path's failure mode, not ours.
 
-        - K6 (2026-08-07, old row-group-fragment base): threads=1 vs 4 saved
-          96 MiB local / 44 MiB S3 per task at 0.95-0.98x wall — on that base
-          serial was free, so the default was 1.
-        - K10 (2026-08-11, GE1 on the #64985 multi-file-bin base): threads=4
-          vs 1 cuts read-op time 1.6-3.3x on bin shapes at flat-to-+22% memory
-          — on this base serial is *not* free, so the default is a small pool.
+        History (findings K6, K10 in ``arrow_rs_docs/findings.md``): K6
+        (old row-group-fragment base) found serial free → default 1; K10
+        (GE1, multi-file-bin base) found threads=4 vs 1 cuts read-op time
+        1.6-3.3x at flat-to-+22% memory → default 4; 2026-08-12 → parity.
+        4-vs-unbounded was never the measured comparison; the bin sweep's
+        arrow-rs-flat prediction (TODO item 10) now doubles as this default's
+        regression check — if arrow-rs USS *grows* with bin size, suspect
+        pool width first and re-cap via the env var.
 
-        4 matches the base path's pre-#64985 default and K10's measured point;
-        capping at ``num_fragments`` keeps a 1-fragment task on the sequential
-        branch (``_dispatch_fragment_reads`` takes it on ``num_workers <= 1``
-        and never constructs ``make_async_gen``), where the crate alone owns
-        parallelism — the lone-big-row-group case K6 tuned for.
-
-        An explicit ``RAY_DATA_READ_FILES_NUM_THREADS`` still wins: a user who
-        set it meant it, and the benchmark harness sweeps it.
+        A 1-fragment task still takes the sequential branch
+        (``_dispatch_fragment_reads`` on ``num_workers <= 1`` never constructs
+        ``make_async_gen``), where the crate alone owns parallelism — the
+        lone-big-row-group case. An explicit
+        ``RAY_DATA_READ_FILES_NUM_THREADS`` still wins: a user who set it
+        meant it, and the benchmark harness sweeps it. Shapes where a bin
+        genuinely spans very many tiny files can use it to re-cap.
         """
         if _READ_FILES_NUM_THREADS_IS_EXPLICIT:
             return _READ_FILES_NUM_THREADS_EXPLICIT_VALUE
-        return max(1, min(4, num_fragments))
+        return max(1, num_fragments)
 
     @override
     def _resolve_batch_size(

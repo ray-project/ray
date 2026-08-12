@@ -28,12 +28,23 @@ group up to 10× a file, plus a PyArrow `pre_buffer=off` arm), `write` (item 1aa
 `fatcol` (item 1o). Stage rationale in `replication_matrix.py`'s docstring; the
 predictions each stage falsifies are in `arrow_rs_docs/TODO.md` items 1ab/10.
 
+Fresh Linux box, one command (same setup skeleton as the grand experiment):
+
+```bash
+git clone https://github.com/AarryaSaraf/ray.git ~/ray && cd ~/ray
+git checkout arrow-rs-on-64985
+bash release/nightly_tests/dataset/arrow_rs_probe/run_replication.sh
+# quick smoke:            FIXTURE_SCALE=0.25 REPEAT=1 bash .../run_replication.sh
+# one stage:              ONLY=binsweep bash .../run_replication.sh
+# after a git pull that touches the crate: FORCE_SETUP=1 (or you benchmark a stale .so)
+```
+
+Piecemeal (env already set up — `source arrow_rs_probe/env.sh` first):
+
 ```bash
 python gen_local_fixtures.py --root ~/arrow_rs_repl_fixtures \
     --shapes bin_sweep,tensors_wide,fat_col
-python replication_matrix.py --fixture-root ~/arrow_rs_repl_fixtures            # all
-python replication_matrix.py --fixture-root ~/arrow_rs_repl_fixtures \
-    --only binsweep --repeat 3                                                   # subset
+python replication_matrix.py --fixture-root ~/arrow_rs_repl_fixtures --repeat 3
 ```
 
 Results: `replication_runs/<ts>/summary.json` + per-cell logs; the summary block

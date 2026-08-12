@@ -2938,22 +2938,22 @@ def _dispatch_fragments(reader, monkeypatch, n=2):
 
 
 def test_arrow_rs_defaults_bounded_fragment_pool(monkeypatch):
-    """The arrow-rs reader decodes fragments on a pool BOUNDED at 4 workers;
-    the PyArrow reader keeps the base path's unbounded one-worker-per-fragment
-    pool. A single-fragment task stays on the sequential branch, where the
-    crate alone owns parallelism.
+    """Both readers decode fragments on a one-worker-per-fragment pool
+    (pool-width PARITY, decided 2026-08-12 — a narrower arrow-rs pool turned
+    every multi-fragment A/B into a pool-width comparison instead of a decode
+    comparison, and at realistic bin budgets a bin spans few files anyway).
+    A single-fragment task stays on the sequential branch, where the crate
+    alone owns parallelism.
 
-    Both bounds are measured (findings K6, K10 in arrow_rs_docs/findings.md):
-    each in-flight fragment adds its own retention to the task's working set,
-    so unbounded is wrong for this reader (K6) — but on the #64985 base a
-    fragment is a multi-file bin and one worker serialises per-file setup
-    latency across it, so threads=4 cuts read-op time 1.6-3.3x at
-    flat-to-+22% memory (K10, which re-measured and replaced K6's default
-    of 1).
+    History (findings K6, K10 in arrow_rs_docs/findings.md): K6 default 1 →
+    K10 default 4 (threads=4 vs 1 cuts read-op time 1.6-3.3x at
+    flat-to-+22% memory) → 2026-08-12 parity. If the bin sweep shows
+    arrow-rs per-task USS growing with bin size, suspect this default first
+    and re-cap via RAY_DATA_READ_FILES_NUM_THREADS.
 
-    The assertion on the PyArrow arm is deliberately ``== len(fragments)``
-    at two sizes rather than a literal: the base is unbounded, and a cap
-    leaking back onto it is the regression this arm exists to catch.
+    The assertions are deliberately ``== num_fragments`` at two sizes rather
+    than a literal: both paths are unbounded, and a cap leaking onto either
+    is the regression this test exists to catch.
     """
     from pyarrow.fs import LocalFileSystem
 
@@ -2967,13 +2967,13 @@ def test_arrow_rs_defaults_bounded_fragment_pool(monkeypatch):
     kwargs = dict(filesystem=LocalFileSystem(), target_block_size=128 * 1024 * 1024)
 
     rs_reader = ArrowRsParquetFileReader(**kwargs)
-    # min(4, num_fragments): tracks the fragment count up to the cap.
+    # Parity with the base: one worker per fragment, no cap.
     assert rs_reader._num_fragment_read_threads(1) == 1
     assert rs_reader._num_fragment_read_threads(2) == 2
     assert rs_reader._num_fragment_read_threads(4) == 4
-    assert rs_reader._num_fragment_read_threads(64) == 4
+    assert rs_reader._num_fragment_read_threads(64) == 64
     used_async, tables = _dispatch_fragments(rs_reader, monkeypatch, n=2)
-    assert used_async, "arrow-rs multi-fragment dispatch lost its bounded pool"
+    assert used_async, "arrow-rs multi-fragment dispatch lost its fragment pool"
     assert len(tables) == 2, "concurrent path dropped fragments"
     used_async, tables = _dispatch_fragments(rs_reader, monkeypatch, n=1)
     assert not used_async, (
@@ -2993,8 +2993,7 @@ def test_arrow_rs_defaults_bounded_fragment_pool(monkeypatch):
 
 def test_explicit_num_threads_env_overrides_arrow_rs_default(monkeypatch):
     """An explicitly set ``RAY_DATA_READ_FILES_NUM_THREADS`` beats the per-reader
-    ``min(4, num_fragments)`` default — a user who set it meant it, and the
-    benchmark harness sweeps it.
+    default — a user who set it meant it, and the benchmark harness sweeps it.
 
     Both the env read and the "was it explicit?" flag happen at import time, so this
     patches the two module attributes rather than ``os.environ``.
