@@ -2197,13 +2197,8 @@ async def test_concurrent_running_replica_updates_merge_completed_resolutions(
         if replica_info.replica_id == r1_id:
             with resolution_count_lock:
                 r1_resolution_count += 1
-                resolution_number = r1_resolution_count
-
-            if resolution_number == 1:
-                first_resolution_started.set()
-                allow_first_resolution.wait(timeout=5)
-            else:
-                allow_second_update.wait(timeout=5)
+            first_resolution_started.set()
+            allow_first_resolution.wait(timeout=5)
         else:
             second_update_started.set()
             allow_second_update.wait(timeout=5)
@@ -2219,6 +2214,8 @@ async def test_concurrent_running_replica_updates_merge_completed_resolutions(
         pow_2_router._update_running_replicas([r1_info, r2_info])
     )
     assert await asyncio.to_thread(second_update_started.wait, 5)
+    with resolution_count_lock:
+        assert r1_resolution_count == 1
 
     allow_first_resolution.set()
     await first_update
@@ -2229,6 +2226,63 @@ async def test_concurrent_running_replica_updates_merge_completed_resolutions(
     await second_update
     assert set(pow_2_router.curr_replicas) == {r1_id, r2_id}
     assert pow_2_router.curr_replicas[r1_id] is first_r1_wrapper
+    with resolution_count_lock:
+        assert r1_resolution_count == 1
+    assert not pow_2_router._replica_wrapper_resolution_futures
+    assert not pow_2_router._replica_wrapper_resolution_waiters
+
+
+@pytest.mark.asyncio
+async def test_cancelled_update_does_not_cancel_shared_resolution(
+    pow_2_router, monkeypatch
+):
+    configure_running_replica_factories(pow_2_router)
+    replica_id = ReplicaID(
+        unique_id="r1",
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+    )
+    replica_info = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node-1",
+        node_ip="127.0.0.1",
+        availability_zone="az-1",
+        actor_name="actor-r1",
+        max_ongoing_requests=10,
+    )
+    resolution_started = threading.Event()
+    allow_resolution = threading.Event()
+    resolution_count = 0
+
+    def get_actor_handle(_):
+        nonlocal resolution_count
+        resolution_count += 1
+        resolution_started.set()
+        allow_resolution.wait(timeout=5)
+        return object()
+
+    monkeypatch.setattr(RunningReplicaInfo, "get_actor_handle", get_actor_handle)
+
+    cancelled_update = asyncio.create_task(
+        pow_2_router._update_running_replicas([replica_info])
+    )
+    assert await asyncio.to_thread(resolution_started.wait, 5)
+    surviving_update = asyncio.create_task(
+        pow_2_router._update_running_replicas([replica_info])
+    )
+    await async_wait_for_condition(
+        lambda: pow_2_router._replica_wrapper_resolution_waiters[replica_id] == 2
+    )
+
+    cancelled_update.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled_update
+
+    allow_resolution.set()
+    await surviving_update
+    assert resolution_count == 1
+    assert set(pow_2_router.curr_replicas) == {replica_id}
+    assert not pow_2_router._replica_wrapper_resolution_futures
+    assert not pow_2_router._replica_wrapper_resolution_waiters
 
 
 @pytest.mark.asyncio
@@ -2253,6 +2307,44 @@ async def test_update_running_replicas_propagates_unexpected_resolution_error(
 
     with pytest.raises(RuntimeError, match="unexpected resolution failure"):
         await pow_2_router._update_running_replicas([replica_info])
+
+
+@pytest.mark.asyncio
+async def test_update_running_replicas_retries_after_resolution_error(
+    pow_2_router, monkeypatch
+):
+    configure_running_replica_factories(pow_2_router)
+    replica_id = ReplicaID(
+        unique_id="r1",
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+    )
+    replica_info = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node-1",
+        node_ip="127.0.0.1",
+        availability_zone="az-1",
+        actor_name="actor-r1",
+        max_ongoing_requests=10,
+    )
+    resolution_count = 0
+
+    def get_actor_handle(_):
+        nonlocal resolution_count
+        resolution_count += 1
+        if resolution_count == 1:
+            raise RuntimeError("unexpected resolution failure")
+        return object()
+
+    monkeypatch.setattr(RunningReplicaInfo, "get_actor_handle", get_actor_handle)
+
+    with pytest.raises(RuntimeError, match="unexpected resolution failure"):
+        await pow_2_router._update_running_replicas([replica_info])
+
+    await pow_2_router._update_running_replicas([replica_info])
+    assert resolution_count == 2
+    assert set(pow_2_router.curr_replicas) == {replica_id}
+    assert not pow_2_router._replica_wrapper_resolution_futures
+    assert not pow_2_router._replica_wrapper_resolution_waiters
 
 
 @pytest.mark.asyncio

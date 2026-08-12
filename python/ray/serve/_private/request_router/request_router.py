@@ -1,10 +1,8 @@
 import asyncio
-import concurrent.futures
 import enum
 import logging
 import math
 import random
-import threading
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -34,13 +32,13 @@ from ray.serve._private.constants import (
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
-    RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS,
     RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.replica_handle_resolver import get_replica_handle_resolver
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router.common import (
     PendingRequest,
@@ -51,23 +49,6 @@ from ray.util import metrics
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-_replica_handle_resolver: Optional[concurrent.futures.ThreadPoolExecutor] = None
-_replica_handle_resolver_lock = threading.Lock()
-
-
-def _get_replica_handle_resolver() -> concurrent.futures.ThreadPoolExecutor:
-    """Return the process-wide executor for blocking actor handle lookups."""
-    global _replica_handle_resolver
-    if _replica_handle_resolver is None:
-        with _replica_handle_resolver_lock:
-            if _replica_handle_resolver is None:
-                _replica_handle_resolver = concurrent.futures.ThreadPoolExecutor(
-                    max_workers=RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS,
-                    thread_name_prefix="serve-replica-handle-resolver",
-                )
-
-    return _replica_handle_resolver
 
 
 class LocalityScope(str, enum.Enum):
@@ -524,6 +505,10 @@ class RequestRouter(ABC):
         # routing iteration. Updated only when replicas change via `update_replicas`.
         self._replicas_list: List[RunningReplica] = []
         self._desired_running_replica_infos: Dict[ReplicaID, RunningReplicaInfo] = {}
+        self._replica_wrapper_resolution_futures: Dict[ReplicaID, asyncio.Future] = {}
+        self._replica_wrapper_resolution_waiters: DefaultDict[
+            ReplicaID, int
+        ] = defaultdict(int)
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
@@ -1405,6 +1390,7 @@ class RequestRouter(ABC):
     ) -> Tuple[Dict[ReplicaID, RunningReplica], Optional[BaseException]]:
         """Resolve actor handles concurrently outside the router event loop.
 
+        Concurrent updates share the same in-flight resolution for each replica.
         Returns the wrappers that resolved successfully along with the first
         unexpected error encountered (if any). The caller is responsible for
         committing the resolved wrappers before re-raising the error so that a
@@ -1414,7 +1400,7 @@ class RequestRouter(ABC):
             return {}, None
 
         loop = asyncio.get_running_loop()
-        resolver = _get_replica_handle_resolver()
+        resolver = get_replica_handle_resolver()
         has_handle_factory = (
             getattr(self, "_create_replica_wrapper_from_handle_func", None) is not None
         )
@@ -1428,39 +1414,84 @@ class RequestRouter(ABC):
             # Compatibility fallback for directly constructed custom routers.
             return self.create_replica_wrapper(replica_info)
 
-        results = await asyncio.gather(
-            *[
-                loop.run_in_executor(resolver, resolve, replica_info)
-                for replica_info in replica_infos
-            ],
-            return_exceptions=True,
-        )
+        resolution_futures: List[asyncio.Future] = []
+        raw_resolution_futures: List[asyncio.Future] = []
+        for replica_info in replica_infos:
+            replica_id = replica_info.replica_id
+            future = self._replica_wrapper_resolution_futures.get(replica_id)
+            if future is None:
+                future = loop.run_in_executor(resolver, resolve, replica_info)
+                self._replica_wrapper_resolution_futures[replica_id] = future
 
-        resolved: Dict[ReplicaID, RunningReplica] = {}
-        resolution_error: Optional[BaseException] = None
-        for replica_info, result in zip(replica_infos, results):
-            if isinstance(result, ValueError):
-                # NOTE(abrar): ValueError is raised when the actor handle is not
-                # found by ray.get_actor.
+                def discard_if_unawaited(
+                    completed_future: asyncio.Future,
+                    replica_id: ReplicaID = replica_id,
+                ) -> None:
+                    self._discard_replica_wrapper_resolution_future(
+                        replica_id, completed_future
+                    )
 
-                # Actor has died (e.g., due to node failure) but controller hasn't
-                # detected it yet. Skip this replica; controller will send an update
-                # when it detects the failure.
-                logger.warning(
-                    f"Failed to get handle to replica {replica_info.replica_id} "
-                    "during router update. The replica actor may have died. "
-                    "Skipping this replica."
-                )
-            elif isinstance(result, BaseException):
-                # Capture the first unexpected error but keep processing the
-                # remaining results so successfully resolved wrappers are not
-                # dropped. The caller re-raises after committing them.
-                if resolution_error is None:
-                    resolution_error = result
-            else:
-                resolved[replica_info.replica_id] = result
+                future.add_done_callback(discard_if_unawaited)
 
-        return resolved, resolution_error
+            self._replica_wrapper_resolution_waiters[replica_id] += 1
+
+            # One update being cancelled must not cancel a resolution shared with
+            # another concurrent update.
+            raw_resolution_futures.append(future)
+            resolution_futures.append(asyncio.shield(future))
+
+        try:
+            results = await asyncio.gather(
+                *resolution_futures,
+                return_exceptions=True,
+            )
+
+            resolved: Dict[ReplicaID, RunningReplica] = {}
+            resolution_error: Optional[BaseException] = None
+            for replica_info, result in zip(replica_infos, results):
+                if isinstance(result, ValueError):
+                    # NOTE(abrar): ValueError is raised when the actor handle is not
+                    # found by ray.get_actor.
+
+                    # Actor has died (e.g., due to node failure) but controller hasn't
+                    # detected it yet. Skip this replica; controller will send an update
+                    # when it detects the failure.
+                    logger.warning(
+                        f"Failed to get handle to replica {replica_info.replica_id} "
+                        "during router update. The replica actor may have died. "
+                        "Skipping this replica."
+                    )
+                elif isinstance(result, BaseException):
+                    # Capture the first unexpected error but keep processing the
+                    # remaining results so successfully resolved wrappers are not
+                    # dropped. The caller re-raises after committing them.
+                    if resolution_error is None:
+                        resolution_error = result
+                else:
+                    resolved[replica_info.replica_id] = result
+
+            return resolved, resolution_error
+        finally:
+            for replica_info, future in zip(replica_infos, raw_resolution_futures):
+                replica_id = replica_info.replica_id
+                self._replica_wrapper_resolution_waiters[replica_id] -= 1
+                if self._replica_wrapper_resolution_waiters[replica_id] == 0:
+                    self._replica_wrapper_resolution_waiters.pop(replica_id)
+                    self._discard_replica_wrapper_resolution_future(replica_id, future)
+
+    def _discard_replica_wrapper_resolution_future(
+        self, replica_id: ReplicaID, future: asyncio.Future
+    ) -> None:
+        if (
+            future.done()
+            and self._replica_wrapper_resolution_waiters.get(replica_id, 0) == 0
+            and self._replica_wrapper_resolution_futures.get(replica_id) is future
+        ):
+            self._replica_wrapper_resolution_futures.pop(replica_id)
+            if not future.cancelled():
+                # Retrieve any exception when all waiters were cancelled before
+                # the executor call completed.
+                future.exception()
 
     def _commit_resolved_replica_wrappers(
         self, resolved_wrappers: Dict[ReplicaID, RunningReplica]
