@@ -209,7 +209,7 @@ If this admission controller is not enabled for your Kubernetes cluster, you may
    ...
    containers:
    - name: ray-node
-     image: rayproject/ray:nightly-gpu
+     image: rayproject/ray:2.57.0-gpu
      ...
 
 Node selectors and node labels
