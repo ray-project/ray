@@ -9,15 +9,13 @@ ignorecase: false
 # this, the "Ray Autoscaler" swap never fires and nothing warns you.
 vocab: false
 swap:
-  # Project and product names.
-  'Kuberay': KubeRay
-  'Yunikorn': YuniKorn
+  # Project and product names. `Kuberay` and `Yunikorn` aren't here, and neither are
+  # the flat-camel custom resources such as `Raycluster`: the accept list already
+  # drives `Vale.Terms` for those, and duplicating them here made a single token
+  # alert up to three times.
   'Ray serve': Ray Serve
-  # Custom resource versus the concept it creates.
-  'Raycluster': RayCluster
-  'Rayjob': RayJob
-  'Rayservice': RayService
-  'Raycronjob': RayCronJob
+  # Custom resource versus the concept it creates. These two-word lowercase forms
+  # don't match an accept entry, so they do need swaps.
   'ray cluster': Ray cluster
   'ray job': Ray job
   'ray service': Ray service
@@ -32,6 +30,8 @@ swap:
   'Ray pod': Pod
   # Kubernetes API object casing.
   'head pod': head Pod
+  'head pods': head Pods
   'worker pod': worker Pod
+  'worker pods': worker Pods
   # Spell out the acronym, then use the full phrase.
   'GCS FT': GCS fault tolerance

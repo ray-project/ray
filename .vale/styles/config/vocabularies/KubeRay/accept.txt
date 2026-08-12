@@ -6,8 +6,8 @@ CustomResourceDefinition(s)?
 DaemonSet(s)?
 Grafana
 Helm
+KAI Scheduler
 KubeRay
-Kueue
 LocalQueue(s)?
 NetworkPolic(y|ies)
 PodGroup(s)?
@@ -22,7 +22,9 @@ RayService(s)?
 rayStartParams
 ResourceFlavor(s)?
 RoleBinding(s)?
+scheduler-plugins
 ServiceAccount(s)?
 ServiceMonitor(s)?
+Volcano
 WorkloadPriorityClass(es)?
 YuniKorn
