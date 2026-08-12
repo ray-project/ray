@@ -107,7 +107,9 @@ def test_deploy_config_default_num_replicas_no_replica_restart(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_config_tracing_config_declarative_flow(serve_instance, tmp_path):
+def test_deploy_config_tracing_config_declarative_flow(
+    serve_instance, tmp_path, request
+):
     """Tracing config in the serve config (declarative flow) is applied via `serve deploy`.
 
     Deploys a config with a top-level ``tracing_config``, verifies the controller
@@ -128,6 +130,17 @@ def test_deploy_config_tracing_config_declarative_flow(serve_instance, tmp_path)
     with open(config_file_name, "w") as config_file:
         yaml.safe_dump(config, config_file)
 
+    def disable_tracing():
+        # The controller only ever sets global tracing config, and the Serve
+        # instance is session-scoped, so leave it disabled for later tests.
+        config["tracing_config"]["enabled"] = False
+        with open(config_file_name, "w") as config_file:
+            yaml.safe_dump(config, config_file)
+        subprocess.check_output(["serve", "deploy", config_file_name])
+
+    # Registered before the enabling deploy so it runs however this test exits,
+    # and as a finalizer so a teardown error cannot mask the real failure.
+    request.addfinalizer(disable_tracing)
     subprocess.check_output(["serve", "deploy", config_file_name])
 
     def check_running() -> bool:
@@ -159,12 +172,6 @@ def test_deploy_config_tracing_config_declarative_flow(serve_instance, tmp_path)
         wait_for_condition(replica_traces_created, timeout=40)
     finally:
         shutil.rmtree(spans_dir, ignore_errors=True)
-        # The controller only ever sets global tracing config, and the Serve
-        # instance is session-scoped, so leave it disabled for later tests.
-        config["tracing_config"]["enabled"] = False
-        with open(config_file_name, "w") as config_file:
-            yaml.safe_dump(config, config_file)
-        subprocess.check_output(["serve", "deploy", config_file_name])
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
