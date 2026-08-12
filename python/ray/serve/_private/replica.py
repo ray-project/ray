@@ -2706,8 +2706,7 @@ class Replica:
 
             result_gen = call_unary()
 
-        # Invariant: gRPC direct-ingress requests are only served after
-        # `_maybe_start_direct_ingress_servers` populated `_grpc_options`.
+        # Direct ingress is only served once `_grpc_options` is populated.
         assert self._grpc_options is not None
 
         return _PreparedGRPCRequest(c, request_metadata, result_gen, self._grpc_options)
@@ -2722,8 +2721,7 @@ class Replica:
         e = self._maybe_wrap_grpc_exception(e, request_metadata)
         return e, get_grpc_response_status(
             e,
-            # `request_timeout_s` may be None (no timeout configured); the callee
-            # only formats it into an error message but annotates it as `float`.
+            # May be None; the callee only formats it into a message.
             grpc_options.request_timeout_s,  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
             request_metadata.request_id,
         )
@@ -2740,8 +2738,8 @@ class Replica:
         A plain coroutine, not a generator: the single response is returned directly
         so this path doesn't pay async-generator overhead per request.
 
-        Returns empty bytes if the request was rejected (returning `None` to gRPC
-        would cause serialization errors).
+        Returns empty bytes if the request was rejected or failed (returning `None`
+        to gRPC would cause serialization errors).
         """
         prepared = await self._prepare_direct_ingress_grpc_request(
             service_method,
@@ -2753,6 +2751,8 @@ class Replica:
             return b""
         c, request_metadata, result_gen, grpc_options = prepared
 
+        # `_wrap_request` swallows direct-ingress exceptions, so return outside it.
+        result = b""
         with (
             self._wrap_request(request_metadata) as status_code_callback,
             self._track_queued_request() as release_queue_slot,
@@ -2761,20 +2761,17 @@ class Replica:
                 # Acquired an ongoing-request slot, so it's running, not queued.
                 release_queue_slot()
 
-                # Use the generic disconnect/timeout detecting wrapper.
                 replica_response_generator = ReplicaResponseGenerator(
                     result_gen,
                     timeout_s=grpc_options.request_timeout_s,
                 )
                 status = ResponseStatus(code=grpc.StatusCode.OK)
-                result = b""
                 exhausted = False
                 try:
                     async for message in replica_response_generator:
                         result = message.SerializeToString()
                     exhausted = True
-                    # Apply any user-set code/details/trailing metadata once the
-                    # request completes successfully (sent as HTTP/2 trailers).
+                    # User-set code/details/metadata go out as HTTP/2 trailers.
                     c._set_on_grpc_context(context)
                 except BaseException as e:
                     e, status = self._direct_ingress_grpc_error_status(
@@ -2782,21 +2779,20 @@ class Replica:
                     )
                     raise e
                 finally:
-                    # Closing `result_gen` cancels the unit running the user method,
-                    # only needed if it didn't run to completion.
-                    if not exhausted:
-                        await result_gen.aclose()
-                    # Record the status code for both success and error paths so
-                    # ingress metrics are emitted for successful gRPC requests.
-                    code_name = (
-                        status.code.name
-                        if isinstance(status.code, grpc.StatusCode)
-                        else status.code
-                    )
-                    status_code_callback(code_name)
-                    set_grpc_code_and_details(context, status)
+                    try:
+                        if not exhausted:
+                            await result_gen.aclose()
+                    finally:
+                        # Status must reach the client even if `aclose()` raises.
+                        code_name = (
+                            status.code.name
+                            if isinstance(status.code, grpc.StatusCode)
+                            else status.code
+                        )
+                        status_code_callback(code_name)
+                        set_grpc_code_and_details(context, status)
 
-                return result
+        return result
 
     async def _direct_ingress_grpc_streaming_response(
         self,
@@ -2829,7 +2825,6 @@ class Replica:
                 # Acquired an ongoing-request slot, so it's running, not queued.
                 release_queue_slot()
 
-                # Use the generic disconnect/timeout detecting wrapper.
                 replica_response_generator = ReplicaResponseGenerator(
                     result_gen,
                     timeout_s=grpc_options.request_timeout_s,
@@ -2838,8 +2833,7 @@ class Replica:
                 try:
                     async for message in replica_response_generator:
                         yield message.SerializeToString()
-                    # Apply any user-set code/details/trailing metadata once the
-                    # request completes successfully (sent as HTTP/2 trailers).
+                    # User-set code/details/metadata go out as HTTP/2 trailers.
                     c._set_on_grpc_context(context)
                 except BaseException as e:
                     e, status = self._direct_ingress_grpc_error_status(
@@ -2847,18 +2841,18 @@ class Replica:
                     )
                     raise e
                 finally:
-                    # A consumer can abandon mid-stream, so always close `result_gen`
-                    # to cancel the unit running the user method.
-                    await result_gen.aclose()
-                    # Record the status code for both success and error paths so
-                    # ingress metrics are emitted for successful gRPC requests.
-                    code_name = (
-                        status.code.name
-                        if isinstance(status.code, grpc.StatusCode)
-                        else status.code
-                    )
-                    status_code_callback(code_name)
-                    set_grpc_code_and_details(context, status)
+                    try:
+                        # A streaming consumer can abandon mid-stream.
+                        await result_gen.aclose()
+                    finally:
+                        # Status must reach the client even if `aclose()` raises.
+                        code_name = (
+                            status.code.name
+                            if isinstance(status.code, grpc.StatusCode)
+                            else status.code
+                        )
+                        status_code_callback(code_name)
+                        set_grpc_code_and_details(context, status)
 
     async def _handle_builtin_grpc_service(
         self,
