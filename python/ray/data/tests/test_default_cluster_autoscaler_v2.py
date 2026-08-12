@@ -11,6 +11,7 @@ from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import 
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
     _NodeResourceSpec,
+    _select_node_specs_for_scale_up,
 )
 from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
     FakeAutoscalingCoordinator,
@@ -208,8 +209,16 @@ class TestClusterAutoscaling:
         if not should_scale_up:
             assert resources_reserved == ExecutionResources.zero()
         else:
-            expected_num_resource_spec1_requested = 2 + scale_up_delta
-            expected_num_resource_spec2_requested = 1 + scale_up_delta
+            cpu_or_memory_hot = (
+                cpu_util >= scale_up_threshold or mem_util >= scale_up_threshold
+            )
+            gpu_hot = gpu_util >= scale_up_threshold
+            expected_num_resource_spec1_requested = 2 + (
+                scale_up_delta if cpu_or_memory_hot else 0
+            )
+            expected_num_resource_spec2_requested = 1 + (
+                scale_up_delta if gpu_hot else 0
+            )
             expected_resources = ExecutionResources(
                 cpu=(
                     resource_spec1.cpu * expected_num_resource_spec1_requested
@@ -226,6 +235,63 @@ class TestClusterAutoscaling:
             )
 
             assert resources_reserved == expected_resources
+
+    def test_cpu_pressure_does_not_scale_gpu_nodes_when_cpu_nodes_exist(self):
+        """CPU-only pressure should not request accelerator nodes in a mixed cluster.
+
+        This covers the failure mode from ray-project/ray#56431 where Ray Data
+        batch inference with vLLM could ask for more GPU nodes while the observed
+        pressure was CPU-only.
+        """
+        scale_up_threshold = 0.75
+        scale_up_delta = 1
+        cpu_node_spec = _NodeResourceSpec.of(cpu=32, gpu=0, mem=16 * GiB)
+        gpu_node_spec = _NodeResourceSpec.of(cpu=1, gpu=8, mem=64 * GiB)
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_cpu_only_pressure_mixed_cluster",
+            cluster_scaling_up_delta=scale_up_delta,
+            resource_utilization_calculator=StubUtilizationGauge(
+                ExecutionResources(
+                    cpu=0.95,
+                    gpu=0.1,
+                    memory=0.1,
+                    object_store_memory=0.1,
+                )
+            ),
+            cluster_scaling_up_util_threshold=scale_up_threshold,
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=FakeAutoscalingCoordinator(),
+            get_node_counts=lambda: {
+                cpu_node_spec: 10,
+                gpu_node_spec: 2,
+            },
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        resources_reserved = autoscaler.get_total_resources()
+        assert resources_reserved.cpu == (
+            cpu_node_spec.cpu * (10 + scale_up_delta) + gpu_node_spec.cpu * 2
+        )
+        assert resources_reserved.gpu == gpu_node_spec.gpu * 2
+        assert resources_reserved.memory == (
+            cpu_node_spec.mem * (10 + scale_up_delta) + gpu_node_spec.mem * 2
+        )
+
+    def test_cpu_pressure_scales_gpu_nodes_if_no_cpu_node_type_exists(self):
+        """Fallback preserves scale-up behavior for GPU-only clusters."""
+        gpu_node_spec = _NodeResourceSpec.of(cpu=1, gpu=8, mem=64 * GiB)
+
+        selected = _select_node_specs_for_scale_up(
+            {gpu_node_spec: 2},
+            ExecutionResources(cpu=0.95, gpu=0.1, memory=0.1, object_store_memory=0.1),
+            threshold=0.75,
+        )
+
+        assert selected == [gpu_node_spec]
 
     def test_get_node_resource_spec_and_count_from_zero(self):
         """Test that get_node_resource_spec_and_count can discover node types
@@ -860,7 +926,7 @@ class TestClusterAutoscaling:
         expected_message = (
             "The utilization of one or more logical resource is higher than the "
             "specified threshold of 75%: CPU=100%, GPU=100%, memory=0%, "
-            "object_store_memory=100%. Requesting 1 node(s) of each shape: "
+            "object_store_memory=100%. Requesting 1 node(s) of selected shape(s): "
             "[{CPU: 1, GPU: 0, memory: 8.0GiB}: 1 -> 2]"
         )
         log_messages = [record.message for record in caplog.records]

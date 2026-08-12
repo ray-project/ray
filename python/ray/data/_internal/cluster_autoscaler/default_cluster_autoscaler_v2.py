@@ -18,6 +18,7 @@ from .default_autoscaling_coordinator import (
     DefaultAutoscalingCoordinator,
 )
 from .resource_utilization_gauge import (
+    ClusterUtil,
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
 )
@@ -159,6 +160,38 @@ def _get_node_resource_spec_and_count(
         nodes_resource_spec_count[node_resource_spec] += 1
 
     return nodes_resource_spec_count
+
+
+def _select_node_specs_for_scale_up(
+    node_resource_spec_count: Dict[_NodeResourceSpec, int],
+    util: ClusterUtil,
+    threshold: float,
+) -> List[_NodeResourceSpec]:
+    """Select node shapes whose resources match the scale-up signal.
+
+    Heterogeneous clusters often have both CPU-only nodes and accelerator nodes.
+    If CPU or memory pressure is the only signal, requesting accelerator nodes can
+    be very expensive and may not help the bottleneck. Prefer CPU-only shapes for
+    CPU/memory pressure and accelerator shapes for GPU pressure. If the heuristic
+    finds no matching shape, fall back to all shapes to preserve scale-up behavior
+    for homogeneous clusters.
+    """
+    cpu_or_memory_hot = (
+        util.cpu >= threshold
+        or util.memory >= threshold
+        or util.object_store_memory >= threshold
+    )
+    gpu_hot = util.gpu >= threshold
+
+    selected = []
+    for node_resource_spec in node_resource_spec_count:
+        if node_resource_spec.gpu > 0:
+            if gpu_hot:
+                selected.append(node_resource_spec)
+        elif cpu_or_memory_hot:
+            selected.append(node_resource_spec)
+
+    return selected or list(node_resource_spec_count)
 
 
 class DefaultClusterAutoscalerV2(ClusterAutoscaler):
@@ -314,18 +347,21 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
         # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
         # to ensure existing nodes' resources are never crowded out by scale-up requests.
-        # TODO(hchen): We scale up all nodes by the same delta for now.
-        # We may want to distinguish different node types based on their individual
-        # utilization.
         active_bundles = []
         pending_bundles = []
         node_resource_spec_count = self._get_node_counts()
+        node_specs_to_scale = _select_node_specs_for_scale_up(
+            node_resource_spec_count,
+            util,
+            self._cluster_scaling_up_util_threshold,
+        )
         for node_resource_spec, count in node_resource_spec_count.items():
             bundle = node_resource_spec.to_bundle()
             # Bundles for existing nodes -> active (must include)
             active_bundles.extend([bundle] * count)
             # Bundles for scale-up delta -> pending (best-effort)
-            pending_bundles.extend([bundle] * self._cluster_scaling_up_delta)
+            if node_resource_spec in node_specs_to_scale:
+                pending_bundles.extend([bundle] * self._cluster_scaling_up_delta)
 
         # Cap the resource request to respect user-configured limits.
         # Active bundles (existing nodes) are always included; pending bundles
@@ -351,7 +387,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             f"CPU={current_utilization.cpu:.0%}, GPU={current_utilization.gpu:.0%}, "
             f"memory={current_utilization.memory:.0%}, "
             f"object_store_memory={current_utilization.object_store_memory:.0%}. "
-            f"Requesting {self._cluster_scaling_up_delta} node(s) of each shape:"
+            f"Requesting {self._cluster_scaling_up_delta} node(s) of selected shape(s):"
         )
 
         current_node_counts = Counter(
