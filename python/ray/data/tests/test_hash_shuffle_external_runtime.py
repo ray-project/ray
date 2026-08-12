@@ -9,12 +9,17 @@ import os
 import socket
 import struct
 import threading
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.data._internal.execution.operators.shuffle_operators import (
+    external_shuffle_runtime as _runtime,
+)
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
     _ENDPOINT_CACHE,
     _ENDPOINT_CACHE_LOCK,
+    _SHUFFLE_FILE_SERVER_NAMESPACE,
     ShuffleDiskError,
     ShuffleFileServer,
     ShuffleFileServerAnomalyError,
@@ -39,13 +44,21 @@ from ray.tests.conftest import *  # noqa: F401, F403
 
 
 # ---------------------------------------------------------------------- helpers
-def _make_file_server(tmp_path):
-    """Create a ShuffleFileServer actor rooted at tmp_path, return (actor, endpoint)."""
+def _make_file_server(tmp_path, shuffle_id="shuffle-0", node_id="node-1"):
+    """Create a named (not detached) ShuffleFileServer; return (actor, endpoint)."""
     import ray
 
-    actor = ShuffleFileServer.remote(str(tmp_path))
+    actor = ShuffleFileServer.options(
+        name=_file_server_name(shuffle_id, node_id),
+        namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
+    ).remote(str(tmp_path))
     endpoint = ray.get(actor.endpoint.remote())
     return actor, endpoint
+
+
+def _clear_endpoint_cache(shuffle_id, node_id):
+    with _ENDPOINT_CACHE_LOCK:
+        _ENDPOINT_CACHE.pop(_file_server_name(shuffle_id, node_id), None)
 
 
 @contextlib.contextmanager
@@ -113,6 +126,124 @@ def test_shuffle_file_server_lifecycle(ray_start_regular_shared_2_cpus, tmp_path
 
     s = socket.create_connection((host, port), timeout=5)
     s.close()
+
+
+def test_fetch_unregistered_name_is_anomaly(ray_start_regular_shared_2_cpus, tmp_path):
+    # Cache miss + no named actor in the shuffle namespace → _resolve raises.
+    shuffle_id, node_id = "unregistered", "node-1"
+    _clear_endpoint_cache(shuffle_id, node_id)
+    fd, sink = _open_sink(tmp_path)
+    try:
+        with pytest.raises(ShuffleFileServerAnomalyError, match="not found"):
+            _fetch_from_file_server(
+                sink,
+                shuffle_id,
+                node_id,
+                [_FileRanges(path="x.bin", ranges=[(0, 4)])],
+                max_bytes_per_fetch=1 << 20,
+            )
+    finally:
+        os.close(fd)
+
+
+def test_fetch_killed_actor_is_anomaly(ray_start_regular_shared_2_cpus, tmp_path):
+    # After ray.kill(no_restart=True) the name is gone, so _resolve's get_actor
+    # raises ValueError (same mapping as unregistered, not ActorDiedError).
+    import ray
+
+    shuffle_id, node_id = "killed", "node-1"
+    actor, _endpoint = _make_file_server(tmp_path, shuffle_id, node_id)
+    ray.kill(actor, no_restart=True)
+    _clear_endpoint_cache(shuffle_id, node_id)
+    fd, sink = _open_sink(tmp_path)
+    try:
+        with pytest.raises(ShuffleFileServerAnomalyError):
+            _fetch_from_file_server(
+                sink,
+                shuffle_id,
+                node_id,
+                [_FileRanges(path="x.bin", ranges=[(0, 4)])],
+                max_bytes_per_fetch=1 << 20,
+            )
+    finally:
+        os.close(fd)
+
+
+def test_fetch_restart_retry(ray_start_regular_shared_2_cpus, tmp_path):
+    # Seed cache with the live endpoint, SIGKILL the actor process (max_restarts=-1
+    # restarts it), then fetch: first stream hits the dead port, _resolve sees a
+    # new incarnation and retries.
+    import signal
+
+    from ray._private.test_utils import wait_for_pid_to_exit
+    from ray.util.state import list_actors
+
+    shuffle_id, node_id = "restart", "node-1"
+    payload = b"SHARD_" * 8
+    (tmp_path / "s.bin").write_bytes(payload)
+    _actor, endpoint = _make_file_server(tmp_path, shuffle_id, node_id)
+    key = _file_server_name(shuffle_id, node_id)
+    actors = list_actors(filters=[("name", "=", key)])
+    assert actors and actors[0].pid
+    pid = actors[0].pid
+    os.kill(pid, signal.SIGKILL)
+    wait_for_pid_to_exit(pid)
+    with _ENDPOINT_CACHE_LOCK:
+        _ENDPOINT_CACHE[key] = endpoint
+
+    fd, sink = _open_sink(tmp_path, size=64)
+    try:
+        _fetch_from_file_server(
+            sink,
+            shuffle_id,
+            node_id,
+            [_FileRanges(path="s.bin", ranges=[(0, 24), (24, 24)])],
+            max_bytes_per_fetch=1 << 20,
+        )
+        assert struct.unpack(">Q", os.pread(fd, 8, 0))[0] == 24
+        assert os.pread(fd, 24, 8) == payload[0:24]
+        assert struct.unpack(">Q", os.pread(fd, 8, 32))[0] == 24
+        assert os.pread(fd, 24, 40) == payload[24:48]
+    finally:
+        _clear_endpoint_cache(shuffle_id, node_id)
+        os.close(fd)
+
+
+def test_fetch_same_incarnation_escalate(tmp_path):
+    # Actor still reachable via Ray (same incarnation) but Flight keeps failing
+    # → retry once, then ShuffleFileServerAnomalyError. Cannot SIGKILL this:
+    # kill either drops the name or changes incarnation.
+    import pyarrow.flight as flight
+
+    shuffle_id, node_id = "mock-shuffle", "node-1"
+    _clear_endpoint_cache(shuffle_id, node_id)
+    stream_calls = {"n": 0}
+
+    def fake_stream(endpoint, members, max_bytes, sink):
+        stream_calls["n"] += 1
+        raise flight.FlightUnavailableError("down")
+
+    def fake_ray_get(_ref):
+        return _Endpoint("127.0.0.1", 1, "A")
+
+    fd, sink = _open_sink(tmp_path)
+    members = [_FileRanges(path="x.bin", ranges=[(0, 4)])]
+    try:
+        with patch.object(
+            _runtime, "_stream_members_flight", fake_stream
+        ), patch.object(
+            _runtime.ray, "get_actor", return_value=MagicMock()
+        ), patch.object(
+            _runtime.ray, "get", side_effect=fake_ray_get
+        ), patch.object(
+            _runtime.time, "sleep"
+        ):
+            with pytest.raises(ShuffleFileServerAnomalyError):
+                _fetch_from_file_server(sink, shuffle_id, node_id, members, 1 << 20)
+        assert stream_calls["n"] == 2
+    finally:
+        _clear_endpoint_cache(shuffle_id, node_id)
+        os.close(fd)
 
 
 # ------------------------------------------------ Arrow Flight fetch transport
