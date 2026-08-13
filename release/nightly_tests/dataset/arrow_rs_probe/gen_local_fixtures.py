@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Generate the local Parquet fixture shapes for grand_experiment.py.
 
-Five shapes, each isolating one axis of the NEW footer-based planner (#64985 series:
+Each shape isolates one axis of the NEW footer-based planner (#64985 series:
 footers read up front, row groups pruned then bin-packed by uncompressed size into
-read tasks) and/or one known arrow-rs behaviour:
+read tasks) and/or one known arrow-rs behaviour (the replication shapes bin_sweep /
+tensors_wide / tensors_cp are documented on their generators below):
 
   lone_big_rg     1 file, ONE ~800 MiB uncompressed row group. Unsplittable by any
                   planner (a row group is the atom). arrow-rs K-splits it internally;
@@ -243,6 +244,81 @@ def gen_tensors_wide(d, scale):
     }
 
 
+def gen_tensors_cp(d, scale):
+    """4 files, 5000 tensor columns with **cloudpickle** extension metadata.
+
+    The fixture that actually reproduces T15/1y (T22): `tensors_wide` above is
+    the 2026-08-12 lookalike that decodes *faster* native (T19), because the
+    release dataset was written by Ray 2.49-2.54 with cloudpickle-serialized
+    tensor metadata — non-UTF8 bytes inside ``ARROW:schema`` that the crate's
+    IPC verifier rejects. That flips the reader onto its skip+realign path
+    (decode parquet storage types, re-read the footer via pyarrow, cast every
+    column storage→extension per batch), which a plain-storage fixture never
+    touches. Storage is variable-size ``list<float>`` (Ray's ArrowTensorArray),
+    also unlike the lookalike's ``fixed_size_list``.
+
+    Any run against this fixture needs
+    ``RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1`` (the release yaml sets
+    it for the same reason); the [tensorscp] stage passes it per cell.
+    """
+    # Writing the legacy metadata format requires the in-process switch; keep
+    # the import and the flip inside the generator so the other shapes never
+    # depend on ray.data internals.
+    import ray.data._internal.tensor_extensions.arrow as tx
+    from ray.data.extensions import ArrowTensorArray
+
+    prev = tx.ARROW_EXTENSION_SERIALIZATION_FORMAT
+    tx.ARROW_EXTENSION_SERIALIZATION_FORMAT = tx._SerializationFormat.CLOUDPICKLE
+    try:
+        rng = np.random.default_rng(7)
+        n_files = 4
+        n_cols = 5000
+        rows_per_file = max(200, int(400 * scale))
+        row_group_size = max(100, int(200 * scale))
+        total = 0
+        for f in range(n_files):
+            cols = {}
+            for c in range(n_cols):
+                vals = rng.random((rows_per_file, 2, 2), dtype=np.float32)
+                cols[f"t{c}"] = ArrowTensorArray.from_numpy(vals)
+            t = pa.table(cols)
+            pq.write_table(
+                t,
+                os.path.join(d, f"part{f}.parquet"),
+                write_page_index=True,
+                row_group_size=row_group_size,
+            )
+            total += t.nbytes
+    finally:
+        tx.ARROW_EXTENSION_SERIALIZATION_FORMAT = prev
+
+    # The whole point is the crate's skip path — fail loudly if the crate can
+    # parse this file's embedded schema after all (the fixture would then
+    # silently measure the ordinary native path, T19's mistake in reverse).
+    # NB: don't try to check the ARROW:schema *bytes* instead — pyarrow
+    # base64-encodes that value, so it always decodes as ASCII; only the
+    # crate's own verdict distinguishes the two paths.
+    try:
+        import ray_data_arrow_rs as rs
+    except ImportError:
+        print("  tensors_cp: crate not importable here — skip-path check deferred")
+    else:
+        handle = rs.open_parquet_file(
+            os.path.join(d, "part0.parquet"), page_index=False
+        )
+        if not getattr(handle.metadata(), "arrow_schema_skipped", False):
+            raise SystemExit(
+                "tensors_cp: crate parsed the embedded arrow schema (no skip) — "
+                "this fixture no longer reproduces 1y's realign path"
+            )
+    return {
+        "files": n_files,
+        "rows": n_files * rows_per_file,
+        "uncompressed_bytes": total,
+        "columns": n_cols,
+    }
+
+
 SHAPES = {
     "lone_big_rg": gen_lone_big_rg,
     "single_rg_files": gen_single_rg_files,
@@ -251,6 +327,7 @@ SHAPES = {
     "fat_col": gen_fat_col,
     "bin_sweep": gen_bin_sweep,
     "tensors_wide": gen_tensors_wide,
+    "tensors_cp": gen_tensors_cp,
 }
 
 

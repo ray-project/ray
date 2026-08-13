@@ -23,15 +23,22 @@ Results: `grand_runs/<ts>/summary.md` (ratio tables; R/P > 1.00 = arrow-rs worse
 ## Replication matrix — the 2026-08-12 release-A/B trusted signals (TODO 1ab phase 1)
 
 Replicates the multi-node A/B's *trusted* (wall / decode task-s) good/bad list on one
-Linux box: `tensors` (item 1y, decode 5.59×), `binsweep` (item 10 — bins from 1 row
-group up to 10× a file, plus a PyArrow `pre_buffer=off` arm), **`binbound`** (R2b — is a
-read task's USS bounded by the bin budget, or is something retaining?), `write`
-(item 1aa), `fatcol` (item 1o), **`oom`** (R5 — the failure-mode demo: same memory
-ceiling via Ray's own memory monitor, sweep the bin; PyArrow's arm is *expected* to die
-with `OutOfMemoryError` at the big bins while arrow-rs survives all of them — an OOM
-there is the stage's result, not a broken run). Stage rationale in
+Linux box: `tensors` (item 1y's negative control — the fsl lookalike that decodes
+*faster* native), **`tensorscp`** (the 1y **reproducer**: cloudpickle tensor metadata →
+the crate's skip+realign path; macOS read wall R was 5.4 pre-fix, 1.25 after the
+`Table.cast` fix), `binsweep` (item 10 — bins from 1 row group up to 10× a file, plus a
+PyArrow `pre_buffer=off` arm), **`binbound`** (R2b — is a read task's USS bounded by the
+bin budget, or is something retaining?), `write` (item 1aa), `fatcol` (item 1o),
+**`oom`** (R5 — the failure-mode demo: same memory ceiling via Ray's own memory monitor,
+sweep the bin; PyArrow's arm is *expected* to die with `OutOfMemoryError` at the big
+bins — an OOM there is the stage's result, not a broken run). Stage rationale in
 `replication_matrix.py`'s docstring; the predictions each stage falsifies are in
 `arrow_rs_docs/TODO.md` items 1ab/10.
+
+For item 1o's crate-level A/B, `patch_crate_parquet.sh` rebuilds `ray_data_arrow_rs`
+against a vendored parquet 59.1.0 carrying the dictionary values-reserve fix
+(`patches/parquet-59.1.0-dict-reserve.diff`; REVERT=1 restores stock — see the script
+header for the stock→patched fatcol procedure).
 
 `binbound` is the bound/leak check: one bin is one read task, so it runs at
 `--task-concurrency 1` (one bin resident per process) with `--mem-poll-s 0.05` (the 1 Hz
@@ -57,7 +64,7 @@ Piecemeal (env already set up — `source arrow_rs_probe/env.sh` first):
 
 ```bash
 python gen_local_fixtures.py --root ~/arrow_rs_repl_fixtures \
-    --shapes bin_sweep,tensors_wide,fat_col
+    --shapes bin_sweep,tensors_wide,tensors_cp,fat_col
 python replication_matrix.py --fixture-root ~/arrow_rs_repl_fixtures --repeat 3
 ```
 

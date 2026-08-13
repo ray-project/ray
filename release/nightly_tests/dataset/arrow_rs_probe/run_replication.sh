@@ -16,8 +16,8 @@
 #                          to override while debugging)
 #   3. fixtures            gen_local_fixtures.py, replication shapes only
 #                          (bin_sweep ~4 GiB, tensors_wide ~1.6 GiB, fat_col)
-#   4. matrix              replication_matrix.py: tensors / binsweep / binbound /
-#                          write / fatcol / oom (see its docstring for the
+#   4. matrix              replication_matrix.py: tensors / tensorscp / binsweep /
+#                          binbound / write / fatcol / oom (see its docstring for the
 #                          rationale; binbound is the "is per-task USS bounded by
 #                          the bin budget?" check and needs Linux — USS is None on
 #                          macOS; oom deliberately gets PyArrow's arm OOM-killed
@@ -71,7 +71,7 @@ fi
 
 say "3/4 fixtures (root=$FIXTURES_ROOT scale=$FIXTURE_SCALE, replication shapes)"
 python "$SCRIPT_DIR/gen_local_fixtures.py" --root "$FIXTURES_ROOT" \
-  --scale "$FIXTURE_SCALE" --shapes bin_sweep,tensors_wide,fat_col
+  --scale "$FIXTURE_SCALE" --shapes bin_sweep,tensors_wide,tensors_cp,fat_col
 
 say "4/4 replication matrix (repeat=$REPEAT only=${ONLY:-all})"
 python "$SCRIPT_DIR/replication_matrix.py" \

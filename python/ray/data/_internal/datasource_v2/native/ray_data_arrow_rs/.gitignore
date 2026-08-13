@@ -4,3 +4,9 @@
 /dist
 # Cargo.lock IS committed: this crate builds a wheel for reproducible CI, and
 # ci/docker/dataarrowrs.build.wanda.yaml lists Cargo.lock in its build srcs.
+# patch_crate_parquet.sh (arrow_rs_probe, TODO 1o A/B) build-local state: the
+# vendored+patched parquet copy, the [patch.crates-io] override, and the stock
+# Cargo.lock backup. None of these may ever be committed.
+/vendor
+/.cargo
+/Cargo.lock.stock

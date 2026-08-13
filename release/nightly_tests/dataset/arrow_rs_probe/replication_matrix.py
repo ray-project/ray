@@ -15,6 +15,16 @@ Stages (pick with --skip / --only):
             concurrency=1 (pure decode-speed diagnostic) AND fanned out (adds the
             thread-pool asymmetry: base = unbounded fragment threads, arrow-rs =
             min(4, fragments) — the "PyArrow scales better?" hypothesis).
+            DID NOT reproduce (T19) — kept as the negative control. The stage
+            that does reproduce 1y is tensorscp.
+  tensorscp The 1y reproducer (T22/T23): same 5000 columns but written with
+            cloudpickle tensor extension metadata (Ray 2.49-2.54 format, what
+            the release dataset actually contains). The crate can't parse the
+            non-UTF8 embedded schema, so the reader decodes storage types and
+            realigns storage->extension per batch — the path where the loss
+            lives (macOS pre-fix: read wall 5.4x; post Table.cast fix: 1.25x).
+            Cells set RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1, exactly
+            like the release yaml. Needs the tensors_cp fixture.
   binsweep  R2/item 10 — sweep RAY_DATA_PARQUET_BIN_PACKING_BYTES across
             {1 RG, 4 RGs, 1 file, 5 files, 10 files} x both readers. The 5x/10x
             multi-file bins are the first cells to exercise C9 mechanism (i)
@@ -62,7 +72,7 @@ Stages (pick with --skip / --only):
 Usage (Linux box, venv active; fixtures first):
 
   python gen_local_fixtures.py --root ~/arrow_rs_repl_fixtures \
-      --shapes bin_sweep,tensors_wide,fat_col
+      --shapes bin_sweep,tensors_wide,tensors_cp,fat_col
   python replication_matrix.py --fixture-root ~/arrow_rs_repl_fixtures
   python replication_matrix.py --fixture-root ... --only binsweep --repeat 3
 
@@ -279,7 +289,7 @@ def main():
     p.add_argument(
         "--skip",
         default="",
-        help="comma list: tensors,binsweep,binbound,write,fatcol,oom",
+        help="comma list: tensors,tensorscp,binsweep,binbound,write,fatcol,oom",
     )
     p.add_argument("--only", default="", help="comma list: run only these stages")
     p.add_argument(
@@ -346,6 +356,36 @@ def main():
                 concurrency=None,
                 columns=None,
                 extra_env={},
+            )
+
+    # -------- [tensorscp] the 1y reproducer (T22/T23) --------
+    if enabled("tensorscp"):
+        print(
+            "=== [tensorscp] 5000 cloudpickle-metadata tensor cols — the shape "
+            "that actually reproduces 1y ===",
+            flush=True,
+        )
+        path = fixture_path("tensors_cp")
+        # Same opt-in the release yaml carries; without it BOTH arms refuse the
+        # file at plan time (pyarrow's dataset factory raises deserializing the
+        # tensor metadata), so it is a fixture prerequisite, not a treatment.
+        cp_env = {"RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA": "1"}
+        for reader in ("pyarrow", "arrow_rs"):
+            cell(
+                f"tensorscp.c1.{reader}",
+                path=path,
+                reader=reader,
+                concurrency=1,
+                columns=None,
+                extra_env=dict(cp_env),
+            )
+            cell(
+                f"tensorscp.fan.{reader}",
+                path=path,
+                reader=reader,
+                concurrency=None,
+                columns=None,
+                extra_env=dict(cp_env),
             )
 
     # -------- [binsweep] R2 / item 10 --------
@@ -529,6 +569,13 @@ def main():
         print("[tensors] c1 wall R is the decode-speed verdict; fan adds pool-width")
         pair_line("tensors.c1")
         pair_line("tensors.fan")
+    if enabled("tensorscp"):
+        print(
+            "[tensorscp] the 1y reproducer (cloudpickle metadata -> skip+realign "
+            "path). Pre-fix macOS read wall R was 5.4; post Table.cast fix 1.25"
+        )
+        pair_line("tensorscp.c1")
+        pair_line("tensorscp.fan")
     if enabled("binsweep"):
         print("[binsweep] prediction: pyarrow USS rises with bin, arrow_rs flat")
         for bin_name, bin_bytes in grid:
