@@ -140,6 +140,13 @@ else:
         BUILD_TYPE,
     )
 
+# Ideally, we could include these files by putting them in a
+# MANIFEST.in or using the package_data argument to setup, but the
+# MANIFEST.in gets applied at the very beginning when setup.py runs
+# before these files have been created, so we have to move the files
+# manually.
+
+# NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     f"ray/_raylet{pyd_suffix}",
     f"ray/core/src/ray/gcs/gcs_server{exe_suffix}",
@@ -161,6 +168,8 @@ if setup_spec.type == SetupType.RAY_CPP:
         for filename in filenames
     ]
 
+# These are the directories where automatically generated Python protobuf
+# bindings are created.
 generated_python_directories = [
     "ray/core/generated",
     "ray/serve/generated",
@@ -209,6 +218,9 @@ ray_files += [
     p.as_posix() for p in pathlib.Path("ray/widgets/templates/").glob("*.html.j2")
 ]
 
+# If you're adding dependencies for ray extras, please
+# also update the matching section of requirements/requirements.txt
+# in this directory
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
@@ -232,6 +244,8 @@ if setup_spec.type == SetupType.RAY:
             "cupy-cuda12x; sys_platform != 'darwin'",
         ],
         "client": [
+            # The Ray client needs a specific range of gRPC to work:
+            # Tracking issues: https://github.com/grpc/grpc/issues/33714
             "grpcio != 1.56.0; sys_platform == 'darwin'",
             "grpcio",
         ],
@@ -242,6 +256,8 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
         "default": [
+            # If adding dependencies necessary to launch the dashboard api server,
+            # please add it to python/ray/dashboard/optional_deps.py as well.
             "aiohttp >= 3.14.1",
             "aiohttp_cors",
             "colorful",
@@ -264,24 +280,29 @@ if setup_spec.type == SetupType.RAY:
         "serve": [
             "uvicorn[standard]",
             "requests",
-            "starlette >= 1.0.1",
-            "fastapi >= 0.133.0",
+            "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
+            "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
             "mmh3",
             "ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'",
         ],
         "tune": [
+            # TODO: Remove pydantic dependency from tune once tune doesn't import train
             *tune_base_deps,
             *pydantic_deps,
         ],
     }
 
+    # Both "adag" and "cgraph" are for Compiled Graphs.
+    # "adag" is deprecated and will be removed in the future.
     setup_spec.extras["adag"] = list(setup_spec.extras["cgraph"])
 
+    # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
         set(setup_spec.extras["serve"] + setup_spec.extras["default"])
     )
 
+    # Ensure gRPC library exists for Ray Serve gRPC support.
     setup_spec.extras["serve-grpc"] = list(
         set(
             setup_spec.extras["serve"]
@@ -292,6 +313,8 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
+    # allow asynchronously execute their code, via the use of celery task processor.
     setup_spec.extras["serve-async-inference"] = list(
         set(
             setup_spec.extras["serve"]
@@ -313,8 +336,12 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    # Train currently depends on Tune, so keep it as a superset of the Tune
+    # extra. If Tune drops its temporary pydantic dependency in the future,
+    # add `pydantic_deps` explicitly here as part of that refactor.
     setup_spec.extras["train"] = list(setup_spec.extras["tune"])
 
+    # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
         set(
             setup_spec.extras["tune"]
@@ -324,6 +351,16 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # NOTE: While we keep ray[all] for compatibility, you probably
+    # shouldn't use it because it contains too many dependencies
+    # and no deployment needs all of them. Instead you should list
+    # the extras you actually need, see
+    # https://docs.ray.io/en/latest/ray-overview/installation.html#from-wheels
+    #
+    # "all" will not include "cpp" anymore. It is a big depedendency
+    # that most people do not need.
+    #
+    # Instead, when cpp is supported, we add a "all-cpp".
     setup_spec.extras["all"] = list(
         set(
             chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
@@ -333,6 +370,15 @@ if setup_spec.type == SetupType.RAY:
         set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
     )
 
+    # "llm" is not included in all, by design. vllm's dependency set is very
+    # large and specific, will likely run into dependency conflicts with other
+    # ML libraries. As a result, it is an "extra-extra" that is not part
+    # ray[all].
+    #
+    # ray[llm] depends on ray[data].
+    #
+    # Keep this in sync with python/requirements/llm/llm-requirements.txt
+    #
     setup_spec.extras["llm"] = list(
         set(
             [
@@ -342,6 +388,7 @@ if setup_spec.type == SetupType.RAY:
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
+                # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
                 "typer",
                 "meson",
@@ -353,6 +400,13 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+# These are the main dependencies for users of ray. This list
+# should be carefully curated. If you change it, please reflect
+# the change in the matching section of requirements/requirements.txt
+#
+# NOTE: if you add any unbounded dependency, please also update
+# install-core-prerelease-dependencies.sh so we can test
+# new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "click>=7.0",
@@ -367,10 +421,14 @@ if setup_spec.type == SetupType.RAY:
 
 
 def is_native_windows_or_msys():
+    """Check to see if we are running on native Windows,
+    but NOT WSL (which is seen as Linux)."""
     return sys.platform == "msys" or sys.platform == "win32"
 
 
 def is_invalid_windows_platform():
+    # 'GCC' check is how you detect MinGW:
+    # https://github.com/msys2/MINGW-packages/blob/abd06ca92d876b9db05dd65f27d71c4ebe2673a9/mingw-w64-python2/0410-MINGW-build-extensions-with-GCC.patch#L53
     platform = sys.platform
     ver = sys.version
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
@@ -379,10 +437,12 @@ def is_invalid_windows_platform():
 def _find_bazel_bin():
     candidates = []
 
+    # User specified bazel location.
     bazel_path = os.getenv("BAZEL_PATH")
     if bazel_path:
         candidates.append(bazel_path)
 
+    # Default bazel locations; prefers bazelisk.
     candidates.extend(["bazelisk", "bazel"])
 
     if sys.platform == "win32":
@@ -402,6 +462,11 @@ def _find_bazel_bin():
 
 
 def patch_isdir():
+    """
+    Python on Windows is having hard times at telling if a symlink is
+    a directory - it can "guess" wrong at times, which bites when
+    finding packages. Replace with a fixed version which unwraps links first.
+    """
     orig_isdir = os.path.isdir
 
     def fixed_isdir(path):
@@ -417,8 +482,17 @@ def patch_isdir():
 
 
 def replace_symlinks_with_junctions():
+    """
+    Per default Windows requires admin access to create symlinks, while
+    junctions (which behave similarly) can be created by users.
+
+    This function replaces symlinks (which might be broken when checked
+    out without admin rights) with junctions so Ray can be built both
+    with and without admin access.
+    """
     assert is_native_windows_or_msys()
 
+    # Update this list if new symlinks are introduced to the source tree
     _LINKS = {
         r"ray\rllib": "../../rllib",
     }
@@ -442,10 +516,15 @@ def replace_symlinks_with_junctions():
             elif os.path.isdir(path):
                 target = default
                 try:
+                    # unlink() works on links as well as on regular files,
+                    # and links to directories are considered directories now
                     os.unlink(path)
                 except OSError as err:
+                    # On Windows attempt to unlink a regular directory results
+                    # in a PermissionError with errno set to errno.EACCES.
                     if err.errno != errno.EACCES:
                         raise
+                    # For regular directories deletion is done with rmdir call.
                     os.rmdir(path)
             else:
                 raise ValueError(f"Unexpected type of entry: '{path}'")
@@ -459,6 +538,8 @@ def replace_symlinks_with_junctions():
 
 
 if is_conda_forge_build and is_native_windows_or_msys():
+    # Automated replacements should only happen in automatic build
+    # contexts for now
     patch_isdir()
     replace_symlinks_with_junctions()
 
@@ -481,6 +562,10 @@ def build(build_python, build_java, build_cpp, build_redis):
         )
         raise OSError(msg)
 
+    # Vendor thirdparty packages.
+    #
+    # TODO(ray-core, ray-ci): the version of these vendored packages should be
+    # pinned, so that the build is reproducible.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
         pip_packages = ["psutil", "colorama"]
         subprocess.check_call(
@@ -496,6 +581,7 @@ def build(build_python, build_java, build_cpp, build_redis):
             env=dict(os.environ, CC="gcc"),
         )
 
+        # runtime env agent dependenceis
         subprocess.check_call(
             [
                 sys.executable,
@@ -537,9 +623,9 @@ def build(build_python, build_java, build_cpp, build_redis):
                 "You appear to have Bash from WSL,"
                 " which Bazel may invoke unexpectedly. "
                 "To avoid potential problems,"
-                " please explicitly set the 'BAZEL_SH'"
+                " please explicitly set the {name!r}"
                 " environment variable for Bazel."
-            )
+            ).format(name="BAZEL_SH")
             raise RuntimeError(msg)
 
     bazel_flags = ["--verbose_failures"]
@@ -547,7 +633,7 @@ def build(build_python, build_java, build_cpp, build_redis):
         bazel_flags.extend(shlex.split(BAZEL_ARGS))
 
     if BAZEL_LIMIT_CPUS:
-        n = int(BAZEL_LIMIT_CPUS)
+        n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
         bazel_flags.append(f"--local_resources=cpu={n}")
         warnings.warn(
             "Setting BAZEL_LIMIT_CPUS is deprecated and will be removed in a future"
@@ -588,6 +674,7 @@ def build(build_python, build_java, build_cpp, build_redis):
         bazel_flags.append("--config=tsan")
 
     bazel_bin = _find_bazel_bin()
+    # Build all things first.
     subprocess.check_call(
         [bazel_bin]
         + bazel_precmd_flags
@@ -597,6 +684,7 @@ def build(build_python, build_java, build_cpp, build_redis):
         + bazel_targets,
         env=bazel_env,
     )
+    # Then run the actions.
     for action in bazel_targets:
         subprocess.check_call(
             [bazel_bin] + bazel_precmd_flags + ["run"] + bazel_flags + [action],
@@ -607,6 +695,8 @@ def build(build_python, build_java, build_cpp, build_redis):
 def _walk_thirdparty_dir(directory):
     file_list = []
     for root, dirs, filenames in os.walk(directory):
+        # Exclude generated bytecode cache directories and tests directories
+        # from vendored packages.
         for exclude_dir in ["__pycache__", "tests"]:
             if exclude_dir in dirs:
                 dirs.remove(exclude_dir)
@@ -616,13 +706,20 @@ def _walk_thirdparty_dir(directory):
 
 
 def copy_file(target_dir, filename, rootdir):
+    # TODO(rkn): This feels very brittle. It may not handle all cases. See
+    # https://github.com/apache/arrow/blob/master/python/setup.py for an
+    # example.
+    # File names can be absolute paths, e.g. from _walk_thirdparty_dir().
     source = os.path.relpath(filename, rootdir)
     destination = os.path.join(target_dir, source)
+    # Create the target directory if it doesn't already exist.
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     if not os.path.exists(destination):
         if sys.platform == "win32":
+            # Does not preserve file mode (needed to avoid read-only bit)
             shutil.copyfile(source, destination, follow_symlinks=True)
         else:
+            # Preserves file mode (needed to copy executable bit)
             shutil.copy(source, destination, follow_symlinks=True)
         return 1
     return 0
@@ -650,6 +747,7 @@ def pip_run(build_ext):
             runtime_env_agent_thirdparty_dir
         )
 
+        # Copy over the autogenerated protobuf Python bindings.
         for directory in generated_python_directories:
             for filename in os.listdir(directory):
                 if filename.endswith(".py"):
@@ -667,6 +765,8 @@ if __name__ == "__main__":
     import setuptools
     import setuptools.command.build_ext
 
+    # bdist_wheel location varies: setuptools>=70.1 has it built-in,
+    # older versions require the wheel package
     try:
         from setuptools.command.bdist_wheel import bdist_wheel
     except ImportError:
@@ -681,14 +781,22 @@ if __name__ == "__main__":
             return True
 
     class RayCppBdistWheel(bdist_wheel):
+        """Build a Python-agnostic wheel for ray-cpp.
+
+        The wheel contains platform-specific C++ binaries, so we keep a platform
+        tag (e.g., manylinux2014_x86_64) but force the Python/ABI tags to py3-none.
+        """
+
         def finalize_options(self):
             super().finalize_options()
+            # Wheel contains C++ binaries, so force a real platform tag, not "any".
             self.root_is_pure = False
 
         def get_tag(self):
             _, _, platform_tag = super().get_tag()
             return "py3", "none", platform_tag
 
+    # Ensure no remaining lib files.
     build_dir = os.path.join(ROOT_DIR, "build")
     if os.path.isdir(build_dir):
         shutil.rmtree(build_dir)
@@ -701,8 +809,11 @@ if __name__ == "__main__":
     with open(os.path.join(ROOT_DIR, "LICENSE.txt"), "r", encoding="utf-8") as f:
         license_text = f.read().strip()
     if "\n" in license_text:
+        # If the license text has multiple lines, add an ending endline.
         license_text += "\n"
 
+    # Build cmdclass dict. Use RayCppBdistWheel for ray-cpp to produce
+    # Python-agnostic wheels. See RayCppBdistWheel docstring for details.
     cmdclass = {"build_ext": build_ext}
     if setup_spec.type == SetupType.RAY_CPP:
         cmdclass["bdist_wheel"] = RayCppBdistWheel
@@ -729,7 +840,7 @@ if __name__ == "__main__":
         ],
         packages=setup_spec.get_packages(),
         cmdclass=cmdclass,
-        distclass=(
+        distclass=(  # Avoid building extensions for deps-only builds.
             BinaryDistribution if setup_spec.build_type != BuildType.DEPS_ONLY else None
         ),
         install_requires=setup_spec.install_requires,
@@ -751,6 +862,8 @@ if __name__ == "__main__":
         },
         include_package_data=True,
         exclude_package_data={
+            # Empty string means "any package".
+            # Therefore, exclude BUILD from every package:
             "": ["BUILD", "BUILD.bazel"],
         },
         zip_safe=False,
