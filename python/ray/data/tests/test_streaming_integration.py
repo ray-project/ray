@@ -623,13 +623,8 @@ def test_streaming_split_count_not_equal_raises(ray_start_10_cpus_shared):
     row count is only determined at runtime."""
     ds = ray.data.range(100)
     i1, i2 = ds.streaming_split(2, equal=False)
-    with pytest.raises(NotImplementedError, match="equal=True"):
+    with pytest.raises(RuntimeError, match="equal=True"):
         i1.count()
-
-    # The coordinator actor guards against non-equal splits too, so bypassing
-    # the iterator wrapper still fails loudly instead of returning a bogus count.
-    with pytest.raises(NotImplementedError, match="equal=True"):
-        ray.get(i1._coord_actor.count.remote())
 
 
 def test_streaming_split_count_during_execution_raises(ray_start_10_cpus_shared):

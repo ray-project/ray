@@ -394,7 +394,7 @@ class DataIterator(abc.ABC):
         number of rows in that shard (``total_rows // num_splits``).
 
         For a shard obtained with ``equal=False``, the per-split count can't be
-        determined ahead of execution, so this raises ``NotImplementedError``;
+        determined ahead of execution, so this raises ``RuntimeError``;
         call ``count()`` on the source :class:`Dataset <ray.data.Dataset>` instead.
 
         Note that computing the count may trigger execution for datasets whose
