@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 import pydantic
 import pytest
 
-from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
-from ray.llm._internal.serve.core.configs.accelerators import (
+import ray.llm._internal.common.accelerators as accelerators_mod
+from ray.llm._internal.common.accelerators import (
     CPUAccelerator,
     CPUConfig,
     GPUAccelerator,
@@ -14,6 +14,7 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     TPUAccelerator,
     TPUConfig,
 )
+from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
@@ -531,6 +532,46 @@ class TestAcceleratorConfigLogic:
         tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
         with pytest.raises(ValueError, match="must be a multiple of chips_per_host"):
             tpu_accel.default_bundles(num_devices=6, accelerator_type_str="TPU-V6E")
+
+    def test_chips_per_vm_requires_topology(self):
+        with pytest.raises(ValueError, match="chips_per_vm requires topology"):
+            TPUConfig(kind="tpu", chips_per_vm=4)
+
+    def test_chips_per_vm_rejects_bool(self):
+        with pytest.raises(ValueError, match="chips_per_vm must be a positive integer"):
+            TPUConfig(kind="tpu", topology="2x4", chips_per_vm=True)
+
+    def test_default_bundles_and_create_pg_forward_chips_per_vm(self, monkeypatch):
+        """TPUConfig.chips_per_vm reaches create_placement_group from Serve defaults."""
+        create = MagicMock(return_value=MagicMock(placement_group=object()))
+        monkeypatch.setattr(accelerators_mod, "slice_placement_group", create)
+        backend = TPUAccelerator(TPUConfig(topology="2x4", chips_per_vm=4))
+        bundles = backend.default_bundles(num_devices=8, accelerator_type_str="TPU-V6E")
+        assert len(bundles) == 2
+        assert bundles[0]["TPU"] == 4
+        backend.create_placement_group(
+            bundles=bundles,
+            strategy="PACK",
+            name="serve-pg",
+            accelerator_type_str="TPU-V6E",
+        )
+        slice_kwargs = create.call_args.kwargs
+        assert slice_kwargs["chips_per_vm"] == 4
+        assert slice_kwargs["resources_per_bundle"]["TPU"] == 4
+
+    def test_create_pg_passes_strategy_through(self, monkeypatch):
+        """create_placement_group forwards a non-default strategy unchanged."""
+        create = MagicMock(return_value=MagicMock(placement_group=object()))
+        monkeypatch.setattr(accelerators_mod, "slice_placement_group", create)
+        backend = TPUAccelerator(TPUConfig(topology="2x4"))
+        backend.create_placement_group(
+            bundles=[{"TPU": 1, "CPU": 1}] * 8,
+            strategy="SPREAD",
+            name="serve-single-host",
+            accelerator_type_str="TPU-V6E",
+        )
+        slice_kwargs = create.call_args.kwargs
+        assert slice_kwargs["strategy"] == "SPREAD"
 
 
 class TestCheckpointInfo:

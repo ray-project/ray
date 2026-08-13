@@ -1,4 +1,6 @@
 import logging
+import threading
+import weakref
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
@@ -205,6 +207,9 @@ class Processor:
     processing stages, and finally a postprocess stage. We use processor as a
     paradigm for processing data using LLMs.
 
+    When ``close_fn`` is set, call ``close()`` or use as a context manager after
+    derived Datasets have been fully consumed so reserved resources are released.
+
     Args:
         config: The processor config.
         stages: List of processing stages.
@@ -217,6 +222,7 @@ class Processor:
             preprocess stage (e.g., num_cpus, memory, concurrency).
         postprocess_map_kwargs: Optional kwargs to pass to Dataset.map() for the
             postprocess stage (e.g., num_cpus, memory, concurrency).
+        close_fn: Optional callback invoked by ``close()`` to release reserved resources.
     """
 
     # The internal used data column name ("__data"). Your input
@@ -232,6 +238,7 @@ class Processor:
         postprocess: Optional[UserDefinedFunction] = None,
         preprocess_map_kwargs: Optional[Dict[str, Any]] = None,
         postprocess_map_kwargs: Optional[Dict[str, Any]] = None,
+        close_fn: Optional[Callable[[], bool]] = None,
     ):
         self.config = config
         self.preprocess = None
@@ -239,6 +246,14 @@ class Processor:
         self.preprocess_map_kwargs = preprocess_map_kwargs or {}
         self.postprocess_map_kwargs = postprocess_map_kwargs or {}
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
+        self._close_fn = close_fn
+        self._closed = False
+        self._lock = threading.Lock()
+        self._finalizer = None
+        if close_fn is not None:
+            self._finalizer = weakref.finalize(
+                self, Processor._warn_unclosed, close_fn, type(self).__name__
+            )
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column
@@ -263,6 +278,51 @@ class Processor:
         for stage in stages:
             self._append_stage(stage)
 
+    @staticmethod
+    def _warn_unclosed(close_fn: Callable[[], bool], cls_name: str) -> None:
+        try:
+            # Release first: logging may already be torn down at interpreter exit.
+            released = close_fn()
+        except Exception:
+            try:
+                logger.exception("Failed to release resources during finalization.")
+            except Exception:
+                pass
+            return
+        if not released:
+            return
+        try:
+            logger.warning(
+                "%s was garbage-collected without close(); released reserved "
+                "resources during finalization. Call close() or use a context "
+                "manager after materializing derived Datasets.",
+                cls_name,
+            )
+        except Exception:
+            # Logging may already be torn down during interpreter shutdown.
+            pass
+
+    def close(self) -> None:
+        """Release ``close_fn`` resources and mark this processor closed.
+
+        Materialize derived Datasets before calling close(). ``_close_fn`` is
+        cleared only after a successful call so shutdown can be retried.
+        """
+        with self._lock:
+            if self._close_fn is not None:
+                self._close_fn()
+                self._close_fn = None
+            self._closed = True
+            if self._finalizer is not None:
+                self._finalizer.detach()
+                self._finalizer = None
+
+    def __enter__(self) -> "Processor":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
     def __call__(self, dataset: Dataset) -> Dataset:
         """Execute the processor:
         preprocess -> stages -> postprocess.
@@ -274,6 +334,11 @@ class Processor:
         Returns:
             The output dataset.
         """
+        with self._lock:
+            if self._closed:
+                raise RuntimeError(
+                    "Processor is closed. Cannot execute new datasets on a closed processor."
+                )
         if self.preprocess is not None:
             dataset = dataset.map(self.preprocess, **self.preprocess_map_kwargs)
 

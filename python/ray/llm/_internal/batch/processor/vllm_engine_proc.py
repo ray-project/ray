@@ -30,6 +30,16 @@ from ray.llm._internal.batch.stages.configs import (
     TokenizerStageConfig,
     resolve_stage_config,
 )
+from ray.llm._internal.common.accelerators import (
+    CPU_ACCELERATOR_TYPE_LITERAL,
+    AnyAcceleratorConfig,
+    CPUConfig,
+    GPUConfig,
+    TPUConfig,
+    get_accelerator_backend,
+    normalize_tpu_accelerator_type,
+    validate_tpu_accelerator_type,
+)
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.placement import PlacementGroupConfig
 
@@ -80,6 +90,13 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "Example with bundle_per_worker: {'bundle_per_worker': {'CPU': 1, 'GPU': 1}, 'strategy': 'SPREAD'}. "
         "Example with bundles: {'bundles': [{'CPU': 1, 'GPU': 1}] * 4, 'strategy': 'SPREAD'}.",
     )
+    accelerator_config: Optional[AnyAcceleratorConfig] = Field(
+        default=None,
+        description=(
+            "Hardware-specific configuration for the chosen accelerator, "
+            "discriminated by 'kind'."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -102,6 +119,64 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
             engine_kwargs["task_type"] = task_type
         values["engine_kwargs"] = engine_kwargs
         return values
+
+    @field_validator("accelerator_type")
+    @classmethod
+    def _normalize_accelerator_type(cls, value):
+        if value is None:
+            return None
+        normalized = normalize_tpu_accelerator_type(value)
+        if normalized == CPU_ACCELERATOR_TYPE_LITERAL:
+            raise ValueError(
+                "Explicit 'CPU' accelerator type is not supported for vLLM batch inference."
+            )
+        if normalized.startswith("TPU"):
+            return validate_tpu_accelerator_type(value)
+        return value
+
+    @model_validator(mode="after")
+    def _validate_accelerator(self) -> "vLLMEngineProcessorConfig":
+        """Check accelerator type/config compatibility after field normalization."""
+        if isinstance(self.accelerator_config, CPUConfig):
+            raise ValueError("CPUConfig is not supported for vLLM batch inference.")
+
+        is_tpu_type = (
+            self.accelerator_type is not None
+            and self.accelerator_type.startswith("TPU")
+        )
+
+        if is_tpu_type:
+            if isinstance(self.accelerator_config, GPUConfig):
+                raise ValueError(
+                    f"GPUConfig cannot be used with TPU accelerator_type "
+                    f"{self.accelerator_type!r}."
+                )
+            if not isinstance(self.accelerator_config, TPUConfig) or not (
+                self.accelerator_config.topology
+            ):
+                raise ValueError(
+                    "TPU batch inference requires accelerator_config with topology; "
+                    f"got {self.accelerator_config!r}."
+                )
+            conc = self.concurrency
+            if isinstance(conc, int) and not isinstance(conc, bool):
+                hi = conc
+            elif isinstance(conc, tuple) and len(conc) == 2:
+                hi = conc[1]
+            else:
+                hi = None
+
+            if hi != 1:
+                raise ValueError(
+                    "TPU batch inference with topology requires a single engine "
+                    f"replica (concurrency=1 or (1, 1)); got {self.concurrency!r}."
+                )
+        elif isinstance(self.accelerator_config, TPUConfig):
+            raise ValueError(
+                f"TPUConfig requires a TPU accelerator_type; got {self.accelerator_type!r}."
+            )
+
+        return self
 
     @field_validator("placement_group_config")
     @classmethod
@@ -239,38 +314,48 @@ def build_vllm_engine_processor(
         )
 
     # Core stage -- the vLLM engine.
+    fn_constructor_kwargs = dict(
+        batch_size=config.batch_size,
+        max_concurrent_batches=config.max_concurrent_batches,
+        model=config.model_source,
+        task_type=config.task_type,
+        max_pending_requests=config.max_pending_requests,
+        dynamic_lora_loading_path=config.dynamic_lora_loading_path,
+        should_continue_on_error=config.should_continue_on_error,
+        log_engine_metrics=config.log_engine_metrics,
+    )
 
+    map_batches_kwargs = dict(
+        zero_copy_batch=True,
+        # The number of running batches "per actor" in Ray Core level.
+        # This is used to make sure we overlap batches to avoid the tail
+        # latency of each batch.
+        max_concurrency=config.max_concurrent_batches,
+        runtime_env=config.runtime_env,
+    )
+    engine_kwargs = dict(config.engine_kwargs)
+    # Resolve the batch scheduling options for the given accelerator backend.
+    backend = get_accelerator_backend(config.accelerator_config or GPUConfig())
+    accel_map_kwargs, close_fn = backend.build_batch_scheduling_options(
+        accelerator_type=config.accelerator_type,
+        engine_kwargs=engine_kwargs,
+        placement_group_config=config.placement_group_config,
+    )
+    fn_constructor_kwargs["engine_kwargs"] = engine_kwargs
+    map_batches_kwargs.update(accel_map_kwargs)
+
+    # The number of running replicas. This is a deprecated field, but
+    # we need to set `max_tasks_in_flight_per_actor` through `compute`,
+    # which initiates enough many overlapping UDF calls per actor, to
+    # saturate `max_concurrency`.
+    map_batches_kwargs["compute"] = ray.data.ActorPoolStrategy(
+        **config.get_concurrency(autoscaling_enabled=True),
+        max_tasks_in_flight_per_actor=config.max_tasks_in_flight_per_actor,
+    )
     stages.append(
         vLLMEngineStage(
-            fn_constructor_kwargs=dict(
-                batch_size=config.batch_size,
-                max_concurrent_batches=config.max_concurrent_batches,
-                model=config.model_source,
-                engine_kwargs=config.engine_kwargs,
-                task_type=config.task_type,
-                max_pending_requests=config.max_pending_requests,
-                dynamic_lora_loading_path=config.dynamic_lora_loading_path,
-                placement_group_config=config.placement_group_config,
-                should_continue_on_error=config.should_continue_on_error,
-                log_engine_metrics=config.log_engine_metrics,
-            ),
-            map_batches_kwargs=dict(
-                zero_copy_batch=True,
-                # The number of running replicas. This is a deprecated field, but
-                # we need to set `max_tasks_in_flight_per_actor` through `compute`,
-                # which initiates enough many overlapping UDF calls per actor, to
-                # saturate `max_concurrency`.
-                compute=ray.data.ActorPoolStrategy(
-                    **config.get_concurrency(autoscaling_enabled=True),
-                    max_tasks_in_flight_per_actor=config.max_tasks_in_flight_per_actor,
-                ),
-                # The number of running batches "per actor" in Ray Core level.
-                # This is used to make sure we overlap batches to avoid the tail
-                # latency of each batch.
-                max_concurrency=config.max_concurrent_batches,
-                accelerator_type=config.accelerator_type,
-                runtime_env=config.runtime_env,
-            ),
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            map_batches_kwargs=map_batches_kwargs,
         )
     )
 
@@ -346,15 +431,15 @@ def build_vllm_engine_processor(
         )
     )
 
-    processor = Processor(
+    return Processor(
         config,
         stages,
         preprocess=preprocess,
         postprocess=postprocess,
         preprocess_map_kwargs=preprocess_map_kwargs,
         postprocess_map_kwargs=postprocess_map_kwargs,
+        close_fn=close_fn,
     )
-    return processor
 
 
 ProcessorBuilder.register(vLLMEngineProcessorConfig, build_vllm_engine_processor)
