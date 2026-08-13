@@ -27,6 +27,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
@@ -83,6 +85,45 @@ bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
 }
 
 }  // namespace
+
+std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
+                                     int min_worker_port,
+                                     int max_worker_port,
+                                     absl::BitGenRef gen) {
+  std::vector<int> ports;
+  if (!worker_ports.empty()) {
+    // Validate the explicit port list before shuffling it: once the ports are
+    // reordered, a duplicate would silently hand the same port to two workers.
+    absl::flat_hash_set<int> seen_ports;
+    seen_ports.reserve(worker_ports.size());
+    for (int port : worker_ports) {
+      RAY_CHECK(port > 0 && port <= 65535)
+          << "Worker port " << port
+          << " is outside the valid port range [1, 65535]. Please fix "
+             "--worker-port-list.";
+      RAY_CHECK(seen_ports.insert(port).second)
+          << "Worker port " << port
+          << " is listed more than once. Please remove the duplicate from "
+             "--worker-port-list.";
+    }
+    ports = worker_ports;
+  } else if (min_worker_port != 0) {
+    if (max_worker_port == 0) {
+      max_worker_port = 65535;  // Maximum valid port number.
+    }
+    RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
+    RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
+    ports.reserve(max_worker_port - min_worker_port + 1);
+    for (int port = min_worker_port; port <= max_worker_port; port++) {
+      ports.push_back(port);
+    }
+  }
+
+  if (RayConfig::instance().worker_port_shuffle_enabled()) {
+    std::shuffle(ports.begin(), ports.end(), gen);
+  }
+  return ports;
+}
 
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -145,22 +186,20 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
   }
-  // Initialize free ports list with all ports in the specified range.
-  if (!worker_ports.empty()) {
-    free_ports_ = std::make_unique<std::queue<int>>();
-    for (int port : worker_ports) {
-      free_ports_->push(port);
-    }
-  } else if (min_worker_port != 0) {
-    if (max_worker_port == 0) {
-      max_worker_port = 65535;  // Maximum valid port number.
-    }
-    RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
-    RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
-    free_ports_ = std::make_unique<std::queue<int>>();
-    for (int port = min_worker_port; port <= max_worker_port; port++) {
-      free_ports_->push(port);
-    }
+  // Initialize the free ports list with the configured ports, in a random order
+  // so that raylets sharing a network namespace don't all start from the low end
+  // of the range. See BuildWorkerPortPool.
+  absl::BitGen bitgen;
+  std::vector<int> ports =
+      BuildWorkerPortPool(worker_ports, min_worker_port, max_worker_port, bitgen);
+  if (!ports.empty()) {
+    free_ports_ =
+        std::make_unique<std::queue<int>>(std::deque<int>(ports.begin(), ports.end()));
+    RAY_LOG(INFO) << "Initialized the worker port pool with " << ports.size()
+                  << " ports (shuffled: "
+                  << (RayConfig::instance().worker_port_shuffle_enabled() ? "true"
+                                                                          : "false")
+                  << ").";
   }
 }
 
