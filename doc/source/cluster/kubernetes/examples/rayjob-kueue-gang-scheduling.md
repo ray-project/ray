@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Gang-schedule RayJob workloads with Kueue on GKE so all pods start together, avoiding partial-allocation deadlock."
+---
+
 (kuberay-kueue-gang-scheduling-example)=
 
 # Gang Scheduling with RayJob and Kueue

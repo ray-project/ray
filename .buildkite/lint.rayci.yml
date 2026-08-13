@@ -61,6 +61,24 @@ steps:
     commands:
       - ./ci/lint/lint.sh pre_commit_pydoclint
 
+  # Diff-scoped @PublicAPI parameter-coverage check: fails when a PR adds a new
+  # public API, or a new parameter on an existing one, without a docstring
+  # Args: entry. Pre-existing gaps are grandfathered. Static (no docbuild), so
+  # it runs in the lint group. `soft_fail: true` keeps it visible but
+  # non-blocking during the warn phase; remove `soft_fail` to make it a
+  # required check once the false-positive rate is confirmed low.
+  - label: ":lint-roller: lint: API param coverage"
+    key: api-param-coverage
+    tags:
+      - oss
+      - lint
+      - always
+    depends_on:
+      - forge
+    soft_fail: true
+    commands:
+      - ./ci/lint/lint.sh api_param_coverage --blocking
+
   # Scope guard for the "docs-go" label: runs only when the label is present,
   # and fails unless the PR is content-only (changes under doc/, excluding
   # BUILD files). This is the check the label cannot turn off, so the label

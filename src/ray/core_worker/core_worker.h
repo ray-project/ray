@@ -791,30 +791,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               std::vector<bool> *results,
               bool fetch_local);
 
-  /// Delete a list of objects from the plasma object store.
-  ///
-  /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
-  /// for objects we do not own.
-  ///
-  /// If IOError is returned from DeleteImpl() when deleting objects locally, we will
-  /// return an UnexpectedSystemExit status instead. This is to make sure the tasks
-  /// that calls this function in application code can properly retry when hitting the
-  /// IOError.
-  ///
-  /// \param[in] object_ids IDs of the objects to delete.
-  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
-  /// the cluster.
-  /// \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
-
-  /// Delete a list of objects from the plasma object store; called by Delete().
-  ///
-  /// \param[in] object_ids IDs of the objects to delete.
-  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
-  /// the cluster.
-  /// \return Status.
-  Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
-
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
   /// method.
@@ -1306,15 +1282,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] owner_address The address of the owner who will own this
   /// dynamically generated object.
   /// \param[in] task_id The task id of the dynamically generated return ID.
-  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// Nil() together with a std::nullopt put_index deduces both from the current
   /// worker context.
   /// \param[in] put_index The equivalent of the return value of
   /// WorkerContext::GetNextPutIndex.
-  /// If std::nullopt is specified, it will deduce the put index from the
-  /// current worker context.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
-                                   const TaskID &task_id = TaskID::Nil(),
-                                   std::optional<ObjectIDIndexType> put_index = -1);
+  /// Both task_id and put_index have to be supplied, or neither: deducing one
+  /// while the caller supplies the other would key the ObjectID to one task
+  /// while drawing the index from another. Mixing them panics.
+  ObjectID AllocateDynamicReturnId(
+      const rpc::Address &owner_address,
+      const TaskID &task_id = TaskID::Nil(),
+      std::optional<ObjectIDIndexType> put_index = std::nullopt);
 
   /// Get a handle to an actor.
   ///
@@ -1441,11 +1419,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void HandleLocalGC(rpc::LocalGCRequest request,
                      rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback);
-
-  /// Delete objects explicitly.
-  void HandleDeleteObjects(rpc::DeleteObjectsRequest request,
-                           rpc::DeleteObjectsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
 
   // Spill objects to external storage.
   void HandleSpillObjects(rpc::SpillObjectsRequest request,
