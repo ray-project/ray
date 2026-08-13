@@ -103,18 +103,14 @@ def maybe_enable_token_auth_if_token_available() -> bool:
     """
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
-        # Respect an explicit RAY_AUTH_MODE setting (e.g. "token" or "disabled").
         enabled = auth_mode_env.lower() == "token"
         if not enabled:
             _warn_token_auth_disabled()
         return enabled
 
-    # Enable token auth only if a token is already available from some source. A
-    # configured-but-unreadable source raises AuthenticationError here, which
-    # propagates so startup fails closed instead of running unauthenticated.
+    # Let a configured-but-unreadable source (AuthenticationError) propagate so
+    # startup fails closed rather than running unauthenticated.
     if not AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True):
-        # No token available and RAY_AUTH_MODE wasn't set: keep authentication
-        # disabled, preserving the previous behavior.
         _warn_token_auth_disabled()
         return False
 
@@ -140,7 +136,6 @@ def enable_token_auth_by_default() -> bool:
     """
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
-        # Respect an explicit RAY_AUTH_MODE setting (e.g. "token" or "disabled").
         return auth_mode_env.lower() == "token"
 
     _enable_token_auth()

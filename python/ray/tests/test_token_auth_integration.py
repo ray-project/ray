@@ -164,7 +164,6 @@ def test_ray_init_generates_token_and_enforces_auth_by_default():
 
     ctx = ray.init()
     try:
-        # A token was generated and token auth is enabled.
         assert default_token_path.exists()
         token = default_token_path.read_text().strip()
         assert len(token) == 64

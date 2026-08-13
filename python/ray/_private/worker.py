@@ -1863,10 +1863,6 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
-        # A new local cluster started via ray.init() (no address) is
-        # authenticated by default: enable token auth unless the user explicitly
-        # set RAY_AUTH_MODE. ensure_token_if_auth_enabled below then generates a
-        # token if none exists yet, or reuses an existing one.
         enable_token_auth_by_default()
 
         # Setup and verify authentication for new cluster

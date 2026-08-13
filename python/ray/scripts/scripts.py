@@ -1066,12 +1066,6 @@ def start(
                     " flag of `ray start` command."
                 )
 
-        # For a local head cluster, enable token authentication automatically if
-        # a token is available from any source (RAY_AUTH_TOKEN,
-        # RAY_AUTH_TOKEN_PATH, or the default ~/.ray/auth_token file), even when
-        # RAY_AUTH_MODE isn't set, and warn if it ends up disabled. This only
-        # affects local head clusters; worker nodes and remote clusters are
-        # unchanged.
         maybe_enable_token_auth_if_token_available()
 
         # Ensure auth token is available if authentication mode is token
