@@ -877,6 +877,9 @@ def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
     assert ray.get(f.remote()) == 7
 
     psutil.Process(pid=redis_pid).kill()
+    # SIGKILL is asynchronous: the listen socket is only released once the
+    # process is reaped, and binding the replacement before that fails.
+    wait_for_pid_to_exit(redis_pid, 30)
 
     # A fresh server on the same port. The GCS keeps its runtime state in
     # memory, so the cluster stays usable even though the new Redis is empty;
@@ -884,6 +887,15 @@ def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
     tmpdir = tempfile.mkdtemp()
     _, redis_proc = start_redis_instance(tmpdir, int(port), num_retries=1)
     try:
+
+        def redis_serving():
+            try:
+                return redis.Redis(ip, int(port)).ping()
+            except Exception:
+                return False
+
+        wait_for_condition(redis_serving, timeout=30)
+
         gcs_client = ray._private.worker.global_worker.gcs_client
 
         def gcs_writes_flow():
@@ -932,13 +944,29 @@ def test_redis_permanently_down_bounded_exit(
     redis_pid = redis.Redis(ip, int(port)).info()["process_id"]
 
     gcs_server_pid = cluster.head_node.all_processes["gcs_server"][0].process.pid
+    gcs_client = ray._private.worker.global_worker.gcs_client
 
     psutil.Process(pid=redis_pid).kill()
 
-    # The grace period must hold first: the process outlives the old ~3.5s
-    # command retry budget instead of dying on the first drained command.
+    # Put a Redis-bound command in flight right away, so the survival check
+    # below is conclusive: without one, nothing would be draining a retry
+    # budget and the process would outlive the check regardless of the grace
+    # period. The write blocks server-side until the retries resolve, so it
+    # runs on a helper thread.
+    def _kv_probe():
+        try:
+            gcs_client.internal_kv_put(b"grace_probe", b"1", True, None)
+        except Exception:
+            pass
+
+    probe = ThreadPoolExecutor(max_workers=1).submit(_kv_probe)
+
+    # The grace period must hold first: with the probe draining against a dead
+    # Redis, the old behaviour dies on its ~3.5s command budget, while the
+    # grace period (5s here) keeps the process alive past this check.
     time.sleep(4)
     assert psutil.pid_exists(gcs_server_pid)
+    probe.cancel()
 
     # And the exit must still come: grace (5s) + retry drain, or the
     # reconnect budget (10 attempts), whichever runs out first.
