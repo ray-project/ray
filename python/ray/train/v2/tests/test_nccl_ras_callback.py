@@ -371,7 +371,7 @@ MULTI_COMM_RAS_JSON = """{
 """
 
 
-def test_parse_healthy_example():
+def test_parse_healthy_ras_example():
     # Every rank at the same op-count -> healthy, no mismatched comms.
     report = parse_ras_schema(HEALTHY_RAS_JSON)
     assert report is not None
@@ -379,7 +379,7 @@ def test_parse_healthy_example():
     assert report.mismatched_comms == set()
 
 
-def test_parse_repairs_missing_comma():
+def test_parse_ras_missing_comma():
     # NCCL 2.28.9 emits missing_ranks[] with no comma before the nested "status",
     # which is invalid JSON until parse_ras_schema repairs it.
     with pytest.raises(json.JSONDecodeError):
@@ -399,7 +399,7 @@ def test_parse_repairs_missing_comma():
     assert report.mismatched_comms == set()
 
 
-def test_parse_multicomm_example():
+def test_parse_multicomm_ras_example():
     # Three communicators, but only 0x4e01... diverges
     report = parse_ras_schema(MULTI_COMM_RAS_JSON)
     assert report is not None
@@ -569,8 +569,7 @@ def test_fail_mode_raises_after_confirm(monkeypatch):
 def test_deadlock_requires_whole_comm_frozen(
     monkeypatch, other_op_advances, expect_hang
 ):
-    # Comm A runs two ops. AllReduce is skewed (mismatched) and frozen the whole
-    # time; AllGather is matched across ranks.
+    # Comm A runs two ops. AllReduce is skewed (mismatched) and frozen the whole time
     #   - other_op_frozen: AllGather is also frozen, so the communicator is fully
     #     stalled -> a hang, reported on the mismatched AllReduce op.
     #   - other_op_advancing: AllGather keeps advancing, so the ranks are alive
@@ -610,7 +609,7 @@ def test_deadlock_requires_whole_comm_frozen(
 def test_healthy_resets_deadlock_streak(monkeypatch):
     reports = [
         create_single_comm_report({1: 5, 2: 4}),  # baseline (mismatched)
-        create_single_comm_report({1: 5, 2: 4}),  # frozen -> 1/3
+        create_single_comm_report({1: 5, 2: 4}),  # mismatched -> 1/3
         create_healthy_report(),  # healthy -> reset
     ]
     callback, _ = make_nccl_ras_callback(
@@ -625,7 +624,7 @@ def test_healthy_resets_deadlock_streak(monkeypatch):
 
 
 def test_advancing_never_deadlocks(monkeypatch):
-    # Both ranks keep advancing (nonzero deltas) even though skewed, so the op is
+    # Both ranks are skewed but keep advancing (nonzero deltas), so the op is
     # never frozen and no deadlock is ever counted.
     reports = [
         create_single_comm_report({1: 5, 2: 3}),

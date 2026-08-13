@@ -115,13 +115,11 @@ def run_ncclras(
         str(int(timeout_s)),
     ]
     try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout_s + 5
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
     except FileNotFoundError:
         return {"ok": False, "reason": "binary_not_found"}
     except subprocess.TimeoutExpired:
-        return {"ok": False, "reason": f"timeout ({timeout_s} + 5)"}
+        return {"ok": False, "reason": f"timed out ({timeout_s})"}
     except Exception as e:
         return {"ok": False, "reason": f"error: {e}"}
 
@@ -358,7 +356,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     To confirm that a NCCL anomaly isn't a single-snapshot blip, a communicator
     must stay frozen for consecutive polls, tracked as a per-communicator
     frozen-poll streak (so each communicator is confirmed on its own) and
-    reset by any healthy poll. ``RAY_TRAIN_NCCL_RAS_HANG_CONFIRMATION_DURATION_S``
+    reset by any healthy poll. ``RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S``
     expresses how long that run should take and is converted to a poll count
     with the poll interval.
     """
@@ -392,6 +390,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             math.ceil(_FIRST_SUSPICION_AFTER_S / self._poll_interval_s),
             self._confirm_poll_counts - 1,
         )
+        assert self._suspicion_polls >= 0
         self._periodic_warn_polls = math.ceil(
             _PERIODIC_WARN_EVERY_S / self._poll_interval_s
         )
@@ -447,6 +446,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if self._ras_query_future is not None:
             self._ras_query_future.cancel()
             self._ras_query_future = None
+        if self._executor is not None:
+            self._executor.shutdown(wait=False)
+            self._executor = None
 
     def after_worker_group_poll_status(self, worker_group_status):
         if self._is_ras_degraded or self._worker_group is None:
@@ -537,7 +539,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 f"{len(report.comm_op_counts)} communicators have a "
                 f"collective mismatch and made no progress for "
                 f"{self._confirm_duration_s:.0f} seconds "
-                f"({self._confirm_poll_counts} polls)."
+                f"({self._confirm_poll_counts} polls). "
                 "This usually means that the collective is deadlocked / hanging. "
                 "The possible reasons for this is: a rank hit a divergent code "
                 "path, exited early, a GPU or network hardware failure, or a "
@@ -615,7 +617,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     remaining_polls = self._confirm_poll_counts - max_count
                     remaining_s = remaining_polls * self._poll_interval_s
                     periodic_escalation = (
-                        f"A NCCLHangError will be raised in {remaining_s} "
+                        f"A NCCLHangError will be raised in {remaining_s} seconds"
                         f"({remaining_polls} more polls) if this persists."
                     )
                 logger.warning(
@@ -718,7 +720,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     worker,
                     e,
                 )
-                ray.cancel(ref)
+                if ray is not None:
+                    ray.cancel(ref)
                 continue
 
             if not result.get("ok"):
