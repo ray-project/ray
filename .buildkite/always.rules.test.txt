@@ -10,9 +10,9 @@
 some/random/file.txt: always lint
 python/ray/actor.py: always lint
 
-# Documentation prose emits always without lint. doc/source/index.rst is the
+# Documentation prose emits always without lint. doc/source/index.md is the
 # case that regressed the 27-minute Markdown-only build this rule addresses.
-doc/source/index.rst: always
+doc/source/index.md: always
 doc/source/ray-contribute/getting-involved.md: always
 doc/README.md: always
 

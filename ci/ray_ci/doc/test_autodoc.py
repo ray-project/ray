@@ -79,5 +79,35 @@ def test_get_autodoc_rsts_in_file():
         }
 
 
+def test_get_autodoc_rsts_in_myst_file():
+    """A MyST landing page's toctree fence yields the same children as the RST form.
+
+    Entries sit at column 0 inside the fence rather than indented, so the RST
+    block parser stops on the first one. Guards the conversion of an API landing
+    page from .rst to .md against silently walking no children at all.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "head.md"), "w") as f:
+            f.write("# Head\n\n")
+            f.write("```{toctree}\n")
+            f.write(":maxdepth: 2\n\n")
+            f.write("api_01.rst\n")
+            f.write("api_02.rst\n")
+            f.write("```\n\n")
+            f.write("```{eval-rst}\n")
+            f.write(".. currentmodule:: ci.ray_ci.doc.mock\n")
+            f.write(".. autoclass:: MockClass\n")
+            f.write("```\n")
+
+        autodoc = Autodoc(os.path.join(tmp, "head.md"))
+        assert autodoc._get_autodoc_rsts_in_file(os.path.join(tmp, "head.md")) == {
+            os.path.join(tmp, "api_01.rst"),
+            os.path.join(tmp, "api_02.rst"),
+        }
+        assert [api.name for api in autodoc.get_apis()] == [
+            "ci.ray_ci.doc.mock.MockClass"
+        ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

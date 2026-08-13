@@ -12,6 +12,14 @@ _SPHINX_CURRENTMODULE_HEADER = ".. currentmodule::"
 _SPHINX_TOCTREE_HEADER = ".. toctree::"
 _SPHINX_INCLUDE_HEADER = ".. include::"
 
+# A MyST landing page writes the same toctree as a directive fence rather than an
+# RST directive: ```{toctree} (or :::{toctree}), options as `:key: value` lines,
+# entries at the fence's own indentation, closed by a line of the same fence
+# character. An API landing page converted from .rst to .md keeps its children
+# only if this form is recognized too -- otherwise the walk finds no children and
+# the whole team's documented-API set silently collapses to the landing page.
+_MYST_TOCTREE_HEADER = re.compile(r"^(?P<fence>`{3,}|:{3,})\{toctree\}\s*$")
+
 
 class Autodoc:
     """
@@ -73,6 +81,15 @@ class Autodoc:
 
             area_01.rst
             area_02.rst
+
+        A MyST page writes the same toctree as a fence:
+
+        ```{toctree}
+        :maxdepth: 2
+
+        area_01.rst
+        area_02.rst
+        ```
         """
         if not os.path.exists(rst_file):
             return set()
@@ -91,6 +108,22 @@ class Autodoc:
                             dir, line.removeprefix(_SPHINX_INCLUDE_HEADER).strip()
                         )
                     )
+                    line = f.readline()
+                    continue
+
+                # look for a MyST toctree fence
+                myst_toctree = _MYST_TOCTREE_HEADER.match(line)
+                if myst_toctree:
+                    fence_char = myst_toctree.group("fence")[0]
+                    line = f.readline()
+                    while line:
+                        entry = line.strip()
+                        if entry and set(entry) == {fence_char}:
+                            # closing fence, end of the toctree
+                            break
+                        if entry.endswith(".rst"):
+                            rsts.add(os.path.join(dir, entry))
+                        line = f.readline()
                     line = f.readline()
                     continue
 

@@ -156,10 +156,10 @@ doc/source/templates/05_dreambooth_finetuning/README.md:
 # scripts build the docs, so they route to the `doc` build and validation only,
 # never to a library's doctest or example execution.
 .readthedocs.yaml: doc
-doc/source/data/api/api.rst: doc_api
+doc/source/data/api/api.md: doc_api
 doc/source/serve/api/index.md: doc_api
-doc/source/ray-core/api/index.rst: doc_api
-doc/source/train/api/api.rst: doc_api
+doc/source/ray-core/api/index.md: doc_api
+doc/source/train/api/api.md: doc_api
 doc/source/tune/api/api.rst: doc_api
 doc/source/rllib/package_ref/index.rst: doc_api
 doc/source/ray-observability/reference/api.rst: doc_api

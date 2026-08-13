@@ -35,7 +35,7 @@
 #
 # The six per-team dirs match the API-page set in doc/source/_ext/api_sidebar.py
 # (API_PATH_PREFIXES). ray-observability/reference/ is here too because the Ray
-# Core landing (ray-core/api/index.rst) toctrees into its api.rst, so those
+# Core landing (ray-core/api/index.md) toctrees into its api.rst, so those
 # pages are part of the Core API surface the check walks despite living outside
 # ray-core/api/. //ci/pipeline:test_doc_api_rules_sync enforces this alignment,
 # so adding a library's API dir to API_PATH_PREFIXES without adding it here (or
