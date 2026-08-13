@@ -322,10 +322,14 @@ def test_request_routing_info(serve_instance):
 
         async def __call__(self, model_id: str):
             _ = await self.get_model(model_id)
-            return _get_internal_replica_context().replica_id
+            return (
+                _get_internal_replica_context().replica_id,
+                serve.get_multiplexed_model_ids(),
+            )
 
     handle = serve.run(MyModel.bind())
-    replica_id = handle.remote("model1").result()
+    replica_id, loaded_model_ids = handle.remote("model1").result()
+    assert set(loaded_model_ids) == {"model1"}
 
     def check_replica_information(
         model_ids: Set[str],
@@ -364,6 +368,8 @@ def test_request_routing_info(serve_instance):
     )
 
     handle.remote("model2").result()
+    _, loaded_model_ids = handle.remote("model2").result()
+    assert set(loaded_model_ids) == {"model1", "model2"}
     wait_for_condition(
         check_replica_information,
         model_ids={
@@ -374,6 +380,8 @@ def test_request_routing_info(serve_instance):
 
     # LRU remove the model1
     handle.remote("model3").result()
+    _, loaded_model_ids = handle.remote("model3").result()
+    assert set(loaded_model_ids) == {"model2", "model3"}
     wait_for_condition(
         check_replica_information,
         model_ids={

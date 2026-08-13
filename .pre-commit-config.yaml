@@ -174,6 +174,7 @@ repos:
             python/ray/serve/_private/gang_scheduling_autoscaling_policy.py|
             python/ray/serve/_private/grpc_util.py|
             python/ray/serve/_private/handle_options.py|
+            python/ray/serve/_private/haproxy.py|
             python/ray/serve/_private/haproxy_metrics.py|
             python/ray/serve/_private/haproxy_templates.py|
             python/ray/serve/_private/http_util.py|
@@ -182,9 +183,11 @@ repos:
             python/ray/serve/_private/long_poll.py|
             python/ray/serve/_private/metrics_utils.py|
             python/ray/serve/_private/node_port_manager.py|
+            python/ray/serve/_private/proxy.py|
             python/ray/serve/_private/proxy_request_response.py|
             python/ray/serve/_private/proxy_response_generator.py|
             python/ray/serve/_private/proxy_router.py|
+            python/ray/serve/_private/proxy_state.py|
             python/ray/serve/_private/queue_monitor.py|
             python/ray/serve/_private/replica.py|
             python/ray/serve/_private/replica_response_generator.py|
@@ -259,6 +262,7 @@ repos:
             python/ray/serve/_private/gang_scheduling_autoscaling_policy.py|
             python/ray/serve/_private/grpc_util.py|
             python/ray/serve/_private/handle_options.py|
+            python/ray/serve/_private/haproxy.py|
             python/ray/serve/_private/haproxy_metrics.py|
             python/ray/serve/_private/haproxy_templates.py|
             python/ray/serve/_private/http_util.py|
@@ -267,9 +271,11 @@ repos:
             python/ray/serve/_private/long_poll.py|
             python/ray/serve/_private/metrics_utils.py|
             python/ray/serve/_private/node_port_manager.py|
+            python/ray/serve/_private/proxy.py|
             python/ray/serve/_private/proxy_request_response.py|
             python/ray/serve/_private/proxy_response_generator.py|
             python/ray/serve/_private/proxy_router.py|
+            python/ray/serve/_private/proxy_state.py|
             python/ray/serve/_private/queue_monitor.py|
             python/ray/serve/_private/replica.py|
             python/ray/serve/_private/replica_response_generator.py|
