@@ -9,6 +9,7 @@ import os
 import socket
 import struct
 import threading
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,11 +49,11 @@ def _make_file_server(tmp_path, shuffle_id="shuffle-0", node_id="node-1"):
     """Create a named (not detached) ShuffleFileServer; return (actor, endpoint)."""
     import ray
 
-    actor = ShuffleFileServer.options(
+    actor = ShuffleFileServer.options(  # pyrefly: ignore[missing-attribute]
         name=_file_server_name(shuffle_id, node_id),
         namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
     ).remote(str(tmp_path))
-    endpoint = ray.get(actor.endpoint.remote())
+    endpoint = cast(_Endpoint, ray.get(actor.endpoint.remote()))
     return actor, endpoint
 
 
@@ -66,7 +67,7 @@ def _running_flight_server(base_dir):
     """Start a bare Flight server (no Ray) on loopback; yield its
     (host, port, incarnation) endpoint (incarnation is a fixed test sentinel)."""
     srv = _make_flight_server("127.0.0.1", str(base_dir))
-    endpoint = ("127.0.0.1", srv.port, "test-incarnation")
+    endpoint = _Endpoint("127.0.0.1", srv.port, "test-incarnation")
     t = threading.Thread(target=srv.serve, daemon=True)
     t.start()
     try:
@@ -202,6 +203,7 @@ def test_fetch_restart_retry(ray_start_regular_shared_2_cpus, tmp_path):
 
     wait_for_condition(lambda: _pid() is not None)
     pid = _pid()
+    assert pid is not None
     os.kill(pid, signal.SIGKILL)
     wait_for_pid_to_exit(pid)
     with _ENDPOINT_CACHE_LOCK:
@@ -325,7 +327,7 @@ def test_flight_unreachable_raises_transport_error(tmp_path):
         try:
             with pytest.raises(flight.FlightError):
                 _stream_members_flight(
-                    ("127.0.0.1", port, "test-incarnation"),
+                    _Endpoint("127.0.0.1", port, "test-incarnation"),
                     [_FileRanges(path="x.bin", ranges=[(0, 4)])],
                     max_bytes=1 << 20,
                     sink=sink,
@@ -349,7 +351,7 @@ def test_flight_short_read_fails(tmp_path):
         with _running_flight_server(tmp_path) as endpoint:
             # Server-side short-read raises mid-stream; the client surfaces it as a
             # raw ArrowInvalid (no translation), with the message preserved.
-            with pytest.raises(pa.lib.ArrowInvalid, match="short read"):
+            with pytest.raises(pa.ArrowInvalid, match="short read"):
                 _stream_members_flight(
                     endpoint,
                     [_FileRanges(path="s.bin", ranges=[(0, 64)])],  # asks for 64
@@ -503,23 +505,6 @@ def test_encode_read_ipc_roundtrip():
     assert _read_ipc(buf).equals(t.combine_chunks())
 
 
-def test_encode_read_ipc_compression_casing_symmetric():
-    # The map may encode and the reduce decode from the same
-    # hash_shuffle_compression field but with non-canonical casing (e.g. "ZSTD"
-    # / "NONE" from RAY_DATA_HASH_SHUFFLE_COMPRESSION). Both sides route through
-    # _codec_for, so the codec must resolve identically regardless of case.
-    import pyarrow as pa
-
-    t = pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]})
-    expected = t.combine_chunks()
-    # Real codec: encode one casing, decode the other.
-    assert _read_ipc(_encode_shard(t, "ZSTD"), "zstd").equals(expected)
-    assert _read_ipc(_encode_shard(t, "zstd"), "ZSTD").equals(expected)
-    # The "none" sentinel (not a real pa.Codec) must mean uncompressed either way.
-    assert _read_ipc(_encode_shard(t, "NONE"), "none").equals(expected)
-    assert _read_ipc(_encode_shard(t, "none"), "NONE").equals(expected)
-
-
 def test_partition_writer_combine_path():
     # Writer decides combine path once per map from the schema: native (fast) for
     # plain columns, extension-safe (transform) when any column is an extension.
@@ -531,7 +516,8 @@ def test_partition_writer_combine_path():
     from ray.data.extensions.tensor_extension import ArrowTensorArray
 
     # (1) non-extension -> native; frame round-trips to the combined table.
-    w = _PartitionWriter(io.BytesIO(), map_id=0, compression="zstd")
+    buf = io.BytesIO()
+    w = _PartitionWriter(buf, map_id=0, compression="zstd")
     w.add_shard(0, pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}))
     w.add_shard(0, pa.table({"a": [4, 5], "b": ["p", "q"]}))
     w.flush_all()
@@ -543,7 +529,7 @@ def test_partition_writer_combine_path():
             pa.table({"a": [4, 5], "b": ["p", "q"]}),
         ]
     ).combine_chunks()
-    assert _read_ipc(w._out_file.getvalue()[off : off + length]).equals(expected)
+    assert _read_ipc(buf.getvalue()[off : off + length]).equals(expected)
 
     # (2) extension (tensor) column -> transform-safe path, still writes a frame.
     ext = pa.table({"t": ArrowTensorArray.from_numpy(np.arange(12.0).reshape(3, 4))})

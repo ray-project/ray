@@ -22,6 +22,7 @@ from typing import (
     Tuple,
     TypedDict,
     Union,
+    cast,
 )
 
 import numpy as np
@@ -99,7 +100,7 @@ def _encode_shard(
         if combine_native:
             try:
                 table = table.combine_chunks()
-            except pa.lib.ArrowInvalid:
+            except pa.ArrowInvalid:
                 # >2 GiB string offsets overflow int32 during native combine
                 # (esp. nested in struct/list); use the extension-safe path.
                 table = transform_pyarrow.combine_chunks(table)
@@ -602,7 +603,7 @@ def _fetch_from_file_server(
         poll_count = 0
         while True:
             try:
-                ep = ray.get(server.endpoint.remote())
+                ep = cast(_Endpoint, ray.get(server.endpoint.remote()))
                 break
             except ActorUnavailableError:
                 poll_count += 1
@@ -711,7 +712,7 @@ def _handle_batch_size(handles, batch_bytes):
         return 1
     probe = handles[0]
     if not isinstance(probe, dict):
-        probe = ray.get(probe)
+        probe = cast(dict, ray.get(probe))
     try:
         npart = int(probe.get("num_partitions") or len(probe["index_ranges"]))
     except Exception:
@@ -741,6 +742,7 @@ def _handles_to_sources(
     for start in range(0, len(handles), batch_size):
         batch = handles[start : start + batch_size]
         refs = [handle for handle in batch if not isinstance(handle, dict)]
+        # pyrefly: ignore[no-matching-overload]
         vals = iter(ray.get(refs)) if refs else iter(())
         resolved = [
             handle if isinstance(handle, dict) else next(vals) for handle in batch
