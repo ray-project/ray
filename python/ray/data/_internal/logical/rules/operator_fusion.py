@@ -304,6 +304,13 @@ class FuseOperators(Rule):
         if up_op.get_additional_split_factor() > 1:
             return False
 
+        # All-to-all task submission doesn't propagate upstream map task kwargs.
+        # Keep the map operator separate so Ray can resolve those dependencies.
+        if isinstance(down_op, AllToAllOperator) and (
+            up_op._map_task_kwargs or up_op._map_task_kwargs_fns
+        ):
+            return False
+
         # If the downstream operator takes no input, it cannot be fused with
         # the upstream operator.
         if not down_logical_op.input_dependencies:

@@ -367,6 +367,16 @@ def test_invalid_class_concurrency_raises(ray_start_regular_shared, concurrency)
         ds.map(Fn, concurrency=concurrency)
 
 
+def test_map_fn_args_object_ref_dereferenced(ray_start_regular_shared):
+    def map_fn(row, arg):
+        assert arg == 1
+        return row
+
+    result = ray.data.range(1).map(map_fn, fn_args=(ray.put(1),)).take_all()
+
+    assert result == [{"id": 0}]
+
+
 @pytest.mark.parametrize("udf_kind", ["gen", "func"])
 def test_flat_map(
     ray_start_regular_shared, udf_kind, target_max_block_size_infinite_or_default

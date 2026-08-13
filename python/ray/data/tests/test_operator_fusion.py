@@ -61,6 +61,24 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
     assert physical_op._logical_operators == [read_op, op]
 
 
+def test_map_with_task_kwargs_not_fused_with_all_to_all(
+    ray_start_regular_shared_2_cpus,
+):
+    def map_fn(row, arg):
+        assert arg == 1
+        return row
+
+    ds = (
+        ray.data.range(1)
+        .map(map_fn, fn_args=(ray.put(1),))
+        .random_shuffle()
+        .materialize()
+    )
+
+    assert ds.take_all() == [{"id": 0}]
+    assert "Map(map_fn)->RandomShuffle" not in ds.stats()
+
+
 def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     ctx = DataContext.get_current()
 
