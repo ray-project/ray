@@ -25,6 +25,7 @@ from ray._private.test_utils import (
     generate_system_config_map,
     persistent_gcs_test_enabled,
     redis_sentinel_replicas,
+    start_redis_instance,
     wait_for_pid_to_exit,
 )
 from ray._raylet import GcsClient
@@ -841,6 +842,107 @@ print("DONE")
     cluster.head_node.kill_gcs_server(False)
     cluster.head_node.start_gcs_server()
     wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_server_request_timeout_seconds=10,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
+    """gcs_server survives its Redis connection dropping.
+
+    Kill the external Redis and bring a fresh one up on the same port. The
+    same gcs_server process must reconnect and serve GCS writes again: no
+    crash, no restart. This is the plain-Redis half of what
+    test_redis_with_sentinel_failureover asserts through a Sentinel.
+    """
+    cluster = ray_start_cluster_head_with_external_redis
+    import redis
+
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS").split(",")[0]
+    ip, port = parse_address(redis_addr)
+    redis_pid = redis.Redis(ip, int(port)).info()["process_id"]
+
+    gcs_server_pid = cluster.head_node.all_processes["gcs_server"][0].process.pid
+
+    @ray.remote
+    def f():
+        return 7
+
+    assert ray.get(f.remote()) == 7
+
+    psutil.Process(pid=redis_pid).kill()
+
+    # A fresh server on the same port. The GCS keeps its runtime state in
+    # memory, so the cluster stays usable even though the new Redis is empty;
+    # the Redis contents only matter for a GCS restart.
+    tmpdir = tempfile.mkdtemp()
+    _, redis_proc = start_redis_instance(tmpdir, int(port), num_retries=1)
+    try:
+        gcs_client = ray._private.worker.global_worker.gcs_client
+
+        def gcs_writes_flow():
+            # Internal KV writes go GCS -> Redis, so this only succeeds once
+            # the in-place reconnect has landed.
+            try:
+                gcs_client.internal_kv_put(b"reconnect_probe", b"1", True, None)
+                return gcs_client.internal_kv_get(b"reconnect_probe", None) == b"1"
+            except Exception:
+                return False
+
+        wait_for_condition(gcs_writes_flow, timeout=60, retry_interval_ms=1000)
+
+        # Same process: it reconnected in place, it was not restarted.
+        assert psutil.pid_exists(gcs_server_pid)
+        assert ray.get(f.remote()) == 7
+    finally:
+        redis_proc.process.kill()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_server_request_timeout_seconds=10,
+            redis_reconnect_grace_period_ms=5000,
+            redis_db_connect_retries=10,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_permanently_down_bounded_exit(
+    ray_start_cluster_head_with_external_redis,
+):
+    """gcs_server exits, bounded, when Redis never comes back.
+
+    The reconnect holds command retries during the grace period, so the exit
+    comes later than the pre-reconnect ~3.5s; but it must still come, because
+    a head node that cannot reach its metadata store is not serving.
+    """
+    cluster = ray_start_cluster_head_with_external_redis
+    import redis
+
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS").split(",")[0]
+    ip, port = parse_address(redis_addr)
+    redis_pid = redis.Redis(ip, int(port)).info()["process_id"]
+
+    gcs_server_pid = cluster.head_node.all_processes["gcs_server"][0].process.pid
+
+    psutil.Process(pid=redis_pid).kill()
+
+    # The grace period must hold first: the process outlives the old ~3.5s
+    # command retry budget instead of dying on the first drained command.
+    time.sleep(4)
+    assert psutil.pid_exists(gcs_server_pid)
+
+    # And the exit must still come: grace (5s) + retry drain, or the
+    # reconnect budget (10 attempts), whichever runs out first.
+    wait_for_pid_to_exit(gcs_server_pid, 120)
 
 
 @pytest.mark.parametrize(
