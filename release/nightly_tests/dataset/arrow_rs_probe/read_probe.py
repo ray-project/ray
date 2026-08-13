@@ -80,7 +80,36 @@ def parse_args() -> argparse.Namespace:
         "--concurrency",
         type=int,
         default=None,
-        help="Cap read tasks. Use 1 for the CPU-bound-vs-IO diagnostic.",
+        help=(
+            "Cap read tasks AND pin output blocks (sets override_num_blocks too). "
+            "Use 1 for the CPU-bound-vs-IO diagnostic."
+        ),
+    )
+    p.add_argument(
+        "--task-concurrency",
+        type=int,
+        default=None,
+        help=(
+            "Cap concurrent read tasks WITHOUT touching override_num_blocks — use "
+            "this (not --concurrency) whenever the point of the run is the bin "
+            "geometry, so a process holds exactly one bin at a time and per-task "
+            "USS is attributable to one bin. (On the Parquet V2 path "
+            "override_num_blocks is inert anyway — the footer indexer sets "
+            "yields_read_units=True, so read_api.py:546-556 skips the partitioner "
+            "— but keeping it out of the command line keeps that an observation "
+            "rather than a dependency.)"
+        ),
+    )
+    p.add_argument(
+        "--mem-poll-s",
+        type=float,
+        default=None,
+        help=(
+            "DataContext.memory_usage_poll_interval_s for the in-task MemoryProfiler "
+            "(default 1.0s, context.py:984). Short read tasks get one sample or none "
+            "at 1 Hz, which silently flattens per-task USS — set ~0.05 for any run "
+            "whose verdict is a USS number."
+        ),
     )
     p.add_argument(
         "--consume",
@@ -264,6 +293,30 @@ def collect_read_op_metrics(ds) -> Dict[str, Any]:
             )
             out["read_avg_max_uss_gb"] = _gb(extra.get("average_max_uss_per_task"))
             out["read_max_uss_gb"] = _gb(extra.get("max_uss_per_task"))
+            # --- the bin-bound denominators -------------------------------------
+            # A read task == one bin, so decoded bytes/task is the *decoded* size of
+            # a bin (RAY_DATA_PARQUET_BIN_PACKING_BYTES budgets Parquet
+            # total_uncompressed_size, i.e. pages after decompression but still
+            # ENCODED — dictionary/RLE columns decode larger, so the knob is a proxy,
+            # not an identity). Reporting both lets the bound be stated against the
+            # decoded number and the expansion factor be seen rather than assumed.
+            ntasks = extra.get("num_tasks_finished")
+            out["read_num_tasks"] = ntasks
+            if ntasks:
+                out["read_bytes_per_task_gb"] = (
+                    round(out["read_output_gb"] / ntasks, 4)
+                    if out.get("read_output_gb")
+                    else None
+                )
+                # max/avg over tasks: ~1.0 => every task costs the same (bounded);
+                # rising with task count => the worker is retaining across tasks
+                # (allocator retention or a real leak), which no bin cap can bound.
+                a, m = (
+                    extra.get("average_max_uss_per_task"),
+                    extra.get("max_uss_per_task"),
+                )
+                if a and m:
+                    out["uss_max_over_avg"] = round(m / a, 3)
         if out.get("read_avg_max_uss_gb") is None:
             for i, row in enumerate(debug):
                 if row["average_max_uss_bytes"]:
@@ -288,6 +341,8 @@ def main():
     ctx = DataContext.get_current()
     ctx.use_datasource_v2 = True
     ctx.use_arrow_rs_parquet_reader = args.reader == "arrow_rs"
+    if args.mem_poll_s is not None:
+        ctx.memory_usage_poll_interval_s = args.mem_poll_s
 
     ray.init(ignore_reinit_error=True)
 
@@ -320,6 +375,8 @@ def main():
     if args.concurrency is not None:
         read_kwargs["concurrency"] = args.concurrency
         read_kwargs["override_num_blocks"] = args.concurrency
+    elif args.task_concurrency is not None:
+        read_kwargs["concurrency"] = args.task_concurrency
 
     print(
         f"reader={args.reader} path={args.path} columns={args.columns} "

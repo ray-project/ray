@@ -16,8 +16,10 @@
 #                          to override while debugging)
 #   3. fixtures            gen_local_fixtures.py, replication shapes only
 #                          (bin_sweep ~4 GiB, tensors_wide ~1.6 GiB, fat_col)
-#   4. matrix              replication_matrix.py: tensors / binsweep / write /
-#                          fatcol (see its docstring for the stage rationale)
+#   4. matrix              replication_matrix.py: tensors / binsweep / binbound /
+#                          write / fatcol (see its docstring for the rationale;
+#                          binbound is the "is per-task USS bounded by the bin
+#                          budget?" check and needs Linux — USS is None on macOS)
 #
 # Knobs (env):
 #   SKIP_TESTS=1                skip the pytest gate

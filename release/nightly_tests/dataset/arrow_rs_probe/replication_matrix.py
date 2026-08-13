@@ -22,6 +22,22 @@ Stages (pick with --skip / --only):
             pre_buffer=off arm at {1 file, 10 files} for mechanism (ii)
             (RAY_DATA_PARQUET_PRE_BUFFER=0 — the knob exists only for this).
             Predictions to falsify are in TODO item 10.
+  binbound  R2b — THE BOUND CHECK (user ask 2026-08-12): one bin is one read
+            task, its whole decoded output lives in that worker process, so the
+            arrow-rs guarantee is "per-task USS is bounded by the bin budget" —
+            the property PyArrow lacks (it buffers a whole decoded row group per
+            fragment, plus a pre_buffer'd compressed span). Same bin grid as
+            binsweep but with --task-concurrency 1 (one bin resident per process,
+            so per-task USS is attributable to ONE bin) and --mem-poll-s 0.05
+            (at the 1 Hz default a short read task gets one sample or none, which
+            silently flattens the very number the verdict rests on). Verdict is a
+            least-squares slope of per-task USS vs DECODED bytes per task:
+            slope <~0.3 = flat (bounded far below the bin), <~1 = bounded by the
+            bin, >1 = unbounded => retention or leak. Denominator is decoded
+            bytes, not the knob: the knob budgets Parquet total_uncompressed_size
+            (pages decompressed but still dictionary/RLE-ENCODED), so
+            decoded/knob is an expansion factor >= 1 that the table prints
+            instead of assuming.
   write     R3/item 1aa — write_parquet showed per-task USS 1.23x (trusted
             instrument) at a wall WIN 0.83x. read bin_sweep fixture ->
             write_parquet, both readers; stats come from the materialized
@@ -56,9 +72,93 @@ def load_manifest(fixture_root):
         return json.load(fh)
 
 
+def footer_geometry(path):
+    """Measure the bin packer's OWN accounting unit from the fixture's footers.
+
+    Three things this pins down that no nominal fixture size can (all verified on
+    the tree, 2026-08-12):
+
+    1. On a no-projection read the packer prices a row group at
+       ``row_group.total_byte_size`` (``listing/footer_reader.py:148-151``), NOT at
+       the summed per-column ``total_uncompressed_size``. Those are equal for a
+       well-behaved writer but ``total_byte_size`` can carry the *compressed* size
+       (apache/arrow#48138 — which is why the reader's own batch-size estimator
+       refuses that accessor, ``readers/parquet_file_reader.py:148-155``). We report
+       the ratio so a fixture that trips the bug is visible instead of silently
+       shrinking every bin.
+    2. Decoded Arrow bytes are ``expansion`` x the packer's number, because the
+       footer counts pages that are decompressed but still dictionary/RLE-*encoded*.
+       Ray itself assumes 5x here (``PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT``,
+       ``datasource/parquet_datasource.py:109``). So "USS bounded by the bin" can
+       only ever mean "bounded by ``expansion`` x bin"; this makes the factor a
+       measured column rather than an unstated assumption.
+    3. The grid labels ("1file") then mean a real file's worth of the packer's
+       bytes, so bin sizes and task counts agree.
+    """
+    import glob as _glob
+
+    import pyarrow.parquet as pq
+
+    files = sorted(_glob.glob(os.path.join(path, "**", "*.parquet"), recursive=True))
+    if not files:
+        raise SystemExit(f"no parquet files under {path}")
+    tbs_total = unc_total = rg_count = 0
+    for f in files:
+        md = pq.ParquetFile(f).metadata
+        for i in range(md.num_row_groups):
+            rg = md.row_group(i)
+            tbs_total += rg.total_byte_size
+            unc_total += sum(
+                rg.column(j).total_uncompressed_size for j in range(rg.num_columns)
+            )
+            rg_count += 1
+    # Expansion from ONE file (cheap) — decoded Arrow bytes / the packer's bytes.
+    md0 = pq.ParquetFile(files[0]).metadata
+    f0_tbs = sum(md0.row_group(i).total_byte_size for i in range(md0.num_row_groups))
+    decoded0 = pq.read_table(files[0]).nbytes
+    return {
+        "files": len(files),
+        "row_groups": rg_count,
+        "packer_bytes_total": tbs_total,
+        "rg_bytes": tbs_total // rg_count,
+        "file_bytes": tbs_total // len(files),
+        "tbs_over_uncompressed": round(tbs_total / unc_total, 3) if unc_total else None,
+        "expansion": round(decoded0 / f0_tbs, 3) if f0_tbs else None,
+    }
+
+
+def bin_grid(geom):
+    """Bin budgets in the packer's own units: 1 and 4 row groups, then 1/2/5/10 files.
+
+    The 5x/10x-a-file cells are the "much bigger bin" ask. Any cell that already
+    swallows the whole fixture is collapsed to a single ``all`` cell — two cells
+    that both pack everything into one bin measure the same thing twice.
+    """
+    rg, fl = geom["rg_bytes"], geom["file_bytes"]
+    total = geom["packer_bytes_total"]
+    out, saturated = [], False
+    for name, size in [
+        ("1rg", rg),
+        ("4rg", 4 * rg),
+        ("1file", fl),
+        ("2file", 2 * fl),
+        ("5file", 5 * fl),
+        ("10file", 10 * fl),
+    ]:
+        if size >= total:
+            if saturated:
+                continue
+            saturated = True
+            name = f"all({name})"
+        out.append((name, size))
+    return out
+
+
 def binsweep_grid(entry):
-    """Derive the bin-budget grid from the bin_sweep fixture's actual geometry, so
-    --scale'd fixtures keep the same three regimes (sub-file / one-file / multi-file)."""
+    """Fallback grid from the fixture manifest's *nominal* sizes, used only if the
+    footers can't be read. Nominal bytes are the generator's row-width arithmetic,
+    which ran 1.6x above the footers on the smoke fixture — so labels drift and task
+    counts won't match the names. Prefer ``bin_grid(footer_geometry(path))``."""
     rg = entry["uncompressed_bytes"] // (entry["files"] * entry["rgs_per_file"])
     fl = entry["uncompressed_bytes"] // entry["files"]
     return [
@@ -76,7 +176,9 @@ def main():
     p.add_argument("--outdir", default=None)
     p.add_argument("--repeat", type=int, default=1, help="runs per cell, keep median")
     p.add_argument(
-        "--skip", default="", help="comma list: tensors,binsweep,write,fatcol"
+        "--skip",
+        default="",
+        help="comma list: tensors,binsweep,binbound,write,fatcol",
     )
     p.add_argument("--only", default="", help="comma list: run only these stages")
     args = p.parse_args()
@@ -137,9 +239,31 @@ def main():
 
     # -------- [binsweep] R2 / item 10 --------
     grid = []
+    geom = {}
+    if enabled("binsweep") or enabled("binbound"):
+        try:
+            geom = footer_geometry(fixture_path("bin_sweep"))
+            grid = bin_grid(geom)
+            print(
+                f"bin_sweep footers: {geom['files']} files / {geom['row_groups']} row "
+                f"groups, packer prices a row group at {geom['rg_bytes'] // MiB}MiB "
+                f"(total_byte_size/uncompressed={geom['tbs_over_uncompressed']}"
+                + (
+                    "  <-- NOT 1.0: apache/arrow#48138, bins are priced in COMPRESSED "
+                    "bytes on this fixture"
+                    if geom["tbs_over_uncompressed"]
+                    and abs(geom["tbs_over_uncompressed"] - 1.0) > 0.02
+                    else ""
+                )
+                + f"), decoded/packer expansion={geom['expansion']}x "
+                f"(Ray's own default assumption is 5x)\n",
+                flush=True,
+            )
+        except Exception as e:  # noqa: BLE001 - fall back, don't lose the run
+            print(f"!! footer_geometry failed ({e!r}); using nominal manifest grid")
+            grid = binsweep_grid(manifest["bin_sweep"])
     if enabled("binsweep"):
         path = fixture_path("bin_sweep")
-        grid = binsweep_grid(manifest["bin_sweep"])
         print(
             "=== [binsweep] bins "
             + ", ".join(f"{n}={b // MiB}MiB" for n, b in grid)
@@ -171,6 +295,30 @@ def main():
                     "RAY_DATA_PARQUET_PRE_BUFFER": "0",
                 },
             )
+
+    # -------- [binbound] R2b — is per-task USS bounded by the bin budget? --------
+    if enabled("binbound"):
+        path = fixture_path("bin_sweep")
+        print(
+            "=== [binbound] one bin per process (task-concurrency 1, 20 Hz USS) ===",
+            flush=True,
+        )
+        for bin_name, bin_bytes in grid:
+            for reader in ("pyarrow", "arrow_rs"):
+                cell(
+                    f"binbound.{bin_name}.{reader}",
+                    path=path,
+                    reader=reader,
+                    concurrency=None,
+                    columns=None,
+                    extra_env={"RAY_DATA_PARQUET_BIN_PACKING_BYTES": str(bin_bytes)},
+                    extra_args=[
+                        "--task-concurrency",
+                        "1",
+                        "--mem-poll-s",
+                        "0.05",
+                    ],
+                )
 
     # -------- [write] R3 / item 1aa --------
     if enabled("write"):
@@ -235,6 +383,70 @@ def main():
                     f"uss={v}/{b} ratio={ratio(v, b)} "
                     f"wall={_num(nopb, 'wall_s')}/{_num(base, 'wall_s')}"
                 )
+    if enabled("binbound"):
+        print(
+            "\n[binbound] THE BOUND CHECK — per-task USS vs the bin it decoded.\n"
+            "  bin      = RAY_DATA_PARQUET_BIN_PACKING_BYTES, in the packer's units\n"
+            "             (row_group.total_byte_size: decompressed but still ENCODED)\n"
+            "  dec/task = decoded Arrow bytes per read task (the real bin size);\n"
+            "             dec/bin is the encoding expansion — measured "
+            f"{geom.get('expansion')}x on this\n"
+            "             fixture, and Ray's own planner assumes 5x. The knob is a\n"
+            "             proxy for decoded bytes, never an upper bound on them.\n"
+            "  uss/dec  = per-task peak USS over decoded bytes. This is the number:\n"
+            "             it includes the fixed ~0.2-0.4 GB python+ray+pyarrow floor,\n"
+            "             so it is large at tiny bins and must FALL toward a constant.\n"
+            "  mx/av    = worst task / average task USS. ~1 = every task costs the\n"
+            "             same; rising = the worker retains across tasks (allocator\n"
+            "             retention or a leak), which no bin cap can bound."
+        )
+        for reader in ("pyarrow", "arrow_rs"):
+            print(f"  --- {reader} ---")
+            pts = []
+            for bin_name, bin_bytes in grid:
+                r = rows.get(f"binbound.{bin_name}.{reader}", {})
+                dec = _num(r, "read_bytes_per_task_gb")
+                uss = _num(r, "read_max_uss_gb") or _num(r, "read_avg_max_uss_gb")
+                bin_gb = bin_bytes / (1024**3)
+                if dec is not None and uss is not None:
+                    pts.append((dec, uss))
+                print(
+                    f"    {bin_name:<11} bin={bin_bytes // MiB:>6}MiB "
+                    f"tasks={r.get('read_num_tasks')} "
+                    f"dec/task={dec}GB dec/bin={ratio(dec, bin_gb)} "
+                    f"uss_max={uss} uss/dec={ratio(uss, dec)} "
+                    f"mx/av={r.get('uss_max_over_avg')} wall={_num(r, 'wall_s')}"
+                )
+            # Least squares on USS = a + b*decoded_bytes. b is the verdict: how many
+            # bytes of private memory each extra decoded byte in the bin costs.
+            if len(pts) >= 3:
+                n = len(pts)
+                mx = sum(p[0] for p in pts) / n
+                my = sum(p[1] for p in pts) / n
+                den = sum((p[0] - mx) ** 2 for p in pts)
+                if den > 0:
+                    b = sum((p[0] - mx) * (p[1] - my) for p in pts) / den
+                    a = my - b * mx
+                    if b <= 0.3:
+                        verdict = "FLAT — bounded well below the bin"
+                    elif b <= 1.1:
+                        verdict = "BOUNDED by the bin (slope ~1)"
+                    else:
+                        verdict = (
+                            "UNBOUNDED — grows FASTER than the bin; "
+                            "suspect retention/leak, not just buffering"
+                        )
+                    print(
+                        f"    fit: uss ~= {round(a, 3)}GB + {round(b, 3)} x decoded  "
+                        f"-> {verdict}"
+                    )
+            else:
+                print("    fit: not enough cells with USS (Linux only) to fit a slope")
+        print(
+            "  arrow-rs must be FLAT or BOUNDED; anything else is the leak this stage\n"
+            "  exists to catch. PyArrow is expected to slope up (whole decoded row\n"
+            "  group per fragment x fragments in the bin, + the pre_buffer span)."
+        )
     if enabled("write"):
         print("[write] release said USS R=1.23 at wall R=0.83")
         pair_line("write")

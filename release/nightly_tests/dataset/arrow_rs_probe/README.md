@@ -24,9 +24,19 @@ Results: `grand_runs/<ts>/summary.md` (ratio tables; R/P > 1.00 = arrow-rs worse
 
 Replicates the multi-node A/B's *trusted* (wall / decode task-s) good/bad list on one
 Linux box: `tensors` (item 1y, decode 5.59×), `binsweep` (item 10 — bins from 1 row
-group up to 10× a file, plus a PyArrow `pre_buffer=off` arm), `write` (item 1aa),
-`fatcol` (item 1o). Stage rationale in `replication_matrix.py`'s docstring; the
-predictions each stage falsifies are in `arrow_rs_docs/TODO.md` items 1ab/10.
+group up to 10× a file, plus a PyArrow `pre_buffer=off` arm), **`binbound`** (R2b — is a
+read task's USS bounded by the bin budget, or is something retaining?), `write`
+(item 1aa), `fatcol` (item 1o). Stage rationale in `replication_matrix.py`'s docstring;
+the predictions each stage falsifies are in `arrow_rs_docs/TODO.md` items 1ab/10.
+
+`binbound` is the bound/leak check: one bin is one read task, so it runs at
+`--task-concurrency 1` (one bin resident per process) with `--mem-poll-s 0.05` (the 1 Hz
+default samples a short task once or not at all) and fits per-task USS against **decoded**
+bytes per task — slope ≲0.3 flat, ≲1.1 bounded by the bin, >1.1 unbounded ⇒ leak. It
+prints the bin→decoded expansion per cell because the knob is spent in
+`row_group.total_byte_size` (encoded bytes), measured 1.64× below decoded Arrow on the
+fixture — finding C10. **Needs Linux**: per-task USS is `None` on macOS and the fit is
+skipped (the task-count and expansion columns still work).
 
 Fresh Linux box, one command (same setup skeleton as the grand experiment):
 
