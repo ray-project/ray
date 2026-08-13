@@ -21,10 +21,9 @@ Dependencies for GPU-based machine learning
 ___________________________________________
 
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
-with Ray and certain machine learning libraries.
-For example, the image ``rayproject/ray-ml:2.6.3-gpu`` is ideal for running GPU-based ML workloads with Ray 2.6.3.
-The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed for the Ray Libraries that are used in these docs.
-To add custom dependencies, use one, or both, of the following methods:
+with Ray. For example, the image ``rayproject/ray:2.57.0-gpu`` runs GPU-based workloads with Ray 2.57.0.
+These images don't include machine learning libraries such as TensorFlow and PyTorch, so add the ones
+your workload needs with one, or both, of the following methods:
 
 * Building a docker image using one of the official :ref:`Ray docker images <docker-images>` as base.
 * Using :ref:`Ray Runtime environments <runtime-environments>`.
@@ -51,7 +50,7 @@ to 5 GPU workers.
         ...
         containers:
          - name: ray-node
-           image: rayproject/ray-ml:2.6.3-gpu
+           image: rayproject/ray:2.57.0-gpu
            ...
            resources:
             nvidia.com/gpu: 1 # Optional, included just for documentation.
@@ -210,7 +209,7 @@ If this admission controller is not enabled for your Kubernetes cluster, you may
    ...
    containers:
    - name: ray-node
-     image: rayproject/ray:nightly-gpu
+     image: rayproject/ray:2.57.0-gpu
      ...
 
 Node selectors and node labels
