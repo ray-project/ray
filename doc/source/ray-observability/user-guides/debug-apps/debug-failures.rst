@@ -151,9 +151,12 @@ the same JDK selected by ``JAVA_HOME``, and preload it before starting Python:
 
 .. code-block:: bash
 
-    LIBJSIG="$(find "$JAVA_HOME" -type f -name libjsig.so -print -quit)"
+    LIBJSIG=""
+    if [ -n "${JAVA_HOME:-}" ]; then
+      LIBJSIG="$(find "$JAVA_HOME" -type f -name libjsig.so 2>/dev/null | head -n 1)"
+    fi
     test -n "$LIBJSIG" || {
-      echo "libjsig.so not found under JAVA_HOME=$JAVA_HOME" >&2
+      echo "libjsig.so not found under JAVA_HOME=${JAVA_HOME:-<unset>}" >&2
       exit 1
     }
 
