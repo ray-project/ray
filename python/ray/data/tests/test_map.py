@@ -108,7 +108,7 @@ def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
     ],
 )
 def test_transform_ray_remote_args_deprecation_warning(
-    ray_start_regular_shared, transform_fn: Callable[[Dataset], Dataset]
+    shutdown_only, transform_fn: Callable[[Dataset], Dataset]
 ):
     ds = ray.data.range(1)
 
@@ -134,7 +134,7 @@ def test_transform_ray_remote_args_deprecation_warning(
     ids=["with_column", "add_column", "drop_columns"],
 )
 def test_column_named_remote_args_no_warning(
-    ray_start_regular_shared, transform_fn: Callable[..., Dataset]
+    shutdown_only, transform_fn: Callable[..., Dataset]
 ):
     """Check that named parameters don't warn when column APIs pass them along."""
     ds = ray.data.range(1)
