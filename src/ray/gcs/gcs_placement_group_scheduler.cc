@@ -161,6 +161,18 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                              node_id, bundle, status);
                        }
 
+                       if (lease_status_tracker->GetLeasingState() ==
+                               LeasingState::CANCELLED &&
+                           !lease_status_tracker->AllPrepareRequestsReturned()) {
+                         // This prepare reply arrived after the placement group was
+                         // cancelled and the remaining callbacks may never arrive.
+                         // Release what was prepared now.
+                         DestroyPlacementGroupPreparedBundleResources(
+                             lease_status_tracker->GetPlacementGroup()
+                                 ->GetPlacementGroupID());
+                         return;
+                       }
+
                        if (lease_status_tracker->AllPrepareRequestsReturned()) {
                          OnAllBundlePrepareRequestReturned(
                              lease_status_tracker, failure_callback, success_callback);
@@ -189,7 +201,15 @@ void GcsPlacementGroupScheduler::MarkScheduleCancelled(
     const PlacementGroupID &placement_group_id) {
   auto it = placement_group_leasing_in_progress_.find(placement_group_id);
   RAY_CHECK(it != placement_group_leasing_in_progress_.end());
+  const bool is_committing =
+      (it->second->GetLeasingState() == LeasingState::COMMITTING);
   it->second->MarkPlacementGroupScheduleCancelled();
+  if (!is_committing) {
+    // Release every bundle that was already prepared. A per-node prepare
+    // callback may never arrive (e.g. the node died), so cleanup cannot wait
+    // for all callbacks to return.
+    DestroyPlacementGroupPreparedBundleResources(placement_group_id);
+  }
 }
 
 void GcsPlacementGroupScheduler::PrepareResources(

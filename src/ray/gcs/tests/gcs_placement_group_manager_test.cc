@@ -547,6 +547,92 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroup) {
   ASSERT_EQ(counter_->Get(rpc::PlacementGroupTableData::REMOVED), 1);
 }
 
+TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroupUnblocksPending) {
+  auto request1 = GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
+    ++registered_placement_group_count;
+  });
+  ASSERT_EQ(registered_placement_group_count, 1);
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
+  auto removed_placement_group =
+      mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.clear();
+
+  auto request2 = GenCreatePlacementGroupRequest();
+  RegisterPlacementGroup(request2, [&registered_placement_group_count](Status status) {
+    ++registered_placement_group_count;
+  });
+  ASSERT_EQ(registered_placement_group_count, 2);
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 0);
+
+  const auto &removed_placement_group_id =
+      removed_placement_group->GetPlacementGroupID();
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              MarkScheduleCancelled(removed_placement_group_id))
+      .Times(1);
+  gcs_placement_group_manager_->RemovePlacementGroup(
+      removed_placement_group_id, [](const Status &status) {});
+  RunIOService();
+
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
+  ASSERT_NE(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
+            removed_placement_group_id);
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestLateCallbackDoesNotReleaseNextPlacementGroupToken) {
+  // PG A is scheduled (scheduling in progress, token owned by A).
+  auto request1 = GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
+    ++registered_placement_group_count;
+  });
+  ASSERT_EQ(registered_placement_group_count, 1);
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
+  auto removed_placement_group =
+      mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.clear();
+
+  // Register two more placement groups while A is still scheduling; both stay
+  // pending because the scheduling token is still owned by A.
+  auto request2 = GenCreatePlacementGroupRequest();
+  RegisterPlacementGroup(request2, [&registered_placement_group_count](Status status) {
+    ++registered_placement_group_count;
+  });
+  auto request3 = GenCreatePlacementGroupRequest();
+  RegisterPlacementGroup(request3, [&registered_placement_group_count](Status status) {
+    ++registered_placement_group_count;
+  });
+  ASSERT_EQ(registered_placement_group_count, 3);
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 0);
+
+  // Remove the in-flight placement group A: this releases the scheduling token.
+  const auto &removed_placement_group_id =
+      removed_placement_group->GetPlacementGroupID();
+  EXPECT_CALL(*mock_placement_group_scheduler_,
+              MarkScheduleCancelled(removed_placement_group_id))
+      .Times(1);
+  gcs_placement_group_manager_->RemovePlacementGroup(removed_placement_group_id,
+                                                     [](const Status &status) {});
+  RunIOService();
+
+  // B is scheduled next and now owns the scheduling token. C stays pending.
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
+
+  // A late creation callback for the removed placement group A arrives. It must not
+  // release the scheduling token that B now owns; otherwise the still-pending C would
+  // be scheduled prematurely while B is still in flight.
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+      removed_placement_group, GetExpBackOff(), true);
+  RunIOService();
+
+  ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
+  ASSERT_NE(mock_placement_group_scheduler_->placement_groups_[0]->GetPlacementGroupID(),
+            removed_placement_group_id);
+}
+
 TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
   auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);

@@ -216,6 +216,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       << "Failed to create placement group " << placement_group->GetName()
       << ", try again.";
 
+  const auto placement_group_id = placement_group->GetPlacementGroupID();
   auto stats = placement_group->GetMutableStats();
   if (!is_feasible) {
     // We will attempt to schedule this placement_group once an eligible node is
@@ -246,7 +247,9 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
                    "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
-  MarkSchedulingDone();
+  if (IsSchedulingInProgress(placement_group_id)) {
+    MarkSchedulingDone();
+  }
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
@@ -300,7 +303,9 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   lifetime_num_placement_groups_created_++;
   io_context_.post([this] { SchedulePendingPlacementGroups(); },
                    "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
-  MarkSchedulingDone();
+  if (IsSchedulingInProgress(placement_group->GetPlacementGroupID())) {
+    MarkSchedulingDone();
+  }
 }
 
 void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
@@ -439,6 +444,9 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   if (IsSchedulingInProgress(placement_group_id)) {
     // If the placement group is scheduling.
     gcs_placement_group_scheduler_->MarkScheduleCancelled(placement_group_id);
+    // The removed placement group no longer owns the scheduling token; release it
+    // now instead of waiting for scheduling callbacks to return.
+    MarkSchedulingDone();
   }
 
   // Remove a placement group from a pending list if exists.
