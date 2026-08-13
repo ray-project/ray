@@ -47,7 +47,7 @@ internal stats (e.g., number of Actors in the cluster, number of Worker failures
 and custom application metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
 to monitor the Cluster over time.
 
-View :ref:`Metrics View <dash-metrics-view>` for where to view the metrics in Ray Dashboard. View :ref:`collecting metrics <collect-metrics>` for how to collect metrics from Ray Clusters.
+View :ref:`Metrics View <dash-metrics-view>` for where to view the metrics in Ray dashboard. View :ref:`collecting metrics <collect-metrics>` for how to collect metrics from Ray Clusters.
 
 Exceptions
 ----------
