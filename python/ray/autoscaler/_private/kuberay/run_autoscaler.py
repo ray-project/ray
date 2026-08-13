@@ -53,6 +53,21 @@ class _LazyStreamHandler(logging.StreamHandler):
         return getattr(sys, self._stream_name)
 
 
+class _MaxLevelFilter(logging.Filter):
+    """Filter that passes only records below a given level.
+
+    Args:
+        level: Records at or above this level are dropped.
+    """
+
+    def __init__(self, level: int):
+        super().__init__()
+        self._level = level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno < self._level
+
+
 def _get_log_dir(gcs_client: GcsClient) -> str:
     head_node_selector = GetAllNodeInfoRequest.NodeSelector()
     head_node_selector.is_head_node = True
@@ -170,7 +185,7 @@ def _setup_logging(log_dir: str) -> None:
     stdout_handler = _LazyStreamHandler("stdout")
     stdout_handler.setFormatter(formatter)
     stdout_handler.setLevel(level)
-    stdout_handler.addFilter(lambda record: record.levelno < logging.WARNING)
+    stdout_handler.addFilter(_MaxLevelFilter(logging.WARNING))
 
     stderr_handler = _LazyStreamHandler("stderr")
     stderr_handler.setFormatter(formatter)

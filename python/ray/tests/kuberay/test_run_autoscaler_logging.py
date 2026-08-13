@@ -136,12 +136,12 @@ def test_handler_levels_track_logger_level(
     """
     monkeypatch.setattr(ray_constants, "LOGGER_LEVEL", logger_level)
     _setup_logging(str(tmp_path))
+    handlers = [h for h in logging.root.handlers if isinstance(h, _LazyStreamHandler)]
     by_stream = {
-        h._stream_name: h
-        for h in logging.root.handlers
-        if isinstance(h, _LazyStreamHandler)
+        "stdout": next(h for h in handlers if h.stream is sys.stdout),
+        "stderr": next(h for h in handlers if h.stream is sys.stderr),
     }
-    assert sorted(by_stream) == ["stderr", "stdout"]
+    assert len(handlers) == 2
     assert by_stream["stdout"].level == expected_stdout_level
     assert by_stream["stderr"].level == expected_stderr_level
 
@@ -157,11 +157,14 @@ def test_level_stricter_than_warning_suppresses_warnings(emit_records, logger_le
 
 
 def test_split_is_numeric_not_name_based(emit_records):
-    """A custom level between INFO and WARNING routes to stdout."""
-    logging.addLevelName(25, "NOTICE")
+    """A custom level between INFO and WARNING routes to stdout.
+
+    Level 25 is deliberately left unregistered so this does not mutate the global level
+    name table; logging renders it as "Level 25".
+    """
     stdout, stderr, _ = emit_records(25, logging.WARNING)
-    assert "NOTICE_RECORD" in stdout
-    assert "NOTICE_RECORD" not in stderr
+    assert "Level 25_RECORD" in stdout
+    assert "Level 25_RECORD" not in stderr
 
 
 def test_invalid_logger_level_raises(emit_records):
