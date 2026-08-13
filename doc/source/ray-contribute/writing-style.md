@@ -392,10 +392,12 @@ Don't write "Ray Pod." A Pod is a Kubernetes host that contains a Ray node, alon
 Write one of these instead:
 
 - "head Pod" and "worker Pod" when you mean a specific role.
-- "the Ray cluster's Pods" or "Ray head and worker Pods" for the general case.
+- "the RayCluster's Pods" or "Ray head and worker Pods" for the general case.
 - "Ray node" when you mean the Ray-level abstraction, such as what the autoscaler adds and removes.
 
-Drop the qualifier entirely where the sentence or a nearby command already scopes it. A bare "Pod" is clear on a page that describes nothing else, as in "each Pod generates its own private key." Keep the scope explicit where the page also describes Pods the RayCluster doesn't own, such as the operator, Redis, or a `curl` Pod, and where a nearby command filters by label. "List the Ray cluster's Pods" belongs above `kubectl get pods -l=ray.io/is-ray-node=yes`, and "List all Pods" belongs above a bare `kubectl get pods`. The two commands don't do the same thing, so the two sentences shouldn't read the same way.
+Use the resource name in the possessive form. The operator creates these Pods, sets their `ownerReferences` to the RayCluster, and labels them `ray.io/cluster`, so ownership, selection, and lifecycle are all facts about the resource rather than about the Ray cluster it produces. Write "the RayCluster's Pods" wherever the sentence turns on one of those, which is nearly every sentence that needs a possessive. "Ray head and worker Pods" stays available when you want the roles without the resource.
+
+Drop the qualifier entirely where the sentence or a nearby command already scopes it. A bare "Pod" is clear on a page that describes nothing else, as in "each Pod generates its own private key." Keep the scope explicit where the page also describes Pods the RayCluster doesn't own, such as the operator, Redis, or a `curl` Pod, and where a nearby command filters by label. "List the RayCluster's Pods" belongs above `kubectl get pods -l=ray.io/is-ray-node=yes`, and "List all Pods" belongs above a bare `kubectl get pods`. The two commands don't do the same thing, so the two sentences shouldn't read the same way.
 
 ### State the node-to-Pod mapping once, early
 
@@ -431,13 +433,13 @@ Look up the form here rather than deriving it. Generic nouns stay lowercase even
 | RayCluster, RayJob, RayService, RayCronJob | Raycluster, Rayjob, Rayservice, Raycronjob | The custom resources. |
 | Ray cluster, Ray job, Ray service | RayCluster as a concept, ray cluster, ray job, ray service | The things the custom resources produce. |
 | head Pod, worker Pod | head pod, Head Pod, head node | On Kubernetes. |
-| Pod, the Ray cluster's Pods | Ray Pod, Ray pod | A Pod hosts a Ray node. Qualify by role or by ownership, not by framework. |
+| Pod, the RayCluster's Pods | Ray Pod, Ray pod | A Pod hosts a Ray node. Qualify by role or by ownership, not by framework. |
 | Ray node, Kubernetes node | Ray Node, Kubernetes Node | Lowercase both. Capitalize Node only for the API object, which is rare in prose. |
 | worker group | Worker Group | The API field `workerGroupSpecs` keeps code style. |
 | Ray autoscaler | Ray Autoscaler | "Autoscaler" is a generic noun. |
 | GCS fault tolerance | GCS FT | Spell out "FT" as "fault tolerance". |
 | custom resource | Custom Resource | Lowercase as a general concept. Distinct from a CustomResourceDefinition. |
-| namespace | Namespace | Lowercase unless you mean the Kubernetes API object specifically. |
+| namespace | Namespace | Lowercase in prose. The capitalized `Namespace` appears in manifests and command output, which take code style. |
 | YuniKorn, Kueue, Volcano, Helm, Prometheus, Grafana | Yunikorn, kueue, volcano, helm, prometheus, grafana | Third-party names take each project's own casing. |
 | `kubectl` | Kubectl | Always lowercase, always in backticks. |
 
