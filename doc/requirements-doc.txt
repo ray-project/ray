@@ -8,6 +8,29 @@
 # No released sphinxcontrib-redoc fixes this. 1.6.0 is the latest release and
 # dates from 2020; the 2.0.0a1 alpha still imports pkg_resources. Lifting this
 # ceiling means replacing or vendoring that extension.
+#
+# sphinxcontrib-redoc is the only blocker. Verified by installing every
+# extension conf.py loads into an environment with no setuptools and no
+# importable pkg_resources: all of them import cleanly except
+# sphinxcontrib.redoc, which raises "No module named 'pkg_resources'". So
+# dropping that one extension is sufficient to lift this ceiling.
+#
+# sphinxcontrib-openapi 0.9.0 was evaluated as the maintained replacement and
+# is not usable yet. It needs no setuptools and builds this repo's spec with
+# zero warnings, but only in its default configuration, which renders no
+# request or response schemas at all -- paths, parameters, and status codes
+# only, where ReDoc renders the full schemas. Every configuration that restores
+# the schema content emits Sphinx warnings, and .readthedocs.yaml sets
+# fail_on_warning: true:
+#   - old renderer with :request: emits a sourcecode directive with no trailing
+#     blank line ("Explicit markup ends without a blank line").
+#   - old renderer with :examples: generates an example the Pygments http lexer
+#     rejects.
+#   - the httpdomain renderer leaks literal ** into the output and warns
+#     "Inline strong start-string without end-string".
+# Suppressing those would trade one workaround for another, so this stays on
+# pinned ReDoc until they're fixed upstream. Re-evaluate on a release that
+# fixes them rather than re-deriving the above.
 setuptools==80.9.0
 
 # Syntax highlighting
