@@ -240,9 +240,9 @@ Set up ingress to expose your Serve application with a load balancer. See [this 
 
 ## Monitoring
 Monitor your Serve application using the Ray dashboard.
-- Learn more about how to configure and manage Dashboard [here](observability-configure-manage-dashboard).
-- Learn about the Ray Serve Dashboard [here](serve-monitoring).
-- Learn how to set up [Prometheus](prometheus-setup) and [Grafana](grafana) for Dashboard.
+- Learn more about how to configure and manage the dashboard [here](observability-configure-manage-dashboard).
+- Learn about the Ray Serve dashboard [here](serve-monitoring).
+- Learn how to set up [Prometheus](prometheus-setup) and [Grafana](grafana) for the dashboard.
 - Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](persist-kuberay-custom-resource-logs) on Kubernetes.
 
 :::{note}

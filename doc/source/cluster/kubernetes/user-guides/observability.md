@@ -128,7 +128,7 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 ```
 
 (kuberay-port-forward-dashboard)=
-### Check Dashboard
+### Check the dashboard
 
 ```bash
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)

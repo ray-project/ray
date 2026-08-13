@@ -224,7 +224,7 @@ First, check the head node memory usage from the metrics page. Find the head nod
 .. image:: ../../images/head-node-addr.png
     :align: center
 
-Then check the memory usage from the head node from the node memory usage view inside the Dashboard :ref:`metrics view <dash-metrics-view>`.
+Then check the memory usage from the head node from the node memory usage view inside the dashboard :ref:`metrics view <dash-metrics-view>`.
 
 .. image:: ../../images/metrics-node-view.png
     :align: center

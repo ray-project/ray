@@ -28,7 +28,7 @@ Running tasks or actors on the head node isn't recommended because it hosts crit
 
 See :ref:`vms-large-cluster-configure-head-node` for head-node best practices.
 
-Disable the Dashboard  
+Disable the dashboard  
 ~~~~~~~~~~~~~~~~~~~~~  
   
 If you don't need the dashboard, disabling it removes event caching and related memory overhead. This reduces observability into the system so it's not recommended for production clusters.
@@ -101,7 +101,7 @@ Best Practices
 3. **Set appropriate Kubernetes resource limits** (match requests for memory and GPU).
 
 .. note::
-    You *can* disable the dashboard, but doing so severely limits observability and isn't **recommended for production**. If you choose to disable it, see the `Disable the Dashboard` section in the preceding text.
+    You *can* disable the dashboard, but doing so severely limits observability and isn't **recommended for production**. If you choose to disable it, see the `Disable the dashboard` section in the preceding text.
 
 Troubleshooting
 ---------------  
