@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+import re
 import sys
 import time
 from typing import List, Tuple
@@ -9,7 +11,11 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
-from ray._private.runtime_env.agent.runtime_env_agent import ReferenceTable, UriType
+from ray._private.runtime_env.agent.runtime_env_agent import (
+    ReferenceTable,
+    SetupLoggerFactory,
+    UriType,
+)
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
@@ -243,6 +249,236 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     assert err["type"] == ray_constants.RAYLET_DIED_ERROR
     assert "Termination is unexpected." in err["error_message"], err["error_message"]
     assert "Raylet logs:" in err["error_message"], err["error_message"]
+
+
+def _make_setup_logger_factory(log_dir, logging_level=logging.INFO):
+    return SetupLoggerFactory(
+        logging_level=logging_level,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        log_dir=str(log_dir),
+        max_bytes=1024 * 1024,
+        backup_count=1,
+    )
+
+
+def test_setup_logger_releases_file_handles_and_keeps_file(tmp_path):
+    """The FD is scoped to the setup; the log file on disk is not."""
+    factory = _make_setup_logger_factory(tmp_path)
+    with factory.setup_logger("01000000", []) as logger:
+        logger.info("hello")
+        assert len(factory._pooled_handlers) == 1
+        (entry,) = factory._pooled_handlers.values()
+    # Pool is empty and the handler's stream is closed...
+    assert factory._pooled_handlers == {}
+    assert entry.handler.stream is None
+    # ...but the file is still on disk for the log monitor and dashboard.
+    log_file = tmp_path / "runtime_env_setup-01000000.log"
+    assert "hello" in log_file.read_text()
+
+
+def test_setup_logger_shares_handler_across_concurrent_setups(tmp_path):
+    """Two jobs writing the same log_files entry share one reference-counted
+    handler; the file closes only when the last setup exits."""
+    factory = _make_setup_logger_factory(tmp_path)
+    shared_path = os.path.abspath(str(tmp_path / "shared.log"))
+    with factory.setup_logger("0aaa", ["shared.log"]) as first:
+        with factory.setup_logger("0bbb", ["shared.log"]) as second:
+            entry = factory._pooled_handlers[shared_path]
+            assert entry.ref_count == 2
+            assert entry.handler in first.handlers
+            assert entry.handler in second.handlers
+            # Two per-job setup logs plus the one shared handler.
+            assert len(factory._pooled_handlers) == 3
+            first.info("from first")
+            second.info("from second")
+        # Inner setup exited: still open for the outer one.
+        assert factory._pooled_handlers[shared_path].ref_count == 1
+        assert entry.handler.stream is not None
+    assert factory._pooled_handlers == {}
+    assert entry.handler.stream is None
+    content = (tmp_path / "shared.log").read_text()
+    assert "from first" in content and "from second" in content
+
+
+@pytest.mark.parametrize("exit_path", ["exception", "timeout"])
+def test_setup_logger_releases_on_error_paths(tmp_path, exit_path):
+    factory = _make_setup_logger_factory(tmp_path)
+    if exit_path == "exception":
+        with pytest.raises(RuntimeError):
+            with factory.setup_logger("01000000", []) as logger:
+                logger.info("started")
+                raise RuntimeError("setup failed")
+    else:
+
+        async def _setup():
+            with factory.setup_logger("01000000", []) as logger:
+                logger.info("started")
+                await asyncio.sleep(60)
+
+        async def _run():
+            with pytest.raises(asyncio.TimeoutError):
+                # wait_for awaits the cancelled coroutine before raising, so
+                # the context manager unwinds before the timeout is reported.
+                await asyncio.wait_for(_setup(), timeout=0.05)
+
+        asyncio.run(_run())
+    assert factory._pooled_handlers == {}
+
+
+def test_setup_logger_not_in_global_registry(tmp_path):
+    """The per-setup logger must not be resurrectable via logging.getLogger."""
+    factory = _make_setup_logger_factory(tmp_path)
+    with factory.setup_logger("01000000", []) as logger:
+        assert logger.name == "runtime_env_01000000"
+        assert logger.name not in logging.Logger.manager.loggerDict
+    assert "runtime_env_01000000" not in logging.Logger.manager.loggerDict
+
+
+def test_setup_logger_late_write_does_not_reopen_file(tmp_path):
+    """A write after release must not silently reopen the file.
+
+    FileHandler.emit() lazily reopens its file when the stream is None, so a
+    closed handler that is still attached to the logger would leak the
+    descriptor again with no owner left to close it. This pins the
+    detach-before-close ordering.
+    """
+    factory = _make_setup_logger_factory(tmp_path)
+    with factory.setup_logger("01000000", []) as logger:
+        (entry,) = factory._pooled_handlers.values()
+    logger.warning("late write after release")
+    assert entry.handler.stream is None
+    assert factory._pooled_handlers == {}
+    assert "late write" not in (tmp_path / "runtime_env_setup-01000000.log").read_text()
+    assert all(isinstance(h, logging.NullHandler) for h in logger.handlers)
+
+
+def test_setup_logger_concurrent_late_emit_does_not_reopen_file(tmp_path):
+    """A racing thread that grabbed the handler before it was detached must
+    not reopen the file by emitting after close.
+
+    Logger.callHandlers reads the handler list before Handler.handle runs, so
+    an executor thread (e.g. conda work logging after a setup timeout) can
+    hold the handler across the detach + close. FileHandler.emit lazily
+    reopens the file in append mode, which would leak a descriptor with no
+    owner left to close it. Calling handle() on the handler directly
+    simulates that thread.
+    """
+    factory = _make_setup_logger_factory(tmp_path)
+    with factory.setup_logger("01000000", []) as logger:
+        (entry,) = factory._pooled_handlers.values()
+        handler = entry.handler
+        logger.info("in scope")
+    record = logging.LogRecord(
+        "runtime_env_01000000",
+        logging.WARNING,
+        __file__,
+        0,
+        "late concurrent write",
+        None,
+        None,
+    )
+    handler.handle(record)
+    assert handler.stream is None
+    log_text = (tmp_path / "runtime_env_setup-01000000.log").read_text()
+    assert "late concurrent write" not in log_text
+
+
+def test_setup_logger_never_leaves_handler_list_empty(tmp_path):
+    """The NullHandler must be attached before the file handlers are removed.
+
+    A concurrent late write that observes an empty handler list falls through
+    to logging.lastResort on the agent's stderr (the logger has propagate off
+    and no parent, so callHandlers counts zero handlers). Instrumenting
+    removeHandler pins the ordering deterministically instead of racing
+    threads against the window.
+    """
+    factory = _make_setup_logger_factory(tmp_path)
+    null_handler_present_at_removal = []
+    with factory.setup_logger("01000000", []) as logger:
+        original_remove = logger.removeHandler
+
+        def instrumented_remove(handler):
+            null_handler_present_at_removal.append(
+                any(isinstance(h, logging.NullHandler) for h in logger.handlers)
+            )
+            original_remove(handler)
+
+        logger.removeHandler = instrumented_remove
+    assert null_handler_present_at_removal
+    assert all(null_handler_present_at_removal)
+    assert all(isinstance(h, logging.NullHandler) for h in logger.handlers)
+
+
+def test_setup_logger_dedupes_paths_within_one_setup(tmp_path):
+    factory = _make_setup_logger_factory(tmp_path)
+    with factory.setup_logger("01000000", ["dup.log", "dup.log", "./dup.log"]):
+        entry = factory._pooled_handlers[os.path.abspath(str(tmp_path / "dup.log"))]
+        assert entry.ref_count == 1
+    assert factory._pooled_handlers == {}
+
+
+def test_setup_logger_matches_component_logger_format_and_level(tmp_path):
+    """Parity with setup_component_logger: level filtering and LOGGER_FORMAT.
+
+    A bare logging.Logger would pass every DEBUG record (NOTSET with no
+    parent) and a bare handler would write unformatted messages; nothing else
+    in the suite would notice either regression.
+    """
+    factory = _make_setup_logger_factory(tmp_path, logging_level=logging.INFO)
+    with factory.setup_logger("01000000", []) as logger:
+        logger.debug("must be filtered")
+        logger.info("visible message")
+    lines = (tmp_path / "runtime_env_setup-01000000.log").read_text().splitlines()
+    assert not any("must be filtered" in line for line in lines)
+    (line,) = [line for line in lines if "visible message" in line]
+    # LOGGER_FORMAT: "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
+    assert re.match(
+        r"^\d{4}-\d{2}-\d{2} [\d:,]+\tINFO \S+:\d+ -- visible message$", line
+    ), line
+
+
+def test_setup_logger_accepts_string_logging_level(tmp_path):
+    factory = SetupLoggerFactory(
+        logging_level="info",
+        logging_format=ray_constants.LOGGER_FORMAT,
+        log_dir=str(tmp_path),
+        max_bytes=0,
+        backup_count=1,
+    )
+    with factory.setup_logger("01000000", []) as logger:
+        assert logger.level == logging.INFO
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="/proc/self/fd is Linux-only")
+def test_setup_logger_fd_count_stays_flat_across_many_setups(tmp_path):
+    """The regression that motivated this: FDs must scale with in-flight
+    setups, not with the cumulative number of jobs (#54935)."""
+
+    def fd_count():
+        return len(os.listdir("/proc/self/fd"))
+
+    factory = _make_setup_logger_factory(tmp_path)
+    with factory.setup_logger("warmup", []) as logger:
+        logger.info("warmup")
+    before = fd_count()
+    for i in range(200):
+        with factory.setup_logger(f"{i:08d}", []) as logger:
+            logger.info("job %d", i)
+    assert fd_count() <= before + 1
+
+
+def test_setup_logger_falls_back_to_stream_handler_without_log_dir(tmp_path):
+    """Mirrors setup_component_logger: no log_dir means stderr, nothing pooled."""
+    factory = SetupLoggerFactory(
+        logging_level=logging.INFO,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        log_dir="",
+        max_bytes=0,
+        backup_count=1,
+    )
+    with factory.setup_logger("01000000", []) as logger:
+        assert factory._pooled_handlers == {}
+        assert any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
 
 
 if __name__ == "__main__":
