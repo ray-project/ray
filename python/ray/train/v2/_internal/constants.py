@@ -115,6 +115,9 @@ DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 # torchft lighthouse address
 TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
 
+# NCCL's standard RAS listen address (``host:port``, default localhost:28028).
+NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
+
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
 ENV_VARS_TO_PROPAGATE = {
@@ -134,6 +137,7 @@ ENV_VARS_TO_PROPAGATE = {
     TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR,
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     PREEMPTION_POLL_INTERVAL_S_ENV_VAR,
+    NCCL_RAS_ADDR_ENV_VAR,
 }
 
 
@@ -150,8 +154,6 @@ METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
 
 # Feature flag for the NCCL RAS hang detector callback.
 ENABLE_NCCL_HANG_DETECTOR_ENV_VAR = "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR"
-# NCCL's standard RAS listen address (``host:port``, default localhost:28028).
-NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
 # Path to the `ncclras` client binary (looked up on PATH by default).
 NCCLRAS_BINARY_PATH_ENV_VAR = "RAY_TRAIN_NCCLRAS_PATH"
 DEFAULT_NCCLRAS_BINARY_PATH = "ncclras"
