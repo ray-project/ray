@@ -164,7 +164,8 @@ Read more about building ML platforms with Ray in {ref}`this section <ray-for-ml
 
 % https://docs.google.com/drawings/d/1PFA0uJTq7SDKxzd7RHzjb5Sz3o1WvP13abEJbD0HXTE/edit
 
-![](/images/ray-air.svg)
+```{image} /images/ray-air.svg
+```
 
 ## End-to-End ML Workflows
 

@@ -36,7 +36,7 @@ Ray nodes are implemented as pods when {ref}`running on Kubernetes <kuberay-inde
 :::
 
 Users can submit jobs for execution on the Ray cluster, or can interactively use the
-cluster by connecting to the head node and running `ray.init`. See
+cluster by connecting to the head node and running {code}`ray.init`. See
 {ref}`Ray Jobs <jobs-quickstart>` for more information.
 
 (cluster-head-node)=

@@ -2,9 +2,7 @@
 html_theme.sidebar_secondary.remove: true
 ---
 
-```{eval-rst}
-.. title:: Welcome to Ray!
-```
+# Welcome to Ray!
 
 ```{toctree}
 :hidden:
