@@ -129,6 +129,11 @@ class FuseOperators(Rule):
         if not (isinstance(dag, TaskPoolMapOperator) and dag.supports_fusion()):
             return False
 
+        # Shuffle reduce task submission doesn't propagate fused map task kwargs
+        # as top-level arguments. Keep the map separate so Ray can resolve them.
+        if dag._map_task_kwargs or dag._map_task_kwargs_fns:
+            return False
+
         # Don't fuse a map with a `concurrency=` cap: the reduce runs one task
         # per partition with no concurrency cap, so fusing would silently ignore
         # the limit.
