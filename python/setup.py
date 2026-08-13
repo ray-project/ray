@@ -58,7 +58,7 @@ pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 
 def find_version(*filepath):
-    # Extract version information from filepath (added encoding='utf-8')
+    # Extract version information from filepath
     with open(os.path.join(ROOT_DIR, *filepath), encoding="utf-8") as fp:
         version_match = re.search(r"^version = ['\"]([^'\"]*)['\"]", fp.read(), re.M)
         if version_match:
