@@ -32,6 +32,7 @@ import argparse
 import difflib
 import re
 import sys
+import urllib.error
 import urllib.request
 
 from bs4 import BeautifulSoup
@@ -40,19 +41,26 @@ MASTER = "https://docs.ray.io/en/master/"
 
 # Differences every MyST page shows against an RST page, carrying no rendered
 # consequence. Filtered out so a real regression is not buried in nine copies of
-# the same benign line.
+# the same benign line. Stripped from the parse tree rather than the serialized
+# HTML, so a change in class order or an extra class can't silently stop the
+# filter from matching and resurrect the noise it exists to remove.
 #
 #   tex2jax_ignore / mathjax_ignore: myst-parser stamps these on the root
 #     <section> of every MyST document. Present on every already-Markdown page.
-#   class="code": `default_role = "code"` makes a single-backtick RST literal
-#     render as <code class="code docutils literal notranslate">; a Markdown
-#     single-backtick drops the `code` class. That class carries no styling in
-#     either Ray's CSS or pydata-sphinx-theme, so plain backticks are correct
-#     and this diff is expected.
-BENIGN = [
-    (re.compile(r'\s*class="tex2jax_ignore mathjax_ignore"'), ""),
-    (re.compile(r'class="code (docutils literal notranslate)"'), r'class="\1"'),
-]
+#   code: `default_role = "code"` makes a single-backtick RST literal render as
+#     <code class="code docutils literal notranslate">; a Markdown single-backtick
+#     drops the `code` class. That class carries no styling in either Ray's CSS
+#     or pydata-sphinx-theme, so plain backticks are correct and this diff is
+#     expected. Only stripped alongside the full inline-literal class set, so a
+#     `code` class meaning something else elsewhere is left alone.
+BENIGN_CLASSES = frozenset({"tex2jax_ignore", "mathjax_ignore"})
+INLINE_LITERAL_CLASSES = frozenset({"docutils", "literal", "notranslate"})
+
+# Release strings drift between a preview and master whenever a version bump
+# lands in between. Applied to the <title> as well as the body: Sphinx builds
+# titles as "… — Ray {release}" from html_title, so without this every page
+# reports a title difference on a bump alone.
+RELEASE_RE = re.compile(r"\bRay \d+\.\d+\.\d+[\w.]*")
 
 # Pages whose body is randomized at build time and so differ between any two
 # builds of the same commit. `custom_directives.py` picks the example-gallery
@@ -66,6 +74,23 @@ def fetch(url: str) -> str:
         return response.read().decode("utf-8", "replace")
 
 
+def strip_benign_classes(body) -> None:
+    """Remove the classes a MyST page carries that its RST original didn't."""
+    for tag in body.find_all(class_=True):
+        classes = tag.get("class")
+        if not isinstance(classes, list):
+            continue
+        kept = [c for c in classes if c not in BENIGN_CLASSES]
+        if "code" in kept and INLINE_LITERAL_CLASSES <= set(kept):
+            kept = [c for c in kept if c != "code"]
+        if kept:
+            tag["class"] = kept
+        else:
+            # An emptied class attribute must go entirely, or the MyST side
+            # serializes class="" where the RST side has no attribute at all.
+            del tag["class"]
+
+
 def normalize(html: str, base: str, keep_benign: bool):
     """Reduce a page to its comparable body plus its title.
 
@@ -77,28 +102,37 @@ def normalize(html: str, base: str, keep_benign: bool):
     """
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.get_text(strip=True) if soup.title else "(no <title>)"
+    title = RELEASE_RE.sub("Ray VERSION", title)
 
     body = soup.find("article") or soup.find("body")
     if body is None:
         return title, []
 
+    if not keep_benign:
+        strip_benign_classes(body)
+
     text = str(body).replace(base, "/").replace(MASTER, "/")
     text = re.sub(r"/en/(master|latest|[\w.-]+)/", "/en/VERSION/", text)
-    text = re.sub(r"\bRay \d+\.\d+\.\d+[\w.]*", "Ray VERSION", text)
+    text = RELEASE_RE.sub("Ray VERSION", text)
     text = re.sub(r"\?highlight=[^\"'&]*", "", text)
-    if not keep_benign:
-        for pattern, replacement in BENIGN:
-            text = pattern.sub(replacement, text)
     text = re.sub(r"\s+", " ", text)
     return title, re.sub(r">\s*<", ">\n<", text).splitlines()
 
 
 def compare(page: str, preview_base: str, keep_benign: bool, context: int) -> bool:
     """Print one page's diff. Returns True when the page differs."""
-    master_title, master_lines = normalize(fetch(MASTER + page), MASTER, keep_benign)
-    preview_title, preview_lines = normalize(
-        fetch(preview_base + page), preview_base, keep_benign
-    )
+    page = page.lstrip("/")
+    try:
+        master_html = fetch(MASTER + page)
+        preview_html = fetch(preview_base + page)
+    except urllib.error.URLError as exc:
+        # A typo'd page path or a preview that has not finished publishing
+        # should read as "not verified", never as "verified clean".
+        print(f"ERROR      {page}  (fetch failed: {exc})")
+        return True
+
+    master_title, master_lines = normalize(master_html, MASTER, keep_benign)
+    preview_title, preview_lines = normalize(preview_html, preview_base, keep_benign)
 
     title_note = ""
     if master_title != preview_title:
@@ -140,7 +174,9 @@ def main() -> int:
         for page in args.pages
     )
     print(f"\n{len(args.pages) - differing}/{len(args.pages)} pages render identically")
-    return differing
+    # Capped: an exit status is masked to 8 bits, so an uncapped count would
+    # wrap to 0 (success) on a run of exactly 256 differing pages.
+    return min(differing, 125)
 
 
 if __name__ == "__main__":
