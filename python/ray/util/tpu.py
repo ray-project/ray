@@ -24,7 +24,7 @@ from ray._private.accelerators.tpu import (
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import (
     PlacementGroup,
     placement_group,
@@ -1189,9 +1189,16 @@ def run_on_slice(
     return results
 
 
-# Deprecated alias: ``dispatch`` was the original name of the ``run_on_slice``
-# function. New code should use ``run_on_slice``.
-dispatch = run_on_slice
+# Deprecated alias — ``dispatch`` was the original name of ``run_on_slice``.
+# New code should use ``run_on_slice``.
+@PublicAPI(stability="alpha")
+@Deprecated(
+    message="'dispatch' is deprecated and has been renamed to 'run_on_slice'. "
+    "Please use 'run_on_slice' instead.",
+    warning=True,
+)
+def dispatch(*args: Any, **kwargs: Any) -> "List[ray.ObjectRef]":
+    return run_on_slice(*args, **kwargs)
 
 
 @PublicAPI(stability="alpha")
