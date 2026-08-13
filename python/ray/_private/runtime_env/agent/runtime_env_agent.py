@@ -207,6 +207,7 @@ class RuntimeEnvAgent:
 
         self._runtime_env_dir = runtime_env_dir
         self._per_job_logger_cache = dict()
+        self._per_job_logger_ref_counts: Dict[str, int] = defaultdict(int)
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
@@ -301,7 +302,7 @@ class RuntimeEnvAgent:
             else:
                 delete_runtime_env()
 
-    def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
+    def _acquire_per_job_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
             params = self._logging_params.copy()
@@ -310,7 +311,26 @@ class RuntimeEnvAgent:
             params["propagate"] = False
             per_job_logger = setup_component_logger(**params)
             self._per_job_logger_cache[job_id] = per_job_logger
+        self._per_job_logger_ref_counts[job_id] += 1
         return self._per_job_logger_cache[job_id]
+
+    def _release_per_job_logger(self, job_id: bytes):
+        job_id = job_id.decode()
+        ref_count = self._per_job_logger_ref_counts[job_id]
+        if ref_count > 1:
+            self._per_job_logger_ref_counts[job_id] = ref_count - 1
+            return
+
+        del self._per_job_logger_ref_counts[job_id]
+        per_job_logger = self._per_job_logger_cache.pop(job_id)
+        for handler in per_job_logger.handlers[:]:
+            per_job_logger.removeHandler(handler)
+            handler.close()
+
+        # logging keeps loggers alive in a process-wide registry. Remove this
+        # instance so completed jobs do not accumulate there either.
+        if logging.Logger.manager.loggerDict.get(per_job_logger.name) is per_job_logger:
+            del logging.Logger.manager.loggerDict[per_job_logger.name]
 
     async def GetOrCreateRuntimeEnv(self, request):
         self._logger.debug(
@@ -325,48 +345,58 @@ class RuntimeEnvAgent:
         ):
             log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
-            per_job_logger = self.get_or_create_logger(request.job_id, log_files)
-            context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+            per_job_logger = self._acquire_per_job_logger(request.job_id, log_files)
+            try:
+                context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
 
-            # Warn about unrecognized fields in the runtime env.
-            for name, _ in runtime_env.plugins():
-                if name not in self._plugin_manager.plugins:
-                    per_job_logger.warning(
-                        f"runtime_env field {name} is not recognized by "
-                        "Ray and will be ignored.  In the future, unrecognized "
-                        "fields in the runtime_env will raise an exception."
-                    )
-
-            # Creates each runtime env URI by their priority. `working_dir` is special
-            # because it needs to be created before other plugins. All other plugins are
-            # created in the priority order (smaller priority value -> earlier to
-            # create), with a special environment variable being set to the working dir.
-            # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
-
-            # First create working dir...
-            working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
-            await create_for_plugin_if_needed(
-                runtime_env,
-                working_dir_ctx.class_instance,
-                working_dir_ctx.uri_cache,
-                context,
-                per_job_logger,
-            )
-
-            # Then within the working dir, create the other plugins.
-            working_dir_uri_or_none = runtime_env.working_dir_uri()
-            with self._working_dir_plugin.with_working_dir_env(working_dir_uri_or_none):
-                """Run setup for each plugin unless it has already been cached."""
-                for (
-                    plugin_setup_context
-                ) in self._plugin_manager.sorted_plugin_setup_contexts():
-                    plugin = plugin_setup_context.class_instance
-                    if plugin.name != WorkingDirPlugin.name:
-                        uri_cache = plugin_setup_context.uri_cache
-                        await create_for_plugin_if_needed(
-                            runtime_env, plugin, uri_cache, context, per_job_logger
+                # Warn about unrecognized fields in the runtime env.
+                for name, _ in runtime_env.plugins():
+                    if name not in self._plugin_manager.plugins:
+                        per_job_logger.warning(
+                            f"runtime_env field {name} is not recognized by "
+                            "Ray and will be ignored.  In the future, unrecognized "
+                            "fields in the runtime_env will raise an exception."
                         )
-            return context
+
+                # Creates each runtime env URI by their priority. `working_dir` is
+                # special because it needs to be created before other plugins. All
+                # other plugins are created in the priority order (smaller priority
+                # value -> earlier to create), with a special environment variable
+                # being set to the working dir.
+                # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
+
+                # First create working dir...
+                working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
+                await create_for_plugin_if_needed(
+                    runtime_env,
+                    working_dir_ctx.class_instance,
+                    working_dir_ctx.uri_cache,
+                    context,
+                    per_job_logger,
+                )
+
+                # Then within the working dir, create the other plugins.
+                working_dir_uri_or_none = runtime_env.working_dir_uri()
+                with self._working_dir_plugin.with_working_dir_env(
+                    working_dir_uri_or_none
+                ):
+                    """Run setup for each plugin unless it has already been cached."""
+                    for (
+                        plugin_setup_context
+                    ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                        plugin = plugin_setup_context.class_instance
+                        if plugin.name != WorkingDirPlugin.name:
+                            uri_cache = plugin_setup_context.uri_cache
+                            await create_for_plugin_if_needed(
+                                runtime_env,
+                                plugin,
+                                uri_cache,
+                                context,
+                                per_job_logger,
+                            )
+                return context
+            finally:
+                self._release_per_job_logger(request.job_id)
 
         async def _create_runtime_env_with_retry(
             runtime_env: RuntimeEnv,

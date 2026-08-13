@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import time
+from collections import defaultdict
 from typing import List, Tuple
 
 import pytest
@@ -9,7 +10,11 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
-from ray._private.runtime_env.agent.runtime_env_agent import ReferenceTable, UriType
+from ray._private.runtime_env.agent.runtime_env_agent import (
+    ReferenceTable,
+    RuntimeEnvAgent,
+    UriType,
+)
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
@@ -20,6 +25,40 @@ from ray.runtime_env import RuntimeEnv
 import psutil
 
 logger = logging.getLogger(__name__)
+
+
+def test_per_job_logger_released_after_last_setup(tmp_path):
+    agent = RuntimeEnvAgent.__new__(RuntimeEnvAgent)
+    agent._logging_params = {
+        "logging_level": logging.INFO,
+        "logging_format": "%(message)s",
+        "log_dir": str(tmp_path),
+        "max_bytes": 0,
+        "backup_count": 0,
+    }
+    agent._per_job_logger_cache = {}
+    agent._per_job_logger_ref_counts = defaultdict(int)
+
+    job_id = b"01000000"
+    logger_name = f"runtime_env_{job_id.decode()}"
+    first_logger = agent._acquire_per_job_logger(job_id, ["custom.log"])
+    second_logger = agent._acquire_per_job_logger(job_id, ["custom.log"])
+    handlers = first_logger.handlers[:]
+
+    assert second_logger is first_logger
+    assert len(handlers) == 2
+    assert agent._per_job_logger_ref_counts[job_id.decode()] == 2
+
+    agent._release_per_job_logger(job_id)
+    assert agent._per_job_logger_cache[job_id.decode()] is first_logger
+    assert all(handler.stream is not None for handler in handlers)
+
+    agent._release_per_job_logger(job_id)
+    assert job_id.decode() not in agent._per_job_logger_cache
+    assert job_id.decode() not in agent._per_job_logger_ref_counts
+    assert logger_name not in logging.Logger.manager.loggerDict
+    assert first_logger.handlers == []
+    assert all(handler.stream is None for handler in handlers)
 
 
 def test_reference_table():
