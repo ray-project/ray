@@ -1119,9 +1119,9 @@ mlflow==3.13.0rc0
     # via
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/test-requirements.txt
-mlflow-skinny==3.11.1
+mlflow-skinny==3.13.0rc0
     # via mlflow
-mlflow-tracing==3.11.1
+mlflow-tracing==3.13.0rc0
     # via mlflow
 mmh3==5.2.1
     # via
@@ -2235,6 +2235,7 @@ starlette==1.0.1
     #   -r python/requirements/test-requirements.txt
     #   fastapi
     #   gradio
+    #   mlflow-skinny
 statsforecast==1.7.0
     # via -r python/requirements/ml/tune-test-requirements.txt
 statsmodels==0.14.6

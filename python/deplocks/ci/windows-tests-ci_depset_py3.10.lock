@@ -2502,21 +2502,21 @@ ml-dtypes==0.5.4 \
     #   jaxlib
     #   keras
     #   tensorflow
-mlflow==3.11.1 \
-    --hash=sha256:84e54c4be91b5b2a19039a2673fe688b1d7307ceddacc08af51f8df05b19ee56 \
-    --hash=sha256:8f6bf1238ac04f97664c229dd480380c5c254a78bdb3c0e433e3a0397508b1af
+mlflow==3.13.0rc0 \
+    --hash=sha256:0ce384591c09f7f31647f87e49d2a06f47c5e331fd14acd6eea794d0bb1f19bf \
+    --hash=sha256:db3352a612ac396ef704df834bf74cface0b37ef28e5ec92ec7d15b305047815
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-mlflow-skinny==3.11.1 \
-    --hash=sha256:82ffd5f6980320b4ac19f741e7a754faa1d01707e632b002ea68e04fd25a0535 \
-    --hash=sha256:86ce63491349f6713afc8a4ef0bf77a8314d0e79e03753cb150d6c860a0b0475
+mlflow-skinny==3.13.0rc0 \
+    --hash=sha256:9d05327c4ba10374f9d9191a7e75e4d2e8c69f7fb7f737bfdf7bb0191b2b3007 \
+    --hash=sha256:b2a25b4b7ae32880c8798cd7cf107825f383b963f05a7e9d230d80cf559c9ffc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow
-mlflow-tracing==3.11.1 \
-    --hash=sha256:cb63cee16385d081467ec5bee4807fe1af59ddfdf04be4c79e7a7813b1002193 \
-    --hash=sha256:fa82df64dacf8293b714ae666440fe7c1902c6470c024df389bb91e9de3106d9
+mlflow-tracing==3.13.0rc0 \
+    --hash=sha256:5ad3ee3f3e255591c5492561094ed2fb9a4e506142d184695bc51a13c1a55452 \
+    --hash=sha256:8c775f8c7b269740904abae0b657fc517ad82666e5ba3b35938903476e830453
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow
@@ -5356,6 +5356,7 @@ starlette==1.0.1 \
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   fastapi
+    #   mlflow-skinny
 sympy==1.14.0 \
     --hash=sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517 \
     --hash=sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5
