@@ -9,7 +9,9 @@ argument-hint: <file(s) or directory under doc/source to convert>
 
 MyST Markdown is the standard for new Ray doc pages — `doc/.claude/CLAUDE.md` declares it, and a lint check rejects newly-added `.rst`. This skill converts an **existing** `.rst` page (or a batch) to MyST `.md` **faithfully**: format only, preserving the rendered HTML and any test coverage.
 
-The Ray docs build with `fail_on_warning: true` (`.readthedocs.yaml`), so a sloppy conversion doesn't render wrong — it **fails the build**. Most of this skill is about the handful of constructs that break the build or silently drop test coverage if mishandled.
+The Ray docs build with `fail_on_warning: true` (`.readthedocs.yaml`), so most of a sloppy conversion doesn't render wrong — it **fails the build**. Most of this skill is about the handful of constructs that break the build or silently drop test coverage if mishandled.
+
+**A green build is necessary and not sufficient.** A second, smaller class of mistake renders wrong *and* builds clean, with no warning anywhere: a lost page title, an image that changes markup, a directive whose nested RST degrades to visible text. Nothing in steps 1–3 of Verification can see any of it, because they all look at source or at reference resolution. Only the rendered diff in step 4 can. Run it.
 
 ---
 
@@ -81,7 +83,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 | `.. _label:` above a heading | `(label)=` on its own line, blank line, then the heading |
 | `====` / `----` underline | `#` / `##` … — **level by order of appearance, see Hard rule 3** |
 | `` ``literal`` `` (double backtick) | `` `code` `` (single backtick) |
-| `` `text` `` (single backtick) | `` `code` `` — faithful, since `default_role = "code"` |
+| `` `text` `` (single backtick) | `` `code` `` — see Construct notes; the rendered `<code>` loses a `code` class that carries no styling |
 | `` `text <url>`_ `` / `` `text <url>`__ `` | `[text](url)` |
 | bare URL `https://…` | `<https://…>` (angle-bracket autolink — **`linkify` is off**) |
 | same-page section link `` `text <page.html#sec>`_ `` | `[text](#sec)` (fragment) — **never keep the `.html#` URL; see Hard rule 2** |
@@ -99,7 +101,9 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 | `.. toctree::` | ` ```{toctree} ` — entries stay **extensionless** |
 | `.. include:: f.rst` (you're converting `f`) | ` ```{include} f.md ` (convert the included file in the same PR) |
 | `.. include:: _shared.rst` (shared partial, stays `.rst`) | ` ```{include} _shared.rst ` with `:parser: rst` (don't convert a shared `_includes/` partial) |
-| `.. image:: URL` | `![](URL)` (match the `![alt](path)` style in `docs.md`) |
+| `.. image:: URL` | ` ```{image} URL ` — **not** `![](URL)`; see Hard rule 5 |
+| `.. figure:: P` (+ caption) | ` ```{figure} P ` with options as `:key: val` lines, blank line, then the caption |
+| `.. title:: T` | **no MyST equivalent** — see Hard rule 5 |
 | `::` literal block | a plain ` ``` ` fence (no language) — see Construct notes |
 | auto-lettered list `a.` / `b.` / `c.` | numbered `1.` / `2.` / `3.` — **MyST/CommonMark has no alpha lists** |
 
@@ -120,15 +124,20 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 4. **doctest/testcode: literal-vs-executed.** A meta-doc that *demonstrates* testcode often contains two kinds of blocks:
    - **Illustrative** — shown as syntax to copy. In RST they follow a `::` and are indented (a `literal_block`). Convert to a **plain ` ``` ` fence** (no language). These render but are **never executed**. Leaving the RST directive text (`.. testcode::`) as literal content inside the fence is correct and faithful.
    - **Real** — actually run and rendered. In RST they're column-0 `.. testcode::` / `.. doctest::` directives. Convert to `{testcode}` / `{doctest}` / `{testoutput}` fences.
-   Decide **per block**. An illustrative block converted to a directive will execute and fail; a real block left as a plain fence silently loses CI coverage. After converting, count the executed directives and confirm the number matches the original's real blocks. (Note: a `{testcode}` in a doctest-*excluded* file still renders but doesn't run — see Hard rule 5.)
+   Decide **per block**. An illustrative block converted to a directive will execute and fail; a real block left as a plain fence silently loses CI coverage. After converting, count the executed directives and confirm the number matches the original's real blocks. (Note: a `{testcode}` in a doctest-*excluded* file still renders but doesn't run — see Hard rule 6.)
 
-5. **`doc/BUILD.bazel` doctest exclusions.** The main `doctest(` rule globs `source/**/*.md` **and** `source/**/*.rst` with a per-file `exclude` list. If a file you convert is named in that exclude list, **rewrite its entry from `.rst` to `.md` in the same PR.** Otherwise the `*.md` glob pulls the newly-converted file **into** doctest, and blocks that were excluded for a reason (e.g. `ray.init(...)` with no `import ray`) execute and fail. Conversely, a file that is *included* (not excluded) stays tested as `.md` — that's when Hard rule 4 matters most.
+5. **Page identity — the title and the images.** Three constructs change the rendered page while leaving the build green and emitting no warning. All three were caught by the render diff (Verification step 4) *after* a clean `fail_on_warning` build, not before it.
+   - **`.. title::` has no MyST equivalent, and it does not work inside `{eval-rst}`.** The docutils directive sets `document['title']`, which `TitleCollector` reads for the `<title>` tag; under MyST that assignment does not reach the real document. A page whose title came from `.. title::` silently renders as `<no title>`. If the page has a heading, delete the directive and let the heading carry the title. If it has none, add an H1 with the same text: `env.titles` ends up identical, and a page with no heading is almost always one whose body a custom template overrides anyway, so the H1 never renders. Check the template before assuming that.
+   - **`.. image::` is not `![]()`.** An RST `.. image::` with no `:alt:` takes its alt text from the URI and emits a bare `<img>` at block level. Markdown `![](path)` emits `alt=""` wrapped in a `<p>`. Use ` ```{image} path ` to keep both. `![alt](path)` is right only when you're supplying real alt text, which is a content change — call it out.
+   - **A caption-less `.. figure::` is still a `<figure>`.** Converting it to an image of either form drops the `<figure>` wrapper and its alignment class. Keep ` ```{figure} `.
+
+6. **`doc/BUILD.bazel` doctest exclusions.** The main `doctest(` rule globs `source/**/*.md` **and** `source/**/*.rst` with a per-file `exclude` list. If a file you convert is named in that exclude list, **rewrite its entry from `.rst` to `.md` in the same PR.** Otherwise the `*.md` glob pulls the newly-converted file **into** doctest, and blocks that were excluded for a reason (e.g. `ray.init(...)` with no `import ray`) execute and fail. Conversely, a file that is *included* (not excluded) stays tested as `.md` — that's when Hard rule 4 matters most.
 
 ---
 
 ## Construct notes
 
-- **`default_role = "code"`** (`doc/source/conf.py`): an RST single-backtick already renders as inline code, so single-backtick → single-backtick is byte-faithful, not a rendering change.
+- **`default_role = "code"`** (`doc/source/conf.py`): an RST single-backtick already renders as inline code, so single-backtick → single-backtick is the right conversion. It is *not* byte-identical, though: the RST form emits `<code class="code docutils literal notranslate">` and the Markdown form drops the `code` class. That class carries no styling in Ray's CSS or in `pydata-sphinx-theme`, and every already-converted page in the tree renders without it, so plain backticks are the house choice and `render_diff.py` filters this difference by default. Use the `` {code}`x` `` role only if you need a byte-identical diff for some other reason.
 - **Admonitions**: prefer colon fences `:::{note}` … `:::` (the `colon_fence` MyST extension is on). They nest a ` ``` ` code fence cleanly without backtick-counting. Backtick ` ```{note} ` also works for simple admonitions with no nested fence. A one-line RST admonition (`.. note:: text`) becomes `:::{note}` / `text` / `:::`.
 - **sphinx-design `tab-set` / `tab-item` / `dropdown`**: use **colon fences**, not backtick fences — `::::{tab-set}` › `:::{tab-item} Label` › ` ```code ``` `. The outer fence needs **more colons** than the one it contains (4 vs 3), and colon fences nest cleanly around backtick code fences, so you avoid backtick-counting entirely. Put directive options (`:open:`, `:sync:`, …) on their own line right after the opener. (Confirmed against Ray's RtD build.)
 - **`linkify` is OFF** (not in `myst_enable_extensions`). A bare URL will **not** autolink — wrap it as `<https://…>` to preserve the hyperlink. This includes URLs in parentheses like `Bazel 7.5.0 (https://…)` → `(<https://…>)`.
@@ -152,7 +161,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 **Do change (same PR as the file):**
 
-- **`doc/BUILD.bazel`** — doctest `exclude` entries (Hard rule 5) and any explicit doc-code test target naming the `.rst`.
+- **`doc/BUILD.bazel`** — doctest `exclude` entries (Hard rule 6) and any explicit doc-code test target naming the `.rst`.
 - **`.. include::` / `{include}`** directives pointing at a file you're converting (convert both).
 - **Relative `.rst` links from sibling pages** to the file you're renaming — found via the bare-stem grep. Point them at the new doc (extensionless or `{doc}`).
 - **`.claude/` path mentions** of the file (e.g. `CLAUDE.md`, skill/rule files referencing `…/development.rst`). Re-grep `.claude/` for the stem. These are tiny string edits and `.claude/` isn't in `.buildkite/test.rules.txt`, so they don't pull extra CI suites.
@@ -186,7 +195,19 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 3. **Doctest (only for files the doctest rule includes)** — the RtD html builder does **not** execute testcode/doctest; that runs in the Buildkite doctest target (surfaces under `buildkite/microcheck` for a changed doc file). Confirm the real executed blocks pass and the illustrative ones don't run. MyST `{testcode}`/`{doctest}` in `.md` *is* exercised — `getting-started.md` and `configure-manage-dashboard.md` are tested `.md` precedents.
 
-4. **Regression** — compare the RtD preview against **`/en/master`** (not `/en/latest`). Rendered content should match except where light cleanup intentionally changed it.
+4. **Regression — run this, don't eyeball it.** Compare the RtD preview against **`/en/master`** (not `/en/latest`) with [`render_diff.py`](render_diff.py), which fetches both, extracts `<article>`, normalizes the host, release string, and search-highlight params, and diffs:
+
+   ```bash
+   python3 doc/.claude/skills/rst-to-myst/render_diff.py \
+       https://anyscale-ray--<PR>.com.readthedocs.build/en/<PR>/ \
+       ray-core/key-concepts.html cluster/key-concepts.html
+   ```
+
+   **This is not optional, and a green step 2 is not a substitute for it.** Steps 1–3 are all source-side or resolution-side; this is the only step that looks at output, and it's the only one that catches Hard rule 5 or the `nested_parse` degradation below. On the first batch it caught three regressions — a lost `<title>` on the site root, an `alt=""` image, a dropped `code` class — through a build that was green and silent on all three.
+
+   The script filters the two differences every MyST page shows against an RST page, both inert: `class="tex2jax_ignore mathjax_ignore"` on the root `<section>`, and the missing `code` class on inline literals. Pass `--keep-benign` to see them.
+
+   Read the surviving diffs rather than trusting the exit code. Byte-identical is not always the right bar — a caption-less `{figure}` or a deliberate alt-text addition shows up here too. The question is whether every diff is explainable, not whether every diff is empty. Note that `ray-overview/examples.html` differs between *any* two builds: `custom_directives.py` picks its gallery icons with `random.randint`.
 
 ---
 
