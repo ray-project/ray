@@ -312,6 +312,24 @@ To read formats other than Parquet, see the :ref:`Loading Data API <loading-data
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
+Reading files from HDFS
+~~~~~~~~~~~~~~~~~~~~~~~
+
+To read files from HDFS, configure PyArrow and ``libhdfs`` on every relevant Ray node,
+then pass a fully qualified ``hdfs://`` URI to a supported read API. For example:
+
+.. testcode::
+    :skipif: True
+
+    import ray
+
+    ds = ray.data.read_parquet("hdfs://hostname:8020/path/to/data")
+
+PyArrow HDFS embeds a JVM in the Python process. On Linux, its signal handling can
+conflict with Ray and cause ``SIGSEGV``, ``SIGABRT``, or ``hs_err_pid*.log`` errors.
+See :ref:`troubleshoot-pyarrow-hdfs-jvm-crashes` for the preferred HotSpot
+signal-chaining configuration and fallback.
+
 Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -165,6 +165,13 @@ Specify the shared storage location as the :class:`RunConfig(storage_path) <ray.
                 )
             )
 
+        .. warning::
+
+            PyArrow HDFS embeds a JVM in the Python process. On Linux, its signal
+            handling can conflict with Ray and cause ``SIGSEGV``, ``SIGABRT``, or
+            ``hs_err_pid*.log`` errors. See :ref:`troubleshoot-pyarrow-hdfs-jvm-crashes`
+            for the preferred HotSpot signal-chaining configuration and fallback.
+
 In the mounted example above, all files are saved to ``/mnt/cluster_storage/experiment_name`` for further processing.
 
 
