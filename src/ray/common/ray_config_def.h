@@ -601,6 +601,10 @@ RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
 /// this duration for in-flight gRPC calls to complete before stopping the io_service.
 RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
 
+/// Interval in milliseconds at which the dashboard-head task-event store trims each job's
+/// tracked dropped-attempt set (GcJobSummary).
+RAY_CONFIG(int64_t, task_events_gc_job_summary_interval_ms, 5 * 1000)
+
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS.
@@ -1113,6 +1117,12 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 // TODO(myan): #54515 Remove this flag after the task events to GCS path is fully
 // migrated to the event aggregator.
 RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
+
+// Whether to enable GCS active-passive leader election.
+// Uppercased so the overriding env var (RAY_ENABLE_GCS_LEADER_ELECTION) matches the name
+// Python reads (ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION), keeping the C++ and Python
+// views of leader election in sync.
+RAY_CONFIG(bool, ENABLE_GCS_LEADER_ELECTION, false)
 
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.

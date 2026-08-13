@@ -1,3 +1,6 @@
+.. meta::
+   :description: Ship Python and system dependencies to a Ray cluster with runtime environments, per job or per task, using local files, conda, or pip.
+
 .. _handling_dependencies:
 
 Environment Dependencies
