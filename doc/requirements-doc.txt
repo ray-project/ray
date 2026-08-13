@@ -16,21 +16,29 @@
 # dropping that one extension is sufficient to lift this ceiling.
 #
 # sphinxcontrib-openapi 0.9.0 was evaluated as the maintained replacement and
-# is not usable yet. It needs no setuptools and builds this repo's spec with
-# zero warnings, but only in its default configuration, which renders no
-# request or response schemas at all -- paths, parameters, and status codes
-# only, where ReDoc renders the full schemas. Every configuration that restores
-# the schema content emits Sphinx warnings, and .readthedocs.yaml sets
-# fail_on_warning: true:
-#   - old renderer with :request: emits a sourcecode directive with no trailing
-#     blank line ("Explicit markup ends without a blank line").
-#   - old renderer with :examples: generates an example the Pygments http lexer
-#     rejects.
-#   - the httpdomain renderer leaks literal ** into the output and warns
-#     "Inline strong start-string without end-string".
-# Suppressing those would trade one workaround for another, so this stays on
-# pinned ReDoc until they're fixed upstream. Re-evaluate on a release that
-# fixes them rather than re-deriving the above.
+# is technically viable. It needs no setuptools, and it renders this repo's spec
+# with full request and response schemas and zero warnings under
+# fail_on_warning, but only in one specific configuration:
+#   - openapi_default_renderer = "httpdomain" in conf.py, then a plain
+#     `.. openapi::` directive. The default renderer (httpdomain:old) renders no
+#     request or response schemas at all, just paths, parameters, and status
+#     codes. Invoking the new one as `.. openapi:httpdomain::` instead of via
+#     the config value adds an "unknown directive name" warning.
+#   - operation `summary` fields must be plain scalars, not YAML block scalars.
+#     A block scalar leaves a trailing newline in the value, which the renderer
+#     interpolates into `**...**` and breaks, emitting literal asterisks onto
+#     the page (sphinx-contrib/openapi#173).
+# Configurations that don't work, all filed upstream: the old renderer with
+# :request: emits a sourcecode directive with no trailing blank line
+# (sphinx-contrib/openapi#171), and with :examples: it emits a schema-derived
+# string example unencoded as an application/json body, which the Pygments http
+# lexer rejects (sphinx-contrib/openapi#172).
+#
+# What migrating is still gated on is not technical: it replaces ReDoc's
+# standalone three-panel page with output rendered inline in the site theme.
+# That's a visible change to a published reference page and needs maintainer
+# sign-off, so it isn't a dependency-hygiene decision. Until that call is made,
+# this stays on pinned ReDoc.
 setuptools==80.9.0
 
 # Syntax highlighting
