@@ -1,15 +1,33 @@
 import os
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 from pyarrow import orc
 
 import ray
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.datasource.orc_datasink import ORCDatasink
+from ray.data._internal.util import rows_same
+from ray.data.block import BlockAccessor
 
 
 def _write_orc(path, table):
     with pa.OSFile(path, "wb") as sink:
         orc.write_table(table, sink)
+
+
+def _list_visible_files(directory):
+    return sorted(
+        filename for filename in os.listdir(directory) if not filename.startswith(".")
+    )
+
+
+def _read_orc_dir(directory):
+    return pa.concat_tables(
+        orc.read_table(os.path.join(directory, filename))
+        for filename in _list_visible_files(directory)
+    )
 
 
 def test_read_orc_basic(ray_start_regular_shared, tmp_path):
@@ -160,6 +178,125 @@ def test_read_orc_empty_file(ray_start_regular_shared, tmp_path):
 
     assert ds.count() == 0
     assert ds.take_all() == []
+
+
+def test_orc_write(ray_start_regular_shared, tmp_path):
+    input_df = pd.DataFrame({"id": [0, 1, 2], "name": ["a", "b", "c"]})
+    ds = ray.data.from_blocks([input_df])
+
+    ds.write_orc(tmp_path)
+
+    output_df = _read_orc_dir(tmp_path).to_pandas()
+    assert rows_same(input_df, output_df)
+
+
+@pytest.mark.parametrize("override_num_blocks", [None, 2])
+def test_orc_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+
+    ds = ray.data.from_pandas([df], override_num_blocks=override_num_blocks)
+    ds.write_orc(tmp_path)
+
+    ds2 = ray.data.read_orc(str(tmp_path))
+    ds2df = ds2.to_pandas()
+    assert rows_same(ds2df, df)
+    for entry in ds2._execute().blocks:
+        assert (
+            # pyrefly: ignore[no-matching-overload]
+            BlockAccessor.for_block(ray.get(entry.ref)).size_bytes()
+            == entry.metadata.size_bytes
+        )
+
+
+def test_orc_write_rejects_stream_compression(tmp_path):
+    with pytest.raises(ValueError, match="compression="):
+        ORCDatasink(str(tmp_path), open_stream_args={"compression": "gzip"})
+
+
+def test_orc_write_rejects_zero_user_columns(tmp_path):
+    block = BlockAccessor.for_block(
+        pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(3)})
+    )
+    datasink = ORCDatasink(str(tmp_path))
+
+    with pa.OSFile(os.path.join(tmp_path, "data.orc"), "wb") as file:
+        with pytest.raises(ValueError, match="at least one column"):
+            datasink.write_block_to_file(block, file)
+
+
+def test_orc_write_strips_internal_columns(tmp_path):
+    block = BlockAccessor.for_block(
+        pa.table(
+            {
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(3),
+                "id": [1, 2, 3],
+            }
+        )
+    )
+    output_path = os.path.join(tmp_path, "data.orc")
+    datasink = ORCDatasink(str(tmp_path))
+
+    with pa.OSFile(output_path, "wb") as file:
+        datasink.write_block_to_file(block, file)
+
+    output = orc.read_table(output_path)
+    assert output.schema.names == ["id"]
+    assert output.column("id").to_pylist() == [1, 2, 3]
+
+
+def test_orc_write_compression(ray_start_regular_shared, tmp_path):
+    input_df = pd.DataFrame({"id": [0, 1, 2]})
+    ds = ray.data.from_blocks([input_df])
+
+    ds.write_orc(tmp_path, compression="zstd")
+
+    filenames = _list_visible_files(tmp_path)
+    assert len(filenames) == 1
+    output_file = os.path.join(tmp_path, filenames[0])
+    assert orc.ORCFile(output_file).compression == "ZSTD"
+    output_df = orc.read_table(output_file).to_pandas()
+    assert rows_same(input_df, output_df)
+
+
+def test_orc_write_args_fn_overrides_args(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(3)
+
+    ds.write_orc(
+        tmp_path,
+        arrow_orc_args_fn=lambda: {"compression": "zstd"},
+        compression="uncompressed",
+    )
+
+    filenames = _list_visible_files(tmp_path)
+    assert filenames
+    assert all(
+        orc.ORCFile(os.path.join(tmp_path, filename)).compression == "ZSTD"
+        for filename in filenames
+    )
+
+
+def test_orc_write_empty(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"id": pd.Series([], dtype="int64")})
+    ds = ray.data.from_pandas(df)
+
+    ds.write_orc(tmp_path)
+
+    assert _list_visible_files(tmp_path) == []
+
+
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_orc_write_min_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file
+):
+    ray.data.range(100, override_num_blocks=20).write_orc(
+        tmp_path, min_rows_per_file=min_rows_per_file
+    )
+
+    filenames = _list_visible_files(tmp_path)
+    assert len(filenames) == 100 // min_rows_per_file
+    for filename in filenames:
+        num_rows_written = orc.read_table(os.path.join(tmp_path, filename)).num_rows
+        assert num_rows_written == min_rows_per_file
 
 
 if __name__ == "__main__":
