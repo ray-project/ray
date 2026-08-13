@@ -119,7 +119,7 @@ Now that the service name is available, use port-forwarding to access the Ray da
 kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265 > /dev/null &
 ```
 
-Now that the Dashboard port is accessible, submit jobs to the RayCluster:
+Now that the dashboard port is accessible, submit jobs to the RayCluster:
 
 ```sh
 # The following job's logs will show the Ray cluster's total resource capacity, including 2 CPUs.
@@ -160,7 +160,7 @@ Job 'raysubmit_8vJ7dKqYrWKbd17i' succeeded
 
 ## Step 5: Access the Ray dashboard
 
-Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`. See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
+Visit `${YOUR_IP}:8265` in your browser for the dashboard. For example, `127.0.0.1:8265`. See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
 
 ![Ray dashboard](../images/ray-dashboard.png)
 

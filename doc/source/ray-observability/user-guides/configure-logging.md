@@ -573,7 +573,7 @@ When enabled, the Job Supervisor Python logs output in the following JSON format
 ```
 
 :::{note}
-Currently, only the Job Supervisor supports JSON format for Python system logs when ``RAY_BACKEND_LOG_JSON=1`` is set. Other Python system components such as the Dashboard, Dashboard Agent, Log Monitor, and Autoscaler Monitor do not yet support JSON format and continue to use the standard text format.
+Currently, only the Job Supervisor supports JSON format for Python system logs when ``RAY_BACKEND_LOG_JSON=1`` is set. Other Python system components such as the dashboard, dashboard Agent, Log Monitor, and Autoscaler Monitor do not yet support JSON format and continue to use the standard text format.
 :::
 
 C++ system logs (such as Raylet, GCS) output in the following JSON format:

@@ -13,7 +13,7 @@ Ray records and emits time-series metrics using the [Prometheus format](https://
 For Kubernetes users, see {ref}`Using Prometheus and Grafana <kuberay-prometheus-grafana>` with KubeRay.
 
 ## System and application metrics
-Ray exports metrics if you use `ray[default]` or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
+Ray exports metrics if you use `ray[default]` or {ref}`other installation commands <installation>` that include the dashboard component. The dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
 
 **System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details about the emitted metrics.
 
@@ -328,7 +328,7 @@ If Grafana reports that the datasource is not found, [add a datasource variable]
 
 ### Recommended: Use Ray dashboard with embedded Grafana visualizations
 1. Follow the instructions above to set up Grafana with Ray-provided visualizations
-2. View {ref}`configuring and managing Ray dashboard <embed-grafana-in-dashboard>` for how to embed Grafana visualizations into Dashboard
+2. View {ref}`configuring and managing Ray dashboard <embed-grafana-in-dashboard>` for how to embed Grafana visualizations into the dashboard
 3. View {ref}`Dashboard's metrics view<dash-metrics-view>` for how to inspect the metrics in Ray dashboard.
 
 

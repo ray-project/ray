@@ -8,7 +8,7 @@ myst:
 # Configuring and managing Ray dashboard
 {ref}`Ray dashboard<observability-getting-started>` is one of the most important tools to monitor and debug Ray applications and Clusters. This page describes how to configure Ray dashboard on your Clusters.
 
-Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster vs. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced Dashboard experience.
+Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster vs. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced dashboard experience.
 
 :::{note}
 Ray dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../cluster/kubernetes/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
@@ -67,9 +67,9 @@ The dashboard is now visible at ``http://localhost:8265``.
 
 :::{tab-item} KubeRay
 
-The KubeRay operator makes Dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
+The KubeRay operator makes the dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access the dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
 
-There are two ways to expose Dashboard outside the Cluster:
+There are two ways to expose the dashboard outside the Cluster:
 
 **1. Setting up ingress** <br/> Follow the [instructions](kuberay-ingress) to set up ingress to access Ray dashboard. **The Ingress must only allows access from trusted sources.**
 
@@ -82,7 +82,7 @@ $ kubectl port-forward service/${RAYCLUSTER_NAME}-head-svc 8265:8265
 
 ```{admonition} Note
 :class: note
-Do not use port forwarding for production environment. Follow the instructions above to expose the Dashboard with Ingress.
+Do not use port forwarding for production environment. Follow the instructions above to expose the dashboard with Ingress.
 ```
 
 For more information about configuring network access to a Ray cluster on Kubernetes, see the {ref}`networking notes <kuberay-networking>`.
@@ -129,11 +129,11 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
 The Ray dashboard provides read **and write** access to the Ray Cluster. The reverse proxy must provide authentication or network ingress controls to prevent unauthorized access to the Cluster.
 ```
 
-## Disabling the Dashboard
+## Disabling the dashboard
 
-Dashboard is included if you use `ray[default]` or {ref}`other installation commands <installation>` and automatically started.
+The dashboard is included if you use `ray[default]` or {ref}`other installation commands <installation>` and automatically started.
 
-To disable the Dashboard, use the `--include-dashboard` argument.
+To disable the dashboard, use the `--include-dashboard` argument.
 
 ::::{tab-set}
 
@@ -169,7 +169,7 @@ Include the `ray start --head --include-dashboard=False` argument in the `head_s
 
 ```{admonition} Warning
 :class: warning
-It's not recommended to disable Dashboard because several KubeRay features like `RayJob` and `RayService` depend on it.
+It's not recommended to disable the dashboard because several KubeRay features like `RayJob` and `RayService` depend on it.
 ```
 
 Set `spec.headGroupSpec.rayStartParams.include-dashboard` to `False`. Check out this [example YAML file](https://gist.github.com/kevin85421/0e6a8dd02c056704327d949b9ec96ef9).
@@ -272,9 +272,9 @@ If you have set up Grafana, check that:
 You may see a CA error if your Grafana instance is hosted behind HTTPS. Contact the Grafana service owner to properly enable HTTPS traffic.
 
 
-## Viewing built-in Dashboard API metrics
+## Viewing built-in dashboard API metrics
 
-Dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints. Ray emits basic Prometheus metrics for each API endpoint:
+The dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints. Ray emits basic Prometheus metrics for each API endpoint:
 
 `ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
 

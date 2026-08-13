@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Security model and best practices for Ray, covering the Dashboard/Jobs/Client trust model, gRPC communication, and token authentication."
+    description: "Security model and best practices for Ray, covering the dashboard/Jobs/Client trust model, gRPC communication, and token authentication."
 ---
 
 (security)=
@@ -22,14 +22,14 @@ Ray is an easy-to-use framework to run arbitrary code across one or more nodes i
 
 To achieve performant and distributed workloads, Ray components require intra-cluster communication. This communication includes central tenets like distributed memory and node-heartbeats, as well as auxiliary functions like metrics and logs. Ray leverages gRPC for a majority of this communication.
 
-Ray offers additional services to improve the developer experience. These services include Ray dashboard (to allow for cluster introspection and debugging), Ray Jobs (hosted alongside the Dashboard, which services Ray Job submissions), and Ray Client (to allow for local, interactive development with a remote cluster). These services provide complete access to the Ray Cluster and the underlying compute resources.
+Ray offers additional services to improve the developer experience. These services include Ray dashboard (to allow for cluster introspection and debugging), Ray Jobs (hosted alongside the dashboard, which services Ray Job submissions), and Ray Client (to allow for local, interactive development with a remote cluster). These services provide complete access to the Ray Cluster and the underlying compute resources.
 
 :::{admonition} Ray allows any clients to run arbitrary code. Be extremely careful about what is allowed to access your Ray Cluster
 :class: caution
 
 If you expose these services (Ray dashboard, Ray Jobs, Ray Client), anybody who can access the associated ports can execute arbitrary code on your Ray Cluster. This can happen:
 * Explicitly: By submitting a Ray Job, or using the Ray Client
-* Indirectly: By calling the Dashboard REST APIs of these services
+* Indirectly: By calling the dashboard REST APIs of these services
 * Implicitly: Ray extensively uses cloudpickle for serialization of arbitrary Python objects. See [the pickle documentation](https://docs.python.org/3/library/pickle.html) for more details on Pickle's security model.
 
 The Ray dashboard, Ray Jobs and Ray Client are developer tools that you should only use with the necessary access controls in place to restrict access to trusted parties only.

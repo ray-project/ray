@@ -52,7 +52,7 @@ and languages (C++/Python). Raylet spawns two agents:
 
 1. **Dashboard Agent** - exposes three ports:
 
-   - ``dashboard_agent_listen_port``: HTTP for Dashboard UI (default: 52365)
+   - ``dashboard_agent_listen_port``: HTTP for the dashboard UI (default: 52365)
    - ``metrics_agent_port``: gRPC for internal communication (default: random)
    - ``metrics_export_port``: Prometheus metrics export (default: random)
 

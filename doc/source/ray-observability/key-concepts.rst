@@ -1,5 +1,5 @@
 .. meta::
-   :description: Key Ray observability concepts: the Dashboard, the States API for querying actors/tasks/objects, Prometheus metrics, and the distributed debugger.
+   :description: Key Ray observability concepts: the dashboard, the States API for querying actors/tasks/objects, Prometheus metrics, and the distributed debugger.
 
 .. _observability-key-concepts:
 
@@ -12,7 +12,7 @@ Dashboard (Web UI)
 ------------------
 Ray provides a web-based dashboard to help users monitor and debug Ray applications and Clusters.
 
-See :ref:`Getting Started <observability-getting-started>` for more details about the Dashboard.
+See :ref:`Getting Started <observability-getting-started>` for more details about the dashboard.
 
 
 Ray States
@@ -158,7 +158,7 @@ Job logs
 ~~~~~~~~
 Ray applications are usually run as Ray Jobs. Worker logs of Ray Jobs are always captured in the :ref:`Ray logging directory <logging-directory-structure>` while Driver logs are not.
 
-Driver logs are captured only for Ray Jobs submitted via :ref:`Jobs API <jobs-quickstart>`. Find the captured Driver logs with the Dashboard UI, CLI (using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>`), or the :ref:`Python SDK <ray-job-submission-sdk-ref>` (``JobSubmissionClient.get_logs()`` or ``JobSubmissionClient.tail_job_logs()``).
+Driver logs are captured only for Ray Jobs submitted via :ref:`Jobs API <jobs-quickstart>`. Find the captured Driver logs with the dashboard UI, CLI (using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>`), or the :ref:`Python SDK <ray-job-submission-sdk-ref>` (``JobSubmissionClient.get_logs()`` or ``JobSubmissionClient.tail_job_logs()``).
 
 .. note::
    View the Driver logs in your terminal or Jupyter Notebooks if you run Ray Jobs by executing the Ray Driver on the Head node directly or connecting via Ray Client.

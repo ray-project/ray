@@ -17,8 +17,8 @@ of applications and troubleshoot issues.
     </div>
 
 
-Set up Dashboard
-------------------
+Set up the dashboard
+--------------------
 
 To access the dashboard, use `ray[default]` or :ref:`other installation commands <installation>` that include the Ray dashboard component. For example:
 
@@ -60,7 +60,7 @@ When you start a single-node Ray Cluster on your laptop, access the dashboard wi
 
 
 
-When you start a remote Ray Cluster with the :ref:`VM Cluster Launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray dashboard launches on the head node but the dashboard port may not be publicly exposed. View :ref:`configuring the dashboard <dashboard-in-browser>` for how to view Dashboard from outside the Head Node.
+When you start a remote Ray Cluster with the :ref:`VM Cluster Launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray dashboard launches on the head node but the dashboard port may not be publicly exposed. View :ref:`configuring the dashboard <dashboard-in-browser>` for how to view dashboard from outside the Head Node.
 
 .. note::
 
@@ -72,7 +72,7 @@ When you start a remote Ray Cluster with the :ref:`VM Cluster Launcher <vm-clust
 Navigate the views
 ------------------
 
-The Dashboard has multiple tabs called views. Depending on your goal, you may use one or a combination of views:
+The dashboard has multiple tabs called views. Depending on your goal, you may use one or a combination of views:
 
 - Analyze, monitor, or visualize status and resource utilization metrics for logical or physical components: :ref:`Metrics view <dash-metrics-view>`, :ref:`Cluster view <dash-node-view>`
 - Monitor Job and Task progress and status: :ref:`Jobs view <dash-jobs-view>`
@@ -175,7 +175,7 @@ The right panel displays the resource demands, which are resources that cannot b
 Task, Actor, and Placement Group tables
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The Dashboard displays a table of the status of the Job's Tasks, Actors, and Placement Groups.
+The dashboard displays a table of the status of the Job's Tasks, Actors, and Placement Groups.
 This information is the output of the :ref:`Ray State APIs <state-api-overview-ref>`.
 
 You can expand the table to see a list of each Task, Actor, and Placement Group.
@@ -295,7 +295,7 @@ See :ref:`System Metrics Page <system-metrics>` for available metrics.
 
 .. note::
 
-  The Metrics view requires the Prometheus and Grafana setup. See :ref:`Configuring and managing the Dashboard <observability-visualization-setup>` to learn how to set up Prometheus and Grafana.
+  The Metrics view requires the Prometheus and Grafana setup. See :ref:`Configuring and managing the dashboard <observability-visualization-setup>` to learn how to set up Prometheus and Grafana.
 
 The Metrics view provides visualizations of the time series metrics emitted by Ray.
 
@@ -308,7 +308,7 @@ There is also a convenient button to open the Grafana UI from the dashboard. The
 Analyze the CPU and memory usage of Tasks and Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`Metrics view <dash-metrics-view>` in the Dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each Task and Actor in the application (as well as system components).
+The :ref:`Metrics view <dash-metrics-view>` in the dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each Task and Actor in the application (as well as system components).
 You can identify Tasks and Actors that may be consuming more resources than expected and optimize the performance of the application.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_cpu_by_comp.png
@@ -369,11 +369,11 @@ The Logs view provides search functionality to help you find specific log messag
 
 **Driver logs**
 
-If the Ray Job is submitted by the :ref:`Job API <jobs-quickstart>`, the Job logs are available from the Dashboard. The log file follows the following format: ``job-driver-<job_submission_id>.log``.
+If the Ray Job is submitted by the :ref:`Job API <jobs-quickstart>`, the Job logs are available from the dashboard. The log file follows the following format: ``job-driver-<job_submission_id>.log``.
 
 .. note::
 
-  If you execute the Driver directly on the Head Node of the Ray Cluster (without using the Job API) or run with :ref:`Ray Client <ray-client-ref>`, the Driver logs are not accessible from the Dashboard. In this case, see the terminal or Jupyter Notebook output to view the Driver logs.
+  If you execute the Driver directly on the Head Node of the Ray Cluster (without using the Job API) or run with :ref:`Ray Client <ray-client-ref>`, the Driver logs are not accessible from the dashboard. In this case, see the terminal or Jupyter Notebook output to view the Driver logs.
 
 **Task and Actor Logs (Worker logs)**
 
@@ -383,7 +383,7 @@ For Actors, you can also see the system logs for the corresponding Worker proces
 
 .. note::
 
-    Logs of asynchronous Actor Tasks or threaded Actor Tasks (concurrency>1) are only available as part of the Actor logs. Follow the instruction in the Dashboard to view the Actor logs.
+    Logs of asynchronous Actor Tasks or threaded Actor Tasks (concurrency>1) are only available as part of the Actor logs. Follow the instruction in the dashboard to view the Actor logs.
 
 **Task and Actor errors**
 
