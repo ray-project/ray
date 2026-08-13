@@ -34,7 +34,7 @@ if shutil.which(os.environ.get("RAY_TRAIN_NCCLRAS_PATH", "ncclras")) is None:
 # The confirmation window is converted to consecutive polls (a floor of
 # ``_MIN_CONFIRM_POLLS`` samples applies), so this confirms in ~8s.
 RAS_ENV = {
-    "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR": True,
+    "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR": "1",
     "RAY_TRAIN_NCCL_RAS_ACTION": "fail",
     "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S": "2",
     "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S": "4",
