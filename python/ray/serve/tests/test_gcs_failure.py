@@ -35,6 +35,7 @@ def collect_pids_from_all_replicas(send_request: Callable[[], int], num_replicas
     deadline = time.monotonic() + STARTUP_TIMEOUT_S
     while len(pids) < num_replicas and time.monotonic() < deadline:
         pids.add(send_request())
+        time.sleep(0.1)
 
     print("Returned pids:", pids)
     assert len(pids) == num_replicas, f"Only {pids} served requests"
