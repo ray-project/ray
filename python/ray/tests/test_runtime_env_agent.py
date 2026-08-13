@@ -383,29 +383,23 @@ def test_setup_logger_concurrent_late_emit_does_not_reopen_file(tmp_path):
     assert "late concurrent write" not in log_text
 
 
-def test_setup_logger_never_leaves_handler_list_empty(tmp_path):
-    """The NullHandler must be attached before the file handlers are removed.
+def test_setup_logger_release_swaps_handler_list_atomically(tmp_path):
+    """Release must replace the handler list object, not mutate it in place.
 
-    A concurrent late write that observes an empty handler list falls through
-    to logging.lastResort on the agent's stderr (the logger has propagate off
-    and no parent, so callHandlers counts zero handlers). Instrumenting
-    removeHandler pins the ordering deterministically instead of racing
-    threads against the window.
+    A concurrent late write iterates whichever list object it read first, so
+    the old list must stay intact as a snapshot (its handlers refuse to emit
+    once closed) and the new list must never be empty — an empty handler list
+    falls through to logging.lastResort on the agent's stderr (the logger has
+    propagate off and no parent).
     """
     factory = _make_setup_logger_factory(tmp_path)
-    null_handler_present_at_removal = []
     with factory.setup_logger("01000000", []) as logger:
-        original_remove = logger.removeHandler
-
-        def instrumented_remove(handler):
-            null_handler_present_at_removal.append(
-                any(isinstance(h, logging.NullHandler) for h in logger.handlers)
-            )
-            original_remove(handler)
-
-        logger.removeHandler = instrumented_remove
-    assert null_handler_present_at_removal
-    assert all(null_handler_present_at_removal)
+        old_handler_list = logger.handlers
+        old_snapshot = list(old_handler_list)
+        assert old_snapshot
+    assert logger.handlers is not old_handler_list
+    assert list(old_handler_list) == old_snapshot
+    assert logger.handlers
     assert all(isinstance(h, logging.NullHandler) for h in logger.handlers)
 
 

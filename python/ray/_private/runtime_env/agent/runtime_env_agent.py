@@ -197,21 +197,16 @@ class SetupLoggerFactory:
                 logger.addHandler(handler)
             yield logger
         finally:
-            # Ordering matters twice here for late writes from executor-backed
-            # plugin work (e.g. after a setup timeout):
-            # 1. Add the NullHandler BEFORE detaching, so a concurrent write
-            #    never observes an empty handler list and falls through to
-            #    logging.lastResort on stderr.
-            # 2. Detach BEFORE closing: a closed handler that is still
-            #    attached silently reopens its file on a late write
-            #    (FileHandler.emit reopens when its stream is None), leaking
-            #    the descriptor with no owner left to close it.
-            # (_SetupFileHandler additionally refuses to emit once closed,
-            # covering the thread that grabbed the handler before the detach.)
-            original_handlers = list(logger.handlers)
-            logger.addHandler(logging.NullHandler())
-            for handler in original_handlers:
-                logger.removeHandler(handler)
+            # Atomically swap the handler list before closing anything, for
+            # late writes from executor-backed plugin work (e.g. after a
+            # setup timeout): a concurrent Logger.callHandlers sees either
+            # the old list object (handlers still open at this point) or the
+            # new one — never an empty list, which would fall through to
+            # logging.lastResort on stderr, and never a half-detached state.
+            # A writer iterating the old snapshot may still emit after the
+            # close below; _SetupFileHandler refuses to emit once closed, so
+            # that write cannot reopen the file and re-leak the descriptor.
+            logger.handlers = [logging.NullHandler()]
             for path in acquired:
                 self._release(path)
 
