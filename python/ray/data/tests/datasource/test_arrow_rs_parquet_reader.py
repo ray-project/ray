@@ -1220,9 +1220,11 @@ def test_scanner_leak_signature_and_arrow_rs_avoids_it(tmp_path, monkeypatch):
     show the arrow-rs reader sidesteps it.
 
     The reported "leak" is ``pyarrow.dataset`` ``to_batches`` (the Scanner)
-    accumulating ~the whole file in the Arrow allocator *regardless of batch_size*,
-    whereas ``pq.ParquetFile.iter_batches`` (what the V2 reader uses) holds only ~a
-    row group. We measure exactly as the issue did: ``pa.total_allocated_bytes()``
+    accumulating ~the whole file in the Arrow allocator (the issue also reported
+    this as independent of ``batch_size``; that half now varies by pyarrow
+    version/platform and is recorded rather than asserted — see (1)), whereas
+    ``pq.ParquetFile.iter_batches`` (what the V2 reader uses) holds only ~a row
+    group. We measure exactly as the issue did: ``pa.total_allocated_bytes()``
     tracked as a running max across the batch iteration.
 
     The arrow-rs reader decodes in Rust and hands batches across a zero-copy FFI
@@ -1280,12 +1282,26 @@ def test_scanner_leak_signature_and_arrow_rs_avoids_it(tmp_path, monkeypatch):
     def _fragment():
         return next(pds.dataset(str(path), format="parquet").get_fragments())
 
-    # (1) Scanner/to_batches accumulates ~the whole file, and does NOT shrink with
-    #     batch_size — the leak signature.
+    # (1) Scanner/to_batches accumulates ~the whole file — the leak signature, and
+    #     the load-bearing half of this test.
     to_small = _peak_mb(lambda: _fragment().to_batches(batch_size=256))
     to_big = _peak_mb(lambda: _fragment().to_batches(batch_size=2048))
     assert to_small > 0.4 * file_mb, (to_small, file_mb)
-    assert abs(to_small - to_big) < 0.3 * to_small, (to_small, to_big)
+    # The issue's other half — "and it does NOT shrink with batch_size" — is
+    # upstream behaviour that has since diverged by platform/version, so it is
+    # RECORDED, not asserted (same treatment as (2) below, for the same reason).
+    # macOS pyarrow 21: 44.5 vs 44.4 MB, insensitive as the issue described.
+    # Linux, 2026-08-13: 44.5 vs 4.75 MB — batch_size=2048 no longer accumulates.
+    # This bears on finding C1, so it must stay visible rather than be tuned away:
+    # if PyArrow's scanner really has become batch_size-bounded, the honest
+    # version of C1 is narrower than "batch_size does not bound it". Note the
+    # metric here is the Arrow *allocator* on one fragment in-process, which is
+    # not what M28 measures (per-read-task USS, where PyArrow still retained
+    # 1.5x the decoded bin on the same Linux box the same week).
+    print(
+        f"[C1 datum] pyarrow {pa.__version__}: to_batches peak MB "
+        f"batch_size=256 -> {to_small:.1f}, batch_size=2048 -> {to_big:.1f}"
+    )
 
     # (2) ParquetFile.iter_batches (the ARROW-5030 fallback path) HISTORICALLY held
     #     only ~a row group — measured ~5x below to_batches on the pyarrow this was
