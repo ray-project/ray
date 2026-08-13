@@ -1,9 +1,9 @@
 .. meta::
-   :description: Set up and navigate the Ray Dashboard web UI for monitoring cluster state, tracking task and actor performance, and troubleshooting distributed applications.
+   :description: Set up and navigate the Ray dashboard web UI for monitoring cluster state, tracking task and actor performance, and troubleshooting distributed applications.
 
 .. _observability-getting-started:
 
-Ray Dashboard
+Ray dashboard
 =============
 
 Ray provides a web-based dashboard for monitoring and debugging Ray applications.
@@ -20,7 +20,7 @@ of applications and troubleshoot issues.
 Set up Dashboard
 ------------------
 
-To access the dashboard, use `ray[default]` or :ref:`other installation commands <installation>` that include the Ray Dashboard component. For example:
+To access the dashboard, use `ray[default]` or :ref:`other installation commands <installation>` that include the Ray dashboard component. For example:
 
 .. code-block:: bash
 
@@ -60,13 +60,13 @@ When you start a single-node Ray Cluster on your laptop, access the dashboard wi
 
 
 
-When you start a remote Ray Cluster with the :ref:`VM Cluster Launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray Dashboard launches on the head node but the dashboard port may not be publicly exposed. View :ref:`configuring the dashboard <dashboard-in-browser>` for how to view Dashboard from outside the Head Node.
+When you start a remote Ray Cluster with the :ref:`VM Cluster Launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray dashboard launches on the head node but the dashboard port may not be publicly exposed. View :ref:`configuring the dashboard <dashboard-in-browser>` for how to view Dashboard from outside the Head Node.
 
 .. note::
 
-  When using the Ray Dashboard, it is highly recommended to also set up Prometheus and Grafana.
+  When using the Ray dashboard, it is highly recommended to also set up Prometheus and Grafana.
   They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
-  See :ref:`Configuring and Managing the Dashboard <observability-visualization-setup>` for how to integrate Prometheus and Grafana with Ray Dashboard.
+  See :ref:`Configuring and managing the dashboard <observability-visualization-setup>` for how to integrate Prometheus and Grafana with Ray dashboard.
 
 
 Navigate the views
@@ -220,7 +220,7 @@ Serve metrics
 Ray Serve exports various time-series metrics to help you understand the status of your Serve application over time. Find more details about these metrics :ref:`here <serve-production-monitoring-metrics>`.
 To store and visualize these metrics, set up Prometheus and Grafana by following the instructions :ref:`here <observability-visualization-setup>`.
 
-These metrics are available in the Ray Dashboard in the Serve page and the Serve Replica Detail page. They are also accessible as Grafana dashboards.
+These metrics are available in the Ray dashboard in the Serve page and the Serve Replica Detail page. They are also accessible as Grafana dashboards.
 Within the Grafana dashboard, use the dropdown filters on the top to filter metrics by route, deployment, or replica. Exact descriptions
 of each graph are available by hovering over the "info" icon on the top left of each graph.
 
@@ -431,5 +431,5 @@ Resources
 ---------
 - `Ray Summit observability talk <https://www.youtube.com/watch?v=v_JzurOkdVQ>`_
 - `Ray metrics blog <https://www.anyscale.com/blog/monitoring-and-debugging-ray-workloads-ray-metrics>`_
-- `Ray Dashboard roadmap <https://github.com/ray-project/ray/issues/30097#issuecomment-1445756658>`_
+- `Ray dashboard roadmap <https://github.com/ray-project/ray/issues/30097#issuecomment-1445756658>`_
 - `Observability Training Module <https://github.com/ray-project/ray-educational-materials/blob/main/Observability/Ray_observability_part_1.ipynb>`_

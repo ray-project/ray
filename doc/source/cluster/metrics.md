@@ -71,7 +71,7 @@ Then go to the Prometheus UI and run the following query:
 ray_dashboard_api_requests_count_requests_total
 ```
 
-You can then see the number of requests to the Ray Dashboard API over time.
+You can then see the number of requests to the Ray dashboard API over time.
 
 To stop Prometheus, run the following commands:
 
@@ -203,7 +203,7 @@ scrape_configs:
     refresh_interval: 60s
 ```
 
-- `<DashboardPort>` is `8265` by default. See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details.
+- `<DashboardPort>` is `8265` by default. See [Configuring and managing Ray dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details.
 - The endpoint returns a JSON list of targets for Prometheus metrics. When no targets are available, it returns `[]`.
 
 ### Manually discovering metrics endpoints
@@ -263,7 +263,7 @@ If you need to process and export metrics into other storage or management syste
 To visualize and monitor collected metrics, there are 3 common paths:
 
 1. **Simplest**: Use Grafana with Ray-provided configurations, which include default Grafana dashboards showing some of the most valuable metrics for debugging Ray applications.
-2. **Recommended**: Use Ray Dashboard which embeds Grafana visualizations and look at metrics together with logs, Job info and so on in a single pane of glass.
+2. **Recommended**: Use Ray dashboard which embeds Grafana visualizations and look at metrics together with logs, Job info and so on in a single pane of glass.
 3. **Manual**: Set up Grafana or other tools like CloudWatch, Cloud Monitoring, and Datadog from scratch.
 
 Here are some instructions for each of the paths:
@@ -291,7 +291,7 @@ Go to the location of the binary and run Grafana using the built-in configuratio
 ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
 ```
 
-Access Grafana using the default grafana URL, `http://localhost:3000`. See the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same {ref}`metric graphs <system-metrics>` are accessible in {ref}`Ray Dashboard <observability-getting-started>` after you integrate Grafana with Ray Dashboard.
+Access Grafana using the default grafana URL, `http://localhost:3000`. See the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same {ref}`metric graphs <system-metrics>` are accessible in {ref}`Ray dashboard <observability-getting-started>` after you integrate Grafana with Ray dashboard.
 
 ```{admonition} Note
 :class: note
@@ -326,10 +326,10 @@ If Grafana reports that the datasource is not found, [add a datasource variable]
 
 
 
-### Recommended: Use Ray Dashboard with embedded Grafana visualizations
+### Recommended: Use Ray dashboard with embedded Grafana visualizations
 1. Follow the instructions above to set up Grafana with Ray-provided visualizations
-2. View {ref}`configuring and managing Ray Dashboard <embed-grafana-in-dashboard>` for how to embed Grafana visualizations into Dashboard
-3. View {ref}`Dashboard's metrics view<dash-metrics-view>` for how to inspect the metrics in Ray Dashboard.
+2. View {ref}`configuring and managing Ray dashboard <embed-grafana-in-dashboard>` for how to embed Grafana visualizations into Dashboard
+3. View {ref}`Dashboard's metrics view<dash-metrics-view>` for how to inspect the metrics in Ray dashboard.
 
 
 ### Manual: Set up Grafana, or other tools like CloudWatch, Cloud Monitoring and Datadog from scratch
