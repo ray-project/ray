@@ -338,6 +338,15 @@ html_baseurl = "https://docs.ray.io/en/latest/"
 # fall back to html_baseurl for local builds. (DOC-1130)
 llms_txt_base_url = os.getenv("READTHEDOCS_CANONICAL_URL") or html_baseurl
 
+# Read the Docs serves a Markdown rendering of any page from that page's own
+# `.html` URL, under an `Accept: text/markdown` request — there is no separate
+# `.md` file to link to (`page.md`, `page.html.md`, and `?format=md` all 404).
+# So the `.html` links in llms.txt are already the Markdown links; nothing in
+# the file tells an agent that, hence this pointer. Content negotiation happens
+# on the rendered HTML, so it works the same whether a page's source is .rst or
+# .md, and it stays correct as pages migrate between the two.
+llms_txt_markdown_hint = True
+
 # `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
 # default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
 # extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
