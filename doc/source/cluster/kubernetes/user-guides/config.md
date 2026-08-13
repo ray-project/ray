@@ -184,7 +184,7 @@ The field `rayStartParams.resources` should only be used for custom resources. T
 ### The Ray head service.
 The KubeRay operator automatically configures a Kubernetes Service exposing the default ports for several services of the Ray head pod, including
 - Ray Client (default port 10001)
-- Ray Dashboard (default port 8265)
+- Ray dashboard (default port 8265)
 - Ray GCS server (default port 6379)
 - Ray Serve (default port 8000)
 - Ray Prometheus metrics (default port 8080)
