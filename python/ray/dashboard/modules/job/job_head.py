@@ -582,7 +582,7 @@ class JobHead(SubprocessModule):
                 text=json.dumps(dataclasses.asdict(payload)),
                 content_type="application/json",
             )
-        except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as error:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
             logger.info(
                 "Job logs are unavailable because the driver agent cannot be reached.",
                 exc_info=error,
