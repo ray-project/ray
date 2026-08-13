@@ -47,101 +47,112 @@ Additionally, [Anyscale](https://console.anyscale.com/register/ha?render_flow=ra
 
 The Ray docs present all the information you need to start running Ray workloads on Kubernetes.
 
-```{eval-rst}
-.. grid:: 1 2 2 2
-    :gutter: 1
-    :class-container: container pb-3
+::::{grid} 1 2 2 2
+:gutter: 1
+:class-container: container pb-3
 
-    .. grid-item-card::
+:::{grid-item-card}
 
-        **Getting Started**
-        ^^^
+**Getting Started**
+^^^
 
-        Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
+Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
 
-        +++
-        .. button-ref:: kuberay-quickstart
-            :color: primary
-            :outline:
-            :expand:
++++
+```{button-ref} kuberay-quickstart
+:color: primary
+:outline:
+:expand:
 
-            Get Started with Ray on Kubernetes
-
-    .. grid-item-card::
-
-        **User Guides**
-        ^^^
-
-        Learn best practices for configuring Ray clusters on Kubernetes.
-
-        +++
-        .. button-ref:: kuberay-guides
-            :color: primary
-            :outline:
-            :expand:
-
-            Read the User Guides
-
-    .. grid-item-card::
-
-        **Examples**
-        ^^^
-
-        Try example Ray workloads on Kubernetes.
-
-        +++
-        .. button-ref:: kuberay-examples
-            :color: primary
-            :outline:
-            :expand:
-
-            Try example workloads
-
-    .. grid-item-card::
-
-        **Ecosystem**
-        ^^^
-
-        Integrate KubeRay with third party Kubernetes ecosystem tools.
-
-        +++
-        .. button-ref:: kuberay-ecosystem-integration
-            :color: primary
-            :outline:
-            :expand:
-
-            Ecosystem Guides
-
-    .. grid-item-card::
-
-        **Benchmarks**
-        ^^^
-
-        Check the KubeRay benchmark results.
-
-        +++
-        .. button-ref:: kuberay-benchmarks
-            :color: primary
-            :outline:
-            :expand:
-
-            Benchmark results
-
-    .. grid-item-card::
-
-        **Troubleshooting**
-        ^^^
-
-        Consult the KubeRay troubleshooting guides.
-
-        +++
-        .. button-ref:: kuberay-troubleshooting
-            :color: primary
-            :outline:
-            :expand:
-
-            Troubleshooting guides
+Get Started with Ray on Kubernetes
 ```
+:::
+
+:::{grid-item-card}
+
+**User Guides**
+^^^
+
+Learn best practices for configuring Ray clusters on Kubernetes.
+
++++
+```{button-ref} kuberay-guides
+:color: primary
+:outline:
+:expand:
+
+Read the User Guides
+```
+:::
+
+:::{grid-item-card}
+
+**Examples**
+^^^
+
+Try example Ray workloads on Kubernetes.
+
++++
+```{button-ref} kuberay-examples
+:color: primary
+:outline:
+:expand:
+
+Try example workloads
+```
+:::
+
+:::{grid-item-card}
+
+**Ecosystem**
+^^^
+
+Integrate KubeRay with third party Kubernetes ecosystem tools.
+
++++
+```{button-ref} kuberay-ecosystem-integration
+:color: primary
+:outline:
+:expand:
+
+Ecosystem Guides
+```
+:::
+
+:::{grid-item-card}
+
+**Benchmarks**
+^^^
+
+Check the KubeRay benchmark results.
+
++++
+```{button-ref} kuberay-benchmarks
+:color: primary
+:outline:
+:expand:
+
+Benchmark results
+```
+:::
+
+:::{grid-item-card}
+
+**Troubleshooting**
+^^^
+
+Consult the KubeRay troubleshooting guides.
+
++++
+```{button-ref} kuberay-troubleshooting
+:color: primary
+:outline:
+:expand:
+
+Troubleshooting guides
+```
+:::
+::::
 ## About KubeRay
 
 Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). KubeRay is used by several companies to run production Ray deployments.
