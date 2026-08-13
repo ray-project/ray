@@ -189,7 +189,7 @@ class ShuffleFileServerAnomalyError(RuntimeError):
 
     We run with ``max_restarts=-1``, ``lifetime="detached"``,
     ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
-    the actor on any mid-life crash (os.exit) and surfaces ``ActorUnavailableError``
+    the actor on any mid-life crash and surfaces ``ActorUnavailableError``
     during the restart window. So the anomalous states we key off of are:
 
     - ``ActorDiedError``          -> ``__init__`` raised, or external
@@ -338,8 +338,8 @@ def _grpc_location(host: str, port) -> str:
 
 
 def _make_flight_server(host: str, base_dir: str):
-    """Build (not start) an Arrow Flight server serving shuffle byte-ranges via
-    DoAction. Each range is framed as ``[u64 length][frame bytes]``."""
+    """Arrow Flight server serving shuffle byte-ranges via DoAction. Each range
+    is framed as ``[u64 length][frame bytes]``."""
     import pyarrow.flight as flight
 
     class _ShuffleFlightServer(flight.FlightServerBase):
@@ -399,20 +399,6 @@ class ShuffleFileServer:
         # Unique per actor process; Ray re-runs __init__ on every restart, so
         # this changes on restart. Reducers compare it to detect a restart.
         self._incarnation = uuid.uuid4().hex
-        t = threading.Thread(target=self._run_server, daemon=True)
-        t.start()
-
-    def _run_server(self) -> None:
-        # If the server loop ever returns/raises, the endpoint is dead but the
-        # actor process would keep answering RPCs. Kill the process so Ray
-        # restarts the actor (max_restarts=-1).
-        try:
-            self._server.serve()  # gRPC Flight server; blocks until shutdown
-        except BaseException:
-            logger.exception("ShuffleFileServer server loop crashed; exiting actor")
-        else:
-            logger.error("ShuffleFileServer server loop returned; exiting actor")
-        os._exit(1)
 
     def endpoint(self) -> _Endpoint:
         # (host, port) to connect; incarnation to detect a restart.

@@ -8,7 +8,6 @@ import contextlib
 import os
 import socket
 import struct
-import threading
 from typing import cast
 from unittest.mock import MagicMock, patch
 
@@ -65,11 +64,10 @@ def _clear_endpoint_cache(shuffle_id, node_id):
 @contextlib.contextmanager
 def _running_flight_server(base_dir):
     """Start a bare Flight server (no Ray) on loopback; yield its
-    (host, port, incarnation) endpoint (incarnation is a fixed test sentinel)."""
+    (host, port, incarnation) endpoint (incarnation is a fixed test sentinel).
+    """
     srv = _make_flight_server("127.0.0.1", str(base_dir))
     endpoint = _Endpoint("127.0.0.1", srv.port, "test-incarnation")
-    t = threading.Thread(target=srv.serve, daemon=True)
-    t.start()
     try:
         yield endpoint
     finally:
