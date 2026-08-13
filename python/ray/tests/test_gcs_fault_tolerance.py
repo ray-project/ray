@@ -884,36 +884,36 @@ def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
     # A fresh server on the same port. The GCS keeps its runtime state in
     # memory, so the cluster stays usable even though the new Redis is empty;
     # the Redis contents only matter for a GCS restart.
-    tmpdir = tempfile.mkdtemp()
-    _, redis_proc = start_redis_instance(tmpdir, int(port), num_retries=1)
-    try:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _, redis_proc = start_redis_instance(tmpdir, int(port), num_retries=1)
+        try:
 
-        def redis_serving():
-            try:
-                return redis.Redis(ip, int(port)).ping()
-            except Exception:
-                return False
+            def redis_serving():
+                try:
+                    return redis.Redis(ip, int(port)).ping()
+                except Exception:
+                    return False
 
-        wait_for_condition(redis_serving, timeout=30)
+            wait_for_condition(redis_serving, timeout=30)
 
-        gcs_client = ray._private.worker.global_worker.gcs_client
+            gcs_client = ray._private.worker.global_worker.gcs_client
 
-        def gcs_writes_flow():
-            # Internal KV writes go GCS -> Redis, so this only succeeds once
-            # the in-place reconnect has landed.
-            try:
-                gcs_client.internal_kv_put(b"reconnect_probe", b"1", True, None)
-                return gcs_client.internal_kv_get(b"reconnect_probe", None) == b"1"
-            except Exception:
-                return False
+            def gcs_writes_flow():
+                # Internal KV writes go GCS -> Redis, so this only succeeds once
+                # the in-place reconnect has landed.
+                try:
+                    gcs_client.internal_kv_put(b"reconnect_probe", b"1", True, None)
+                    return gcs_client.internal_kv_get(b"reconnect_probe", None) == b"1"
+                except Exception:
+                    return False
 
-        wait_for_condition(gcs_writes_flow, timeout=60, retry_interval_ms=1000)
+            wait_for_condition(gcs_writes_flow, timeout=60, retry_interval_ms=1000)
 
-        # Same process: it reconnected in place, it was not restarted.
-        assert psutil.pid_exists(gcs_server_pid)
-        assert ray.get(f.remote()) == 7
-    finally:
-        redis_proc.process.kill()
+            # Same process: it reconnected in place, it was not restarted.
+            assert psutil.pid_exists(gcs_server_pid)
+            assert ray.get(f.remote()) == 7
+        finally:
+            redis_proc.process.kill()
 
 
 @pytest.mark.parametrize(
@@ -953,24 +953,33 @@ def test_redis_permanently_down_bounded_exit(
     # budget and the process would outlive the check regardless of the grace
     # period. The write blocks server-side until the retries resolve, so it
     # runs on a helper thread.
+    executor = ThreadPoolExecutor(max_workers=1)
+
     def _kv_probe():
         try:
-            gcs_client.internal_kv_put(b"grace_probe", b"1", True, None)
+            gcs_client.internal_kv_put(b"grace_probe", b"1", True, None, timeout=15)
         except Exception:
             pass
 
-    probe = ThreadPoolExecutor(max_workers=1).submit(_kv_probe)
+    executor.submit(_kv_probe)
 
     # The grace period must hold first: with the probe draining against a dead
     # Redis, the old behaviour dies on its ~3.5s command budget, while the
     # grace period (5s here) keeps the process alive past this check.
-    time.sleep(4)
-    assert psutil.pid_exists(gcs_server_pid)
-    probe.cancel()
+    try:
+        time.sleep(4)
+        assert psutil.pid_exists(gcs_server_pid)
 
-    # And the exit must still come: grace (5s) + retry drain, or the
-    # reconnect budget (10 attempts), whichever runs out first.
-    wait_for_pid_to_exit(gcs_server_pid, 120)
+        # And the exit must still come: grace (5s) + retry drain, or the
+        # reconnect budget (10 attempts), whichever runs out first.
+        wait_for_pid_to_exit(gcs_server_pid, 120)
+    finally:
+        # Join the probe before fixture teardown races it, on the failure
+        # paths too: with gcs_server gone its RPC errors out, bounded by the
+        # 15s client timeout above. The probe only needs to be in flight for
+        # the first few seconds; the server-side command it created drains on
+        # its own schedule either way.
+        executor.shutdown(wait=True)
 
 
 @pytest.mark.parametrize(
