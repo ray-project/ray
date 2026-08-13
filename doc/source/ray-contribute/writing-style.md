@@ -422,6 +422,30 @@ The split follows the audience. A reader on a Ray Core page is thinking about ta
 
 When a Ray-general page genuinely needs the Kubernetes case, give it as an example rather than as the default: "On Kubernetes, each Ray node runs as a Pod."
 
+### Case a feature stage to match the project that owns the feature
+
+Kubernetes writes feature stages in start case, as in "In-Place Pod Resize graduated to GA in Kubernetes 1.35." Ray and KubeRay write them lowercase, as in "the embedded backend is alpha." Follow the project that owns the feature, which keeps each stage name in the form its own release notes and feature-gate documentation use.
+
+- Use: "The `RayServiceIncrementalUpgrade` feature gate is alpha."
+- Use: "The RayService controller uses GA Gateway API resources."
+- Use: "In-Place Pod Resize is GA as of Kubernetes 1.35, and KubeRay support for it is alpha."
+
+The last example is the case the rule exists for. A sentence that names both stages sets them in different forms on purpose, because the two projects graduate features on their own schedules and under their own criteria. The mixed casing carries that information rather than looking like an inconsistency.
+
+Ask whose feature gate turns it on when ownership isn't obvious. A gate on the KubeRay operator is KubeRay's, a gate on `kube-apiserver` is Kubernetes's, and a gate on a third-party controller belongs to that project and takes the Kubernetes form.
+
+A stage name still capitalizes where any word would, such as at the start of a sentence or in an admonition title.
+
+### Keep backticks on configuration values
+
+The Kubernetes guide writes field values bare, as in "set `imagePullPolicy` to Always." This guide uses backticks for configuration values, and that rule holds on these pages: "set `imagePullPolicy` to `Always`." Backticks mark the string as something the reader types into a manifest rather than a word in the sentence, which matters most for values that are ordinary English, such as `Always`, `Never`, `Retain`, and `Delete`.
+
+- Use: "Set `upgradeStrategy.type` to `NewClusterWithIncrementalUpgrade`."
+- Use: "Set `imagePullPolicy` to `Always` to pull on every restart."
+- Not: "Set `imagePullPolicy` to Always to pull on every restart."
+
+Backticks stay on the value even when the field name doesn't appear, as in "the default is `IfNotPresent`." Prose that describes a value's meaning rather than the value itself takes no backticks: "the operator always pulls the image."
+
 ### Specially-cased terms
 
 Look up the form here rather than deriving it. Generic nouns stay lowercase even next to a capitalized product name, per the capitalization rule earlier in this guide.
@@ -437,6 +461,7 @@ Look up the form here rather than deriving it. Generic nouns stay lowercase even
 | Ray node, Kubernetes node | Ray Node, Kubernetes Node | Lowercase both. Capitalize Node only for the API object, which is rare in prose. |
 | worker group | Worker Group | The API field `workerGroupSpecs` keeps code style. |
 | Ray autoscaler | Ray Autoscaler | "Autoscaler" is a generic noun. |
+| Ray dashboard, KubeRay dashboard | Ray Dashboard, KubeRay Dashboard | "Dashboard" is a generic noun, same as "autoscaler". |
 | GCS fault tolerance | GCS FT | Spell out "FT" as "fault tolerance". |
 | custom resource | Custom Resource | Lowercase as a general concept. Distinct from a CustomResourceDefinition. |
 | namespace | Namespace | Lowercase in prose. The capitalized `Namespace` appears in manifests and command output, which take code style. |

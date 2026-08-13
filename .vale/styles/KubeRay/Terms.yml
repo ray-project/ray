@@ -22,6 +22,8 @@ swap:
   # Generic nouns stay lowercase next to a capitalized product name.
   'Worker Group': worker group
   'Ray Autoscaler': Ray autoscaler
+  'Ray Dashboard': Ray dashboard
+  'KubeRay Dashboard': KubeRay dashboard
   # A Pod hosts a Ray node; it isn't a Ray-owned object. Plurals need their own
   # entries because Vale's word boundary stops 'Ray Pod' matching inside 'Ray Pods'.
   'Ray Pods': Pods
