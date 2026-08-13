@@ -410,6 +410,12 @@ DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 
+# Environment variable key for GCS leader election.
+RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR = "RAY_ENABLE_GCS_LEADER_ELECTION"
+
+# Whether to enable active-passive GCS leader election for high availability.
+RAY_ENABLE_GCS_LEADER_ELECTION = env_bool(RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR, False)
+
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
 # Filename of "shim process" that sets up Python worker environment.
@@ -592,12 +598,12 @@ RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
 # manually set the py_executable in your runtime environment hook.
 RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 
-# Prometheus metric cardinality level setting, either "legacy" or "recommended".
+# Prometheus metric cardinality level setting: "legacy", "recommended", or "low".
 #
-# Legacy: report all metrics to prometheus with the set of labels that are reported by
-#   the component, including WorkerId, (task or actor) Name, etc. This is the default.
-# Recommended: report only the node level metrics to prometheus. This means that the
-#   WorkerId will be removed from all metrics.
+# Legacy: report all metrics to Prometheus with the set of labels that are reported by
+#   the component, including WorkerId, (task or actor) Name, etc.
+# Recommended: report metrics to Prometheus with high-cardinality labels removed.
+#   Currently, WorkerId will be removed from all metrics. This is the default.
 # Low: Same as recommended, but also drop the Name label for tasks and actors.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get(
     "RAY_metric_cardinality_level", "recommended"

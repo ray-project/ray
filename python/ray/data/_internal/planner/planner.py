@@ -78,7 +78,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data._internal.planner.plan_write_op import plan_write_op
 from ray.data._internal.usage import create_usage_callback
 from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.datasource.file_datasink import _FileDatasink
 
 LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
@@ -195,7 +195,7 @@ def plan_join_op(
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
-    if data_context.use_hash_shuffle_v2:
+    if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
         return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
     return JoinOperator(
         data_context=data_context,
@@ -318,7 +318,7 @@ class Planner:
 
     def _plan_recursively(
         self, logical_op: LogicalOperator, data_context: DataContext
-    ) -> Tuple[PhysicalOperator, Dict[LogicalOperator, PhysicalOperator]]:
+    ) -> Tuple[PhysicalOperator, Dict[PhysicalOperator, LogicalOperator]]:
         """Plan a logical operator and its input dependencies recursively.
 
         Args:
@@ -327,7 +327,7 @@ class Planner:
 
         Returns:
             A tuple of the physical operator corresponding to the logical operator, and
-            a mapping from physical to logical operators.
+            a mapping from physical operators to logical operators.
         """
         op_map: Dict[PhysicalOperator, LogicalOperator] = {}
 

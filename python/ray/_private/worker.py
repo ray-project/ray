@@ -3903,9 +3903,10 @@ def remote(
 
             - ``num_returns``: *remote functions only*. Number of object refs
               returned by the remote function invocation. The default is 1.
-              Pass ``"dynamic"`` to allow the task to decide at runtime;
-              callers receive an ``ObjectRef[DynamicObjectRefGenerator]``.
-              See :ref:`dynamic generators <dynamic-generators>` for details.
+              Pass ``"streaming"`` for a generator task that yields object refs
+              lazily. See :ref:`generators <generators>` for details.
+              ``"dynamic"`` is deprecated; prefer ``"streaming"``. See
+              :ref:`dynamic generators <dynamic-generators>` for the legacy API.
             - ``num_cpus``: CPU resources to reserve for the task or actor.
               By default, tasks use 1 CPU resource and actors use 1 CPU for
               scheduling and 0 CPU for running. See

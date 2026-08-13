@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Pass arguments to Serve applications with an application builder function, supplied through serve run or a config file and typed with Pydantic."
+---
+
 (serve-app-builder-guide)=
 # Pass Arguments to Applications
 

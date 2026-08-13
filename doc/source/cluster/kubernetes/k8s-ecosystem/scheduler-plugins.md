@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Use the kubernetes-sigs scheduler-plugins with KubeRay for gang scheduling, verifying the Ray pods and resulting PodGroup."
+---
+
 (kuberay-scheduler-plugins)=
 # KubeRay integration with scheduler plugins
 
