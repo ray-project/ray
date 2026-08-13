@@ -65,8 +65,10 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
 
 
 def test_map_with_task_kwargs_not_fused_with_all_to_all(
-    ray_start_regular_shared_2_cpus,
+    ray_start_regular_shared_2_cpus, restore_data_context
 ):
+    DataContext.get_current().enable_dereference_object_refs_in_fn_args = True
+
     def map_fn(row, arg):
         assert arg == 1
         return row
@@ -600,6 +602,7 @@ def test_map_with_task_kwargs_not_fused_into_shuffle_reduce(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.enable_dereference_object_refs_in_fn_args = True
 
     def map_fn(row, arg):
         assert arg == 1

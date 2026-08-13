@@ -367,14 +367,29 @@ def test_invalid_class_concurrency_raises(ray_start_regular_shared, concurrency)
         ds.map(Fn, concurrency=concurrency)
 
 
-def test_map_fn_args_object_ref_dereferenced(ray_start_regular_shared):
+@pytest.mark.parametrize("dereference_object_refs", [False, True])
+def test_map_fn_args_object_ref_dereferencing(
+    ray_start_regular_shared, restore_data_context, dereference_object_refs
+):
+    ctx = DataContext.get_current()
+    if dereference_object_refs:
+        ctx.enable_dereference_object_refs_in_fn_args = True
+    else:
+        assert not ctx.enable_dereference_object_refs_in_fn_args
+
     def map_fn(row, arg):
-        assert arg == 1
-        return row
+        if isinstance(arg, ray.ObjectRef):
+            arg = ray.get(arg)
+        return {**row, "arg": arg}
 
-    result = ray.data.range(1).map(map_fn, fn_args=(ray.put(1),)).take_all()
+    ds = ray.data.range(1).map(map_fn, fn_args=(ray.put(1),))
+    if dereference_object_refs:
+        result = ds.take_all()
+    else:
+        with pytest.warns(RayDeprecationWarning, match="ObjectRef.*fn_args"):
+            result = ds.take_all()
 
-    assert result == [{"id": 0}]
+    assert result == [{"id": 0, "arg": 1}]
 
 
 @pytest.mark.parametrize("udf_kind", ["gen", "func"])

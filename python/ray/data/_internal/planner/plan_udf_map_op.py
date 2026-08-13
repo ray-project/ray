@@ -4,6 +4,7 @@ import inspect
 import logging
 import queue
 import uuid
+import warnings
 from dataclasses import dataclass
 from threading import Thread
 from types import GeneratorType
@@ -65,6 +66,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
+from ray.util.annotations import RayDeprecationWarning
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
@@ -260,6 +262,9 @@ def plan_filter_op(
             op.fn_constructor_args if udf_is_callable_class else None,
             op.fn_constructor_kwargs if udf_is_callable_class else None,
             compute=compute,
+            dereference_object_refs_in_fn_args=(
+                data_context.enable_dereference_object_refs_in_fn_args
+            ),
         )
 
         transform_fn = RowMapTransformFn(
@@ -308,6 +313,9 @@ def plan_udf_map_op(
         op.fn_constructor_args if udf_is_callable_class else None,
         op.fn_constructor_kwargs if udf_is_callable_class else None,
         compute=compute,
+        dereference_object_refs_in_fn_args=(
+            data_context.enable_dereference_object_refs_in_fn_args
+        ),
     )
 
     if isinstance(op, MapBatches):
@@ -357,6 +365,8 @@ def _get_udf(
     op_fn_constructor_args: Optional[Tuple[Any, ...]],
     op_fn_constructor_kwargs: Optional[Dict[str, Any]],
     compute: Optional[ComputeStrategy],
+    *,
+    dereference_object_refs_in_fn_args: bool = False,
 ):
     # Note, it's important to define these standalone variables.
     # So the parsed functions won't need to capture the entire operator, which may not
@@ -368,11 +378,25 @@ def _get_udf(
     map_task_kwargs = {}
     fn_arg_key_prefix = f"__ray_data_fn_arg_{uuid.uuid4().hex}"
 
-    for index, arg in enumerate(fn_args):
-        if isinstance(arg, ray.ObjectRef):
+    object_ref_indices = [
+        index for index, arg in enumerate(fn_args) if isinstance(arg, ray.ObjectRef)
+    ]
+    if object_ref_indices and not dereference_object_refs_in_fn_args:
+        warnings.warn(
+            "Passing an ObjectRef directly in `fn_args` currently passes the "
+            "reference to the UDF. This behavior is deprecated. To opt in to "
+            "automatic dereferencing, set "
+            "`DataContext.get_current().enable_dereference_object_refs_in_fn_args "
+            "= True` before creating the Dataset. To preserve reference semantics "
+            "after the default changes, wrap the ObjectRef in a container.",
+            RayDeprecationWarning,
+            stacklevel=3,
+        )
+    elif dereference_object_refs_in_fn_args:
+        for index in object_ref_indices:
             key = f"{fn_arg_key_prefix}_{index}"
             fn_arg_task_keys[index] = key
-            map_task_kwargs[key] = arg
+            map_task_kwargs[key] = fn_args[index]
             fn_args[index] = None
 
     fn_args = tuple(fn_args)
