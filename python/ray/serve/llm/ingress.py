@@ -1,8 +1,22 @@
 from ray.llm._internal.serve.core.ingress.ingress import (
+    DEFAULT_ANTHROPIC_ENDPOINTS,
+    AnthropicIngress as _AnthropicIngress,
     OpenAiIngress as _OpenAiIngress,
     make_fastapi_ingress,
 )
 from ray.util.annotations import PublicAPI
+
+
+@PublicAPI(stability="alpha")
+class AnthropicIngress(_AnthropicIngress):
+    """The implementation of the Anthropic Messages API compatible model router.
+
+    This deployment creates the following endpoints:
+      - /v1/messages: Anthropic Messages API
+      - /v1/messages/count_tokens: Anthropic token counting API
+    """
+
+    pass
 
 
 @PublicAPI(stability="stable")
@@ -99,4 +113,9 @@ class OpenAiIngress(_OpenAiIngress):
     pass
 
 
-__all__ = ["OpenAiIngress", "make_fastapi_ingress"]
+__all__ = [
+    "AnthropicIngress",
+    "DEFAULT_ANTHROPIC_ENDPOINTS",
+    "OpenAiIngress",
+    "make_fastapi_ingress",
+]

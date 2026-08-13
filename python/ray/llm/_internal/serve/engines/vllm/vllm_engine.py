@@ -29,6 +29,12 @@ from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.constants import (
     RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
 )
+from ray.llm._internal.serve.core.configs.anthropic_api_models import (
+    AnthropicCountTokensRequest,
+    AnthropicCountTokensResponse,
+    AnthropicMessagesRequest,
+    AnthropicMessagesResponse,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -445,6 +451,9 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_tokenization = getattr(
             state, "openai_serving_tokenization", None
         )
+        self._anthropic_serving_messages = getattr(
+            state, "anthropic_serving_messages", None
+        )
 
         self._validate_openai_serving_models()
         self._validate_engine_client()
@@ -532,6 +541,10 @@ class VLLMEngine(LLMEngine):
                 "This model does not support the 'tokenization' task. "
                 "The tokenization endpoint is not available for this model."
             )
+
+    def _validate_anthropic_serving_messages(self) -> Optional[ErrorResponse]:
+        if self._anthropic_serving_messages is None:
+            return self._make_error("The model does not support Messages API")
 
     def _validate_engine_client(self):
         assert hasattr(
@@ -699,6 +712,77 @@ class VLLMEngine(LLMEngine):
                 yield ErrorResponse(error=ErrorInfo(**chat_response.error.model_dump()))
             else:
                 yield ChatCompletionResponse(**chat_response.model_dump())
+
+    async def messages(
+        self,
+        request: AnthropicMessagesRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, AnthropicMessagesResponse, ErrorResponse], None]:
+        if error := self._validate_anthropic_serving_messages():
+            yield error
+            return
+
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
+        try:
+            messages_response = await self._anthropic_serving_messages.create_messages(  # type: ignore[attr-defined]
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._anthropic_serving_messages, e)
+            return
+        except Exception as e:
+            yield self._make_error_response(self._anthropic_serving_messages, e)
+            return
+
+        if isinstance(messages_response, AsyncGenerator):
+            async for response in messages_response:
+                if not isinstance(response, str):
+                    raise ValueError(
+                        "Expected create_messages to return a stream of strings, "
+                        f"got an item with type {type(response)}"
+                    )
+                yield response
+        else:
+            if isinstance(messages_response, VLLMErrorResponse):
+                yield ErrorResponse(
+                    error=ErrorInfo(**messages_response.error.model_dump())
+                )
+            else:
+                yield AnthropicMessagesResponse(**messages_response.model_dump())
+
+    async def count_tokens(
+        self,
+        request: AnthropicCountTokensRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[AnthropicCountTokensResponse, ErrorResponse], None]:
+        if error := self._validate_anthropic_serving_messages():
+            yield error
+            return
+
+        raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
+            raw_request_info
+        )
+        try:
+            count_tokens_response = await self._anthropic_serving_messages.count_tokens(  # type: ignore[attr-defined]
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._anthropic_serving_messages, e)
+            return
+        except Exception as e:
+            yield self._make_error_response(self._anthropic_serving_messages, e)
+            return
+
+        if isinstance(count_tokens_response, VLLMErrorResponse):
+            yield ErrorResponse(
+                error=ErrorInfo(**count_tokens_response.error.model_dump())
+            )
+        else:
+            yield AnthropicCountTokensResponse(**count_tokens_response.model_dump())
 
     async def completions(
         self,

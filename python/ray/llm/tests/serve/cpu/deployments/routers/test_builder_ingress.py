@@ -18,9 +18,13 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     LLMServingArgs,
+    build_anthropic_app,
     build_openai_app,
 )
-from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.core.ingress.ingress import (
+    AnthropicIngress,
+    OpenAiIngress,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_openai_app,
 )
@@ -487,6 +491,96 @@ class TestBuildOpenaiApp:
 
         with pytest.raises(ValueError, match=match):
             build_openai_app(LLMServingArgs(llm_configs=[llm_config], **builder_kwargs))
+
+
+class TestBuildAnthropicApp:
+    def test_build_anthropic_app(
+        self, get_llm_serve_args, shutdown_ray_and_serve, disable_placement_bundles
+    ):
+        app = build_anthropic_app(get_llm_serve_args)
+        assert app is not None
+        serve.run(app)
+
+    def test_direct_streaming_builds_ingress_with_router_attached(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        app = build_anthropic_app(LLMServingArgs(llm_configs=[llm_config]))
+        ingress_request_router = app._ingress_request_router
+
+        assert app._bound_deployment.name == "LLMServer:test-model"
+        assert issubclass(app._bound_deployment.func_or_class, ASGIAppReplicaWrapper)
+        assert ingress_request_router is not None
+        assert ingress_request_router._bound_deployment.name == "LLMRouter"
+        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+
+    def test_direct_streaming_rejects_multiple_llm_configs(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        other_llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="other-model")
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="currently supports exactly one LLM config",
+        ):
+            build_anthropic_app(
+                LLMServingArgs(llm_configs=[llm_config, other_llm_config])
+            )
+
+    @pytest.mark.parametrize(
+        ("builder_kwargs", "match"),
+        [
+            (
+                {"ingress_deployment_config": {"num_replicas": 2}},
+                "does not support ingress_deployment_config",
+            ),
+            (
+                {"ingress_cls_config": {"ingress_extra_kwargs": {"key": "value"}}},
+                "does not support ingress_cls_config",
+            ),
+        ],
+    )
+    def test_direct_streaming_rejects_ingress_config(
+        self,
+        llm_config,
+        disable_placement_bundles,
+        monkeypatch,
+        builder_kwargs,
+        match,
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        with pytest.raises(ValueError, match=match):
+            build_anthropic_app(
+                LLMServingArgs(llm_configs=[llm_config], **builder_kwargs)
+            )
+
+    def test_standard_path_uses_anthropic_ingress(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            False,
+        )
+        app = build_anthropic_app(LLMServingArgs(llm_configs=[llm_config]))
+        assert issubclass(app._bound_deployment.func_or_class, AnthropicIngress)
 
 
 class TestDirectStreamingDP:

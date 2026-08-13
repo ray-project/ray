@@ -30,6 +30,11 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
 )
+from ray.llm._internal.serve.core.configs.anthropic_api_models import (
+    AnthropicCountTokensRequest,
+    AnthropicCountTokensResponse,
+    AnthropicMessagesRequest,
+)
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -52,6 +57,10 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TokenizeCompletionRequest,
     TokenizeResponse,
     TranscriptionRequest,
+)
+from ray.llm._internal.serve.core.ingress.anthropic_utils import (
+    anthropic_messages_http_response,
+    translate_error_response,
 )
 from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
@@ -130,6 +139,11 @@ DEFAULT_ENDPOINTS = {
     "score": lambda app: app.post("/v1/score"),
     "tokenize": lambda app: app.post("/tokenize"),
     "detokenize": lambda app: app.post("/detokenize"),
+}
+
+DEFAULT_ANTHROPIC_ENDPOINTS = {
+    "messages": lambda app: app.post("/v1/messages"),
+    "count_tokens": lambda app: app.post("/v1/messages/count_tokens"),
 }
 
 
@@ -692,3 +706,81 @@ class OpenAiIngress(DeploymentProtocol):
         if _all_models_scale_to_zero(llm_configs):
             options.setdefault("autoscaling_config", {})["min_replicas"] = 0
         return options
+
+
+class AnthropicIngress(OpenAiIngress):
+    """Anthropic Messages API compatible model router."""
+
+    async def _stream_anthropic_response(
+        self,
+        *,
+        body: AnthropicMessagesRequest,
+        call_method: str,
+        raw_request: Optional[Request] = None,
+    ):
+        model_id = await self._get_model_id(body.model)
+        model_handle = self._get_configured_serve_handle(model_id)
+
+        if raw_request is not None:
+            session_id = session_id_from_headers(raw_request.headers)
+            if session_id:
+                model_handle = model_handle.options(session_id=session_id)
+
+        raw_request_info: Optional[RawRequestInfo] = None
+        if raw_request is not None:
+            raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
+
+        async for response in getattr(model_handle, call_method).remote(
+            body, raw_request_info
+        ):
+            yield response
+
+    async def messages(
+        self, body: AnthropicMessagesRequest, request: Request
+    ) -> Response:
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            gen = self._stream_anthropic_response(
+                body=body, call_method="messages", raw_request=request
+            )
+
+            initial_response, gen = await _peek_at_generator(gen)
+
+            if isinstance(initial_response, ErrorResponse):
+                return translate_error_response(initial_response)
+
+            if isinstance(initial_response, str):
+
+                async def stream():
+                    yield initial_response
+                    async for item in gen:
+                        yield item
+
+                return anthropic_messages_http_response(stream())
+
+            return anthropic_messages_http_response(initial_response)
+
+    async def count_tokens(
+        self, body: AnthropicCountTokensRequest, request: Request
+    ) -> Response:
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            model_id = await self._get_model_id(body.model)
+            model_handle = self._get_configured_serve_handle(model_id)
+
+            session_id = session_id_from_headers(request.headers)
+            if session_id:
+                model_handle = model_handle.options(session_id=session_id)
+
+            raw_request_info = RawRequestInfo.from_starlette_request(request)
+            results = model_handle.count_tokens.remote(body, raw_request_info)
+            result = await results.__anext__()
+
+            if isinstance(result, ErrorResponse):
+                return translate_error_response(result)
+
+            if isinstance(result, AnthropicCountTokensResponse):
+                return JSONResponse(content=result.model_dump(exclude_none=True))
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unexpected response type from count_tokens",
+            )

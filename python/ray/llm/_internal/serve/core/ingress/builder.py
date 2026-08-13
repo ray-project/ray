@@ -14,6 +14,8 @@ from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAM
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
+    DEFAULT_ANTHROPIC_ENDPOINTS,
+    AnthropicIngress,
     OpenAiIngress,
     make_fastapi_ingress,
 )
@@ -122,6 +124,28 @@ def _build_openai_ingress_request_router(
     )
 
 
+def _build_anthropic_ingress_request_router(
+    *, server: Application, llm_config: LLMConfig
+) -> Application:
+    """Build the ingress request router peer for Anthropic compatible LLM apps."""
+    from ray.llm._internal.serve.core.ingress.router import LLMRouter
+
+    ray_actor_options: Dict[str, Any] = {"num_cpus": 0}
+    if is_kv_aware(llm_config):
+        runtime_env = _get_tokenizing_router_runtime_env(llm_config)
+        if runtime_env is not None:
+            ray_actor_options["runtime_env"] = runtime_env
+    deployment = serve.deployment(
+        LLMRouter,
+        max_ongoing_requests=1000,
+        ray_actor_options=ray_actor_options,
+    )
+    return deployment.bind(
+        server=server,
+        llm_config=llm_config if is_kv_aware(llm_config) else None,
+    )
+
+
 class IngressClsConfig(BaseModelExtended):
     ingress_cls: Union[str, Type[OpenAiIngress]] = Field(
         default=OpenAiIngress,
@@ -204,6 +228,8 @@ class LLMServingArgs(BaseModelExtended):
 def _validate_direct_streaming_ingress_config(
     ingress_deployment_config: Optional[dict],
     ingress_cls_config: IngressClsConfig,
+    *,
+    default_ingress_cls: Type[OpenAiIngress] = OpenAiIngress,
 ) -> None:
     if ingress_deployment_config:
         raise ValueError(
@@ -214,7 +240,7 @@ def _validate_direct_streaming_ingress_config(
         )
 
     if (
-        ingress_cls_config.ingress_cls != OpenAiIngress
+        ingress_cls_config.ingress_cls != default_ingress_cls
         or ingress_cls_config.ingress_extra_kwargs
     ):
         raise ValueError(
@@ -283,6 +309,86 @@ def build_openai_app(builder_config: dict) -> Application:
     )
 
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
+
+    logger.info("============== Ingress Options ==============")
+    logger.info(pprint.pformat(ingress_options))
+
+    return serve.deployment(ingress_cls, **ingress_options).bind(
+        llm_deployments=llm_deployments,
+        model_cards=model_cards,
+        lora_paths=lora_paths,
+        **ingress_cls_config.ingress_extra_kwargs,
+    )
+
+
+def build_anthropic_app(builder_config: dict) -> Application:
+    """Build an Anthropic Messages API compatible app with the llm deployment
+    setup from the given builder configuration.
+
+    Args:
+        builder_config: The configuration for the builder. It has to conform
+            to the LLMServingArgs pydantic model.
+
+    Returns:
+        The configured Ray Serve Application router.
+    """
+    builder_config = LLMServingArgs.model_validate(builder_config)
+    llm_configs = builder_config.llm_configs
+
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        if len(llm_configs) > 1:
+            raise ValueError(
+                "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING currently supports exactly "
+                "one LLM config. Multi-model direct streaming requires composing "
+                "multiple LLMServer deployments into the main application graph, "
+                "which is not supported yet."
+            )
+        ingress_cls_config = builder_config.ingress_cls_config
+        if ingress_cls_config.ingress_cls == OpenAiIngress:
+            ingress_cls_config = IngressClsConfig(ingress_cls=AnthropicIngress)
+        _validate_direct_streaming_ingress_config(
+            builder_config.ingress_deployment_config,
+            ingress_cls_config,
+            default_ingress_cls=AnthropicIngress,
+        )
+        direct_deployment = _build_direct_streaming_llm_deployment(llm_configs[0])
+        logger.info(
+            "Direct streaming enabled: "
+            "LLMServer=ingress, LLMRouter=ingress_request_router"
+        )
+        return direct_deployment._with_ingress_request_router(
+            _build_anthropic_ingress_request_router(
+                server=direct_deployment, llm_config=llm_configs[0]
+            )
+        )
+
+    llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
+    model_cards = {c.model_id: to_model_metadata(c.model_id, c) for c in llm_configs}
+    lora_paths = {
+        c.model_id: c.lora_config.dynamic_lora_loading_path
+        for c in llm_configs
+        if c.lora_config is not None
+    }
+
+    ingress_cls_config = builder_config.ingress_cls_config
+    if ingress_cls_config.ingress_cls == OpenAiIngress:
+        ingress_cls_config = IngressClsConfig(
+            ingress_cls=AnthropicIngress,
+            ingress_extra_kwargs=ingress_cls_config.ingress_extra_kwargs,
+        )
+
+    default_ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(
+        llm_configs
+    )
+
+    ingress_options = maybe_apply_llm_deployment_config_defaults(
+        default_ingress_options, builder_config.ingress_deployment_config
+    )
+
+    ingress_cls = make_fastapi_ingress(
+        ingress_cls_config.ingress_cls,
+        endpoint_map=DEFAULT_ANTHROPIC_ENDPOINTS,
+    )
 
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
