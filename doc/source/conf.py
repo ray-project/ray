@@ -783,7 +783,15 @@ redoc = [
     },
 ]
 
-redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+# Pin the ReDoc bundle version rather than tracking the CDN's `latest` tag.
+# sphinxcontrib-redoc injects this script instead of bundling a renderer, so the
+# Jobs API page is rendered client-side at page-view time by whatever this URL
+# serves. On `latest`, a breaking change in the bundle degrades the published page
+# with no build-time signal, because the Sphinx build never executes it.
+# When bumping this, load the api.html page in the Read the Docs PR preview and
+# confirm the three-panel layout and the endpoint list still render. A green
+# Sphinx build proves nothing about this page.
+redoc_uri = "https://cdn.redoc.ly/redoc/v2.5.3/bundles/redoc.standalone.js"
 
 autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
