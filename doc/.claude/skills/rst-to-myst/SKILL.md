@@ -1,6 +1,6 @@
 ---
 name: rst-to-myst
-description: Convert Ray documentation pages from reStructuredText (.rst) to MyST Markdown (.md). Use when migrating existing files under doc/source/ to MyST, finishing a partial MyST migration of a directory, or when asked to convert/migrate a doc page to markdown. Covers the RST-to-MyST directive mapping, label and cross-reference preservation, sphinx-design tabs/dropdowns, doctest/testcode handling, the doc/BUILD.bazel doctest exclusions, and the build and doctest verification needed to land a clean docs PR.
+description: Convert Ray documentation pages from reStructuredText (.rst) to MyST Markdown (.md). Use when migrating existing files under doc/source/ to MyST, finishing a partial MyST migration of a directory, or when asked to convert/migrate a doc page to markdown. Covers the RST-to-MyST directive mapping, label and cross-reference preservation, sphinx-design tabs/dropdowns/card grids, doctest/testcode handling, the doc/BUILD.bazel doctest exclusions, and the build and doctest verification needed to land a clean docs PR.
 user-invocable: true
 argument-hint: <file(s) or directory under doc/source to convert>
 ---
@@ -93,6 +93,10 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 | `.. code-block:: LANG` / `.. code:: LANG` | fenced ` ```LANG ` |
 | `.. tab-set::` / `.. tab-item:: T` | `::::{tab-set}` / `:::{tab-item} T` (colon fences — see Construct notes) |
 | `.. dropdown:: T` (`:open:`) | `:::{dropdown} T` with `:open:` on the next line |
+| `.. grid:: 1 2 2 2` (+opts) | `::::{grid} 1 2 2 2` (colon fence, **more colons than the cards it holds**) |
+| `.. grid-item-card::` / `.. grid-item::` | `:::{grid-item-card}` / `:::{grid-item}` — keep `^^^` and `+++` on their own lines |
+| `.. button-ref:: target` / `.. button-link:: url` | ` ```{button-ref} target ` / ` ```{button-link} url `, options as `:key: val`, blank line, then the label |
+| `.. div:: classes` | `:::{div} classes` (sphinx-design; a bare `.. div::` takes no argument) |
 | `.. testcode::` / `.. testoutput::` / `.. doctest::` | ` ```{testcode} ` / `{testoutput}` / `{doctest}` — **only for real, executed blocks; see Hard rule 4** |
 | `.. literalinclude:: P` (+opts) | ` ```{literalinclude} P ` with each option as a `:key: val` line |
 | `.. autofunction::` / `.. autoclass::` | wrap in ` ```{eval-rst} ` … ` ``` ` (keep any adjacent `.. _label:` inside the same block) |
@@ -142,7 +146,15 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 - **sphinx-design `tab-set` / `tab-item` / `dropdown`**: use **colon fences**, not backtick fences — `::::{tab-set}` › `:::{tab-item} Label` › ` ```code ``` `. The outer fence needs **more colons** than the one it contains (4 vs 3), and colon fences nest cleanly around backtick code fences, so you avoid backtick-counting entirely. Put directive options (`:open:`, `:sync:`, …) on their own line right after the opener. (Confirmed against Ray's RtD build.)
 - **`linkify` is OFF** (not in `myst_enable_extensions`). A bare URL will **not** autolink — wrap it as `<https://…>` to preserve the hyperlink. This includes URLs in parentheses like `Bazel 7.5.0 (https://…)` → `(<https://…>)`.
 - **The `::` literal-block marker**: docutils drops `" ::"` when it's preceded by whitespace (`"…sessions. ::"` → `"…sessions."`) and replaces `"x::"` (no space) with `"x:"`. Reproduce the resulting prose, then put the block in a plain ` ``` ` fence.
+- **sphinx-design card grids convert to native MyST — and everything nested inside them has to convert too.** A `grid` of `grid-item-card`s becomes colon fences, widest on the outside: `::::{grid} 1 2 2 2` › `:::{grid-item-card}` › a ` ```{button-ref} ` backtick fence. Add a colon level for each extra layer (`ray-libraries.md` runs `:::::{grid}` › `::::{grid-item-card}` › `:::{div}`). The `^^^` header and `+++` footer separators need no translation at all: sphinx-design matches them with `REGEX_HEADER`/`REGEX_FOOTER` and splits them out of the raw content lines *before* anything parses them, so they're format-agnostic.
+
+  **The trap is `nested_parse`.** `GridDirective`, `GridItemCardDirective`, `div`, and Ray's own `callout`/`annotations` all call `self.state.nested_parse`, which under MyST parses their content as **Markdown**. RST left inside a native card doesn't error — it renders as literal text, through a green `fail_on_warning` build. So a card's nested `button-ref`, `button-link`, `image`, and `figure` all have to become fences in the same pass, and the render diff (Verification step 4) is the only check that will catch it if one doesn't. This is the `nested_parse` degradation referenced in step 4.
+
+  Four already-Markdown pages predate this and wrap their whole grid in `{eval-rst}` (`cluster/vms/index.md`, `cluster/kubernetes/index.md`, `ray-overview/index.md`, `serve/index.md`). Don't copy that pattern into a new conversion; native is the house choice as of batch 1.
+
 - **`list-table`**: keep the directive (` ```{list-table} `), move options to `:key: val` lines, and de-indent the `* -` / `  -` body to column 0. Don't convert it into a native Markdown table.
+
+- **RST named hyperlink targets (`` `text`_ `` plus a `.. _`text`: url` definition) have no MyST equivalent.** Inline each one as `[text](url)` at the point of use and delete the definition block. The exception is a target referenced from inside an `{eval-rst}` block — an RST simple or grid table whose cells carry `` `text`_ `` references. Keep those definitions as RST, in the same `{eval-rst}` block as the table that uses them, so they resolve without duplicating a target name elsewhere in the document (`ray-overview/installation.md` does this for the nightly-wheel table).
 - **Nested fences**: an outer fence must use **more backticks** than any fence it contains (or use a `:::` colon fence as the outer). Inside an ordered-list item, indent a nested ` ``` ` fence to the item's content column (3 spaces under `1. `).
 - **`{eval-rst}` for autodoc** is the safe default; native `{autofunction}` is a fallback only if the build is verified clean. Keep the option indentation the RST used.
 - **Include-only content partials** (a file that exists only to be `.. include::`d, like `involvement.rst`): give the `.md` **no frontmatter and no title** — it's spliced into its includer, and frontmatter would render mid-page there. These files don't orphan-warn even though they're not in any toctree (Sphinx doesn't treat included files as standalone docs). Inline any named-reference link targets in the partial, so they don't collide with the same target defined in the includer (RST tolerated the duplicate; inlining sidesteps it).
@@ -216,6 +228,8 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 - `doc/source/conf.py`: `default_role = "code"`; `myst_enable_extensions` includes `colon_fence` but **not** `linkify`; `myst_heading_anchors = 3` (so `[text](#slug)` resolves to any h1–h3 heading).
 - `doc/BUILD.bazel` main `doctest(` rule globs `source/**/*.md` + `source/**/*.rst`, with a per-file `exclude` list (e.g. `ray-contribute/getting-involved.md`, `ray-contribute/testing-tips.md`) and whole-subtree excludes for `ray-core/`, `data/`, `rllib/`, `serve/`, `train/`, `tune/` (which have their own `doctest` rules).
 - `pre-commit` has no hook that lints `doc/source/**/*.md` outside `doc/source/data/` (vale) — so pre-commit passing is not evidence the page is correct; the Sphinx build is.
+- `sphinx_design==0.7.0` (`doc/requirements-doc.txt`) supports MyST first-class: its own docs are MyST and it ships a `snippets/myst/` tree, and its directives register through `app.add_directive`, so MyST's `{name}` fence dispatch reaches them like any other directive.
+- `doc/source/_ext/callouts.py` defines `callout` and `annotations`, used by exactly one page (`tune/index.md`). `_replace_numbers()` there discards its own result, so the `<1>`-to-① substitution only happens in the `CalloutIncludePostTransform` pass over literal blocks. Annotation text keeps its literal `<1>` markers under both parsers.
 - The `ray-contribute/` directory was the first batch fully migrated (precedent for every pattern above, including sphinx-design tabs/dropdowns in `development.md` and the shared-include + partial handling in `getting-involved.md` / `involvement.md`).
 
 ---
