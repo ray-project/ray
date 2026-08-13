@@ -681,6 +681,15 @@ class _ColumnAlignment(NamedTuple):
 _NOOP_ALIGNMENT = _ColumnAlignment(null_fill=(), casts=(), order=None)
 
 
+def _cast_table_to(table: pa.Table, target_fields: List[pa.Field]) -> pa.Table:
+    """One ``Table.cast`` against a prebuilt positional schema. A per-column
+    ``ChunkedArray.cast`` + ``set_column`` loop costs ~50 µs of Python dispatch
+    per column *and* rebuilds the schema each time (O(columns²) field copies);
+    on the 5000-column tensor shape that is ~1 s per decoded batch where this
+    call is ~40 ms for the identical result (T23)."""
+    return table.cast(pa.schema(target_fields, metadata=table.schema.metadata))
+
+
 def _apply_column_alignment(
     table: pa.Table, alignment: Optional[_ColumnAlignment]
 ) -> pa.Table:
@@ -689,18 +698,37 @@ def _apply_column_alignment(
         return table
     import pyarrow.compute as pc
 
+    # allow_time_truncate needs per-column CastOptions, which Table.cast can't
+    # carry — apply those first (INT96 unit coercion only, so at most a few).
     for name, target, allow_time_truncate in alignment.casts:
+        if not allow_time_truncate:
+            continue
         idx = table.schema.get_field_index(name)
         if idx == -1:
             continue
-        column = table.column(idx)
-        if allow_time_truncate:
-            column = column.cast(
-                options=pc.CastOptions(target, allow_time_truncate=True)
-            )
-        else:
-            column = column.cast(target)  # safe: lossy values raise, like pyarrow
+        column = table.column(idx).cast(
+            options=pc.CastOptions(target, allow_time_truncate=True)
+        )
         table = table.set_column(idx, pa.field(name, target), column)
+
+    # Everything else in one Table.cast (safe: lossy values raise, like
+    # pyarrow). Cast only each name's first occurrence — get_field_index
+    # semantics of the old per-column loop.
+    targets = {
+        name: target for name, target, truncate in alignment.casts if not truncate
+    }
+    target_fields, seen, changed = [], set(), False
+    for field in table.schema:
+        target = targets.get(field.name) if field.name not in seen else None
+        seen.add(field.name)
+        if target is not None and field.type != target:
+            target_fields.append(pa.field(field.name, target))
+            changed = True
+        else:
+            target_fields.append(field)
+    if changed:
+        table = _cast_table_to(table, target_fields)
+
     for name, fill_type in alignment.null_fill:
         table = table.append_column(
             pa.field(name, fill_type), pa.nulls(table.num_rows, type=fill_type)
@@ -719,17 +747,23 @@ def _reconcile_to_expected(table: pa.Table, expected_schema: pa.Schema) -> pa.Ta
     The per-fragment gate already withholds every other kind of drift, so the
     only divergence reaching here is a safe storage → extension wrap (a lossy
     cast would raise, exactly as pyarrow's own scanner cast does)."""
-    for name in table.column_names:
-        exp_idx = expected_schema.get_field_index(name)
-        if exp_idx == -1:
-            continue
-        exp_type = expected_schema.field(exp_idx).type
-        col_idx = table.schema.get_field_index(name)
-        if table.schema.field(col_idx).type != exp_type:
-            table = table.set_column(
-                col_idx, pa.field(name, exp_type), table.column(col_idx).cast(exp_type)
-            )
-    return table
+    target_fields, seen, changed = [], set(), False
+    for field in table.schema:
+        exp_idx = (
+            expected_schema.get_field_index(field.name)
+            if field.name not in seen
+            else -1
+        )
+        seen.add(field.name)
+        exp_type = expected_schema.field(exp_idx).type if exp_idx != -1 else None
+        if exp_type is not None and field.type != exp_type:
+            target_fields.append(pa.field(field.name, exp_type))
+            changed = True
+        else:
+            target_fields.append(field)
+    if not changed:
+        return table
+    return _cast_table_to(table, target_fields)
 
 
 class _NativeParquetFragment(NamedTuple):
@@ -1908,6 +1942,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         # BlockOutputBuffer coalesces to target_max_block_size downstream (same
         # as the PyArrow path) — accumulating a full block here too would just
         # stack a second block-sized buffer on top of it. See module docstring.
+        pickle_checked = False
         for batch in record_batch_reader:
             table = pa.Table.from_batches([batch], schema=record_batch_reader.schema)
             table = _apply_column_alignment(table, alignment)
@@ -1918,8 +1953,14 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             # one requires the explicit env opt-in. raise_on_pickle_object_columns
             # itself no-ops when RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1. Before
             # the row filter — the check is schema-based, and pyarrow's scanner
-            # raises even for batches the filter would empty out.
-            raise_on_pickle_object_columns(table)
+            # raises even for batches the filter would empty out. Once per
+            # stream, not per batch: a crate stream has one schema by
+            # construction and the alignment plan is fixed per file, so every
+            # batch here carries the schema the first one did (walking 5000
+            # extension fields per batch was 18% of the tensor-shape read, T23).
+            if not pickle_checked:
+                raise_on_pickle_object_columns(table)
+                pickle_checked = True
             if filter_expr is not None:
                 table = table.filter(filter_expr)
                 if table.num_rows == 0:
