@@ -39,14 +39,16 @@ def clean_root_logger():
 def emit_records(tmp_path, clean_root_logger, monkeypatch):
     """Return a function that runs _setup_logging and emits records at given levels.
 
-    The returned function accepts an optional ``logger_level`` to override
-    ``ray_constants.LOGGER_LEVEL``, plus the levels to emit, and returns
+    The returned function accepts the levels to emit plus a ``logger_level``, and returns
     ``(stdout_text, stderr_text, monitor_log_text)``.
+
+    ``logger_level`` is always applied, so the tests do not depend on the ambient
+    ``ray_constants.LOGGER_LEVEL``, which honors ``RAY_LOGGER_LEVEL`` from the
+    environment.
     """
 
-    def run(*levels, logger_level=None):
-        if logger_level is not None:
-            monkeypatch.setattr(ray_constants, "LOGGER_LEVEL", logger_level)
+    def run(*levels, logger_level="info"):
+        monkeypatch.setattr(ray_constants, "LOGGER_LEVEL", logger_level)
         stdout, stderr = io.StringIO(), io.StringIO()
         real_stdout, real_stderr = sys.stdout, sys.stderr
         sys.stdout, sys.stderr = stdout, stderr
@@ -102,9 +104,8 @@ def test_monitor_log_still_receives_all_levels(emit_records):
 
 
 def test_default_level_filters_debug(emit_records):
-    """The default level is INFO, so DEBUG is dropped everywhere."""
-    assert ray_constants.LOGGER_LEVEL == "info"
-    stdout, stderr, monitor_log = emit_records(*ALL_LEVELS)
+    """At the default level of INFO, DEBUG is dropped everywhere."""
+    stdout, stderr, monitor_log = emit_records(*ALL_LEVELS, logger_level="info")
     assert "DEBUG_RECORD" not in stdout
     assert "DEBUG_RECORD" not in stderr
     assert "DEBUG_RECORD" not in monitor_log
