@@ -90,7 +90,6 @@ def test_pwrite_sink_write(tmp_path):
         sink = _PwriteSink(fd, base_offset=8)
         n = sink.write(b"hello")
         assert n == 5
-        # Reading confirms the write landed at base_offset, not 0.
         assert os.pread(fd, 5, 8) == b"hello"
         assert os.pread(fd, 5, 0) == b"\x00" * 5
     finally:
@@ -105,7 +104,7 @@ def test_pwrite_sink_reset(tmp_path):
         sink = _PwriteSink(fd, base_offset=4)
         sink.write(b"first")
         sink.reset()
-        sink.write(b"AGAIN")  # overwrites the same region
+        sink.write(b"AGAIN")
         assert os.pread(fd, 5, 4) == b"AGAIN"
     finally:
         os.close(fd)

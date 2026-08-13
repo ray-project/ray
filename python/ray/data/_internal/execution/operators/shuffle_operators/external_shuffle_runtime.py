@@ -71,16 +71,12 @@ _MAX_RANGE_BYTES: int = (1 << 64) - 1
 
 
 # ----------------------------------------------------------------- Arrow IPC
-# Shard wire format: [u64 uncompressed_size][zstd(whole IPC stream)]
+# Shard wire format: [u64 uncompressed_size][codec(whole IPC stream)]
 _WF_HEADER = struct.Struct("<Q")
 
 
 def _codec_for(compression: Compression) -> Optional["pa.Codec"]:
-    """Codec name -> pa.Codec; None/"none" (any case) -> None (pyarrow has no
-    "none" codec). pa.Codec is itself case-insensitive for real codec names, so
-    routing both the map (encode) and reduce (decode) sides through here makes
-    them agree on the codec no matter how ``hash_shuffle_compression`` is cased.
-    """
+    """Codec name -> pa.Codec; None/"none" -> None (pyarrow has no "none" codec)."""
     if not compression or compression.lower() == "none":
         return None
     return pa.Codec(compression)
@@ -90,12 +86,7 @@ def _encode_shard(
     table: pa.Table, compression: Compression = "zstd", combine_native: bool = False
 ) -> pa.Buffer:
     """Encode a partition shard as a whole-frame blob (one codec frame per shard,
-    vs Arrow's per-buffer IPC compression). ``compression`` comes from
-    ``data_context.hash_shuffle_compression``. When the caller has confirmed there
-    are no extension columns, ``combine_native`` uses PyArrow's native combine,
-    which skips the per-buffer ``nbytes`` accounting the extension-safe
-    ``transform_pyarrow`` path does; that only costs at large partition counts
-    (each shard has many small chunks)."""
+    vs Arrow's per-buffer IPC compression)."""
     if table.num_columns > 0:
         if combine_native:
             try:
@@ -219,14 +210,12 @@ def _build_range_index(index, num_partitions):
     """
     ranges = np.zeros((num_partitions, 2), dtype=np.int64)
     for partition_id, frame_range in index.items():
-        # (offset, length); one frame per partition
         ranges[partition_id] = frame_range[0]
     return ranges
 
 
 def _decoded_to_array(decoded, num_partitions):
-    """Dense per-partition decoded-byte counts (was a Dict[partition_id,int] in every
-    handle — a second O(partitions) bloat). One int64 array indexed by partition_id."""
+    """Dense per-partition decoded-byte counts, indexed by partition_id."""
     arr = np.zeros(num_partitions, dtype=np.int64)
     for partition_id, nbytes in decoded.items():
         arr[partition_id] = nbytes
@@ -265,8 +254,7 @@ class _PartitionWriter:
         self._staging: Dict[int, List[pa.Table]] = {}
         self._index: Dict[int, List[Tuple[int, int]]] = {}
         self._decoded_bytes_per_partition: Dict[int, int] = {}
-        # Whether native combine_chunks is safe (no extension columns). Computed
-        # once on the first flush; every shard of this map shares one schema.
+        # Native combine is safe when there are no extension columns.
         self._combine_native_ok: Optional[bool] = None
 
     def _flush(self, partition_id: int) -> None:
@@ -282,12 +270,10 @@ class _PartitionWriter:
             self._combine_native_ok = not any(
                 _is_pa_extension_type(f.type) for f in tbl.schema
             )
-        # ``tbl.nbytes`` is the decoded (pre-IPC, pre-compression) byte count.
         self._decoded_bytes_per_partition[partition_id] = tbl.nbytes
-        buf = _encode_shard(  # whole-frame codec (see _encode_shard)
+        buf = _encode_shard(
             tbl, self._compression, self._combine_native_ok
         )
-        # Refuse frames the u64 response-wire encoding can't represent.
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
                 f"map_{self._map_id}.shf partition {partition_id}: IPC frame is "
@@ -401,7 +387,6 @@ class ShuffleFileServer:
         self._incarnation = uuid.uuid4().hex
 
     def endpoint(self) -> _Endpoint:
-        # (host, port) to connect; incarnation to detect a restart.
         return _Endpoint(self._host, self._port, self._incarnation)
 
 
@@ -511,9 +496,7 @@ def _stream_members_flight(
 ) -> None:
     """Arrow Flight DoAction: one client, batched fetch requests. Response
     ``Result`` bodies carry ``[u64 len][frame]`` framing, so they stream verbatim
-    into the sink. This does NOT classify failures: it lets the raw transport
-    error (pyarrow ``FlightError``) or the sink's ``OSError`` propagate, and
-    ``_fetch_from_file_server`` decides terminal-vs-retryable in one place."""
+    into the sink."""
     import pyarrow.flight as flight
 
     host, port, _incarnation = endpoint
@@ -686,7 +669,6 @@ def _chunk_members_by_bytes(
         yield batch
 
 
-# fetch helpers
 def _handle_batch_size(handles, batch_bytes):
     """#handles to resolve per batch so materialized metadata stays ≈ batch_bytes.
 
@@ -751,18 +733,12 @@ def _handles_to_sources(
                         ),
                     )
                 )
-        # Free this batch's resolved handles before resolving the next, so
-        # in-flight handle memory stays ≈ batch_bytes regardless of #mappers.
         del resolved, vals
     return sources, output_schema
 
 
 def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
-    """Collapse sources by file server so each file server gets ONE Flight connection.
-
-    Sources on the same file server share a ``(shuffle_id, node_id)`` which is
-    used as the collapse key.
-    """
+    """Collapse sources by file server so each file server gets ONE Flight connection."""
     by_key: Dict[Tuple[str, str], _NodeGroup] = {}
     for source in sources:
         key = (source.shuffle_id, source.node_id)
