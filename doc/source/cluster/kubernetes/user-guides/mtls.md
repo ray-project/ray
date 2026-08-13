@@ -1,8 +1,13 @@
+---
+myst:
+  html_meta:
+    description: "Enable automated mutual TLS for RayCluster internal communication with the KubeRay RayClusterMTLS feature gate and cert-manager."
+---
 (kuberay-mtls)=
 
 # Configuring mTLS for RayClusters
 
-KubeRay v1.7 introduces automated mTLS for RayCluster internal communication through the `RayClusterMTLS` feature gate. When enabled, the operator uses [cert-manager](https://cert-manager.io/) to provision a full public key infrastructure — a self-signed CA and head and worker leaf certificates — and injects the necessary TLS environment variables and volume mounts into every Ray container, so you don't need to manage certificates manually.
+KubeRay v1.7 introduces automated mTLS for RayCluster internal communication through the `RayClusterMTLS` feature gate. When enabled, the operator uses [cert-manager](https://cert-manager.io/) to provision a full public key infrastructure, consisting of a self-signed CA plus head and worker leaf certificates. It also injects the necessary TLS environment variables and volume mounts into every Ray container, so you don't need to manage certificates manually.
 
 This guide covers the automated cert-manager approach. If you prefer to manage certificates yourself, for example with your own CA or init-container scripts, see {ref}`kuberay-tls`.
 
@@ -18,11 +23,9 @@ Enabling TLS incurs a performance overhead from encryption and decryption of int
 - [cert-manager](https://cert-manager.io/docs/installation/) installed in the cluster.
 - `kubectl` installed and configured to interact with your cluster.
 
-You need to successfully install cert-manager on your Kubernetes cluster before enabling mTLS with KubeRay. See [cert-manager Installation](https://cert-manager.io/docs/installation/) for installation instructions.
-
 ## Install the KubeRay operator
 
-Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.7.0. To use this feature, you must enable the `RayClusterMTLS` feature gate. To enable the feature gate when installing the KubeRay operator, run the following command:
+Install the KubeRay operator by following [Deploy a KubeRay operator](../getting-started/kuberay-operator-installation.md). The minimum version for this guide is v1.7.0. To use this feature, you must enable the `RayClusterMTLS` feature gate. To enable the feature gate when installing the KubeRay operator, run the following command:
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
@@ -133,7 +136,7 @@ kubectl exec -it <ray-head-pod> -n <namespace> -- env | grep RAY_TLS
 
 ## Certificate renewal
 
-cert-manager automatically renews certificates before they expire. Leaf certificates are valid for 90 days and cert-manager begins renewal 15 days before expiry. However, **Ray reads TLS material only at process startup**. Running Ray processes don't hot-reload updated secrets. If cert-manager renews a certificate while the cluster is running, the pods continue using the original certificate until you restart them.
+cert-manager automatically renews certificates before they expire. Leaf certificates are valid for 90 days and cert-manager begins renewal 15 days before expiry. However, Ray reads TLS material only at process startup. Running Ray processes don't hot-reload updated secrets. If cert-manager renews a certificate while the cluster is running, the pods continue using the original certificate until you restart them.
 
 For most workloads this isn't a concern because RayClusters are typically shorter-lived than the certificate validity period. For long-lived clusters, restart Ray pods after each renewal cycle:
 
@@ -148,15 +151,15 @@ Deleting the head pod terminates the Ray head node. Without {ref}`GCS fault tole
 
 ## Cluster scale limit
 
-The operator adds each worker pod's IP address as a Subject Alternative Name (SAN) in the shared worker certificate. cert-manager encodes each IPv4 address as roughly 6 bytes in Distinguished Encoding Rules form, which becomes about 8.2 bytes after Privacy Enhanced Mail base64 encoding.
+The operator adds each worker pod's IP address as a Subject Alternative Name (SAN) in the shared worker certificate. cert-manager encodes each IPv4 address as roughly 6 bytes in Distinguished Encoding Rules (DER) form, which becomes about 8.2 bytes after Privacy Enhanced Mail (PEM) base64 encoding.
 
 cert-manager v1.19 reserves a fixed budget of **30,000 bytes for SANs** within a `maxLeafCertificatePEMSize` of 36,500 bytes, giving a conservative lower bound of approximately **3,658 worker pods per cluster**:
 
-```
+```text
 30,000 bytes ÷ 8.2 bytes/IP ≈ 3,658 IPs
 ```
 
-cert-manager v1.20 introduced `pemSizeLimitsConfig.maxCertificateSize`, which allows raising this limit if your clusters exceed ~3,500 workers.
+To raise this limit if your clusters exceed roughly 3,500 workers, use `pemSizeLimitsConfig.maxCertificateSize`, introduced in cert-manager v1.20.
 
 :::{note}
 The 3,658 figure is a **lower bound**. The actual limit is higher in most installations because cert-manager allocates more than 30,000 bytes for SANs in practice. See [cert-manager source](https://github.com/cert-manager/cert-manager/blob/ae6723401bd1bef1c00bd3c46a52c15387cd05ba/internal/pem/decode.go#L63-L68) for details.
