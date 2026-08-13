@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+import sys
 import time
 
 import ray
@@ -24,6 +25,32 @@ from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 logger = logging.getLogger(__name__)
 
 BACKOFF_S = 5
+
+
+class _LazyStreamHandler(logging.StreamHandler):
+    """A StreamHandler that resolves its stream at emit time.
+
+    Like ``logging._StderrHandler``, this always uses whatever ``sys.stdout`` or
+    ``sys.stderr`` currently points to rather than the value captured at handler
+    construction time, so it keeps working if the streams are replaced after
+    setup (see ray#33652).
+
+    Since ``stream`` is a read-only property, ``setStream()`` does not work on this
+    handler; redirect ``sys.stdout``/``sys.stderr`` instead. ``logging._StderrHandler``
+    has the same limitation.
+
+    Args:
+        stream_name: Either ``"stdout"`` or ``"stderr"``.
+    """
+
+    def __init__(self, stream_name: str):
+        # Skip StreamHandler.__init__, which would assign to ``self.stream``.
+        logging.Handler.__init__(self)
+        self._stream_name = stream_name
+
+    @property
+    def stream(self):
+        return getattr(sys, self._stream_name)
 
 
 def _get_log_dir(gcs_client: GcsClient) -> str:
@@ -130,14 +157,30 @@ def _setup_logging(log_dir: str) -> None:
         backup_count=backup_count,
     )
 
-    # For the autoscaler, the root logger _also_ needs to write to stderr, not just
-    # ray_constants.MONITOR_LOG_FILE_NAME.
+    # For the autoscaler, the root logger _also_ needs to write to the container's
+    # stdout/stderr, not just ray_constants.MONITOR_LOG_FILE_NAME.
+    #
+    # Route by severity: sub-WARNING records go to stdout and WARNING and above go
+    # to stderr. Container runtimes tag each log line with a severity derived from
+    # the stream it arrived on, so emitting INFO on stderr makes every autoscaler
+    # log line show up as an error in log collectors.
     level = logging.getLevelName(ray_constants.LOGGER_LEVEL.upper())
-    stderr_handler = logging._StderrHandler()
-    stderr_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
-    stderr_handler.setLevel(level)
-    logging.root.setLevel(level)
-    logging.root.addHandler(stderr_handler)
+    formatter = logging.Formatter(ray_constants.LOGGER_FORMAT)
 
-    # The stdout handler was set up in the Ray CLI entry point.
-    # See ray.scripts.scripts::cli().
+    stdout_handler = _LazyStreamHandler("stdout")
+    stdout_handler.setFormatter(formatter)
+    stdout_handler.setLevel(level)
+    stdout_handler.addFilter(lambda record: record.levelno < logging.WARNING)
+
+    stderr_handler = _LazyStreamHandler("stderr")
+    stderr_handler.setFormatter(formatter)
+    stderr_handler.setLevel(level)
+    # Floor stderr at WARNING, but keep a stricter LOGGER_LEVEL (e.g. "error"). The level
+    # is read back rather than reusing `level` because getLevelName() returns a string
+    # like "Level FOO" for names it does not recognize; setLevel is what rejects those,
+    # raising ValueError as this function has always done for an invalid LOGGER_LEVEL.
+    stderr_handler.setLevel(max(stderr_handler.level, logging.WARNING))
+
+    logging.root.setLevel(level)
+    logging.root.addHandler(stdout_handler)
+    logging.root.addHandler(stderr_handler)

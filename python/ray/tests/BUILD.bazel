@@ -837,6 +837,7 @@ py_test_module_list(
     files = [
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
+        "kuberay/test_run_autoscaler_logging.py",
         "test_cli_logger.py",
         "test_client_metadata.py",
         "test_client_terminate.py",
