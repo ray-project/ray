@@ -72,7 +72,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinxcontrib.autodoc_pydantic",
-    "sphinxcontrib.redoc",
+    "sphinxcontrib.openapi",
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
@@ -216,10 +216,6 @@ import template_collections
 # so it doesn't cause a build failure under -W (warnings-as-errors).
 suppress_warnings = [
     "config.cache",
-    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
-    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
-    # the existing (identical) file. Benign and not fixable upstream.
-    "misc.copy_overwrite",
 ]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
@@ -774,16 +770,17 @@ def setup(app):
     app.connect("source-read", apply_ipython3_lexer)
 
 
-redoc = [
-    {
-        "name": "Ray Jobs API",
-        "page": "cluster/running-applications/job-submission/api",
-        "spec": "cluster/running-applications/job-submission/openapi.yml",
-        "embed": True,
-    },
-]
-
-redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+# Render the Jobs API OpenAPI spec with sphinxcontrib-openapi's httpdomain
+# renderer, selected here rather than per-directive.
+#
+# Two notes for anyone changing this. The default renderer is "httpdomain:old",
+# which silently renders no request or response schemas at all -- just paths,
+# parameters, and status codes -- so leaving this unset would quietly drop most
+# of the reference content. And selecting the renderer through this config value
+# rather than by writing `.. openapi:httpdomain::` in the page avoids an
+# "unknown directive name" warning, which matters because .readthedocs.yaml sets
+# fail_on_warning: true.
+openapi_default_renderer = "httpdomain"
 
 autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
