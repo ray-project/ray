@@ -114,25 +114,20 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 
 ::::{tab-item} Linux
 
-```{eval-rst}
-=============================================== ================================================
-       Linux (x86_64)                                   Linux (arm64/aarch64)
-=============================================== ================================================
-`Linux Python 3.10 (x86_64)`_                    `Linux Python 3.10 (aarch64)`_
-`Linux Python 3.11 (x86_64)`_                    `Linux Python 3.11 (aarch64)`_
-`Linux Python 3.12 (x86_64)`_                    `Linux Python 3.12 (aarch64)`_
-`Linux Python 3.13 (x86_64)`_ (beta)             `Linux Python 3.13 (aarch64)`_ (beta)
-=============================================== ================================================
+```{list-table}
+:widths: 49 51
+:header-rows: 1
 
-.. _`Linux Python 3.10 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
-.. _`Linux Python 3.11 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl
-.. _`Linux Python 3.12 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-manylinux2014_x86_64.whl
-.. _`Linux Python 3.13 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-manylinux2014_x86_64.whl
-
-.. _`Linux Python 3.10 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_aarch64.whl
-.. _`Linux Python 3.11 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_aarch64.whl
-.. _`Linux Python 3.12 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-manylinux2014_aarch64.whl
-.. _`Linux Python 3.13 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-manylinux2014_aarch64.whl
+* - Linux (x86_64)
+  - Linux (arm64/aarch64)
+* - [Linux Python 3.10 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl)
+  - [Linux Python 3.10 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_aarch64.whl)
+* - [Linux Python 3.11 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl)
+  - [Linux Python 3.11 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_aarch64.whl)
+* - [Linux Python 3.12 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-manylinux2014_x86_64.whl)
+  - [Linux Python 3.12 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-manylinux2014_aarch64.whl)
+* - [Linux Python 3.13 (x86_64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-manylinux2014_x86_64.whl) (beta)
+  - [Linux Python 3.13 (aarch64)](https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp313-cp313-manylinux2014_aarch64.whl) (beta)
 ```
 ::::
 
@@ -366,7 +361,7 @@ The optional `Platform` tag specifies the platform where the image is intended f
   - These are based off of an NVIDIA CUDA image with the specified CUDA version. They require the NVIDIA Docker Runtime.
 * - -gpu
   - Aliases to a specific `-cuXX` tagged image.
-* - <no tag>
+* - \<no tag\>
   - Aliases to `-cpu` tagged images.
 ```
 

@@ -18,6 +18,7 @@ FLAC
 [Ii]ndexable
 [Ii]ngest
 [Ii]nqueue(s)?
+Instacart('s)?
 [Ll]ookup(s)?
 LLM(s)?
 LeRobot
