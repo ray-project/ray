@@ -2,7 +2,7 @@ import argparse
 from typing import Dict, Any
 
 import ray
-from benchmark import Benchmark, collect_operator_metrics
+from benchmark import Benchmark, collect_operator_metrics, consume_ref_bundles
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,8 +35,7 @@ def main(args: argparse.Namespace) -> None:
         """Run the data pipeline: read -> map_batches -> write"""
         ds = ray.data.read_parquet(input_path)
 
-        for _ in ds.iter_internal_ref_bundles():
-            pass
+        consume_ref_bundles(ds)
 
         # Get dataset stats for reporting
         actual_num_columns = len(ds.schema().base_schema)

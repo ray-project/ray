@@ -6,7 +6,7 @@ import numpy as np
 import pyarrow as pa
 import ray
 
-from benchmark import Benchmark
+from benchmark import Benchmark, collect_operator_metrics, consume_ref_bundles
 
 
 def parse_args() -> argparse.Namespace:
@@ -70,10 +70,11 @@ def run_fast_producer_slow_consumer(args: argparse.Namespace):
         .map_batches(producer)
         .map_batches(consumer, compute=ray.data.TaskPoolStrategy(size=1))
     )
-    for _ in ds.iter_internal_ref_bundles():
-        pass
+    consume_ref_bundles(ds)
 
-    return vars(args)
+    # Arguments, plus per-operator wall time / output bytes / per-task USS+RSS —
+    # backpressure is about where memory piles up, so per-operator is the useful grain.
+    return {**vars(args), **collect_operator_metrics(ds)}
 
 
 def run_training_prefetch(args: argparse.Namespace):

@@ -120,6 +120,76 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     }
 
 
+class _NullMonitor:
+    """Stand-in used when the node memory monitor is disabled or unimportable."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def summary(self) -> Dict[str, Any]:
+        return {}
+
+
+def _node_memory_monitor(case_name: str):
+    """Return a started-on-enter node memory monitor, or a no-op stand-in.
+
+    Import is deferred and failure is swallowed: the monitor is diagnostics, and a
+    benchmark must not fail because a diagnostic could not be imported (release images
+    and local runs do not always carry the same files).
+    """
+    try:
+        import node_memory_monitor
+
+        if node_memory_monitor.enabled():
+            return node_memory_monitor.NodeMemoryMonitor(case_name)
+    except Exception:  # noqa: BLE001
+        logger.warning("node memory monitor unavailable", exc_info=True)
+    return _NullMonitor()
+
+
+def consume_ref_bundles(ds: "ray.data.Dataset", per_bundle: Callable = None) -> int:
+    """Consume ``ds`` as RefBundles *without* losing the executor's final stats.
+
+    Use this instead of ``ds.iter_internal_ref_bundles()`` in any benchmark that then
+    reads stats off ``ds`` (``collect_operator_metrics`` / ``collect_dataset_stats``).
+    Consumption is identical — the same zero-copy bundle iterator, no blocks fetched —
+    the only difference is ``capture_executor=True``.
+
+    Why it matters: ``Dataset._execute_to_iterator`` caches ``executor.get_stats()``
+    right after the FIRST bundle, and ``iter_internal_ref_bundles`` drops the executor
+    (``capture_executor=False``, ``dataset.py:7482-7486``), so a later
+    ``get_stats_summary()`` is pinned to that mid-execution snapshot — taken before the
+    last read task's ``on_task_finished`` populated ``average_max_uss_per_task``. The
+    per-task memory metrics then come back ``None`` non-deterministically, depending on
+    whether the operator happened to finish early: ``ListFiles`` always had values,
+    ``ReadParquet`` often did not. It cost both arms of two multi-node release A/Bs
+    their ``read_large_parquet`` memory numbers.
+
+    Args:
+        ds: the dataset to consume.
+        per_bundle: optional callback invoked with each ``RefBundle``. Leave unset to
+            drop each bundle as it arrives (the usual "read it all and throw it away").
+
+    Returns:
+        The number of bundles consumed.
+    """
+    bundle_iter, _, _ = ds._execute_to_iterator(capture_executor=True)
+    # Deliberately NOT calling ds._synchronize_progress_bar() here, though
+    # iter_internal_ref_bundles does: it is a no-op there (nothing was captured) but
+    # here it would `shutdown(force=True)` the executor we just captured, truncating
+    # consumption to the one bundle _execute_to_iterator already forced. Verified
+    # locally: with the call, an 8-block dataset yields 1 bundle and 1/8 of the rows.
+    num_bundles = 0
+    for bundle in bundle_iter:
+        num_bundles += 1
+        if per_bundle is not None:
+            per_bundle(bundle)
+    return num_bundles
+
+
 def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
     """Per-operator time / output-bytes / worker-memory, for merging into a result dict.
 
@@ -139,7 +209,10 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
 
     NOTE: stats attach to the consumed dataset handle. Consume ``ds`` itself
     (``iter_*``/``write_*``/``materialize``) before calling this; ``ds.count()``
-    executes a *copy* of the plan and leaves ``ds`` without stats.
+    executes a *copy* of the plan and leaves ``ds`` without stats. And consume via
+    ``consume_ref_bundles(ds)``, not ``ds.iter_internal_ref_bundles()`` — the latter
+    drops the executor, which pins the stats to a snapshot taken after the first bundle
+    and silently nulls every per-task memory field below.
     """
     from ray.data._internal.stats import DatasetStatsSummary
 
@@ -153,6 +226,16 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
         ("avg_max_rss_per_task_bytes", "average_max_rss_per_task"),
         ("max_rss_per_task_bytes", "max_rss_per_task"),
     ]
+    # (result-dict key, extra_metrics key) for the full per-task distributions.
+    # ``max_uss_bytes``/``max_rss_bytes`` are DistributionTracker.as_dict() outputs:
+    # num_samples/mean/variance/min/max plus p25..p99 (quantiles come from a KLL
+    # sketch and are None unless ``datasketches`` is importable in the worker —
+    # it is pinned in requirements_compiled.txt, so release images have it).
+    dist_keys = [
+        ("max_uss_per_task_dist", "max_uss_bytes"),
+        ("max_rss_per_task_dist", "max_rss_bytes"),
+        ("task_duration_dist", "op_task_duration_stats"),
+    ]
 
     out: Dict[str, Any] = {"operators_detail": []}
     try:
@@ -160,6 +243,7 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
         for node in DatasetStatsSummary._collect_dataset_stats_summaries(summary):
             extra = getattr(node, "extra_metrics", {}) or {}
             mem = {out_key: extra.get(in_key) for out_key, in_key in mem_keys}
+            dists = {out_key: extra.get(in_key) for out_key, in_key in dist_keys}
             for op in node.operators_stats or []:
                 out["operators_detail"].append(
                     {
@@ -170,6 +254,7 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
                         "output_num_rows": _sum(op.output_num_rows),
                         "output_size_bytes": _sum(op.output_size_bytes),
                         **mem,
+                        **dists,
                     }
                 )
         for entry in out["operators_detail"]:
@@ -178,6 +263,8 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
                 out["read_wall_time_s"] = entry["wall_time_s"]
                 out["read_output_size_bytes"] = entry["output_size_bytes"]
                 for out_key, _ in mem_keys:
+                    out[f"read_{out_key}"] = entry[out_key]
+                for out_key, _ in dist_keys:
                     out[f"read_{out_key}"] = entry[out_key]
                 break
     except Exception:
@@ -232,6 +319,9 @@ def benchmark_py_modules() -> List[str]:
     return [
         os.path.realpath(__file__),
         os.path.join(dataset_dir, "profiling"),
+        # The sampler actor class must be importable on every worker node, not just
+        # wherever the driver ran.
+        os.path.join(dataset_dir, "node_memory_monitor.py"),
     ]
 
 
@@ -297,7 +387,12 @@ class Benchmark:
         print(f"Running case: {name}")
         state = get_state_from_address(ray.get_runtime_context().gcs_address)
 
-        with ObjectStoreMemorySampler(state) as memory_sampler:
+        # Per-node worker memory with stage provenance. Off unless
+        # RAY_DATA_BENCH_NODE_MEM_MONITOR=1; a no-op context manager otherwise, so the
+        # default path is byte-for-byte what it was.
+        node_mem = _node_memory_monitor(name)
+
+        with node_mem, ObjectStoreMemorySampler(state) as memory_sampler:
             start_time = time.perf_counter()
             start_spilled_bytes = _get_spilled_bytes_total(state)
 
@@ -321,6 +416,7 @@ class Benchmark:
                 memory_sampler.peak_utilization,
                 4,
             ),
+            **node_mem.summary(),
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():

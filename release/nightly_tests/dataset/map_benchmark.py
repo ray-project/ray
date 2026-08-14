@@ -7,7 +7,7 @@ import pyarrow.compute as pc
 import pandas as pd
 import ray
 
-from benchmark import Benchmark
+from benchmark import Benchmark, collect_operator_metrics, consume_ref_bundles
 
 
 def parse_args() -> argparse.Namespace:
@@ -134,11 +134,12 @@ def main(args: argparse.Namespace) -> None:
 
         ds = ds.map_batches(dummy_write)
 
-        for _ in ds.iter_internal_ref_bundles():
-            pass
+        consume_ref_bundles(ds)
 
-        # Report arguments for the benchmark.
-        return vars(args)
+        # Arguments, plus per-operator wall time / output bytes / per-task USS+RSS.
+        # The read and the maps fuse into one operator here, so these numbers are the
+        # fused pipeline's — which is exactly the question when a map case regresses.
+        return {**vars(args), **collect_operator_metrics(ds)}
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()

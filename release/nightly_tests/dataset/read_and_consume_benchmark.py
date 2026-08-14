@@ -3,7 +3,7 @@ import functools
 import uuid
 from typing import Callable
 
-from benchmark import Benchmark, collect_operator_metrics
+from benchmark import Benchmark, collect_operator_metrics, consume_ref_bundles
 
 import ray
 from ray.data import SaveMode
@@ -120,8 +120,7 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
     elif args.iter_bundles:
 
         def consume_fn(ds):
-            for _ in ds.iter_internal_ref_bundles():
-                pass
+            consume_ref_bundles(ds)
 
     elif args.iter_batches:
 

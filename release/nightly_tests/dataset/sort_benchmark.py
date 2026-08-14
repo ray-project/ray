@@ -6,7 +6,7 @@ import traceback
 import numpy as np
 import psutil
 
-from benchmark import Benchmark
+from benchmark import Benchmark, collect_operator_metrics
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.util import _check_pyarrow_version, GiB
@@ -174,6 +174,10 @@ if __name__ == "__main__":
             "num_partitions": num_partitions,
             "partition_size": partition_size,
             "peak_driver_memory": maxrss,
+            # Per-operator wall time / output bytes / per-task USS+RSS. `peak_driver_
+            # memory` above is the *driver*; the sort's memory lives in the workers,
+            # which only these fields see.
+            **collect_operator_metrics(ds),
         }
 
         # Wait until after the stats have been printed to raise any exceptions.
