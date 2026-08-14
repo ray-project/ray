@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <deque>
 #include <future>
 #include <memory>
 #include <string>
@@ -400,7 +401,15 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }),
+      max_free_local_objects_batch_size_(
+          static_cast<size_t>(RayConfig::instance().max_free_local_objects_batch_size())),
       clock_(clock) {
+  RAY_CHECK(RayConfig::instance().max_free_local_objects_batch_size() > 0)
+      << "max_free_local_objects_batch_size must be positive, got "
+      << RayConfig::instance().max_free_local_objects_batch_size();
+  RAY_CHECK(RayConfig::instance().free_local_objects_backlog_warn_objects_per_node() > 0)
+      << "free_local_objects_backlog_warn_objects_per_node must be positive, got "
+      << RayConfig::instance().free_local_objects_backlog_warn_objects_per_node();
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -4989,16 +4998,86 @@ void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
   RAY_LOG(DEBUG) << absl::StrFormat("Freeing object %s asynchronously via request.",
                                     object_id.Hex());
 
-  rpc::FreeLocalObjectsRequest request;
-  request.add_object_ids(object_id.Binary());
-
+  const size_t warn_backlog = static_cast<size_t>(
+      RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
   for (const auto &node_id : locations) {
-    auto client = GetRayletRpcClient(node_id);
-    if (client == nullptr) {
-      continue;
+    {
+      absl::MutexLock lock(&free_batch_mu_);
+      std::deque<ObjectID> &queue = free_pending_[node_id];
+      queue.push_back(object_id);
+      // Warn on first crossing the threshold, then every 1024 objects. Keep
+      // buffering; never drop.
+      if (queue.size() >= warn_backlog && (queue.size() - warn_backlog) % 1024 == 0) {
+        RAY_LOG(WARNING) << "FreeLocalObjects backlog for node " << node_id << " is "
+                         << queue.size()
+                         << " objects; it is draining slowly or is unreachable.";
+      }
     }
-    client->FreeLocalObjects(request);
+    SendFreeLocalObjectsBatchIfNeeded(node_id);
   }
+}
+
+void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
+  rpc::FreeLocalObjectsRequest request;
+  {
+    absl::MutexLock lock(&free_batch_mu_);
+    if (free_in_flight_.contains(node_id)) {
+      // If there's an in-flight request, the queue will be sent once the request
+      // is replied from the raylet.
+      return;
+    }
+    absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
+        free_pending_.find(node_id);
+    if (it == free_pending_.end()) {
+      // No queue for this node; an entry is erased as soon as its queue drains, so
+      // a present entry is always non-empty.
+      return;
+    }
+    std::deque<ObjectID> &queue = it->second;
+    const size_t n = std::min(max_free_local_objects_batch_size_, queue.size());
+    request.mutable_object_ids()->Reserve(static_cast<int>(n));
+    for (size_t i = 0; i < n; i++) {
+      request.add_object_ids(queue.front().Binary());
+      queue.pop_front();
+    }
+    if (queue.empty()) {
+      free_pending_.erase(it);
+    }
+    free_in_flight_.insert(node_id);
+  }
+
+  std::shared_ptr<RayletClientInterface> client = GetRayletRpcClient(node_id);
+  if (client == nullptr) {
+    // Node is gone: clear in-flight and drop its queue so it cannot wedge.
+    absl::MutexLock lock(&free_batch_mu_);
+    free_in_flight_.erase(node_id);
+    free_pending_.erase(node_id);
+    return;
+  }
+  // Safe to capture `this`: the reply runs on io_service_, which is stopped
+  // before the CoreWorker is destroyed during shutdown.
+  client->FreeLocalObjects(
+      request, [this, node_id](const Status &status, const rpc::FreeLocalObjectsReply &) {
+        {
+          absl::MutexLock lock(&free_batch_mu_);
+          free_in_flight_.erase(node_id);
+          if (!status.ok()) {
+            // The retryable client only surfaces an error once the node is dead;
+            // its copies died with it, so drop the queue instead of wedging.
+            absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
+                free_pending_.find(node_id);
+            const size_t dropped = (it == free_pending_.end()) ? 0 : it->second.size();
+            if (it != free_pending_.end()) {
+              free_pending_.erase(it);
+            }
+            RAY_LOG(INFO).WithField(node_id)
+                << "FreeLocalObjects RPC failed (" << status << "); dropping " << dropped
+                << " buffered free request(s) for this node, which is likely dead.";
+            return;
+          }
+        }
+        SendFreeLocalObjectsBatchIfNeeded(node_id);
+      });
 }
 
 }  // namespace ray::core

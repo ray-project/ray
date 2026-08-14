@@ -117,6 +117,7 @@ class CoreWorkerTest : public ::testing::Test {
     mock_gcs_client_ = std::make_shared<gcs::MockGcsClient>();
 
     auto fake_local_raylet_rpc_client = std::make_shared<rpc::FakeRayletClient>();
+    local_raylet_client_ = fake_local_raylet_rpc_client;
 
     auto fake_raylet_ipc_client = std::make_shared<ipc::FakeRayletIpcClient>();
 
@@ -328,6 +329,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   ActorTaskSubmitter *actor_task_submitter_;
+  std::shared_ptr<rpc::FakeRayletClient> local_raylet_client_;
   pubsub::Publisher *object_info_publisher_;
   std::shared_ptr<TaskManager> task_manager_;
   std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
@@ -1733,6 +1735,63 @@ TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresExactlyOnce) {
   FlushObjectFreedCallbacks();  // second flush must not re-fire
 
   EXPECT_EQ(fire_count, 1);
+}
+
+TEST_F(CoreWorkerTest, FreeLocalObjectsCoalescesWhileInFlight) {
+  const NodeID node_id = core_worker_->GetCurrentNodeId();
+
+  // First free goes out alone; the next two ride the batch the reply triggers.
+  core_worker_->FreeObjectOnNodesAsync(ObjectID::FromRandom(), {node_id});
+  core_worker_->FreeObjectOnNodesAsync(ObjectID::FromRandom(), {node_id});
+  core_worker_->FreeObjectOnNodesAsync(ObjectID::FromRandom(), {node_id});
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
+
+  ASSERT_TRUE(local_raylet_client_->ReplyFreeLocalObjects());
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1, 2}));
+
+  // Draining the second batch leaves nothing to send.
+  ASSERT_TRUE(local_raylet_client_->ReplyFreeLocalObjects());
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1, 2}));
+  EXPECT_FALSE(local_raylet_client_->ReplyFreeLocalObjects());
+}
+
+TEST_F(CoreWorkerTest, FreeLocalObjectsFailureDropsNodeQueue) {
+  const NodeID node_id = core_worker_->GetCurrentNodeId();
+
+  core_worker_->FreeObjectOnNodesAsync(ObjectID::FromRandom(), {node_id});
+  core_worker_->FreeObjectOnNodesAsync(ObjectID::FromRandom(), {node_id});
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches.size(), 1u);
+
+  // A failed reply drops the queued id instead of resending it.
+  ASSERT_TRUE(local_raylet_client_->ReplyFreeLocalObjects(Status::IOError("dead")));
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches.size(), 1u);
+  EXPECT_FALSE(local_raylet_client_->ReplyFreeLocalObjects());
+
+  // The node is not wedged: a later free starts a fresh RPC.
+  core_worker_->FreeObjectOnNodesAsync(ObjectID::FromRandom(), {node_id});
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches.size(), 2u);
+}
+
+TEST_F(CoreWorkerTest, FreeLocalObjectsKeepsBufferingPastWarnThreshold) {
+  auto &warn_objects =
+      RayConfig::instance().free_local_objects_backlog_warn_objects_per_node();
+  const int64_t prev = warn_objects;
+  warn_objects = 2;  // warn at 2 objects.
+  const NodeID node_id = core_worker_->GetCurrentNodeId();
+
+  const int kNumObjects = 5;
+  for (int i = 0; i < kNumObjects; i++) {
+    core_worker_->FreeObjectOnNodesAsync(ObjectID::FromRandom(), {node_id});
+  }
+  while (local_raylet_client_->ReplyFreeLocalObjects()) {
+  }
+
+  int total = 0;
+  for (int batch : local_raylet_client_->free_local_objects_batches) {
+    total += batch;
+  }
+  EXPECT_EQ(total, kNumObjects);  // Nothing dropped past the warn threshold.
+  warn_objects = prev;
 }
 
 }  // namespace core

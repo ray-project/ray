@@ -196,6 +196,14 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, true)
 
+/// The maximum number of objects (object ids) sent in a single coalesced
+/// FreeLocalObjects RPC. Anything beyond this rides the next batch.
+RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
+
+/// Warn when a node's buffered FreeLocalObjects backlog reaches this many objects,
+/// then again every 1024 objects.
+RAY_CONFIG(int64_t, free_local_objects_backlog_warn_objects_per_node, 500000)
+
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
 /// If we reach this limit, 50% of the current lineage will be evicted and
