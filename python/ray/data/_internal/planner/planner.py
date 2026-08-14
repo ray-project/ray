@@ -195,7 +195,7 @@ def plan_join_op(
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
-    if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+    if data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
         return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
     return JoinOperator(
         data_context=data_context,
