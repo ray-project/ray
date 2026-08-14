@@ -2052,31 +2052,41 @@ def test_max_block_size_none_respects_override_num_blocks(
         assert set(expected_values) == set(actual_values)
 
 
-def test_write_partition_cols_with_min_rows_per_file_raises(
+def test_write_partition_cols_with_min_rows_per_file_warns(
     tmp_path,
     ray_start_regular_shared,
 ):
-    ds = ray.data.range(10)
+    ds = ray.data.from_items(
+        [{"partition": index % 2, "value": index} for index in range(10)]
+    )
 
-    with pytest.raises(
-        ValueError,
-        match="min_rows_per_file isn't supported when partition_cols is non-empty",
+    with pytest.warns(
+        DeprecationWarning,
+        match="Using `min_rows_per_file` with non-empty `partition_cols` is deprecated",
     ):
-        ds.write_parquet(tmp_path, partition_cols=["id"], min_rows_per_file=5)
+        ds.write_parquet(tmp_path, partition_cols=["partition"], min_rows_per_file=5)
+    assert ray.data.read_parquet(tmp_path).count() == 10
 
 
-def test_write_partition_cols_with_num_rows_per_file_raises(
+def test_write_partition_cols_with_num_rows_per_file_warns(
     tmp_path,
     ray_start_regular_shared,
 ):
-    ds = ray.data.range(10)
+    ds = ray.data.from_items(
+        [{"partition": index % 2, "value": index} for index in range(10)]
+    )
 
-    with pytest.warns(DeprecationWarning, match="num_rows_per_file"):
-        with pytest.raises(
-            ValueError,
-            match="min_rows_per_file isn't supported when partition_cols is non-empty",
-        ):
-            ds.write_parquet(tmp_path, partition_cols=["id"], num_rows_per_file=5)
+    with pytest.warns(DeprecationWarning) as warnings:
+        ds.write_parquet(tmp_path, partition_cols=["partition"], num_rows_per_file=5)
+
+    messages = [str(warning.message) for warning in warnings]
+    assert any("`num_rows_per_file` is deprecated" in message for message in messages)
+    assert any(
+        "Using `min_rows_per_file` with non-empty `partition_cols` is deprecated"
+        in message
+        for message in messages
+    )
+    assert ray.data.read_parquet(tmp_path).count() == 10
 
 
 def test_write_empty_partition_cols_with_min_rows_per_file(

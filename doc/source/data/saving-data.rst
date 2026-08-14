@@ -171,11 +171,15 @@ partition (where N is the number of blocks in your dataset) with very limited ab
 control the number of files and their sizes, since every block could potentially carry
 the rows corresponding to any partition.
 
-.. note::
-    ``min_rows_per_file`` isn't supported together with ``partition_cols``: each
-    block can be split across partition directories, so a minimum row count per
-    file can't be guaranteed. Use ``repartition()`` and ``max_rows_per_file`` to
-    control file sizes instead.
+.. warning::
+    Using ``min_rows_per_file`` with non-empty ``partition_cols`` is deprecated and
+    will raise a ``ValueError`` in a future release. During the deprecation period, Ray
+    Data emits a ``DeprecationWarning`` and retains the existing behavior. The minimum
+    is only effective when each partition is contained in a single block, such as after
+    repartitioning by the partition columns. If you followed the previously documented
+    pattern, each partition is already in one block, so removing
+    ``min_rows_per_file`` doesn't change the output layout. Use
+    ``max_rows_per_file`` to cap file sizes.
 
 .. testcode::
     import ray

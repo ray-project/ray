@@ -1,4 +1,5 @@
 import logging
+import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
@@ -199,12 +200,15 @@ class ParquetDatasink(_FileDatasink):
         self.partition_cols = partition_cols
 
         if self.partition_cols and self.min_rows_per_file is not None:
-            raise ValueError(
-                "min_rows_per_file isn't supported when partition_cols is non-empty, "
-                "because each block can be split across partition directories, "
-                "making the minimum unsatisfiable. To control file sizes, call "
-                "repartition(keys=partition_cols) before writing, or use "
-                "max_rows_per_file."
+            warnings.warn(
+                "Using `min_rows_per_file` with non-empty `partition_cols` is "
+                "deprecated and will raise a ValueError in a future release. Ray Data "
+                "continues with the existing behavior for now. To preserve the file "
+                "layout when `min_rows_per_file` was effective, repartition by the "
+                "partition columns before writing, then remove `min_rows_per_file`. "
+                "Use `max_rows_per_file` to cap file sizes.",
+                DeprecationWarning,
+                stacklevel=3,
             )
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
