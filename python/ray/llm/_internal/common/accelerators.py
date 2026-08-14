@@ -2,12 +2,11 @@
 
 import copy
 import math
-import threading
 from abc import ABC, abstractmethod
 from collections import Counter
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import Annotated
@@ -194,30 +193,6 @@ AnyAcceleratorConfig = Annotated[
 ]
 
 
-def _ray_scheduling_strategy_fn(
-    default_bundles: List[Dict[str, float]],
-    accelerator_type: Optional[str] = None,
-    placement_group_config: Optional[Dict[str, Any]] = None,
-):
-    """Create a Ray scheduling strategy for the engine."""
-    if placement_group_config:
-        placement_group_config = copy.deepcopy(placement_group_config)
-        if accelerator_type:
-            for bundle in placement_group_config["bundles"]:
-                bundle[f"accelerator_type:{accelerator_type}"] = 0.001
-        pg = placement_group(**placement_group_config)
-    else:
-        pg = placement_group(
-            default_bundles,
-            strategy="PACK",
-        )
-    return dict(
-        scheduling_strategy=PlacementGroupSchedulingStrategy(
-            pg, placement_group_capture_child_tasks=True
-        )
-    )
-
-
 class AcceleratorBackend(ABC):
     @abstractmethod
     def default_bundles(
@@ -269,7 +244,7 @@ class AcceleratorBackend(ABC):
         accelerator_type: Optional[str],
         engine_kwargs: Dict[str, Any],
         placement_group_config: Optional[Dict[str, Any]],
-    ) -> Tuple[Dict[str, Any], Optional[Callable[[], bool]]]:
+    ) -> Dict[str, Any]:
         """Provide Ray Data scheduling options for batch inference.
 
         Implementations may populate accelerator-specific defaults in
@@ -312,13 +287,37 @@ class GPUAccelerator(AcceleratorBackend):
     def __init__(self, config: Optional[GPUConfig] = None):
         self._config = config or GPUConfig()
 
+    @staticmethod
+    def _scheduling_strategy_fn(
+        default_bundles: List[Dict[str, float]],
+        accelerator_type: Optional[str] = None,
+        placement_group_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Create a PlacementGroupSchedulingStrategy for GPU engine workers."""
+        if placement_group_config:
+            placement_group_config = copy.deepcopy(placement_group_config)
+            if accelerator_type:
+                for bundle in placement_group_config["bundles"]:
+                    bundle[f"accelerator_type:{accelerator_type}"] = 0.001
+            pg = placement_group(**placement_group_config)
+        else:
+            pg = placement_group(
+                default_bundles,
+                strategy="PACK",
+            )
+        return {
+            "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                pg, placement_group_capture_child_tasks=True
+            )
+        }
+
     def build_batch_scheduling_options(
         self,
         *,
         accelerator_type: Optional[str],
         engine_kwargs: Dict[str, Any],
         placement_group_config: Optional[Dict[str, Any]],
-    ) -> Tuple[Dict[str, Any], Optional[Callable[[], bool]]]:
+    ) -> Dict[str, Any]:
         """Provide Ray Data scheduling options for GPU batch inference."""
         tp_size = engine_kwargs.get("tensor_parallel_size", 1)
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
@@ -349,7 +348,7 @@ class GPUAccelerator(AcceleratorBackend):
                 bundle.setdefault("CPU", 1)
 
             map_batches_kwargs["ray_remote_args_fn"] = partial(
-                _ray_scheduling_strategy_fn,
+                self._scheduling_strategy_fn,
                 default_bundles,
                 accelerator_type,
                 placement_group_config,
@@ -384,12 +383,7 @@ class GPUAccelerator(AcceleratorBackend):
                 # Ray Data expects CPU/GPU via num_cpus/num_gpus, not inside `resources`.
                 map_batches_kwargs["resources"] = dict(resource_counter)
 
-        # GPU backends return None for close_fn because their placement groups
-        # are created per-actor within `_ray_scheduling_strategy_fn` and their
-        # lifecycles are bound to the resulting child tasks via
-        # `placement_group_capture_child_tasks=True`. There is no single global
-        # PG to memoize and tear down here.
-        return map_batches_kwargs, None
+        return map_batches_kwargs
 
     def default_bundles(
         self, *, num_devices: int, accelerator_type_str: Optional[str] = None
@@ -426,8 +420,37 @@ class TPUAccelerator(AcceleratorBackend):
     def __init__(self, config: Optional[TPUConfig] = None):
         self._config = config or TPUConfig()
         self._slice_pg_wrapper = None
-        self._lock = threading.Lock()
-        self._closed = False
+
+    @staticmethod
+    def _scheduling_strategy_fn(
+        topology: str,
+        accelerator_version: str,
+        resources_per_bundle: Dict[str, float],
+        strategy: str,
+        name: str = "",
+        chips_per_vm: Optional[int] = None,
+        head_reservation_timeout_s: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Create a PlacementGroupSchedulingStrategy using a TPU slice placement group."""
+        slice_kwargs: Dict[str, Any] = {
+            "topology": topology,
+            "accelerator_version": accelerator_version,
+            "resources_per_bundle": resources_per_bundle,
+            "strategy": strategy or "PACK",
+            "name": name,
+        }
+        if chips_per_vm is not None:
+            slice_kwargs["chips_per_vm"] = chips_per_vm
+        if head_reservation_timeout_s is not None:
+            slice_kwargs["head_reservation_timeout_s"] = head_reservation_timeout_s
+        slice_pg = slice_placement_group(**slice_kwargs)
+        return {
+            "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                placement_group=slice_pg.placement_group,
+                placement_group_bundle_index=0,
+                placement_group_capture_child_tasks=True,
+            )
+        }
 
     def default_bundles(
         self, *, num_devices: int, accelerator_type_str: Optional[str] = None
@@ -504,39 +527,17 @@ class TPUAccelerator(AcceleratorBackend):
             # Default to 1 TPU per bundle.
             worker_bundle = {"TPU": 1}
 
-        self._create_slice_pg_handle(
-            accelerator_type=accelerator_type_str,
-            resources_per_bundle=worker_bundle,
-            strategy=strategy,
-            name=name,
-        )
-        return self._slice_pg_wrapper.placement_group
-
-    def _create_slice_pg_handle_locked(
-        self,
-        *,
-        accelerator_type: str,
-        resources_per_bundle: Dict[str, float],
-        strategy: Optional[str] = None,
-        name: str = "",
-    ):
-        if not self._config.topology:
-            raise ValueError(
-                "TPU placement requires accelerator_config.topology to be set."
-            )
         if self._slice_pg_wrapper is not None:
             logger.debug(
                 "Existing TPU slice PG found. Shutting it down before creating a new one."
             )
-            # Call inner shutdown logic without acquiring the lock again
-            self._shutdown_locked()
+            self.shutdown()
 
-        topology = self._config.topology.strip().lower()
-        version = get_tpu_version_from_type(accelerator_type)
+        version = get_tpu_version_from_type(accelerator_type_str)
         slice_kwargs: Dict[str, Any] = {
-            "topology": topology,
+            "topology": self._config.topology.strip().lower(),
             "accelerator_version": version,
-            "resources_per_bundle": resources_per_bundle,
+            "resources_per_bundle": worker_bundle,
             "strategy": strategy or "PACK",
             "name": name,
         }
@@ -547,27 +548,7 @@ class TPUAccelerator(AcceleratorBackend):
                 "head_reservation_timeout_s"
             ] = self._config.head_reservation_timeout_s
         self._slice_pg_wrapper = slice_placement_group(**slice_kwargs)
-        return self._slice_pg_wrapper
-
-    def _create_slice_pg_handle(
-        self,
-        *,
-        accelerator_type: str,
-        resources_per_bundle: Dict[str, float],
-        strategy: Optional[str] = None,
-        name: str = "",
-    ):
-        """Create a TPU slice placement group and store the handle.
-
-        The strategy is used as given, defaulting to ``PACK``.
-        """
-        with self._lock:
-            return self._create_slice_pg_handle_locked(
-                accelerator_type=accelerator_type,
-                resources_per_bundle=resources_per_bundle,
-                strategy=strategy,
-                name=name,
-            )
+        return self._slice_pg_wrapper.placement_group
 
     @property
     def requires_deferred_placement_group(self) -> bool:
@@ -596,20 +577,14 @@ class TPUAccelerator(AcceleratorBackend):
         return options
 
     def shutdown(self) -> None:
-        with self._lock:
+        if self._slice_pg_wrapper is not None:
             try:
-                self._shutdown_locked()
+                logger.info("Shutting down TPU slice PG for server replica.")
+                self._slice_pg_wrapper.shutdown()
             except Exception as e:
                 logger.warning(f"Failed to shut down TPU slice PG: {e}")
+            finally:
                 self._slice_pg_wrapper = None
-
-    def _shutdown_locked(self) -> bool:
-        if self._slice_pg_wrapper is None:
-            return False
-        logger.info("Shutting down TPU slice placement group.")
-        self._slice_pg_wrapper.shutdown()
-        self._slice_pg_wrapper = None
-        return True
 
     def _resolve_batch_worker_bundle(
         self,
@@ -734,14 +709,13 @@ class TPUAccelerator(AcceleratorBackend):
         accelerator_type: Optional[str],
         engine_kwargs: Dict[str, Any],
         placement_group_config: Optional[Dict[str, Any]],
-    ) -> Tuple[Dict[str, Any], Optional[Callable[[], bool]]]:
+    ) -> Dict[str, Any]:
         """Provide Ray Data scheduling options for TPU batch inference.
 
-        Returns ``(map_batches_kwargs, close_fn)``. The ``map_batches_kwargs``
-        contains a ``ray_remote_args_fn`` that lazily triggers TPU slice placement
-        when invoked by Ray Data at actor creation time. The slice reservation
-        is bounded by ``head_reservation_timeout_s`` on multi-host topologies.
-        ``close_fn`` tears down the slice if it was acquired.
+        Returns ``map_batches_kwargs`` containing a ``ray_remote_args_fn`` that
+        lazily triggers TPU slice placement when invoked by Ray Data at actor
+        creation time. The slice reservation is bounded by
+        ``head_reservation_timeout_s`` on multi-host topologies.
         """
         if not self._config.topology:
             raise ValueError(
@@ -790,55 +764,25 @@ class TPUAccelerator(AcceleratorBackend):
         resources_per_bundle = self._resolve_batch_worker_bundle(placement_group_config)
         resources_per_bundle[format_ray_accelerator_resource(canonical_accel)] = 0.001
 
-        def _acquire_slice_scheduling_strategy() -> Dict[str, Any]:
-            """Reserve the TPU slice on first actor creation; reuse it thereafter.
-
-            Called by Ray Data on the driver at actor-creation time. Memoized so a
-            restarted or additional actor reuses the same slice instead of
-            reserving a second one.
-            """
-            with self._lock:
-                if self._closed:
-                    raise RuntimeError(
-                        "Cannot reserve TPU slice: processor backend was already closed."
-                    )
-                if self._slice_pg_wrapper is None:
-                    strategy = (placement_group_config or {}).get("strategy") or "PACK"
-                    logger.info(
-                        "Reserving TPU slice: topology=%s accelerator=%s strategy=%s. "
-                        "This blocks the Ray Data execution loop until the slice is reserved.",
-                        topology,
-                        canonical_accel,
-                        strategy,
-                    )
-                    # Forwards head_reservation_timeout_s internally if the user set it.
-                    self._create_slice_pg_handle_locked(
-                        accelerator_type=canonical_accel,
-                        resources_per_bundle=resources_per_bundle,
-                        strategy=strategy,
-                    )
-                return {
-                    "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                        placement_group=self._slice_pg_wrapper.placement_group,
-                        placement_group_bundle_index=0,
-                        placement_group_capture_child_tasks=True,
-                    )
-                }
-
-        def close_fn() -> bool:
-            """Release the slice if one was acquired. Returns True if it released."""
-            with self._lock:
-                self._closed = True
-                return self._shutdown_locked()
+        strategy = (placement_group_config or {}).get("strategy") or "PACK"
 
         map_batches_kwargs = {
             # Bundle 0 CPU covers the Ray Data actor.
             "num_cpus": PARENT_ACTOR_CPU_RESERVE + DEFAULT_USER_CPU_PER_HOST,
             "num_gpus": 0,
             "resources": {},
-            "ray_remote_args_fn": _acquire_slice_scheduling_strategy,
+            "ray_remote_args_fn": partial(
+                self._scheduling_strategy_fn,
+                topology,
+                version,
+                resources_per_bundle,
+                strategy,
+                "",
+                self._config.chips_per_vm,
+                self._config.head_reservation_timeout_s,
+            ),
         }
-        return map_batches_kwargs, close_fn
+        return map_batches_kwargs
 
 
 def get_accelerator_backend(

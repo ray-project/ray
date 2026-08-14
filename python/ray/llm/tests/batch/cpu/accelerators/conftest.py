@@ -1,25 +1,23 @@
 import pytest
 
 import ray
-import ray.llm._internal.batch.processor.base as processor_base
 import ray.llm._internal.common.accelerators as accelerators
 from ray.cluster_utils import Cluster
 
 
 @pytest.fixture(autouse=True)
 def capture_accelerator_logs(caplog):
-    # ray.llm loggers set propagate=False; attach caplog.handler directly so pytest can capture logs.
-    loggers = [accelerators.logger, processor_base.logger]
-    for l in loggers:
-        l.addHandler(caplog.handler)
-    yield
-    for l in loggers:
-        l.removeHandler(caplog.handler)
+    """Attach caplog handler to ray.llm logger since propagate=False prevents root propagation."""
+    accelerators.logger.addHandler(caplog.handler)
+    try:
+        yield
+    finally:
+        accelerators.logger.removeHandler(caplog.handler)
 
 
 @pytest.fixture
 def ray_tpu_cluster():
-    """Simulates a multi-host TPU v6e-16 slice (4x4 topology / 4 nodes / 4 chips each)."""
+    """Simulate a multi-host TPU v6e-16 slice (4x4 topology / 4 nodes / 4 chips each)."""
     ray.shutdown()
     cluster = Cluster()
     pod_type = "v6e-16"
@@ -51,6 +49,8 @@ def ray_tpu_cluster():
         )
 
     ray.init(address=cluster.address)
-    yield cluster
-    ray.shutdown()
-    cluster.shutdown()
+    try:
+        yield cluster
+    finally:
+        ray.shutdown()
+        cluster.shutdown()

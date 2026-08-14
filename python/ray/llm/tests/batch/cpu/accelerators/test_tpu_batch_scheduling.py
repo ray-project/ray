@@ -1,16 +1,14 @@
 """Unit and integration tests for multi-host TPU batch scheduling.
 
 Unit tests mock ``slice_placement_group`` (bypassing reservation and PG creation) to cover config
-validation, map_batches kwargs, and processor close lifecycle.
+validation, map_batches kwargs, and slice placement strategy.
 """
 
 from __future__ import annotations
 
-import gc
 import inspect
 import logging
 import sys
-import threading
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock
 
@@ -48,14 +46,14 @@ def _schedule(
         "data_parallel_size": 1,
         **engine_overrides,
     }
-    kwargs, close_fn = backend.build_batch_scheduling_options(
+    kwargs = backend.build_batch_scheduling_options(
         accelerator_type=accelerator_type,
         engine_kwargs=engine_kwargs,
         placement_group_config=placement_group_config,
     )
     if "ray_remote_args_fn" in kwargs:
         kwargs["ray_remote_args_fn"]()
-    return kwargs, close_fn
+    return kwargs
 
 
 @pytest.fixture
@@ -85,22 +83,6 @@ def _topo_config(**kwargs):
     "kwargs, match",
     [
         ({"accelerator_type": "TPU-V6E"}, "requires accelerator_config with topology"),
-        (
-            {
-                "accelerator_type": "TPU-V6E",
-                "accelerator_config": {"kind": "tpu", "topology": "4x4"},
-                "concurrency": 2,
-            },
-            "concurrency=1 or \\(1, 1\\)",
-        ),
-        (
-            {
-                "accelerator_type": "TPU-V6E",
-                "accelerator_config": {"kind": "tpu", "topology": "4x4"},
-                "concurrency": (1, 2),
-            },
-            "concurrency=1 or \\(1, 1\\)",
-        ),
         (
             {
                 "accelerator_type": "TPU-V6E",
@@ -135,7 +117,7 @@ def test_slice_pg_kwargs(
     pg_config = {"bundle_per_worker": {"TPU": 1}}
     if strategy is not None:
         pg_config["strategy"] = strategy
-    kwargs, close_fn = _schedule(
+    kwargs = _schedule(
         TPUAccelerator(TPUConfig(topology=topology, chips_per_vm=chips_per_vm)),
         accelerator_type=accel,
         tensor_parallel_size=tp,
@@ -150,25 +132,22 @@ def test_slice_pg_kwargs(
     assert slice_kwargs.get("chips_per_vm") == chips_per_vm
     assert kwargs["num_cpus"] == _CPU_FLOOR
     assert kwargs["num_cpus"] == slice_kwargs["resources_per_bundle"]["CPU"]
-    close_fn()
-    handle.shutdown.assert_called_once()
 
 
 def test_default_bundle_omits_tpu(stub_slice_pg):
     _, create = stub_slice_pg
-    _, close_fn = _schedule(
+    _schedule(
         TPUAccelerator(TPUConfig(topology="4x4")),
         tensor_parallel_size=16,
     )
     resources = create.call_args.kwargs["resources_per_bundle"]
     assert resources == {"CPU": float(_CPU_FLOOR), "accelerator_type:TPU-V6E": 0.001}
     assert "TPU" not in resources
-    close_fn()
 
 
 def test_cpu_only_template_omits_tpu(stub_slice_pg):
     _, create = stub_slice_pg
-    _, close_fn = _schedule(
+    _schedule(
         TPUAccelerator(TPUConfig(topology="4x4")),
         tensor_parallel_size=16,
         placement_group_config={"bundle_per_worker": {"CPU": 4}},
@@ -177,13 +156,12 @@ def test_cpu_only_template_omits_tpu(stub_slice_pg):
     assert "TPU" not in resources
     assert resources["CPU"] == 4.0
     assert resources["accelerator_type:TPU-V6E"] == 0.001
-    close_fn()
 
 
 def test_cpu_floor_warns_on_override(stub_slice_pg, caplog):
     _, create = stub_slice_pg
     with caplog.at_level(logging.WARNING):
-        _, close_fn = _schedule(
+        _schedule(
             TPUAccelerator(TPUConfig(topology="4x4")),
             tensor_parallel_size=16,
             placement_group_config={"bundle_per_worker": {"TPU": 1, "CPU": 1}},
@@ -193,33 +171,29 @@ def test_cpu_floor_warns_on_override(stub_slice_pg, caplog):
     assert any(
         "Raising placement_group_config CPU" in r.message for r in caplog.records
     )
-    close_fn()
 
 
 def test_default_bundle_does_not_warn_cpu_floor(stub_slice_pg, caplog):
     with caplog.at_level(logging.WARNING):
-        _, close_fn = _schedule(
+        _schedule(
             TPUAccelerator(TPUConfig(topology="4x4")),
             tensor_parallel_size=16,
         )
     assert not any(
         "Raising placement_group_config CPU" in r.message for r in caplog.records
     )
-    close_fn()
 
 
 def test_defaults_pack_when_strategy_unset(stub_slice_pg):
     handle, create = stub_slice_pg
     backend = TPUAccelerator(TPUConfig(topology="4x4"))
-    options, close_fn = backend.build_batch_scheduling_options(
+    options = backend.build_batch_scheduling_options(
         accelerator_type="TPU-V6E",
         engine_kwargs={"tensor_parallel_size": 16},
         placement_group_config={"bundle_per_worker": {"TPU": 1}},
     )
     options["ray_remote_args_fn"]()
     assert create.call_args.kwargs["strategy"] == "PACK"
-    close_fn()
-    handle.shutdown.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -248,7 +222,7 @@ def test_bundle_resource_type_validation(stub_slice_pg, bundle):
 
 def test_multi_bundle_list_warns(stub_slice_pg, caplog):
     with caplog.at_level(logging.WARNING):
-        _, close_fn = _schedule(
+        _schedule(
             TPUAccelerator(TPUConfig(topology="4x4")),
             tensor_parallel_size=16,
             placement_group_config={
@@ -256,7 +230,6 @@ def test_multi_bundle_list_warns(stub_slice_pg, caplog):
             },
         )
     assert any("specified 2 bundles" in r.message for r in caplog.records)
-    close_fn()
 
 
 @pytest.mark.parametrize("bad", ["4xx4", "abc", "4x", "-4x4"])
@@ -322,8 +295,9 @@ def test_build_processor_reserves_nothing(stub_slice_pg):
     cfg = _topo_config(
         engine_kwargs={"tensor_parallel_size": 16},
     )
-    with build_processor(cfg):
-        create.assert_not_called()
+    processor = build_processor(cfg)
+    assert isinstance(processor, Processor)
+    create.assert_not_called()
 
 
 def test_builder_lifecycle(stub_slice_pg):
@@ -331,32 +305,31 @@ def test_builder_lifecycle(stub_slice_pg):
     cfg = _topo_config(
         engine_kwargs={"tensor_parallel_size": 16},
     )
-    with build_processor(cfg) as processor:
-        assert isinstance(processor, Processor)
-        stage = processor.get_stage_by_name("vLLMEngineStage")
-        assert "scheduling_strategy" not in stage.map_batches_kwargs
+    processor = build_processor(cfg)
+    assert isinstance(processor, Processor)
+    stage = processor.get_stage_by_name("vLLMEngineStage")
+    assert "scheduling_strategy" not in stage.map_batches_kwargs
 
-        create.assert_not_called()
-        remote_args = stage.map_batches_kwargs["ray_remote_args_fn"]()
-        create.assert_called_once()
+    create.assert_not_called()
+    remote_args = stage.map_batches_kwargs["ray_remote_args_fn"]()
+    create.assert_called_once()
 
-        strategy = remote_args["scheduling_strategy"]
-        assert isinstance(strategy, PlacementGroupSchedulingStrategy)
-        assert strategy.placement_group_bundle_index == 0
-        assert strategy.placement_group_capture_child_tasks is True
-        assert stage.map_batches_kwargs["num_gpus"] == 0
-        assert stage.map_batches_kwargs["resources"] == {}
-        assert "placement_group_config" not in stage.fn_constructor_kwargs
-        rebuilt = vLLMEngineStage(
-            fn_constructor_kwargs=dict(stage.fn_constructor_kwargs),
-            map_batches_kwargs=dict(stage.map_batches_kwargs),
-        )
-        assert (
-            rebuilt.map_batches_kwargs["ray_remote_args_fn"]
-            is stage.map_batches_kwargs["ray_remote_args_fn"]
-        )
-        assert "placement_group_config" not in rebuilt.fn_constructor_kwargs
-    handle.shutdown.assert_called_once()
+    strategy = remote_args["scheduling_strategy"]
+    assert isinstance(strategy, PlacementGroupSchedulingStrategy)
+    assert strategy.placement_group_bundle_index == 0
+    assert strategy.placement_group_capture_child_tasks is True
+    assert stage.map_batches_kwargs["num_gpus"] == 0
+    assert stage.map_batches_kwargs["resources"] == {}
+    assert "placement_group_config" not in stage.fn_constructor_kwargs
+    rebuilt = vLLMEngineStage(
+        fn_constructor_kwargs=dict(stage.fn_constructor_kwargs),
+        map_batches_kwargs=dict(stage.map_batches_kwargs),
+    )
+    assert (
+        rebuilt.map_batches_kwargs["ray_remote_args_fn"]
+        is stage.map_batches_kwargs["ray_remote_args_fn"]
+    )
+    assert "placement_group_config" not in rebuilt.fn_constructor_kwargs
 
 
 def test_gpu_builder_does_not_create_slice_pg(stub_slice_pg):
@@ -373,97 +346,21 @@ def test_gpu_builder_does_not_create_slice_pg(stub_slice_pg):
     stage = processor.get_stage_by_name("vLLMEngineStage")
     assert "ray_remote_args_fn" in stage.map_batches_kwargs
     assert "scheduling_strategy" not in stage.map_batches_kwargs
-    processor.close()
 
 
-def test_scheduling_fn_is_memoized(stub_slice_pg):
+def test_scheduling_fn_creates_slice_per_actor_invocation(stub_slice_pg):
+    """Each actor replica created in the pool invokes ray_remote_args_fn and gets a distinct slice."""
     _, create = stub_slice_pg
     cfg = _topo_config(engine_kwargs={"tensor_parallel_size": 16})
-    with build_processor(cfg) as processor:
-        fn = processor.get_stage_by_name("vLLMEngineStage").map_batches_kwargs[
-            "ray_remote_args_fn"
-        ]
-        res1 = fn()
-        res2 = fn()
-        create.assert_called_once()
-        assert (
-            res1["scheduling_strategy"].placement_group
-            is res2["scheduling_strategy"].placement_group
-        )
-
-
-def test_close_before_acquisition_is_noop(stub_slice_pg):
-    handle, create = stub_slice_pg
-    cfg = _topo_config(engine_kwargs={"tensor_parallel_size": 16})
     processor = build_processor(cfg)
-    processor.close()
-    handle.shutdown.assert_not_called()
-
-
-def test_close_after_acquisition_releases(stub_slice_pg):
-    handle, create = stub_slice_pg
-    cfg = _topo_config(engine_kwargs={"tensor_parallel_size": 16})
-    processor = build_processor(cfg)
-    processor.get_stage_by_name("vLLMEngineStage").map_batches_kwargs[
+    fn = processor.get_stage_by_name("vLLMEngineStage").map_batches_kwargs[
         "ray_remote_args_fn"
-    ]()
-    processor.close()
-    handle.shutdown.assert_called_once()
-
-
-def test_concurrent_acquisition_reserves_one_slice(stub_slice_pg):
-    _, create = stub_slice_pg
-
-    cfg = _topo_config(engine_kwargs={"tensor_parallel_size": 16})
-    with build_processor(cfg) as processor:
-        fn = processor.get_stage_by_name("vLLMEngineStage").map_batches_kwargs[
-            "ray_remote_args_fn"
-        ]
-        threads = [threading.Thread(target=fn) for _ in range(5)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        create.assert_called_once()
-
-
-def test_unacquired_processor_does_not_warn(stub_slice_pg, caplog):
-    cfg = _topo_config(engine_kwargs={"tensor_parallel_size": 16})
-    processor = build_processor(cfg)
-    with caplog.at_level(logging.WARNING):
-        del processor
-        gc.collect()
-    assert not any(
-        "garbage-collected without close()" in r.message for r in caplog.records
-    )
-
-
-def test_close_retry_and_unclosed_finalizer(stub_slice_pg, caplog):
-    handle, _ = stub_slice_pg
-    cfg = _topo_config(
-        engine_kwargs={"tensor_parallel_size": 16},
-    )
-    handle.shutdown.side_effect = [RuntimeError("boom"), None, None]
-    processor = build_processor(cfg)
-    processor.get_stage_by_name("vLLMEngineStage").map_batches_kwargs[
-        "ray_remote_args_fn"
-    ]()
-    with pytest.raises(RuntimeError, match="boom"):
-        processor.close()
-    assert processor._close_fn is not None
-    processor.close()
-    assert processor._close_fn is None
-
-    shutdown_before_finalizer = handle.shutdown.call_count
-    processor = build_processor(cfg)
-    processor.get_stage_by_name("vLLMEngineStage").map_batches_kwargs[
-        "ray_remote_args_fn"
-    ]()
-    with caplog.at_level(logging.WARNING):
-        del processor
-        gc.collect()
-    assert any("garbage-collected without close()" in r.message for r in caplog.records)
-    assert handle.shutdown.call_count == shutdown_before_finalizer + 1
+    ]
+    res1 = fn()
+    res2 = fn()
+    assert create.call_count == 2
+    assert "scheduling_strategy" in res1
+    assert "scheduling_strategy" in res2
 
 
 def test_builder_does_not_mutate_caller_engine_kwargs(stub_slice_pg):
@@ -471,35 +368,15 @@ def test_builder_does_not_mutate_caller_engine_kwargs(stub_slice_pg):
         engine_kwargs={"tensor_parallel_size": 16},
     )
     assert "distributed_executor_backend" not in cfg.engine_kwargs
-    processor = build_processor(cfg)
+    build_processor(cfg)
     assert "distributed_executor_backend" not in cfg.engine_kwargs
-    processor.close()
-
-
-def test_close_prevents_subsequent_acquire(stub_slice_pg):
-    handle, create = stub_slice_pg
-    kwargs, close_fn = _schedule(
-        TPUAccelerator(TPUConfig(topology="4x4")), tensor_parallel_size=16
-    )
-    # Acquire once.
-    kwargs["ray_remote_args_fn"]()
-    # Close it.
-    close_fn()
-    # Cannot acquire again after closed.
-    with pytest.raises(
-        RuntimeError,
-        match="Cannot reserve TPU slice: processor backend was already closed.",
-    ):
-        kwargs["ray_remote_args_fn"]()
-    # Ensure slice_placement_group was only called once.
-    create.assert_called_once()
 
 
 def test_tpu_batch_processor_real_slice_placement_group_integration(
     ray_tpu_cluster,
 ):
     """Integration test verifying real slice_placement_group creation, GCS registration,
-    and teardown on a simulated multi-host TPU clusters.
+    and teardown on a simulated multi-host TPU cluster.
     """
     config = vLLMEngineProcessorConfig(
         model_source="mock-model",
@@ -526,8 +403,8 @@ def test_tpu_batch_processor_real_slice_placement_group_integration(
     assert pg_table["strategy"] == "PACK"
     assert len(pg_table["bundles"]) == 4
 
-    # Close processor and verify PG teardown in GCS.
-    processor.close()
+    # Remove PG and verify teardown in GCS.
+    ray.util.remove_placement_group(pg)
     pg_table_after = ray.util.placement_group_table(pg)
     assert pg_table_after["state"] == "REMOVED"
 

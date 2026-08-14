@@ -158,19 +158,6 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
                     "TPU batch inference requires accelerator_config with topology; "
                     f"got {self.accelerator_config!r}."
                 )
-            conc = self.concurrency
-            if isinstance(conc, int) and not isinstance(conc, bool):
-                hi = conc
-            elif isinstance(conc, tuple) and len(conc) == 2:
-                hi = conc[1]
-            else:
-                hi = None
-
-            if hi != 1:
-                raise ValueError(
-                    "TPU batch inference with topology requires a single engine "
-                    f"replica (concurrency=1 or (1, 1)); got {self.concurrency!r}."
-                )
         elif isinstance(self.accelerator_config, TPUConfig):
             raise ValueError(
                 f"TPUConfig requires a TPU accelerator_type; got {self.accelerator_type!r}."
@@ -336,7 +323,7 @@ def build_vllm_engine_processor(
     engine_kwargs = dict(config.engine_kwargs)
     # Resolve the batch scheduling options for the given accelerator backend.
     backend = get_accelerator_backend(config.accelerator_config or GPUConfig())
-    accel_map_kwargs, close_fn = backend.build_batch_scheduling_options(
+    accel_map_kwargs = backend.build_batch_scheduling_options(
         accelerator_type=config.accelerator_type,
         engine_kwargs=engine_kwargs,
         placement_group_config=config.placement_group_config,
@@ -438,7 +425,6 @@ def build_vllm_engine_processor(
         postprocess=postprocess,
         preprocess_map_kwargs=preprocess_map_kwargs,
         postprocess_map_kwargs=postprocess_map_kwargs,
-        close_fn=close_fn,
     )
 
 

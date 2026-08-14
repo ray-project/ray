@@ -59,7 +59,7 @@ def test_gpu_stage_scheduling_uses_pack_when_unset(monkeypatch):
         placement_group_config={"bundle_per_worker": {"CPU": 1.0, "GPU": 1.0}},
     )
     backend = GPUAccelerator(GPUConfig())
-    map_batches_kwargs, _ = backend.build_batch_scheduling_options(
+    map_batches_kwargs = backend.build_batch_scheduling_options(
         accelerator_type=cfg.accelerator_type,
         engine_kwargs=dict(cfg.engine_kwargs),
         placement_group_config=cfg.placement_group_config,
@@ -77,7 +77,7 @@ def test_gpu_accelerator_constraint_preserved_with_explicit_pg():
         placement_group_config={"bundle_per_worker": {"CPU": 1.0, "GPU": 1.0}},
     )
     backend = GPUAccelerator(GPUConfig())
-    map_batches_kwargs, _ = backend.build_batch_scheduling_options(
+    map_batches_kwargs = backend.build_batch_scheduling_options(
         accelerator_type=cfg.accelerator_type,
         engine_kwargs=dict(cfg.engine_kwargs),
         placement_group_config=cfg.placement_group_config,
@@ -101,7 +101,7 @@ def test_gpu_accelerator_bundle_contents(monkeypatch):
     )
 
     backend = GPUAccelerator(config=GPUConfig())
-    map_batches_kwargs, _ = backend.build_batch_scheduling_options(
+    map_batches_kwargs = backend.build_batch_scheduling_options(
         accelerator_type="A100",
         engine_kwargs={"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
         placement_group_config=None,
