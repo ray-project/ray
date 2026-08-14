@@ -36,6 +36,7 @@ ORC
 [Oo]utqueue(s)?
 PDFs
 PIL
+[Pp]interest('s)?
 [Pp]ipelined
 [Pp]olars
 Predibase('s)?
