@@ -130,8 +130,6 @@ DEFAULT_USE_POLARS = False
 
 DEFAULT_USE_POLARS_SORT = False
 
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
-
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
@@ -163,6 +161,10 @@ DEFAULT_LOG_INTERNAL_STACK_TRACE = env_bool(
 
 DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
     "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", False
+)
+
+DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S = env_float(
+    "RAY_DATA_EXECUTION_NO_PROGRESS_TIMEOUT_S", 30 * 60
 )
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -317,6 +319,8 @@ DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR = env_integer(
 DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
+
+DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
 
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
 
@@ -578,7 +582,6 @@ class DataContext:
         large_args_threshold: Deprecated. Ray Data manages scheduling internally.
         use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
-        eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
@@ -673,6 +676,12 @@ class DataContext:
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        execution_no_progress_timeout_s: Maximum time in seconds that an execution may
+            go without any operator producing or consuming an output before it fails
+            with `ExecutionTimeoutError`. Doesn't apply to Datasets with an
+            all-to-all operation.
+            Raise this if your workload can wait a long time for cluster capacity.
+            Set to -1 to disable.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
@@ -748,6 +757,7 @@ class DataContext:
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
         use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
+        use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
@@ -894,7 +904,7 @@ class DataContext:
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
     use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
-    eager_free: bool = DEFAULT_EAGER_FREE
+    use_legacy_dataset_ids: bool = DEFAULT_USE_LEGACY_DATASET_IDS
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
@@ -940,6 +950,7 @@ class DataContext:
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
+    execution_no_progress_timeout_s: float = DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S
     log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True

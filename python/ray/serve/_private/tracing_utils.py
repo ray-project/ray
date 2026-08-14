@@ -14,6 +14,7 @@ from ray.serve._private.constants import (
 
 if TYPE_CHECKING:
     from ray.serve._private.common import ServeComponentType
+    from ray.serve.schema import TracingConfig
 
 try:
     from opentelemetry import trace
@@ -51,6 +52,8 @@ except ImportError:
 TRACE_STACK: ContextVar[List[Any]] = ContextVar(
     "trace_stack"
 )  # Create tracer once at module level
+
+_tracing_enabled: bool = False
 
 _tracer = None
 _tracer_lock = threading.Lock()
@@ -179,13 +182,15 @@ def tracing_decorator_factory(
     """
 
     def tracing_decorator(func):
-        if not is_tracing_enabled():
-            # if tracing is not enabled, we don't want to wrap the function
-            # with the tracing decorator.
-            return func
+        # NOTE: We check is_tracing_enabled() INSIDE each wrapper rather than
+        # at decoration time. Decorators are applied at import/class-definition
+        # time, before setup_tracing() has been called, so the check would
+        # always return False at decoration time.
 
         @wraps(func)
         def synchronous_wrapper(*args, **kwargs):
+            if not is_tracing_enabled():
+                return func(*args, **kwargs)
             with TraceContextManager(trace_name, span_kind):
                 result = func(*args, **kwargs)
 
@@ -193,18 +198,27 @@ def tracing_decorator_factory(
 
         @wraps(func)
         def generator_wrapper(*args, **kwargs):
+            if not is_tracing_enabled():
+                yield from func(*args, **kwargs)
+                return
             with TraceContextManager(trace_name, span_kind):
                 for item in func(*args, **kwargs):
                     yield item
 
         @wraps(func)
         async def asynchronous_wrapper(*args, **kwargs):
+            if not is_tracing_enabled():
+                return await func(*args, **kwargs)
             with TraceContextManager(trace_name, span_kind):
                 result = await func(*args, **kwargs)
             return result
 
         @wraps(func)
         async def asyc_generator_wrapper(*args, **kwargs):
+            if not is_tracing_enabled():
+                async for item in func(*args, **kwargs):
+                    yield item
+                return
             with TraceContextManager(trace_name, span_kind):
                 async for item in func(*args, **kwargs):
                     yield item
@@ -227,10 +241,7 @@ def setup_tracing(
     component_name: str,
     component_id: str,
     component_type: Optional["ServeComponentType"] = None,  # noqa: F821
-    tracing_exporter_import_path: Optional[
-        str
-    ] = RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
-    tracing_sampling_ratio: Optional[float] = RAY_SERVE_TRACING_SAMPLING_RATIO,
+    tracing_config: Optional["TracingConfig"] = None,  # noqa: F821
 ) -> bool:
     """
     Set up tracing for a specific Serve component.
@@ -239,13 +250,32 @@ def setup_tracing(
         component_name: The name of the component.
         component_id: The unique identifier of the component.
         component_type: The type of the component.
-        tracing_exporter_import_path: Path to tracing exporter function.
-        tracing_sampling_ratio: Sampling ratio for traces (0.0 to 1.0).
+        tracing_config: Optional TracingConfig instance. When provided, the
+            exporter and sampling ratio are read from it. When None, tracing
+            falls back to the RAY_SERVE_TRACING_* environment variables.
 
     Returns:
         bool: True if tracing setup is successful, False otherwise.
     """
+    global _tracing_enabled
+
+    if tracing_config is not None:
+        # Use TracingConfig-based configuration
+        if not tracing_config.enabled:
+            _tracing_enabled = False
+            return False
+        tracing_exporter_import_path = tracing_config.exporter_import_path
+        # Fill default exporter if enabled but path is empty
+        if not tracing_exporter_import_path:
+            tracing_exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        tracing_sampling_ratio = tracing_config.sampling_ratio
+    else:
+        # No TracingConfig provided: fall back to env-var configuration.
+        tracing_exporter_import_path = RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH
+        tracing_sampling_ratio = RAY_SERVE_TRACING_SAMPLING_RATIO
+
     if tracing_exporter_import_path == "":
+        _tracing_enabled = False
         return False
 
     # Check dependencies
@@ -281,6 +311,7 @@ def setup_tracing(
     for span_processor in span_processors:
         trace.get_tracer_provider().add_span_processor(span_processor)
 
+    _tracing_enabled = True
     return True
 
 
@@ -425,7 +456,7 @@ def set_span_exception(exc: Exception, escaped: bool = False):
 
 
 def is_tracing_enabled() -> bool:
-    return RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH != "" and trace is not None
+    return _tracing_enabled and trace is not None
 
 
 def is_span_recording() -> bool:

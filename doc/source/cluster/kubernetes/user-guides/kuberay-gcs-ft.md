@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Make the GCS fault tolerant on KubeRay by backing cluster metadata with Redis, so head pod failure doesn't kill the cluster."
+---
+
 (kuberay-gcs-ft)=
 # GCS fault tolerance in KubeRay
 

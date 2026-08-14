@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Resize Ray worker pod resources in place with KubeRay IPPR, avoiding restarts, with validation rules and resize behavior."
+---
+
 (kuberay-in-place-pod-resizing)=
 
 # KubeRay In-Place Pod Resizing (IPPR)
