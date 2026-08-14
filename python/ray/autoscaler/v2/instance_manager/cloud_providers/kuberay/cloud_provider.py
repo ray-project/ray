@@ -48,6 +48,16 @@ NO_DRIVER_TTL_EXPIRED_ANNOTATION = "ray.io/no-driver-ttl-expired"
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 NO_DRIVER_TIMEOUT_SECONDS_KEY = "noDriverTimeoutSeconds"
 
+# Field on a worker group's scaleStrategy that external controllers (e.g. Kueue)
+# populate with scaling gates. A non-empty list blocks the group from scaling up
+# and triggers autoscaler fallback to a lower-priority group.
+SCALE_GATE_KEY = "scaleGate"
+
+# Grace period before an in-flight launch with no observed pods yet is pruned
+# from _pending_launches. This keeps a just-submitted launch tracked until its
+# pod appears, so a gate arriving in that window still fast-fails.
+LAUNCH_REQUEST_GRACE_PERIOD_S = 60.0
+
 
 class KubeRayProvider(ICloudInstanceProvider):
     """
@@ -87,6 +97,17 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._requests = set()
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
+
+        # Maps a worker group node type to its in-flight launch request ids and
+        # the count requested by each. Used to fail those launches fast (via a
+        # LaunchNodeError) when the group becomes gated, e.g. Kueue sets
+        # scaleStrategy.scaleGate on a quota-exceeded group. Keyed by request id
+        # (not a single id) so concurrent launches for the same group are not
+        # lost, and the count is preserved for the emitted error.
+        self._pending_launches: Dict[NodeType, Dict[str, int]] = defaultdict(dict)
+        # Monotonic timestamp of each launch request, so a just-submitted launch
+        # is not pruned before its pods appear (see _evaluate_scale_gates).
+        self._pending_launches_timestamps: Dict[str, float] = {}
 
         # Below are states for idle-cluster termination tracking.
         # Monotonic timestamp when no driver was first observed; None resets it.
@@ -138,6 +159,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
+        self._evaluate_scale_gates()
         self._evaluate_no_driver_termination()
         return copy.deepcopy(dict(self._cached_instances))
 
@@ -205,6 +227,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._submit_scale_request(scale_request)
             # Only add to processed requests if successful
             self._requests.add(request_id)
+            self._add_pending_launch(shape, request_id)
 
         except Exception as e:
             logger.exception(f"Error launching nodes: {scale_request or 'N/A'}")
@@ -418,12 +441,28 @@ class KubeRayProvider(ICloudInstanceProvider):
         logger.info(f"Submitting a scale request: {scale_request}")
         self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
 
+    def _add_pending_launch(
+        self, shape: Dict[NodeType, int], request_id: str
+    ) -> None:
+        """Tracks an in-flight launch so it can be failed fast if the group later
+        becomes gated (see _evaluate_scale_gates). Records the request timestamp
+        so a just-submitted launch is not pruned before its pods appear.
+
+        Args:
+            shape: The requested launch shape (node type -> count).
+            request_id: The request id of the launch request.
+        """
+        self._pending_launches_timestamps[request_id] = time.monotonic()
+        for node_type, count in shape.items():
+            self._pending_launches[node_type][request_id] = count
+
     def _add_launch_errors(
         self,
         shape: Dict[NodeType, int],
         request_id: str,
         details: str,
         e: Optional[Exception] = None,
+        gated: bool = False,
     ) -> None:
         """
         Adds launch errors to the error queue.
@@ -433,6 +472,8 @@ class KubeRayProvider(ICloudInstanceProvider):
             request_id: The request id of the launch request.
             details: The details of the error.
             e: The exception that caused the error.
+            gated: Whether the launch was blocked by an external scaling gate
+                rather than a genuine allocation failure.
         """
         for node_type, count in shape.items():
             self._launch_errors_queue.append(
@@ -443,6 +484,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                     request_id=request_id,
                     details=details,
                     cause=e,
+                    gated=gated,
                 )
             )
 
@@ -547,6 +589,131 @@ class KubeRayProvider(ICloudInstanceProvider):
             worker_groups_with_finished_deletes,
             worker_to_delete_set,
         )
+
+    def _gated_node_types(self) -> Set[NodeType]:
+        """Returns the node types whose worker group has a non-empty scaleGate.
+
+        External controllers (e.g. Kueue) append entries to
+        spec.workerGroupSpecs[i].scaleStrategy.scaleGate to signal that the group
+        cannot scale up right now (e.g. quota exceeded).
+        """
+        gated = set()
+        worker_groups = self._ray_cluster["spec"].get("workerGroupSpecs", [])
+        for worker_group in worker_groups:
+            scale_gate = worker_group.get("scaleStrategy", {}).get(SCALE_GATE_KEY, [])
+            if scale_gate:
+                gated.add(worker_group["groupName"])
+        return gated
+
+    def _prune_pending_launches(self) -> None:
+        """Drops bookkeeping for launches that have resolved or timed out.
+
+        A launch is dropped once its group has no pending (not-yet-running) pods
+        left. This keeps _pending_launches bounded instead of growing per launch,
+        and avoids emitting a stale gated error for an already-resolved launch. A
+        just-submitted launch is kept for a grace period so it is not pruned
+        before its pods appear (KubeRay creates pods after the replica patch); a
+        gate arriving in that window still fast-fails.
+        """
+        node_types_with_pending_pods = {
+            instance.node_type
+            for instance in self._cached_instances.values()
+            if not instance.is_running
+        }
+        now = time.monotonic()
+        for node_type in list(self._pending_launches.keys()):
+            if node_type in node_types_with_pending_pods:
+                continue
+            for request_id in list(self._pending_launches[node_type]):
+                launched_at = self._pending_launches_timestamps.get(request_id, 0.0)
+                if now - launched_at < LAUNCH_REQUEST_GRACE_PERIOD_S:
+                    # Within grace period; keep so a later gate can fast-fail it.
+                    continue
+                del self._pending_launches[node_type][request_id]
+            if not self._pending_launches[node_type]:
+                del self._pending_launches[node_type]
+
+        # Drop timestamps for request ids no longer tracked by any group.
+        tracked_request_ids = {
+            request_id
+            for requests in self._pending_launches.values()
+            for request_id in requests
+        }
+        self._pending_launches_timestamps = {
+            request_id: ts
+            for request_id, ts in self._pending_launches_timestamps.items()
+            if request_id in tracked_request_ids
+        }
+
+    def _evaluate_scale_gates(self) -> None:
+        """Fails in-flight launches for gated worker groups immediately.
+
+        When a worker group's scaleStrategy.scaleGate is non-empty, its in-flight
+        launch is failed with a gated LaunchNodeError so the reconciler transitions
+        the instance REQUESTED -> ALLOCATION_GATED right away, bypassing the allocate
+        status timeout. The gated group's pending pods are excluded from the fetched
+        instances so they are not counted as launching/allocated.
+        """
+        # Must run before the gated-pod filter below, which drops gated groups'
+        # pending pods (otherwise a gated group with only pending pods would look
+        # resolved and skip fast-fail).
+        self._prune_pending_launches()
+
+        gated_node_types = self._gated_node_types()
+
+        # Exclude pending pods of gated groups so they are not counted as
+        # launching/allocated while the group is gated.
+        if gated_node_types:
+            self._cached_instances = {
+                cloud_instance_id: instance
+                for cloud_instance_id, instance in self._cached_instances.items()
+                if not (
+                    instance.node_type in gated_node_types and not instance.is_running
+                )
+            }
+
+        self._add_launch_error_for_gated_groups(gated_node_types)
+
+    def _add_launch_error_for_gated_groups(
+        self, gated_node_types: Set[NodeType]
+    ) -> None:
+        """Fails in-flight launches whose worker group is gated.
+
+        A single launch request can span multiple worker groups, so the gated
+        node types are grouped by their request id and each request is failed
+        once with the full shape of its gated groups. Each group may have
+        multiple concurrent in-flight request ids.
+
+        Args:
+            gated_node_types: The node types whose worker group is gated.
+        """
+        gated_shapes_by_request: Dict[str, Dict[NodeType, int]] = defaultdict(dict)
+        for node_type in gated_node_types:
+            for request_id, count in self._pending_launches.get(node_type, {}).items():
+                gated_shapes_by_request[request_id][node_type] = count
+            # All in-flight launches for this gated group are being failed below;
+            # drop the group's pending launches. A request id that also spans a
+            # non-gated group keeps its entry there so it can still fast-fail if
+            # that group is gated later.
+            self._pending_launches.pop(node_type, None)
+
+        for request_id, shape in gated_shapes_by_request.items():
+            gated_groups = sorted(shape)
+            logger.info(
+                f"Worker groups {gated_groups} are gated by scaleGate; failing "
+                f"in-flight launch request {request_id} to trigger fallback."
+            )
+            self._add_launch_errors(
+                shape,
+                request_id,
+                details=(
+                    f"Worker groups {gated_groups} are gated by scaleGate "
+                    "(e.g. quota exceeded); triggering fallback."
+                ),
+                gated=True,
+            )
+            # Allow a subsequent launch for these groups once the gate clears.
+            self._requests.discard(request_id)
 
     def _fetch_instances(self) -> Dict[CloudInstanceId, CloudInstance]:
         """

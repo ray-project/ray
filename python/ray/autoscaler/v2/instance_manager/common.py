@@ -221,6 +221,9 @@ class InstanceUtil:
                 # Cloud provider fails to allocate one. Either as a timeout or
                 # the launch request fails immediately.
                 Instance.ALLOCATION_FAILED,
+                # The launch is blocked by an external scaling gate (e.g. Kueue
+                # sets scaleStrategy.scaleGate on a quota-exceeded worker group).
+                Instance.ALLOCATION_GATED,
             },
             # When in this status, the cloud instance is allocated and running. This
             # happens when the cloud instance is present in node provider's list of
@@ -361,6 +364,10 @@ class InstanceUtil:
             # When in this status, the cloud instance failed to be allocated by the
             # node provider.
             Instance.ALLOCATION_FAILED: set(),  # Terminal state.
+            # The allocation is blocked by an external scaling gate. No cloud
+            # resources were allocated (fails from REQUESTED), so this is terminal
+            # like ALLOCATION_FAILED; the scheduler falls back to another group.
+            Instance.ALLOCATION_GATED: set(),  # Terminal state.
             Instance.RAY_INSTALL_FAILED: {
                 # Autoscaler requests to shutdown the instance when ray install failed.
                 Instance.TERMINATING,

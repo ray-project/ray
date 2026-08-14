@@ -23,6 +23,7 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.fake_multi_node.node_provider import FakeMultiNodeProvider
 from ray.autoscaler._private.kuberay.node_provider import IKubernetesHttpApiClient
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    LAUNCH_REQUEST_GRACE_PERIOD_S,
     NO_DRIVER_TTL_EXPIRED_ANNOTATION,
     KubeRayProvider,
 )
@@ -780,6 +781,175 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert pending_deletes == {"small-group"}
         assert finished_deletes == set()
         assert workers_to_delete == {pod_names[0], pod_names[1]}
+
+    def test_gated_node_types(self):
+        self.provider._ray_cluster = get_basic_ray_cr()
+        assert self.provider._gated_node_types() == set()
+
+        self.provider._ray_cluster["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {
+            "scaleGate": ["kueue.k8s.io/quota-exceeded"],
+        }
+        assert self.provider._gated_node_types() == {"small-group"}
+
+        # An empty scaleGate list is not gated.
+        self.provider._ray_cluster["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {
+            "scaleGate": [],
+        }
+        assert self.provider._gated_node_types() == set()
+
+        # A scaleStrategy without a scaleGate key is not gated.
+        self.provider._ray_cluster["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {
+            "workersToDelete": ["some-pod"],
+        }
+        assert self.provider._gated_node_types() == set()
+
+    def test_scale_gate_fails_in_flight_launch(self):
+        # Launch a worker in the small-group.
+        self.provider.launch(shape={"small-group": 1}, request_id="launch-1")
+        assert self.provider.poll_errors() == []
+        assert self.provider._pending_launches == {"small-group": {"launch-1": 1}}
+
+        # Kueue gates the group; the in-flight launch should fail fast.
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "scaleStrategy"
+        ] = {"scaleGate": ["kueue.k8s.io/quota-exceeded"]}
+
+        self.provider.get_non_terminated()
+        errors = self.provider.poll_errors()
+        assert len(errors) == 1
+        assert isinstance(errors[0], LaunchNodeError)
+        assert errors[0].node_type == "small-group"
+        assert errors[0].request_id == "launch-1"
+        assert "scaleGate" in str(errors[0])
+        # The pending launch is cleared and a new launch is allowed for the group.
+        assert "small-group" not in self.provider._pending_launches
+        assert "launch-1" not in self.provider._requests
+
+    def test_scale_gate_excludes_pending_pods(self):
+        # small-group has one pending (not running) worker pod in podlist1.
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "scaleStrategy"
+        ] = {"scaleGate": ["kueue.k8s.io/quota-exceeded"]}
+
+        nodes = self.provider.get_non_terminated()
+        # The gated group's pending pod is excluded; only the running head remains.
+        assert all(
+            instance.node_type != "small-group" for instance in nodes.values()
+        )
+
+    def test_scale_gate_no_pending_launch_no_error(self):
+        # A gated group with no in-flight launch produces no launch error.
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "scaleStrategy"
+        ] = {"scaleGate": ["kueue.k8s.io/quota-exceeded"]}
+
+        self.provider.get_non_terminated()
+        assert self.provider.poll_errors() == []
+
+    def test_pending_launch_cleared_once_pods_running(self):
+        # An ungated in-flight launch is tracked, then cleaned up once the
+        # group's pods are all running (launch resolved) and the grace period
+        # has elapsed.
+        self.provider.launch(shape={"small-group": 1}, request_id="launch-1")
+        assert self.provider._pending_launches == {"small-group": {"launch-1": 1}}
+
+        # Mark all small-group pods running so no pending pod remains.
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"].get("ray.io/group") == "small-group":
+                pod["status"]["containerStatuses"] = [{"state": {"running": {}}}]
+
+        # Advance monotonic time past the grace period so the resolved launch
+        # is eligible for pruning.
+        launched_at = self.provider._pending_launches_timestamps["launch-1"]
+        with mock.patch(
+            "time.monotonic",
+            return_value=launched_at + LAUNCH_REQUEST_GRACE_PERIOD_S + 1,
+        ):
+            self.provider.get_non_terminated()
+        assert self.provider.poll_errors() == []
+        # Bookkeeping for the resolved launch is dropped.
+        assert "small-group" not in self.provider._pending_launches
+        assert "launch-1" not in self.provider._pending_launches_timestamps
+
+    def test_pending_launch_retained_within_grace_period(self):
+        # A resolved launch (no pending pods) is retained while still within the
+        # grace period, so a gate arriving right after the pod starts running can
+        # still fast-fail it.
+        self.provider.launch(shape={"small-group": 1}, request_id="launch-1")
+        assert self.provider._pending_launches == {"small-group": {"launch-1": 1}}
+
+        # Mark all small-group pods running so no pending pod remains.
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"].get("ray.io/group") == "small-group":
+                pod["status"]["containerStatuses"] = [{"state": {"running": {}}}]
+
+        # Still within the grace period: the launch must be retained.
+        self.provider.get_non_terminated()
+        assert self.provider.poll_errors() == []
+        assert self.provider._pending_launches == {"small-group": {"launch-1": 1}}
+
+    def test_pending_launch_retained_while_pods_pending(self):
+        # An ungated in-flight launch must NOT be pruned while the group still
+        # has a pending (not-yet-running) pod, so it can still fast-fail if the
+        # group is gated on a later loop. small-group has a pending pod in
+        # podlist1.
+        self.provider.launch(shape={"small-group": 1}, request_id="launch-1")
+        assert self.provider._pending_launches == {"small-group": {"launch-1": 1}}
+
+        self.provider.get_non_terminated()
+        assert self.provider.poll_errors() == []
+        # The launch is retained because the group's pod is still pending.
+        assert self.provider._pending_launches == {"small-group": {"launch-1": 1}}
+
+    def test_scale_gate_fails_launch_with_only_pending_pods(self):
+        # Regression: cleanup must run before the gated-pod filter. A gated
+        # group whose pods are all still pending must still fast-fail; if
+        # cleanup ran after the filter (which drops gated groups' pending pods),
+        # the launch would look resolved and be pruned without failing.
+        self.provider.launch(shape={"small-group": 1}, request_id="launch-1")
+        assert self.provider._pending_launches == {"small-group": {"launch-1": 1}}
+
+        # small-group's pod is pending (waiting) in podlist1; gate the group.
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "scaleStrategy"
+        ] = {"scaleGate": ["kueue.k8s.io/quota-exceeded"]}
+
+        self.provider.get_non_terminated()
+        errors = self.provider.poll_errors()
+        assert len(errors) == 1
+        assert isinstance(errors[0], LaunchNodeError)
+        assert errors[0].gated
+        assert errors[0].request_id == "launch-1"
+        assert "small-group" not in self.provider._pending_launches
+
+    def test_scale_gate_fails_concurrent_in_flight_launches(self):
+        # Two concurrent launches for the same group with different request ids
+        # and different counts.
+        self.provider.launch(shape={"small-group": 2}, request_id="launch-1")
+        self.provider.launch(shape={"small-group": 3}, request_id="launch-2")
+        assert self.provider.poll_errors() == []
+        assert self.provider._pending_launches == {
+            "small-group": {"launch-1": 2, "launch-2": 3}
+        }
+
+        # Kueue gates the group; both in-flight launches should fail fast.
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "scaleStrategy"
+        ] = {"scaleGate": ["kueue.k8s.io/quota-exceeded"]}
+
+        self.provider.get_non_terminated()
+        errors = self.provider.poll_errors()
+        assert len(errors) == 2
+        assert all(isinstance(e, LaunchNodeError) and e.gated for e in errors)
+        # Each error carries its request's actual requested count.
+        assert {(e.request_id, e.count) for e in errors} == {
+            ("launch-1", 2),
+            ("launch-2", 3),
+        }
+        # Both pending launches are cleared and both requests are allowed again.
+        assert "small-group" not in self.provider._pending_launches
+        assert "launch-1" not in self.provider._requests
+        assert "launch-2" not in self.provider._requests
 
     def test_set_no_driver_annotation_adds_when_absent(self):
         self.provider._set_no_driver_annotation()
