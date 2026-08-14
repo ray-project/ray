@@ -28,8 +28,14 @@
 #   SKIP_TESTS=1                skip the pytest gate
 #   FIXTURE_SCALE=0.25          smaller fixtures for a quick smoke run
 #   FIXTURES_ROOT=<dir>         default ~/arrow_rs_repl_fixtures
-#   REPEAT=3                    median-of-N per cell (default 3 — these are the
-#                               numbers we act on, so default to medians)
+#   REPEAT=3                    measured runs per cell (default 3 — these are the
+#                               numbers we act on, so default to medians). Every
+#                               metric is medianed on its own; per-repeat values
+#                               land in summary.json as _samples
+#   WARMUP=1                    discarded runs per cell before the measured ones
+#                               (default 1). The first run of a cell is cold —
+#                               page cache, .so load — and drags a 3-run median.
+#                               WARMUP=0 to measure the cold path deliberately
 #   ONLY=binsweep,tensors       run a subset of stages
 #   FORCE_SETUP=1               re-run setup.sh even if the env already imports
 # ---------------------------------------------------------------------------
@@ -41,6 +47,7 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"  # uv + cargo (setup.sh in
 FIXTURES_ROOT="${FIXTURES_ROOT:-$HOME/arrow_rs_repl_fixtures}"
 FIXTURE_SCALE="${FIXTURE_SCALE:-1.0}"
 REPEAT="${REPEAT:-3}"
+WARMUP="${WARMUP:-1}"
 ONLY="${ONLY:-}"
 
 say() { printf '\n\033[1;35m### %s\033[0m\n' "$*"; }
@@ -73,10 +80,11 @@ say "3/4 fixtures (root=$FIXTURES_ROOT scale=$FIXTURE_SCALE, replication shapes)
 python "$SCRIPT_DIR/gen_local_fixtures.py" --root "$FIXTURES_ROOT" \
   --scale "$FIXTURE_SCALE" --shapes bin_sweep,tensors_wide,tensors_cp,fat_col
 
-say "4/4 replication matrix (repeat=$REPEAT only=${ONLY:-all})"
+say "4/4 replication matrix (repeat=$REPEAT warmup=$WARMUP only=${ONLY:-all})"
 python "$SCRIPT_DIR/replication_matrix.py" \
   --fixture-root "$FIXTURES_ROOT" \
   --repeat "$REPEAT" \
+  --warmup "$WARMUP" \
   ${ONLY:+--only "$ONLY"}
 
 say "DONE — summary printed above; full logs under $SCRIPT_DIR/replication_runs/"

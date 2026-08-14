@@ -285,7 +285,21 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--fixture-root", required=True)
     p.add_argument("--outdir", default=None)
-    p.add_argument("--repeat", type=int, default=1, help="runs per cell, keep median")
+    p.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="measured runs per cell; each metric is reported as its own median",
+    )
+    p.add_argument(
+        "--warmup",
+        type=int,
+        default=1,
+        help=(
+            "discarded runs per cell before the measured ones. The first run of a "
+            "cell is reproducibly slow (cold page cache / .so); 0 to disable."
+        ),
+    )
     p.add_argument(
         "--skip",
         default="",
@@ -331,7 +345,7 @@ def main():
     rows = {}
 
     def cell(name, **kw):
-        rows[name] = median_cell(outdir, name, args.repeat, **kw)
+        rows[name] = median_cell(outdir, name, args.repeat, args.warmup, **kw)
 
     # -------- [tensors] R1 / item 1y --------
     if enabled("tensors"):

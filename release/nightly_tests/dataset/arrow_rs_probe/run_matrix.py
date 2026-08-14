@@ -110,8 +110,38 @@ def _num(res, key):
         return None
 
 
-def median_cell(logdir, name, repeat, **kw):
-    """Run a cell `repeat` times, return the run whose wall_s is the median."""
+def _median(vals):
+    """Median of a numeric list; the mean of the two middles for an even count."""
+    s = sorted(vals)
+    n = len(s)
+    if not n:
+        return None
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
+
+
+def median_cell(logdir, name, repeat, warmup=1, **kw):
+    """Run a cell `warmup`+`repeat` times; return a per-metric median of the measured runs.
+
+    Two things this has to get right, both of which it got wrong until 2026-08-13
+    (findings T25/T26):
+
+    * **Median each metric independently.** Returning the whole dict of the run whose
+      `wall_s` was the median leaves every *other* metric a single sample chosen by an
+      unrelated metric. In the item-1o A/B that paired the fastest arrow_rs read with
+      the slowest PyArrow one and reported 1.04x where the honest ratio was ~1.7x.
+    * **Discard the warm-up run.** A cell's first repeat is reproducibly slow — cold page
+      cache for the fixture, cold `.so`/imports — 1.44 s against a 1.03-1.22 s steady
+      state on the fat_col shape, and reproducible to 0.35% across two independent runs.
+      One such sample drags a 3-sample median. Warm-ups still run and still log (as
+      `<name>.w<i>`); they just don't reach the stats.
+
+    Non-numeric fields (reader, path, ...) carry over from the first measured run.
+    `_n` and `_samples` record the sample count and each metric's values, so spread is
+    visible in summary.json without opening the per-cell logs.
+    """
+    for i in range(warmup):
+        run_cell(logdir, f"{name}.w{i}", **kw)
     runs = []
     for i in range(repeat):
         tag = name if repeat == 1 else f"{name}.r{i}"
@@ -119,8 +149,18 @@ def median_cell(logdir, name, repeat, **kw):
     good = [r for r in runs if r]
     if not good:
         return {}
-    good.sort(key=lambda r: _num(r, "wall_s") or float("inf"))
-    return good[len(good) // 2]
+
+    out = dict(good[0])
+    samples = {}
+    for key in list(out):
+        vals = [_num(r, key) for r in good]
+        if any(v is None for v in vals):
+            continue  # not numeric in every run — keep the first run's value verbatim
+        out[key] = _median(vals)
+        samples[key] = vals
+    out["_n"] = len(good)
+    out["_samples"] = samples
+    return out
 
 
 def ratio(a, b):
@@ -137,7 +177,21 @@ def main():
     p.add_argument(
         "--outdir", default=None, help="log dir (default ./matrix_runs/<ts>)"
     )
-    p.add_argument("--repeat", type=int, default=1, help="runs per cell, report median")
+    p.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="measured runs per cell; each metric is reported as its own median",
+    )
+    p.add_argument(
+        "--warmup",
+        type=int,
+        default=1,
+        help=(
+            "discarded runs per cell before the measured ones. The first run of a "
+            "cell is reproducibly slow (cold page cache / .so); 0 to disable."
+        ),
+    )
     p.add_argument(
         "--skip",
         default="",
@@ -156,7 +210,7 @@ def main():
     rows = {}  # name -> result dict
 
     def cell(name, **kw):
-        rows[name] = median_cell(outdir, name, args.repeat, **kw)
+        rows[name] = median_cell(outdir, name, args.repeat, args.warmup, **kw)
 
     # -------- [diag] cpu_over_wall @ concurrency=1 --------
     if "diag" not in skip:

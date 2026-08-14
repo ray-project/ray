@@ -71,6 +71,17 @@ python replication_matrix.py --fixture-root ~/arrow_rs_repl_fixtures --repeat 3
 Results: `replication_runs/<ts>/summary.json` + per-cell logs; the summary block
 prints R = arrow_rs/pyarrow per cell pair and the pre_buffer on/off deltas.
 
+**How a cell is aggregated** (both matrices; `run_matrix.median_cell`): each cell runs
+`--warmup` times (default **1**, logged as `<cell>.w<i>`, discarded) and then `--repeat`
+times (logged as `<cell>.r<i>`), and **every metric is medianed independently** over the
+measured runs. `summary.json` carries `_n` and `_samples` per cell so spread is visible
+without opening a log. Both halves matter: before 2026-08-13 the function returned the
+whole dict of whichever run had the median `wall_s`, which made every other metric a
+single sample chosen by an unrelated one — that alone reported a 1.98× read-wall ratio
+as 1.04. And the first repeat is reproducibly the cold one (page cache, `.so` load):
+1.44 s against a 1.03–1.22 s steady state on `fat_col`, repeatable to 0.35%, enough to
+drag a 3-sample median. Use `--warmup 0` only when you want the cold number.
+
 ---
 
 Single-node harness to measure the two cases where the arrow-rs Parquet reader was
