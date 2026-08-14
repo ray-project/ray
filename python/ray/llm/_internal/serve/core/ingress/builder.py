@@ -345,7 +345,10 @@ def build_anthropic_app(builder_config: dict) -> Application:
             )
         ingress_cls_config = builder_config.ingress_cls_config
         if ingress_cls_config.ingress_cls == OpenAiIngress:
-            ingress_cls_config = IngressClsConfig(ingress_cls=AnthropicIngress)
+            ingress_cls_config = IngressClsConfig(
+                ingress_cls=AnthropicIngress,
+                ingress_extra_kwargs=ingress_cls_config.ingress_extra_kwargs,
+            )
         _validate_direct_streaming_ingress_config(
             builder_config.ingress_deployment_config,
             ingress_cls_config,

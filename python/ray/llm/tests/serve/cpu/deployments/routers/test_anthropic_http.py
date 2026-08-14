@@ -56,11 +56,17 @@ def ray_instance():
 
 
 @pytest.fixture
-def anthropic_app(ray_instance, llm_config_with_mock_engine, disable_placement_bundles):
-    app = build_anthropic_app(LLMServingArgs(llm_configs=[llm_config_with_mock_engine]))
-    serve.run(app, name="anthropic-app")
-    yield llm_config_with_mock_engine.model_id
-    serve.delete("anthropic-app", _blocking=True)
+def anthropic_app(ray_instance):
+    llm_config = _mock_llm_config()
+    with patch.object(
+        VLLMEngineConfig,
+        "placement_bundles",
+        new_callable=lambda: property(lambda self: []),
+    ):
+        app = build_anthropic_app(LLMServingArgs(llm_configs=[llm_config]))
+        serve.run(app, name="anthropic-app")
+        yield llm_config.model_id
+        serve.delete("anthropic-app", _blocking=True)
 
 
 class TestAnthropicHttp:
@@ -104,14 +110,8 @@ class TestAnthropicHttp:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_direct_streaming_messages(self, monkeypatch):
+    async def test_direct_streaming_messages(self):
         from fastapi.testclient import TestClient
-
-        monkeypatch.setattr(
-            "ray.llm._internal.serve.core.ingress.builder."
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
-            True,
-        )
 
         llm_config = _mock_llm_config()
         with patch.object(
@@ -133,14 +133,8 @@ class TestAnthropicHttp:
         assert response.json()["type"] == "message"
 
     @pytest.mark.asyncio
-    async def test_direct_streaming_count_tokens(self, monkeypatch):
+    async def test_direct_streaming_count_tokens(self):
         from fastapi.testclient import TestClient
-
-        monkeypatch.setattr(
-            "ray.llm._internal.serve.core.ingress.builder."
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
-            True,
-        )
 
         llm_config = _mock_llm_config()
         with patch.object(

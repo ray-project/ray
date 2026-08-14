@@ -494,6 +494,15 @@ class TestBuildOpenaiApp:
 
 
 class TestBuildAnthropicApp:
+    @pytest.fixture
+    def llm_config(self):
+        """Basic LLMConfig for testing."""
+        return LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test-model", model_source="test-source"
+            )
+        )
+
     def test_build_anthropic_app(
         self, get_llm_serve_args, shutdown_ray_and_serve, disable_placement_bundles
     ):
@@ -518,6 +527,33 @@ class TestBuildAnthropicApp:
         assert ingress_request_router is not None
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
         assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
+        )
+
+    def test_direct_streaming_user_request_router_config_wins(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=ConsistentHashRouter,
+        )
+
+        app = build_anthropic_app(LLMServingArgs(llm_configs=[llm_config]))
+        request_router_config = (
+            app._bound_deployment._deployment_config.request_router_config
+        )
+        assert request_router_config.request_router_class == (
+            f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
+        )
 
     def test_direct_streaming_rejects_multiple_llm_configs(
         self, llm_config, disable_placement_bundles, monkeypatch
