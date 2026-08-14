@@ -80,7 +80,7 @@ The `doc` tag itself no longer selects these steps. It now covers the documentat
 
 Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Neither can change tested code, and the post-merge documentation build is the coverage for them. Executable assets such as `.py` and `.ipynb` still route to the owning library, and so do config assets that examples consume, such as `.yaml` and `.sh`, because those can change what a test does.
 
-A prose-only change also skips most of the lint group. Four lint steps run: a README check, a ban on newly added `.rst` files, since new pages must be MyST Markdown, a documentation style linter, and a banned-words check.
+A prose-only change also skips most of the lint group. Three lint steps run: a README check, a ban on newly added `.rst` files, since new pages must be MyST Markdown, and a documentation style linter.
 
 The code-oriented lint steps don't run, because a Markdown change can't fail them: `clang_format`, `bazel_buildifier`, `bazel_team`, `copyright_format`, `dashboard_format`, `pytest_format`, `test_coverage`, `semgrep_lint`, `pre_commit`, and pydoclint. This matters more than it sounds: those steps each pay a full repository clone, and `pre_commit` runs every hook with `--all-files`, so its cost is the same on a one-line Markdown edit as on a thousand-file C++ change.
 
