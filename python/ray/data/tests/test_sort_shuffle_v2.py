@@ -65,7 +65,6 @@ def test_sort_shuffle_map_samples_all_inputs_then_replays_buffered_inputs(
         ctx,
         num_partitions=2,
         sort_key=SortKey("id"),
-        pre_map_merge_threshold=0,
     )
     op.start(ExecutionOptions(), noop_counter())
 
@@ -125,7 +124,6 @@ def test_sort_shuffle_map_samples_nonempty_blocks_after_empty_blocks(
         ctx,
         num_partitions=2,
         sort_key=SortKey("id"),
-        pre_map_merge_threshold=0,
     )
     op.start(ExecutionOptions(), noop_counter())
 
@@ -160,7 +158,6 @@ def test_sort_shuffle_map_handles_all_empty_sample_blocks(
         ctx,
         num_partitions=2,
         sort_key=SortKey("id"),
-        pre_map_merge_threshold=0,
     )
     op.start(ExecutionOptions(), noop_counter())
 
@@ -185,7 +182,6 @@ def test_sort_shuffle_map_user_boundaries_skip_sampling(
         ctx,
         num_partitions=2,
         sort_key=SortKey("id", boundaries=[2]),
-        pre_map_merge_threshold=0,
     )
     op.start(ExecutionOptions(), noop_counter())
 
