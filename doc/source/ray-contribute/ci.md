@@ -92,7 +92,13 @@ The split lives in `.buildkite/always.rules.txt`, which emits the `lint` tag for
 
 Adding the `docs-go` label skips the per-library docs example steps. It's optional. Reach for it on a content-only PR where executing the examples adds nothing and you don't want to wait on them. Like the `go` label, it requires write access, so an external contributor asks a reviewer to add it.
 
-A guard step, `lint: validate docs-go scope`, bounds what the label can skip. It runs whenever the label is present and fails unless the PR changes only content under `doc/`. So the label skips example tests on a prose change but never on a code, CI, or build change. The API surface checks ignore the label by design, since an API reference page edit is exactly the content-only change they need to cover.
+A guard step, `lint: validate docs-go scope`, bounds what the label can skip. It runs whenever the label is present and fails unless every changed file is documentation content: anything under `doc/`, the Vale prose-lint configuration at the repository root (`.vale.ini` and `.vale/`), or the API-consistency checker's own source under `ci/ray_ci/doc/`. `BUILD` files are excluded everywhere, since they define test targets. So the label skips example tests on a documentation change but never on a library, build, or general CI change.
+
+Each of the two paths outside `doc/` qualifies for its own reason. The Vale configuration defines no test target and holds no executable code, and `lint: documentation_style` runs on every PR regardless of the label, so a style-rule edit is still linted. The checker source is executable CI code, so it qualifies on tag routing instead: `test.rules.txt` sends `ci/ray_ci/doc/` to `doc_api` and `tools` only, and every step the label skips carries a library tag rather than either of those, so a change confined to that directory never selects a step the label could take away. The checks that do cover it, the API checks and the `tools` job running its own unit tests, ignore the label.
+
+The API surface checks ignore the label by design, since an API reference page edit is exactly the content-only change they need to cover.
+
+If the guard fails, removing the label isn't enough on its own: push a new commit afterwards. A Buildkite rebuild replays the label set from the build it was rebuilt from, and the pipeline skips label-change builds for a commit that already has a build, so only a new commit produces a build that reads the current labels.
 
 ### What doesn't run on your PR
 
