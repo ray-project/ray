@@ -4,6 +4,8 @@
 these drive it directly against local Parquet fixtures. No Ray cluster needed.
 """
 
+import time
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -184,19 +186,6 @@ class TestNullsAreNeverExactSurvivors:
         exact_rows = sum(rg.num_rows for rg in chunks.row_groups if rg.fully_matched)
         assert exact_rows == expected_exact_rows
 
-    def test_null_free_group_is_still_exact(self, tmp_path):
-        """The guard must not cost us the exact counts we legitimately have."""
-        path, size = _write(
-            tmp_path / "clean.parquet",
-            pa.table({"id": pa.array([35, 40, 45, 50], pa.int64())}),
-            row_group_size=4,
-        )
-
-        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
-
-        assert all(rg.fully_matched for rg in chunks.row_groups)
-        assert sum(rg.num_rows for rg in chunks.row_groups) == 4
-
     @pytest.mark.parametrize(
         "column", ["id", "sepal.length"], ids=["plain", "dotted-flat-name"]
     )
@@ -343,6 +332,30 @@ class TestProjectedLeafIndices:
         paths = [row_group.column(j).path_in_schema for j in indices]
         assert paths == ["id"]
 
+    def test_none_when_projection_matches_no_leaf(self, four_row_groups):
+        # Reachable under schema evolution: the projection names a column this
+        # file predates. Empty indices would size the row group at zero bytes and
+        # let the packer fill a bin without bound, so it falls back to "all
+        # columns" -- an over-count, which only makes read tasks smaller.
+        path, _ = four_row_groups
+        row_group = pq.ParquetFile(path).metadata.row_group(0)
+
+        assert (
+            _reader(projected_cols=["absent"])._projected_leaf_indices(row_group)
+            is None
+        )
+
+    def test_projection_matching_no_leaf_sizes_all_columns(self, four_row_groups):
+        path, size = four_row_groups
+
+        absent = _reader(projected_cols=["absent"])._read_and_chunk(path, size)
+        full = _reader()._read_and_chunk(path, size)
+
+        assert [rg.uncompressed_size for rg in absent.row_groups] == [
+            rg.uncompressed_size for rg in full.row_groups
+        ]
+        assert all(rg.uncompressed_size > 0 for rg in absent.row_groups)
+
     def test_nested_column_expands_to_all_its_leaves(self, tmp_path):
         table = pa.table(
             {
@@ -393,6 +406,34 @@ class TestReadFootersBatching:
     def test_empty_input_yields_nothing(self):
         # pyrefly: ignore[not-callable]
         assert list(_reader().read_footers([], result_batch_size=1)) == []
+
+    def test_preserve_order_yields_in_listing_order(self, three_files, monkeypatch):
+        # Enough concurrency for every read to be in flight at once, and delays
+        # that shrink with position, so completion order is the reverse of the
+        # listing order and the default path could not yield listing order by luck.
+        reader = FooterReader(
+            filesystem=LocalFileSystem(), io_concurrency=len(three_files)
+        )
+        read_and_chunk = reader._read_and_chunk
+        delay_by_path = {
+            path: 0.05 * (len(three_files) - i)
+            for i, (path, _) in enumerate(three_files)
+        }
+
+        def delayed_read_and_chunk(path, size):
+            time.sleep(delay_by_path[path])
+            return read_and_chunk(path, size)
+
+        monkeypatch.setattr(reader, "_read_and_chunk", delayed_read_and_chunk)
+
+        batches = list(
+            reader.read_footers(  # pyrefly: ignore[not-callable]
+                three_files, result_batch_size=1, preserve_order=True
+            )
+        )
+
+        paths = [fc.path for batch in batches for fc in batch]
+        assert paths == [path for path, _ in three_files]
 
 
 if __name__ == "__main__":

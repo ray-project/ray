@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, Iterable, Iterator, NamedTuple
 
 import pyarrow as pa
@@ -23,6 +23,7 @@ from ray.data._internal.datasource_v2.chunkers.parquet_row_group_coalescing impo
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
+from ray.data._internal.util import call_with_retry
 
 if TYPE_CHECKING:
     import pyarrow.compute as pc
@@ -83,7 +84,15 @@ class FooterReader:
         filter_expr: "Expr" | None = None,
         projected_cols: list[str] | None = None,
         coalesce_bytes: int = 0,
+        retried_io_errors: list[str] | None = None,
     ):
+        from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
+
+        self.retried_io_errors = (
+            retried_io_errors
+            if retried_io_errors is not None
+            else list(DEFAULT_RETRIED_IO_ERRORS)
+        )
         # Coalescing target: merge contiguous row groups into chunks of
         # ~coalesce_bytes uncompressed before returning them, so the driver packs
         # fewer items. 0 disables coalescing (one chunk per physical row group).
@@ -156,6 +165,8 @@ class FooterReader:
         # the same mapping ``_projected_leaf_indices`` does for the projection.
         # Called once per file so the per-row-group null check below is an
         # index lookup instead of another scan over every leaf.
+        if not self.filter_columns:
+            return _FilterLeaves([], True)
         indices: list[int] = []
         matched: set[str] = set()
         for j in range(row_group.num_columns):
@@ -195,7 +206,18 @@ class FooterReader:
 
     def _read_and_chunk(self, path: str, size: int) -> FileChunks:
         fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
-        metadata = fragment.metadata  # reads + caches the footer on the fragment
+        # ``make_fragment`` is lazy, so this property is the footer read itself
+        # (and caches it on the fragment). It raises on a truncated, non-Parquet,
+        # or since-deleted file -- terminal conditions that must fail the read
+        # rather than silently drop the file's rows, since the reader would fail
+        # on the same file anyway. Transient remote-storage errors are the
+        # exception and get retried, matching what the read side does per
+        # fragment; a failed attempt caches nothing, so retrying re-reads.
+        metadata = call_with_retry(
+            lambda: fragment.metadata,
+            description=f"read Parquet footer for {path}",
+            match=self.retried_io_errors,
+        )
         # Both column look-ups are schema-derived, and a Parquet file has a
         # single schema, so resolve them once against row group 0 rather than
         # rescanning every leaf for each group.
@@ -274,7 +296,11 @@ class FooterReader:
 
     @ray.method(num_returns="streaming")
     def read_footers(
-        self, files: list[tuple[str, int]], *, result_batch_size: int = 1
+        self,
+        files: list[tuple[str, int]],
+        *,
+        result_batch_size: int = 1,
+        preserve_order: bool = False,
     ) -> Iterator[list[FileChunks]]:
         """Read the footers of ``files`` concurrently, yielding ``FileChunks``.
 
@@ -285,14 +311,28 @@ class FooterReader:
         callers set it via ``RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE``.
         ``num_returns`` is fixed to ``"streaming"`` via ``@ray.method`` so
         results stream out as footers land.
+
+        ``preserve_order`` yields in ``files`` order rather than completion order.
+        The reads are all submitted up front either way, so this delays only the
+        yield of a footer that landed behind a slower one, never the read itself.
         """
         futures = [
             self.pool.submit(self._read_and_chunk, path, size) for path, size in files
         ]
+        # Completion order depends on IO timing, which decides how the driver's
+        # bin packer groups row groups into read tasks and -- under a pushed-down
+        # limit -- which files it reads before stopping. Walking ``futures``
+        # directly makes both a function of the listing order instead.
+        ordered: Iterable[Future[FileChunks]] = (
+            futures if preserve_order else as_completed(futures)
+        )
         buffer: list[FileChunks] = []
         total_row_groups = 0
-        for finished in as_completed(futures):
+        for finished in ordered:
             chunk = finished.result()
+            if not chunk.row_groups:
+                # Only occurs if the file is empty or all row groups are filtered out.
+                continue
             total_row_groups += len(chunk.row_groups)
             buffer.append(chunk)
             if len(buffer) >= result_batch_size:
