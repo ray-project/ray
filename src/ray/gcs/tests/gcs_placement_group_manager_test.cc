@@ -566,13 +566,12 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroupUnblocksPe
   ASSERT_EQ(registered_placement_group_count, 2);
   ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 0);
 
-  const auto &removed_placement_group_id =
-      removed_placement_group->GetPlacementGroupID();
+  const auto &removed_placement_group_id = removed_placement_group->GetPlacementGroupID();
   EXPECT_CALL(*mock_placement_group_scheduler_,
               MarkScheduleCancelled(removed_placement_group_id))
       .Times(1);
-  gcs_placement_group_manager_->RemovePlacementGroup(
-      removed_placement_group_id, [](const Status &status) {});
+  gcs_placement_group_manager_->RemovePlacementGroup(removed_placement_group_id,
+                                                     [](const Status &status) {});
   RunIOService();
 
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
@@ -581,7 +580,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingLeasingPlacementGroupUnblocksPe
             removed_placement_group_id);
 }
 
-TEST_F(GcsPlacementGroupManagerTest, TestLateCallbackDoesNotReleaseNextPlacementGroupToken) {
+TEST_F(GcsPlacementGroupManagerTest,
+       TestLateCallbackDoesNotReleaseNextPlacementGroupToken) {
   // PG A is scheduled (scheduling in progress, token owned by A).
   auto request1 = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
@@ -608,8 +608,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestLateCallbackDoesNotReleaseNextPlacement
   ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 0);
 
   // Remove the in-flight placement group A: this releases the scheduling token.
-  const auto &removed_placement_group_id =
-      removed_placement_group->GetPlacementGroupID();
+  const auto &removed_placement_group_id = removed_placement_group->GetPlacementGroupID();
   EXPECT_CALL(*mock_placement_group_scheduler_,
               MarkScheduleCancelled(removed_placement_group_id))
       .Times(1);
