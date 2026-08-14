@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Expose Ray clusters on Kubernetes through AWS ALB ingress on EKS, GKE Ingress, or the GKE Gateway API."
+    description: "Expose Ray clusters on Kubernetes through the KubeRay built-in Ingress, AWS ALB ingress on EKS, GKE Ingress, or the GKE Gateway API."
 ---
 
 (kuberay-ingress)=
@@ -9,7 +9,7 @@ myst:
 # Ingress
 
 The following examples show how to use Ingress or Gateway to access your Ray clusters:
-
+  * [KubeRay built-in Ingress](kuberay-builtin-ingress)
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
   * [GKE Ingress support](kuberay-gke-ingress)
   * [GKE Gateway API support](kuberay-gke-gateway)
@@ -21,6 +21,103 @@ The following examples show how to use Ingress or Gateway to access your Ray clu
 :class: warning
 **Only expose Ingresses or Gateways to authorized users.** The Ray Dashboard provides read and write access to the Ray Cluster. Anyone with access to this Ingress or Gateway can execute arbitrary code on the Ray Cluster.
 ```
+
+(kuberay-builtin-ingress)=
+## KubeRay built-in Ingress
+
+Instead of writing an Ingress manifest yourself, you can let KubeRay create and manage the Ingress for the Ray head service. Set `enableIngress` to `true` in `headGroupSpec`, and customize the generated Ingress with `ingressOptions`. KubeRay 1.7.0 and later support `ingressOptions`.
+
+### Prerequisites
+
+* An Ingress controller running in your cluster, for example the [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/). See [Manually setting up NGINX Ingress on Kind](kuberay-nginx) for a Kind-based setup.
+
+* KubeRay 1.7 or later.
+
+### Instructions
+
+Save the following file as `ray-cluster-builtin-ingress.yaml`:
+
+```yaml
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-ingress
+  annotations:
+    # KubeRay sets `spec.ingressClassName` on the generated Ingress from this annotation, and
+    # copies every other RayCluster annotation to the Ingress unchanged.
+    kubernetes.io/ingress.class: nginx
+spec:
+  rayVersion: "2.52.0" # should match the Ray version in the image of the containers
+  headGroupSpec:
+    enableIngress: true
+    ingressOptions:
+      host: ray-dashboard.example.com
+      path: /
+      pathType: Prefix
+      tls:
+        - hosts:
+            - ray-dashboard.example.com
+          secretName: ray-dashboard-tls
+    rayStartParams: {}
+    template:
+      spec:
+        containers:
+          - name: ray-head
+            image: rayproject/ray:2.52.0
+            ports:
+              - containerPort: 6379
+                name: gcs-server
+              - containerPort: 8265 # Ray dashboard
+                name: dashboard
+              - containerPort: 10001
+                name: client
+  workerGroupSpecs:
+    - groupName: small-group
+      replicas: 1
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+            - name: ray-worker
+              image: rayproject/ray:2.52.0
+```
+Now run the following commands:
+
+```bash
+# Step 1: Install KubeRay operator and CRD
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
+
+# Step 2: Create the RayCluster. KubeRay creates an Ingress named
+#         `<raycluster-name>-head-ingress` that points at the dashboard port of the head
+#         service, which is 8265 by default.
+kubectl apply -f ray-cluster-builtin-ingress.yaml
+
+# Step 3: Check the ingress created in Step 2.
+kubectl describe ingress raycluster-ingress-head-ingress
+
+# Step 4: Check the Ray Dashboard at the host you configured in `ingressOptions.host`.
+
+# Step 5: Delete the RayCluster. KubeRay deletes the generated Ingress along with it.
+kubectl delete -f ray-cluster-builtin-ingress.yaml
+```
+
+Every field under `ingressOptions` is optional:
+
+| Field      | Description                                                                                                                                                                         | Default                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `host`     | Fully qualified domain name that routes external traffic to the Ray head dashboard.                                                                                                 | Unset, which matches any host.  |
+| `path`     | HTTP path that routes to the dashboard.                                                                                                                                             | `/`                             |
+| `pathType` | Path matching mode for `path`. One of `Exact`, `Prefix`, or `ImplementationSpecific`.                                                                                               | `Prefix`                        |
+| `tls`      | TLS termination for the generated Ingress, using the Kubernetes [IngressTLS](https://kubernetes.io/docs/reference/kubernetes-api/service-resources/ingress-v1/#IngressSpec) schema. | Unset, which serves plain HTTP. |
+
+If you set only `enableIngress: true`, KubeRay generates an Ingress that matches any host and routes `/` to the dashboard. If you update `ingressOptions` on an existing RayCluster, KubeRay updates the generated Ingress to match.
+
+```{note}
+KubeRay only manages the Ingress it creates. It doesn't modify an Ingress that it doesn't own, even if the name matches. On OpenShift, KubeRay creates a Route instead of an Ingress, and `ingressOptions` doesn't apply.
+```
+
 
 
 (kuberay-aws-alb)=
