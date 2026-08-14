@@ -318,6 +318,32 @@ Docker Source Images
 Users can pull a Docker image from the ``rayproject/ray`` `Docker Hub repository <https://hub.docker.com/r/rayproject/ray>`__.
 The images include Ray and all required dependencies. It comes with anaconda and various versions of Python.
 
+.. note::
+
+  The ``rayproject/ray-ml`` images are deprecated. Ray no longer publishes them: the last standard
+  release tag is ``2.30.0``, and publishing stopped entirely as of Ray 2.50. The ``latest`` and
+  ``latest-gpu`` tags still resolve, but they haven't moved since Ray 2.30.0, so a build that pulls
+  them gets an old Ray without any error. See `Deprecating ray-ml images
+  <https://github.com/ray-project/ray/issues/46378>`__ for the reasoning.
+
+  The ``rayproject/ray`` images don't ship machine learning libraries such as PyTorch, TensorFlow,
+  or XGBoost. To get them, either build an image on a ``rayproject/ray`` base:
+
+  .. code-block:: dockerfile
+
+    FROM rayproject/ray:2.57.0-py311-gpu
+    RUN pip install xgboost -c /home/ray/requirements_compiled.txt
+
+  or declare the packages in a :ref:`runtime environment <runtime-environments>`.
+
+  Every ``rayproject/ray`` image ships the constraint file at ``/home/ray/requirements_compiled.txt``.
+  Passing it with ``-c`` installs the exact library version that Ray tested against for that release.
+  Drop the flag to get the newest version instead.
+
+  Don't use the constraint file to install PyTorch or TensorFlow on a GPU image. It's compiled
+  against a CPU-only PyTorch index, so it can resolve a CPU build and silently leave you without
+  GPU support. Install those packages from the index that matches your CUDA version instead.
+
 Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platform}]``. ``Ray version`` tag can be one of the following:
 
 .. list-table::
@@ -431,7 +457,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.10)
         :sync: ray (Python 3.10)
 
-        Ray version: nightly (`cf3939d <https://github.com/ray-project/ray/commit/cf3939d61ace058f973c1bd3e7166c2bbc8a69a3>`_)
+        Ray version: nightly (`4f4ed2d <https://github.com/ray-project/ray/commit/4f4ed2d82512d2409cb994587e8a97abb5e00256>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py310-cpu.txt
 
