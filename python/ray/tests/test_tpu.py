@@ -507,38 +507,46 @@ def test_single_host_slice_placement_group_heterogeneous_cluster(ray_start_clust
         },
     )
 
-    # Request v6e single-host slice (2x4)
-    v6e_handle = ray.util.tpu.slice_placement_group(
-        topology="2x4",
-        accelerator_version="v6e",
-    )
-    ray.get(v6e_handle.placement_group.ready(), timeout=10)
-    assert v6e_handle.bundle_label_selector == [
-        {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V6E"}
-    ]
+    ray.init(address=cluster.address)
+    try:
+        # Request v6e single-host slice (2x4)
+        v6e_handle = ray.util.tpu.slice_placement_group(
+            topology="2x4",
+            accelerator_version="v6e",
+        )
+        ray.get(v6e_handle.placement_group.ready(), timeout=10)
+        assert v6e_handle.bundle_label_selector == [
+            {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V6E"}
+        ]
 
-    # Verify placed node has the v6e accelerator type
-    v6e_pg_table = placement_group_table(v6e_handle.placement_group)
-    v6e_node_id = v6e_pg_table["bundles_to_node_id"][0]
-    v6e_node = next(n for n in ray.nodes() if n["NodeID"] == v6e_node_id)
-    assert v6e_node["Labels"][ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] == "TPU-V6E"
-    v6e_handle.shutdown()
+        # Verify placed node has the v6e accelerator type
+        v6e_pg_table = placement_group_table(v6e_handle.placement_group)
+        v6e_node_id = v6e_pg_table["bundles_to_node_id"][0]
+        v6e_node = next(n for n in ray.nodes() if n["NodeID"] == v6e_node_id)
+        assert (
+            v6e_node["Labels"][ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] == "TPU-V6E"
+        )
+        v6e_handle.shutdown()
 
-    # Request v7x single-host slice (2x2x1)
-    v7x_handle = ray.util.tpu.slice_placement_group(
-        topology="2x2x1",
-        accelerator_version="v7x",
-    )
-    ray.get(v7x_handle.placement_group.ready(), timeout=10)
-    assert v7x_handle.bundle_label_selector == [
-        {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X"}
-    ]
+        # Request v7x single-host slice (2x2x1)
+        v7x_handle = ray.util.tpu.slice_placement_group(
+            topology="2x2x1",
+            accelerator_version="v7x",
+        )
+        ray.get(v7x_handle.placement_group.ready(), timeout=10)
+        assert v7x_handle.bundle_label_selector == [
+            {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X"}
+        ]
 
-    v7x_pg_table = placement_group_table(v7x_handle.placement_group)
-    v7x_node_id = v7x_pg_table["bundles_to_node_id"][0]
-    v7x_node = next(n for n in ray.nodes() if n["NodeID"] == v7x_node_id)
-    assert v7x_node["Labels"][ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] == "TPU-V7X"
-    v7x_handle.shutdown()
+        v7x_pg_table = placement_group_table(v7x_handle.placement_group)
+        v7x_node_id = v7x_pg_table["bundles_to_node_id"][0]
+        v7x_node = next(n for n in ray.nodes() if n["NodeID"] == v7x_node_id)
+        assert (
+            v7x_node["Labels"][ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] == "TPU-V7X"
+        )
+        v7x_handle.shutdown()
+    finally:
+        ray.shutdown()
 
 
 @patch("ray.util.tpu.placement_group")
