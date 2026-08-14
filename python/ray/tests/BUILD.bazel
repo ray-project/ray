@@ -1392,6 +1392,7 @@ py_test_module_list(
         "spark/test_basic.py",
         "spark/test_databricks_hook.py",
         "spark/test_multicores_per_task.py",
+        "spark/test_node_provider.py",
         "spark/test_utils.py",
     ],
     tags = [

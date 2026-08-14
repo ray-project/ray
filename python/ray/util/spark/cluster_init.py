@@ -44,7 +44,7 @@ from ray._common.network_utils import (
     parse_address,
 )
 from ray._common.utils import load_class
-from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID
+from ray.autoscaler._private.spark.node_provider import HEAD_NODE_ID, HEAD_NODE_TYPE
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _logger = logging.getLogger("ray.util.spark")
@@ -57,6 +57,7 @@ MAX_NUM_WORKER_NODES = -1
 
 RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
 RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
+RAY_ENABLE_AUTOSCALER_V2 = "RAY_enable_autoscaler_v2"
 
 
 def _check_system_environment():
@@ -629,7 +630,10 @@ def _setup_ray_cluster(
         _start_spark_job_server,
     )
 
-    ray_node_custom_env = start_hook.custom_environment_variables()
+    ray_node_custom_env = {
+        **start_hook.custom_environment_variables(),
+        RAY_ENABLE_AUTOSCALER_V2: os.environ.get(RAY_ENABLE_AUTOSCALER_V2, "0"),
+    }
     spark_job_server = _start_spark_job_server(
         ray_head_ip, spark_job_server_port, spark, ray_node_custom_env
     )
@@ -1252,6 +1256,9 @@ def setup_ray_cluster(
     `ray.util.spark.shutdown_ray_cluster()`.
     Note: If the active ray cluster haven't shut down, you cannot create a new ray
     cluster.
+    Ray on Spark uses Autoscaler V1 by default. Set the environment variable
+    ``RAY_enable_autoscaler_v2=1`` before calling this function to enable
+    Autoscaler V2.
 
     Args:
         max_worker_nodes: This argument represents maximum ray worker nodes to start
@@ -1492,6 +1499,7 @@ def _start_ray_worker_nodes(
     worker_node_options,
     collect_log_to_path,
     node_id,
+    node_type,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1554,6 +1562,13 @@ def _start_ray_worker_nodes(
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
             **ray_node_custom_env,
         }
+        if ray_node_custom_env.get(RAY_ENABLE_AUTOSCALER_V2) == "1":
+            ray_worker_node_extra_envs.update(
+                {
+                    "RAY_CLOUD_INSTANCE_ID": str(node_id),
+                    "RAY_NODE_TYPE_NAME": node_type,
+                }
+            )
 
         if num_gpus_per_node > 0:
             task_resources = context.resources()
@@ -1618,6 +1633,7 @@ def _start_ray_worker_nodes(
                 ),
                 json={
                     "spark_job_group_id": spark_job_group_id,
+                    "node_id": node_id,
                 },
             )
 
@@ -1871,6 +1887,13 @@ class AutoscalingCluster:
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             **ray_node_custom_env,
         }
+        if ray_node_custom_env.get(RAY_ENABLE_AUTOSCALER_V2) == "1":
+            extra_env.update(
+                {
+                    "RAY_CLOUD_INSTANCE_ID": str(HEAD_NODE_ID),
+                    "RAY_NODE_TYPE_NAME": HEAD_NODE_TYPE,
+                }
+            )
 
         self.ray_head_node_cmd = ray_head_node_cmd
 
