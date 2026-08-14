@@ -10,12 +10,16 @@ directory -- on three deterministic axes:
   2. Render equality     CommonMark + GFM-table rendered HTML identical after
                          whitespace normalization (catches structural mis-joins:
                          merged paragraphs, list items, headings, lost hard
-                         breaks, collapsed pipe tables). Requires markdown-it-py;
-                         skipped with a warning if absent.
+                         breaks, collapsed pipe tables). Requires markdown-it-py.
   3. Idempotency         re-running the reflow is a no-op (the file is at a
                          stable fixed point and won't churn under later edits).
 
-Exit code is non-zero if any file fails any available check.
+A check that can't run is not a check that passed. A file with no reference
+(new or untracked) or a render check with no markdown-it-py reports NOT VERIFIED
+and exits non-zero, the same way a failure does -- a gate that reports success
+for work it never inspected is worse than no gate.
+
+Exit code is non-zero if any file fails a check or if any check couldn't run.
 
 Usage:
     verify.py PATH [PATH ...]                  # compare working tree vs HEAD
@@ -98,8 +102,9 @@ def main():
 
     if _MD is None:
         print(
-            "WARNING: markdown-it-py not installed; render-equality check SKIPPED.\n"
-            "         Install with: pip install markdown-it-py\n",
+            "ERROR: markdown-it-py not installed; the render-equality check can't\n"
+            "       run, so no file can be reported as verified.\n"
+            "       Install with: pip install markdown-it-py\n",
             file=sys.stderr,
         )
 
@@ -109,7 +114,7 @@ def main():
         return 2
 
     fails = 0
-    skipped_ref = 0
+    unverified = 0
     for path in files:
         work = open(path, encoding="utf-8").read()
         ref_text, err = get_reference(path, args.ref, args.against_dir)
@@ -118,36 +123,37 @@ def main():
         if ref_text is None:
             content_ok = None
             render_ok = None
-            skipped_ref += 1
         else:
             content_ok = nows(ref_text) == nows(work)
             render_ok = render_equal(ref_text, work)
 
         def mark(v):
-            return {True: "ok", False: "FAIL", None: "--"}[v]
+            return {True: "ok", False: "FAIL", None: "n/v"}[v]
 
-        ok = (content_ok is not False) and (render_ok is not False) and idem_ok
-        if not ok:
+        if content_ok is False or render_ok is False or not idem_ok:
             fails += 1
+            tag = "   <-- FAIL"
+        elif content_ok is None or render_ok is None:
+            unverified += 1
+            reason = err or "markdown-it-py not installed"
+            tag = f"   <-- NOT VERIFIED ({reason})"
+        else:
+            tag = ""
         print(
             f"  content={mark(content_ok):<4} render={mark(render_ok):<4} "
-            f"idempotent={mark(idem_ok):<4}  {path}" + ("" if ok else "   <-- FAIL")
+            f"idempotent={mark(idem_ok):<4}  {path}{tag}"
         )
 
     print()
-    if skipped_ref:
-        print(
-            f"note: {skipped_ref} file(s) had no reference (new/untracked); "
-            f"content+render not compared for those."
-        )
-    if fails:
-        print(f"RESULT: {fails} file(s) FAILED verification.")
+    if fails or unverified:
+        parts = []
+        if fails:
+            parts.append(f"{fails} file(s) FAILED verification")
+        if unverified:
+            parts.append(f"{unverified} file(s) NOT VERIFIED")
+        print("RESULT: " + ", ".join(parts) + ".")
         return 1
-    print(
-        f"RESULT: all {len(files)} file(s) passed"
-        + (" (render check skipped)" if _MD is None else "")
-        + "."
-    )
+    print(f"RESULT: all {len(files)} file(s) verified.")
     return 0
 
 

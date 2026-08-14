@@ -31,9 +31,10 @@ review, and ship a PR under Ray's OSS conventions.
 
 ## Prerequisites
 
-- `markdown-it-py` for the render-equality check: `pip install markdown-it-py`. If
-  absent, `verify.py` skips that check and warns — install it; the render check is
-  the one that catches structural mistakes.
+- `markdown-it-py` for the render-equality check: `pip install markdown-it-py`. It's
+  required, not optional. Without it `verify.py` reports every file `NOT VERIFIED`
+  and exits non-zero, because the render check is the one that catches structural
+  mistakes and a gate can't pass work it never inspected.
 - The scripts live beside this file, at `doc/.claude/skills/ray-soft-wrap/scripts/`.
   Run them from the repo root.
 
@@ -67,6 +68,11 @@ review, and ship a PR under Ray's OSS conventions.
    for manual handling — never commit a file that fails verification. (A failure means
    the transform mis-joined something the engine doesn't yet model; capture it and
    consider `/skill-improve`.)
+
+   `NOT VERIFIED` is not a pass either, and it also exits non-zero. It means a check
+   couldn't run: the file has no reference to compare against (new or untracked, so
+   only idempotency ran), or `markdown-it-py` is missing. Resolve the cause and re-run
+   rather than reading the absence of a FAIL as a clean result.
 
 1. **Spot-review the diff** (`git diff`). The diff should be only line joins. Skim a
    couple of files, especially around admonitions, lists, and tables.
@@ -114,9 +120,11 @@ Left byte-for-byte unchanged by construction: front matter; fenced code blocks
 tables (a header row, its `|---|` delimiter row, and the body rows, each kept on its
 own line); colon-fence directive markers and options; sphinx-design `^^^` and `+++`
 card separators; MyST `(target)=` anchors; ATX headings; thematic breaks; block
-quotes; raw HTML at any indentation, including a `.. raw:: html` block nested in a
-directive body, and every line of a multi-line HTML comment; link reference
-definitions; and definition-list items.
+quotes; CommonMark indented code blocks (four spaces or a tab after a blank line,
+through to the next non-blank line indented less than four); raw HTML at any
+indentation, including a `.. raw:: html` block nested in a directive body, and every
+line of a multi-line HTML comment; link reference definitions; and definition-list
+items.
 
 The render-equality oracle is CommonMark plus the GFM table extension, so it sees
 paragraphs, lists, headings, block quotes, code, links — and pipe tables. It still
@@ -145,8 +153,22 @@ normalizes whitespace inside it. Nothing broke visually that time. It's still no
 this pass's business to rewrite raw HTML, so read a long joined line in the diff as
 a signal to check what the engine thought it was reflowing.
 
+The indented-code-block protection is the third of these, and the sharpest, because
+the joined output stays *valid*. An indented `pip install ray` / `ray start --head`
+becomes one line that still renders as a code block and still holds every
+non-whitespace byte — it's just a command that no longer runs. Every check in this
+skill reports green on it: the content invariant and the CommonMark oracle both
+collapse whitespace without exempting `<pre>`, and the joined form is a stable fixed
+point, so idempotency holds. The `rst-to-myst` render diff normalizes the serialized
+`<article>` the same way, so step 4 of that skill isn't a backstop here either. The
+construct is common in synced example READMEs, which are full of directory-tree
+diagrams and pasted console output.
+
 **Known under-reflow (safe):** prose inside `$$`/amsmath/deflist blocks and inside
 backtick-fenced directives (e.g. a colon-less `{note}`) is left wrapped, and any
-paragraph containing a hard line break is left wrapped. These are deliberate: they
-preserve rendering exactly. If a batch needs those reflowed, do it by hand and
-re-run `verify.py`.
+paragraph containing a hard line break is left wrapped. The indented-code rule adds
+to this: anything else that sits four spaces deep after a blank line, such as a
+nested list or a list-item continuation paragraph, is left wrapped too, since
+nothing at that indentation can be told apart from code without a full block parse.
+These are deliberate: they preserve rendering exactly. If a batch needs those
+reflowed, do it by hand and re-run `verify.py`.

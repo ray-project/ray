@@ -16,6 +16,9 @@ Left byte-for-byte unchanged:
   - colon-fence directive markers/options (:::{note}, :open:, ...) -- the prose
     *inside* a colon directive is still reflowed, only the markers stay put
   - MyST (target)= anchors, ATX headings, thematic breaks, block quotes
+  - CommonMark indented code blocks: after a blank line, a line indented four
+    or more spaces (or a tab) opens a block that runs verbatim to the next
+    non-blank line indented less than four
   - raw HTML lines at any indentation, and every line of a multi-line HTML
     comment
   - link reference definitions ([label]: url) and definition-list items (: def)
@@ -70,6 +73,19 @@ MARKER_FENCE_RE = re.compile(r"^(\s*([-*+]|\d+[.)])\s+)(`{3,}|~{3,})")
 # see it, because sphinx-design directives aren't part of the oracle's grammar.
 CARD_SEP_RE = re.compile(r"^\s*(\^{3,}|\+{3,})\s*$")
 HARDBREAK_RE = re.compile(r"(\S  +|\\)$")
+# CommonMark indented code block: after a blank line, four spaces (or a tab)
+# opens a code block that runs until the next non-blank line indented less than
+# four. Joining those lines leaves a block that still renders as code and still
+# holds every non-whitespace byte, but whose contents no longer run --
+# ``pip install ray`` and ``ray start --head`` become one command. No check in
+# verify.py can see it: the content invariant and the CommonMark render oracle
+# both collapse whitespace without exempting ``<pre>``, and the joined form is a
+# stable fixed point, so idempotency holds too. Same for the render diff in the
+# rst-to-myst skill, which normalizes the serialized ``<article>`` the same way.
+# The cost is that anything else sitting at four spaces after a blank line -- a
+# nested list, a list-item continuation paragraph -- is left wrapped instead of
+# joined. That's the under-reflow direction, which is the safe one.
+INDENT_CODE_RE = re.compile(r"^(?: {4,}|\t)")
 
 MARKDOWN_EXTS = (".md", ".markdown")
 
@@ -167,6 +183,19 @@ def reflow(text):
             if AMS_END_RE.match(ln):
                 in_amsmath = False
             i += 1
+            continue
+        # An indented code block, recognized the way CommonMark recognizes one:
+        # only at the start of the document or after a blank line, since an
+        # indented line can't interrupt a paragraph. Checked ahead of the fence
+        # rule because four spaces beat a fence marker in CommonMark too.
+        prev = run[-1] if run else (out[-1] if out else None)
+        if INDENT_CODE_RE.match(ln) and (prev is None or BLANK_RE.match(prev)):
+            flush()
+            while i < n and (
+                BLANK_RE.match(lines[i]) or INDENT_CODE_RE.match(lines[i])
+            ):
+                out.append(lines[i])
+                i += 1
             continue
         mo = FENCE_OPEN_RE.match(ln)
         if mo:
@@ -309,6 +338,16 @@ SELFTEST_CASES = [
         "indented raw HTML inside a directive body keeps its lines",
         ":::{query-param-ref} ray-overview/examples\n:parameters: ?tags=llm\n\n.. raw:: html\n\n        <svg width='24' height='24'>\n            <g>\n                <path d='M15 9Z'> </path>\n            </g>\n        </svg>Explore the examples\n:::\n",
         ":::{query-param-ref} ray-overview/examples\n:parameters: ?tags=llm\n\n.. raw:: html\n\n        <svg width='24' height='24'>\n            <g>\n                <path d='M15 9Z'> </path>\n            </g>\n        </svg>Explore the examples\n:::\n",
+    ),
+    (
+        "an indented code block keeps its lines",
+        "Install it:\n\n    pip install ray\n    ray start --head\n\nThen open\nthe dashboard.\n",
+        "Install it:\n\n    pip install ray\n    ray start --head\n\nThen open the dashboard.\n",
+    ),
+    (
+        "an indented line can't open a code block mid-paragraph",
+        "Prose that\n    keeps going.\n",
+        "Prose that keeps going.\n",
     ),
     (
         "a multi-line HTML comment keeps its lines",

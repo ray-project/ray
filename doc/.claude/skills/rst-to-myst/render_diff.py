@@ -32,7 +32,6 @@ import argparse
 import difflib
 import re
 import sys
-import urllib.error
 import urllib.request
 
 from bs4 import BeautifulSoup
@@ -125,9 +124,13 @@ def compare(page: str, preview_base: str, keep_benign: bool, context: int) -> bo
     try:
         master_html = fetch(MASTER + page)
         preview_html = fetch(preview_base + page)
-    except urllib.error.URLError as exc:
+    except OSError as exc:
         # A typo'd page path or a preview that has not finished publishing
         # should read as "not verified", never as "verified clean".
+        # OSError rather than urllib.error.URLError: URLError subclasses it, and
+        # a read timeout surfaces from response.read() as a bare TimeoutError,
+        # which is an OSError but not a URLError. Catching only URLError lets a
+        # stalled preview traceback instead of printing this line.
         print(f"ERROR      {page}  (fetch failed: {exc})")
         return True
 
