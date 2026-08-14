@@ -196,9 +196,8 @@ number of files & their sizes (since every block could potentially carry the row
     )
 
     ds = ray.data.from_pandas(df)
-    # Key-based repartitioning requires a hash-shuffle strategy.
-    # Prefer ShuffleStrategy.SHUFFLE_V2 for better performance.
-    DataContext.shuffle_strategy=ShuffleStrategy.HASH_SHUFFLE
+    # Key-based repartitioning requires a hash-shuffle strategy such as Shuffle v2.
+    DataContext.shuffle_strategy=ShuffleStrategy.SHUFFLE_V2
 
     # ── Partitioned write ──────────────────────────────────────────────────────
     # 1. Repartition so all rows with the same (city, year) land in the same

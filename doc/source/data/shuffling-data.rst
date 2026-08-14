@@ -234,9 +234,8 @@ Example of hash shuffling based on column `id`:
 
 .. tip::
 
-    Prefer :ref:`hash-shuffle v2 <hash-shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``), an
-    improved hash-shuffle implementation that generally performs better than the default
-    hash-shuffle strategy:
+    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a new shuffle backend,
+    currently in Alpha, that provides an updated hash-shuffle implementation:
 
     .. code-block:: python
 
@@ -244,7 +243,7 @@ Example of hash shuffling based on column `id`:
 
         DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
-    See :ref:`Tuning hash-shuffle v2 <tuning-hash-shuffle-v2>` for the available knobs.
+    See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available knobs.
 
 .. _optimizing_shuffles:
 
