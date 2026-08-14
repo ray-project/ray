@@ -9,7 +9,7 @@ from ray.llm._internal.serve.core.configs.anthropic_api_models import (
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 class AnthropicMessagesRequest(_AnthropicMessagesRequest):
     """AnthropicMessagesRequest is the request body for the Messages API.
 
@@ -19,7 +19,7 @@ class AnthropicMessagesRequest(_AnthropicMessagesRequest):
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 class AnthropicMessagesResponse(_AnthropicMessagesResponse):
     """AnthropicMessagesResponse is the response body for the Messages API.
 
@@ -29,7 +29,7 @@ class AnthropicMessagesResponse(_AnthropicMessagesResponse):
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 class AnthropicCountTokensRequest(_AnthropicCountTokensRequest):
     """AnthropicCountTokensRequest is the request body for count_tokens.
 
@@ -39,7 +39,7 @@ class AnthropicCountTokensRequest(_AnthropicCountTokensRequest):
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 class AnthropicCountTokensResponse(_AnthropicCountTokensResponse):
     """AnthropicCountTokensResponse is the response body for count_tokens.
 
@@ -49,14 +49,14 @@ class AnthropicCountTokensResponse(_AnthropicCountTokensResponse):
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 class AnthropicError(_AnthropicError):
     """Anthropic error payload."""
 
     pass
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 class AnthropicErrorResponse(_AnthropicErrorResponse):
     """The returned response in case of an Anthropic API error."""
 
