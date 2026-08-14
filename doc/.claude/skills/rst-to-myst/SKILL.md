@@ -137,6 +137,8 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 6. **`doc/BUILD.bazel` doctest exclusions.** The main `doctest(` rule globs `source/**/*.md` **and** `source/**/*.rst` with a per-file `exclude` list. If a file you convert is named in that exclude list, **rewrite its entry from `.rst` to `.md` in the same PR.** Otherwise the `*.md` glob pulls the newly-converted file **into** doctest, and blocks that were excluded for a reason (e.g. `ray.init(...)` with no `import ray`) execute and fail. Conversely, a file that is *included* (not excluded) stays tested as `.md` — that's when Hard rule 4 matters most.
 
+7. **An apostrophe in a heading silently changes its anchor.** docutils slugifies `What's Ray Core?` to `what-s-ray-core`; MyST drops the apostrophe and produces `whats-ray-core`. The build stays green, nothing warns, and any external link to the old anchor dies. Roughly 17 headings across 15 of the still-unconverted files are affected. The rule: **if the heading already carries an explicit label, that label is the anchor callers should be using, and you add nothing.** Only when the heading is bare do you add a compat target carrying the old docutils slug — `(what-s-next)=` above `## What's next?`. Never put two targets on one heading. Either way the section id and the headerlink href still change, so treat this as a known, explainable render diff rather than a regression to chase.
+
 ---
 
 ## Construct notes
