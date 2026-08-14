@@ -1,8 +1,19 @@
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Union,
+)
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._common.utils import env_integer
 from ray.train.v2._internal.constants import (
     TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
     TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
@@ -27,8 +38,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Annotations are best-effort observability
-_annotation_exception = False
+# Annotations are best-effort observability, failures is swallowed and logged once
+_annotation_failures_reported: Set[str] = set()
+
+# `ray.train.report` serializes its metrics into the annotation, which log
+# backends drop past a per-line size limit (e.g. Loki defaults to 256KB), so the
+# serialized metrics are truncated rather than emitted unbounded.
+_ANNOTATION_MAX_METRICS_LENGTH = env_integer(
+    "RAY_TRAIN_ANNOTATION_MAX_METRICS_LENGTH", 4096
+)
 
 
 @PublicAPI(stability="stable")
@@ -41,7 +59,7 @@ def report(
     delete_local_checkpoint_after_upload: Optional[bool] = None,
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
     validation: Union[bool, ValidationTaskConfig] = False,
-):
+) -> None:
     """Report metrics and optionally save a checkpoint.
 
     If a checkpoint is provided, it will be
@@ -145,34 +163,46 @@ def report(
     )
 
     # Emit a single rank-0 annotation for the Grafana train dashboards.
-    global _annotation_exception
-    if not _annotation_exception:
-        try:
-            train_context = get_train_context()
-            if train_context.get_world_rank() == 0 and train_context.annotation:
-                report_fields = {
-                    "metrics": json.dumps(metrics, default=str),
-                    "has_checkpoint": checkpoint is not None,
-                    "validation": bool(validation),
-                }
-                if checkpoint is not None and checkpoint_dir_name is not None:
-                    report_fields["checkpoint_dir_name"] = checkpoint_dir_name
-                if isinstance(validation, ValidationTaskConfig):
-                    report_fields["validation_config"] = json.dumps(
-                        {
-                            "fn_kwargs": validation.fn_kwargs,
-                            "timeout_s": validation.timeout_s,
-                        },
-                        default=str,
-                    )
-                train_context.annotation.annotate(
-                    event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT, **report_fields
+    try:
+        train_context = get_train_context()
+    except Exception:
+        # No worker train context (e.g. local mode), not an annotation failure
+        return
+
+    try:
+        if train_context.get_world_rank() == 0 and train_context.annotation:
+            metrics_json = json.dumps(metrics, default=str)
+            if len(metrics_json) > _ANNOTATION_MAX_METRICS_LENGTH:
+                metrics_json = (
+                    metrics_json[:_ANNOTATION_MAX_METRICS_LENGTH] + "...(truncated)"
                 )
-        except Exception:
-            _annotation_exception = True
+
+            report_fields = {
+                "metrics": metrics_json,
+                "has_checkpoint": checkpoint is not None,
+                "validation": bool(validation),
+            }
+            if checkpoint is not None and checkpoint_dir_name is not None:
+                report_fields["checkpoint_dir_name"] = checkpoint_dir_name
+            if isinstance(validation, ValidationTaskConfig):
+                report_fields["validation_config"] = json.dumps(
+                    {
+                        "fn_kwargs": validation.fn_kwargs,
+                        "timeout_s": validation.timeout_s,
+                    },
+                    default=str,
+                )
+            train_context.annotation.annotate(
+                event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT, **report_fields
+            )
+    except Exception:
+        # Annotations are best-effort and must never break or block the report barrier
+        if TRAIN_ANNOTATION_RAY_TRAIN_REPORT not in _annotation_failures_reported:
+            _annotation_failures_reported.add(TRAIN_ANNOTATION_RAY_TRAIN_REPORT)
             logger.warning(
-                "Failed to create an annotation for `ray.train.report`, '"
-                "all future annotations for report will be skipped.",
+                f"Failed to emit the {TRAIN_ANNOTATION_RAY_TRAIN_REPORT!r} "
+                "annotation; continuing. Further failures for this event will "
+                "not be logged.",
                 exc_info=True,
             )
 
@@ -451,9 +481,6 @@ def annotate(
             are not filterable in LogQL; filter on the reserved fields
             (e.g. ``severity``) or the run/rank tags instead.
     """
-    # Not an assert: under `python -O` an invalid severity would silently emit an
-    # annotation that matches none of the dashboard layers, so it would never
-    # appear and no error would surface anywhere.
     if severity not in {"info", "warning", "error"}:
         raise ValueError(
             f"Invalid annotation severity {severity!r}. "
@@ -462,19 +489,21 @@ def annotate(
 
     try:
         train_context = get_train_context()
-        if rank_zero_only and train_context.get_world_rank() != 0:
-            return
-        if train_context.annotation is None:
-            return
-
-        annotation_fields = {"message": message}
-        if fields:
-            annotation_fields["fields"] = json.dumps(fields, default=str)
-
-        train_context.annotation.annotate(
-            event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
-            severity=severity,
-            **annotation_fields,
-        )
     except Exception:
-        logger.warning("")
+        # No worker train context (e.g. local mode), not an annotation failure
+        return
+
+    if rank_zero_only and train_context.get_world_rank() != 0:
+        return
+    if train_context.annotation is None:
+        return
+
+    annotation_fields = {"message": message}
+    if fields:
+        annotation_fields["fields"] = json.dumps(fields, default=str)
+
+    train_context.annotation.annotate(
+        event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
+        severity=severity,
+        **annotation_fields,
+    )

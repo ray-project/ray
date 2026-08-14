@@ -132,7 +132,12 @@ class Annotation:
             the log stream (e.g. ``"ray_train_annotation"``).
         base_tags: Tags attached to every emitted event (e.g. run name/id and
             world rank). These identify the run/worker so annotations can be
-            filtered per run in LogQL.
+            filtered per run in LogQL. Keys must not collide with the reserved
+            fields (``annotation_source``, ``timestamp_s``, ``event``,
+            ``session_name``), which would silently shadow them.
+
+    Raises:
+        ValueError: If ``base_tags`` contains a reserved field name.
     """
 
     _RESERVED_FIELDS = frozenset(
@@ -144,6 +149,16 @@ class Annotation:
         source: str,
         base_tags: Dict[str, str],
     ):
+        # Unlike the per-emit `**fields`, which come from user code and are
+        # dropped with a warning, a colliding base tag is a programming error:
+        # it would shadow a reserved field on *every* emitted event.
+        reserved_tags = sorted(self._RESERVED_FIELDS.intersection(base_tags))
+        if reserved_tags:
+            raise ValueError(
+                f"Annotation base_tags contains reserved field(s) {reserved_tags}. "
+                f"Reserved fields are {sorted(self._RESERVED_FIELDS)}."
+            )
+
         self._source = source
         self._base_tags = base_tags
         self._logger = self._get_logger()

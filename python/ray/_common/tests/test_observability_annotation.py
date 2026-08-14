@@ -156,6 +156,17 @@ def test_annotation_field_collision_drops_only_the_colliding_field(
     assert len(captured_warnings) == 2
 
 
+@pytest.mark.parametrize("reserved_field", sorted(Annotation._RESERVED_FIELDS))
+def test_annotation_rejects_reserved_base_tag(reserved_field: str):
+    """A base tag shadowing a reserved field would corrupt *every* emitted event,
+    so it is a construction-time error rather than a per-emit warning."""
+    with pytest.raises(ValueError, match="reserved field"):
+        Annotation(
+            source=TRAIN_ANNOTATION_SOURCE,
+            base_tags={RUN_NAME_TAG_KEY: "my_run", reserved_field: "hijacked"},
+        )
+
+
 def test_annotation_logger_setup_with_preexisting_handler():
     """Another handler on ``ray.annotations`` must not stop Ray from installing its
     file handler or from disabling propagation, which would otherwise echo every
