@@ -120,8 +120,8 @@ Left byte-for-byte unchanged by construction: front matter; fenced code blocks
 tables (a header row, its `|---|` delimiter row, and the body rows, each kept on its
 own line); colon-fence directive markers and options; sphinx-design `^^^` and `+++`
 card separators; MyST `(target)=` anchors; ATX headings; thematic breaks; block
-quotes; CommonMark indented code blocks (four spaces or a tab after a blank line,
-through to the next non-blank line indented less than four); raw HTML at any
+quotes; CommonMark indented code blocks (four spaces or a tab wherever no paragraph
+is open, through to the next non-blank line indented less than four); raw HTML at any
 indentation, including a `.. raw:: html` block nested in a directive body, and every
 line of a multi-line HTML comment; link reference definitions; and definition-list
 items.
@@ -167,7 +167,7 @@ diagrams and pasted console output.
 **Known under-reflow (safe):** prose inside `$$`/amsmath/deflist blocks and inside
 backtick-fenced directives (e.g. a colon-less `{note}`) is left wrapped, and any
 paragraph containing a hard line break is left wrapped. The indented-code rule adds
-to this: anything else that sits four spaces deep after a blank line, such as a
+to this: anything else that sits four spaces deep with no paragraph open, such as a
 nested list or a list-item continuation paragraph, is left wrapped too, since
 nothing at that indentation can be told apart from code without a full block parse.
 These are deliberate: they preserve rendering exactly. If a batch needs those

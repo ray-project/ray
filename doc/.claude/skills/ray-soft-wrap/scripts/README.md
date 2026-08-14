@@ -17,8 +17,8 @@ Front matter; fenced code blocks including nested fences and fenced directives
 directive markers and options (`:::{note}`, `:open:`); sphinx-design `^^^` and
 `+++` card separators; MyST `(target)=` anchors;
 ATX headings; thematic breaks; block quotes; CommonMark indented code blocks (four
-spaces or a tab after a blank line, to the next non-blank line indented less than
-four); raw HTML at any indentation, including
+spaces or a tab wherever no paragraph is open, to the next non-blank line indented
+less than four); raw HTML at any indentation, including
 a `.. raw:: html` block nested in a directive body, and every line of a multi-line
 HTML comment; link
 reference definitions (`[label]: url`); definition-list items; and any paragraph
