@@ -13,7 +13,11 @@ exclude: |
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
     doc/external/|
-    doc/source/|
+    # Excludes doc/source, except the Markdown and rST prose under doc/source/data
+  # that the `vale` hook below lints. pre-commit ANDs this top-level `exclude`
+  # with each hook's own `files`, so a bare `doc/source/` here cancelled that
+  # hook out entirely and it silently matched zero files.
+  doc/source/(?!data/.*[.](md|rst)$)|
     doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
@@ -349,9 +353,17 @@ repos:
     hooks:
       - id: semgrep
         args: [--config=semgrep.yml, --error]
+        # semgrep.yml's `code-block-python` rule targets doc/source/data/**/*.rst,
+        # but the top-level `exclude` above has kept every doc/source path out of
+        # this hook, so the rule has never actually run on those files. Narrowing
+        # that exclude for Vale exposes 8 pre-existing violations under
+        # doc/source/data and would fail `semgrep_lint`. Keep them exempt here and
+        # fix the violations separately, rather than converting code blocks in a
+        # PR about Vale.
+        exclude: ^doc/source/data/
 
   - repo: https://github.com/errata-ai/vale
-    rev: v3.4.1
+    rev: v3.17.1
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$

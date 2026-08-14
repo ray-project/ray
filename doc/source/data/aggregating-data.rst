@@ -6,7 +6,7 @@
 Aggregating Data
 ================
 
-Ray Data provides a flexible and performant API for performing aggregations on :class:`~ray.data.dataset.Dataset`. 
+Ray Data provides a flexible and performant API for performing aggregations on :class:`~ray.data.dataset.Dataset`.
 
 Basic Aggregations
 ------------------
@@ -83,7 +83,7 @@ Multiple aggregations can also be computed at once:
     # result: [{'group_key': 0, 'count(id)': 34, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...},
     #          {'group_key': 1, 'count(id)': 33, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...},
     #          {'group_key': 2, 'count(id)': 33, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...}]
-    
+
 
 Custom Aggregations
 --------------------
@@ -166,6 +166,5 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
     Hash-shuffling can provide better performance for aggregations in certain cases. For more information see `comparison between hash based shuffling and Range Based shuffling approach <https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/>`_ .
 
-    To use the hash-shuffle algorithm for aggregations, you need to set the shuffle strategy explicitly:    
+    To use the hash-shuffle algorithm for aggregations, you need to set the shuffle strategy explicitly:
     ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before creating a ``Dataset``
-    
