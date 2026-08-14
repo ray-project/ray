@@ -109,32 +109,34 @@ class _AnnotationFileHandler(logging.Handler):
 
 
 class Annotation:
-    """Emits structured JSON annotation events for Grafana/Loki.
+    """Emits structured JSON annotation events for Grafana and Loki.
 
     Unlike numeric metrics recorded to a Prometheus ``Gauge``, an ``Annotation``
     emits a single JSON line per event to a file under the Ray session logs dir.
-    On Anyscale, Vector tails that file and forwards the lines to Loki, and
-    Grafana renders each one as a point annotation on a dashboard via a Loki
-    annotation datasource.
+    A log collector tails that file and forwards the lines to a log backend, and
+    Grafana renders each one as a point annotation on a dashboard through an
+    annotation datasource over that backend. See
+    :ref:`Overlay event annotations on the dashboards
+    <grafana-dashboard-annotations>`.
 
     .. note::
 
-        Annotations are positioned on the Grafana timeline by the timestamp of
-        the log line, which is recorded when the event is emitted. Prometheus
-        metrics, by contrast, are only observed at the scrape interval (e.g.
-        every 10-15s), so a metric graph may lag the true value by up to one
-        scrape period. As a result, an annotation and the metric graph it
-        relates to can appear slightly out of sync on the dashboard.
+        Grafana positions annotations on the timeline by the timestamp of the
+        log line, which Ray records when it emits the event. Prometheus, by
+        contrast, only observes metrics at the scrape interval, typically every
+        10 to 15 seconds, so a metric graph can lag the true value by up to one
+        scrape period. An annotation and the metric graph it relates to can
+        therefore appear slightly out of sync on the dashboard.
 
     Args:
-        source: Marker value written to the ``annotation_source`` field of every
-            emitted event and used by LogQL to select annotation lines out of
-            the log stream (e.g. ``"ray_train_annotation"``).
-        base_tags: Tags attached to every emitted event (e.g. run name/id and
-            world rank). These identify the run/worker so annotations can be
-            filtered per run in LogQL. Keys must not collide with the reserved
-            fields (``annotation_source``, ``timestamp_s``, ``event``,
-            ``session_name``), which would silently shadow them.
+        source: Marker value that Ray writes to the ``annotation_source`` field
+            of every emitted event, such as ``"ray_train_annotation"``. LogQL
+            uses it to select annotation lines out of the log stream.
+        base_tags: Tags attached to every emitted event, such as the run name,
+            run ID, and world rank. These identify the run and the worker, so
+            you can filter annotations per run in LogQL. Keys must not collide
+            with the reserved fields ``annotation_source``, ``timestamp_s``,
+            ``event``, and ``session_name``, which they would silently shadow.
 
     Raises:
         ValueError: If ``base_tags`` contains a reserved field name.
@@ -195,17 +197,17 @@ class Annotation:
     def annotate(self, event: str, **fields: Any) -> None:
         """Emit a single annotation event as one JSON line to the annotation log file.
 
-        Args:
-            event: The event name (e.g. ``"controller_state_change"``). Used to
-                filter annotations by type in LogQL.
-            **fields: Arbitrary key-value pairs to include in the emitted JSON.
-                Which fields an event carries (e.g. ``message``, ``severity``,
-                or event-specific data) is defined by the caller and the
-                dashboard queries that consume it.
-
         Annotations are best-effort observability and never on the critical
-        path, so any failure here is swallowed rather than propagated to the
-        caller.
+        path, so this method swallows any failure rather than propagating it to
+        the caller.
+
+        Args:
+            event: The event name, such as ``"controller_state_change"``. LogQL
+                uses it to filter annotations by type.
+            **fields: Arbitrary key-value pairs to include in the emitted JSON.
+                The caller and the dashboard queries that consume the event
+                define which fields it carries, such as ``message``,
+                ``severity``, or event-specific data.
         """
         try:
             # Drop only the colliding fields; the rest of the event (most

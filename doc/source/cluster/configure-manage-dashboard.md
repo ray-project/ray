@@ -255,21 +255,21 @@ When the Grafana instance requires user authentication, the following settings h
 ```
 
 (grafana-dashboard-annotations)=
-#### Overlaying event annotations on the dashboards
+#### Overlay event annotations on the dashboards
 
-Some Ray libraries emit *annotations*: discrete, timestamped events written as one JSON object per line to `annotations_*.log` files in the session logs directory. For example, Ray Train annotates controller state changes and every `ray.train.report` call, and `ray.train.annotate` lets you add your own events.
+Some Ray libraries emit *annotations*, which are discrete, timestamped events. Ray writes each one as a single JSON object on its own line in an `annotations_*.log` file in the session logs directory. Ray Train annotates controller state changes and every `ray.train.report` call, and you can add your own events with `ray.train.annotate`.
 
-Grafana can overlay each of these events as a marker on the time axis of every panel, which lines up "what happened" against the metric graphs. Prometheus can't serve these annotations, because a Prometheus range query returns a value for every sample in its lookback window rather than a single point in time, and its labels can't carry a per-event payload such as a checkpoint name. So Grafana needs to query the log lines themselves.
+Grafana can overlay each of these events as a marker on the time axis of every panel, which lines up what happened against the metric graphs. Prometheus can't serve these annotations. A Prometheus range query returns a value for every sample in its lookback window rather than a single point in time, and its labels can't carry a per-event payload such as a checkpoint name. Grafana therefore has to query the log lines themselves.
 
-Ray writes the annotation log files but doesn't ship a log collector and only provisions a Prometheus datasource, so rendering annotations requires you to supply the rest of the pipeline:
+Ray writes the annotation log files, but it doesn't ship a log collector and it only provisions a Prometheus datasource. To render annotations, supply the rest of the pipeline:
 
-1. Run a log collector (for example [Vector](https://vector.dev/) or [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/)) that tails `/tmp/ray/session_*/logs/annotations_*.log` and ships each line to a log backend such as [Loki](https://grafana.com/docs/loki/latest/). Ship the line as-is: the queries parse Ray's JSON object directly, so a collector that wraps it in an envelope of its own hides the fields they filter on.
-2. Label that stream `ray_annotations="true"` in the collector, so the generated queries can find it. This is the one thing Ray needs from your collector config.
-3. Add the backend to Grafana as a datasource.
+1. Run a log collector, for example [Vector](https://vector.dev/) or [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/), that tails `/tmp/ray/session_*/logs/annotations_*.log` and ships each line to a log backend such as [Loki](https://grafana.com/docs/loki/latest/). Ship the line as-is. The generated queries parse Ray's JSON object directly, so a collector that wraps the line in an envelope of its own hides the fields those queries filter on.
+1. Label that stream `ray_annotations="true"` in the collector so the generated queries can find it. This label is the one thing Ray needs from your collector config.
+1. Add the backend to Grafana as a datasource.
 
-That's it — no Ray configuration is required. Ray's annotation queries start with the `{ray_annotations="true"}` selector from step 2, and the datasource resolves through an `annotation_datasource` dashboard variable that Grafana binds to your first Loki datasource automatically, the same way the metric panels already find Prometheus.
+Ray needs no further configuration. Its annotation queries start with the `{ray_annotations="true"}` selector from step 2, and the datasource resolves through an `annotation_datasource` dashboard variable that Grafana binds to your first Loki datasource automatically, the same way the metric panels already find Prometheus.
 
-If either of those defaults doesn't suit your setup, override it on the head node before starting Ray:
+If either default doesn't suit your setup, override it on the head node before you start Ray:
 
 ```bash
 # Your collector can't attach the label, or you want a narrower selector.
@@ -278,14 +278,14 @@ RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR='{job="ray"}'
 RAY_GRAFANA_ANNOTATION_DATASOURCE_UID=my-loki-datasource-uid
 ```
 
-* Set `RAY_GRAFANA_ANNOTATION_DATASOURCE_TYPE` if the backend isn't Loki. Default is `"loki"`. Note that the queries Ray generates are LogQL, so a non-Loki datasource needs a LogQL-compatible query API.
+Two more environment variables cover the remaining cases:
+
+* Set `RAY_GRAFANA_ANNOTATION_DATASOURCE_TYPE` if the backend isn't Loki. The default is `loki`. Ray generates LogQL queries, so a non-Loki datasource needs a LogQL-compatible query API.
 * Set `RAY_GRAFANA_ANNOTATIONS_ENABLED=0` to omit annotations from the generated dashboards entirely.
 
-The stream selector only has to select the annotation lines; it carries no responsibility for keeping clusters apart. Ray writes a `session_name` field into every annotation record and bakes this cluster's session into each generated query as a literal, so a dashboard only ever renders its own cluster's events no matter how broad the selector is or which datasource it points at. Within a cluster, the `TrainRunName` and `TrainRunId` dashboard variables select between concurrent runs.
+The stream selector only has to select the annotation lines. It carries no responsibility for keeping clusters apart. Ray writes a `session_name` field into every annotation record and bakes this cluster's session into each generated query as a literal, so a dashboard only ever renders its own cluster's events, no matter how broad the selector is or which datasource it points at. Within a cluster, the `TrainRunName` and `TrainRunId` dashboard variables select between concurrent runs.
 
-Emitting annotations always works and always writes the log lines, whether or not any of this is configured.
-
-To disable the Ray Train annotations, set `RAY_TRAIN_ANNOTATIONS_ENABLED=0` on the driver. This is worth doing for training workloads that call `ray.train.report` very frequently, because rank 0 writes one annotation log line per report.
+Ray writes the annotation log lines whether or not you configure any of this. To turn the Ray Train annotations off, set `RAY_TRAIN_ANNOTATIONS_ENABLED=0` on the driver. Turning them off is worth doing for training workloads that call `ray.train.report` frequently, because rank 0 writes one annotation log line per report.
 
 #### Troubleshooting
 

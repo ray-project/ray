@@ -169,13 +169,13 @@ Ray Train Utilities
     :nosignatures:
     :toctree: doc/
 
+    ~train.annotate
     ~train.get_all_reported_checkpoints
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
     ~train.get_preemption_info
     ~train.report
-    ~train.annotate
 
 **Collective**
 

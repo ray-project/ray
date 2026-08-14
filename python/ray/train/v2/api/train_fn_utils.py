@@ -426,25 +426,25 @@ def annotate(
     rank_zero_only: bool = True,
     **fields: Any,
 ) -> None:
-    """Emit a custom annotation that can be visualized in Grafana.
+    """Emit a custom annotation that Grafana can visualize.
 
-    This helps mark moments of interest (e.g. an evaluation completing, a
-    learning-rate change, or a phase transition) on the same timeline as your
-    training metrics. Rendering it as a point annotation on the Train Grafana
-    dashboard additionally requires the cluster operator to ship these log
-    lines to a log backend registered as a Grafana datasource, and to point the
-    dashboard's annotation datasource and stream selector at it. See
-    :ref:`Overlaying event annotations on the dashboards
+    Use this to mark a moment of interest on the same timeline as your training
+    metrics, such as an evaluation completing, a learning-rate change, or a
+    phase transition. To render it as a point annotation on the Train Grafana
+    dashboard, the cluster operator also has to ship these log lines to a log
+    backend registered as a Grafana datasource, and point the dashboard's
+    annotation datasource and stream selector at it. See
+    :ref:`Overlay event annotations on the dashboards
     <grafana-dashboard-annotations>`.
 
-    You control what appears on the dashboard tooltip: the ``message`` is shown
-    as the annotation text and any ``**fields`` are shown together as a single
-    JSON tag. All custom annotations share one dashboard layer (they are emitted
-    under a fixed internal event name), colored by ``severity``.
+    You control what the dashboard tooltip shows. Grafana shows the ``message``
+    as the annotation text, and shows any ``**fields`` together as a single JSON
+    tag. All custom annotations share one dashboard layer, because Ray emits
+    them under a fixed internal event name, and ``severity`` colors them.
 
     Setting ``RAY_TRAIN_ANNOTATIONS_ENABLED=0`` turns all Ray Train annotations
-    off, in which case this call emits nothing. Its arguments are still
-    validated either way, so an invalid ``severity`` always raises.
+    off, in which case this call emits nothing. It still validates its arguments
+    either way, so an invalid ``severity`` always raises.
 
     Example:
 
@@ -463,23 +463,23 @@ def annotate(
                     )
 
     Args:
-        message: Human-readable description of the event, shown as the annotation
-            text/tooltip in Grafana. Emitted as the ``message`` field.
-        severity: Severity level for the event (``"info"``, ``"warning"``,
-            ``"error"``). Defaults to ``"info"``. This drives the annotation
-            color, since Grafana colors annotations per query/layer
-            (see :class:`Annotation`).
-        rank_zero_only: If ``True`` (the default), only the rank 0 worker emits
+        message: Human-readable description of the event. Grafana shows it as
+            the annotation text and tooltip. Ray emits it as the ``message``
+            field.
+        severity: Severity level for the event, one of ``"info"``, ``"warning"``,
+            or ``"error"``. Defaults to ``"info"``. This drives the annotation
+            color, because Grafana colors annotations per query layer.
+        rank_zero_only: If ``True``, the default, only the rank 0 worker emits
             the annotation, producing a single point on the dashboard. If
             ``False``, every worker emits its own annotation and carries
             ``ray_train_worker_world_rank`` for LogQL to distinguish ranks.
         **fields: Arbitrary additional key-value pairs to include in the emitted
-            JSON payload (e.g. ``epoch=3``, ``loss=0.1``). These are serialized
-            together into a single JSON string under the ``fields`` key, so they
-            are displayed as one JSON tag on the dashboard annotation. Because
-            ``fields`` parses as a single string label, individual keys within it
-            are not filterable in LogQL; filter on the reserved fields
-            (e.g. ``severity``) or the run/rank tags instead.
+            JSON payload, such as ``epoch=3`` or ``loss=0.1``. Ray serializes
+            them together into a single JSON string under the ``fields`` key, so
+            the dashboard annotation displays them as one JSON tag. Because
+            ``fields`` parses as a single string label, LogQL can't filter on
+            individual keys within it. Filter on the reserved fields, such as
+            ``severity``, or on the run and rank tags instead.
     """
     if severity not in {"info", "warning", "error"}:
         raise ValueError(
