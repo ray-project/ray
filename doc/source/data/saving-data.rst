@@ -172,14 +172,10 @@ control the number of files and their sizes, since every block could potentially
 the rows corresponding to any partition.
 
 .. warning::
-    Using ``min_rows_per_file`` with non-empty ``partition_cols`` is deprecated and
-    will raise a ``ValueError`` in a future release. During the deprecation period, Ray
-    Data emits a ``DeprecationWarning`` and retains the existing behavior. The minimum
-    is only effective when each partition is contained in a single block, such as after
-    repartitioning by the partition columns. If you followed the previously documented
-    pattern, each partition is already in one block, so removing
-    ``min_rows_per_file`` doesn't change the output layout. Use
-    ``max_rows_per_file`` to cap file sizes.
+    ``min_rows_per_file`` with non-empty ``partition_cols`` is deprecated. Use
+    ``repartition()`` and ``max_rows_per_file`` instead. If the dataset is already
+    repartitioned by the partition columns, removing ``min_rows_per_file`` doesn't
+    change the output layout.
 
 .. testcode::
     import ray

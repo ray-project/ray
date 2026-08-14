@@ -201,12 +201,9 @@ class ParquetDatasink(_FileDatasink):
 
         if self.partition_cols and self.min_rows_per_file is not None:
             warnings.warn(
-                "Using `min_rows_per_file` with non-empty `partition_cols` is "
-                "deprecated and will raise a ValueError in a future release. Ray Data "
-                "continues with the existing behavior for now. To preserve the file "
-                "layout when `min_rows_per_file` was effective, repartition by the "
-                "partition columns before writing, then remove `min_rows_per_file`. "
-                "Use `max_rows_per_file` to cap file sizes.",
+                "`min_rows_per_file` with non-empty `partition_cols` is deprecated. "
+                "Use `repartition(keys=partition_cols)` and `max_rows_per_file` "
+                "instead.",
                 DeprecationWarning,
                 stacklevel=3,
             )

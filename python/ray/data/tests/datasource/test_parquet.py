@@ -2062,7 +2062,7 @@ def test_write_partition_cols_with_min_rows_per_file_warns(
 
     with pytest.warns(
         DeprecationWarning,
-        match="Using `min_rows_per_file` with non-empty `partition_cols` is deprecated",
+        match="`min_rows_per_file` with non-empty `partition_cols` is deprecated",
     ):
         ds.write_parquet(tmp_path, partition_cols=["partition"], min_rows_per_file=5)
     assert ray.data.read_parquet(tmp_path).count() == 10
@@ -2082,8 +2082,7 @@ def test_write_partition_cols_with_num_rows_per_file_warns(
     messages = [str(warning.message) for warning in warnings]
     assert any("`num_rows_per_file` is deprecated" in message for message in messages)
     assert any(
-        "Using `min_rows_per_file` with non-empty `partition_cols` is deprecated"
-        in message
+        "`min_rows_per_file` with non-empty `partition_cols` is deprecated" in message
         for message in messages
     )
     assert ray.data.read_parquet(tmp_path).count() == 10

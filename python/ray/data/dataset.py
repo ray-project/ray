@@ -4897,13 +4897,11 @@ class Dataset:
                 specified value, Ray Data writes the number of rows per block to each file.
                 The specified value is a hint, not a strict limit. Ray Data
                 might write more or fewer rows to each file. Using this option with
-                non-empty ``partition_cols`` emits a ``DeprecationWarning`` and will
-                raise a ``ValueError`` in a future release. During the deprecation
-                period, Ray Data retains the existing behavior: the minimum is only
-                effective when the rows for each partition are in a single block, such
-                as after calling :meth:`~ray.data.Dataset.repartition` with the same
-                partition columns. To migrate, repartition by those columns, omit
-                ``min_rows_per_file``, and use ``max_rows_per_file`` to cap file sizes.
+                non-empty ``partition_cols`` emits a ``DeprecationWarning``. Use
+                :meth:`~ray.data.Dataset.repartition` with the same partition columns
+                and ``max_rows_per_file`` instead. When the rows for each partition are
+                in a single block, removing ``min_rows_per_file`` doesn't change the
+                output layout.
             max_rows_per_file: [Experimental] The target maximum number of rows to write
                 to each file. If ``None``, Ray Data writes a system-chosen number of
                 rows to each file. If the number of rows per block is smaller than the
