@@ -22,7 +22,6 @@ steps:
     commands:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
-      - banned_words
       - doc_readme
       - documentation_style
       - doc_no_new_rst

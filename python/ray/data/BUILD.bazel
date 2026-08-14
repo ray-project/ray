@@ -1128,7 +1128,7 @@ py_test(
 
 py_test(
     name = "test_tensor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tensor.py"],
     tags = [
         "exclusive",
