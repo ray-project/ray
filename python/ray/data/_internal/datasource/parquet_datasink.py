@@ -201,9 +201,10 @@ class ParquetDatasink(_FileDatasink):
 
         if self.partition_cols and self.min_rows_per_file is not None:
             warnings.warn(
-                "`min_rows_per_file` with non-empty `partition_cols` is deprecated. "
-                "Use `repartition(keys=partition_cols)` and `max_rows_per_file` "
-                "instead.",
+                "Using `min_rows_per_file` with non-empty `partition_cols` is "
+                "deprecated and will no longer be supported after February 2027. "
+                "Use `repartition(num_blocks=..., keys=partition_cols)` and "
+                "`max_rows_per_file` instead.",
                 DeprecationWarning,
                 stacklevel=3,
             )
