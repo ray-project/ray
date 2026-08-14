@@ -131,7 +131,7 @@ ensuring that rows with the same key-values are being placed into the same parti
 Hash-shuffle v2
 ~~~~~~~~~~~~~~~
 
-Hash-shuffle v2 (``ShuffleStrategy.HASH_SHUFFLE_V2``) is a task-based reimplementation of
+Hash-shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is a task-based reimplementation of
 hash-shuffling. Unlike the aggregator-actor model described above, hash-shuffle v2 doesn't push
 shards into long-lived aggregator actors:
 
@@ -158,7 +158,7 @@ application:
 
 .. code-block:: bash
 
-    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2
+    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
 
 To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
 
@@ -166,7 +166,7 @@ To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
 
     from ray.data.context import DataContext, ShuffleStrategy
 
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
 .. _tuning-hash-shuffle-v2:
 
@@ -177,7 +177,7 @@ Hash-shuffle v2 provides the following knobs:
 
 **Input batch size** (``DataContext.shuffle_input_batch_bytes``, environment variable
 ``RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES``, default 1 GiB). This setting only applies to the
-``HASH_SHUFFLE_V2`` strategy.
+``SHUFFLE_V2`` strategy.
 
 The operator buffers input blocks from the same node until their combined size reaches this
 threshold, then submits a single map task to partition that batch. This controls the trade-off

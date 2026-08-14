@@ -231,7 +231,7 @@ Example of hash shuffling based on column `id`:
 
 .. tip::
 
-    Prefer :ref:`hash-shuffle v2 <hash-shuffle-v2>` (``ShuffleStrategy.HASH_SHUFFLE_V2``), an
+    Prefer :ref:`hash-shuffle v2 <hash-shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``), an
     improved hash-shuffle implementation that generally performs better than the default
     hash-shuffle strategy:
 
@@ -239,7 +239,7 @@ Example of hash shuffling based on column `id`:
 
         from ray.data.context import DataContext, ShuffleStrategy
 
-        DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+        DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     See :ref:`Tuning hash-shuffle v2 <tuning-hash-shuffle-v2>` for the available knobs.
 

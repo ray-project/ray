@@ -164,5 +164,5 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
     Hash-shuffling can provide better performance for aggregations in certain cases. For more information see `comparison between hash based shuffling and Range Based shuffling approach <https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/>`_ .
 
     Prefer :ref:`hash-shuffle v2 <hash-shuffle-v2>` for aggregations. Set the shuffle strategy before creating a ``Dataset``:
-    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2``. See :ref:`Tuning hash-shuffle v2 <tuning-hash-shuffle-v2>` for the available knobs.
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2``. See :ref:`Tuning hash-shuffle v2 <tuning-hash-shuffle-v2>` for the available knobs.
     

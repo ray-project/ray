@@ -43,7 +43,7 @@ columns from the requested side)
 Internally joins are currently powered by the :ref:`hash-shuffle backend <hash-shuffle>`. Prefer
 :ref:`hash-shuffle v2 <hash-shuffle-v2>` by setting the shuffle strategy before creating a
 ``Dataset``:
-``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2``. See
+``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2``. See
 :ref:`Tuning hash-shuffle v2 <tuning-hash-shuffle-v2>` for memory-related knobs.
 
 Configuring Joins
