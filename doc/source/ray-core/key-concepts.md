@@ -40,8 +40,9 @@ See the {ref}`User Guide for Placement Groups <ray-placement-group-doc-ref>`.
 
 ## Environment Dependencies
 
-When Ray executes tasks and actors on remote machines, their environment dependencies, such as Python packages, local files, and environment variables, must be available on the remote machines. To address this problem, you can
-1\. Prepare your dependencies on the cluster in advance using the Ray {ref}`Cluster Launcher <vm-cluster-quick-start>`
-2\. Use Ray's {ref}`runtime environments <runtime-environments>` to install them on the fly.
+When Ray executes tasks and actors on remote machines, their environment dependencies, such as Python packages, local files, and environment variables, must be available on the remote machines. To address this problem, you can do either of the following:
+
+1. Prepare your dependencies on the cluster in advance using the Ray {ref}`Cluster Launcher <vm-cluster-quick-start>`.
+2. Use Ray's {ref}`runtime environments <runtime-environments>` to install them on the fly.
 
 See the {ref}`User Guide for Environment Dependencies <handling_dependencies>`.
