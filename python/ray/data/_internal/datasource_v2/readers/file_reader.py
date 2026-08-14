@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import cached_property, partial
-from typing import Any, Iterator, List, Optional, Set, Tuple
+from typing import Any, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -53,6 +53,7 @@ class FileFormat(str, Enum):
     JSON = "json"
     ARROW = "arrow"
     IPC = "ipc"
+    ORC = "orc"
 
 
 @DeveloperAPI
@@ -170,6 +171,17 @@ class FileReader(Reader[FileManifest]):
         ]
         return pa.schema(fields) if fields else None
 
+    @cached_property
+    def _filter_columns(self) -> Optional[List[str]]:
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        if self._predicate is not None:
+            return get_column_references(self._predicate)
+        else:
+            return None
+
     def _broadcast_partition_value(
         self, name: str, value: Any, num_rows: int
     ) -> pa.Array:
@@ -227,20 +239,18 @@ class FileReader(Reader[FileManifest]):
             ignore_prefixes=self._ignore_prefixes,
         )
 
-        # Split the requested columns into ones the on-disk file has
-        # (pyarrow reads these) and ones we need to synthesize post-read
-        # (hive partition keys, "path"). ``self._columns is None`` means
-        # "no projection" — read every file column and synthesize every
-        # available partition/path column.
+        # Resolve the physical projection passed to pyarrow. Synthetic columns
+        # may also appear in this schema (for example, an on-disk ``path``
+        # column or a partition field pinned by the caller schema), so their
+        # authoritative path-derived values are applied independently below.
+        # ``self._columns is None`` means no projection.
         on_disk_column_names = set(dataset.schema.names)
         if self._columns is None:
             columns_to_read_from_file: Optional[List[str]] = None
-            columns_to_synthesize: Optional[Set[str]] = None
         else:
             columns_to_read_from_file = [
                 c for c in self._columns if c in on_disk_column_names
             ]
-            columns_to_synthesize = set(self._columns) - on_disk_column_names
 
         scanner_kwargs = {
             "columns": columns_to_read_from_file,
@@ -271,10 +281,7 @@ class FileReader(Reader[FileManifest]):
                 derived_items.append((INCLUDE_PATHS_COLUMN_NAME, fragment_path))
 
             for name, value in derived_items:
-                if (
-                    columns_to_synthesize is not None
-                    and name not in columns_to_synthesize
-                ):
+                if self._columns is not None and name not in self._columns:
                     continue
                 if name in table.column_names:
                     # When the caller schema names a partition key, pyarrow
@@ -290,8 +297,7 @@ class FileReader(Reader[FileManifest]):
             # Skip when projection pushdown has narrowed ``columns`` to
             # exclude ``row_hash`` — the projection below would just drop it.
             if self._include_row_hash and (
-                columns_to_synthesize is None
-                or ROW_HASH_COLUMN_NAME in columns_to_synthesize
+                self._columns is None or ROW_HASH_COLUMN_NAME in self._columns
             ):
                 hashes = _compute_row_hashes(
                     fragment_path, fragment_row_offset, table.num_rows

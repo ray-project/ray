@@ -31,7 +31,6 @@ class OrcScanner(ArrowFileScanner):
 
     def create_reader(self) -> OrcFileReader:
         return OrcFileReader(
-            batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
             predicate=self.predicate,
             limit=self.limit,

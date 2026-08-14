@@ -6,6 +6,7 @@ import pyarrow as pa
 import pyarrow.orc as orc
 import pytest
 
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     OrcFileChunker,
     OrcFileChunkMetadata,
@@ -22,6 +23,7 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
 from ray.data._internal.datasource_v2.readers.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.scanners.orc_scanner import OrcScanner
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+from ray.data.expressions import col
 
 
 def _write_orc(path: str, table: pa.Table, *, rows_per_stripe: int = 20) -> None:
@@ -190,3 +192,124 @@ def test_orc_file_reader_handles_out_of_range_chunks(tmp_path):
 
     tables = list(OrcFileReader().read(manifest))
     assert sum(table.num_rows for table in tables) == 0
+
+
+def test_orc_file_reader_filter_projection_drops_filter_columns(tmp_path):
+    file_path = str(tmp_path / "data.orc")
+    _write_orc(file_path, pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}))
+
+    table = pa.concat_tables(
+        list(
+            OrcFileReader(columns=["b"], predicate=col("a") > 1).read(
+                _manifest_of([file_path])
+            )
+        )
+    )
+
+    assert table.column_names == ["b"]
+    assert table.to_pylist() == [{"b": "y"}, {"b": "z"}]
+
+
+def test_orc_file_reader_null_fills_missing_projected_column(tmp_path):
+    file_path = str(tmp_path / "data.orc")
+    _write_orc(file_path, pa.table({"a": [1, 2]}))
+    schema = pa.schema([("a", pa.int64()), ("b", pa.string())])
+
+    table = pa.concat_tables(
+        list(
+            OrcFileReader(columns=["a", "b"], schema=schema).read(
+                _manifest_of([file_path])
+            )
+        )
+    )
+
+    assert table.schema == schema
+    assert table.to_pylist() == [{"a": 1, "b": None}, {"a": 2, "b": None}]
+
+
+def test_orc_file_reader_null_fills_missing_filter_column(tmp_path):
+    without_b_path = str(tmp_path / "without_b.orc")
+    with_b_path = str(tmp_path / "with_b.orc")
+    _write_orc(without_b_path, pa.table({"a": [1]}))
+    _write_orc(with_b_path, pa.table({"a": [2], "b": [20]}))
+    schema = pa.schema([("a", pa.int64()), ("b", pa.int64())])
+
+    tables = list(
+        OrcFileReader(columns=["a"], predicate=col("b") > 15, schema=schema).read(
+            _manifest_of([without_b_path, with_b_path])
+        )
+    )
+
+    assert pa.concat_tables(tables).to_pylist() == [{"a": 2}]
+
+
+def test_orc_file_reader_empty_projection_uses_stub_column(tmp_path):
+    file_path = str(tmp_path / "data.orc")
+    _write_orc(file_path, pa.table({"a": [1, 2, 3]}))
+
+    table = pa.concat_tables(
+        list(OrcFileReader(columns=[]).read(_manifest_of([file_path])))
+    )
+
+    assert table.column_names == [_BATCH_SIZE_PRESERVING_STUB_COL_NAME]
+    assert table.num_rows == 3
+
+
+def test_orc_file_reader_orders_synthetic_columns_by_projection(tmp_path):
+    partition_dir = tmp_path / "year=2024"
+    partition_dir.mkdir()
+    file_path = str(partition_dir / "data.orc")
+    _write_orc(file_path, pa.table({"data": [1, 2]}))
+
+    table = pa.concat_tables(
+        list(
+            OrcFileReader(
+                columns=["year", "data"],
+                partitioning=Partitioning(PartitionStyle.HIVE),
+                schema=pa.schema([("data", pa.int64()), ("year", pa.string())]),
+            ).read(_manifest_of([file_path]))
+        )
+    )
+
+    assert table.column_names == ["year", "data"]
+    assert table.to_pylist() == [
+        {"year": "2024", "data": 1},
+        {"year": "2024", "data": 2},
+    ]
+
+
+def test_orc_file_reader_overwrites_physical_path_with_source_path(tmp_path):
+    file_path = str(tmp_path / "data.orc")
+    _write_orc(file_path, pa.table({"path": ["not-a-source-path"]}))
+
+    table = pa.concat_tables(
+        list(
+            OrcFileReader(columns=["path"], include_paths=True).read(
+                _manifest_of([file_path])
+            )
+        )
+    )
+
+    assert table.column_names == ["path"]
+    assert table.column("path").to_pylist() == [file_path]
+
+
+def test_orc_file_reader_normalizes_to_unified_schema(tmp_path):
+    first_path = str(tmp_path / "first.orc")
+    second_path = str(tmp_path / "second.orc")
+    _write_orc(first_path, pa.table({"a": pa.array([1], type=pa.int32())}))
+    _write_orc(
+        second_path,
+        pa.table({"a": pa.array([2], type=pa.int64()), "b": ["x"]}),
+    )
+    schema = pa.schema([("a", pa.int64()), ("b", pa.string())])
+
+    tables = list(
+        OrcFileReader(schema=schema).read(_manifest_of([first_path, second_path]))
+    )
+
+    assert [table.schema for table in tables] == [schema, schema]
+    assert pa.concat_tables(tables).to_pylist() == [
+        {"a": 1, "b": None},
+        {"a": 2, "b": "x"},
+    ]

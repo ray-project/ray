@@ -345,9 +345,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             _resolve_leaf_column_indices,
             _resolve_read_columns,
         )
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            get_column_references,
-        )
 
         columns = scanner_kwargs.get("columns")
         filter_expr: pc.Expression = scanner_kwargs.get("filter")
@@ -355,11 +352,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         # that touches a large nested column outside the projection still
         # forces row-level decoding of that column, which would otherwise
         # hit ARROW-5030 in the normal scanner path.
-        filter_columns = (
-            get_column_references(self._predicate)
-            if self._predicate is not None
-            else None
-        )
+        filter_columns = self._filter_columns
         read_columns = _resolve_read_columns(columns, filter_expr, filter_columns)
         if not _needs_nested_type_fallback(fragment, read_columns):
             yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
