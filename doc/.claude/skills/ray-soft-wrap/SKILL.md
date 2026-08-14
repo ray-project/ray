@@ -121,7 +121,9 @@ Left byte-for-byte unchanged by construction: front matter; fenced code blocks
 tables (a header row, its `|---|` delimiter row, and the body rows, each kept on its
 own line); colon-fence directive markers and options; sphinx-design `^^^` and `+++`
 card separators; MyST `(target)=` anchors; ATX headings; thematic breaks; block
-quotes; raw HTML and comments; link reference definitions; and definition-list items.
+quotes; raw HTML at any indentation, including a `.. raw:: html` block nested in a
+directive body, and every line of a multi-line HTML comment; link reference
+definitions; and definition-list items.
 
 The render-equality oracle is CommonMark plus the GFM table extension, so it sees
 paragraphs, lists, headings, block quotes, code, links — and pipe tables. It still
@@ -139,6 +141,16 @@ idempotent=ok`, since the non-whitespace bytes were intact and CommonMark has no
 concept of a card. When you soft-wrap a page using a MyST-only construct the oracle
 doesn't model, add a structural spot-check of your own; for card grids, assert that
 the `{grid-item-card}`, `^^^`, and `+++` counts still match.
+
+The indented-raw-HTML protection has the same provenance. `use-cases.md` carries an
+SVG icon inside a `.. raw:: html` block nested in a `{query-param-ref}` body, whose
+content Sphinx re-parses with docutils. Indented 8 spaces, it fell outside
+CommonMark's 3-space window for opening an HTML block, so the engine collapsed the
+whole icon onto one 3,000-character line and reported `content=ok render=ok
+idempotent=ok` — the render oracle treats an HTML block as opaque passthrough and
+normalizes whitespace inside it. Nothing broke visually that time. It's still not
+this pass's business to rewrite raw HTML, so read a long joined line in the diff as
+a signal to check what the engine thought it was reflowing.
 
 **Known under-reflow (safe):** prose inside `$$`/amsmath/deflist blocks and inside
 backtick-fenced directives (e.g. a colon-less `{note}`) is left wrapped, and any

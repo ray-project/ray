@@ -16,7 +16,8 @@ Left byte-for-byte unchanged:
   - colon-fence directive markers/options (:::{note}, :open:, ...) -- the prose
     *inside* a colon directive is still reflowed, only the markers stay put
   - MyST (target)= anchors, ATX headings, thematic breaks, block quotes
-  - raw HTML block lines and HTML comments
+  - raw HTML lines at any indentation, and every line of a multi-line HTML
+    comment
   - link reference definitions ([label]: url) and definition-list items (: def)
   - any paragraph containing a hard line break (trailing two spaces or "\")
 
@@ -45,7 +46,16 @@ OPT_RE = re.compile(r"^\s*:[A-Za-z0-9_][A-Za-z0-9_+-]*:(\s.*)?$")
 BQ_RE = re.compile(r"^\s{0,3}>")
 MARKER_RE = re.compile(r"^(\s*)([-*+]|\d+[.)])\s")
 BLANK_RE = re.compile(r"^\s*$")
-HTML_RE = re.compile(r"^\s{0,3}<(/?[A-Za-z][\w-]*|!--)")
+# Raw HTML lines, at any indentation. CommonMark only opens an HTML block within
+# 3 leading spaces, but indentation is not a reliable signal here: a raw HTML
+# block nested in a directive body carries the body's indentation, and some Ray
+# directives (query-param-ref) re-parse their content with docutils, where an
+# indented ``.. raw:: html`` block is raw HTML rather than an indented code
+# block. Joining those lines isn't this pass's business either way, so treat a
+# raw HTML line as a boundary wherever it sits.
+HTML_RE = re.compile(r"^\s*<(/?[A-Za-z][\w-]*|!--)")
+HTML_COMMENT_OPEN_RE = re.compile(r"^\s*<!--")
+HTML_COMMENT_CLOSE_RE = re.compile(r"-->")
 MATH_FENCE_RE = re.compile(r"^\s*\$\$\s*$")
 DOLLAR_SPAN_RE = re.compile(r"\$\$")
 AMS_BEGIN_RE = re.compile(r"^\s*\\begin\{[A-Za-z*]+\}")
@@ -130,8 +140,15 @@ def reflow(text):
     fence_len = 0
     in_math = False  # $$ ... $$ display-math block
     in_amsmath = False  # \begin{env} ... \end{env}
+    in_html_comment = False  # <!-- ... --> spanning lines
     while i < n:
         ln = lines[i]
+        if in_html_comment:
+            out.append(ln)
+            if HTML_COMMENT_CLOSE_RE.search(ln):
+                in_html_comment = False
+            i += 1
+            continue
         if in_fence:
             out.append(ln)
             m = FENCE_CLOSE_RE.match(ln)
@@ -163,6 +180,15 @@ def reflow(text):
         if MATH_FENCE_RE.match(ln):  # lone $$ opens a display-math block
             flush()
             in_math = True
+            out.append(ln)
+            i += 1
+            continue
+        # An HTML comment that opens without closing on the same line runs
+        # verbatim to its --> so a comment's interior lines stay as the author
+        # wrote them.
+        if HTML_COMMENT_OPEN_RE.match(ln) and not HTML_COMMENT_CLOSE_RE.search(ln):
+            flush()
+            in_html_comment = True
             out.append(ln)
             i += 1
             continue
@@ -278,6 +304,16 @@ SELFTEST_CASES = [
         "pipe table rows keep their lines",
         "| a | b |\n|---|---|\n| 1 | 2 |\n",
         "| a | b |\n|---|---|\n| 1 | 2 |\n",
+    ),
+    (
+        "indented raw HTML inside a directive body keeps its lines",
+        ":::{query-param-ref} ray-overview/examples\n:parameters: ?tags=llm\n\n.. raw:: html\n\n        <svg width='24' height='24'>\n            <g>\n                <path d='M15 9Z'> </path>\n            </g>\n        </svg>Explore the examples\n:::\n",
+        ":::{query-param-ref} ray-overview/examples\n:parameters: ?tags=llm\n\n.. raw:: html\n\n        <svg width='24' height='24'>\n            <g>\n                <path d='M15 9Z'> </path>\n            </g>\n        </svg>Explore the examples\n:::\n",
+    ),
+    (
+        "a multi-line HTML comment keeps its lines",
+        "<!-- DJS: this note\nspans two lines. -->\n\nProse that\njoins.\n",
+        "<!-- DJS: this note\nspans two lines. -->\n\nProse that joins.\n",
     ),
 ]
 

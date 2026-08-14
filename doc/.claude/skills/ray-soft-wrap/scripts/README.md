@@ -16,7 +16,9 @@ Front matter; fenced code blocks including nested fences and fenced directives
 `$$ ... $$` math and `\begin{env} ... \end{env}` amsmath blocks; colon-fence
 directive markers and options (`:::{note}`, `:open:`); sphinx-design `^^^` and
 `+++` card separators; MyST `(target)=` anchors;
-ATX headings; thematic breaks; block quotes; raw HTML and HTML comments; link
+ATX headings; thematic breaks; block quotes; raw HTML at any indentation, including
+a `.. raw:: html` block nested in a directive body, and every line of a multi-line
+HTML comment; link
 reference definitions (`[label]: url`); definition-list items; and any paragraph
 containing a Markdown hard line break (trailing `  ` or `\`). Prose *inside* a
 colon directive is still reflowed — only the markers stay put.
