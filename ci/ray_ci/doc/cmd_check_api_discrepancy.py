@@ -38,7 +38,7 @@ TEAM_API_CONFIGS = {
         # docbuild image lacks. Its surface is documented in doc/source/data/api/llm.rst
         # (reachable from api.rst's toctree).
         "head_modules": {"ray.data", "ray.data.grouped_data", "ray.data.llm"},
-        "head_doc_file": "doc/source/data/api/api.rst",
+        "head_doc_file": "doc/source/data/api/api.md",
         "white_list_apis": {
             # special case where we cannot deprecate although we want to
             "ray.data.random_access_dataset.RandomAccessDataset",
@@ -146,7 +146,7 @@ TEAM_API_CONFIGS = {
     },
     "core": {
         "head_modules": {"ray"},
-        "head_doc_file": "doc/source/ray-core/api/index.rst",
+        "head_doc_file": "doc/source/ray-core/api/index.md",
         "white_list_apis": set(),
         "tracked_doc_debt": {
             # These APIs will be documented in near future
@@ -183,7 +183,7 @@ TEAM_API_CONFIGS = {
     },
     "train": {
         "head_modules": {"ray.train"},
-        "head_doc_file": "doc/source/train/api/api.rst",
+        "head_doc_file": "doc/source/train/api/api.md",
         "white_list_apis": {
             # NOTE: These APIs are documented in a separate file (deprecated.rst).
             # These are deprecated APIs, so just white-listing them here for CI.
