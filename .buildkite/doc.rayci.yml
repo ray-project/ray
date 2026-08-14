@@ -1,3 +1,21 @@
+# Documentation pipeline. The steps below, in order:
+#
+#   docbuild / docgpubuild  Build the container images the steps below run in.
+#   doc: build              Build the HTML site (make html) and, on postmerge
+#                           master builds only, upload the artifacts as a cache.
+#                           Tagged skip-on-premerge, so it does not gate PRs.
+#   doc: check API ...      The two API-reference guards. They compare Ray's
+#                           annotated public surface against what the reference
+#                           pages document. See the comment above them for why
+#                           they carry no `if:` guard.
+#   doc: test llms.txt      Self-test for an in-repo Sphinx extension.
+#   doc: linkcheck          Sphinx linkcheck over the built site. Both
+#                           skip-on-premerge and soft_fail, so it reports
+#                           without ever blocking.
+#
+# Which of these run on a given pull request is decided by tags, not by
+# anything in this file; the file-to-tag rules live in .buildkite/test.rules.txt.
+# Read the docs build itself is a separate system and is not configured here.
 group: doc
 steps:
   - name: docbuild
@@ -87,6 +105,17 @@ steps:
     job_env: docbuild-py3.11
     commands:
       - bash ci/lint/lint.sh api_policy_check
+
+  - label: ":book: doc: test llms.txt extension"
+    key: doc_test_llms_txt
+    instance_type: small
+    commands:
+      - python doc/source/_ext/test_llms_txt.py
+    depends_on: docbuild
+    job_env: docbuild-py3.11
+    tags:
+      - oss
+      - doc
 
   - label: ":book: doc: linkcheck"
     key: doc_linkcheck

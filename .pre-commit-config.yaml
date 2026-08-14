@@ -13,7 +13,11 @@ exclude: |
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
     doc/external/|
-    doc/source/|
+    # Excludes doc/source, except the Markdown and rST prose under doc/source/data
+  # that the `vale` hook below lints. pre-commit ANDs this top-level `exclude`
+  # with each hook's own `files`, so a bare `doc/source/` here cancelled that
+  # hook out entirely and it silently matched zero files.
+  doc/source/(?!data/.*[.](md|rst)$)|
     doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
@@ -21,7 +25,15 @@ repos:
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
+        # Narrowing the top-level `exclude` above (so the `vale` hook can see
+        # doc/source/data prose) also exposed those files to this hook for the
+        # first time, which would rewrite 17 unrelated files. Keep them exempt
+        # here so enabling Vale stays a config-only change, and clean the
+        # whitespace up in its own PR.
+        exclude: ^doc/source/data/
       - id: end-of-file-fixer
+        # Same reason as trailing-whitespace above.
+        exclude: ^doc/source/data/
       - id: check-added-large-files
       - id: check-ast
         exclude: |
@@ -174,6 +186,7 @@ repos:
             python/ray/serve/_private/gang_scheduling_autoscaling_policy.py|
             python/ray/serve/_private/grpc_util.py|
             python/ray/serve/_private/handle_options.py|
+            python/ray/serve/_private/haproxy.py|
             python/ray/serve/_private/haproxy_metrics.py|
             python/ray/serve/_private/haproxy_templates.py|
             python/ray/serve/_private/http_util.py|
@@ -182,9 +195,11 @@ repos:
             python/ray/serve/_private/long_poll.py|
             python/ray/serve/_private/metrics_utils.py|
             python/ray/serve/_private/node_port_manager.py|
+            python/ray/serve/_private/proxy.py|
             python/ray/serve/_private/proxy_request_response.py|
             python/ray/serve/_private/proxy_response_generator.py|
             python/ray/serve/_private/proxy_router.py|
+            python/ray/serve/_private/proxy_state.py|
             python/ray/serve/_private/queue_monitor.py|
             python/ray/serve/_private/replica.py|
             python/ray/serve/_private/replica_response_generator.py|
@@ -259,6 +274,7 @@ repos:
             python/ray/serve/_private/gang_scheduling_autoscaling_policy.py|
             python/ray/serve/_private/grpc_util.py|
             python/ray/serve/_private/handle_options.py|
+            python/ray/serve/_private/haproxy.py|
             python/ray/serve/_private/haproxy_metrics.py|
             python/ray/serve/_private/haproxy_templates.py|
             python/ray/serve/_private/http_util.py|
@@ -267,9 +283,11 @@ repos:
             python/ray/serve/_private/long_poll.py|
             python/ray/serve/_private/metrics_utils.py|
             python/ray/serve/_private/node_port_manager.py|
+            python/ray/serve/_private/proxy.py|
             python/ray/serve/_private/proxy_request_response.py|
             python/ray/serve/_private/proxy_response_generator.py|
             python/ray/serve/_private/proxy_router.py|
+            python/ray/serve/_private/proxy_state.py|
             python/ray/serve/_private/queue_monitor.py|
             python/ray/serve/_private/replica.py|
             python/ray/serve/_private/replica_response_generator.py|
@@ -343,9 +361,17 @@ repos:
     hooks:
       - id: semgrep
         args: [--config=semgrep.yml, --error]
+        # semgrep.yml's `code-block-python` rule targets doc/source/data/**/*.rst,
+        # but the top-level `exclude` above has kept every doc/source path out of
+        # this hook, so the rule has never actually run on those files. Narrowing
+        # that exclude for Vale exposes 8 pre-existing violations under
+        # doc/source/data and would fail `semgrep_lint`. Keep them exempt here and
+        # fix the violations separately, rather than converting code blocks in a
+        # PR about Vale.
+        exclude: ^doc/source/data/
 
   - repo: https://github.com/errata-ai/vale
-    rev: v3.4.1
+    rev: v3.17.1
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$
