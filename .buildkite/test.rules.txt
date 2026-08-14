@@ -36,7 +36,7 @@
 ! core_python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
-! linux_wheels macos_wheels docker doc doc_api python_dependencies min_build tools windows
+! linux_wheels macos_wheels docker doc doc_api doc_redirects python_dependencies min_build tools windows
 ! release_tests spark_on_ray rocksdb_tests redis_tests sandbox_tests
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 
@@ -316,12 +316,35 @@ doc/source/api_mock_imports.py
 doc/source/custom_directives.py
 doc/source/_ext/
 doc/requirements-doc.txt
-# The doc pipeline definition declares the two API-consistency check steps. An
-# edit to those step definitions should exercise the steps it edits, so this
-# emits `doc_api` too. Without it, changing a check's command or image would
-# never run that check on the PR making the change.
-.buildkite/doc.rayci.yml
 @ doc doc_api
+;
+
+# The doc pipeline definition gets its own rule because it declares the redirect
+# step as well as the two API-consistency checks, so it needs a tag the machinery
+# block above must not emit: a conf.py edit shouldn't run the redirect check.
+#
+# An edit to a step definition should exercise the step it edits. Without
+# `doc_api`, changing a check's command or image would never run that check on
+# the PR making the change; without `doc_redirects`, the same holds for the
+# redirect step. `doc_redirects` also covers the `anyscale-rtd-redirects` version
+# pin, which lives in that step's commands, so a version bump re-runs the check.
+.buildkite/doc.rayci.yml
+@ doc doc_api doc_redirects
+;
+
+# Redirect YAML under doc/redirects/ gets a dedicated, credential-free premerge
+# check (rtd-redirects validate + diff-file). Today these files match no rule at
+# all: `.yaml` isn't covered by the leading prose-and-image skip, nor by the
+# `doc/*.py`/`doc/*.ipynb` catch-all further down, so they fall through to the
+# broad `doc/` pass rule and trigger nothing. This rule is purely additive.
+#
+# It emits `doc_redirects` alone, and deliberately not `doc` or `doc_api`. A
+# redirect edit can't change the documented API surface, and it doesn't need the
+# documentation build: the check parses the YAML and diffs it against the base
+# ref. Keep this rule ahead of the `doc/` pass rule at the bottom of the doc
+# section, or redirect YAML goes back to matching nothing.
+doc/redirects/*.yaml
+@ doc_redirects
 ;
 
 # Documentation validation infra, part 2 of 2: rendering and validation only.
