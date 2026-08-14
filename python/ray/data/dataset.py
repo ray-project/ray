@@ -5202,7 +5202,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
-    @PublicAPI(api_group=IOC_API_GROUP)
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     def write_orc(
         self,
         path: str,

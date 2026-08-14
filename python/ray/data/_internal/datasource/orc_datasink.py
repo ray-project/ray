@@ -28,7 +28,9 @@ class ORCDatasink(BlockBasedFileDatasink):
         super().__init__(path, file_format=file_format, **file_datasink_kwargs)
 
         if arrow_orc_args_fn is None:
-            arrow_orc_args_fn = lambda: {}  # noqa: E731
+
+            def arrow_orc_args_fn() -> Dict[str, Any]:
+                return {}
 
         if arrow_orc_args is None:
             arrow_orc_args = {}
