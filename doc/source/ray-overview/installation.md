@@ -115,7 +115,7 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 ::::{tab-item} Linux
 
 ```{list-table}
-:widths: 49 51
+:widths: auto
 :header-rows: 1
 
 * - Linux (x86_64)
