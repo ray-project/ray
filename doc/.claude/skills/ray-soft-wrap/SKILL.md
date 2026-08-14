@@ -41,10 +41,13 @@ review, and ship a PR under Ray's OSS conventions.
 
 1. **Pick the batch** with the user (a directory or explicit file list).
 
-1. **Work on a branch off current `master`:**
+1. **Work on a branch off an up-to-date `master`.** Base it on the remote that tracks
+   `ray-project/ray`, whichever name your clone gives it — that's `origin` in a direct
+   clone and `upstream` in a fork-based one, so derive it from `git remote -v` rather
+   than assuming. Basing the branch on a fork's stale `master` is the mistake to avoid:
    ```bash
-   git fetch origin --tags -q
-   git switch -c soft-wrap-<area> origin/master
+   git fetch <ray-remote> --tags -q
+   git switch -c soft-wrap-<area> <ray-remote>/master
    ```
 
 1. **Run the transform** on the batch (writes in place):
@@ -68,21 +71,11 @@ review, and ship a PR under Ray's OSS conventions.
 1. **Spot-review the diff** (`git diff`). The diff should be only line joins. Skim a
    couple of files, especially around admonitions, lists, and tables.
 
-1. **Commit** under the repo's contribution conventions (see the root `AGENTS.md`):
+1. **Commit and open the PR** under the repo's contribution conventions (see the root
+   `AGENTS.md` and `CONTRIBUTING.rst`):
    - `[doc]` subject prefix; describe it as a whitespace-only soft-wrap.
    - **DCO sign-off is required**: `git commit --signoff`.
-
-1. **Push to your fork and open the PR** (never push to `upstream`):
-   ```bash
-   git push -u origin soft-wrap-<area>
-   gh pr create --repo ray-project/ray --base master \
-     --head <fork-user>:soft-wrap-<area> \
-     --title "[doc] Soft-wrap prose in <area>" \
-     --body-file <scratch>/pr-body.md
-   ```
-   Write the PR body to a gitignored path so it can't be accidentally committed, and
-   pass it with `--body-file` to avoid heredoc-in-`$()` breakage on bodies containing
-   backticks.
+   - Suggested PR title: `[doc] Soft-wrap prose in <area>`.
 
 ## Changing the engine
 
