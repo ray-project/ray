@@ -271,9 +271,7 @@ class _PartitionWriter:
                 _is_pa_extension_type(f.type) for f in tbl.schema
             )
         self._decoded_bytes_per_partition[partition_id] = tbl.nbytes
-        buf = _encode_shard(
-            tbl, self._compression, self._combine_native_ok
-        )
+        buf = _encode_shard(tbl, self._compression, self._combine_native_ok)
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
                 f"map_{self._map_id}.shf partition {partition_id}: IPC frame is "
