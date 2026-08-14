@@ -43,7 +43,7 @@ RAS_ENV = {
 # Step at which each scenario diverges, and a short loop so the non-hanging
 # cases finish quickly. The hanging cases block in NCCL well before STEPS.
 HANG_STEP = 3
-STEPS = 8
+STEPS = 16
 STEP_SLEEP_S = 1.0
 
 
@@ -198,13 +198,11 @@ def multicomm_subset_train_fn(config):
     my_group = group_a if in_a else group_b
     straggler = group_b_ranks[-1]
 
-    step = 0
-    while True:
+    for step in range(STEPS):
         if step == HANG_STEP and rank == straggler:
             while True:
                 time.sleep(30)
         dist.all_reduce(torch.ones(tensor_shape, device=device), group=my_group)
-        step += 1
         time.sleep(STEP_SLEEP_S)
 
 
