@@ -268,7 +268,7 @@
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle_v2]
+      shuffle_strategy: [shuffle_v2]
       columns:
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
@@ -319,7 +319,7 @@
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle_v2]
+      shuffle_strategy: [shuffle_v2]
       columns:
         - "column02 column14"  # 7M groups
 
@@ -345,7 +345,7 @@
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle_v2]
+      shuffle_strategy: [shuffle_v2]
       columns:
         - "column08 column13 column14"   # 84 groups
 
@@ -415,7 +415,7 @@
       --join_type {{join_type}}
       --num_partitions 50
 
-- name: "joins_{{dataset}}_{{join_type}}_hash_shuffle_v2"
+- name: "joins_{{dataset}}_{{join_type}}_shuffle_v2"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -424,7 +424,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2
+        - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
         - RAY_max_direct_call_object_size=8192
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
@@ -1327,7 +1327,7 @@
   matrix:
     setup:
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle_v2]
+      shuffle_strategy: [shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1394,7 +1394,7 @@
     setup:
       query: [q2, q3, q4, q5, q6, q7, q9, q10, q11, q12, q14, q17, q18, q20]
       scaling: [fixed_size, autoscaling]
-      shuffle_strategy: [hash_shuffle_v2]
+      shuffle_strategy: [shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1432,7 +1432,7 @@
   matrix:
     setup:
       query: [q8, q13, q15, q21, q22]
-      shuffle_strategy: [hash_shuffle_v2]
+      shuffle_strategy: [shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1470,7 +1470,7 @@
   matrix:
     setup:
       query: [q8, q13, q15, q21, q22]
-      shuffle_strategy: [hash_shuffle_v2]
+      shuffle_strategy: [shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true

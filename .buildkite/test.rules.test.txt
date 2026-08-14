@@ -1,7 +1,12 @@
-# Test cases for Ray CI test rules
-# Based on ci/pipeline/test_conditional_testing.py _TESTS_YAML
+# Unit tests for test.rules.txt
 #
-# Format: file: tag1 tag2 tag3
+# Format: file_path: tag1 tag2 tag3
+#
+# Run by `rayci test-rules`, which pairs each *.rules.txt in this directory
+# with its *.rules.test.txt companion by name. Each rules file is evaluated on
+# its own, so the tags expected below are the ones test.rules.txt emits by
+# itself; the "always lint" that always.rules.txt contributes to every real
+# build is covered by always.rules.test.txt instead.
 
 # === CI/Pipeline ===
 
@@ -96,6 +101,8 @@ doc/source/ray-observability/example.py: core_doc
 # The four ray-core notebooks whose targets are tagged team:ml route to ml_doc,
 # because the core step filters targets by team and would not execute them.
 doc/source/ray-core/examples/plot_hyperparameter.ipynb: ml_doc
+doc/source/ray-core/examples/batch_prediction.ipynb: ml_doc
+doc/source/ray-core/examples/plot_parameter_server.ipynb: ml_doc
 doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
 # highly_parallel.ipynb is the exception: the ml docs example step excludes its
 # tag, so no step runs it. It routes to the build instead.
