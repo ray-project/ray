@@ -800,6 +800,14 @@ class TestBuildAsgiApp:
         vLLM's engine error handler reads ``app.state.server``, which neither
         ``build_app`` nor ``init_app_state`` sets.
         """
+        # Building the parser resolves VllmConfig's defaults, which infer the device
+        # type. A GPU-less CI node has no vLLM platform, so pin one; this app is never
+        # served and no engine is started.
+        from vllm.platforms import current_platform
+
+        if not current_platform.device_type:
+            current_platform.device_type = "cpu"
+
         vllm_args = make_arg_parser(FlexibleArgumentParser()).parse_args([])
         engine = VLLMEngine.__new__(VLLMEngine)
         engine._vllm_args = vllm_args
