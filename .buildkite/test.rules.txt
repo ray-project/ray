@@ -12,6 +12,25 @@
 #   @ tag1 tag2 tag3  # Tags to emit for a rule. A rule without tags is a skipping rule.
 #
 #   ;  # Semicolon to separate rules
+#
+# Scope: this file decides which CI steps run for every pull request in the
+# repository, not only for the change that edits it. Widening a rule adds work
+# to everyone's builds; narrowing one silently removes coverage instead of
+# failing loudly, which is the harder mistake to notice.
+#
+# Rules are evaluated in file order and the first match wins, so a broad
+# pattern inserted above a narrower one captures the files the narrower rule
+# was written for. Position matters as much as content.
+#
+# Before changing a rule, record the file-to-tag results you expect in
+# .buildkite/test.rules.test.txt, and run the in-repo checks:
+#
+#   bazel test //ci/pipeline:test_doc_api_rules_sync   # if you touch doc_api
+#
+# The authoritative evaluator runs outside this repository and is pulled at
+# build time; ci/pipeline/determine_tests_to_run.py is an in-repo reference
+# implementation of the same rule format, useful for reasoning about a change
+# but not the thing that computes tags in a real build.
 
 ! always lint
 ! core_python cpp core_cpp java workflow cgraphs_direct_transport dashboard
