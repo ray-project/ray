@@ -22,7 +22,9 @@ from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorResponse
-from vllm.exceptions import VLLMClientError
+from vllm.entrypoints.serve.utils.server_utils import vllm_error_handler
+from vllm.exceptions import VLLMClientError, VLLMError
+from vllm.v1.engine.exceptions import EngineGenerateError
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
@@ -94,6 +96,24 @@ if TYPE_CHECKING:
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+# vLLM picks the HTTP status from the exception type, but ``AsyncLLM.generate``
+# re-raises anything but a ``VLLMClientError`` as ``EngineGenerateError``, so bad
+# requests lose their 4xx type and are served as 500s.
+# TODO (jeffreywang): Remove this and the ``EngineGenerateError`` handling below
+# once vLLM's grammar validators raise ``VLLMClientError`` (vllm-project/vllm#48227).
+def _unwrap_client_error(exc: BaseException) -> BaseException:
+    if isinstance(exc, EngineGenerateError) and isinstance(
+        exc.__cause__, (ValueError, VLLMClientError)
+    ):
+        return exc.__cause__
+    return exc
+
+
+async def _unwrapping_vllm_error_handler(request: Request, exc: Exception):
+    """Applies the same unwrapping on the direct-streaming path."""
+    return await vllm_error_handler(request, _unwrap_client_error(exc))
 
 
 def _canonicalize_request_id_header(
@@ -358,6 +378,9 @@ class VLLMEngine(LLMEngine):
             self._vllm_args,
             supported_tasks=supported_tasks,
         )
+        # Overrides vLLM's own handler; the direct-streaming path never reaches
+        # _make_error_response.
+        app.add_exception_handler(VLLMError, _unwrapping_vllm_error_handler)
         if self._token_receiver is not None:
             install_prompt_token_forwarding(
                 app.state,
@@ -653,6 +676,11 @@ class VLLMEngine(LLMEngine):
         """Convert an exception to an ErrorResponse and map exception types to
         the appropriate HTTP status codes (e.g. VLLMValidationError -> 400).
         """
+        # Genuine engine failures keep propagating so Serve still reports a 500.
+        exc = _unwrap_client_error(exc)
+        if isinstance(exc, EngineGenerateError):
+            raise exc
+
         try:
             vllm_error = serving.create_error_response(exc)
             return ErrorResponse(error=ErrorInfo(**vllm_error.error.model_dump()))
@@ -677,7 +705,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except (ValueError, VLLMClientError) as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_chat, e)
             return
 
@@ -712,7 +740,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except (ValueError, VLLMClientError) as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_completion, e)
             return
 
@@ -749,7 +777,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except (ValueError, VLLMClientError) as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_embedding, e)
             return
 
@@ -779,7 +807,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except (ValueError, VLLMClientError) as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_transcription, e)
             return
 
@@ -817,7 +845,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except (ValueError, VLLMClientError) as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
@@ -842,7 +870,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except (ValueError, VLLMClientError) as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 
@@ -871,7 +899,7 @@ class VLLMEngine(LLMEngine):
                     raw_request=raw_request,
                 )
             )
-        except (ValueError, VLLMClientError) as e:
+        except (ValueError, VLLMClientError, EngineGenerateError) as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 
