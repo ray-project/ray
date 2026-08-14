@@ -86,6 +86,11 @@ bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
 
 }  // namespace
 
+// Ports below 1024 are well-known ports that unprivileged workers cannot bind.
+// Keep in sync with the validation in python/ray/_private/parameter.py.
+constexpr int kMinValidWorkerPort = 1024;
+constexpr int kMaxValidWorkerPort = 65535;
+
 std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
                                      int min_worker_port,
                                      int max_worker_port,
@@ -97,10 +102,10 @@ std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
     absl::flat_hash_set<int> seen_ports;
     seen_ports.reserve(worker_ports.size());
     for (int port : worker_ports) {
-      RAY_CHECK(port > 0 && port <= 65535)
-          << "Worker port " << port
-          << " is outside the valid port range [1, 65535]. Please fix "
-             "--worker-port-list.";
+      RAY_CHECK(port >= kMinValidWorkerPort && port <= kMaxValidWorkerPort)
+          << "Worker port " << port << " is outside the valid port range ["
+          << kMinValidWorkerPort << ", " << kMaxValidWorkerPort
+          << "]. Please fix --worker-port-list.";
       RAY_CHECK(seen_ports.insert(port).second)
           << "Worker port " << port
           << " is listed more than once. Please remove the duplicate from "
@@ -109,10 +114,16 @@ std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
     ports = worker_ports;
   } else if (min_worker_port != 0) {
     if (max_worker_port == 0) {
-      max_worker_port = 65535;  // Maximum valid port number.
+      max_worker_port = kMaxValidWorkerPort;
     }
-    RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
-    RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
+    RAY_CHECK(min_worker_port >= kMinValidWorkerPort &&
+              min_worker_port <= kMaxValidWorkerPort)
+        << "--min-worker-port must be 0 or within [" << kMinValidWorkerPort << ", "
+        << kMaxValidWorkerPort << "], got " << min_worker_port << ".";
+    RAY_CHECK(max_worker_port >= min_worker_port &&
+              max_worker_port <= kMaxValidWorkerPort)
+        << "--max-worker-port must be 0 or within [" << min_worker_port << ", "
+        << kMaxValidWorkerPort << "], got " << max_worker_port << ".";
     ports.reserve(max_worker_port - min_worker_port + 1);
     for (int port = min_worker_port; port <= max_worker_port; port++) {
       ports.push_back(port);

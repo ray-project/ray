@@ -70,6 +70,10 @@ using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 /// \return The validated ports in a random order, or an empty vector if no port
 /// pool is configured, in which case workers bind port 0 and let the OS pick.
 ///
+/// All configured ports must be within [1024, 65535], matching the Python-side
+/// validation: ports below 1024 are well-known ports that unprivileged workers
+/// cannot bind.
+///
 /// The order is randomized so that raylets sharing a network namespace and the
 /// same port range don't all start from the low end of the range and
 /// deterministically contend for the same ports. This lowers the odds of a

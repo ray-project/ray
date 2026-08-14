@@ -2560,12 +2560,12 @@ TEST_F(WorkerPortPoolTest, PortRangeIsAPermutationOfTheRange) {
                                    /*min_worker_port=*/20000,
                                    /*max_worker_port=*/20100,
                                    gen);
-  ASSERT_EQ(ports.size(), 101);
-  std::vector<int> sorted_ports = ports;
-  std::sort(sorted_ports.begin(), sorted_ports.end());
-  for (size_t i = 0; i < sorted_ports.size(); i++) {
-    ASSERT_EQ(sorted_ports[i], 20000 + static_cast<int>(i));
+  std::vector<int> expected_ports;
+  expected_ports.reserve(101);
+  for (int port = 20000; port <= 20100; port++) {
+    expected_ports.push_back(port);
   }
+  EXPECT_THAT(ports, ::testing::UnorderedElementsAreArray(expected_ports));
 }
 
 TEST_F(WorkerPortPoolTest, ExplicitPortListIsAPermutationOfTheList) {
@@ -2573,9 +2573,7 @@ TEST_F(WorkerPortPoolTest, ExplicitPortListIsAPermutationOfTheList) {
   std::mt19937 gen(42);
   auto ports = BuildWorkerPortPool(
       worker_ports, /*min_worker_port=*/0, /*max_worker_port=*/0, gen);
-  std::vector<int> sorted_ports = ports;
-  std::sort(sorted_ports.begin(), sorted_ports.end());
-  ASSERT_EQ(sorted_ports, std::vector<int>({30000, 30001, 30002, 30003}));
+  EXPECT_THAT(ports, ::testing::UnorderedElementsAre(30000, 30001, 30002, 30003));
 }
 
 TEST_F(WorkerPortPoolTest, ExplicitPortListTakesPrecedenceOverThePortRange) {
@@ -2583,9 +2581,7 @@ TEST_F(WorkerPortPoolTest, ExplicitPortListTakesPrecedenceOverThePortRange) {
   std::mt19937 gen(42);
   auto ports = BuildWorkerPortPool(
       worker_ports, /*min_worker_port=*/20000, /*max_worker_port=*/20100, gen);
-  std::vector<int> sorted_ports = ports;
-  std::sort(sorted_ports.begin(), sorted_ports.end());
-  ASSERT_EQ(sorted_ports, worker_ports);
+  EXPECT_THAT(ports, ::testing::UnorderedElementsAreArray(worker_ports));
 }
 
 TEST_F(WorkerPortPoolTest, MaxPortDefaultsToTheHighestValidPort) {
@@ -2667,8 +2663,11 @@ using WorkerPortPoolDeathTest = WorkerPortPoolTest;
 TEST_F(WorkerPortPoolDeathTest, RejectsPortsOutsideTheValidRange) {
   std::mt19937 gen(42);
   const std::vector<int> too_large = {70000};
+  const std::vector<int> privileged = {1023};
   const std::vector<int> zero = {0};
   EXPECT_DEATH(BuildWorkerPortPool(too_large, 0, 0, gen), "outside the valid port range");
+  EXPECT_DEATH(BuildWorkerPortPool(privileged, 0, 0, gen),
+               "outside the valid port range");
   EXPECT_DEATH(BuildWorkerPortPool(zero, 0, 0, gen), "outside the valid port range");
 }
 
