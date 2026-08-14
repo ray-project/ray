@@ -332,8 +332,13 @@ class NodeMemoryMonitor:
         if explicit:
             return explicit
         # Default next to the release result JSON so the trace is picked up as an
-        # artifact wherever the results are.
-        return os.path.dirname(os.path.abspath(os.environ.get("TEST_OUTPUT_JSON", ".")))
+        # artifact wherever the results are. The "./result.json" fallback mirrors
+        # Benchmark.write_result exactly, so an unset TEST_OUTPUT_JSON puts the trace
+        # in the CWD beside the result file — dirname(abspath(".")) would give the
+        # CWD's *parent*.
+        return os.path.dirname(
+            os.path.abspath(os.environ.get("TEST_OUTPUT_JSON", "./result.json"))
+        )
 
     def _stop(self):
         if not self._actors:
