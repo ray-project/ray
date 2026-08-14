@@ -5,7 +5,7 @@ from pyarrow import types
 import pyarrow.compute as pc
 import ray
 
-from benchmark import Benchmark
+from benchmark import Benchmark, collect_operator_metrics, consume_ref_bundles
 from ray.data import DataContext
 from ray.data.context import ShuffleStrategy
 
@@ -62,28 +62,32 @@ def main(args):
         grouped_ds = ray.data.read_parquet(
             path, override_num_blocks=override_num_blocks
         ).groupby(args.group_by)
-        consume_fn(grouped_ds)
+        consumed_ds = consume_fn(grouped_ds)
 
-        # Report arguments for the benchmark.
-        return vars(args)
+        # Arguments, plus per-operator wall time / output bytes / per-task USS+RSS so a
+        # regression can be attributed to the read, the shuffle or the aggregation
+        # rather than to the job as a whole.
+        return {**vars(args), **collect_operator_metrics(consumed_ds)}
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
 
 
 def get_consume_fn(args: argparse.Namespace):
+    # Each consume_fn returns the *consumed* dataset handle: execution stats attach to
+    # the handle that was consumed, so that is what collect_operator_metrics needs.
     if args.aggregate:
 
         def consume_fn(grouped_ds):
             # 'column05' is 'l_extendedprice'
-            grouped_ds.mean("column05").materialize()
+            return grouped_ds.mean("column05").materialize()
 
     elif args.map_groups:
 
         def consume_fn(grouped_ds):
             ds = grouped_ds.map_groups(normalize_table, batch_format="pyarrow")
-            for _ in ds.iter_internal_ref_bundles():
-                pass
+            consume_ref_bundles(ds)
+            return ds
 
     else:
         assert False, f"Invalid consume argument: {args}"

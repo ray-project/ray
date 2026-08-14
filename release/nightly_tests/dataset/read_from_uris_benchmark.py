@@ -7,7 +7,7 @@ from PIL import Image
 
 import ray
 from ray.data.expressions import download
-from benchmark import Benchmark, collect_operator_metrics
+from benchmark import Benchmark, collect_operator_metrics, consume_ref_bundles
 
 BUCKET = "anyscale-imagenet"
 # This Parquet file contains the keys of images in the 'anyscale-imagenet' bucket.
@@ -43,8 +43,7 @@ def benchmark_fn():
     ds = metadata.map_batches(convert_key, batch_format="pyarrow")
     ds = ds.with_column("image_bytes", download("key"))
     ds = ds.map_batches(decode_images)
-    for _ in ds.iter_internal_ref_bundles():
-        pass
+    consume_ref_bundles(ds)
 
     # Per-operator wall time + per-task USS/RSS (avg and worst task): separates
     # the tiny metadata.parquet read from the download/decode maps, so a memory
