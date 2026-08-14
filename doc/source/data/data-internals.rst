@@ -102,9 +102,9 @@ Shuffle Algorithms
 In data processing, shuffling refers to the process of redistributing individual dataset's partitions (that in Ray Data are
 called :ref:`blocks <data_key_concepts>`).
 
-Ray Data implements two classical shuffle algorithms, :ref:`hash-shuffling <hash-shuffle>` and
-:ref:`range-partitioning <range-partitioning-shuffle>`. :ref:`Shuffle v2 <shuffle-v2>` is a new
-backend, currently in Alpha, intended to replace them.
+Ray Data provides several shuffle backends. The newest, :ref:`Shuffle v2 <shuffle-v2>` (currently
+in Alpha), is the intended replacement for the classical :ref:`hash-shuffling <hash-shuffle>` and
+:ref:`range-partitioning <range-partitioning-shuffle>` backends.
 
 .. _shuffle-v2:
 
