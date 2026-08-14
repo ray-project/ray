@@ -18,13 +18,10 @@ Examples <examples/overview>
 Internals <internals>
 ```
 
-Ray Core is a powerful distributed computing framework that provides a small set of essential primitives (tasks, actors, and objects) for building and scaling distributed applications.
-This walk-through introduces you to these core concepts with simple examples that demonstrate how to transform your Python functions and classes into distributed Ray tasks and actors, and how to work effectively with Ray objects.
+Ray Core is a powerful distributed computing framework that provides a small set of essential primitives (tasks, actors, and objects) for building and scaling distributed applications. This walk-through introduces you to these core concepts with simple examples that demonstrate how to transform your Python functions and classes into distributed Ray tasks and actors, and how to work effectively with Ray objects.
 
 :::{note}
-Ray has introduced an experimental API to transfer objects using GLOO / NCCL / NIXL / (bring your own)
-as an alternative to the default shared memory + gRPC based object store.
-See {ref}`Ray Direct Transport <direct-transport>` for more details.
+Ray has introduced an experimental API to transfer objects using GLOO / NCCL / NIXL / (bring your own) as an alternative to the default shared memory + gRPC based object store. See {ref}`Ray Direct Transport <direct-transport>` for more details.
 :::
 
 ## Getting Started
@@ -61,8 +58,7 @@ Here's a simple example:
 
 ## Calling an Actor
 
-While tasks are stateless, Ray actors allow you to create stateful workers that maintain their internal state between method calls.
-When you instantiate a Ray actor:
+While tasks are stateless, Ray actors allow you to create stateful workers that maintain their internal state between method calls. When you instantiate a Ray actor:
 
 1. Ray starts a dedicated worker process somewhere in your cluster
 2. The actor's methods run on that specific worker and can access and modify its state
@@ -100,8 +96,7 @@ Here's an example showing these techniques:
 To monitor your application's performance and resource usage, check out the {ref}`Ray dashboard <observability-getting-started>`.
 :::
 
-You can combine Ray's simple primitives in powerful ways to express virtually any distributed computation pattern. To dive deeper into Ray's {ref}`key concepts <core-key-concepts>`,
-explore these user guides:
+You can combine Ray's simple primitives in powerful ways to express virtually any distributed computation pattern. To dive deeper into Ray's {ref}`key concepts <core-key-concepts>`, explore these user guides:
 
 ::::{grid} 1 2 3 3
 :gutter: 1

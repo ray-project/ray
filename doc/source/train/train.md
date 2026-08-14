@@ -34,8 +34,7 @@ Benchmarks <benchmarks>
 
 Ray Train is a scalable machine learning library for distributed training and fine-tuning.
 
-Ray Train allows you to scale model training code from a single machine to a cluster of machines in the cloud, and abstracts away the complexities of distributed computing.
-Whether you have large models or large datasets, Ray Train is the simplest solution for distributed training.
+Ray Train allows you to scale model training code from a single machine to a cluster of machines in the cloud, and abstracts away the complexities of distributed computing. Whether you have large models or large datasets, Ray Train is the simplest solution for distributed training.
 
 Ray Train provides support for many frameworks:
 
@@ -65,8 +64,7 @@ To install Ray Train, run:
 $ pip install -U "ray[train]"
 ```
 
-To learn more about installing Ray and its libraries, see
-{ref}`Installing Ray <installation>`.
+To learn more about installing Ray and its libraries, see {ref}`Installing Ray <installation>`.
 
 ## Get started
 

@@ -21,13 +21,11 @@ benchmark
 data-internals
 ```
 
-Ray Data is a scalable data processing library for AI workloads built on Ray.
-Ray Data provides flexible and performant APIs for common operations such as {ref}`batch inference <batch_inference_home>`, data preprocessing, and data loading for ML training. Unlike other distributed data systems, Ray Data features a {ref}`streaming execution engine <streaming-execution>` to efficiently process large datasets and maintain high utilization across both CPU and GPU workloads.
+Ray Data is a scalable data processing library for AI workloads built on Ray. Ray Data provides flexible and performant APIs for common operations such as {ref}`batch inference <batch_inference_home>`, data preprocessing, and data loading for ML training. Unlike other distributed data systems, Ray Data features a {ref}`streaming execution engine <streaming-execution>` to efficiently process large datasets and maintain high utilization across both CPU and GPU workloads.
 
 ## Quick start
 
-First, install Ray Data. To learn more about installing Ray and its libraries, see
-{ref}`Installing Ray <installation>`:
+First, install Ray Data. To learn more about installing Ray and its libraries, see {ref}`Installing Ray <installation>`:
 
 ```console
 $ pip install -U 'ray[data]'
@@ -68,9 +66,7 @@ ds.show(limit=1)
 
 ## Why choose Ray Data?
 
-Modern AI workloads revolve around the usage of deep learning models, which are computationally intensive and often require specialized hardware such as GPUs.
-Unlike CPUs, GPUs often come with less memory, have different semantics for scheduling, and are much more expensive to run.
-Systems built to support traditional data processing pipelines often don't utilize such resources well.
+Modern AI workloads revolve around the usage of deep learning models, which are computationally intensive and often require specialized hardware such as GPUs. Unlike CPUs, GPUs often come with less memory, have different semantics for scheduling, and are much more expensive to run. Systems built to support traditional data processing pipelines often don't utilize such resources well.
 
 Ray Data supports AI workloads as a first-class citizen and offers several key advantages:
 
@@ -110,8 +106,7 @@ Quickstart
 **Key Concepts**
 ^^^
 
-Learn the key concepts behind Ray Data. Learn what
-Datasets are and how they're used.
+Learn the key concepts behind Ray Data. Learn what Datasets are and how they're used.
 
 +++
 ```{button-ref} data_key_concepts

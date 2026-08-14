@@ -15,21 +15,17 @@ myst:
 </a>
 ```
 
-Ray currently officially supports x86_64, aarch64 (ARM) for Linux, and Apple silicon (M1) hardware.
-Ray on Windows is currently in beta.
+Ray currently officially supports x86_64, aarch64 (ARM) for Linux, and Apple silicon (M1) hardware. Ray on Windows is currently in beta.
 
 :::{warning}
-**Pydantic v1 Deprecation Notice:** Pydantic v1 is deprecated and Ray will drop support for it in
-version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running `pip install -U pydantic`.
-See [GitHub issue #58876](https://github.com/ray-project/ray/issues/58876) for more details.
+**Pydantic v1 Deprecation Notice:** Pydantic v1 is deprecated and Ray will drop support for it in version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running `pip install -U pydantic`. See [GitHub issue #58876](https://github.com/ray-project/ray/issues/58876) for more details.
 :::
 
 ## Official Releases
 
 ### From Wheels
 
-You can install the latest official version of Ray from PyPI on Linux, Windows,
-and macOS by choosing the option that best matches your use case.
+You can install the latest official version of Ray from PyPI on Linux, Windows, and macOS by choosing the option that best matches your use case.
 
 :::::{tab-set}
 
@@ -83,8 +79,7 @@ pip install -U "ray[default]"
 ```
 
 :::{tip}
-You can combine installation extras.
-For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
+You can combine installation extras. For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
 
 ```shell
 pip install -U "ray[default,train]"
@@ -159,8 +154,7 @@ pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 :::::
 
 :::{note}
-On Windows, support for multi-node Ray clusters is currently experimental and untested.
-If you run into issues please file a report at <https://github.com/ray-project/ray/issues>.
+On Windows, support for multi-node Ray clusters is currently experimental and untested. If you run into issues please file a report at <https://github.com/ray-project/ray/issues>.
 :::
 
 :::{note}
@@ -183,8 +177,7 @@ For example, here are the Ray 3.0.0.dev0 wheels for Python 3.10, MacOS for commi
 pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/4f2ec46c3adb6ba9f412f09a9732f436c4a5d0c9/ray-3.0.0.dev0-cp310-cp310-macosx_12_0_arm64.whl
 ```
 
-There are minor variations to the format of the wheel filename; it's best to match against the format in the URLs listed in the {ref}`Nightlies section <install-nightlies>`.
-Here's a summary of the variations:
+There are minor variations to the format of the wheel filename; it's best to match against the format in the URLs listed in the {ref}`Nightlies section <install-nightlies>`. Here's a summary of the variations:
 
 * For MacOS x86_64, commits predating August 7, 2021 will have `macosx_10_13` in the filename instead of `macosx_10_15`.
 * For MacOS x86_64, commits predating June 1, 2025 will have `macosx_10_15` in the filename instead of `macosx_12_0`.
@@ -193,8 +186,7 @@ Here's a summary of the variations:
 
 ## M1 Mac (Apple Silicon) Support
 
-Ray supports machines running Apple Silicon (such as M1 macs).
-Multi-node clusters are untested. To get started with local Ray development:
+Ray supports machines running Apple Silicon (such as M1 macs). Multi-node clusters are untested. To get started with local Ray development:
 
 1. Install [miniforge](https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh).
 
@@ -218,41 +210,31 @@ Multi-node clusters are untested. To get started with local Ray development:
 
 ## Windows Support
 
-Windows support is in Beta. Ray supports running on Windows with the following caveats (only the first is
-Ray-specific, the rest are true anywhere Windows is used):
+Windows support is in Beta. Ray supports running on Windows with the following caveats (only the first is Ray-specific, the rest are true anywhere Windows is used):
 
 * Multi-node Ray clusters are untested.
 
-* Filenames are tricky on Windows and there still may be a few places where Ray
-  assumes UNIX filenames rather than Windows ones. This can be true in downstream
-  packages as well.
+* Filenames are tricky on Windows and there still may be a few places where Ray assumes UNIX filenames rather than Windows ones. This can be true in downstream packages as well.
 
-* Performance on Windows is known to be slower since opening files on Windows
-  is considerably slower than on other operating systems. This can affect logging.
+* Performance on Windows is known to be slower since opening files on Windows is considerably slower than on other operating systems. This can affect logging.
 
-* Windows does not have a copy-on-write forking model, so spinning up new
-  processes can require more memory.
+* Windows does not have a copy-on-write forking model, so spinning up new processes can require more memory.
 
-Submit any issues you encounter to
-[GitHub](https://github.com/ray-project/ray/issues/).
+Submit any issues you encounter to [GitHub](https://github.com/ray-project/ray/issues/).
 
 ## Installing Ray on Arch Linux
 
 Note: Installing Ray on Arch Linux is not tested by the Project Ray developers.
 
-Ray is available on Arch Linux via the Arch User Repository ([AUR](https://wiki.archlinux.org/index.php/Arch_User_Repository)) as
-`python-ray`.
+Ray is available on Arch Linux via the Arch User Repository ([AUR](https://wiki.archlinux.org/index.php/Arch_User_Repository)) as `python-ray`.
 
-You can manually install the package by following the instructions on the
-[Arch Wiki](https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages) or use an [AUR helper](https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages) like [yay](https://aur.archlinux.org/packages/yay) (recommended for ease of install)
-as follows:
+You can manually install the package by following the instructions on the [Arch Wiki](https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages) or use an [AUR helper](https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages) like [yay](https://aur.archlinux.org/packages/yay) (recommended for ease of install) as follows:
 
 ```bash
 yay -S python-ray
 ```
 
-To discuss any issues related to this package refer to the comments section
-on the AUR page of `python-ray` [here](https://aur.archlinux.org/packages/python-ray).
+To discuss any issues related to this package refer to the comments section on the AUR page of `python-ray` [here](https://aur.archlinux.org/packages/python-ray).
 
 (ray_anaconda)=
 
@@ -282,13 +264,10 @@ conda install -c conda-forge "ray-serve"  # installs Ray + dependencies for Ray 
 conda install -c conda-forge "ray-rllib"  # installs Ray + dependencies for Ray RLlib
 ```
 
-For a complete list of available `ray` libraries on Conda-forge, have a look
-at <https://anaconda.org/conda-forge/ray-default>
+For a complete list of available `ray` libraries on Conda-forge, have a look at <https://anaconda.org/conda-forge/ray-default>
 
 :::{note}
-Ray conda packages are maintained by the community, not the Ray team. While
-using a conda environment, it is recommended to install Ray from PyPi using
-`pip install ray` in the newly created environment.
+Ray conda packages are maintained by the community, not the Ray team. While using a conda environment, it is recommended to install Ray from PyPi using `pip install ray` in the newly created environment.
 :::
 
 ## Building Ray from Source
@@ -301,17 +280,12 @@ However, should you need to build from source, follow {ref}`these instructions f
 
 ## Docker Source Images
 
-Users can pull a Docker image from the `rayproject/ray` [Docker Hub repository](https://hub.docker.com/r/rayproject/ray).
-The images include Ray and all required dependencies. It comes with anaconda and various versions of Python.
+Users can pull a Docker image from the `rayproject/ray` [Docker Hub repository](https://hub.docker.com/r/rayproject/ray). The images include Ray and all required dependencies. It comes with anaconda and various versions of Python.
 
 :::{note}
-The `rayproject/ray-ml` images are deprecated. Ray no longer publishes them: the last standard
-release tag is `2.30.0`, and publishing stopped entirely as of Ray 2.50. The `latest` and
-`latest-gpu` tags still resolve, but they haven't moved since Ray 2.30.0, so a build that pulls
-them gets an old Ray without any error. See [Deprecating ray-ml images](https://github.com/ray-project/ray/issues/46378) for the reasoning.
+The `rayproject/ray-ml` images are deprecated. Ray no longer publishes them: the last standard release tag is `2.30.0`, and publishing stopped entirely as of Ray 2.50. The `latest` and `latest-gpu` tags still resolve, but they haven't moved since Ray 2.30.0, so a build that pulls them gets an old Ray without any error. See [Deprecating ray-ml images](https://github.com/ray-project/ray/issues/46378) for the reasoning.
 
-The `rayproject/ray` images don't ship machine learning libraries such as PyTorch, TensorFlow,
-or XGBoost. To get them, either build an image on a `rayproject/ray` base:
+The `rayproject/ray` images don't ship machine learning libraries such as PyTorch, TensorFlow, or XGBoost. To get them, either build an image on a `rayproject/ray` base:
 
 ```dockerfile
 FROM rayproject/ray:2.57.0-py311-gpu
@@ -320,13 +294,9 @@ RUN pip install xgboost -c /home/ray/requirements_compiled.txt
 
 or declare the packages in a {ref}`runtime environment <runtime-environments>`.
 
-Every `rayproject/ray` image ships the constraint file at `/home/ray/requirements_compiled.txt`.
-Passing it with `-c` installs the exact library version that Ray tested against for that release.
-Drop the flag to get the newest version instead.
+Every `rayproject/ray` image ships the constraint file at `/home/ray/requirements_compiled.txt`. Passing it with `-c` installs the exact library version that Ray tested against for that release. Drop the flag to get the newest version instead.
 
-Don't use the constraint file to install PyTorch or TensorFlow on a GPU image. It's compiled
-against a CPU-only PyTorch index, so it can resolve a CPU build and silently leave you without
-GPU support. Install those packages from the index that matches your CUDA version instead.
+Don't use the constraint file to install PyTorch or TensorFlow on a GPU image. It's compiled against a CPU-only PyTorch index, so it can resolve a CPU build and silently leave you without GPU support. Install those packages from the index that matches your CUDA version instead.
 :::
 
 Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform}]`. `Ray version` tag can be one of the following:
@@ -397,10 +367,7 @@ Start out by launching the deployment container.
 docker run --shm-size=<shm-size> -t -i rayproject/ray
 ```
 
-Replace `<shm-size>` with a limit appropriate for your system, for example
-`512M` or `2G`. A good estimate for this is to use roughly 30% of your available memory (this is
-what Ray uses internally for its Object Store). The `-t` and `-i` options here are required to support
-interactive use of the container.
+Replace `<shm-size>` with a limit appropriate for your system, for example `512M` or `2G`. A good estimate for this is to use roughly 30% of your available memory (this is what Ray uses internally for its Object Store). The `-t` and `-i` options here are required to support interactive use of the container.
 
 If you use a GPU version Docker image, remember to add `--gpus all` option. Replace `<ray-version>` with your target ray version in the following command:
 
@@ -408,9 +375,7 @@ If you use a GPU version Docker image, remember to add `--gpus all` option. Repl
 docker run --shm-size=<shm-size> -t -i --gpus all rayproject/ray:<ray-version>-gpu
 ```
 
-**Note:** Ray requires a **large** amount of shared memory because each object
-store keeps all of its objects in shared memory, so the amount of shared memory
-will limit the size of the object store.
+**Note:** Ray requires a **large** amount of shared memory because each object store keeps all of its objects in shared memory, so the amount of shared memory will limit the size of the object store.
 
 You should now see a prompt that looks something like:
 
@@ -420,8 +385,7 @@ root@ebc78f68d100:/ray#
 
 ### Test if the installation succeeded
 
-To test if the installation was successful, try running some tests. This assumes
-that you've cloned the git repository.
+To test if the installation was successful, try running some tests. This assumes that you've cloned the git repository.
 
 ```bash
 python -m pytest -v python/ray/tests/test_mini.py
@@ -429,8 +393,7 @@ python -m pytest -v python/ray/tests/test_mini.py
 
 ### Installed Python dependencies
 
-Our docker images are shipped with pre-installed Python dependencies
-required for Ray and its libraries.
+Our docker images are shipped with pre-installed Python dependencies required for Ray and its libraries.
 
 We publish the dependencies that are installed in our `ray` Docker images for Python 3.10.
 
@@ -455,8 +418,7 @@ Ray version: nightly ([4f4ed2d](https://github.com/ray-project/ray/commit/4f4ed2
 All Ray Java APIs are experimental and only supported by the community.
 :::
 
-Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match.
-Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
+Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match. Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
 
 Find the latest Ray Java release in the [central repository](https://mvnrepository.com/artifact/io.ray). To use the latest Ray Java release in your application, add the following entries in your `pom.xml`:
 

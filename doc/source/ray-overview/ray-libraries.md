@@ -8,15 +8,10 @@ myst:
 
 # The Ray Ecosystem
 
-This page lists libraries that have integrations with Ray for distributed execution
-in alphabetical order.
-It's easy to add your own integration to this list.
-Simply open a pull request with a few lines of text, see the dropdown below for
-more information.
+This page lists libraries that have integrations with Ray for distributed execution in alphabetical order. It's easy to add your own integration to this list. Simply open a pull request with a few lines of text, see the dropdown below for more information.
 
 :::{dropdown} Adding Your Integration
-To add an integration add an entry to this file, using the same
-`grid-item-card` directive that the other examples use.
+To add an integration add an entry to this file, using the same `grid-item-card` directive that the other examples use.
 :::
 
 :::::{grid} 1 2 2 3
