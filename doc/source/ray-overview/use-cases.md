@@ -14,9 +14,7 @@ myst:
 ../ray-air/getting-started
 ```
 
-This page indexes common Ray use cases for scaling ML.
-It contains highlighted references to blogs, examples, and tutorials also located
-elsewhere in the Ray documentation.
+This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
 
 (ref-use-cases-llm)=
 
@@ -45,12 +43,7 @@ Large language models (LLMs) and generative AI are rapidly changing industries, 
 
 ## Batch Inference
 
-Batch inference is the process of generating model predictions on a large "batch" of input data.
-Ray for batch inference works with any cloud provider and ML framework,
-and is fast and cheap for modern deep learning applications.
-It scales from single machines to large clusters with minimal code changes.
-As a Python-first framework, you can easily express and interactively develop your inference workloads in Ray.
-To learn more about running batch inference with Ray, see the {ref}`batch inference guide<batch_inference_home>`.
+Batch inference is the process of generating model predictions on a large "batch" of input data. Ray for batch inference works with any cloud provider and ML framework, and is fast and cheap for modern deep learning applications. It scales from single machines to large clusters with minimal code changes. As a Python-first framework, you can easily express and interactively develop your inference workloads in Ray. To learn more about running batch inference with Ray, see the {ref}`batch inference guide<batch_inference_home>`.
 
 ```{figure} ../data/images/batch_inference.png
 ```
@@ -115,8 +108,7 @@ Learn more about the Tune library with the following talks and user guides.
 
 ## Distributed Training
 
-The {ref}`Ray Train <train-docs>` library integrates many distributed training frameworks under a simple Trainer API,
-providing distributed orchestration and management capabilities out of the box.
+The {ref}`Ray Train <train-docs>` library integrates many distributed training frameworks under a simple Trainer API, providing distributed orchestration and management capabilities out of the box.
 
 In contrast to training many models, model parallelism partitions a large model across many machines for training. Ray Train has built-in abstractions for distributing shards of models and running training in parallel.
 
@@ -156,9 +148,7 @@ Learn more about reinforcement learning with the following resources.
 
 ## ML Platform
 
-Ray and its AI libraries provide unified compute runtime for teams looking to simplify their ML platform.
-Ray's libraries such as Ray Train, Ray Data, and Ray Serve can be used to compose end-to-end ML workflows, providing features and APIs for
-data preprocessing as part of training, and transitioning from training to serving.
+Ray and its AI libraries provide unified compute runtime for teams looking to simplify their ML platform. Ray's libraries such as Ray Train, Ray Data, and Ray Serve can be used to compose end-to-end ML workflows, providing features and APIs for data preprocessing as part of training, and transitioning from training to serving.
 
 Read more about building ML platforms with Ray in {ref}`this section <ray-for-ml-infra>`.
 
