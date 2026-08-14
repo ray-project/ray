@@ -131,5 +131,12 @@ def test_cpu_config_raises_not_implemented_error():
         )
 
 
+def test_get_accelerator_backend_raises_type_error_on_unknown():
+    from ray.llm._internal.common.accelerators import get_accelerator_backend
+
+    with pytest.raises(TypeError, match="Unsupported accelerator config"):
+        get_accelerator_backend(object())  # type: ignore
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -18,7 +18,8 @@ def capture_accelerator_logs(caplog):
 @pytest.fixture
 def ray_tpu_cluster():
     """Simulate a multi-host TPU v6e-16 slice (4x4 topology / 4 nodes / 4 chips each)."""
-    ray.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
     cluster = Cluster()
     pod_type = "v6e-16"
     topology = "4x4"

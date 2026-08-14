@@ -419,6 +419,7 @@ class TPUAccelerator(AcceleratorBackend):
 
     def __init__(self, config: Optional[TPUConfig] = None):
         self._config = config or TPUConfig()
+        # _slice_pg_wrapper is used exclusively by Serve for stateful replica lifecycle management.
         self._slice_pg_wrapper = None
 
     @staticmethod
@@ -431,7 +432,11 @@ class TPUAccelerator(AcceleratorBackend):
         chips_per_vm: Optional[int] = None,
         head_reservation_timeout_s: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Create a PlacementGroupSchedulingStrategy using a TPU slice placement group."""
+        """Create a PlacementGroupSchedulingStrategy using a TPU slice placement group.
+
+        The SlicePlacementGroup (including its worker PG and head reservation PG) is created
+        non-detached and fate-shares with the driver process.
+        """
         slice_kwargs: Dict[str, Any] = {
             "topology": topology,
             "accelerator_version": accelerator_version,

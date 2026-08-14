@@ -184,7 +184,8 @@ def test_default_bundle_does_not_warn_cpu_floor(stub_slice_pg, caplog):
     )
 
 
-def test_defaults_pack_when_strategy_unset(stub_slice_pg):
+def test_tpu_backend_strategy_defaults_to_pack_when_unset(stub_slice_pg):
+    """Verify TPUAccelerator defaults strategy to PACK when unset in placement_group_config."""
     handle, create = stub_slice_pg
     backend = TPUAccelerator(TPUConfig(topology="4x4"))
     options = backend.build_batch_scheduling_options(
@@ -375,8 +376,8 @@ def test_builder_does_not_mutate_caller_engine_kwargs(stub_slice_pg):
 def test_tpu_batch_processor_real_slice_placement_group_integration(
     ray_tpu_cluster,
 ):
-    """Integration test verifying real slice_placement_group creation, GCS registration,
-    and teardown on a simulated multi-host TPU cluster.
+    """Integration test verifying real slice_placement_group creation and GCS registration
+    on a simulated multi-host TPU cluster.
     """
     config = vLLMEngineProcessorConfig(
         model_source="mock-model",
