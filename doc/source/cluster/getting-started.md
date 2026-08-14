@@ -47,6 +47,8 @@ may deploy Windows and OSX clusters by setting the environment variable
 `RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1` during deployment.
 :::
 
+(what-s-next)=
+
 ## What's next?
 
 ::::{grid} 1 2 2 2
