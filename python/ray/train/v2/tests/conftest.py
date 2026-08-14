@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray import runtime_context
 from ray._common import utils as ray_utils
+from ray._common.observability.annotation import _AnnotationFileHandler
 from ray.cluster_utils import Cluster
 from ray.train.v2._internal.constants import (
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
@@ -82,12 +83,23 @@ def captured_annotations():
 
     annotation_logger = logging.getLogger("ray.annotations")
     handler = _CaptureHandler()
+    original_level = annotation_logger.level
+    original_handlers = list(annotation_logger.handlers)
     annotation_logger.addHandler(handler)
     annotation_logger.setLevel(logging.INFO)
     try:
         yield records
     finally:
         annotation_logger.removeHandler(handler)
+        annotation_logger.setLevel(original_level)
+        # Emitting an annotation installs a process-global file handler on this shared logger
+        for installed_handler in list(annotation_logger.handlers):
+            if (
+                isinstance(installed_handler, _AnnotationFileHandler)
+                and installed_handler not in original_handlers
+            ):
+                annotation_logger.removeHandler(installed_handler)
+                installed_handler.close()
 
 
 @pytest.fixture

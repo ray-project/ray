@@ -77,9 +77,8 @@ ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
 DEFAULT_ENABLE_PRINT_PATCH = True
 
 # Feature flag for Grafana annotations. Default-on; provides an opt-out for
-# workloads that call `ray.train.report` frequently enough that the annotation
-# file write on rank 0 (which the other ranks wait on at the report barrier) is
-# not worth its cost.
+# workloads that call `ray.train.report` frequently enough that the per-report
+# annotation file write on rank 0 is not worth its cost.
 ANNOTATIONS_ENABLED_ENV_VAR = "RAY_TRAIN_ANNOTATIONS_ENABLED"
 DEFAULT_ANNOTATIONS_ENABLED: bool = True
 

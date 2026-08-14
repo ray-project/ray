@@ -175,6 +175,7 @@ Ray Train Utilities
     ~train.get_dataset_shard
     ~train.get_preemption_info
     ~train.report
+    ~train.annotate
 
 **Collective**
 

@@ -365,13 +365,6 @@ def test_controller_annotations_env_flag(
     """Controller annotations are emitted by default and can be turned off with
     ``RAY_TRAIN_ANNOTATIONS_ENABLED``, without affecting the state metrics."""
     monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, "1" if annotations_enabled else "0")
-    mock_train_context = MagicMock()
-    mock_train_context.get_run_config.return_value = RunConfig(name="test_run_name")
-    monkeypatch.setattr(
-        ray.train.v2._internal.execution.context,
-        "get_train_context",
-        lambda: mock_train_context,
-    )
 
     callback = ControllerMetricsCallback()
     callback.after_controller_start(train_run_context=create_dummy_run_context())

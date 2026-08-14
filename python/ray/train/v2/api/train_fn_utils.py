@@ -27,26 +27,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Severities accepted by `ray.train.annotate`
-_ANNOTATION_SEVERITIES = frozenset({"info", "warning", "error"})
-# Annotations are best-effort observability, so report once per process
-_annotation_failure_reported = False
-
-
-def _log_annotation_failure(event: str) -> None:
-    """Log an annotation failure at most once per process, with its traceback."""
-    global _annotation_failure_reported
-
-    if _annotation_failure_reported:
-        return
-    _annotation_failure_reported = True
-
-    logger.warning(
-        "Failed to emit the %r annotation; continuing. "
-        "Further annotation failures will not be logged.",
-        event,
-        exc_info=True,
-    )
+# Annotations are best-effort observability
+_annotation_exception = False
 
 
 @PublicAPI(stability="stable")
@@ -152,32 +134,6 @@ def report(
         if validation:
             record_extra_usage_tag(TagKey.TRAIN_ASYNCHRONOUS_VALIDATION, "1")
 
-    # Emit a single rank-0 annotation marking this report on the Grafana train dashboards
-    try:
-        train_context = get_train_context()
-        annotation = train_context.annotation
-        if annotation is not None and train_context.get_world_rank() == 0:
-            report_fields = {
-                "metrics": json.dumps(metrics, default=str),
-                "has_checkpoint": checkpoint is not None,
-                "validation": bool(validation),
-            }
-            if checkpoint is not None and checkpoint_dir_name is not None:
-                report_fields["checkpoint_dir_name"] = checkpoint_dir_name
-            if isinstance(validation, ValidationTaskConfig):
-                report_fields["validation_config"] = json.dumps(
-                    {
-                        "fn_kwargs": validation.fn_kwargs,
-                        "timeout_s": validation.timeout_s,
-                    },
-                    default=str,
-                )
-            annotation.annotate(
-                event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT, **report_fields
-            )
-    except Exception:
-        _log_annotation_failure(TRAIN_ANNOTATION_RAY_TRAIN_REPORT)
-
     get_train_fn_utils().report(
         metrics=metrics,
         checkpoint=checkpoint,
@@ -187,6 +143,38 @@ def report(
         checkpoint_upload_fn=checkpoint_upload_fn,
         validation=validation,
     )
+
+    # Emit a single rank-0 annotation for the Grafana train dashboards.
+    global _annotation_exception
+    if not _annotation_exception:
+        try:
+            train_context = get_train_context()
+            if train_context.get_world_rank() == 0 and train_context.annotation:
+                report_fields = {
+                    "metrics": json.dumps(metrics, default=str),
+                    "has_checkpoint": checkpoint is not None,
+                    "validation": bool(validation),
+                }
+                if checkpoint is not None and checkpoint_dir_name is not None:
+                    report_fields["checkpoint_dir_name"] = checkpoint_dir_name
+                if isinstance(validation, ValidationTaskConfig):
+                    report_fields["validation_config"] = json.dumps(
+                        {
+                            "fn_kwargs": validation.fn_kwargs,
+                            "timeout_s": validation.timeout_s,
+                        },
+                        default=str,
+                    )
+                train_context.annotation.annotate(
+                    event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT, **report_fields
+                )
+        except Exception:
+            _annotation_exception = True
+            logger.warning(
+                "Failed to create an annotation for `ray.train.report`, '"
+                "all future annotations for report will be skipped.",
+                exc_info=True,
+            )
 
 
 @PublicAPI(stability="stable")
@@ -414,9 +402,10 @@ def annotate(
     learning-rate change, or a phase transition) on the same timeline as your
     training metrics. Rendering it as a point annotation on the Train Grafana
     dashboard additionally requires the cluster operator to ship these log
-    lines to a log backend registered as a Grafana datasource, and to set
-    ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID`` and
-    ``RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR``.
+    lines to a log backend registered as a Grafana datasource, and to point the
+    dashboard's annotation datasource and stream selector at it. See
+    :ref:`Overlaying event annotations on the dashboards
+    <grafana-dashboard-annotations>`.
 
     You control what appears on the dashboard tooltip: the ``message`` is shown
     as the annotation text and any ``**fields`` are shown together as a single
@@ -424,7 +413,8 @@ def annotate(
     under a fixed internal event name), colored by ``severity``.
 
     Setting ``RAY_TRAIN_ANNOTATIONS_ENABLED=0`` turns all Ray Train annotations
-    off, in which case this call is a no-op.
+    off, in which case this call emits nothing. Its arguments are still
+    validated either way, so an invalid ``severity`` always raises.
 
     Example:
 
@@ -464,28 +454,27 @@ def annotate(
     # Not an assert: under `python -O` an invalid severity would silently emit an
     # annotation that matches none of the dashboard layers, so it would never
     # appear and no error would surface anywhere.
-    if severity not in _ANNOTATION_SEVERITIES:
+    if severity not in {"info", "warning", "error"}:
         raise ValueError(
             f"Invalid annotation severity {severity!r}. "
-            f"Expected one of {sorted(_ANNOTATION_SEVERITIES)}."
+            f"Expected one of ['info', 'warning', 'error']."
         )
 
     try:
         train_context = get_train_context()
-        annotation = train_context.annotation
-        if annotation is None:
-            return
         if rank_zero_only and train_context.get_world_rank() != 0:
+            return
+        if train_context.annotation is None:
             return
 
         annotation_fields = {"message": message}
         if fields:
             annotation_fields["fields"] = json.dumps(fields, default=str)
 
-        annotation.annotate(
+        train_context.annotation.annotate(
             event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
             severity=severity,
             **annotation_fields,
         )
     except Exception:
-        _log_annotation_failure(TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE)
+        logger.warning("")

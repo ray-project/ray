@@ -4,10 +4,6 @@ from typing import Any, Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
 
-# Placeholder in an ``Annotation.expr`` that is replaced with the
-# operator-configured log stream selector when the dashboard JSON is generated.
-ANNOTATION_STREAM_SELECTOR_PLACEHOLDER = "$__stream_selector"
-
 
 @DeveloperAPI
 @dataclass
@@ -599,28 +595,35 @@ class Row:
 
 @DeveloperAPI
 @dataclass
-class Annotation:
+class GrafanaAnnotation:
     """Defines a Grafana dashboard annotation query.
 
     Annotations overlay event markers onto every panel's time axis. Each one runs
     a query against a log datasource and renders a marker per matching log line.
 
-    Ray does not provision a log datasource, so the query is rendered against
-    whichever datasource the ``annotation_datasource`` template variable resolves
-    to, unless the operator pins one with
-    ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID``. Annotations are omitted from the
-    generated dashboard JSON only when ``RAY_GRAFANA_ANNOTATIONS_ENABLED=0``.
+    Only the event-specific half of the query is declared here. Every Ray
+    annotation record carries the same two fields -- ``annotation_source`` and
+    ``session_name``, written by
+    :class:`ray._common.observability.annotation.Annotation` -- so the common
+    preamble that finds this source's lines and scopes them to one cluster is
+    built at generation time by
+    :func:`~ray.dashboard.modules.metrics.grafana_dashboard_factory.generate_annotation`.
+    ``expr`` picks up from there.
 
-    A query must narrow to the session and, where applicable, the run it belongs
-    to, using fields Ray writes into the annotation records themselves rather
-    than the log collector's stream labels, which Ray knows nothing about.
+    Scoping to a single cluster is not configurable, and deliberately so: the
+    session name is baked in as a literal, so no datasource or stream selector
+    the operator supplies can widen a dashboard onto another cluster's events.
+    Narrowing further, to a run or a worker, is left to the query and is
+    normally a dashboard variable the viewer selects.
 
     Attributes:
         name: Display name shown in the dashboard's annotation toggle.
-        expr: The datasource query used to fetch annotation events. Must contain
-            the ``$__stream_selector`` placeholder, which is replaced at
-            generation time with the stream selector that locates Ray's
-            annotation log lines in the datasource.
+        source: The ``annotation_source`` written by the emitting library, e.g.
+            ``"ray_train_annotation"``. Used both as a cheap line pre-filter and
+            as the field the preamble matches on.
+        expr: The event-specific pipeline stages, appended to the generated
+            preamble. Starts at a ``|`` stage, e.g.
+            ``| event="ray.train.report" | line_format "..."``.
         icon_color: rgba/hex color for the annotation markers.
         ref_id: Grafana refId for the annotation's target query.
         tag_keys: Comma-separated label keys surfaced as annotation tags.
@@ -630,6 +633,7 @@ class Annotation:
     """
 
     name: str
+    source: str
     expr: str
     icon_color: str
     ref_id: str
@@ -637,15 +641,6 @@ class Annotation:
     query_type: str = "range"
     enable: bool = True
     hide: bool = False
-
-    def __post_init__(self):
-        if ANNOTATION_STREAM_SELECTOR_PLACEHOLDER not in self.expr:
-            raise ValueError(
-                f"Annotation {self.name!r} query must contain the "
-                f"{ANNOTATION_STREAM_SELECTOR_PLACEHOLDER} placeholder so the "
-                "stream selector locating Ray's annotation log lines can be "
-                "substituted in."
-            )
 
 
 @DeveloperAPI
@@ -665,7 +660,7 @@ class DashboardConfig:
     panels: List[Panel] = field(default_factory=list)
     rows: List[Row] = field(default_factory=list)
     # Dashboard annotations, appended to the base JSON's built-in annotation list.
-    annotations: List[Annotation] = field(default_factory=list)
+    annotations: List[GrafanaAnnotation] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.panels and not self.rows:
