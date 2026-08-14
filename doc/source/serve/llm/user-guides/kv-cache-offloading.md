@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Extend KV cache capacity by offloading to CPU memory or local disk with LMCache, and compose backends with MultiConnector."
+---
+
 (kv-cache-offloading-guide)=
 # KV cache offloading
 

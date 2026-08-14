@@ -1,7 +1,12 @@
-# Test cases for Ray CI test rules
-# Based on ci/pipeline/test_conditional_testing.py _TESTS_YAML
+# Unit tests for test.rules.txt
 #
-# Format: file: tag1 tag2 tag3
+# Format: file_path: tag1 tag2 tag3
+#
+# Run by `rayci test-rules`, which pairs each *.rules.txt in this directory
+# with its *.rules.test.txt companion by name. Each rules file is evaluated on
+# its own, so the tags expected below are the ones test.rules.txt emits by
+# itself; the "always lint" that always.rules.txt contributes to every real
+# build is covered by always.rules.test.txt instead.
 
 # === CI/Pipeline ===
 
@@ -96,6 +101,8 @@ doc/source/ray-observability/example.py: core_doc
 # The four ray-core notebooks whose targets are tagged team:ml route to ml_doc,
 # because the core step filters targets by team and would not execute them.
 doc/source/ray-core/examples/plot_hyperparameter.ipynb: ml_doc
+doc/source/ray-core/examples/batch_prediction.ipynb: ml_doc
+doc/source/ray-core/examples/plot_parameter_server.ipynb: ml_doc
 doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
 # highly_parallel.ipynb is the exception: the ml docs example step excludes its
 # tag, so no step runs it. It routes to the build instead.
@@ -156,10 +163,10 @@ doc/source/templates/05_dreambooth_finetuning/README.md:
 # scripts build the docs, so they route to the `doc` build and validation only,
 # never to a library's doctest or example execution.
 .readthedocs.yaml: doc
-doc/source/data/api/api.rst: doc_api
+doc/source/data/api/api.md: doc_api
 doc/source/serve/api/index.md: doc_api
-doc/source/ray-core/api/index.rst: doc_api
-doc/source/train/api/api.rst: doc_api
+doc/source/ray-core/api/index.md: doc_api
+doc/source/train/api/api.md: doc_api
 doc/source/tune/api/api.rst: doc_api
 doc/source/rllib/package_ref/index.rst: doc_api
 doc/source/ray-observability/reference/api.rst: doc_api
@@ -176,7 +183,10 @@ doc/source/_ext/llms_txt.py: doc doc_api
 doc/source/custom_directives.py: doc doc_api
 doc/source/api_autogen.py: doc doc_api
 doc/source/api_mock_imports.py: doc doc_api
-.buildkite/doc.rayci.yml: doc doc_api
+# doc.rayci.yml declares the redirect-validation step as well as the two API
+# checks, so it emits doc_redirects on top of doc and doc_api. An edit to a step
+# definition has to be able to select the step it edits.
+.buildkite/doc.rayci.yml: doc doc_api doc_redirects
 # api_sidebar.py sits under doc/source/_ext/ but carries `tools` on top of the
 # dir rule's tags, because //ci/pipeline:test_doc_api_rules_sync is a ci_unit
 # target and ci_unit is selected by `tools`. This case is what keeps the drift
@@ -209,8 +219,13 @@ doc/source/llms_txt_summary.txt: doc
 # The shared notebook runner stays on the catch-all core step by design; see
 # the comment on the catch-all rule in test.rules.txt.
 doc/test_myst_doc.py: core_doc
-python/deplocks/docs/docbuild_depset_py3.10.lock: doc doc_api python_dependencies
+python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api python_dependencies
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
+# Redirect YAML selects the dedicated lightweight check and nothing else: no
+# docbuild, no API checks, no per-team doc tests. The README beside it is prose
+# and stays unrouted, which is what the second case locks in.
+doc/redirects/current.yaml: doc_redirects
+doc/redirects/README.md:
 
 # === Release ===
 
