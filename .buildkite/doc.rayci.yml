@@ -125,14 +125,18 @@ steps:
       - oss
       - doc_redirects
     commands:
-      - pip install --no-cache-dir anyscale-rtd-redirects==0.2.0
+      - uv tool install anyscale-rtd-redirects==0.2.0
       # The doc_redirects tag selects on doc/redirects/*.yaml, but the commands below
-      # name current.yaml: multiple files compose in the order given, which a shell glob
+      # name current.yaml: multiple files compose in the order given, which a glob
       # can't express. Fail closed if another redirect file appears, so it can't select
       # this step and then go unvalidated. To add one, name it in both commands below in
       # compose order, then update this guard.
+      #
+      # The guard recurses rather than globbing a single level, because the tag rule
+      # matches with fnmatch, whose `*` crosses `/`: doc/redirects/nested/foo.yaml
+      # selects this step, and a one-level glob wouldn't see it.
       - >
-        test "$$(ls doc/redirects/*.yaml)" = "doc/redirects/current.yaml" ||
+        test "$$(find doc/redirects -name '*.yaml')" = "doc/redirects/current.yaml" ||
         { echo "doc/redirects/ holds a .yaml file this check doesn't validate; see the comment in .buildkite/doc.rayci.yml"; exit 1; }
       # diff-file resolves the base with `git show <ref>:<path>`. Fetch the PR's base
       # branch (master on non-PR builds) and diff against FETCH_HEAD, the same pattern
