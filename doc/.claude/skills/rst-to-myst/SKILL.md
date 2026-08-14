@@ -59,7 +59,18 @@ A stale `literalinclude` path, autodoc symbol, or `{ref}` target turns into a bu
 
 ### 3. Convert using the mapping
 
-Apply the table below construct-by-construct. Preserve prose line-wrapping verbatim (keeps the diff line-aligned). Then apply the Hard rules and Construct notes.
+Apply the table below construct-by-construct. **Keep the source's prose line-wrapping in this pass**, verbatim — it keeps the conversion diff line-aligned with the `.rst`, which is the only thing that lets a reviewer confirm at a glance that the words didn't change. Then apply the Hard rules and Construct notes.
+
+Ray's `.md` prose is soft-wrapped, one line per paragraph and per list item, so a converted page shouldn't stay hard-wrapped. Reflow it as a **second, whitespace-only commit** in the same PR, using the [`ray-soft-wrap`](../ray-soft-wrap/SKILL.md) skill:
+
+```bash
+python3 doc/.claude/skills/ray-soft-wrap/scripts/softwrap.py <the new .md files>
+python3 doc/.claude/skills/ray-soft-wrap/scripts/verify.py   <the new .md files>
+```
+
+Splitting it into two commits gets both properties: the conversion commit stays reviewable line-by-line against the `.rst`, and the reflow commit is one a reviewer can skim in seconds because `verify.py` proves it changed nothing but whitespace — non-whitespace bytes byte-identical, rendered HTML identical, transform idempotent.
+
+**`verify.py`'s render check is CommonMark plus GFM tables, so it cannot see MyST-only constructs.** It will pass a card grid whose `^^^` header separator got folded into the prose. `softwrap.py` protects `^^^` and `+++` by construction, but when a page leans on a construct the oracle doesn't model, add a structural assertion of your own — for card grids, that the `{grid-item-card}`, `^^^`, and `+++` counts still match. The step-4 render diff is the backstop either way.
 
 ### 4. Update references that actually need it
 
