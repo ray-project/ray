@@ -289,7 +289,7 @@ class GPUAccelerator(AcceleratorBackend):
 
     @staticmethod
     def _scheduling_strategy_fn(
-        default_bundles: List[Dict[str, float]],
+        num_bundles_per_replica: int,
         accelerator_type: Optional[str] = None,
         placement_group_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -301,8 +301,11 @@ class GPUAccelerator(AcceleratorBackend):
                     bundle[f"accelerator_type:{accelerator_type}"] = 0.001
             pg = placement_group(**placement_group_config)
         else:
+            bundle = {"GPU": 1, "CPU": 1}
+            if accelerator_type:
+                bundle[f"accelerator_type:{accelerator_type}"] = 0.001
             pg = placement_group(
-                default_bundles,
+                [bundle] * num_bundles_per_replica,
                 strategy="PACK",
             )
         return {
@@ -338,50 +341,36 @@ class GPUAccelerator(AcceleratorBackend):
                 ]
 
         map_batches_kwargs = {}
-        if executor_backend == "ray":
-            default_bundles = self.default_bundles(
-                num_devices=num_bundles_per_replica,
-                accelerator_type_str=accelerator_type,
-            )
-            # Ray Data maps bundles to nodes and implies CPU usage for the worker process
-            for bundle in default_bundles:
-                bundle.setdefault("CPU", 1)
+        if accelerator_type:
+            map_batches_kwargs["accelerator_type"] = accelerator_type
 
+        if executor_backend == "ray":
             map_batches_kwargs["ray_remote_args_fn"] = partial(
                 self._scheduling_strategy_fn,
-                default_bundles,
+                num_bundles_per_replica,
                 accelerator_type,
                 placement_group_config,
             )
             map_batches_kwargs["num_gpus"] = 0
         else:
-            bundles = (
-                placement_group_config["bundles"]
-                if placement_group_config
-                else self.default_bundles(
-                    num_devices=num_bundles_per_replica,
-                    accelerator_type_str=accelerator_type,
-                )
-            )
-            if accelerator_type:
+            if not placement_group_config:
+                # Default to GPUs per bundle if placement group is not specified.
+                map_batches_kwargs["num_gpus"] = num_bundles_per_replica
+            else:
+                bundles = placement_group_config["bundles"]
+                resource_counter = Counter()
                 for bundle in bundles:
-                    bundle.setdefault(
-                        format_ray_accelerator_resource(accelerator_type), 0.001
-                    )
+                    resource_counter.update(bundle)
 
-            resource_counter = Counter()
-            for bundle in bundles:
-                resource_counter.update(bundle)
-
-            total_cpus = resource_counter.pop("CPU", 0)
-            total_gpus = resource_counter.pop("GPU", 0)
-            if total_cpus:
-                map_batches_kwargs["num_cpus"] = total_cpus
-            if total_gpus:
-                map_batches_kwargs["num_gpus"] = total_gpus
-            if resource_counter:
-                # Ray Data expects CPU/GPU via num_cpus/num_gpus, not inside `resources`.
-                map_batches_kwargs["resources"] = dict(resource_counter)
+                total_cpus = resource_counter.pop("CPU", 0)
+                total_gpus = resource_counter.pop("GPU", 0)
+                if total_cpus:
+                    map_batches_kwargs["num_cpus"] = total_cpus
+                if total_gpus:
+                    map_batches_kwargs["num_gpus"] = total_gpus
+                if resource_counter:
+                    # Ray Data expects CPU/GPU via num_cpus/num_gpus, not inside `resources`.
+                    map_batches_kwargs["resources"] = dict(resource_counter)
 
         return map_batches_kwargs
 

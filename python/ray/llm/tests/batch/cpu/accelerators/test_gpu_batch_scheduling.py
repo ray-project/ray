@@ -69,7 +69,7 @@ def test_gpu_stage_scheduling_uses_pack_when_unset(monkeypatch):
 
 
 def test_gpu_accelerator_constraint_preserved_with_explicit_pg():
-    """Verify that an explicit placement group still preserves the accelerator_type constraint."""
+    """Verify that an explicit placement group preserves the accelerator_type and resource counts."""
     cfg = vLLMEngineProcessorConfig(
         model_source="m",
         accelerator_type="A100",
@@ -82,7 +82,10 @@ def test_gpu_accelerator_constraint_preserved_with_explicit_pg():
         engine_kwargs=dict(cfg.engine_kwargs),
         placement_group_config=cfg.placement_group_config,
     )
-    assert map_batches_kwargs["resources"].get("accelerator_type:A100") == 0.001
+    assert map_batches_kwargs["accelerator_type"] == "A100"
+    assert map_batches_kwargs["num_cpus"] == 1.0
+    assert map_batches_kwargs["num_gpus"] == 1.0
+    assert "resources" not in map_batches_kwargs
 
 
 def test_gpu_accelerator_bundle_contents(monkeypatch):
