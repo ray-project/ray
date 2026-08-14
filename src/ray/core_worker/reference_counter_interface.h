@@ -81,6 +81,13 @@ class ReferenceCounterInterface {
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
 
+  /// Set whether lineage pinning is enabled, i.e. whether objects owned by
+  /// this worker can be reconstructed from lineage if lost. This is used to
+  /// apply the job-level `enable_object_reconstruction` setting: workers only
+  /// learn their job config with the first task they receive, which is before
+  /// they can own any objects.
+  virtual void SetLineagePinningEnabled(bool lineage_pinning_enabled) = 0;
+
   /// Wait for all object references to go out of scope, and then shutdown.
   ///
   /// \param shutdown The shutdown callback to call.

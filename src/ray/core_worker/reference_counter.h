@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <string>
@@ -65,6 +66,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
   ~ReferenceCounter() override = default;
+
+  void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
+    lineage_pinning_enabled_ = lineage_pinning_enabled;
+  }
 
   void DrainAndShutdown(std::function<void()> shutdown) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -732,7 +737,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// lineage ref count, but this will not be used to decide when the object's
   /// Reference can be deleted. The object's lineage ref count is the number of
   /// tasks that depend on that object that may be retried in the future.
-  const bool lineage_pinning_enabled_;
+  /// This is atomic because it may be updated once the job config is known
+  /// (workers receive it with their first task), which can race with reads
+  /// from other threads.
+  std::atomic<bool> lineage_pinning_enabled_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

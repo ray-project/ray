@@ -387,6 +387,15 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       /*callback_service*/ &io_service_);
 
+  // The job config can disable object reconstruction for the job. For drivers it is
+  // already initialized above; workers receive it with their first task and update the
+  // flag then (see HandlePushTask).
+  const bool cluster_lineage_pinning_enabled =
+      RayConfig::instance().lineage_pinning_enabled();
+  const bool job_enable_object_reconstruction =
+      worker_context->GetEnableObjectReconstruction();
+  const bool lineage_reconstruction_enabled =
+      cluster_lineage_pinning_enabled && job_enable_object_reconstruction;
   auto reference_counter = std::make_shared<ReferenceCounter>(
       rpc_address,
       /*object_info_publisher=*/object_info_publisher.get(),
@@ -401,7 +410,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,
-      RayConfig::instance().lineage_pinning_enabled());
+      lineage_reconstruction_enabled);
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(

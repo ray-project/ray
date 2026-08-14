@@ -77,8 +77,15 @@ class WorkerContext {
 
   // Initialize worker's job_id and job_config if they haven't already.
   // Note a worker's job config can't be changed after initialization.
-  void MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
+  // Returns true if the job info was initialized by this call.
+  bool MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Whether the job allows lost objects to be reconstructed from lineage.
+  // Returns true if the job config doesn't specify it (or isn't initialized
+  // yet), in which case the cluster-level `lineage_pinning_enabled` system
+  // config alone decides.
+  bool GetEnableObjectReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
