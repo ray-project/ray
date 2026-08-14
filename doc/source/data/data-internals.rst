@@ -131,8 +131,8 @@ ensuring that rows with the same key-values are being placed into the same parti
 Hash-shuffle v2
 ~~~~~~~~~~~~~~~
 
-Hash-shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is a task-based reimplementation of
-hash-shuffling. Unlike the aggregator-actor model described above, hash-shuffle v2 doesn't push
+Hash-shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is a new, task-based implementation of
+hash-shuffling. Unlike the aggregator-actor model described earlier, hash-shuffle v2 doesn't push
 shards into long-lived aggregator actors:
 
 1. **Map phase:** map tasks hash-partition their input blocks and emit each partition's shard as a
@@ -143,7 +143,7 @@ shards into long-lived aggregator actors:
 Because the intermediate shards are ordinary object-store objects rather than in-memory actor
 state, Ray can spill them to disk under memory pressure. This avoids the out-of-memory risk of the
 aggregator-actor model, in which partitions are held in aggregator memory. Running the map and
-reduce stages as tasks rather than long-lived actors also makes them retriable: if a reduce task is
+reduce stages as tasks rather than long-lived actors also makes them recoverable: if a reduce task is
 killed under memory pressure, Ray retries it automatically, whereas a v1 aggregator actor that dies
 loses its in-memory partition state and fails the whole shuffle. Hash-shuffle v2 also coalesces
 shuffle inputs into larger batches before partitioning and sizes reduce-task memory from observed
@@ -190,14 +190,14 @@ between map parallelism and the number of intermediate shard objects:
   coarse-grained.
 - Set the threshold to ``0`` to disable batching and partition each input bundle individually.
 
-**Object inlining threshold** (``max_direct_call_object_size``, environment variable
+**Inline object threshold** (``max_direct_call_object_size``, environment variable
 ``RAY_max_direct_call_object_size``, default 100 KB). This is a Ray Core setting rather than a Ray
 Data one.
 
 When a map task partitions a block across many partitions, an individual partition's shard can be
 smaller than this threshold. Ray transfers objects below the threshold *inline*, storing them in
 the memory of the process that submitted the task (typically the driver on the head node) rather
-than in the object store. For a shuffle that produces many small shards, these inlined objects
+than in the object store. For a shuffle that produces many small shards, these inline objects
 accumulate on the head node and can cause an out-of-memory failure there.
 
 Lower this threshold (for example, ``RAY_max_direct_call_object_size=8192`` for 8 KB) so that only

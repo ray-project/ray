@@ -57,7 +57,7 @@ Joins are generally memory-intensive operations that require accurate memory acc
 Ray Data provides the following levers to allow tuning the performance of joins for your workload:
 
 -   `num_partitions`: (required) specifies number of partitions both incoming datasets will be hash-partitioned into. Check out :ref:`configuring number of partitions <joins_configuring_num_partitions>` section for guidance on how to tune this up.
--   `partition_size_hint`: (**deprecated**) Hint to the joining operator about the estimated avg expected size of the individual partition (in bytes). This parameter is deprecated and ignored (the hash-shuffle v2 join path sizes reduce-task memory from observed partition sizes), and it will be removed in a future release.
+-   `partition_size_hint`: (**deprecated**) Hint to the joining operator about the estimated avg expected size of the individual partition (in bytes). This parameter is deprecated and ignored (the hash-shuffle v2 join path sizes reduce-task memory from observed partition sizes). A future release removes it.
 
 .. _joins_configuring_num_partitions:
 
