@@ -71,6 +71,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         reduce_ray_remote_args: Remote args for the reducer tasks.
         preserve_partition_order: If True, buffer completed reducer outputs and
             expose them downstream in ascending partition-id order.
+        peak_memory_multiplier: Multiplier applied to a partition's shard
+            bytes to derive each reduce task's memory request.  Raise for
+            reduce fns whose peak memory exceeds 2x their input (e.g. a
+            sorting reduce that materializes a sorted copy on top of the
+            concatenated input).
         name: Display name shown in progress bars and logs.
         should_emit_empty_partitions: If True (default), an empty partition emits one
             schema-only placeholder block.
@@ -96,6 +101,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         disallow_block_splitting: bool = False,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         preserve_partition_order: bool = False,
+        peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleReduce",
         should_emit_empty_partitions: bool = True,
         fused_output_map_transformer: Optional["MapTransformer"] = None,
@@ -118,6 +124,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._disallow_block_splitting: bool = disallow_block_splitting
         self._preserve_partition_order: bool = preserve_partition_order
         self._emit_empty_partitions: bool = should_emit_empty_partitions
+        self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Reduce task config & tracking -----------------------------------
         self._reduce_ray_remote_args: Dict[str, Any] = dict(
@@ -241,7 +248,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             estimated_bytes += sum((m.size_bytes or 0) for m in bundle.metadata)
 
         reduce_options = self._reduce_task_remote_args(
-            int(estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+            int(estimated_bytes * self._peak_memory_multiplier)
             if estimated_bytes > 0
             else 0
         )
@@ -502,7 +509,7 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             sizes = [b for b in upstream.get_partition_bytes().values() if b > 0]
             if sizes:
                 avg_bytes = sum(sizes) / len(sizes)
-                memory += int(avg_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER)
+                memory += int(avg_bytes * self._peak_memory_multiplier)
         return ExecutionResources.from_resource_dict(
             self._reduce_task_remote_args(memory)
         )

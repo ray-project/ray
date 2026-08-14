@@ -328,6 +328,6 @@ class LLMEngine(abc.ABC):
         """
         return False
 
-    def shutdown(self) -> None:
-        """Shuts down the engine"""
+    async def shutdown(self) -> None:
+        """Shuts down the engine and releases its resources."""
         pass

@@ -105,7 +105,7 @@ class DataIterator(abc.ABC):
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[
-        Iterator[RefBundle], Optional[DatasetStats], bool, Optional["StreamingExecutor"]
+        Iterator[RefBundle], Optional[DatasetStats], Optional["StreamingExecutor"]
     ]:
         """Returns the iterator to use for `iter_batches`.
 
@@ -113,7 +113,6 @@ class DataIterator(abc.ABC):
             A tuple containing:
             - An iterator over RefBundles.
             - A DatasetStats object used for recording stats during iteration.
-            - A boolean indicating if the blocks can be safely cleared after use.
             - An optional executor (StreamingExecutor) for reporting prefetched bytes.
         """
         ...
@@ -251,7 +250,6 @@ class DataIterator(abc.ABC):
             (
                 ref_bundles_iterator,
                 stats,
-                blocks_owned_by_consumer,
                 executor,
             ) = self._to_ref_bundle_iterator()
 
@@ -276,7 +274,6 @@ class DataIterator(abc.ABC):
                 ref_bundles_iterator,
                 stats=stats,
                 dataset_tags=dataset_tags,
-                clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
@@ -524,7 +521,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterable over Torch Tensor batches.
         """
-        from torch import device as torch_device
+        import torch
 
         from ray.train.torch import get_device
         from ray.train.utils import _in_ray_train_worker
@@ -540,7 +537,14 @@ class DataIterator(abc.ABC):
             # Use the appropriate device for Ray Train, or falls back to CPU if
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
-        device = torch_device(device)
+        device = torch.device(device)
+        if torch.cuda.is_available() and device.type == "cuda" and device.index is None:
+            # "cuda" without an index is thread-relative: it resolves to the
+            # calling thread's *current* CUDA device. finalize_fn runs on a
+            # background fetch thread, so the device on the finalize thread
+            # and consumer thread might be different. Pin the device to a
+            # concrete index here.
+            device = torch.device("cuda", torch.cuda.current_device())
 
         if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
@@ -1244,7 +1248,7 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
+        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
         context = self.get_context()
         logical_plan = LogicalPlan(

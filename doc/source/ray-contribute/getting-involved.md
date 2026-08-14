@@ -19,6 +19,8 @@ development
 ci
 dependency-management
 docs
+publishing-examples
+publishing-examples-legacy
 writing-style
 writing-code-snippets
 fake-autoscaler

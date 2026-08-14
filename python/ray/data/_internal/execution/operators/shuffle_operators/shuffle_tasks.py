@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[List[pa.Table]]], Iterable[Block]]
-BlockTransformer = Callable[[Block], Block]
+BlockTransformer = Callable[["pa.Table"], "pa.Table"]
 
 # Peak working-set of a shuffle map/reduce task is ~2x the input bytes
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2

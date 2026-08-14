@@ -21,6 +21,9 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     ShuffleReduceOp,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+)
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
     SortShuffleMapOp,
 )
@@ -41,6 +44,14 @@ from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data.context import DataContext, ShuffleStrategy
 
 logger = logging.getLogger(__name__)
+
+
+# A sorting reduce (`_sort_reduce`, used by repartition(sort=True) and thus
+# map_groups) peaks at ~3x its input: on top of holding the decoded input
+# shards and the concatenated table, sort_by materializes a sorted copy.
+# The generic 2x shuffle estimate under-requests it, overpacking reducers
+# per node and risking OOM kills.
+_SORT_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
 def _plan_gpu_shuffle_repartition(
@@ -81,16 +92,17 @@ def _plan_hash_shuffle_repartition_v2(
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
     key_list = list(normalized_key_columns)
 
-    input_logical_op = input_physical_op._logical_operators[0]
-    estimated_input_blocks = input_logical_op.estimated_num_outputs()
     target_num_partitions = (
-        logical_op.num_outputs
-        or estimated_input_blocks
-        or data_context.default_hash_shuffle_parallelism
+        logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
     )
 
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
     reduce_fn = _sort_reduce(key_list) if logical_op.sort else _concat_reduce
+    peak_memory_multiplier = (
+        _SORT_REDUCE_PEAK_MEMORY_MULTIPLIER
+        if logical_op.sort
+        else SHUFFLE_PEAK_MEMORY_MULTIPLIER
+    )
 
     map_op = ShuffleMapOp(
         input_physical_op,
@@ -109,6 +121,7 @@ def _plan_hash_shuffle_repartition_v2(
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=True,
+        peak_memory_multiplier=peak_memory_multiplier,
         name=(
             f"HashShuffleReduce(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
@@ -167,6 +180,7 @@ def _plan_sort_v2(
         reduce_fn=make_sort_reduce_fn(sort_key, data_context),
         disallow_block_splitting=True,
         preserve_partition_order=True,
+        peak_memory_multiplier=_SORT_REDUCE_PEAK_MEMORY_MULTIPLIER,
         reduce_ray_remote_args=logical_op.ray_remote_args,
         name=f"SortShuffleReduce(partitions={num_partitions})",
     )
@@ -185,12 +199,8 @@ def _plan_hash_shuffle_aggregate_v2(
     aggs = tuple(logical_op.aggs)
 
     if key_list:
-        input_logical_op = input_physical_op._logical_operators[0]
-        estimated_input_blocks = input_logical_op.estimated_num_outputs()
         num_partitions = (
-            logical_op.num_partitions
-            or estimated_input_blocks
-            or data_context.default_hash_shuffle_parallelism
+            logical_op.num_partitions or data_context.default_hash_shuffle_parallelism
         )
     else:
         # Global aggregation reduces the whole dataset to a single row.

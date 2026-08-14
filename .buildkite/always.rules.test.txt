@@ -2,9 +2,36 @@
 #
 # Format: file_path: tag1 tag2 tag3
 #
-# This rules file adds "always lint" to all files via wildcard fallthrough.
+# This rules file adds "always lint" to all files via wildcard fallthrough,
+# except documentation prose and static image assets, which emit "always"
+# alone so the code-oriented lint matrix in lint.rayci.yml is filtered out.
 
 # Any file gets always lint tags
 some/random/file.txt: always lint
 python/ray/actor.py: always lint
-doc/source/index.rst: always lint
+
+# Documentation prose emits always without lint. doc/source/index.rst is the
+# case that regressed the 27-minute Markdown-only build this rule addresses.
+doc/source/index.rst: always
+doc/source/ray-contribute/getting-involved.md: always
+doc/README.md: always
+
+# Static image assets are prose-adjacent: a diagram swap cannot fail a
+# code-oriented lint check either.
+doc/source/images/ray-logo.png: always
+doc/source/data/images/dataset-arch.svg: always
+
+# Claude Code skills and agent files participate in no build.
+doc/.claude/skills/sphinx-fix/SKILL.md: always
+
+# Executable and config assets under doc/ are deliberately NOT exempt: they can
+# carry code that the code-oriented checks lint. pre_commit is the only
+# premerge step that runs black, ruff, and mypy over doc/source/*.py.
+doc/source/conf.py: always lint
+doc/source/ray-core/examples/batch_prediction.ipynb: always lint
+doc/source/data/examples.yml: always lint
+doc/BUILD.bazel: always lint
+
+# Prose outside doc/ is not exempt; the exemption is scoped to doc/.
+README.rst: always lint
+python/ray/data/README.md: always lint
