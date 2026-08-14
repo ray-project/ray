@@ -55,7 +55,7 @@ Ray cluster pods and their `NetworkPolicy` resources are created by different co
 To address this, pre-apply a namespace-level policy scoped to the directions your chosen mode manages. This closes the race window without interfering with the directions your mode leaves unrestricted.
 
 :::{note}
-This applies to every pod in the namespace, including pods that KubeRay doesn't manage. To scope it to the Ray cluster's Pods only, add a `podSelector` that matches the label KubeRay applies to head and worker Pods:
+This applies to every pod in the namespace, including pods that KubeRay doesn't manage. To scope it to the RayCluster's Pods only, add a `podSelector` that matches the label KubeRay applies to head and worker Pods:
 
 ```yaml
   podSelector:

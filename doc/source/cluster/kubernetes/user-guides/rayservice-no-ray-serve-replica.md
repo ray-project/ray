@@ -86,7 +86,7 @@ kubectl describe rayservices.ray.io rayservice-no-ray-serve-replica
 #    Status:                False
 #    Type:                  UpgradeInProgress
 
-# Step 4.2: List the Ray cluster's Pods in the `default` namespace.
+# Step 4.2: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -162,7 +162,7 @@ Update the `num_replicas` for the app from `1` to `2` in `ray-service.no-ray-ser
 # Step 7.2: Apply the updated RayService config.
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 
-# Step 7.3: List the Ray cluster's Pods in the `default` namespace.
+# Step 7.3: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
