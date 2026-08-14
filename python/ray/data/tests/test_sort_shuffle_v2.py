@@ -55,7 +55,7 @@ def test_get_boundaries_from_empty_samples():
     assert boundaries == [None, None]
 
 
-def test_sort_shuffle_map_samples_then_replays_buffered_inputs(
+def test_sort_shuffle_map_samples_all_inputs_then_replays_buffered_inputs(
     ray_start_regular_shared_2_cpus,
 ):
     ctx = DataContext.get_current()
@@ -65,7 +65,6 @@ def test_sort_shuffle_map_samples_then_replays_buffered_inputs(
         ctx,
         num_partitions=2,
         sort_key=SortKey("id"),
-        sample_num_blocks=2,
         pre_map_merge_threshold=0,
     )
     op.start(ExecutionOptions(), noop_counter())
@@ -74,11 +73,12 @@ def test_sort_shuffle_map_samples_then_replays_buffered_inputs(
     assert op.get_active_tasks() == []
     assert op.boundaries is None
 
-    # Reaching the warm-up target starts two parallel sample tasks. Inputs that
-    # arrive while they run stay buffered and are replayed after sampling.
+    # Sampling waits for every input so the boundaries represent the entire
+    # dataset, rather than only the earliest blocks.
     op.add_input(bundles[1], 0)
-    assert len(op.get_active_tasks()) == 2
+    assert op.get_active_tasks() == []
     op.add_input(bundles[2], 0)
+    assert op.get_active_tasks() == []
     assert op.internal_input_queue_num_blocks() == 3
     assert op.internal_input_queue_num_bytes() == sum(
         bundle.size_bytes() for bundle in bundles
@@ -87,6 +87,7 @@ def test_sort_shuffle_map_samples_then_replays_buffered_inputs(
         bundle.size_bytes() for bundle in bundles
     )
     op.all_inputs_done()
+    assert len(op.get_active_tasks()) == 3
     run_op_tasks_sync(op)
 
     assert op.boundaries is not None
@@ -114,7 +115,7 @@ def test_sort_shuffle_map_samples_then_replays_buffered_inputs(
     assert op.has_completed()
 
 
-def test_sort_shuffle_map_handles_empty_sampling_window(
+def test_sort_shuffle_map_samples_nonempty_blocks_after_empty_blocks(
     ray_start_regular_shared_2_cpus,
 ):
     ctx = DataContext.get_current()
@@ -124,20 +125,18 @@ def test_sort_shuffle_map_handles_empty_sampling_window(
         ctx,
         num_partitions=2,
         sort_key=SortKey("id"),
-        sample_num_blocks=2,
         pre_map_merge_threshold=0,
     )
     op.start(ExecutionOptions(), noop_counter())
 
-    # Sampling starts after the first two empty blocks. The later non-empty
-    # block must still be range-partitioned without treating a bare None as a
-    # tuple boundary.
+    # Sampling must include the later non-empty block instead of deriving empty
+    # boundaries from only the first two blocks.
     for bundle in bundles:
         op.add_input(bundle, 0)
     op.all_inputs_done()
     run_op_tasks_sync(op)
 
-    assert op.boundaries == [(None,)]
+    assert op.boundaries == [(2,)]
     rows = []
     while op.has_next():
         bundle = op.get_next()
@@ -151,6 +150,31 @@ def test_sort_shuffle_map_handles_empty_sampling_window(
     assert op.has_completed()
 
 
+def test_sort_shuffle_map_handles_all_empty_sample_blocks(
+    ray_start_regular_shared_2_cpus,
+):
+    ctx = DataContext.get_current()
+    bundles = make_ref_bundles([[], []])
+    op = SortShuffleMapOp(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        sort_key=SortKey("id"),
+        pre_map_merge_threshold=0,
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    for bundle in bundles:
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+
+    assert op.boundaries == [(None,)]
+    while op.has_next():
+        op.get_next().destroy_if_owned()
+    assert op.has_completed()
+
+
 def test_sort_shuffle_map_user_boundaries_skip_sampling(
     ray_start_regular_shared_2_cpus,
 ):
@@ -161,7 +185,6 @@ def test_sort_shuffle_map_user_boundaries_skip_sampling(
         ctx,
         num_partitions=2,
         sort_key=SortKey("id", boundaries=[2]),
-        sample_num_blocks=2,
         pre_map_merge_threshold=0,
     )
     op.start(ExecutionOptions(), noop_counter())
@@ -295,7 +318,7 @@ def test_sort_shuffle_v2_promotes_compatible_block_schemas(
     ]
 
 
-def test_sort_shuffle_v2_more_blocks_than_sampling_window(
+def test_sort_shuffle_v2_samples_all_blocks_to_avoid_skew(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
 ):
@@ -304,9 +327,9 @@ def test_sort_shuffle_v2_more_blocks_than_sampling_window(
 
     num_blocks = 32
     num_rows = 320
-    # Keep the input in descending order so the first 20 sampled blocks cover a
-    # different key range from the remaining blocks. This exercises the default
-    # bounded sampling window and verifies that all later inputs are still mapped.
+    # Keep the input in descending order so early blocks cover a different key
+    # range from later blocks. Sampling every block should still produce balanced
+    # range partitions.
     rows = [{"id": i} for i in reversed(range(num_rows))]
     result = (
         ray.data.from_items(rows, override_num_blocks=num_blocks)
@@ -316,6 +339,8 @@ def test_sort_shuffle_v2_more_blocks_than_sampling_window(
 
     assert [row["id"] for row in result.iter_rows()] == list(range(num_rows))
     assert result.num_blocks() == num_blocks
+    block_num_rows = result._block_num_rows()
+    assert max(block_num_rows) - min(block_num_rows) <= 1
 
 
 def test_sort_shuffle_v2_with_user_boundaries(

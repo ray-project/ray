@@ -34,20 +34,14 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 
-# Sampling a bounded number of early blocks lets the map stage start without
-# materializing the entire upstream dataset. Each sampled block contributes a
-# share of the same 10 samples-per-output-partition budget used by sort V1.
-DEFAULT_SORT_SAMPLE_NUM_BLOCKS = 20
-
-
 class SortShuffleMapOp(ShuffleMapOp):
-    """Shuffle-v2 map phase with an online range-boundary sampling warm-up.
+    """Shuffle-v2 map phase with range-boundary sampling.
 
-    Before boundaries are known, input bundles are retained by the driver and
-    the first ``sample_num_blocks`` block refs are sampled in parallel. Once all
-    sample tasks finish, the buffered bundles are replayed into ``ShuffleMapOp``
-    with a local-sort/range-partition function. Inputs arriving afterwards are
-    mapped immediately.
+    Before boundaries are known, all input bundles are retained by the driver.
+    Once all inputs arrive, every block is sampled in parallel so the resulting
+    range boundaries represent the entire dataset. After sampling finishes, the
+    buffered bundles are replayed into ``ShuffleMapOp`` with a
+    local-sort/range-partition function.
 
     User-provided boundaries bypass the sampling phase.
     """
@@ -59,7 +53,6 @@ class SortShuffleMapOp(ShuffleMapOp):
         *,
         num_partitions: int,
         sort_key: SortKey,
-        sample_num_blocks: int = DEFAULT_SORT_SAMPLE_NUM_BLOCKS,
         pre_map_merge_threshold: int = ShuffleMapOp._DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = ShuffleMapOp._DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
@@ -67,11 +60,8 @@ class SortShuffleMapOp(ShuffleMapOp):
     ):
         if num_partitions <= 0:
             raise ValueError("num_partitions must be positive")
-        if sample_num_blocks <= 0:
-            raise ValueError("sample_num_blocks must be positive")
 
         self._sort_key = sort_key
-        self._sample_num_blocks = sample_num_blocks
         self._buffered_bundles = FIFOBundleQueue()
         self._sample_block_refs: List[ObjectRef[Block]] = []
         self._sample_tasks: Dict[int, MetadataOpTask] = {}
@@ -133,23 +123,23 @@ class SortShuffleMapOp(ShuffleMapOp):
 
         self._buffered_bundles.add(refs)
         self._metrics.on_input_queued(refs, input_index=input_index)
-        remaining = self._sample_num_blocks - len(self._sample_block_refs)
-        if remaining > 0:
-            self._sample_block_refs.extend(list(refs.block_refs[:remaining]))
-
-        if len(self._sample_block_refs) >= self._sample_num_blocks:
-            self._start_sampling()
+        self._sample_block_refs.extend(refs.block_refs)
 
     def _start_sampling(self) -> None:
         if self._sampling_started or self._boundaries is not None:
             return
+        assert self._inputs_complete
         self._sampling_started = True
 
         if not self._sample_block_refs:
             self._set_boundaries([None] * (self._num_partitions - 1))
             return
 
-        n_samples = int(self._num_partitions * 10 / len(self._sample_block_refs))
+        # Match sort V1's 10 samples-per-output-partition budget while ensuring
+        # that every non-empty block contributes at least one sample.
+        n_samples = max(
+            1, int(self._num_partitions * 10 / len(self._sample_block_refs))
+        )
         sample_block = cached_remote_fn(_sample_block)
         label_selector = self.data_context.execution_options.label_selector
         if label_selector:
@@ -196,10 +186,8 @@ class SortShuffleMapOp(ShuffleMapOp):
 
     def _set_boundaries(self, boundaries: List) -> None:
         # The shared V1 sampling helper represents an empty dataset with bare
-        # ``None`` boundaries. With V2's bounded sampling window, the sampled
-        # blocks can all be empty even when later buffered blocks contain rows.
-        # Range partitioning expects each boundary to be a tuple, so preserve
-        # the empty-sample fallback while normalizing it to the one-column key
+        # ``None`` boundaries. Range partitioning expects each boundary to be a
+        # tuple, so normalize the empty-dataset fallback to the one-column key
         # shape accepted by ``find_partition_index``.
         boundaries = [
             (None,) if boundary is None else boundary for boundary in boundaries
