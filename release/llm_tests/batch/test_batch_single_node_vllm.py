@@ -535,7 +535,8 @@ def test_single_node_baseline_benchmark():
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
         with open(test_output_json, "w", encoding="utf-8") as f:
-            json.dump(results, f)
+            json.dump(results, f, indent=2, sort_keys=True)
+            f.write("\n")
         print(f"Wrote release results to: {test_output_json}")
         print(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     except Exception as e:  # noqa: BLE001
