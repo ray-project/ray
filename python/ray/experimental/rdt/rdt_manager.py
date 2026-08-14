@@ -1032,17 +1032,12 @@ class RDTManager:
         tensor_transport_backend = rdt_meta.tensor_transport_backend
         tensor_transport_meta = rdt_meta.tensor_transport_meta
         if src_actor == RDTSource.DRIVER:
-            # The CoreWorker free callback must not wait for transport cleanup.
-            threading.Thread(
-                target=__ray_free__,
-                args=(
-                    None,
-                    object_id,
-                    tensor_transport_backend,
-                    tensor_transport_meta,
-                ),
-                daemon=True,
-            ).start()
+            __ray_free__(
+                None,
+                object_id,
+                tensor_transport_backend,
+                tensor_transport_meta,
+            )
         else:
             src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
                 __ray_free__,

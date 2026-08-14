@@ -2,13 +2,11 @@
 import logging
 import re
 import sys
-import threading
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, List
 
 import pytest
 
-import ray
 from ray.exceptions import GetTimeoutError
 from ray.experimental import (
     CommunicatorMetadata,
@@ -52,9 +50,6 @@ class _PipelineCheckingTransport(TensorTransportManager):
     wait_delay: float = 0
     deleted_requests: set = set()
     cleanup_should_fail = False
-    cleanup_started: Optional[threading.Event] = None
-    cleanup_release: Optional[threading.Event] = None
-    cleanup_finished: Optional[threading.Event] = None
 
     def tensor_transport_backend(self) -> str:
         return _BACKEND_NAME
@@ -105,12 +100,6 @@ class _PipelineCheckingTransport(TensorTransportManager):
         pass
 
     def garbage_collect(self, obj_id, meta, tensors):
-        if self.__class__.cleanup_started is not None:
-            self.__class__.cleanup_started.set()
-        if self.__class__.cleanup_release is not None:
-            self.__class__.cleanup_release.wait(timeout=10)
-        if self.__class__.cleanup_finished is not None:
-            self.__class__.cleanup_finished.set()
         if self.__class__.cleanup_should_fail:
             raise RuntimeError("cleanup failed")
 
@@ -187,9 +176,6 @@ def clear_call_log():
     _PipelineCheckingTransport.wait_delay = 0
     _PipelineCheckingTransport.deleted_requests.clear()
     _PipelineCheckingTransport.cleanup_should_fail = False
-    _PipelineCheckingTransport.cleanup_started = None
-    _PipelineCheckingTransport.cleanup_release = None
-    _PipelineCheckingTransport.cleanup_finished = None
 
 
 def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTManager:
@@ -321,43 +307,6 @@ def test_free_rdt_object_handles_transport_failure(monkeypatch, caplog):
     assert "Failed to garbage collect RDT object" in caplog.text
     assert not manager.rdt_store.has_object(object_id)
     manager.rdt_store.wait_tensor_freed(tensor, timeout=0)
-
-
-def test_driver_free_does_not_wait_for_cleanup(monkeypatch):
-    """Driver cleanup must return while transport cleanup is still running."""
-    object_id = "async_cleanup"
-    manager = _build_manager([object_id])
-    tensor = _add_primary_object(manager, object_id)
-    _use_manager_as_global_worker_rdt_manager(monkeypatch, manager)
-    monkeypatch.setattr(ray, "is_initialized", lambda: True)
-
-    cleanup_started = threading.Event()
-    cleanup_release = threading.Event()
-    cleanup_finished = threading.Event()
-    call_finished = threading.Event()
-    _PipelineCheckingTransport.cleanup_should_fail = True
-    _PipelineCheckingTransport.cleanup_started = cleanup_started
-    _PipelineCheckingTransport.cleanup_release = cleanup_release
-    _PipelineCheckingTransport.cleanup_finished = cleanup_finished
-
-    def free_object():
-        manager.free_object_primary_copy(object_id)
-        call_finished.set()
-
-    free_thread = threading.Thread(target=free_object)
-    free_thread.start()
-    try:
-        assert cleanup_started.wait(timeout=1)
-        assert call_finished.wait(timeout=1)
-        assert not cleanup_finished.is_set()
-    finally:
-        cleanup_release.set()
-        free_thread.join(timeout=10)
-
-    assert not free_thread.is_alive()
-    assert cleanup_finished.wait(timeout=1)
-    assert not manager.rdt_store.has_object(object_id)
-    manager.rdt_store.wait_tensor_freed(tensor, timeout=1)
 
 
 def test_two_sided_transport_raises_on_fetch_and_get_rdt_objects():
