@@ -62,7 +62,7 @@ The role grants two permissions:
 
 Set `RAY_DASHBOARD_INGEST_PLATFORM_EVENTS` to `"true"` on the Ray head pod container. This environment variable starts the platform event watcher in the Ray Dashboard backend.
 
-**For deployments without KubeRay (Ray 2.58+)**: KubeRay automatically injects `RAY_CLUSTER_NAME` and `RAY_CLUSTER_NAMESPACE` into Ray pods. If you deploy Ray on Kubernetes without KubeRay, manually inject these environment variables into your Ray head pod container so the dashboard can display Kubernetes pod events:
+**For deployments without KubeRay (Ray 2.58+)**: KubeRay automatically injects `RAY_CLUSTER_NAME` and `RAY_CLUSTER_NAMESPACE` into the RayCluster's Pods. If you deploy Ray on Kubernetes without KubeRay, manually inject these environment variables into your Ray head pod container so the dashboard can display Kubernetes pod events:
 
 ```yaml
 env:

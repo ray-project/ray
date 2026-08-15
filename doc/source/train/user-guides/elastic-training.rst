@@ -98,7 +98,7 @@ For elastic training to scale up when more resources become available, the clust
                   spec:
                     containers:
                       - name: ray-worker
-                        image: rayproject/ray:latest
+                        image: rayproject/ray:2.56.1
 
         .. note::
 
