@@ -45,12 +45,12 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _build_range_index,
     _compute_prefetch_layout,
     _decoded_to_array,
+    _fetch_from_file_server,
     _file_server_name,
     _group_by_server,
     _handles_to_sources,
     _is_disk_exhausted,
     _PartitionWriter,
-    _fetch_from_file_server,
     _PwriteSink,
     _read_ipc,
 )
