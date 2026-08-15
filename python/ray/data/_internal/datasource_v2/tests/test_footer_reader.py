@@ -31,14 +31,20 @@ def _reader(**kwargs):
     return FooterReader(filesystem=LocalFileSystem(), io_concurrency=2, **kwargs)
 
 
-def _has_filter_nulls(reader, metadata, rg_idx=0):
-    """Run the null guard the way ``_read_and_chunk`` does.
+def _filter_leaves(reader, metadata, rg_idx=0):
+    return reader._locate_filter_columns(metadata.row_group(rg_idx))
 
-    The predicate's leaf columns are resolved once per file and handed to every
-    row group, so tests go through the same two steps.
-    """
-    filter_leaves = reader._locate_filter_columns(metadata.row_group(0))
-    return reader._has_filter_nulls(metadata, rg_idx, filter_leaves)
+
+def _has_filter_nulls(reader, metadata, rg_idx=0):
+    """Run the null-count check the way ``_rg_can_fully_match`` does."""
+    row_group = metadata.row_group(rg_idx)
+    return reader._has_filter_nulls(row_group, _filter_leaves(reader, metadata).indices)
+
+
+def _rg_can_fully_match(reader, metadata, rg_idx=0):
+    """Run the fully-match guard the way ``_read_and_chunk`` does."""
+    row_group = metadata.row_group(rg_idx)
+    return reader._rg_can_fully_match(row_group, _filter_leaves(reader, metadata))
 
 
 class _FakeStatistics:
@@ -260,7 +266,11 @@ class TestNullsAreNeverExactSurvivors:
         assert _has_filter_nulls(reader, metadata) is expected
 
     def test_unlocatable_predicate_column_fails_closed(self, tmp_path):
-        """Not finding a predicate column means unverified, not null-free."""
+        """Not finding a predicate column means unverified, not fully matched.
+
+        The found columns can still be null-free; ``_rg_can_fully_match`` is
+        what fails closed on the missing one.
+        """
         path, _ = _write(
             tmp_path / "missing.parquet",
             pa.table({"id": pa.array([35, 40, 45, 50], pa.int64())}),
@@ -268,8 +278,10 @@ class TestNullsAreNeverExactSurvivors:
         )
         reader = _reader(filter_expr=col("id") >= 30)
         reader.filter_columns = {"id", "not_in_this_file"}
+        metadata = pq.ParquetFile(path).metadata
 
-        assert _has_filter_nulls(reader, pq.ParquetFile(path).metadata)
+        assert not _has_filter_nulls(reader, metadata)
+        assert not _rg_can_fully_match(reader, metadata)
 
     def test_survives_a_sharper_statistics_pruner(self, tmp_path):
         """Correctness must not rest on PyArrow declining to prune.
@@ -311,6 +323,79 @@ class TestNullsAreNeverExactSurvivors:
         reader.file_format = _Format(reader.file_format, reader.filter)
         chunks = reader._read_and_chunk(path, size)
 
+        assert not any(rg.fully_matched for rg in chunks.row_groups)
+
+
+class TestMissingFilterColumnsSkipPruning:
+    """A file that predates a filter column must not abort footer reads.
+
+    PyArrow's ``split_by_row_group`` raises ``ArrowInvalid`` when the field is
+    absent. Schema evolution null-fills that column at read time, so every
+    row group is kept and none is an exact survivor.
+    """
+
+    def test_keeps_every_group_and_marks_none_fully_matched(self, tmp_path):
+        path, size = _write(
+            tmp_path / "no_b.parquet",
+            pa.table({"a": pa.array([1, 2, 3, 4], pa.int64())}),
+            row_group_size=2,
+        )
+
+        chunks = _reader(filter_expr=col("b") > 0)._read_and_chunk(path, size)
+
+        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1]
+        assert not any(rg.fully_matched for rg in chunks.row_groups)
+
+    def test_does_not_abort_sibling_files_in_the_batch(self, tmp_path):
+        with_b = _write(
+            tmp_path / "with_b.parquet",
+            pa.table({"a": [1, 2], "b": [10, 20]}),
+            row_group_size=2,
+        )
+        without_b = _write(
+            tmp_path / "without_b.parquet",
+            pa.table({"a": [3, 4]}),
+            row_group_size=2,
+        )
+
+        reader = _reader(filter_expr=col("b") > 0)
+        batches = list(
+            reader.read_footers(  # pyrefly: ignore[not-callable]
+                [with_b, without_b], result_batch_size=1
+            )
+        )
+        by_path = {fc.path: fc for batch in batches for fc in batch}
+
+        assert set(by_path) == {with_b[0], without_b[0]}
+        assert all(rg.fully_matched for rg in by_path[with_b[0]].row_groups)
+        assert not any(rg.fully_matched for rg in by_path[without_b[0]].row_groups)
+
+    def test_split_exception_keeps_every_group(self, four_row_groups):
+        """A raise from the *positive* split must fail closed, not abort."""
+        path, size = four_row_groups
+        reader = _reader(filter_expr=col("id") >= 50)
+
+        class _Raises:
+            def __init__(self, fragment):
+                self._fragment = fragment
+
+            def __getattr__(self, name):
+                return getattr(self._fragment, name)
+
+            def split_by_row_group(self, expr):
+                raise RuntimeError("injected split failure")
+
+        class _Format:
+            def __init__(self, real):
+                self._real = real
+
+            def make_fragment(self, *args, **kwargs):
+                return _Raises(self._real.make_fragment(*args, **kwargs))
+
+        reader.file_format = _Format(reader.file_format)
+        chunks = reader._read_and_chunk(path, size)
+
+        assert [rg.rg_idx for rg in chunks.row_groups] == [0, 1, 2, 3]
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
 

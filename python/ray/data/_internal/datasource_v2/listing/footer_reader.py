@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Iterable, Iterator, NamedTuple
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
-from pyarrow.parquet import FileMetaData, RowGroupMetaData
+from pyarrow.parquet import RowGroupMetaData
 
 import ray
 from ray.data._internal.datasource.parquet_datasource import (
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _prefix_match(path: str, names: set[str]) -> set[str]:
+def _get_prefix_matches(path: str, names: set[str]) -> set[str]:
     """Return the names that ``path`` equals or is nested under.
 
     A leaf matches a name outright (a flat column, whose *name* may itself
@@ -47,19 +47,20 @@ def _prefix_match(path: str, names: set[str]) -> set[str]:
 
 def _leaf_matches(leaf_path: str, names: set[str]) -> bool:
     """Whether a Parquet leaf belongs to any of ``names``."""
-    return bool(_prefix_match(leaf_path, names))
+    return bool(_get_prefix_matches(leaf_path, names))
 
 
 class _FilterLeaves(NamedTuple):
     """Where the predicate's columns sit in a file's schema.
 
     A Parquet file has one schema, so this holds for all of its row groups and
-    is resolved once per file. ``all_columns_found`` is false when some
-    predicate column has no leaf in the schema at all.
+    is resolved once per file. ``all_filter_columns_found`` is false when some
+    predicate column has no leaf in the schema at all; pruning is then skipped
+    because PyArrow would raise on the missing field.
     """
 
     indices: list[int]
-    all_columns_found: bool
+    all_filter_columns_found: bool
 
 
 class FooterReader:
@@ -170,7 +171,7 @@ class FooterReader:
         indices: list[int] = []
         matched: set[str] = set()
         for j in range(row_group.num_columns):
-            hits = _prefix_match(
+            hits = _get_prefix_matches(
                 row_group.column(j).path_in_schema, self.filter_columns
             )
             if hits:
@@ -179,7 +180,7 @@ class FooterReader:
         return _FilterLeaves(indices, matched == self.filter_columns)
 
     def _has_filter_nulls(
-        self, metadata: FileMetaData, rg_idx: int, filter_leaves: _FilterLeaves
+        self, row_group: RowGroupMetaData, indices: list[int]
     ) -> bool:
         """Whether any predicate column may have a null in this row group.
 
@@ -191,18 +192,45 @@ class FooterReader:
         Missing or null-count-less statistics are treated as "may contain
         nulls", i.e. not fully matched -- the safe direction.
         """
-        # Fail closed on any predicate column we could not locate in the
-        # footer. "No leaf matched" means we did not verify it, not that it is
-        # null-free -- and treating it as null-free is what lets a partial
-        # survivor count as exact.
-        if not filter_leaves.all_columns_found:
-            return True
-        row_group = metadata.row_group(rg_idx)
-        for j in filter_leaves.indices:
+        for j in indices:
             stats = row_group.column(j).statistics
             if stats is None or not stats.has_null_count or stats.null_count > 0:
                 return True
         return False
+
+    def _rg_can_fully_match(
+        self, row_group: RowGroupMetaData, filter_leaves: _FilterLeaves
+    ) -> bool:
+        """Whether this row group's ``num_rows`` can be an exact survivor count.
+
+        Two conditions must both hold: every predicate column is present in
+        the schema, and none of those columns has a null. A missing column is
+        unverified, not null-free -- treating it as null-free is what lets a
+        partial survivor count as exact.
+        """
+        if not filter_leaves.all_filter_columns_found:
+            return False
+        return not self._has_filter_nulls(row_group, filter_leaves.indices)
+
+    def _try_split_by_row_group(
+        self, fragment, expr: "pc.Expression", path: str
+    ) -> list[int] | None:
+        """Row-group ids that statistics say may match ``expr``, or None on failure.
+
+        ``None`` means pruning cannot be applied, so the caller must fail closed
+        (keep every group / treat none as fully matched). Swallows the
+        exception so one mismatched file cannot abort a ``read_footers`` batch.
+        """
+        try:
+            return [sub.row_groups[0].id for sub in fragment.split_by_row_group(expr)]
+        except Exception as e:
+            logger.debug(
+                "Error splitting by row group: %s for file %s",
+                e,
+                path,
+                exc_info=True,
+            )
+            return None
 
     def _read_and_chunk(self, path: str, size: int) -> FileChunks:
         fragment = self.file_format.make_fragment(path, filesystem=self.filesystem)
@@ -229,31 +257,26 @@ class FooterReader:
             leaf_indices = None
             filter_leaves = _FilterLeaves([], False)
 
-        if self.filter is not None:
+        if self.filter is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
             # contradict the filter, so we never emit chunks the reader would
             # skip anyway. Each returned fragment views a single surviving group.
-            surviving = fragment.split_by_row_group(self.filter)
-            rg_indices: Iterable[int] = [sub.row_groups[0].id for sub in surviving]
+            # Fail closed on any split error -- keep every group -- so a type
+            # mismatch or similar cannot abort the rest of the read_footers batch.
+            surviving: list[int] | None = self._try_split_by_row_group(
+                fragment, self.filter, path
+            )
+            rg_indices: Iterable[int] = (
+                range(metadata.num_row_groups) if surviving is None else surviving
+            )
             # Classify surviving groups as fully- vs partially-matching via
             # predicate negation: a group is fully matched iff
             # ~filter cannot match any of its rows, i.e. the negation prunes it
             # out. For those, num_rows is an exact survivor count and can drive
             # the limit push-down. Any failure defaults to "not fully matched",
             # which is always safe (falls back to the post-filter stop).
-            try:
-                not_fully = {
-                    sub.row_groups[0].id
-                    for sub in fragment.split_by_row_group(~self.filter)
-                }
-            except Exception as e:
-                logger.debug(
-                    "Error splitting by row group: %s for file %s",
-                    e,
-                    path,
-                    exc_info=True,
-                )
-                not_fully = set(rg_indices)
+            not_fully_ids = self._try_split_by_row_group(fragment, ~self.filter, path)
+            not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient under three-valued
             # logic. A row whose filter column is null satisfies neither
             # ``filter`` nor ``~filter``, so a group of [35, 40, 45, NULL] under
@@ -268,11 +291,17 @@ class FooterReader:
             # engine's statistics pruning gets.
             fully_by_idx: dict[int, bool] = {
                 i: i not in not_fully
-                and not self._has_filter_nulls(
-                    metadata=metadata, rg_idx=i, filter_leaves=filter_leaves
-                )
+                and self._rg_can_fully_match(metadata.row_group(i), filter_leaves)
                 for i in rg_indices
             }
+        elif self.filter is not None:
+            # A predicate column is absent from this file's schema. PyArrow's
+            # split_by_row_group raises ArrowInvalid ("No match for FieldRef.Name")
+            # in that case, which would abort the whole read_footers batch.
+            # Skip pruning: keep every row group and let the reader apply the
+            # filter after null-fill. None can be an exact survivor.
+            rg_indices = range(metadata.num_row_groups)
+            fully_by_idx = dict.fromkeys(rg_indices, False)
         else:
             rg_indices = range(metadata.num_row_groups)
             # No predicate -> nothing to disqualify a group, so the lookup below
