@@ -172,11 +172,11 @@ control the number of files and their sizes, since every block could potentially
 the rows corresponding to any partition.
 
 .. warning::
-    Using ``min_rows_per_file`` with non-empty ``partition_cols`` is deprecated and
-    will no longer be supported after February 2027. Use ``repartition()`` with the
-    partition columns and an explicit ``num_blocks``, and use ``max_rows_per_file``
-    instead. If the dataset is already repartitioned by the partition columns, removing
-    ``min_rows_per_file`` doesn't change the output layout.
+    Ray Data deprecates using ``min_rows_per_file`` with non-empty ``partition_cols``
+    and plans to stop supporting this combination after February 2027. Use
+    ``repartition()`` with the partition columns and an explicit ``num_blocks``, and use
+    ``max_rows_per_file`` instead. If the dataset is already repartitioned by the
+    partition columns, removing ``min_rows_per_file`` doesn't change the output layout.
 
 .. testcode::
     import ray
