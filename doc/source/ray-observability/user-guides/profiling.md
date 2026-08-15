@@ -32,7 +32,7 @@ If your dashboard is accessible over a network without authentication, enabling 
 (profiling-defaults)=
 ### Configuring profiling defaults
 
-Each profiling request (stack trace, CPU flame graph, memory profile) accepts several parameters. When a request omits a parameter, the value falls back to a cluster-wide default. Set these environment variables on the Ray head node to change the defaults for every request that doesn't specify the parameter explicitly (an explicit query parameter always takes precedence).
+Stack trace, CPU flame graph, and memory profile requests each accept several parameters. When a request omits a parameter, its value falls back to a cluster-wide default. Set the following environment variables on the Ray head node to change those defaults. An explicit query parameter always takes precedence.
 
 ```{list-table}
 :header-rows: 1
@@ -42,13 +42,13 @@ Each profiling request (stack trace, CPU flame graph, memory profile) accepts se
   - Meaning
   - Default
 * - `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT`
-  - Include native (C/C++) stack frames. Higher overhead; only takes effect on Linux.
+  - Include native (C/C++) stack frames. Adds significant overhead. Only takes effect on Linux for stack traces and CPU profiling. Memory profiling honors it on every platform memray supports.
   - `0`
 * - `RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT`
   - Also profile child processes of the target (stack trace and CPU profiling).
   - `0`
 * - `RAY_DASHBOARD_PROFILING_IDLE_DEFAULT`
-  - Include off-CPU / sleeping threads (CPU profiling only).
+  - Include off-CPU or sleeping threads (CPU profiling only).
   - `0`
 * - `RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT`
   - Report memory leaks instead of peak usage (memory profiling only).
@@ -63,17 +63,17 @@ Each profiling request (stack trace, CPU flame graph, memory profile) accepts se
   - Duration in seconds for memory profiling (clamped to `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`).
   - `10`
 * - `RAY_DASHBOARD_PROFILING_MAX_DURATION_S`
-  - Maximum accepted profiling `duration` in seconds. A profile blocks the request for its whole duration, so it's capped rather than open-ended; raise or lower it per cluster. The minimum is always 1s. Explicit `duration` query values above this return HTTP 400.
+  - Maximum accepted profiling `duration` in seconds. A profile blocks the request for its whole duration, so Ray caps it rather than leaving it open-ended. Raise or lower it per cluster. The minimum is always 1 second. An explicit `duration` query value above this maximum returns HTTP 400.
   - `60`
 * - `RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT`
-  - Output format for CPU profiling. One of `flamegraph`, `raw`, `speedscope`.
+  - Output format for CPU profiling. One of `flamegraph`, `raw`, or `speedscope`.
   - `flamegraph`
 * - `RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT`
-  - Output format for memory profiling. One of `flamegraph`, `table`.
+  - Output format for memory profiling. One of `flamegraph` or `table`.
   - `flamegraph`
 ```
 
-For example, to make native frames the default for stack traces across the cluster (Linux only), set `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT=1` on the head node. Because `native` significantly increases profiling overhead, prefer leaving it off and enabling it only when sampling the Python layer alone isn't enough.
+For example, to make native frames the default for stack traces across the cluster, set `RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT=1` on the head node. Enable it only when sampling the Python layer alone isn't enough, because native frames significantly increase profiling overhead.
 
 (profiling-cpu)=
 ## CPU profiling
