@@ -252,15 +252,15 @@ gcloud storage ls gs://${GCS_BUCKET}/log/
 
 ## Terminate the RayJob
 
-Metadata and logs persist after termination, allowing for the safe deletion of the RayCluster.
+Metadata and logs persist after termination, allowing for the safe deletion of the RayJob.
 
-Because the example manifest sets `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 600`, KubeRay deletes the underlying RayCluster automatically 10 minutes after the entrypoint script exits. Wait for that, or delete the RayJob immediately:
+Because the example manifest sets `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 600`, KubeRay deletes the underlying RayCluster automatically 10 minutes after the entrypoint script exits. To skip the TTL wait, you can directly delete the RayJob:
 
 ```sh
 kubectl delete rayjob ${RAY_JOB} -n ${NAMESPACE}
 ```
 
-After the RayCluster terminates, the collector uploads the final events and logs to object storage.
+After the RayJob terminates, the collector uploads the final events and logs to object storage.
 
 ### Storage layout
 
@@ -388,8 +388,6 @@ The endpoint call result should look something like the following:
  }
 ]
 ```
-
-The first entry is the RayJob from this guide. `name` is the generated RayCluster name, while `ownerKind` and `ownerName` identify the RayJob that owned it. Use the owner name, not the generated cluster name, in the `/enter_cluster` path below. The remaining entries are standalone RayClusters, which carry no owner fields.
 
 The `/enter_cluster` endpoint sets session cookies so the local Ray Dashboard knows which cluster to display. It takes the form `/enter_cluster/{namespace}/{resourceType}/{resourceName}/{session}`:
 
