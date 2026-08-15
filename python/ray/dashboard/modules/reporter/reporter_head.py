@@ -64,6 +64,10 @@ SVG_STYLE = """<style>
     }
 </style>\n"""
 
+# Carries WARNING_FOR_MULTI_TASK_IN_A_WORKER on profiling responses whose body
+# can't hold an HTML fragment (`raw`, `speedscope`).
+MULTI_TASK_WARNING_HEADER = "X-Ray-Profiling-Warning"
+
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
 #       GIL contention
@@ -107,6 +111,39 @@ def _query_duration(req: aiohttp.web.Request, default: int) -> int:
             )
         )
     return duration_s
+
+
+def _task_cpu_profiling_response(
+    output: str, format: str, task_ids_in_a_worker: List[str]
+) -> aiohttp.web.Response:
+    """Build the ``/task/cpu_profile`` response for a successful profile.
+
+    Only ``flamegraph`` output is an SVG a browser can render, so it's the only
+    format wrapped in HTML: ``SVG_STYLE`` sizes the image, and the multi-task
+    notice is an HTML fragment. ``raw`` is a plain stack listing and
+    ``speedscope`` is a JSON document, so prepending markup to either corrupts
+    it -- speedscope output stops parsing as JSON. Those are returned verbatim
+    as ``text/plain``, matching how ``/worker/cpu_profile`` already switches on
+    format, with the multi-task notice moved to a header so it isn't lost.
+    """
+    multi_task = len(task_ids_in_a_worker) > 1
+    warning = WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker)
+
+    if format == "flamegraph":
+        body = SVG_STYLE + output
+        if multi_task:
+            body = (
+                '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+                    EMOJI_WARNING, warning
+                )
+                + body
+            )
+        return aiohttp.web.Response(text=body, content_type="text/html")
+
+    response = aiohttp.web.Response(text=output, content_type="text/plain")
+    if multi_task:
+        response.headers[MULTI_TASK_WARNING_HEADER] = warning
+    return response
 
 
 class ReportHead(SubprocessModule):
@@ -436,7 +473,10 @@ class ReportHead(SubprocessModule):
                     RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT.
 
         Returns:
-            aiohttp.web.Response: The HTTP response containing the CPU profile data.
+            aiohttp.web.Response: The HTTP response containing the CPU profile
+                data. ``flamegraph`` output is served as ``text/html`` (the SVG
+                wrapped for display); every other format is served verbatim as
+                ``text/plain``.
 
         Raises:
             ValueError: If the "task_id" parameter is missing in the request query.
@@ -521,19 +561,7 @@ class ReportHead(SubprocessModule):
         logger.info("Returning profiling response, size {}".format(len(reply.output)))
 
         task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
-        return aiohttp.web.Response(
-            body=(
-                '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
-                    EMOJI_WARNING,
-                    WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
-                )
-                + SVG_STYLE
-                + (reply.output)
-                if len(task_ids_in_a_worker) > 1
-                else SVG_STYLE + reply.output
-            ),
-            headers={"Content-Type": "text/html"},
-        )
+        return _task_cpu_profiling_response(reply.output, format, task_ids_in_a_worker)
 
     @routes.get("/worker/traceback")
     async def get_traceback(self, req: aiohttp.web.Request) -> aiohttp.web.Response:

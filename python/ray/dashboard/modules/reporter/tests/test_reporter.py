@@ -35,7 +35,14 @@ from ray.dashboard.modules.reporter.reporter_agent import (
     ReporterAgent,
     TpuUtilizationInfo,
 )
-from ray.dashboard.modules.reporter.reporter_head import _query_duration, _query_flag
+from ray.dashboard.modules.reporter.reporter_head import (
+    MULTI_TASK_WARNING_HEADER,
+    SVG_STYLE,
+    WARNING_FOR_MULTI_TASK_IN_A_WORKER,
+    _query_duration,
+    _query_flag,
+    _task_cpu_profiling_response,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
 
@@ -1750,6 +1757,64 @@ def test_clamp_profiling_duration_silent_when_in_range():
             ray_constants.MIN_PROFILING_DURATION_S, "RAY_TEST_PROFILING_DURATION"
         )
     mock_warning.assert_not_called()
+
+
+# A speedscope profile is JSON, so any markup prepended to it makes it unparseable.
+_SPEEDSCOPE_OUTPUT = '{"version": "0.0.1", "profiles": []}'
+
+
+def test_task_cpu_profiling_response_wraps_flamegraph_in_html():
+    resp = _task_cpu_profiling_response("<svg></svg>", "flamegraph", ["task_1"])
+    assert resp.content_type == "text/html"
+    # SVG_STYLE sizes the flame graph to the viewport, so it must stay.
+    assert resp.text == SVG_STYLE + "<svg></svg>"
+    assert MULTI_TASK_WARNING_HEADER not in resp.headers
+
+
+def test_task_cpu_profiling_response_prepends_multi_task_warning_to_flamegraph():
+    resp = _task_cpu_profiling_response(
+        "<svg></svg>", "flamegraph", ["task_1", "task_2"]
+    )
+    assert resp.content_type == "text/html"
+    assert WARNING_FOR_MULTI_TASK_IN_A_WORKER in resp.text
+    assert resp.text.endswith(SVG_STYLE + "<svg></svg>")
+
+
+@pytest.mark.parametrize(
+    "format, output",
+    [
+        ("raw", "frame_a;frame_b 10"),
+        ("speedscope", _SPEEDSCOPE_OUTPUT),
+    ],
+)
+def test_task_cpu_profiling_response_returns_non_flamegraph_verbatim(format, output):
+    # Only flamegraph output is an SVG. Wrapping `raw`/`speedscope` in HTML (as
+    # this endpoint used to do for every format) corrupts the payload.
+    resp = _task_cpu_profiling_response(output, format, ["task_1"])
+    assert resp.content_type == "text/plain"
+    assert resp.text == output
+    assert SVG_STYLE not in resp.text
+
+
+@pytest.mark.parametrize("format", ["raw", "speedscope"])
+def test_task_cpu_profiling_response_moves_multi_task_warning_to_header(format):
+    # The warning is an HTML fragment, so for non-HTML formats it has to travel
+    # out of band rather than be dropped or spliced into the body.
+    resp = _task_cpu_profiling_response(
+        _SPEEDSCOPE_OUTPUT, format, ["task_1", "task_2"]
+    )
+    assert resp.text == _SPEEDSCOPE_OUTPUT
+    assert WARNING_FOR_MULTI_TASK_IN_A_WORKER in resp.headers[MULTI_TASK_WARNING_HEADER]
+    assert "task_2" in resp.headers[MULTI_TASK_WARNING_HEADER]
+
+
+def test_task_cpu_profiling_response_keeps_speedscope_output_parseable():
+    # The regression this guards: speedscope output served as HTML with
+    # SVG_STYLE prepended is rejected by speedscope.app as invalid JSON.
+    resp = _task_cpu_profiling_response(
+        _SPEEDSCOPE_OUTPUT, "speedscope", ["task_1", "task_2"]
+    )
+    assert json.loads(resp.text) == {"version": "0.0.1", "profiles": []}
 
 
 @pytest.mark.parametrize(
