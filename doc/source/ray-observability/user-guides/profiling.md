@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Profile Ray applications for CPU, memory, and GPU bottlenecks using py-spy, cProfile, memray, and the PyTorch profiler from the dashboard."
+---
+
 (profiling)=
 # Profiling
 Profiling is one of the most important debugging tools to diagnose performance, out of memory, hanging, or other application issues. Here is a list of common profiling tools you may use when debugging Ray applications.
@@ -233,7 +239,7 @@ The best practice is to only specify the filename in output option.
 
 (profiling-tpu)=
 ## TPU profiling
-For TPU workloads, you can use the JAX profiler. Ray provides integration for dynamically triggering JAX profiling and viewing the traces in TensorBoard. For a complete guide on how to profile JAX on TPUs on Kubernetes, see {ref}`jax-tpu-profiling`.
+Profile TPU workloads with the JAX profiler. Trigger a JAX profile dynamically through the Ray Dashboard, then view the trace in TensorBoard. For the full walkthrough on Kubernetes, see {ref}`jax-tpu-profiling`.
 
 (profiling-timeline)=
 ## Ray Task or Actor timeline
