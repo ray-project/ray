@@ -1,11 +1,11 @@
 .. meta::
-   :description: Find where a Ray application is stuck by viewing worker stack traces in the Ray Dashboard or with the ray stack CLI command.
+   :description: Find where a Ray application is stuck by viewing worker stack traces in the Ray dashboard or with the ray stack CLI command.
 
 .. _observability-debug-hangs:
 
 Debugging Hangs
 ===============
-View stack traces in Ray Dashboard
+View stack traces in Ray dashboard
 -----------------------------------
 The :ref:`Ray dashboard <observability-getting-started>`  lets you profile Ray Driver or Worker processes, by clicking on the "CPU profiling" or "Stack Trace" actions for active Worker processes, Tasks, Actors, and Job's driver process.
 
@@ -38,7 +38,7 @@ trace is shown. To show native code frames, set the URL parameter ``native=1`` (
 Use ``ray stack`` CLI command
 ------------------------------
 
-Once ``py-spy`` is installed (it is automatically installed if "Ray Dashboard" component is included when :ref:`installing Ray <installation>`), you can run ``ray stack`` to dump the stack traces of all Ray Worker processes on
+Once ``py-spy`` is installed (it is automatically installed if "Ray dashboard" component is included when :ref:`installing Ray <installation>`), you can run ``ray stack`` to dump the stack traces of all Ray Worker processes on
 the current node.
 
 This document discusses some common problems that people run into when using Ray

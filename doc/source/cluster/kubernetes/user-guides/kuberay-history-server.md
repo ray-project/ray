@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Set up the Ray History Server with KubeRay to access logs, events, and the Ray Dashboard for RayCluster, RayJob, and RayService workloads after they terminate."
+    description: "Set up the Ray History Server with KubeRay to access logs, events, and the Ray dashboard for RayCluster, RayJob, and RayService workloads after they terminate."
 ---
 
 (kuberay-history-server)=
@@ -10,7 +10,7 @@ myst:
 
 This guide covers how to set up and configure the Ray History Server with KubeRay.
 
-The Ray History Server powers the Ray Dashboard's backend. For information about how to use the Ray Dashboard, see [Ray Dashboard](https://docs.ray.io/en/latest/ray-observability/getting-started.html).
+The Ray History Server powers the Ray dashboard's backend. For information about how to use the Ray dashboard, see [Ray dashboard](https://docs.ray.io/en/latest/ray-observability/getting-started.html).
 
 :::{note}
 The Ray History Server is in beta and ready for testing. We welcome feedback and contributions from the community.
@@ -23,7 +23,7 @@ The Ray History Server is a KubeRay component for accessing and debugging Ray wo
 The Ray History Server has two parts:
 
 1. **Collector**: runs as a sidecar container on Ray nodes and exports events and logs to object storage, compressing event streams before upload.
-1. **History Server**: a standalone deployment that serves the Ray Dashboard API. It parses a stored cluster session only when you open that session, so memory use stays bounded and startup time doesn't grow with the number of stored sessions.
+1. **History Server**: a standalone deployment that serves the Ray dashboard API. It parses a stored cluster session only when you open that session, so memory use stays bounded and startup time doesn't grow with the number of stored sessions.
 
 ## Prerequisites
 
@@ -185,11 +185,11 @@ Configure the collector sidecar container with the following environment variabl
 * - `RAY_DASHBOARD_ADDRESS`
   - 
   - Yes (head node)
-  - URL of the local Ray Dashboard, for example `"http://localhost:8265"`. Used by the head node collector to fetch cluster metadata and poll dashboard APIs. Worker collectors don't require this.
+  - URL of the local Ray dashboard, for example `"http://localhost:8265"`. Used by the head node collector to fetch cluster metadata and poll dashboard APIs. Worker collectors don't require this.
 * - `RAY_COLLECTOR_ADDITIONAL_ENDPOINTS`
   - 
   - No (head node)
-  - Comma-separated list of static Ray Dashboard API endpoints to periodically poll and store, for example `"/api/v0/placement_groups?detail=1&limit=10000"`.
+  - Comma-separated list of static Ray dashboard API endpoints to periodically poll and store, for example `"/api/v0/placement_groups?detail=1&limit=10000"`.
 * - `RAY_COLLECTOR_POLL_INTERVAL`
   - 
   - No (head node)
@@ -306,13 +306,13 @@ gs://BUCKET/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/sessio
 gs://BUCKET/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/job_events/AQAAAA==/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-02-20-13
 ```
 
-## Access a terminated RayCluster from the Ray Dashboard
+## Access a terminated RayCluster from the Ray dashboard
 
-To view terminated Ray clusters, set up a local Ray Dashboard that uses the History Server as its backend.
+To view terminated Ray clusters, set up a local Ray dashboard that uses the History Server as its backend.
 
 ### Port-forward the History Server
 
-For the local Ray Dashboard to reach the History Server, port-forward its service:
+For the local Ray dashboard to reach the History Server, port-forward its service:
 
 ```sh
 kubectl port-forward svc/historyserver 8080:30080
@@ -324,7 +324,7 @@ Query the cluster list endpoint to verify the History Server API:
 curl -s http://localhost:8080/clusters
 ```
 
-### Start the local Ray Dashboard
+### Start the local Ray dashboard
 
 Install Ray locally. Make sure to use at least Ray `v2.55`.
 
@@ -341,9 +341,9 @@ ray start --head --num-cpus=1 --proxy-server-url=http://localhost:8080
 
 Notice the `--proxy-server-url` parameter that points to the port-forwarded History Server.
 
-### Configure RayCluster for the Ray Dashboard
+### Configure RayCluster for the Ray dashboard
 
-The Ray Dashboard uses cookies to identify which RayCluster to look at. To select a historical cluster, first get the list of all Ray clusters and their sessions.
+The Ray dashboard uses cookies to identify which RayCluster to look at. To select a historical cluster, first get the list of all Ray clusters and their sessions.
 
 In your browser, list your Ray cluster sessions by navigating to the following URL:
 
@@ -381,7 +381,7 @@ The endpoint call result should look something like the following:
 ]
 ```
 
-The `/enter_cluster` endpoint sets session cookies so the local Ray Dashboard knows which cluster to display. It takes the form `/enter_cluster/{namespace}/{resourceType}/{resourceName}/{session}`:
+The `/enter_cluster` endpoint sets session cookies so the local Ray dashboard knows which cluster to display. It takes the form `/enter_cluster/{namespace}/{resourceType}/{resourceName}/{session}`:
 
 * `{namespace}`: The Kubernetes namespace of the workload, such as `default`.
 * `{resourceType}`: The resource type. One of `raycluster`, `rayjob`, or `rayservice`.
@@ -421,7 +421,7 @@ Alternatively, navigate to the History Server cluster selection page:
 http://localhost:8265/select_cluster
 ```
 
-This page lists every stored cluster session with its name, namespace, status, and creation timestamp. Each row has an **Open Dashboard** button that switches the Ray Dashboard to that session.
+This page lists every stored cluster session with its name, namespace, status, and creation timestamp. Each row has an **Open Dashboard** button that switches the Ray dashboard to that session.
 
 ![Cluster selection page listing stored Ray cluster sessions, each row showing a cluster name, namespace, status, creation timestamp, and an Open Dashboard button](images/kuberay-historyserver-select-cluster.png)
 
