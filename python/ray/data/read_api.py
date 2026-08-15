@@ -468,7 +468,7 @@ def _resolve_read_remote_args(
         runtime_env=runtime_env,
     )
     if not datasource.supports_distributed_reads:
-        label_selector = ray_remote_args.get("label_selector", {}).copy()
+        label_selector = (ray_remote_args.get("label_selector") or {}).copy()
         label_selector[
             ray._raylet.RAY_NODE_ID_KEY
         ] = ray.get_runtime_context().get_node_id()
