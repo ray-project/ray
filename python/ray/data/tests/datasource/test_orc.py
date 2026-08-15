@@ -209,7 +209,13 @@ def test_orc_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks):
 
 
 def test_orc_write_rejects_stream_compression(tmp_path):
-    with pytest.raises(ValueError, match="compression="):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Pass the compression parameter straight to write_orc "
+            "instead of via open_stream_args"
+        ),
+    ):
         ORCDatasink(str(tmp_path), open_stream_args={"compression": "gzip"})
 
 

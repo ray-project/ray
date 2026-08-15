@@ -21,8 +21,9 @@ class ORCDatasink(BlockBasedFileDatasink):
         open_stream_args = file_datasink_kwargs.get("open_stream_args")
         if open_stream_args is not None and "compression" in open_stream_args:
             raise ValueError(
-                "Stream compression isn't supported for ORC files. Pass an ORC "
-                "codec with write_orc(..., compression=...)."
+                "Stream compression isn't supported for ORC files. Pass the "
+                "compression parameter straight to write_orc instead of via "
+                "open_stream_args."
             )
 
         super().__init__(path, file_format=file_format, **file_datasink_kwargs)
