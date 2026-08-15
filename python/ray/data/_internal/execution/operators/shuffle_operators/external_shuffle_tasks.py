@@ -55,7 +55,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     _read_ipc,
 )
 
-# PartitionFn/ReduceFn contracts are shared with the in-memory variant.
+# PartitionFn/ReduceFn contracts are shared with the object-store variant.
 # External shuffle is single-input (for now), so ReduceFn's outer list always has length 1.
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (  # noqa: E402,E501
     PartitionFn,

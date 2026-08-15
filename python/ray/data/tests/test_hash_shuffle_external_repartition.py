@@ -192,7 +192,7 @@ def test_external_repartition_with_sort_produces_sorted_partitions(
             assert ids == sorted(ids)
 
 
-def test_external_flag_off_keeps_in_memory_path(
+def test_external_flag_off_keeps_object_store_path(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,

@@ -86,10 +86,9 @@ def _plan_hash_shuffle_repartition_v2(
 ) -> PhysicalOperator:
     """Build the two-op Map → Reduce DAG for SHUFFLE_V2 hash-shuffle repartition.
 
-    Picks the external (file-transport) or in-memory (object-store) op pair
-    based on ``data_context.use_external_hash_shuffle``. Returns the reduce
-    op; the executor crawls upstream via its input_dependencies to find the
-    map op.
+    Picks the external (file-transport) or object-store op pair based on
+    ``data_context.use_external_hash_shuffle``. Returns the reduce op; the
+    executor crawls upstream via its input_dependencies to find the map op.
     """
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 

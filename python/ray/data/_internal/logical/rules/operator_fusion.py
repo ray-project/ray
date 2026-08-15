@@ -106,7 +106,7 @@ class FuseOperators(Rule):
     ) -> PhysicalOperator:
         """Starting at the given operator, traverses up the DAG of operators
         and fuses compatible ShuffleReduceOp -> TaskPoolMapOperator pairs
-        (in-memory and external variants share the same fusion policy).
+        (object-store and external variants share the same fusion policy).
         Returns the current (root) operator after completing upstream fusions.
         """
         if self._can_fuse_map_into_shuffle_reduce(dag, has_downstream_limit):
@@ -156,8 +156,8 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # The sole upstream must be a hash-shuffle reduce (in-memory or external) that
-        # hasn't already fused with a map.
+        # The sole upstream must be a hash-shuffle reduce (object-store or external)
+        # that hasn't already fused with a map.
         upstream_ops = dag.input_dependencies
         if len(upstream_ops) != 1 or not isinstance(
             upstream_ops[0], (ShuffleReduceOp, ExternalHashShuffleReduceOp)
@@ -406,7 +406,7 @@ class FuseOperators(Rule):
                     down_op.target_max_block_size_override
                 ),
             )
-        else:  # in-memory ShuffleReduceOp (may be multi-input for Join)
+        else:  # object-store ShuffleReduceOp (may be multi-input for Join)
             fused_op = ShuffleReduceOp(
                 up_op.input_dependencies,
                 up_op.data_context,

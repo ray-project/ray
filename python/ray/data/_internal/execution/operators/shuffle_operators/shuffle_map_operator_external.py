@@ -240,7 +240,7 @@ class ExternalHashShuffleMapOp(
         if self._map_runtime_env is not None:
             ray_options["runtime_env"] = self._map_runtime_env
 
-        # Pass the raw hash_shuffle_compression through (same as the in-memory
+        # Pass the raw hash_shuffle_compression through (same as the object-store
         # ShuffleMapOp). Normalization — casing and the "none" sentinel — lives
         # in _codec_for, which both the map (encode) and reduce (decode) sides
         # go through, so they can't disagree on the codec.
