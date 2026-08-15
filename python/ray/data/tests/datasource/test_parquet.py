@@ -2073,7 +2073,7 @@ def test_write_partition_cols_with_min_rows_per_file(
     ds = ray.data.from_pandas(df)
     with pytest.warns(
         DeprecationWarning,
-        match="will no longer be supported after February 2027",
+        match=r"February 2027.*num_blocks",
     ):
         ds.write_parquet(
             tmp_path,
@@ -2144,10 +2144,10 @@ def test_write_partition_cols_with_num_rows_per_file_warns(
         [{"partition": index % 2, "value": index} for index in range(10)]
     )
 
-    with pytest.warns(DeprecationWarning) as warnings:
+    with pytest.warns(DeprecationWarning) as recorded_warnings:
         ds.write_parquet(tmp_path, partition_cols=["partition"], num_rows_per_file=5)
 
-    messages = [str(warning.message) for warning in warnings]
+    messages = [str(warning.message) for warning in recorded_warnings]
     assert any("`num_rows_per_file` is deprecated" in message for message in messages)
     assert any(
         "will no longer be supported after February 2027" in message
@@ -2156,7 +2156,7 @@ def test_write_partition_cols_with_num_rows_per_file_warns(
     assert ray.data.read_parquet(tmp_path).count() == 10
 
 
-def test_write_empty_partition_cols_with_min_rows_per_file(
+def test_write_empty_partition_cols_with_min_rows_per_file_does_not_warn(
     tmp_path,
     ray_start_regular_shared,
 ):
@@ -2167,7 +2167,8 @@ def test_write_empty_partition_cols_with_min_rows_per_file(
         )
 
     assert not any(
-        "min_rows_per_file` with non-empty `partition_cols`" in str(warning.message)
+        issubclass(warning.category, DeprecationWarning)
+        and "non-empty `partition_cols`" in str(warning.message)
         for warning in caught_warnings
     )
     assert ray.data.read_parquet(tmp_path).count() == 10
