@@ -550,6 +550,18 @@ class DeploymentSchema(BaseModel):
         gt=0.0,
         le=1.0,
     )
+    enable_strict_max_ongoing_requests: bool = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Whether the router enforces strict in-flight rejection of "
+            "requests that would exceed `max_ongoing_requests`. Defaults to "
+            "True. When False, the router skips the accept/reject handshake "
+            "for unary calls, restoring pre-2.10 `_to_object_ref()` behavior "
+            "(the ObjectRef resolves at scheduling time) at the cost of softer "
+            "backpressure: the queue-length cache becomes the only guard "
+            "against overshooting `max_ongoing_requests`."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -751,6 +763,9 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         ray_actor_options=info.replica_config.ray_actor_options,
         request_router_config=info.deployment_config.request_router_config,
         rolling_update_percentage=info.deployment_config.rolling_update_percentage,
+        enable_strict_max_ongoing_requests=(
+            info.deployment_config.enable_strict_max_ongoing_requests
+        ),
     )
 
     if info.deployment_config.autoscaling_config is not None:

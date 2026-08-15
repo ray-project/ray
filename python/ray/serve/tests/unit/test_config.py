@@ -270,6 +270,33 @@ class TestDeploymentConfig:
         assert from_old_proto.backpressure_config.status_code == 503
         assert from_old_proto.backpressure_config.retry_after_s is None
 
+    def test_enable_strict_max_ongoing_requests_proto_round_trip(self):
+        # Defaults to True.
+        assert DeploymentConfig().enable_strict_max_ongoing_requests is True
+
+        # Explicit False survives the proto round trip (must not be swallowed
+        # by proto3's zero-default for bool).
+        config = DeploymentConfig(enable_strict_max_ongoing_requests=False)
+        round_tripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert round_tripped.enable_strict_max_ongoing_requests is False
+
+        # Explicit True survives the round trip.
+        round_tripped = DeploymentConfig.from_proto_bytes(
+            DeploymentConfig(enable_strict_max_ongoing_requests=True).to_proto_bytes()
+        )
+        assert round_tripped.enable_strict_max_ongoing_requests is True
+
+        # Protos from older versions don't have the field at all (e.g., sent by
+        # an older controller during a rolling upgrade); simulate by clearing
+        # it so it's absent from the wire format. It must fall back to the
+        # default (True), not False.
+        old_proto = DeploymentConfig(
+            enable_strict_max_ongoing_requests=False
+        ).to_proto()
+        old_proto.ClearField("enable_strict_max_ongoing_requests")
+        from_old_proto = DeploymentConfig.from_proto(old_proto)
+        assert from_old_proto.enable_strict_max_ongoing_requests is True
+
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
 

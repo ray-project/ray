@@ -552,6 +552,7 @@ def deployment(
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
+    enable_strict_max_ongoing_requests: Default[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -639,6 +640,14 @@ def deployment(
         rolling_update_percentage: The fraction of replicas to update at a
             time during a rolling update. Must be in ``(0.0, 1.0]``.
             Defaults to ``0.2`` (20%).
+        enable_strict_max_ongoing_requests: Whether the router enforces strict
+            in-flight rejection of requests that would exceed
+            ``max_ongoing_requests``. Defaults to ``True``. Set to ``False`` on
+            a unary deployment to restore pre-2.10 ``_to_object_ref()``
+            behavior (the returned ``ObjectRef`` resolves once the request is
+            scheduled rather than when it completes), at the cost of softer
+            backpressure: the router's queue-length cache becomes the only
+            guard against overshooting ``max_ongoing_requests``.
 
     Returns:
         `Deployment`
@@ -722,6 +731,7 @@ def deployment(
         gang_scheduling_config=gang_scheduling_config,
         deployment_actors=deployment_actors,
         rolling_update_percentage=rolling_update_percentage,
+        enable_strict_max_ongoing_requests=enable_strict_max_ongoing_requests,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

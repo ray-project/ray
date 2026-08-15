@@ -163,6 +163,16 @@ class DeploymentConfig(BaseModel):
         rolling_update_percentage: The fraction of replicas (of
             ``target_num_replicas``) to update at a time during a rolling
             update. Must be in ``(0.0, 1.0]``. Defaults to 0.2 (20%).
+        enable_strict_max_ongoing_requests: Whether the router enforces strict
+            in-flight rejection of requests that would exceed
+            ``max_ongoing_requests``. Defaults to True. When False, the router
+            skips the accept/reject streaming handshake for unary calls,
+            restoring pre-2.10 ``_to_object_ref()`` behavior (the returned
+            ``ObjectRef`` resolves once the request is scheduled rather than
+            when it completes) at the cost of softer backpressure: the router's
+            queue-length cache becomes the only guard against overshooting
+            ``max_ongoing_requests`` (identical semantics to how Serve already
+            handles Java replicas).
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -250,6 +260,11 @@ class DeploymentConfig(BaseModel):
         default=DEFAULT_ROLLING_UPDATE_PERCENTAGE,
         gt=0.0,
         le=1.0,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
+    enable_strict_max_ongoing_requests: bool = Field(
+        default=True,
         update_type=DeploymentOptionUpdateType.LightWeight,
     )
 

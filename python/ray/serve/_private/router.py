@@ -648,6 +648,12 @@ class AsyncioRouter:
             request_router_kwargs if request_router_kwargs else {}
         )
         self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
+        # Per-deployment opt-out of strict in-flight rejection, delivered via
+        # the deployment config long poll. Defaults to True until the first
+        # config arrives so behavior is unchanged during startup. Combined with
+        # the capability gate above to decide whether to use the reject/stream
+        # handshake (see `_send_request`).
+        self._deployment_enable_strict_max_ongoing_requests = True
         self._node_id = node_id
         self._availability_zone = availability_zone
         self._prefer_local_node_routing = prefer_local_node_routing
@@ -832,6 +838,9 @@ class AsyncioRouter:
             self._running_replicas_populated = True
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
+        self._deployment_enable_strict_max_ongoing_requests = (
+            deployment_config.enable_strict_max_ongoing_requests
+        )
         self._request_router_class = (
             deployment_config.request_router_config.get_request_router_class()
         )
@@ -1040,8 +1049,15 @@ class AsyncioRouter:
                 # If the queue len cache is disabled or we're sending a request to Java,
                 # then directly send the query and hand the response back. The replica will
                 # never reject requests in this code path.
+                #
+                # A deployment can also opt out of strict rejection via
+                # `enable_strict_max_ongoing_requests=False`, which routes unary
+                # calls through the plain (non-streaming) handler so
+                # `_to_object_ref()` resolves at scheduling time rather than
+                # blocking until the request completes. See issue #46893.
                 with_rejection = (
                     self._enable_strict_max_ongoing_requests
+                    and self._deployment_enable_strict_max_ongoing_requests
                     and not replica.is_cross_language
                 )
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
