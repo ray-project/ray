@@ -1,6 +1,7 @@
 import collections
 import copy
 import html
+import inspect
 import itertools
 import logging
 import time
@@ -218,6 +219,50 @@ def _warn_on_ray_remote_args_fn(
         )
 
 
+def _warn_on_ray_remote_args(ray_remote_args: Dict[str, Any]) -> None:
+    if ray_remote_args:
+        # with_column, add_column, and drop_columns call other Dataset methods. Skip
+        # those calls so the warning points to where the public API was called.
+        stacklevel = 1
+        frame = inspect.currentframe()
+        while frame is not None and frame.f_code.co_filename == __file__:
+            stacklevel += 1
+            frame = frame.f_back
+
+        warnings.warn(
+            "`ray_remote_args` is deprecated and will be removed in Ray 2.64. "
+            "Use the named remote parameters instead.",
+            RayDeprecationWarning,
+            stacklevel=stacklevel,
+        )
+
+
+def _merge_named_ray_remote_args(
+    ray_remote_args: Dict[str, Any],
+    *,
+    label_selector: Optional[Dict[str, str]],
+    fallback_strategy: Optional[List[Dict[str, Any]]],
+    max_calls: Optional[int],
+    resources: Optional[Dict[str, float]],
+    accelerator_type: Optional[str],
+    runtime_env: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Merge named remote parameters into a copy of ``ray_remote_args``."""
+    ray_remote_args = ray_remote_args.copy()
+    named_args = {
+        "label_selector": label_selector,
+        "fallback_strategy": fallback_strategy,
+        "max_calls": max_calls,
+        "resources": resources,
+        "accelerator_type": accelerator_type,
+        "runtime_env": runtime_env,
+    }
+    ray_remote_args.update(
+        {name: value for name, value in named_args.items() if value is not None}
+    )
+    return ray_remote_args
+
+
 @PublicAPI
 class Dataset:
     """A Dataset is a distributed data collection for data loading and processing.
@@ -388,6 +433,13 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -473,6 +525,16 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -481,7 +543,8 @@ class Dataset:
                 experimental feature. This argument is deprecated and will be removed
                 in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
-                Ray for each map worker. See :func:`ray.remote` for details.
+                Ray for each map worker. See :func:`ray.remote` for details. This
+                argument is deprecated and will be removed in Ray 2.64.
 
         .. seealso::
 
@@ -497,6 +560,7 @@ class Dataset:
             A new :class:`Dataset` with the transformation applied to each row.
         """  # noqa: E501
         _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+        _warn_on_ray_remote_args(ray_remote_args)
 
         compute = get_compute_strategy(
             fn,
@@ -510,6 +574,15 @@ class Dataset:
             num_gpus,
             memory,
             ray_remote_args,
+        )
+        ray_remote_args = _merge_named_ray_remote_args(
+            ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
         )
 
         map_op = MapRows(
@@ -571,6 +644,13 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         udf_modifying_row_count: bool = True,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -754,6 +834,16 @@ class Dataset:
             udf_modifying_row_count: If your UDF produces the same number of output rows
                 as it receives, set this parameter to False. It allows Ray Data to
                 perform more optimizations like limit pushdown.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time prior
@@ -762,7 +852,8 @@ class Dataset:
                 experimental feature. This argument is deprecated and will be removed
                 in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
-                Ray for each map worker. See :func:`ray.remote` for details.
+                Ray for each map worker. See :func:`ray.remote` for details. This
+                argument is deprecated and will be removed in Ray 2.64.
 
         .. note::
 
@@ -799,6 +890,7 @@ class Dataset:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
         _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+        _warn_on_ray_remote_args(ray_remote_args)
 
         use_gpus = num_gpus is not None and num_gpus > 0
         if use_gpus and (batch_size is None or batch_size == "auto"):
@@ -826,6 +918,12 @@ class Dataset:
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
             concurrency=concurrency,
             udf_modifying_row_count=udf_modifying_row_count,
             ray_remote_args_fn=ray_remote_args_fn,
@@ -850,6 +948,13 @@ class Dataset:
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
         udf_modifying_row_count: bool = True,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -880,6 +985,16 @@ class Dataset:
         if memory is not None:
             ray_remote_args["memory"] = memory
 
+        ray_remote_args = _merge_named_ray_remote_args(
+            ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+        )
+
         batch_format = _apply_batch_format(batch_format)
 
         map_batches_op = MapBatches(
@@ -907,6 +1022,16 @@ class Dataset:
         exprs: Mapping[str, "Expr"],
         *,
         compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -933,13 +1058,29 @@ class Dataset:
                 defines its values. Column order follows the mapping's
                 insertion order.
             compute: The compute strategy to use for the projection operation.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             **ray_remote_args: Additional resource requirements to request from
-                Ray for the map tasks (e.g., ``num_gpus=1``).
+                Ray for the map tasks (e.g., ``num_gpus=1``). This argument is
+                deprecated and will be removed in Ray 2.64.
 
         Returns:
             A new dataset with the added or overwritten columns.
         """
         from ray.data.expressions import DownloadExpr
+
+        _warn_on_ray_remote_args(ray_remote_args)
 
         if not exprs:
             return self
@@ -950,6 +1091,22 @@ class Dataset:
             )
 
         from ray.data._internal.logical.operators import Project
+
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
+        ray_remote_args = _merge_named_ray_remote_args(
+            ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+        )
 
         project_op = Project(
             exprs=[StarExpr(), *(expr.alias(name) for name, expr in exprs.items())],
@@ -967,6 +1124,16 @@ class Dataset:
         expr: Expr,
         *,
         compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """
@@ -1027,9 +1194,22 @@ class Dataset:
                   actor pool of ``n`` workers.
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` to use
                   an autoscaling actor pool from ``m`` to ``n`` workers.
-
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             **ray_remote_args: Additional resource requirements to request from
-                Ray for the map tasks (e.g., `num_gpus=1`).
+                Ray for the map tasks (e.g., `num_gpus=1`). This argument is deprecated
+                and will be removed in Ray 2.64.
 
         Returns:
             A new dataset with the added column evaluated via the expression.
@@ -1041,6 +1221,22 @@ class Dataset:
         from ray.data.expressions import DownloadExpr
 
         if isinstance(expr, DownloadExpr):
+            _warn_on_ray_remote_args(ray_remote_args)
+            ray_remote_args = merge_resources_to_ray_remote_args(
+                num_cpus,
+                num_gpus,
+                memory,
+                ray_remote_args,
+            )
+            ray_remote_args = _merge_named_ray_remote_args(
+                ray_remote_args,
+                label_selector=label_selector,
+                fallback_strategy=fallback_strategy,
+                max_calls=max_calls,
+                resources=resources,
+                accelerator_type=accelerator_type,
+                runtime_env=runtime_env,
+            )
             download_op = Download(
                 uri_column_names=[expr.uri_column_name],
                 output_bytes_column_names=[column_name],
@@ -1052,7 +1248,18 @@ class Dataset:
             return Dataset._from_parent(self, logical_plan)
 
         return self.with_columns(
-            {column_name: expr}, compute=compute, **ray_remote_args
+            {column_name: expr},
+            compute=compute,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            **ray_remote_args,
         )
 
     @Deprecated(message="Use `with_column` API instead")
@@ -1068,6 +1275,16 @@ class Dataset:
         batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
         concurrency: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Add the given column to the dataset.
@@ -1109,9 +1326,23 @@ class Dataset:
                 If ``"numpy"``, batches are ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+                :func:`ray.remote` for details. This argument is deprecated and will be
+                removed in Ray 2.64.
 
         Returns:
             A new :class:`Dataset` with the specified column added or overwritten.
@@ -1182,6 +1413,15 @@ class Dataset:
             compute=compute,
             concurrency=concurrency,
             zero_copy_batch=True,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
             **ray_remote_args,
         )
 
@@ -1192,6 +1432,16 @@ class Dataset:
         *,
         compute: Optional[str] = None,
         concurrency: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Drop one or more columns from the dataset.
@@ -1226,9 +1476,23 @@ class Dataset:
                 during materialization.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+                :func:`ray.remote` for details. This argument is deprecated and will be
+                removed in Ray 2.64.
 
         Returns:
             A new :class:`Dataset` with the specified columns removed.
@@ -1239,6 +1503,7 @@ class Dataset:
         # inference, the uniqueness check, and a redundant ``Project`` that
         # would just select every column.
         if not cols:
+            _warn_on_ray_remote_args(ray_remote_args)
             return self
 
         cols_set = set(cols)
@@ -1268,6 +1533,15 @@ class Dataset:
                     keep,
                     compute=compute,
                     concurrency=concurrency,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    label_selector=label_selector,
+                    fallback_strategy=fallback_strategy,
+                    max_calls=max_calls,
+                    resources=resources,
+                    accelerator_type=accelerator_type,
+                    runtime_env=runtime_env,
                     **ray_remote_args,
                 )
 
@@ -1281,6 +1555,15 @@ class Dataset:
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
             **ray_remote_args,
         )
 
@@ -1291,6 +1574,16 @@ class Dataset:
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[int] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Select one or more columns from the dataset.
@@ -1327,14 +1620,30 @@ class Dataset:
                 dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+                :func:`ray.remote` for details. This argument is deprecated and will be
+                removed in Ray 2.64.
 
         Returns:
             A new :class:`Dataset` composed with the specified columns.
         """  # noqa: E501
         from ray.data.expressions import col
+
+        _warn_on_ray_remote_args(ray_remote_args)
 
         if isinstance(cols, str):
             exprs = [col(cols)]
@@ -1354,6 +1663,21 @@ class Dataset:
                 "select_columns requires 'cols' to be a string or a list of strings."
             )
         compute = TaskPoolStrategy(size=concurrency)
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
+        ray_remote_args = _merge_named_ray_remote_args(
+            ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+        )
 
         select_op = Project(
             exprs=exprs,
@@ -1370,6 +1694,16 @@ class Dataset:
         names: Union[List[str], Dict[str, str]],
         *,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ):
         """Rename columns in the dataset.
@@ -1415,13 +1749,29 @@ class Dataset:
             names: A dictionary that maps old column names to new column names, or a
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
+            num_cpus: The number of CPUs to reserve for each worker.
+            num_gpus: The number of GPUs to reserve for each worker.
+            memory: The heap memory in bytes to reserve for each worker.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+                :func:`ray.remote` for details. This argument is deprecated and will be
+                removed in Ray 2.64.
 
         Returns:
             A new :class:`Dataset` with the specified columns renamed.
         """  # noqa: E501
+
+        _warn_on_ray_remote_args(ray_remote_args)
 
         if isinstance(names, dict):
             if not names:
@@ -1481,6 +1831,21 @@ class Dataset:
         # Construct the plan and project operation
 
         compute = TaskPoolStrategy(size=concurrency)
+        ray_remote_args = merge_resources_to_ray_remote_args(
+            num_cpus,
+            num_gpus,
+            memory,
+            ray_remote_args,
+        )
+        ray_remote_args = _merge_named_ray_remote_args(
+            ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+        )
 
         select_op = Project(
             exprs=[StarExpr(), *exprs],
@@ -1507,6 +1872,13 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1586,6 +1958,16 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -1594,7 +1976,8 @@ class Dataset:
                 advanced, experimental feature. This argument is deprecated and will be
                 removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
-                Ray for each map worker. See :func:`ray.remote` for details.
+                Ray for each map worker. See :func:`ray.remote` for details. This
+                argument is deprecated and will be removed in Ray 2.64.
 
         .. seealso::
 
@@ -1608,6 +1991,7 @@ class Dataset:
             A new :class:`Dataset` containing the flattened results of applying the function to each row.
         """
         _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+        _warn_on_ray_remote_args(ray_remote_args)
 
         compute = get_compute_strategy(
             fn,
@@ -1621,6 +2005,15 @@ class Dataset:
             num_gpus,
             memory,
             ray_remote_args,
+        )
+        ray_remote_args = _merge_named_ray_remote_args(
+            ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
         )
 
         op = FlatMap(
@@ -1652,6 +2045,13 @@ class Dataset:
         num_gpus: Optional[float] = None,
         memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int], Tuple[int, int, int]]] = None,
+        # Advanced Ray ``remote`` parameters
+        label_selector: Optional[Dict[str, str]] = None,
+        fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+        max_calls: Optional[int] = None,
+        resources: Optional[Dict[str, float]] = None,
+        accelerator_type: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1722,6 +2122,16 @@ class Dataset:
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: This argument is deprecated. Use ``compute`` argument.
+            label_selector: Labels required on the node where each worker runs.
+            fallback_strategy: Alternative label requirements that Ray tries in order
+                when ``label_selector`` can't be satisfied.
+            max_calls: The maximum number of calls a task worker handles before exiting.
+                This option only applies to task workers.
+            resources: Custom resources to reserve for each worker, expressed as a
+                mapping from resource name to quantity.
+            accelerator_type: The accelerator type required on the node where each
+                worker runs.
+            runtime_env: The runtime environment to use for each worker.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -1731,12 +2141,14 @@ class Dataset:
                 removed in Ray 2.64.
             **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
-                :func:`ray.remote` for details.
+                :func:`ray.remote` for details. This argument is deprecated and will be
+                removed in Ray 2.64.
 
         Returns:
             A new :class:`Dataset` containing only the rows that satisfy the predicate.
         """
         _warn_on_ray_remote_args_fn(ray_remote_args_fn)
+        _warn_on_ray_remote_args(ray_remote_args)
 
         # Ensure exactly one of fn or expr is provided
         provided_params = sum([fn is not None, expr is not None])
@@ -1761,6 +2173,15 @@ class Dataset:
             num_gpus,
             memory,
             ray_remote_args,
+        )
+        ray_remote_args = _merge_named_ray_remote_args(
+            ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
         )
 
         # Initialize Filter operator arguments with proper types

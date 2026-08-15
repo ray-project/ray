@@ -8,7 +8,7 @@ myst:
 
 # KubeRay Autoscaling
 
-This guide explains how to configure the Ray Autoscaler on Kubernetes. The Ray Autoscaler is a Ray cluster process that automatically scales a cluster up and down based on resource demand. The Autoscaler does this by adjusting the number of nodes (Ray Pods) in the cluster based on the resources required by tasks, actors, or placement groups.
+This guide explains how to configure the Ray Autoscaler on Kubernetes. The Ray Autoscaler is a Ray cluster process that automatically scales a cluster up and down based on resource demand. The Autoscaler does this by adjusting the number of Ray nodes (Pods) in the cluster based on the resources required by tasks, actors, or placement groups.
 
 The Autoscaler utilizes logical resource requests, indicated in `@ray.remote` and shown in `ray status`, not the physical machine utilization, to scale. If you launch an actor, task, or placement group and resources are insufficient, the Autoscaler queues the request. It adjusts the number of nodes to meet queue demands and removes idle nodes that have no tasks, actors, or objects over time.
 
@@ -34,8 +34,8 @@ The following diagram illustrates the integration of the Ray Autoscaler with the
 
 ```{admonition} 3 levels of autoscaling in KubeRay
   * **Ray actor/task**: Some Ray libraries, like Ray Serve, can automatically adjust the number of Serve replicas (i.e., Ray actors) based on the incoming request volume.
-  * **Ray node**: Ray Autoscaler automatically adjusts the number of Ray nodes (i.e., Ray Pods) based on the resource demand of Ray actors/tasks.
-  * **Kubernetes node**: If the Kubernetes cluster lacks sufficient resources for the new Ray Pods that the Ray Autoscaler creates, the Kubernetes Autoscaler can provision a new Kubernetes node. ***You must configure the Kubernetes Autoscaler yourself.***
+  * **Ray node**: Ray Autoscaler automatically adjusts the number of Ray nodes (i.e., Pods) based on the resource demand of Ray actors/tasks.
+  * **Kubernetes node**: If the Kubernetes cluster lacks sufficient resources for the new Pods that the Ray Autoscaler creates, the Kubernetes Autoscaler can provision a new Kubernetes node. ***You must configure the Kubernetes Autoscaler yourself.***
 ```
 
 * The Autoscaler scales up the cluster through the following sequence of events:
@@ -69,7 +69,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ra
 ### Step 4: Verify the Kubernetes cluster status
 
 ```bash
-# Step 4.1: List all Ray Pods in the `default` namespace.
+# Step 4.1: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -334,7 +334,7 @@ Earlier versions only support `rayStartParams` or resource limits, and don't rec
 If you omit `rayStartParams` and want to use autoscaling, the autoscaling image must have Ray 2.45.0 or later.
 ```
 
-The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements. The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster. Therefore, without this information, the Ray Autoscaler reports an error and fails to start. Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
+The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Pod's resource requirements. The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster. Therefore, without this information, the Ray Autoscaler reports an error and fails to start. Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
 
 * If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
 * If users don't set `rayStartParams`, the Ray container must have a specified CPU resource limit.
