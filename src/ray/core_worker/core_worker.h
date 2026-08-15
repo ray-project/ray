@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/buffer.h"
@@ -791,30 +792,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               std::vector<bool> *results,
               bool fetch_local);
 
-  /// Delete a list of objects from the plasma object store.
-  ///
-  /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
-  /// for objects we do not own.
-  ///
-  /// If IOError is returned from DeleteImpl() when deleting objects locally, we will
-  /// return an UnexpectedSystemExit status instead. This is to make sure the tasks
-  /// that calls this function in application code can properly retry when hitting the
-  /// IOError.
-  ///
-  /// \param[in] object_ids IDs of the objects to delete.
-  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
-  /// the cluster.
-  /// \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
-
-  /// Delete a list of objects from the plasma object store; called by Delete().
-  ///
-  /// \param[in] object_ids IDs of the objects to delete.
-  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
-  /// the cluster.
-  /// \return Status.
-  Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
-
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
   /// method.
@@ -1306,15 +1283,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] owner_address The address of the owner who will own this
   /// dynamically generated object.
   /// \param[in] task_id The task id of the dynamically generated return ID.
-  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// Nil() together with a std::nullopt put_index deduces both from the current
   /// worker context.
   /// \param[in] put_index The equivalent of the return value of
   /// WorkerContext::GetNextPutIndex.
-  /// If std::nullopt is specified, it will deduce the put index from the
-  /// current worker context.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
-                                   const TaskID &task_id = TaskID::Nil(),
-                                   std::optional<ObjectIDIndexType> put_index = -1);
+  /// Both task_id and put_index have to be supplied, or neither: deducing one
+  /// while the caller supplies the other would key the ObjectID to one task
+  /// while drawing the index from another. Mixing them panics.
+  ObjectID AllocateDynamicReturnId(
+      const rpc::Address &owner_address,
+      const TaskID &task_id = TaskID::Nil(),
+      std::optional<ObjectIDIndexType> put_index = std::nullopt);
 
   /// Get a handle to an actor.
   ///
@@ -1442,11 +1421,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                      rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback);
 
-  /// Delete objects explicitly.
-  void HandleDeleteObjects(rpc::DeleteObjectsRequest request,
-                           rpc::DeleteObjectsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
-
   // Spill objects to external storage.
   void HandleSpillObjects(rpc::SpillObjectsRequest request,
                           rpc::SpillObjectsReply *reply,
@@ -1566,6 +1540,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \return The local client for the current node, the pooled client for any
   /// other live node, or nullptr if the node is dead or unknown to GCS.
   std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
+
+  /// Send a FreeLocalObjects batch to the node using the Nagle algorithm. A null
+  /// client or failed reply drops the node's queue so a flaky raylet cannot wedge
+  /// it.
+  /// \param node_id The node whose buffered FreeLocalObjects requests to flush.
+  void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
 
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
@@ -2048,6 +2028,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
+  /// Guards free_pending_ / free_in_flight_: FreeObjectOnNodesAsync runs on
+  /// arbitrary ReferenceCounter threads while the reply callback runs on
+  /// io_service_. Lock order is ReferenceCounter::mutex_ -> free_batch_mu_ (the
+  /// former is held when FreeObjectOnNodesAsync is called), so keep this a leaf:
+  /// never call back into ReferenceCounter while holding it.
+  absl::Mutex free_batch_mu_;
+  /// node id -> FIFO queue of object ids waiting to be freed on that node.
+  absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_
+      ABSL_GUARDED_BY(free_batch_mu_);
+  /// Nodes with a FreeLocalObjects RPC currently in flight (backpressure).
+  absl::flat_hash_set<NodeID> free_in_flight_ ABSL_GUARDED_BY(free_batch_mu_);
+
   /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
   /// actors this will contain at most one task ID.
   ///
@@ -2208,6 +2200,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Shutdown synchronization primitives
   std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
+
+  /// Max object ids per coalesced FreeLocalObjects RPC, read once at
+  /// construction (validated > 0 there; used by
+  /// SendFreeLocalObjectsBatchIfNeeded). Mirrors
+  /// OwnershipBasedObjectDirectory::kMaxObjectReportBatchSize.
+  const size_t max_free_local_objects_batch_size_;
 
   /// Clock used for timestamping events, retries, and timeouts.
   ClockInterface &clock_;

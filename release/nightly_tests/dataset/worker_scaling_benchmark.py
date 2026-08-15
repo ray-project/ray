@@ -207,73 +207,75 @@ def main(args: argparse.Namespace):
 
     benchmark = Benchmark()
 
-    def benchmark_fn():
-        num_blocks = args.blocks_per_worker * args.num_workers
-        rows_per_block = _rows_per_block(
+    num_blocks = args.blocks_per_worker * args.num_workers
+    rows_per_block = _rows_per_block(
+        args.num_scalar_cols,
+        args.num_array_cols,
+    )
+    num_rows = num_blocks * rows_per_block
+
+    # Split the total worker pool evenly across the chained operators so the
+    # cluster footprint stays the same regardless of --num-operators. With
+    # 5000 workers and 15 operators each operator gets ~333 workers, which
+    # mirrors production pipelines that pay the per-iteration cost of many
+    # ops with a moderately sized pool per op.
+    workers_per_operator = args.num_workers // args.num_operators
+
+    map_kwargs = {"num_cpus": 0.5}
+    if args.worker_type == "actors":
+        map_kwargs["compute"] = ray.data.ActorPoolStrategy(size=workers_per_operator)
+        udf = RealisticSchemaUDF
+        map_kwargs["fn_constructor_kwargs"] = {
+            "seed": args.seed,
+            "num_scalar_cols": args.num_scalar_cols,
+            "num_array_cols": args.num_array_cols,
+        }
+    else:
+        # ``concurrency`` caps in-flight tasks per operator. Without this
+        # cap, all tasks of a single operator can fan out across the entire
+        # cluster and the next operator in the chain starves — but the goal
+        # here is N_operators sharing the pool, so each gets
+        # ``workers_per_operator`` task slots.
+        #
+        # Only apply the cap when actually chaining operators. With a single
+        # operator there's nothing to share with, and capping would diverge
+        # from the original 1-op baseline, which left ``concurrency`` unset
+        # and used Ray Data's default unbounded ``TaskPoolStrategy``.
+        if args.num_operators > 1:
+            map_kwargs["concurrency"] = workers_per_operator
+        udf = make_realistic_schema_udf(
+            args.seed,
             args.num_scalar_cols,
             args.num_array_cols,
         )
-        num_rows = num_blocks * rows_per_block
+
+    ds_holder = {}
+
+    def benchmark_fn():
         ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
-
-        # Split the total worker pool evenly across the chained operators so the
-        # cluster footprint stays the same regardless of --num-operators. With
-        # 5000 workers and 15 operators each operator gets ~333 workers, which
-        # mirrors production pipelines that pay the per-iteration cost of many
-        # ops with a moderately sized pool per op.
-        workers_per_operator = args.num_workers // args.num_operators
-
-        map_kwargs = {"num_cpus": 0.5}
-        if args.worker_type == "actors":
-            map_kwargs["compute"] = ray.data.ActorPoolStrategy(
-                size=workers_per_operator
-            )
-            udf = RealisticSchemaUDF
-            map_kwargs["fn_constructor_kwargs"] = {
-                "seed": args.seed,
-                "num_scalar_cols": args.num_scalar_cols,
-                "num_array_cols": args.num_array_cols,
-            }
-        else:
-            # ``concurrency`` caps in-flight tasks per operator. Without this
-            # cap, all tasks of a single operator can fan out across the entire
-            # cluster and the next operator in the chain starves — but the goal
-            # here is N_operators sharing the pool, so each gets
-            # ``workers_per_operator`` task slots.
-            #
-            # Only apply the cap when actually chaining operators. With a single
-            # operator there's nothing to share with, and capping would diverge
-            # from the original 1-op baseline, which left ``concurrency`` unset
-            # and used Ray Data's default unbounded ``TaskPoolStrategy``.
-            if args.num_operators > 1:
-                map_kwargs["concurrency"] = workers_per_operator
-            udf = make_realistic_schema_udf(
-                args.seed,
-                args.num_scalar_cols,
-                args.num_array_cols,
-            )
-
         for _ in range(args.num_operators):
             ds = ds.map_batches(udf, **map_kwargs)
-
-        ds = ds.materialize()
-        metrics = collect_dataset_stats(ds)
-        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-        metrics["num_blocks"] = num_blocks
-        metrics["num_rows"] = num_rows
-        metrics["num_scalar_cols"] = args.num_scalar_cols
-        metrics["num_array_cols"] = args.num_array_cols
-        metrics["rows_per_block"] = rows_per_block
-        metrics["bytes_per_row"] = _bytes_per_row(
-            args.num_scalar_cols,
-            args.num_array_cols,
-        )
-        metrics["schema_pickled_bytes"] = len(pickle.dumps(ds.schema()))
-        metrics["num_operators"] = args.num_operators
-        metrics["workers_per_operator"] = workers_per_operator
-        return metrics
+        ds_holder["ds"] = ds.materialize()
 
     benchmark.run_fn("worker_scaling", benchmark_fn)
+
+    ds = ds_holder["ds"]
+    metrics = collect_dataset_stats(ds)
+    metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+    metrics["num_blocks"] = num_blocks
+    metrics["num_rows"] = num_rows
+    metrics["num_scalar_cols"] = args.num_scalar_cols
+    metrics["num_array_cols"] = args.num_array_cols
+    metrics["rows_per_block"] = rows_per_block
+    metrics["bytes_per_row"] = _bytes_per_row(
+        args.num_scalar_cols,
+        args.num_array_cols,
+    )
+    metrics["schema_pickled_bytes"] = len(pickle.dumps(ds.schema()))
+    metrics["num_operators"] = args.num_operators
+    metrics["workers_per_operator"] = workers_per_operator
+    benchmark.result["worker_scaling"].update(metrics)
+
     benchmark.write_result()
 
 
