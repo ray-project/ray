@@ -114,8 +114,8 @@ Shuffle v2
 .. note:: Shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is currently in **Alpha**.
 
 Shuffle v2 is a new shuffle backend intended to replace the other shuffle backends. Today it
-provides an updated hash-shuffle implementation. Unlike the aggregator-actor model used by
-:ref:`hash-shuffling <hash-shuffle>`, shuffle v2 is *driver-driven* and doesn't store intermediate
+provides an updated hash-shuffle implementation. Unlike the aggregator-actor model used by the previous
+:ref:`hash-shuffling <hash-shuffle>` implementation, shuffle v2 is *driver-driven* and doesn't store intermediate
 shuffle data in long-lived aggregator actors. Instead, that data lives in the object store, which
 means:
 
@@ -142,7 +142,7 @@ application:
 
 .. code-block:: bash
 
-    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
+    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY="shuffle_v2"
 
 To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
 
