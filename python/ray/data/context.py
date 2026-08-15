@@ -908,6 +908,10 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    # Whether to use the on-disk (file-transport) path for hash-shuffle
+    # repartition. When False, use the in-memory (object-store) path.
+    use_external_hash_shuffle: bool = False
+
     ################################################################
     # GPU Shuffle configuration
     ################################################################

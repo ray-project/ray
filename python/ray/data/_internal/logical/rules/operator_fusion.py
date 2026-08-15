@@ -27,6 +27,9 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
     ShuffleReduceOp,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator_external import (  # noqa: E501
+    ExternalHashShuffleReduceOp,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -74,9 +77,9 @@ class FuseOperators(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
-        # Fuse a downstream task-pool map into the V2 hash-shuffle reduce phase.
-        # Runs after map fusion so a downstream map chain is already collapsed
-        # into one TaskPoolMapOperator.
+        # Fuse a downstream task-pool map into the hash-shuffle reduce.
+        # Runs after map fusion so any downstream map chain is already
+        # collapsed into a single TaskPoolMapOperator.
         fused_dag = self._fuse_map_into_shuffle_reduce_in_dag(fused_dag)
 
         # Update output dependencies after fusion.
@@ -101,10 +104,9 @@ class FuseOperators(Rule):
     def _fuse_map_into_shuffle_reduce_in_dag(
         self, dag: PhysicalOperator, has_downstream_limit: bool = False
     ) -> PhysicalOperator:
-        """Starting at the given operator, traverses up the DAG and fuses a
-        task-pool map sitting directly downstream of a V2 hash-shuffle reduce
-        into the reduce (a ``ShuffleReduceOp -> TaskPoolMapOperator`` pair).
-
+        """Starting at the given operator, traverses up the DAG of operators
+        and fuses compatible ShuffleReduceOp -> TaskPoolMapOperator pairs
+        (in-memory and external variants share the same fusion policy).
         Returns the current (root) operator after completing upstream fusions.
         """
         if self._can_fuse_map_into_shuffle_reduce(dag, has_downstream_limit):
@@ -122,7 +124,7 @@ class FuseOperators(Rule):
     def _can_fuse_map_into_shuffle_reduce(
         self, dag: PhysicalOperator, has_downstream_limit: bool
     ) -> bool:
-        """Whether ``dag`` is a task-pool map that can be fused into the V2
+        """Whether ``dag`` is a task-pool map that can be fused into the
         hash-shuffle reduce immediately upstream of it.
         """
         # `dag` must be a fusable task-pool map.
@@ -154,9 +156,12 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # The sole upstream must be a reduce that hasn't already fused with a map.
+        # The sole upstream must be a hash-shuffle reduce (in-memory or external) that
+        # hasn't already fused with a map.
         upstream_ops = dag.input_dependencies
-        if len(upstream_ops) != 1 or not isinstance(upstream_ops[0], ShuffleReduceOp):
+        if len(upstream_ops) != 1 or not isinstance(
+            upstream_ops[0], (ShuffleReduceOp, ExternalHashShuffleReduceOp)
+        ):
             return False
         reduce_op = upstream_ops[0]
         if reduce_op._fused_output_map_transformer is not None:
@@ -376,29 +381,48 @@ class FuseOperators(Rule):
         return True
 
     def _get_fused_map_into_shuffle_reduce_operator(
-        self, down_op: TaskPoolMapOperator, up_op: ShuffleReduceOp
-    ) -> ShuffleReduceOp:
+        self,
+        down_op: TaskPoolMapOperator,
+        up_op: Union[ShuffleReduceOp, ExternalHashShuffleReduceOp],
+    ) -> Union[ShuffleReduceOp, ExternalHashShuffleReduceOp]:
         name = up_op.name + "->" + down_op.name
 
         up_logical_op = self._op_map.pop(up_op)
         self._op_map.pop(down_op)
 
-        fused_op = ShuffleReduceOp(
-            up_op.input_dependencies,
-            up_op.data_context,
-            num_partitions=up_op._num_partitions,
-            reduce_fn=up_op._reduce_fn,
-            disallow_block_splitting=up_op._disallow_block_splitting,
-            reduce_ray_remote_args=up_op._reduce_ray_remote_args,
-            peak_memory_multiplier=up_op._peak_memory_multiplier,
-            should_emit_empty_partitions=up_op._emit_empty_partitions,
-            name=name,
-            fused_output_map_transformer=down_op.get_map_transformer(),
-            fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
-            fused_output_map_target_max_block_size_override=(
-                down_op.target_max_block_size_override
-            ),
-        )
+        if isinstance(up_op, ExternalHashShuffleReduceOp):
+            # External is single-input by design (no Join support).
+            fused_op = ExternalHashShuffleReduceOp(
+                up_op.input_dependencies[0],
+                up_op.data_context,
+                num_partitions=up_op._num_partitions,
+                reduce_fn=up_op._reduce_fn,
+                disallow_block_splitting=up_op._disallow_block_splitting,
+                reduce_ray_remote_args=up_op._reduce_ray_remote_args,
+                name=name,
+                fused_output_map_transformer=down_op.get_map_transformer(),
+                fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
+                fused_output_map_target_max_block_size_override=(
+                    down_op.target_max_block_size_override
+                ),
+            )
+        else:  # in-memory ShuffleReduceOp (may be multi-input for Join)
+            fused_op = ShuffleReduceOp(
+                up_op.input_dependencies,
+                up_op.data_context,
+                num_partitions=up_op._num_partitions,
+                reduce_fn=up_op._reduce_fn,
+                disallow_block_splitting=up_op._disallow_block_splitting,
+                reduce_ray_remote_args=up_op._reduce_ray_remote_args,
+                peak_memory_multiplier=up_op._peak_memory_multiplier,
+                should_emit_empty_partitions=up_op._emit_empty_partitions,
+                name=name,
+                fused_output_map_transformer=down_op.get_map_transformer(),
+                fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
+                fused_output_map_target_max_block_size_override=(
+                    down_op.target_max_block_size_override
+                ),
+            )
         fused_op.set_logical_operators(
             *up_op._logical_operators, *down_op._logical_operators
         )
