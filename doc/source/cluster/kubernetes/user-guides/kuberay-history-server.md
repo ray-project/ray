@@ -206,10 +206,10 @@ Configure the collector sidecar container with the following environment variabl
   - 
   - No
   - Owner resource name, if applicable.
-* - `RAY_ROOT_DIR`
-  - `--ray-root-dir`
+* - `STORAGE_ROOT_DIR`
+  - `--storage-root-dir`
   - No
-  - Root path prefix for stored Ray logs in object storage (defaults to `"log"`).
+  - Root path prefix inside the object storage bucket (defaults to `""`).
 * - `EVENTS_PORT`
   - `--events-port`
   - No
@@ -247,7 +247,7 @@ kubectl logs -l ray.io/node-type=head -c collector --tail=20
 List the bucket contents to confirm session log uploads:
 
 ```sh
-gcloud storage ls gs://${GCS_BUCKET}/log/
+gcloud storage ls gs://${GCS_BUCKET}/
 ```
 
 ## Terminate the RayJob
@@ -264,10 +264,10 @@ After the RayJob terminates, the collector uploads the final events and logs to 
 
 ### Storage layout
 
-The collector organizes files in object storage according to the following directory structure:
+The collector organizes files in object storage according to the following directory structure (if `STORAGE_ROOT_DIR` is set, paths are prefixed with that directory):
 
 ```text
-gs://${GCS_BUCKET}/${RAY_ROOT_DIR}/
+gs://${GCS_BUCKET}/
 ├── cluster-metadata/
 │   ├── raycluster/
 │   │   └── <namespace>_<cluster_name>/
