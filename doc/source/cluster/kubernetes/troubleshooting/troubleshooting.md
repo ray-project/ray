@@ -120,8 +120,8 @@ spec:
     - "10"
 ```
 
-You can also use the following command for kuberay version >= 1.6.0:
+You can also use the following command for kuberay version >= 1.7.0:
 
 ```bash
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0 --set reconcileConcurrency=10
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0 --set reconcileConcurrency=10
 ```
