@@ -58,33 +58,39 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # investigation, and re-attempting a failing import on every routing
 # decision would do exactly that.
 #
-# _pd_trace_mark() piggybacks on the ContextVar-based trace bench/pd_trace.py
-# already publishes per HTTP request -- safe here because
-# _choose_replica_for_request() runs directly in the caller's own task, so
-# the ContextVar set at the HTTP boundary is still visible.
+# NEITHER helper can use the per-request ContextVar trace that
+# bench/pd_trace.py publishes at the HTTP boundary, for two separate reasons.
+# Measured: with RAY_PD_TRACE and PYTHONPATH both confirmed set inside the
+# replica processes, a 320-request run produced zero "enqueued" marks.
 #
-# _pd_probe_log_sample() is deliberately NOT the same mechanism: the queue-
-# length probe (_probe_queue_lens) is awaited from _fulfill_pending_requests,
-# a background task spawned once per deployment and reused across many
-# requests. An asyncio task created that far back captured whatever
-# ContextVar value existed at *its* creation, not the current request's --
-# attributing probe timing to individual request records there would be
-# silently wrong (either no trace, or another request's). Logging aggregate
-# samples instead answers the real question (is the probe RPC itself slow)
-# without making any claim about which request it was slow for.
+# _pd_queue_wait_log_sample(): the router runs on its OWN event loop in its OWN thread
+# (AsyncioRouter creates it via asyncio.new_event_loop(), and choose_replica
+# hops onto it with asyncio.run_coroutine_threadsafe). contextvars do not
+# cross run_coroutine_threadsafe, so by the time
+# _choose_replica_for_request() runs, the request's ContextVar is gone --
+# current() returns the no-op and the mark silently vanishes.
+#
+# _pd_probe_log_sample(): the queue-length probe (_probe_queue_lens) is
+# awaited from _fulfill_pending_requests, a background task spawned once per
+# deployment and reused across many requests. An asyncio task created that
+# far back captured whatever ContextVar value existed at *its* creation, not
+# the current request's -- so even on one loop, attributing probe timing to
+# individual request records would be silently wrong (either no trace, or
+# another request's).
+#
+# Hence: aggregate logging only. It answers "is this step slow" without
+# claiming which request it was slow for. Per-request attribution inside the
+# router needs the trace threaded explicitly through PendingRequest, not a
+# ContextVar.
 try:
-    from bench.pd_trace import (
-        ENABLED as _PD_TRACE_ENABLED,
-        current as _pd_trace_current,
-    )
+    from bench.pd_trace import ENABLED as _PD_TRACE_ENABLED
 except ImportError:
     _PD_TRACE_ENABLED = False
-    _pd_trace_current = None
 
 
-def _pd_trace_mark(stage: str) -> None:
+def _pd_queue_wait_log_sample(elapsed_s: float) -> None:
     if _PD_TRACE_ENABLED:
-        _pd_trace_current().mark(stage)
+        logger.info(f"[pd_queue_diag] wait_ms={elapsed_s * 1000:.2f}")
 
 
 def _pd_probe_log_sample(elapsed_s: float, num_replicas: int) -> None:
@@ -1339,6 +1345,9 @@ class RequestRouter(ABC):
         if tasks_to_start > 0:
             self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
 
+    # Does this handle when every worker is full ?
+    # Ans - it actually does it the correct way by parking the request and going to sleep,
+    # rather than spinning and wasting CPU.
     async def _choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False
     ) -> RunningReplica:
@@ -1364,10 +1373,11 @@ class RequestRouter(ABC):
                 )
 
             self._add_pending_request_to_indices(pending_request)
+            # background dispatcher
             self._maybe_start_routing_tasks()
-            _pd_trace_mark("enqueued")
+            _queue_wait_start = time.monotonic()
             replica = await pending_request.future
-            _pd_trace_mark("future_resolved")
+            _pd_queue_wait_log_sample(time.monotonic() - _queue_wait_start)
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
             self._remove_pending_request_from_indices(pending_request)
