@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.llm._internal.serve.core.governance.chain import MiddlewareChain
@@ -222,3 +224,7 @@ async def test_before_inference_reraises_middleware_error(context):
         await chain.before_inference({"prompt": "hello"}, context)
 
     assert tracker.before_calls == []
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

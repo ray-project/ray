@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -116,3 +118,7 @@ def test_extract_response_text_from_dict_choice():
     }
 
     assert extract_response_text(response) == "Hi there"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from ray.llm._internal.serve.core.governance.context import (
     BlockedResponse as InternalBlockedResponse,
     RequestContext as InternalRequestContext,
@@ -48,3 +52,7 @@ def test_public_governance_types_are_subclasses_of_internal():
     assert issubclass(GovernanceIngress, InternalGovernanceIngress)
     blocked = BlockedResponse(rule_triggered="ACCESS_DENIED", reason="no")
     assert isinstance(blocked, InternalBlockedResponse)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,3 +1,4 @@
+import sys
 from typing import Any, Dict, Optional
 
 import pytest
@@ -130,3 +131,7 @@ def test_build_request_context_falls_back_to_headers():
 def test_build_request_context_reads_max_completion_tokens():
     context = build_request_context(_FakeBody(max_completion_tokens=32))
     assert context.max_tokens == 32
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

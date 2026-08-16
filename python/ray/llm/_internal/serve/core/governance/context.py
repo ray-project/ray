@@ -16,22 +16,35 @@ _RULE_TO_STATUS_CODE = {
 @dataclass
 class RequestContext:
     model_id: str
+    """Served model ID from the request body."""
     request_id: Optional[str] = None
+    """Request ID from Serve request state or the ``x-request-id`` header."""
     session_id: Optional[str] = None
+    """Session ID derived from request headers."""
     max_tokens: Optional[int] = None
+    """``max_tokens`` or ``max_completion_tokens`` from the body."""
     user_id: Optional[str] = None
+    """User ID from request state, the body ``user`` field, or the ``x-user-id`` header."""
     tenant_id: Optional[str] = None
+    """Tenant ID from the ``x-tenant-id`` header."""
     estimated_input_tokens: Optional[int] = None
+    """Optional estimated input token count."""
     headers: Dict[str, str] = field(default_factory=dict)
+    """Copy of the inbound HTTP headers."""
 
 
 @dataclass
 class BlockedResponse:
     decision: str = "BLOCKED"
+    """``BLOCKED`` (default) or ``THROTTLED``. Throttled responses are HTTP 429."""
     rule_triggered: str = ""
+    """Rule that fired, such as ``PII_DETECTED``, ``BUDGET_EXCEEDED``, or ``ACCESS_DENIED``."""
     reason: str = ""
+    """Human-readable explanation returned in the error body."""
     severity: str = "ERROR"
+    """``ERROR`` (default) or ``WARNING``."""
     retry_after: Optional[int] = None
+    """Seconds to wait before retrying. Required when ``decision`` is ``THROTTLED``."""
 
     def __post_init__(self) -> None:
         if self.decision not in ("BLOCKED", "THROTTLED"):

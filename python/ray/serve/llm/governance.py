@@ -13,38 +13,14 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class RequestContext(_RequestContext):
-    """Per-request metadata passed to governance middleware hooks.
-
-    Attributes:
-        model_id: Served model ID from the request body.
-        request_id: Request ID from Serve request state or the
-            ``x-request-id`` header.
-        session_id: Session ID derived from request headers.
-        max_tokens: ``max_tokens`` or ``max_completion_tokens`` from the body.
-        user_id: User ID from request state, the body ``user`` field, or the
-            ``x-user-id`` header.
-        tenant_id: Tenant ID from the ``x-tenant-id`` header.
-        estimated_input_tokens: Optional estimated input token count.
-        headers: Copy of the inbound HTTP headers.
-    """
+    """Per-request metadata passed to governance middleware hooks."""
 
     pass
 
 
 @PublicAPI(stability="alpha")
 class BlockedResponse(_BlockedResponse):
-    """Return this from a middleware hook to stop the request.
-
-    Attributes:
-        decision: ``"BLOCKED"`` (default) or ``"THROTTLED"``. Throttled
-            responses are returned as HTTP 429 and require ``retry_after``.
-        rule_triggered: Identifier for the rule that fired, such as
-            ``PII_DETECTED``, ``BUDGET_EXCEEDED``, or ``ACCESS_DENIED``.
-        reason: Human-readable explanation returned in the error body.
-        severity: ``"ERROR"`` (default) or ``"WARNING"``.
-        retry_after: Seconds to wait before retrying. Required when
-            ``decision`` is ``"THROTTLED"``.
-    """
+    """Return this from a middleware hook to stop the request."""
 
     pass
 
