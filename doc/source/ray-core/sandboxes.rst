@@ -7,7 +7,7 @@
 Ray Sandboxes (Experimental)
 =============================
 
-Ray Sandboxes use `gVisor <https://github.com/google/gvisor>` to provide lightweight, kernel-isolated execution environments for running untrusted code and agent tool calls safely on Ray clusters.
+Ray Sandboxes use `gVisor <https://github.com/google/gvisor>`_ to provide lightweight, kernel-isolated execution environments for running untrusted code and agent tool calls safely on Ray clusters.
 
 .. warning::
 
@@ -21,13 +21,23 @@ or host environments introduces critical security and stability risks. Ray Sandb
 directly on Ray worker nodes using `gVisor <https://github.com/google/gvisor>`_ (``runsc``). The library allows developers to scale and manage sandbox environments
 using familiar Ray concepts and primitives. 
 
-Key Benefits
-------------
+What is gVisor?
+---------------
 
-* **Fast Startup Latency:** gVisor sandboxes boot in tens of milliseconds.
-* **Dense Bin Packing:** Each sandbox has a minimal memory footprint and near-zero idle CPU overhead. A single Ray worker node can densely pack hundreds of concurrent sandboxes alongside standard Ray tasks and actors.
-* **Unified Resource Scheduling:** Sandboxes integrate natively with Ray's actor scheduling and resource model, allowing you to allocate fractional CPUs, memory limits, and custom resources.
-* **Strong Kernel Isolation:** Default configurations enforce rootless execution, drop Linux capabilities, enable seccomp system call filtering, provide a read-only root filesystem with isolated copy-on-write scratch space, and disable network egress (``network="none"``).
+`gVisor <https://gvisor.dev/>`_ is an open-source application kernel written in Go that provides lightweight, defense-in-depth isolation for containers. Developed by Google, gVisor implements a substantial portion of the Linux system call interface in user space, acting as an isolation barrier between untrusted applications and the host operating system kernel.
+
+Unlike standard container runtimes (such as Docker or ``runc``) where containers share the host Linux kernel directly, gVisor intercepts system calls made by containerized processes before they reach the host.
+Due to the daemonless nature of gVisor and it's ability to run as a non-privileged user, it is easy to deploy and manage on top of existing container orchestrators like Kubernetes.
+
+Benefits of gVisor
+^^^^^^^^^^^^^^^^^^
+
+Using gVisor as the execution backend for Ray Sandboxes provides key advantages over traditional Virtual Machines (VMs) and standard container runtimes:
+
+* **Strong Kernel Isolation:** Because untrusted code interacts with the user-space kernel rather than the host Linux kernel, the attack surface for host kernel vulnerabilities and container breakout exploits is dramatically minimized.
+* **Sub-100ms Startup Latency:** Unlike full VMs or MicroVMs that require booting guest OS kernels and managing heavy disk images, gVisor sandboxes boot in tens of milliseconds. This enables high-frequency, low-latency execution loops needed for iterative RL rollouts and agent tool calls.
+* **Dense Bin Packing & Low Footprint:** Each gVisor sandbox has a minimal memory overhead and near-zero idle CPU usage. Ray worker nodes can densely pack hundreds of concurrent sandboxes alongside standard Ray tasks and actors.
+* **Rootless & Container-Native:** gVisor runs entirely in user space without requiring host root privileges, the Docker daemon, or nested virtualization hardware extensions. This makes it straightforward to run securely inside existing Kubernetes Ray worker Pods and cloud container environments.
 
 Architecture
 ============

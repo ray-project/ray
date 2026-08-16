@@ -8,7 +8,7 @@ myst:
 
 # Deploying Ray Sandboxes using KubeRay
 
-This guide covers how to deploy and orchestrate Ray Sandboxes using Ray and KubeRay. In this guide, we use GKE as an example Kubernetes cluster, but the same principles apply to other Kubernetes distributions.
+This guide covers how to deploy and orchestrate Ray Sandboxes using Ray and KubeRay. In this guide, we use Google Kubernetes Engine (GKE) as an example, but the same principles apply to other Kubernetes distributions.
 
 Ray Sandboxes (introduced experimentally in `ray.experimental.sandbox`) allow Reinforcement Learning (RL) rollout workers and autonomous LLM agents to execute untrusted, model-generated code safely inside lightweight, kernel-isolated environments on Ray worker nodes. By utilizing [gVisor](https://github.com/google/gvisor) (`runsc`) directly inside Ray worker Pods, Ray delivers sub-100ms startup latencies and dense bin packing of hundreds of concurrent sandboxes per node without the multi-second overhead of provisioning separate Kubernetes Pods.
 
@@ -34,7 +34,6 @@ Create a GKE cluster with standard Linux worker nodes. Because gVisor runs insid
 ```bash
 gcloud container clusters create ray-sandbox-cluster \
     --region=us-central1 \
-    --release-channel=regular \
     --machine-type=e2-standard-16 \
     --num-nodes=3
 ```
@@ -43,28 +42,13 @@ gcloud container clusters create ray-sandbox-cluster \
 
 ## Step 2: Install the KubeRay Operator
 
-Deploy the official KubeRay operator using Helm:
-
-```bash
-# Add the KubeRay Helm repository
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm repo update
-
-# Install KubeRay operator
-helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
-```
-
-Verify that the KubeRay operator Pod is running:
-
-```bash
-kubectl get pods -l app.kubernetes.io/name=kuberay-operator
-```
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator using the Helm repository.
 
 ---
 
 ## Step 3: Create a RayJob
 
-Create a RayJob which will create a RayCluster configured with `runsc` and submit a Ray job invoking Ray sandboxes using gVisor:
+Create a RayJob which will create a RayCluster configured with `runsc` and submit a Ray job that manages Ray sandboxes:
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.sandbox.yaml
