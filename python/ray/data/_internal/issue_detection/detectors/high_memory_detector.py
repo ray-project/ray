@@ -33,6 +33,13 @@ or disable the warning by setting value to -1. (current value:
 {detection_time_interval_s})
 """  # noqa: E501
 
+HIGH_MEMORY_FINAL_WARNING = """
+Operator '{op_name}' used up to {max_memory} of memory per worker.
+{memory_configuration} To avoid out-of-memory errors, set
+`memory={recommended_memory_bytes}` ({recommended_memory}) in the appropriate
+function or method call.
+"""
+
 
 @dataclass
 class HighMemoryIssueDetectorConfig:
@@ -108,6 +115,46 @@ class HighMemoryIssueDetector(IssueDetector):
                     )
                 )
 
+        return issues
+
+    def detect_on_execution_end(self) -> List[Issue]:
+        issues = []
+        for op, memory_request in self._initial_memory_requests.items():
+            max_uss_bytes = op.metrics.max_uss_bytes.max
+            if max_uss_bytes is None:
+                continue
+
+            max_uss_bytes = int(max_uss_bytes)
+            # Require the configured memory to be at least 1.25x the observed max USS.
+            if 5 * max_uss_bytes <= 4 * memory_request:
+                continue
+
+            # Round up to the nearest whole byte.
+            recommended_memory, remainder = divmod(5 * max_uss_bytes, 4)
+            if remainder:
+                recommended_memory += 1
+            if memory_request:
+                memory_configuration = (
+                    f"The configured logical memory was "
+                    f"{memory_string(memory_request)}."
+                )
+            else:
+                memory_configuration = "No logical memory was configured."
+            message = HIGH_MEMORY_FINAL_WARNING.format(
+                op_name=op.name,
+                max_memory=memory_string(max_uss_bytes),
+                memory_configuration=memory_configuration,
+                recommended_memory=memory_string(recommended_memory),
+                recommended_memory_bytes=recommended_memory,
+            )
+            issues.append(
+                Issue(
+                    dataset_name=self._dataset_id,
+                    operator_id=op.id,
+                    issue_type=IssueType.HIGH_MEMORY,
+                    message=_format_message(message),
+                )
+            )
         return issues
 
     def detection_time_interval_s(self) -> float:

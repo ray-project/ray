@@ -241,6 +241,55 @@ def test_high_memory_detection(
     assert should_return_issue == bool(issues)
 
 
+@pytest.mark.parametrize(
+    "configured_memory, max_memory, expected_memory_configuration, expected_memory",
+    [
+        (10 * GiB, 8 * GiB, None, None),
+        (
+            10 * GiB - 1,
+            8 * GiB,
+            "The configured logical memory was 10.0GiB.",
+            10 * GiB,
+        ),
+        (None, 8 * GiB, "No logical memory was configured.", 10 * GiB),
+        (1, 1, "The configured logical memory was 1.0B.", 2),
+        (None, None, None, None),
+    ],
+)
+def test_high_memory_detection_on_execution_end(
+    configured_memory,
+    max_memory,
+    expected_memory_configuration,
+    expected_memory,
+    restore_data_context,
+):
+    ctx = DataContext.get_current()
+    input_data_buffer = InputDataBuffer(ctx, input_data=[])
+    map_operator = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=input_data_buffer,
+        data_context=ctx,
+        ray_remote_args={"memory": configured_memory},
+    )
+    if max_memory is not None:
+        map_operator.metrics.max_uss_bytes.add_sample(max_memory)
+
+    detector = HighMemoryIssueDetector(
+        dataset_id="id",
+        operators=[input_data_buffer, map_operator],
+        config=ctx.issue_detectors_config.high_memory_detector_config,
+    )
+
+    issues = detector.detect_on_execution_end()
+
+    assert (expected_memory_configuration is not None) == bool(issues)
+    if expected_memory_configuration is not None:
+        normalized_message = " ".join(issues[0].message.split())
+        assert map_operator.name in normalized_message
+        assert expected_memory_configuration in normalized_message
+        assert f"`memory={expected_memory}`" in normalized_message
+
+
 if __name__ == "__main__":
     import sys
 

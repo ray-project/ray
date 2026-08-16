@@ -60,6 +60,14 @@ class IssueDetectorManager:
 
         self._report_issues(issues)
 
+    def invoke_detectors_on_execution_end(self) -> None:
+        issues = []
+        for detector in self._issue_detectors:
+            if detector.detection_time_interval_s() == -1:
+                continue
+            issues.extend(detector.detect_on_execution_end())
+        self._report_issues(issues)
+
     def _report_issues(self, issues: List[Issue]) -> None:
         operators: Dict[str, "PhysicalOperator"] = {}
         op_to_id: Dict["PhysicalOperator", str] = {}
