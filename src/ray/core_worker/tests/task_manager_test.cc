@@ -2840,6 +2840,25 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplayDoesNotFillNone) {
   stored_in_plasma.clear();
   plasma_put_error_types_.clear();
 
+  // Production replay re-reports the same yields. in_plasma=true matches the
+  // first attempt: HandleTaskReturn writes an OBJECT_IN_PLASMA sentinel and
+  // does not call put_in_local_plasma_callback. The app exception is a new
+  // stream index in production; including it here would trip the count-mismatch
+  // path (covered by TestStreamingGeneratorAppErrorReplayCountMismatchFails).
+  for (int64_t i = 0; i < 2; i++) {
+    ObjectID obj_id = ObjectID::FromIndex(spec.TaskId(), /*index=*/2 + i);
+    std::shared_ptr<Buffer> data = GenerateRandomBuffer();
+    rpc::ReportGeneratorItemReturnsRequest req =
+        GetIntermediateTaskReturn(/*idx=*/i,
+                                  /*finished=*/false,
+                                  generator_id,
+                                  /*dynamic_return_id=*/obj_id,
+                                  data,
+                                  /*set_in_plasma=*/true);
+    manager_.HandleReportGeneratorItemReturns(
+        req, /*execution_signal_callback=*/[](Status) {});
+  }
+
   rpc::PushTaskReply app_error_reply;
   rpc::ReturnObject *return_object = app_error_reply.add_return_objects();
   return_object->set_object_id(spec.ReturnId(0).Binary());
@@ -2857,7 +2876,9 @@ TEST_F(TaskManagerTest, TestStreamingGeneratorAppErrorReplayDoesNotFillNone) {
                                caller_address,
                                /*is_application_error=*/true);
 
-  // Stream refs must not be rewritten from the static None return.
+  // Stream refs must not be rewritten from the static None return. App-error
+  // completion does not call MarkTaskReturnObjectsFailed, and the in_plasma
+  // re-reports above do not go through put_in_local_plasma_callback.
   for (int64_t i = 0; i < 2; i++) {
     const ObjectID obj_id = spec.StreamingGeneratorReturnId(i);
     ASSERT_FALSE(stored_in_plasma.count(obj_id)) << "stream index " << i;
