@@ -116,6 +116,24 @@ def test_report_issues():
     )
     assert detector.get_detected_issues() == expected_issues
 
+    input_operator.metrics._issue_detector_hanging = 1
+    final_detector = MagicMock()
+    final_detector.detection_time_interval_s.return_value = 0
+    final_detector.detect_on_execution_end.return_value = [
+        Issue(
+            dataset_name="dataset",
+            operator_id=map_operator.id,
+            issue_type=IssueType.HIGH_MEMORY,
+            message="High memory usage detected",
+        )
+    ]
+    detector._issue_detectors = [final_detector]
+
+    detector.invoke_detectors_on_execution_end()
+
+    assert input_operator.metrics.issue_detector_hanging == 1
+    assert map_operator.metrics.issue_detector_high_memory == 1
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
