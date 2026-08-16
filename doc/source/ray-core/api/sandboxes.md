@@ -1,19 +1,22 @@
-.. meta::
-   :description: API reference for Ray Sandboxes (gVisor-isolated container environments).
+---
+myst:
+  html_meta:
+    description: "API reference for Ray Sandboxes (gVisor-isolated container environments)."
+---
 
-.. _ray-sandbox-ref:
+(ray-sandbox-ref)=
 
-Sandbox API
-===========
+# Sandbox API
 
-.. note::
-   Ray Sandboxes (``ray.experimental.sandbox``) is an :ref:`alpha <api-stability-alpha>` library. APIs may evolve prior to graduation.
+:::{note}
+Ray Sandboxes (`ray.experimental.sandbox`) is an {ref}`alpha <api-stability-alpha>` library. APIs may evolve prior to graduation.
+:::
 
-For an introduction and usage guides, see :ref:`Ray Sandboxes <ray-core-sandboxes>`.
+For an introduction and usage guides, see {ref}`Ray Sandboxes <ray-core-sandboxes>`.
 
-Sandbox Lifecycle & Execution
------------------------------
+## Sandbox Lifecycle & Execution
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -21,10 +24,11 @@ Sandbox Lifecycle & Execution
     ray.experimental.sandbox.create
     ray.experimental.sandbox.Sandbox
     ray.experimental.sandbox.SandboxRuntime
+```
 
-Data Structures & Status
-------------------------
+## Data Structures & Status
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -32,10 +36,11 @@ Data Structures & Status
 
     ray.experimental.sandbox.ExecResult
     ray.experimental.sandbox.SandboxStatus
+```
 
-Exceptions
-----------
+## Exceptions
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -45,3 +50,4 @@ Exceptions
     ray.experimental.sandbox.SandboxTimeoutError
     ray.experimental.sandbox.SandboxExecError
     ray.experimental.sandbox.SandboxNotFoundError
+```
