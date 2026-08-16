@@ -126,7 +126,7 @@ export GCS_BUCKET=<GCS_BUCKET>
 export COLLECTOR_IMAGE=quay.io/kuberay/collector:nightly
 export RAY_JOB=rayjob-historyserver-gcs
 
-curl https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/rayjob-gcs.yaml | envsubst | kubectl apply -f -
+curl https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/rayjob-gcs.yaml | envsubst | kubectl apply -n ${NAMESPACE} -f -
 ```
 
 ### Environment variables in the example manifest
