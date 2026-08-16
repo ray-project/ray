@@ -8,10 +8,10 @@ from ray.experimental.sandbox.backend.base import (
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxNotFoundError
 from ray.experimental.sandbox.runtime import SandboxRuntime
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI(stability="alpha")
+@PublicAPI(stability="alpha")
 @ray.remote
 class Sandbox:
     """Ray actor interface for managing scheduling and lifecycle of an isolated sandbox.

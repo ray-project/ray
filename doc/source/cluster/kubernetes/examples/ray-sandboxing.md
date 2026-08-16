@@ -121,13 +121,14 @@ RayJob completed successfully!
 
 ## (Optional) Step 4: Verify Isolation and Security Guarantees
 
-You can verify that untrusted code running inside the sandbox cannot compromise the host environment or escape its sandbox boundary:
+You can verify that untrusted code running inside an active sandbox cannot compromise the host environment or escape its sandbox boundary:
 
 ### Filesystem Write Protection
 
 By default, base root filesystems are mounted read-only (`readonly=True`). Only the designated `workdir` is writable.
 
 ```python
+# Assuming an active sandbox `sb = sandbox.create(...)`
 # Attempting to modify /etc or rootfs will fail
 res = ray.get(sb.exec.remote("touch /etc/hacked.txt"))
 print(res.exit_code)  # Non-zero exit code
@@ -161,10 +162,10 @@ USER root
 
 # Install wget, download gVisor runsc, and install into system PATH
 RUN apt-get update && apt-get install -y --no-install-recommends wget && \
-    rm -rf /var/lib/apt/lists/* && \
     ARCH=$(uname -m) && \
     wget "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" -O /usr/local/bin/runsc && \
-    chmod a+rx /usr/local/bin/runsc
+    chmod a+rx /usr/local/bin/runsc && \
+    rm -rf /var/lib/apt/lists/*
 
 USER ray
 ```

@@ -9,10 +9,10 @@ from ray.experimental.sandbox.backend.base import (
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.image_manager import ImageManager
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI(stability="alpha")
+@PublicAPI(stability="alpha")
 class SandboxRuntime:
     """Low-level interface for managing local sandbox runtime environments."""
 

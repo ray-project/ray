@@ -134,7 +134,7 @@ Use ``sandbox.create()`` to start an isolated environment from any container ima
    print(f"Execution Duration: {result.duration_ms:.2f} ms")
 
    # Clean up sandbox resources
-   ray.get(sb.terminate.remote())
+   ray.get(sb.delete.remote())
 
 Example: File Operations (Reading, Writing, Uploading, Downloading)
 ---------------------------------------------------------------------
@@ -252,17 +252,6 @@ API Reference
 =============
 
 For detailed signatures, parameters, and return types, see the :ref:`Ray Sandbox API reference <ray-sandbox-ref>`.
-
-.. autosummary::
-    :nosignatures:
-    :toctree: api/doc/
-
-    ray.experimental.sandbox.create
-    ray.experimental.sandbox.Sandbox
-    ray.experimental.sandbox.SandboxRuntime
-    ray.experimental.sandbox.ExecResult
-    ray.experimental.sandbox.SandboxStatus
-    ray.experimental.sandbox.SandboxError
 
 
 Security & Isolation Model
