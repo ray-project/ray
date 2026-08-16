@@ -254,7 +254,7 @@ gcloud storage ls gs://${GCS_BUCKET}/
 
 Metadata and logs persist after termination, allowing for the safe deletion of the RayJob.
 
-Because the example manifest sets `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 600`, KubeRay deletes the underlying RayCluster automatically 10 minutes after the entrypoint script exits. To skip the TTL wait, you can directly delete the RayJob:
+Because the example manifest sets `shutdownAfterJobFinishes: true`, KubeRay deletes the underlying RayCluster immediately after the job finishes. The `ttlSecondsAfterFinished: 600` setting automatically deletes the RayJob custom resource 10 minutes after completion. To skip the TTL wait, you can directly delete the RayJob:
 
 ```sh
 kubectl delete rayjob ${RAY_JOB} -n ${NAMESPACE}
