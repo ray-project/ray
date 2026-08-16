@@ -37,7 +37,7 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
 
   run:
     timeout: 3600
@@ -54,7 +54,7 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
 
   run:
     timeout: 3600
@@ -76,7 +76,7 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
 
   run:
     timeout: 3600
@@ -103,7 +103,7 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
 
   run:
     timeout: 5400
@@ -206,7 +206,7 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
 
   run:
     timeout: 600
@@ -242,7 +242,7 @@
   python: "3.10"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
         - "column08 column13 column14"   # 84 groups
@@ -267,7 +267,7 @@
   python: "3.10"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [shuffle_v2]
       columns:
         - "column08 column13 column14"   # 84 groups
@@ -293,7 +293,7 @@
   python: "3.10"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
       columns:
         - "column08 column13 column14"   # 84 groups
@@ -318,7 +318,7 @@
   python: "3.10"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [shuffle_v2]
       columns:
         - "column02 column14"  # 7M groups
@@ -344,7 +344,7 @@
   python: "3.10"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [shuffle_v2]
       columns:
         - "column08 column13 column14"   # 84 groups
@@ -567,17 +567,6 @@
 
   variations:
     - __suffix__: regular
-    - __suffix__: chaos
-      cluster:
-        byod:
-          runtime_env:
-            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-            - RAYTEST_FAIL_ON_WORKER_OOM=1
-            - RAYTEST_FAIL_ON_DEAD_NODES=0
-      run:
-        prepare: >
-          python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
-          "_RayTrainWorker__execute.get_next"
 
 - name: training_ingest_benchmark
   python: "3.10"
@@ -780,18 +769,6 @@
           compute: actors
           scaling: fixed_size
           repeat_map_batches: once
-      # Autoscaling task test
-      - with:
-          format: numpy
-          compute: tasks
-          scaling: autoscaling
-          repeat_map_batches: once
-      # Autoscaling actor test
-      - with:
-          format: numpy
-          compute: actors
-          scaling: autoscaling
-          repeat_map_batches: once
 
   cluster:
     anyscale_sdk_2026: true
@@ -886,8 +863,6 @@
   python: "3.10"
   matrix:
     setup:
-      # This release test consistently fails on autoscaling clusters. So, we only run
-      # it on fixed-size clusters. The reason for the failure is unclear.
       scaling: [fixed_size]
 
   cluster:
@@ -905,36 +880,11 @@
       python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
 
 
-- name: random_shuffle_chaos
-  python: "3.10"
-  working_dir: nightly_tests
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
-    cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
-
-  run:
-    timeout: 10800
-    prepare: >
-      python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600
-      --max-to-kill 2
-    script: >
-      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
-      --shuffle
-
-
 - name: "sort_{{scaling}}"
   python: "3.10"
   matrix:
     setup:
       scaling: ["fixed_size"]
-      # the "autoscaling" variation is failing and disabled.
-      # TODO: https://github.com/anyscale/ray/issues/727
 
   cluster:
     anyscale_sdk_2026: true
@@ -948,30 +898,6 @@
   run:
     timeout: 10800
     script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
-
-
-- name: sort_chaos
-  python: "3.10"
-  working_dir: nightly_tests
-
-  # TODO(ray-data): https://github.com/anyscale/ray/issues/546
-  frequency: manual
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
-    cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
-
-  run:
-    timeout: 10800
-    prepare: >
-      python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900
-      --max-to-kill 3
-    script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 
 #######################
@@ -1045,40 +971,13 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
 
   run:
     timeout: 1800
     script: >
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
-
-- name: image_classification_chaos
-  python: "3.10"
-  # Don't use 'nightly_tests/dataset' as the working directory because we need to run
-  # the 'setup_chaos.py' script.
-  working_dir: nightly_tests
-  group: data-batch-inference
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
-      # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
-      #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
-      #       that is removed in Pyarrow 21.0
-      python_depset: image_classification_py3.10.lock
-    cluster_compute: dataset/autoscaling_gpu_compute.yaml
-
-  run:
-    timeout: 1800
-    prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 2 --max-to-kill 6 --kill-delay 30
-    script: >
-      python dataset/gpu_batch_inference.py
-      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
@@ -1100,7 +999,7 @@
 
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
 
   run:
     timeout: 1800
@@ -1127,19 +1026,6 @@
           args: --inference-concurrency 100 100
           fail_on_dead_nodes: 1
           max_obj_store_util_percent: 100
-      - with:
-          case: autoscaling
-          cluster_type: autoscaling
-          args: --inference-concurrency 1 100
-          fail_on_dead_nodes: 1
-          max_obj_store_util_percent: 100
-      - with:
-          case: fixed_size_chaos
-          cluster_type: fixed_size
-          args: --inference-concurrency 100 100 --chaos
-          fail_on_dead_nodes: 0
-          # A negative limit disables the check. We expect bounded spills with chaos.
-          max_obj_store_util_percent: -1
 
   cluster:
     anyscale_sdk_2026: true
@@ -1177,46 +1063,12 @@
           fail_on_dead_nodes: 0 # Allow node death during test
           max_obj_store_util_percent: 100
       - with:
-          case: autoscaling
-          cluster_type: autoscaling
-          args: --inference-concurrency 1 40
-          frequency: weekly
-          fail_on_dead_nodes: 1
-          max_obj_store_util_percent: 100
-      - with:
-          case: fixed_size_chaos
-          cluster_type: fixed_size
-          args: --inference-concurrency 40 40 --chaos
-          # This release test is run on a 'manual' frequency because it's expected to
-          # fail.
-          frequency: manual
-          fail_on_dead_nodes: 0
-          # A negative limit disables the check. We expect bounded spills with chaos.
-          max_obj_store_util_percent: -1
-      - with:
           case: fake_gpu_fixed_size
           cluster_type: fake_gpu_fixed_size
           args: --inference-concurrency 40 40 --fake-gpu
           frequency: weekly
           fail_on_dead_nodes: 0 # Allow node death during test
           max_obj_store_util_percent: 100
-      - with:
-          case: fake_gpu_autoscaling
-          cluster_type: fake_gpu_autoscaling
-          args: --inference-concurrency 1 40 --fake-gpu
-          frequency: weekly
-          fail_on_dead_nodes: 1
-          max_obj_store_util_percent: 100
-      - with:
-          case: fake_gpu_fixed_size_chaos
-          cluster_type: fake_gpu_fixed_size
-          args: --inference-concurrency 40 40 --chaos --fake-gpu
-          # This release test is run on a 'manual' frequency because it's expected to
-          # fail.
-          frequency: manual
-          fail_on_dead_nodes: 0
-          # A negative limit disables the check. We expect bounded spills with chaos.
-          max_obj_store_util_percent: -1
 
   cluster:
     anyscale_sdk_2026: true
@@ -1249,16 +1101,6 @@
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
           fail_on_dead_nodes: 1
-      - with:
-          case: autoscaling
-          cluster_type: autoscaling
-          args: --inference-concurrency 1 100
-          fail_on_dead_nodes: 1
-      - with:
-          case: fixed_size_chaos
-          cluster_type: fixed_size
-          args: --inference-concurrency 100 100 --chaos
-          fail_on_dead_nodes: 0
 
   cluster:
     anyscale_sdk_2026: true
@@ -1276,32 +1118,6 @@
     timeout: 3600
     script: python text_embedding/main.py {{args}}
 
-# Multi-stage inference pipeline with separate CPU preprocessing and GPU inference.
-# Mimics production ML inference pipeline with:
-# - Separate preprocessing (CPU) and inference (GPU actors) stages
-# - Pandas preprocessing
-# - Metadata column passthrough
-# - Extra output columns
-- name: multi_stage_batch_inference
-  python: "3.10"
-  frequency: weekly
-  group: data-batch-inference
-  env: gce
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: autoscaling_gpu_g2_gce.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python model_inference_pipeline_benchmark.py
-      --input-path s3://ray-benchmark-data/tpch/parquet/sf100/lineitem
-      --preprocessing-batch-size "auto"
-      --inference-batch-size 1024
-      --inference-min-actors 1
-      --inference-max-actors 300
-
 ##############
 # TPCH Queries
 ##############
@@ -1311,7 +1127,7 @@
   python: "3.10"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [hash_shuffle]
 
   cluster:
@@ -1326,7 +1142,7 @@
   python: "3.10"
   matrix:
     setup:
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [shuffle_v2]
 
   cluster:
@@ -1352,7 +1168,7 @@
   matrix:
     setup:
       query: [q2, q4, q5, q6, q7, q10, q11, q12, q14, q17, q18, q20]
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [hash_shuffle]
 
   cluster:
@@ -1371,7 +1187,7 @@
   matrix:
     setup:
       query: [q3, q9]
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [hash_shuffle]
 
   cluster:
@@ -1393,7 +1209,7 @@
   matrix:
     setup:
       query: [q2, q3, q4, q5, q6, q7, q9, q10, q11, q12, q14, q17, q18, q20]
-      scaling: [fixed_size, autoscaling]
+      scaling: [fixed_size]
       shuffle_strategy: [shuffle_v2]
 
   cluster:
@@ -1447,136 +1263,3 @@
   run:
     timeout: 5400
     script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
-
-- name: "tpch_{{query}}_autoscaling_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      query: [q8, q13, q15, q21, q22]
-      shuffle_strategy: [hash_shuffle]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: autoscaling_all_to_all_compute.yaml
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 100
-
-- name: "tpch_{{query}}_autoscaling_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      query: [q8, q13, q15, q21, q22]
-      shuffle_strategy: [shuffle_v2]
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAY_max_direct_call_object_size=8192
-    cluster_compute: autoscaling_all_to_all_compute.yaml
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
-
-#################################################
-# Cross-AZ RPC fault tolerance test
-#################################################
-
-- name: "cross_az_map_batches_autoscaling"
-  frequency: manual
-  env: gce
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: cross_az_250_350_compute_gce.yaml
-
-  run:
-    timeout: 10800
-    script: >
-      python map_benchmark.py --api map_batches --batch-format numpy
-      --compute actors --sf 1000 --repeat-inputs 1 --concurrency 1024 2048
-
-  variations:
-    - __suffix__: gce
-    - __suffix__: aws
-      env: aws
-      cluster:
-        cluster_compute: cross_az_250_350_compute_aws.yaml
- # TODO(#58246): Enable these variations once RAY_testing_rpc_failure is supported.
- #   - __suffix__: gce_failure_injection
- #     cluster:
- #       byod:
- #         # RAY_testing_rpc_failure is used to inject RPC failures across all RPCs (*) with no limit (-1) on the number of total failures,
- #         # 10% request failures, 10% response failures, 1 guaranteed request failure and 1 guaranteed response failure.
- #         # RAY_testing_rpc_failure_avoid_intra_node_failures=1 is used to avoid injecting RPC failures within the same node.
- #         runtime_env:
- #           - RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":10,"in_flight_failure_prob":0,"num_lower_bound_req_failures":1,"num_lower_bound_resp_failures":1}}'
- #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
- #       cluster_compute: cross_az_250_350_compute_gce.yaml
- #   - __suffix__: aws_failure_injection
- #     env: aws
- #     cluster:
- #       byod:
- #         runtime_env:
- #           - RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":10,"resp_failure_prob":10,"in_flight_failure_prob":0,"num_lower_bound_req_failures":1,"num_lower_bound_resp_failures":1}}'
- #           - RAY_testing_rpc_failure_avoid_intra_node_failures=1
- #       cluster_compute: cross_az_250_350_compute_aws.yaml
-
-- name: "cross_az_map_batches_autoscaling_iptable_failure_injection"
-  python: "3.10"
-  frequency: weekly
-  env: gce
-  working_dir: nightly_tests
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_health_check_period_ms=10000
-        - RAY_health_check_timeout_ms=100000
-        - RAY_health_check_failure_threshold=10
-        - RAY_gcs_rpc_server_connect_timeout_s=60
-        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
-    cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
-
-  run:
-    timeout: 14400
-    # The network failure interval is set to 210 seconds since the test as is takes around double that to run without failures.
-    # If the runtime of the test is dramatically reduced in the future, the interval will have to be retuned.
-    script: >
-      python simulate_cross_az_network_failure.py --network-failure-interval 210 --network-failure-duration 5 --command python dataset/map_benchmark.py
-      --api map_batches --batch-format numpy --compute actors --sf 1000
-      --repeat-inputs 1 --concurrency 1024 2048
-
-  variations:
-    - __suffix__: gce
-    - __suffix__: aws
-      env: aws
-      cluster:
-        cluster_compute: dataset/cross_az_250_350_compute_aws.yaml
-
-###################
-# Autoscaling tests
-###################
-
-- name: does_not_over_provision
-  group: data-autoscaling
-  # Set to manual because this is expected to fail with the
-  # `DefaultClusterAutoscalerV2`.
-  frequency: manual
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod: {}
-    cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
-
-  run:
-    timeout: 3600
-    script: python autoscaling/does_not_over_provision.py
