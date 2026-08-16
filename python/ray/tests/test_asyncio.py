@@ -626,9 +626,7 @@ async def test_wait_async_fetch_local_true_waits_for_value(ray_start_regular_sha
         return "ok"
 
     ref = blocked.remote()
-    wait_task = asyncio.create_task(
-        _wait_async([ref], timeout=0.1, fetch_local=True)
-    )
+    wait_task = asyncio.create_task(_wait_async([ref], timeout=0.1, fetch_local=True))
     ready, remaining = await wait_task
     assert ready == []
     assert remaining == [ref]
