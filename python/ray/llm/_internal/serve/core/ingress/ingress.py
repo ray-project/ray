@@ -398,10 +398,19 @@ class OpenAiIngress(DeploymentProtocol):
         if raw_request is not None:
             raw_request_info = RawRequestInfo.from_starlette_request(raw_request)
 
-        async for response in getattr(model_handle, call_method).remote(
-            body, raw_request_info
-        ):
-            yield response
+        stream = getattr(model_handle, call_method).remote(body, raw_request_info)
+        try:
+            async for response in stream:
+                yield response
+        finally:
+            # ``async for`` does not aclose the inner generator when this
+            # wrapper is aclosed (Python 3.10+), so close it explicitly.
+            aclose = getattr(stream, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception:
+                    logger.exception("Failed to close LLM response stream")
 
     async def model(self, model_id: str) -> Optional[ModelCard]:
         if model_id in self._model_cards:

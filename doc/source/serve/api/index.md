@@ -536,3 +536,19 @@ Content-Type: application/json
    serve.llm.deployment.PDPrefillServer
    serve.llm.deployment.DPServer
 ```
+
+### Governance
+
+Inspect or block OpenAI-compatible traffic with middleware on the LLM ingress. See {ref}`Governance middleware <serve-llm-governance>`.
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.governance.GovernanceIngress
+   serve.llm.governance.LLMMiddleware
+   serve.llm.governance.RequestContext
+   serve.llm.governance.BlockedResponse
+```

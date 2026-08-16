@@ -253,6 +253,7 @@ UNWALKED_ANNOTATED_ALLOWLIST: Dict[str, str] = {
     "ray.cluster_utils": "annotated-not-walked; pending Ray Core",
     "ray.serve.deployment": "annotated-not-walked; pending Ray Serve",
     "ray.serve.llm.deployment": "annotated-not-walked; pending Ray Serve",
+    "ray.serve.llm.governance": "annotated-not-walked; pending Ray Serve",
     "ray.serve.llm.ingress": "annotated-not-walked; pending Ray Serve",
     "ray.serve.llm.openai_api_models": "annotated-not-walked; pending Ray Serve",
     "ray.serve.llm.request_router": "annotated-not-walked; pending Ray Serve",

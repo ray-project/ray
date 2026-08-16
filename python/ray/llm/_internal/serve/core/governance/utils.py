@@ -48,7 +48,10 @@ def extract_request_text(request: Any) -> str:
 def extract_response_text(response: Any) -> str:
     """Extract assistant text from a chat/completion response or stream chunk."""
     parts: List[str] = []
-    choices: Iterable[Any] = getattr(response, "choices", None) or []
+    if isinstance(response, dict):
+        choices: Iterable[Any] = response.get("choices") or []
+    else:
+        choices = getattr(response, "choices", None) or []
 
     for choice in choices:
         if isinstance(choice, dict):

@@ -12,10 +12,12 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionStreamResponse,
     ModelCard,
 )
-from ray.llm._internal.serve.core.governance.context import BlockedResponse
-from ray.llm._internal.serve.core.governance.ingress import GovernanceIngress
-from ray.llm._internal.serve.core.governance.middleware import LLMMiddleware
 from ray.llm._internal.serve.core.ingress.ingress import CallMethod
+from ray.serve.llm.governance import (
+    BlockedResponse,
+    GovernanceIngress,
+    LLMMiddleware,
+)
 
 MODEL_ID = "test-model"
 

@@ -114,7 +114,8 @@ def usage_to_dict(response: Any) -> Dict[str, Any]:
     if usage is None:
         return {}
     if hasattr(usage, "model_dump"):
-        return usage.model_dump()
+        dumped = usage.model_dump(exclude_none=True)
+        return dumped if isinstance(dumped, dict) else {}
     if isinstance(usage, dict):
-        return usage
+        return {key: value for key, value in usage.items() if value is not None}
     return {}
