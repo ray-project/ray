@@ -66,7 +66,17 @@ class IssueDetectorManager:
             if detector.detection_time_interval_s() == -1:
                 continue
             issues.extend(detector.detect_on_execution_end())
-        self._report_issues(issues)
+
+        # Final detectors don't re-evaluate hanging issues, so preserve their state.
+        hanging_metrics = {
+            operator: operator.metrics._issue_detector_hanging
+            for operator in self.executor._topology
+        }
+        try:
+            self._report_issues(issues)
+        finally:
+            for operator, value in hanging_metrics.items():
+                operator.metrics._issue_detector_hanging = value
 
     def _report_issues(self, issues: List[Issue]) -> None:
         operators: Dict[str, "PhysicalOperator"] = {}
