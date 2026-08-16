@@ -57,19 +57,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
       ray::observability::MetricInterface &owned_object_sizes_by_state_counter,
       bool lineage_pinning_enabled = false)
       : rpc_address_(std::move(rpc_address)),
-        lineage_pinning_enabled_(lineage_pinning_enabled),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         is_node_dead_(std::move(is_node_dead)),
         free_object_on_nodes_async_(std::move(free_object_on_nodes_async)),
+        lineage_pinning_enabled_(lineage_pinning_enabled),
         owned_object_count_by_state_(owned_object_by_state_counter),
         owned_object_sizes_by_state_(owned_object_sizes_by_state_counter) {}
 
   ~ReferenceCounter() override = default;
-
-  void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
-    lineage_pinning_enabled_ = lineage_pinning_enabled;
-  }
 
   void DrainAndShutdown(std::function<void()> shutdown) override
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -264,6 +260,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences() override;
 
   std::optional<std::string> GetTensorTransport(const ObjectID &object_id) const override;
+
+  void SetLineagePinningEnabled(bool lineage_pinning_enabled) override {
+    lineage_pinning_enabled_.store(lineage_pinning_enabled);
+  }
 
  private:
   /// Contains information related to nested object refs only.
@@ -733,15 +733,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// object's owner.
   rpc::Address rpc_address_;
 
-  /// Feature flag for lineage pinning. If this is false, then we will keep the
-  /// lineage ref count, but this will not be used to decide when the object's
-  /// Reference can be deleted. The object's lineage ref count is the number of
-  /// tasks that depend on that object that may be retried in the future.
-  /// This is atomic because it may be updated once the job config is known
-  /// (workers receive it with their first task), which can race with reads
-  /// from other threads.
-  std::atomic<bool> lineage_pinning_enabled_;
-
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
 
@@ -805,6 +796,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Keep track of actors owend by this worker.
   size_t num_actors_owned_by_us_ ABSL_GUARDED_BY(mutex_) = 0;
+
+  /// Feature flag for lineage pinning. If this is false, then we will keep the
+  /// lineage ref count, but this will not be used to decide when the object's
+  /// Reference can be deleted. The object's lineage ref count is the number of
+  /// tasks that depend on that object that may be retried in the future.
+  std::atomic<bool> lineage_pinning_enabled_;
 
   /// Sticky: set to true the first time this worker becomes the owner of
   /// any non-actor object. Never reset. Gates owner-side metric emission

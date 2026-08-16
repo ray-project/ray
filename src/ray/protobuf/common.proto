@@ -472,8 +472,7 @@ message JobConfig {
   bytes serialized_py_logging_config = 9;
   // Whether objects owned by this job's workers can be reconstructed from
   // lineage when lost. When unset, the cluster-level system config
-  // `lineage_pinning_enabled` applies. This can only disable reconstruction
-  // for a job; it cannot enable it if the system config disables it.
+  // `lineage_pinning_enabled` applies.
   optional bool enable_object_reconstruction = 10;
 }
 

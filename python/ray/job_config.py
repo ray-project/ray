@@ -44,11 +44,7 @@ class JobConfig:
         enable_object_reconstruction: Whether objects owned by this job's
             workers can be reconstructed from lineage when lost. If unset,
             the cluster-level ``lineage_pinning_enabled`` system config
-            applies. This can only disable reconstruction for the job; it
-            cannot enable it if the system config disables it. When
-            reconstruction is disabled, losing an object to a node failure
-            raises an ``ObjectLostError`` instead of re-executing the task
-            that created it.
+            applies.
         _py_driver_sys_path: A list of directories that specify the search path
             for python workers.
     """
@@ -84,9 +80,6 @@ class JobConfig:
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
         self.set_default_actor_lifetime(default_actor_lifetime)
-        #: Whether lost objects owned by this job's workers can be
-        #: reconstructed from lineage. None defers to the cluster-level
-        #: `lineage_pinning_enabled` system config.
         self.enable_object_reconstruction = enable_object_reconstruction
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []

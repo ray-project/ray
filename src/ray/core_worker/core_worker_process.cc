@@ -387,15 +387,15 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       /*callback_service*/ &io_service_);
 
-  // The job config can disable object reconstruction for the job. For drivers it is
-  // already initialized above; workers receive it with their first task and update the
-  // flag then (see HandlePushTask).
+  // Take job config setting for lineage pinning if provided
   const bool cluster_lineage_pinning_enabled =
       RayConfig::instance().lineage_pinning_enabled();
-  const bool job_enable_object_reconstruction =
+  const std::optional<bool> job_enable_object_reconstruction_or =
       worker_context->GetEnableObjectReconstruction();
   const bool lineage_reconstruction_enabled =
-      cluster_lineage_pinning_enabled && job_enable_object_reconstruction;
+      job_enable_object_reconstruction_or.has_value()
+          ? job_enable_object_reconstruction_or.value()
+          : cluster_lineage_pinning_enabled;
   auto reference_counter = std::make_shared<ReferenceCounter>(
       rpc_address,
       /*object_info_publisher=*/object_info_publisher.get(),

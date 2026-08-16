@@ -32,24 +32,26 @@ class WorkerContext {
  public:
   WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
-  // Return the generator return ID.
-  ///
-  /// By default, it deduces a generator return ID from a current task
-  /// from the context. However, it also supports manual specification of
-  /// put index and task id to support `AllocateDynamicReturnId`.
-  /// See the docstring of AllocateDynamicReturnId for more details.
-  ///
-  /// The caller should either not specify both task_id AND put_index
-  /// or specify both at the same time. Otherwise it will panic.
-  ///
-  /// \param[in] task_id The task id of the dynamically generated return ID.
-  /// Nil() together with a std::nullopt put_index deduces both from the current
-  /// worker context.
-  /// \param[in] put_index The equivalent of the return value of
-  /// WorkerContext::GetNextPutIndex.
-  /// Both task_id and put_index have to be supplied, or neither: deducing one
-  /// while the caller supplies the other would key the ObjectID to one task
-  /// while drawing the index from another. Mixing them panics.
+  /**
+   * @brief Return the generator return ID.
+   *
+   * By default, it deduces a generator return ID from a current task
+   * from the context. However, it also supports manual specification of
+   * put index and task id to support `AllocateDynamicReturnId`.
+   *
+   * The caller should either not specify both task_id AND put_index
+   * or specify both at the same time. Otherwise it will panic.
+   *
+   * @param task_id The task id of the dynamically generated return ID.
+   *                Nil() together with a std::nullopt put_index deduces both from the
+   * current worker context.
+   * @param put_index The equivalent of the return value of
+   *                  WorkerContext::GetNextPutIndex.
+   * Both task_id and put_index have to be supplied, or neither: deducing one
+   * while the caller supplies the other would key the ObjectID to one task
+   * while drawing the index from another. Mixing them panics.
+   * @return The generator return ID.
+   */
   ObjectID GetGeneratorReturnId(const TaskID &task_id,
                                 std::optional<ObjectIDIndexType> put_index);
 
@@ -76,17 +78,22 @@ class WorkerContext {
   std::shared_ptr<nlohmann::json> GetCurrentRuntimeEnv() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Initialize worker's job_id and job_config if they haven't already.
-  // Note a worker's job config can't be changed after initialization.
-  // Returns true if the job info was initialized by this call.
+  /**
+   * @brief Initialize worker's job_id and job_config if they haven't already.
+   *        A worker's job config can't be changed after initialization.
+   * @param job_id The job ID to initialize the worker to.
+   * @param job_config The job config to initialize the worker to.
+   * @return True if the job info was initialized by this call.
+   */
   bool MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  // Whether the job allows lost objects to be reconstructed from lineage.
-  // Returns true if the job config doesn't specify it (or isn't initialized
-  // yet), in which case the cluster-level `lineage_pinning_enabled` system
-  // config alone decides.
-  bool GetEnableObjectReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
+  /**
+   * @brief Whether the job allows lost objects to be reconstructed from lineage.
+   * @return whether the job config has object reconstruction enabled.
+   *         If not set, return std::nullopt.
+   */
+  std::optional<bool> GetEnableObjectReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
@@ -108,29 +115,41 @@ class WorkerContext {
 
   ActorID GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Returns whether the current thread is the main worker thread.
+  /**
+   * @return whether the current thread is the main worker thread.
+   */
   bool CurrentThreadIsMain() const;
 
-  /// Returns whether we should Block/Unblock through the raylet on Get/Wait.
-  /// This only applies to direct task calls.
+  /**
+   * @return whether we should Block/Unblock through the raylet on Get/Wait.
+   *         This only applies to direct task calls.
+   */
   bool ShouldReleaseResourcesOnBlockingCalls() const;
 
-  /// Returns whether we are in a direct call actor.
+  /**
+   * @return whether we are in a direct call actor.
+   */
   bool CurrentActorIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Returns whether we are in a direct call task. This encompasses both direct
-  /// actor and normal tasks.
+  /**
+   * @return whether we are in a direct call task. This encompasses both direct
+   *         actor and normal tasks.
+   */
   bool CurrentTaskIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   int CurrentActorMaxConcurrency() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Set a flag to indicate that the current actor should exit, it'll be checked
-  /// periodically and the actor will exit if the flag is set.
+  /**
+   * @brief Set a flag to indicate that the current actor should exit, it'll be checked
+   *        periodically and the actor will exit if the flag is set.
+   */
   void SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Get the flag to indicate that the current actor should exit.
+  /**
+   * @return the flag to indicate that the current actor should exit.
+   */
   bool GetCurrentActorShouldExit() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorDetached() const ABSL_LOCKS_EXCLUDED(mutex_);
@@ -139,7 +158,10 @@ class WorkerContext {
 
   uint64_t GetTaskIndex() const;
 
-  // Returns the next put object index; used to calculate ObjectIDs for puts.
+  /**
+   * @brief Returns the next put object index; used to calculate ObjectIDs for puts.
+   * @return The next put object index.
+   */
   ObjectIDIndexType GetNextPutIndex();
 
   int64_t GetTaskDepth() const;

@@ -3799,15 +3799,15 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
     if (worker_context_->MaybeInitializeJobInfo(job_id,
                                                 request.task_spec().job_config())) {
-      // The job config may disable object reconstruction for this job. It is
-      // initialized before the first task runs, i.e. before this worker can
-      // own any objects, so the flag never changes for a tracked reference.
+      // Take job config setting for lineage pinning if provided
       const bool cluster_lineage_pinning_enabled =
           RayConfig::instance().lineage_pinning_enabled();
-      const bool job_enable_object_reconstruction =
+      const std::optional<bool> job_enable_object_reconstruction_or =
           worker_context_->GetEnableObjectReconstruction();
       const bool lineage_reconstruction_enabled =
-          cluster_lineage_pinning_enabled && job_enable_object_reconstruction;
+          job_enable_object_reconstruction_or.has_value()
+              ? job_enable_object_reconstruction_or.value()
+              : cluster_lineage_pinning_enabled;
       reference_counter_->SetLineagePinningEnabled(lineage_reconstruction_enabled);
     }
     task_counter_.SetJobId(job_id);
