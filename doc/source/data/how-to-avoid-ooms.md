@@ -151,6 +151,8 @@ To change the frequency of this warning, set
 or disable the warning by setting value to -1. (current value: 30)
 ```
 
+Set ``memory`` to 1.25 times the maximum `max_uss_bytes` value. At the observed maximum, worker heap usage is 80% of the requested memory, leaving a 20% buffer.
+
 ### Enable default map memory
 
 Unless you specify a value, Ray Data assumes a UDF needs 0 ``memory``. So even if you've set ``memory`` correctly for some APIs, Ray Data can still oversubscribe tasks and actors for the ones you haven't.
@@ -210,11 +212,11 @@ If you do all of the following:
 - Start Ray with resource isolation enabled.
 - Set system memory large enough to cover everything used outside of Ray worker tasks and actors
 - Set logical memory to physical memory minus system memory minus object store memory.
-- Set ``memory`` for each API to at least the heap memory that API needs to run.
+- Set ``memory`` for each API to at least 125% of its maximum observed heap memory.
 
 Then you shouldn't see OOMs or node deaths.
 
-The main limitation of these configurations is performance. When you set ``memory`` based on worst-case heap memory use, the system might launch fewer tasks or actors than it might be able to, and that can decrease throughput.
+The main limitation of these configurations is performance. When you set ``memory`` based on maximum observed heap memory use, the system might launch fewer tasks or actors than it might be able to, and that can decrease throughput.
 
 If you want to experiment with oversubscription at the risk of potential OOMs, decrease `memory`.
 
