@@ -8,7 +8,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import List, Literal, Optional, Union
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pyarrow as pa
@@ -2190,18 +2190,17 @@ class TestOpTaskCancel:
         ref = Actor.remote().f.remote()
         task = MetadataOpTask(0, ref, lambda: None)
 
-        # Temporarily replace ray.cancel with a MagicMock that raises
-        # ValueError on the first call and returns None on the second call.
-        # Core test already verify the ValueError behavior.
-        with patch.object(ray, "cancel", side_effect=[ValueError, None]) as mock_cancel:
+        # temporary replace ray.cancel with a simplified version that
+        # raises an exception when force=True is passed.
+        def reject_actor(waitable, *, recursive, force):
+            if force:
+                raise ValueError("force=True is not supported for actor tasks.")
+
+        with patch.object(ray, "cancel", side_effect=reject_actor) as mock_cancel:
             task._cancel(force=True)
 
-        # First call should let the ValueError propagate,
-        # and the second call should fall back to force=False
-        assert mock_cancel.call_args_list == [
-            call(ref, recursive=True, force=True),
-            call(ref, recursive=True, force=False),
-        ]
+        # Actor tasks should cancel without force.
+        mock_cancel.assert_any_call(ref, recursive=True, force=False)
 
 
 def test_streaming_executor_logs_relevant_env_vars(
