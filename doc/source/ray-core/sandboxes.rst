@@ -7,7 +7,7 @@
 Ray Sandboxes (Experimental)
 =============================
 
-Ray Sandboxes use `gVisor <https://github.com/google/gvisor>`_ to provide lightweight, kernel-isolated execution environments for running untrusted code and agent tool calls safely on Ray clusters.
+Ray Sandboxes use `gVisor <https://gvisor.dev/docs/>`_ to provide lightweight, kernel-isolated execution environments for running untrusted code and agent tool calls safely on Ray clusters.
 
 .. warning::
 
@@ -18,13 +18,13 @@ Background
 
 The ability to sandbox model-generated code is critical for agentic RL and LLM agents. However, executing untrusted code directly within Ray worker processes
 or host environments introduces critical security and stability risks. Ray Sandboxes solve this challenge by running lightweight, kernel-isolated sandboxes
-directly on Ray worker nodes using `gVisor <https://github.com/google/gvisor>`_ (``runsc``). The library allows developers to scale and manage sandbox environments
+directly on Ray worker nodes using `gVisor <https://gvisor.dev/docs/>`_ (``runsc``). The library allows developers to scale and manage sandbox environments
 using familiar Ray concepts and primitives.
 
 What is gVisor?
 ---------------
 
-`gVisor <https://gvisor.dev/>`_ is an open-source application kernel written in Go that provides lightweight, defense-in-depth isolation for containers. Developed by Google, gVisor implements a substantial portion of the Linux system call interface in user space, acting as an isolation barrier between untrusted applications and the host operating system kernel.
+`gVisor <https://gvisor.dev/docs/>`_ is an open-source application kernel written in Go that provides lightweight, defense-in-depth isolation for containers. Developed by Google, gVisor implements a substantial portion of the Linux system call interface in user space, acting as an isolation barrier between untrusted applications and the host operating system kernel.
 
 Unlike standard container runtimes (such as Docker or ``runc``) where containers share the host Linux kernel directly, gVisor intercepts system calls made by containerized processes before they reach the host.
 Due to the daemonless nature of gVisor and its ability to run as a non-privileged user, it is easy to deploy and manage on top of existing container orchestrators like Kubernetes.
