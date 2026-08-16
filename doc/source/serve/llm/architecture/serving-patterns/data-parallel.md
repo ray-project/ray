@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Data parallel attention architecture in Ray Serve LLM: DPServer, the gang master registry, request flow, and autoscaling behavior."
+---
+
 (serve-llm-architecture-data-parallel)=
 # Data parallel attention
 

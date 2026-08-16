@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Configure RayService high availability with GCS fault tolerance so Serve keeps handling requests when the head pod fails."
+---
+
 (kuberay-rayservice-ha)=
 # RayService high availability
 
@@ -30,7 +36,7 @@ The [ray-service.high-availability.yaml](https://raw.githubusercontent.com/ray-p
 
 * Redis: Redis is necessary to make GCS fault tolerant. See {ref}`GCS fault tolerance <kuberay-gcs-ft>` for more details.
 * RayService: This RayService custom resource includes a 3-node RayCluster and a simple [Ray Serve application](https://github.com/ray-project/test_dag).
-* Ray Pod: This Pod sends requests to the RayService.
+* `ray-pod`: This Pod sends requests to the RayService.
 
 ### Step 4: Verify the Kubernetes Serve service
 
@@ -76,7 +82,7 @@ kubectl port-forward svc/rayservice-ha-head-svc 8265:8265
 ### Step 6: Send requests to the RayService
 
 ```sh
-# Log into the separate Ray Pod.
+# Log into the separate client Pod.
 kubectl exec -it ray-pod -- bash
 
 # Send requests to the RayService.

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Troubleshoot multi-node GPU serving on KubeRay: head pod placement on GPU nodes, AWS OFI plugin issues, and NCCL debugging."
+---
+
 (serve-multi-node-gpu-troubleshooting)=
 
 # Troubleshoot multi-node GPU serving on KubeRay

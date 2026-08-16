@@ -338,8 +338,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                            int64_t timeout_ms, c_bool fetch_local,
                            wait_async_callback callback, void *user)
         void CancelWaitAsync(uint64_t handle)
-        CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                          c_bool local_only)
         CRayStatus GetLocalObjectLocations(
                 const c_vector[CObjectID] &object_ids,
                 c_vector[optional[CObjectLocation]] *results)
@@ -506,6 +504,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         @staticmethod
         CCoreWorker &GetCoreWorker()
+
+        @staticmethod
+        optional[c_bool] ShouldInterruptTaskForCancellation()
 
         @staticmethod
         void Shutdown()
