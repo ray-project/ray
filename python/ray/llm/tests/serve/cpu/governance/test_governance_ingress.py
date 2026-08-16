@@ -88,16 +88,10 @@ class BlockerMiddleware(LLMMiddleware):
     async def before_inference(self, request, context):
         return BlockedResponse(rule_triggered=self.rule_triggered, reason=self.reason)
 
-    async def after_inference(self, request, response, context):
-        return response
-
 
 class PassThroughMiddleware(LLMMiddleware):
     async def before_inference(self, request, context):
         return request
-
-    async def after_inference(self, request, response, context):
-        return response
 
 
 class TrackingMiddleware(LLMMiddleware):
@@ -151,9 +145,6 @@ async def test_governance_throttled_returns_429():
     class ThrottleMiddleware(LLMMiddleware):
         async def before_inference(self, request, context):
             return blocked
-
-        async def after_inference(self, request, response, context):
-            return response
 
     ingress = _make_ingress([ThrottleMiddleware()], _make_mock_handle(mock_chat))
     response = await ingress._process_llm_request(
@@ -217,6 +208,73 @@ async def test_governance_streaming_fires_on_inference_complete():
     assert tracker.complete_calls == [
         {"prompt_tokens": 2, "completion_tokens": 4, "total_tokens": 6}
     ]
+
+
+class ResponseBlockerMiddleware(LLMMiddleware):
+    async def before_inference(self, request, context):
+        return request
+
+    async def after_inference(self, request, response, context):
+        return BlockedResponse(rule_triggered="PII_DETECTED", reason="leak")
+
+
+@pytest.mark.asyncio
+async def test_governance_after_inference_block_closes_upstream():
+    closed = {"value": False}
+
+    async def mock_chat(request, raw_request_info):
+        try:
+            yield _non_streaming_response("secret")
+            yield _non_streaming_response("should-not-run")
+        finally:
+            closed["value"] = True
+
+    ingress = _make_ingress([ResponseBlockerMiddleware()], _make_mock_handle(mock_chat))
+    response = await ingress._process_llm_request(
+        _chat_request(),
+        call_method=CallMethod.CHAT.value,
+    )
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 400
+    assert closed["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_governance_streaming_complete_on_client_disconnect():
+    tracker = TrackingMiddleware()
+
+    async def mock_chat(request, raw_request_info):
+        yield ChatCompletionStreamResponse(
+            id="stream-id",
+            choices=[{"index": 0, "delta": {"content": "hi"}, "finish_reason": None}],
+            model=MODEL_ID,
+            object="chat.completion.chunk",
+        )
+        yield ChatCompletionStreamResponse(
+            id="stream-id",
+            choices=[{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            model=MODEL_ID,
+            object="chat.completion.chunk",
+            usage={
+                "prompt_tokens": 2,
+                "completion_tokens": 4,
+                "total_tokens": 6,
+            },
+        )
+
+    ingress = _make_ingress([tracker], _make_mock_handle(mock_chat))
+    response = await ingress._process_llm_request(
+        _chat_request(stream=True),
+        call_method=CallMethod.CHAT.value,
+    )
+
+    assert isinstance(response, StreamingResponse)
+    iterator = response.body_iterator
+    await iterator.__anext__()
+    await iterator.aclose()
+
+    assert tracker.complete_calls == [{}]
 
 
 if __name__ == "__main__":

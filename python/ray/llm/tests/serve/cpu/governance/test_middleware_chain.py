@@ -13,12 +13,9 @@ def context() -> RequestContext:
     return RequestContext(model_id="test-model", request_id="req-1")
 
 
-class PassThroughMiddleware(LLMMiddleware):
+class BeforeOnlyMiddleware(LLMMiddleware):
     async def before_inference(self, request, context):
         return request
-
-    async def after_inference(self, request, response, context):
-        return response
 
 
 class BlockerMiddleware(LLMMiddleware):
@@ -28,9 +25,6 @@ class BlockerMiddleware(LLMMiddleware):
 
     async def before_inference(self, request, context):
         return BlockedResponse(rule_triggered=self.rule_triggered, reason=self.reason)
-
-    async def after_inference(self, request, response, context):
-        return response
 
 
 class TrackingMiddleware(LLMMiddleware):
@@ -148,6 +142,25 @@ async def test_after_inference_chains_response(context):
 
 
 @pytest.mark.asyncio
+async def test_after_inference_returns_blocked_response(context):
+    class ResponseBlockerMiddleware(LLMMiddleware):
+        async def before_inference(self, request, context):
+            return request
+
+        async def after_inference(self, request, response, context):
+            return BlockedResponse(
+                rule_triggered="PII_DETECTED",
+                reason="blocked in after_inference",
+            )
+
+    chain = MiddlewareChain([ResponseBlockerMiddleware()])
+    result = await chain.after_inference({"prompt": "hi"}, {"text": "out"}, context)
+
+    assert isinstance(result, BlockedResponse)
+    assert result.rule_triggered == "PII_DETECTED"
+
+
+@pytest.mark.asyncio
 async def test_on_inference_complete_calls_all(context):
     first = TrackingMiddleware("first")
     second = TrackingMiddleware("second")
@@ -158,3 +171,54 @@ async def test_on_inference_complete_calls_all(context):
 
     assert first.complete_calls == ["first"]
     assert second.complete_calls == ["second"]
+
+
+class FailingCompleteMiddleware(LLMMiddleware):
+    async def before_inference(self, request, context):
+        return request
+
+    async def after_inference(self, request, response, context):
+        return response
+
+    async def on_inference_complete(self, usage, context):
+        raise RuntimeError("boom")
+
+
+@pytest.mark.asyncio
+async def test_on_inference_complete_continues_after_middleware_error(context):
+    failing = FailingCompleteMiddleware()
+    tracker = TrackingMiddleware("tracker")
+    chain = MiddlewareChain([failing, tracker])
+    usage = {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+
+    await chain.on_inference_complete(usage, context)
+
+    assert tracker.complete_calls == ["tracker"]
+
+
+class FailingBeforeMiddleware(LLMMiddleware):
+    async def before_inference(self, request, context):
+        raise RuntimeError("before boom")
+
+
+@pytest.mark.asyncio
+async def test_before_only_middleware_is_instantiable(context):
+    middleware = BeforeOnlyMiddleware()
+    chain = MiddlewareChain([middleware])
+    request = {"prompt": "hello"}
+
+    assert await chain.before_inference(request, context) is request
+    assert await chain.after_inference(request, {"text": "out"}, context) == {
+        "text": "out"
+    }
+
+
+@pytest.mark.asyncio
+async def test_before_inference_reraises_middleware_error(context):
+    tracker = TrackingMiddleware("tracker")
+    chain = MiddlewareChain([FailingBeforeMiddleware(), tracker])
+
+    with pytest.raises(RuntimeError, match="before boom"):
+        await chain.before_inference({"prompt": "hello"}, context)
+
+    assert tracker.before_calls == []

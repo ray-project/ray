@@ -58,6 +58,8 @@ def build_request_context(
         session_id = session_id_from_headers(raw_request.headers)
         user_id = getattr(raw_request.state, "user_id", None)
         tenant_id = raw_request.headers.get("x-tenant-id")
+        if request_id is None:
+            request_id = raw_request.headers.get("x-request-id")
 
     body_user = getattr(body, "user", None)
     if user_id is None and body_user is not None:

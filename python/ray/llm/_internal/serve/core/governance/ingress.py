@@ -29,6 +29,9 @@ from ray.llm._internal.serve.core.ingress.utils import (
     _openai_json_wrapper,
     _peek_at_generator,
 )
+from ray.llm._internal.serve.observability.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _update_last_usage(last_usage: Dict[str, Any], item: Any) -> None:
@@ -45,11 +48,30 @@ def _update_last_usage(last_usage: Dict[str, Any], item: Any) -> None:
             last_usage.update(usage)
 
 
+async def _aclose_quietly(*gens: Any) -> None:
+    """Close async generators without raising.
+
+    ``_peek_at_generator`` returns a replay wrapper. Closing that wrapper
+    does not close the upstream LLM generator if the wrapper has not been
+    iterated, so callers pass both.
+    """
+    for gen in gens:
+        aclose = getattr(gen, "aclose", None)
+        if aclose is None:
+            continue
+        try:
+            await aclose()
+        except Exception:
+            logger.exception("Failed to close governance stream generator")
+
+
 async def _stream_with_completion_hook(
     chain: MiddlewareChain,
     context: RequestContext,
     gen: AsyncGenerator,
+    *,
     substitute_first: Any = None,
+    extra_close: tuple = (),
 ) -> AsyncGenerator:
     """Yield stream chunks from a peeked generator, then run on_inference_complete.
 
@@ -71,10 +93,48 @@ async def _stream_with_completion_hook(
             _update_last_usage(last_usage, item_to_yield)
             yield item_to_yield
     finally:
-        await chain.on_inference_complete(last_usage, context)
+        await _aclose_quietly(gen, *extra_close)
+        try:
+            await chain.on_inference_complete(last_usage, context)
+        except Exception:
+            logger.exception(
+                "Failed to run governance on_inference_complete hooks model=%s request_id=%s",
+                context.model_id,
+                context.request_id,
+            )
+
+
+async def _sse_stream_with_completion_hook(
+    chain: MiddlewareChain,
+    context: RequestContext,
+    gen: AsyncGenerator,
+    *,
+    substitute_first: Any = None,
+    extra_close: tuple = (),
+) -> AsyncGenerator[str, None]:
+    """Wrap chunks as SSE and aclose the inner generator on client disconnect.
+
+    ``_openai_json_wrapper`` does not aclose its source, so without this wrapper
+    ``on_inference_complete`` would only run when the inner generator is
+    garbage-collected.
+    """
+    hook_gen = _stream_with_completion_hook(
+        chain,
+        context,
+        gen,
+        substitute_first=substitute_first,
+        extra_close=extra_close,
+    )
+    try:
+        async for packet in _openai_json_wrapper(hook_gen):
+            yield packet
+    finally:
+        await _aclose_quietly(hook_gen)
 
 
 class GovernanceIngress(OpenAiIngress):
+    """OpenAI ingress with governance middleware hooks on the inference path."""
+
     def __init__(
         self,
         *args,
@@ -94,14 +154,20 @@ class GovernanceIngress(OpenAiIngress):
 
         before_result = await self._chain.before_inference(body, context)
         if isinstance(before_result, BlockedResponse):
+            logger.info(
+                "Governance blocked request before inference model=%s request_id=%s rule=%s",
+                context.model_id,
+                context.request_id,
+                before_result.rule_triggered,
+            )
             return blocked_response_to_http(before_result)
         body = before_result
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
-            gen = self._get_response(
+            upstream = self._get_response(
                 body=body, call_method=call_method, raw_request=raw_request
             )
-            initial_response, gen = await _peek_at_generator(gen)
+            initial_response, gen = await _peek_at_generator(upstream)
 
             if isinstance(initial_response, list):
                 first_chunk = initial_response[0]
@@ -109,6 +175,7 @@ class GovernanceIngress(OpenAiIngress):
                 first_chunk = initial_response
 
             if isinstance(first_chunk, ErrorResponse):
+                await _aclose_quietly(gen, upstream)
                 raise OpenAIHTTPException(
                     message=first_chunk.error.message,
                     status_code=first_chunk.error.code,
@@ -116,25 +183,51 @@ class GovernanceIngress(OpenAiIngress):
                 )
 
             if isinstance(first_chunk, NON_STREAMING_RESPONSE_TYPES):
-                response = await self._chain.after_inference(body, first_chunk, context)
-                await self._chain.on_inference_complete(
-                    usage_to_dict(response), context
-                )
-                return JSONResponse(content=response.model_dump())
+                try:
+                    response = await self._chain.after_inference(
+                        body, first_chunk, context
+                    )
+                    if isinstance(response, BlockedResponse):
+                        logger.info(
+                            "Governance blocked response after inference model=%s request_id=%s rule=%s",
+                            context.model_id,
+                            context.request_id,
+                            response.rule_triggered,
+                        )
+                        return blocked_response_to_http(response)
+                    await self._chain.on_inference_complete(
+                        usage_to_dict(response), context
+                    )
+                    return JSONResponse(content=response.model_dump())
+                finally:
+                    await _aclose_quietly(gen, upstream)
 
-            processed_first = await self._chain.after_inference(
-                body, first_chunk, context
-            )
+            try:
+                processed_first = await self._chain.after_inference(
+                    body, first_chunk, context
+                )
+            except Exception:
+                await _aclose_quietly(gen, upstream)
+                raise
+            if isinstance(processed_first, BlockedResponse):
+                logger.info(
+                    "Governance blocked streaming response model=%s request_id=%s rule=%s",
+                    context.model_id,
+                    context.request_id,
+                    processed_first.rule_triggered,
+                )
+                await _aclose_quietly(gen, upstream)
+                return blocked_response_to_http(processed_first)
             if isinstance(initial_response, list):
                 substitute_first = [processed_first, *initial_response[1:]]
             else:
                 substitute_first = processed_first
 
-            wrapped_gen = _stream_with_completion_hook(
+            openai_stream = _sse_stream_with_completion_hook(
                 self._chain,
                 context,
                 gen,
                 substitute_first=substitute_first,
+                extra_close=(upstream,),
             )
-            openai_stream = _openai_json_wrapper(wrapped_gen)
             return StreamingResponse(openai_stream, media_type="text/event-stream")
