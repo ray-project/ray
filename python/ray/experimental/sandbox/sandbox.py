@@ -11,8 +11,8 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="alpha")
 @ray.remote
+@PublicAPI(stability="alpha")
 class Sandbox:
     """Ray actor interface for managing scheduling and lifecycle of an isolated sandbox.
 

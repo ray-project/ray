@@ -42,7 +42,7 @@ gcloud container clusters create ray-sandbox-cluster \
 
 ## Step 2: Install the KubeRay Operator
 
-Follow {ref}`this document <kuberay-operator-deploy>` to install the latest stable KubeRay operator using the Helm repository.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator using the Helm repository.
 
 ---
 
@@ -51,11 +51,11 @@ Follow {ref}`this document <kuberay-operator-deploy>` to install the latest stab
 Create a RayJob which will create a RayCluster configured with `runsc` and submit a Ray job that manages Ray sandboxes:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.sandbox.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.sandbox.yaml
 ```
 
 The RayJob is configured to do the following:
-* Create a RayCluster configured to install runsc at startup and necessary securityContext required for gVisor
+* Create a RayCluster configured to install `runsc` at startup with the necessary `securityContext` required for gVisor
 * Submit a Ray job which will create a sandbox and execute some Python code inside it
 * Terminate sandboxes after the job is done
 
@@ -68,29 +68,29 @@ from ray.experimental import sandbox
 ray.init()
 
 sb = sandbox.create(
-    image='python:3.12-slim',
-    workdir='/workspace',
+    image="python:3.12-slim",
+    workdir="/workspace",
     cpu=1.0,
-    memory='1Gi',
+    memory="1Gi",
 )
 
-script = '''
+script = """\
 import platform
 import sys
 
-print('=== Hello from inside Ray Sandbox! ===')
-print(f'Python Version : {sys.version}')
-print(f'Platform       : {platform.platform()}')
-'''
-ray.get(sb.write_file.remote('/workspace/main.py', script))
+print("=== Hello from inside Ray Sandbox! ===")
+print(f"Python Version : {sys.version}")
+print(f"Platform       : {platform.platform()}")
+"""
+ray.get(sb.write_file.remote("/workspace/main.py", script))
 
-result = ray.get(sb.exec.remote('python3 /workspace/main.py'))
-print(f'Exit code: {result.exit_code}')
-print('Sandbox output:')
+result = ray.get(sb.exec.remote("python3 /workspace/main.py"))
+print(f"Exit code: {result.exit_code}")
+print("Sandbox output:")
 print(result.stdout)
 
 ray.get(sb.delete.remote())
-print('RayJob completed successfully!')
+print("Ray job completed successfully!")
 ```
 
 Monitor the status and output of the job:
