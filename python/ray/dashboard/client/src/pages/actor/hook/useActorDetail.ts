@@ -40,13 +40,9 @@ export const useActorDetail = () => {
       try {
         const actor_resp = await getActor(actorId);
         const data: ActorResp = actor_resp?.data;
-        const { data: rspData, msg, result } = data;
+        const { data: rspData, msg } = data;
         if (msg) {
           setMsg(msg);
-        }
-
-        if (result === false) {
-          setMsg("Actor Query Error Please Check Actor Id");
         }
 
         if (rspData.detail) {

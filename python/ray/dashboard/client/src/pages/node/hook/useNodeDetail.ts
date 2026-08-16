@@ -21,15 +21,10 @@ export const useNodeDetail = () => {
     async ([_, nodeId]) => {
       try {
         const { data } = await getNodeDetail(nodeId);
-        const { data: rspData, msg, result } = data;
+        const { data: rspData, msg } = data;
 
         if (msg) {
           setMsg(msg);
-        }
-
-        if (result === false) {
-          setMsg("Node Query Error Please Check Node Name");
-          setRefresh(false);
         }
 
         if (rspData?.detail) {
