@@ -1959,7 +1959,7 @@ uint64_t CoreWorker::WaitAsync(
 
   // In-process pre-pass only (GetIfExists). Do not call Contains() here — that
   // is a blocking raylet IPC and would stall the caller's event loop when
-  // invoked from ray._wait_async. Plasma locality is resolved on io_service_.
+  // invoked from _wait_async. Plasma locality is resolved on io_service_.
   for (size_t i = 0; i < ids.size(); i++) {
     if (IsWaitAsyncDone(state)) {
       break;

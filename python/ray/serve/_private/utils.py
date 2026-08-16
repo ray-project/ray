@@ -22,6 +22,7 @@ import ray.util.serialization_addons
 from ray import cloudpickle
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
+from ray._private.worker import _wait_async
 from ray._raylet import MessagePackSerializer  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
@@ -805,7 +806,7 @@ async def deployment_response_to_object_ref(deployment_response: Any) -> ray.Obj
     """
     obj_ref = await deployment_response._to_object_ref()
     # fetch_local=False: forward by reference; downstream fetches the value.
-    await ray._wait_async([obj_ref], fetch_local=False)
+    await _wait_async([obj_ref], fetch_local=False)
     return obj_ref
 
 

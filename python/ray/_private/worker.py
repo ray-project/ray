@@ -3352,7 +3352,7 @@ async def _wait_async(
     if num_returns > len(ray_waitables):
         raise ValueError(
             "num_returns cannot be greater than the number "
-            "of ray_waitables provided to ray._wait_async."
+            "of ray_waitables provided to _wait_async."
         )
 
     # timeout=None -> wait forever (-1). Explicit timeout uses milliseconds.

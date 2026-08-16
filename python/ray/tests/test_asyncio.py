@@ -15,6 +15,7 @@ from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     wait_for_pid_to_exit,
 )
+from ray._private.worker import _wait_async
 from ray.util.state import get_actor
 
 
@@ -496,7 +497,7 @@ async def test_wait_async_basic(ray_start_regular_shared):
 
     ref = blocked.remote()
     # Pending ref should not be ready yet.
-    ready, remaining = await ray._wait_async([ref], timeout=0.1, fetch_local=False)
+    ready, remaining = await _wait_async([ref], timeout=0.1, fetch_local=False)
     assert ready == []
     assert remaining == [ref]
 
@@ -508,7 +509,7 @@ async def test_wait_async_basic(ray_start_regular_shared):
         await asyncio.sleep(0.05)
         progressed = True
 
-    wait_task = asyncio.create_task(ray._wait_async([ref], fetch_local=False))
+    wait_task = asyncio.create_task(_wait_async([ref], fetch_local=False))
     progress_task = asyncio.create_task(mark_progressed())
     await progress_task
     assert progressed
@@ -526,7 +527,7 @@ async def test_wait_async_num_returns(ray_start_regular_shared):
         return x
 
     refs = [f.remote(i) for i in range(3)]
-    ready, remaining = await ray._wait_async(refs, num_returns=2, fetch_local=False)
+    ready, remaining = await _wait_async(refs, num_returns=2, fetch_local=False)
     assert len(ready) == 2
     assert len(remaining) == 1
     assert set(ready + remaining) == set(refs)
@@ -540,7 +541,7 @@ async def test_wait_async_timeout_zero_ready_ref(ray_start_regular_shared):
 
     ref = f.remote()
     ray.get(ref)
-    ready, remaining = await ray._wait_async([ref], timeout=0, fetch_local=False)
+    ready, remaining = await _wait_async([ref], timeout=0, fetch_local=False)
     assert ready == [ref]
     assert remaining == []
 
@@ -555,7 +556,7 @@ async def test_wait_async_cancel_releases_promptly(ray_start_regular_shared):
         return "ok"
 
     ref = blocked.remote()
-    wait_task = asyncio.create_task(ray._wait_async([ref], fetch_local=False))
+    wait_task = asyncio.create_task(_wait_async([ref], fetch_local=False))
     await asyncio.sleep(0.05)
     assert not wait_task.done()
     wait_task.cancel()
@@ -565,7 +566,7 @@ async def test_wait_async_cancel_releases_promptly(ray_start_regular_shared):
     # Cancelling the waiter must not affect the underlying task, and a new wait
     # on the same ref must still complete (unregister succeeded).
     assert ray.get(ref) == "ok"
-    ready, remaining = await ray._wait_async([ref], timeout=0, fetch_local=False)
+    ready, remaining = await _wait_async([ref], timeout=0, fetch_local=False)
     assert ready == [ref]
     assert remaining == []
 
@@ -574,11 +575,11 @@ async def test_wait_async_cancel_releases_promptly(ray_start_regular_shared):
 async def test_wait_async_rejects_invalid_args(ray_start_regular_shared):
     ref = ray.put(1)
     with pytest.raises(ValueError, match="unique"):
-        await ray._wait_async([ref, ref], fetch_local=False)
+        await _wait_async([ref, ref], fetch_local=False)
     with pytest.raises(ValueError, match="Invalid number"):
-        await ray._wait_async([ref], num_returns=0, fetch_local=False)
+        await _wait_async([ref], num_returns=0, fetch_local=False)
     with pytest.raises(TypeError):
-        await ray._wait_async(ref, fetch_local=False)  # type: ignore[arg-type]
+        await _wait_async(ref, fetch_local=False)  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -592,7 +593,7 @@ async def test_wait_async_unknown_owner_raises_value_error(ray_start_regular_sha
         os.urandom(ray.ObjectRef.size()), skip_adding_local_ref=True
     )
     with pytest.raises(ValueError, match="owner is unknown"):
-        await ray._wait_async([unknown_ref], fetch_local=False)
+        await _wait_async([unknown_ref], fetch_local=False)
     # ObjectRef.__init__ still sets in_core_worker with skip_adding_local_ref,
     # so __dealloc__ will remove_object_ref_reference. Add a matching local ref
     # so that remove does not log "Tried to decrease ref count for nonexistent".
@@ -609,7 +610,7 @@ async def test_wait_async_fetch_local_true_ready_ref(ray_start_regular_shared):
 
     ref = f.remote()
     ray.get(ref)
-    ready, remaining = await ray._wait_async([ref], timeout=0, fetch_local=True)
+    ready, remaining = await _wait_async([ref], timeout=0, fetch_local=True)
     assert ready == [ref]
     assert remaining == []
 
@@ -626,14 +627,14 @@ async def test_wait_async_fetch_local_true_waits_for_value(ray_start_regular_sha
 
     ref = blocked.remote()
     wait_task = asyncio.create_task(
-        ray._wait_async([ref], timeout=0.1, fetch_local=True)
+        _wait_async([ref], timeout=0.1, fetch_local=True)
     )
     ready, remaining = await wait_task
     assert ready == []
     assert remaining == [ref]
 
     ray.get(signal.send.remote())
-    ready, remaining = await ray._wait_async([ref], fetch_local=True)
+    ready, remaining = await _wait_async([ref], fetch_local=True)
     assert ready == [ref]
     assert remaining == []
     assert ray.get(ref) == "ok"
@@ -658,7 +659,7 @@ async def test_wait_async_fetch_local_true_local_plasma_object(
     ref = large.remote()
     assert len(ray.get(ref)) == 1024 * 1024
     # timeout=0 would skip the plasma path by design; use a positive timeout.
-    ready, remaining = await ray._wait_async([ref], timeout=5.0, fetch_local=True)
+    ready, remaining = await _wait_async([ref], timeout=5.0, fetch_local=True)
     assert ready == [ref]
     assert remaining == []
 
