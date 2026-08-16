@@ -158,6 +158,31 @@ TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
   ASSERT_EQ(to_schedule, scheduling::NodeID("local"));
 }
 
+TEST_F(SchedulingPolicyTest, NodeLabelSchedulingFiltersAllNonMatchingHardExpressions) {
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+
+  for (int i = 0; i < 8; i++) {
+    nodes.emplace(scheduling::NodeID(i),
+                  CreateNodeResourcesWithLabels(20, 20, {{"region", "us-east"}}));
+  }
+
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  raylet_scheduling_policy::CompositeSchedulingPolicy scheduling_policy(
+      local_node, *cluster_resource_manager, [](auto) { return true; });
+
+  rpc::SchedulingStrategy scheduling_strategy;
+  auto *expression = scheduling_strategy.mutable_node_label_scheduling_strategy()
+                         ->mutable_hard()
+                         ->add_expressions();
+  expression->set_key("region");
+  expression->mutable_operator_()->mutable_label_in()->add_values("us-west");
+
+  auto to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
+
+  ASSERT_TRUE(to_schedule.IsNil());
+}
+
 TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
   ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
