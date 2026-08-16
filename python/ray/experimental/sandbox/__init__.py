@@ -23,8 +23,10 @@ from ray.experimental.sandbox.image_manager import (
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.experimental.sandbox.sandbox import Sandbox
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI(stability="alpha")
 def create(
     image: str,
     cpu: Optional[float] = None,

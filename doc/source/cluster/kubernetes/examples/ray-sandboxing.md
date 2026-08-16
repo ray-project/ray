@@ -13,7 +13,7 @@ This guide covers how to deploy and orchestrate Ray Sandboxes using Ray and Kube
 Ray Sandboxes (introduced experimentally in `ray.experimental.sandbox`) allow Reinforcement Learning (RL) rollout workers and autonomous LLM agents to execute untrusted, model-generated code safely inside lightweight, kernel-isolated environments on Ray worker nodes. By utilizing [gVisor](https://github.com/google/gvisor) (`runsc`) directly inside Ray worker Pods, Ray delivers sub-100ms startup latencies and dense bin packing of hundreds of concurrent sandboxes per node without the multi-second overhead of provisioning separate Kubernetes Pods.
 
 :::{warning}
-Ray Sandboxes is an **experimental** feature (`ray.experimental.sandbox`). Experimental APIs are subject to change or removal in future releases prior to General Availability (GA) graduation.
+Ray Sandboxing is an **experimental** feature (`ray.experimental.sandbox`). Experimental APIs are subject to change or removal in future releases prior to General Availability (GA) graduation.
 :::
 
 ---
@@ -56,7 +56,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 
 The RayJob is configured to do the following:
 * Create a RayCluster configured to install runsc at startup and necessary securityContext required for gVisor
-* Submit a Ray job which will create a sandbox and execute some Python code inside it 
+* Submit a Ray job which will create a sandbox and execute some Python code inside it
 * Terminate sandboxes after the job is done
 
 Below is the script used for the RayJob:

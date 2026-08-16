@@ -19,7 +19,7 @@ Background
 The ability to sandbox model-generated code is critical for agentic RL and LLM agents. However, executing untrusted code directly within Ray worker processes
 or host environments introduces critical security and stability risks. Ray Sandboxes solve this challenge by running lightweight, kernel-isolated sandboxes
 directly on Ray worker nodes using `gVisor <https://github.com/google/gvisor>`_ (``runsc``). The library allows developers to scale and manage sandbox environments
-using familiar Ray concepts and primitives. 
+using familiar Ray concepts and primitives.
 
 What is gVisor?
 ---------------
@@ -27,7 +27,7 @@ What is gVisor?
 `gVisor <https://gvisor.dev/>`_ is an open-source application kernel written in Go that provides lightweight, defense-in-depth isolation for containers. Developed by Google, gVisor implements a substantial portion of the Linux system call interface in user space, acting as an isolation barrier between untrusted applications and the host operating system kernel.
 
 Unlike standard container runtimes (such as Docker or ``runc``) where containers share the host Linux kernel directly, gVisor intercepts system calls made by containerized processes before they reach the host.
-Due to the daemonless nature of gVisor and it's ability to run as a non-privileged user, it is easy to deploy and manage on top of existing container orchestrators like Kubernetes.
+Due to the daemonless nature of gVisor and its ability to run as a non-privileged user, it is easy to deploy and manage on top of existing container orchestrators like Kubernetes.
 
 Benefits of gVisor
 ^^^^^^^^^^^^^^^^^^
@@ -79,12 +79,12 @@ The Ray Sandboxing subsystem is organized into hierarchical layers:
    |   +-----------------------+       +-----------------------+       |
    +-------------------------------------------------------------------+
 
-APIs
-----------
+Core Components
+---------------
 
-1. **High-Level Helper (``ray.experimental.sandbox.create``):** Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an ``ActorHandle``.
-2. **Sandbox Actor (``ray.experimental.sandbox.Sandbox``):** A Ray actor managing scheduling, lifecycle, command execution, and file I/O for an isolated sandbox instance.
-3. **Sandbox Runtime (``ray.experimental.sandbox.runtime.SandboxRuntime``):** A low-level abstraction that manages the lifecycle of local sandboxes, image pulling/caching, and interactions with the execution backend.
+1. **High-Level Helper (:func:`ray.experimental.sandbox.create <ray.experimental.sandbox.create>`):** Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an ``ActorHandle``.
+2. **Sandbox Actor (:class:`ray.experimental.sandbox.Sandbox <ray.experimental.sandbox.Sandbox>`):** A Ray actor managing scheduling, lifecycle, command execution, and file I/O for an isolated sandbox instance.
+3. **Sandbox Runtime (:class:`ray.experimental.sandbox.runtime.SandboxRuntime <ray.experimental.sandbox.runtime.SandboxRuntime>`):** A low-level abstraction that manages the lifecycle of local sandboxes, image pulling/caching, and interactions with the execution backend.
 4. **gVisor Backend (``ray.experimental.sandbox.backend.GVisorSandboxBackend``):** Executes commands and isolates processes via gVisor's OCI runtime (``runsc``).
 5. **Image Manager (``ray.experimental.sandbox.image_manager.ImageManager``):** Automatically pulls container images (e.g. from Docker Hub, GHCR, or local tar archives), extracts root filesystems into ``/tmp/ray/sandbox/images``, and builds OCI ``config.json`` runtime specifications.
 
@@ -143,6 +143,7 @@ You can write source files directly into the sandbox or upload local files from 
 
 .. code-block:: python
 
+   import textwrap
    import ray
    from ray.experimental import sandbox
 
@@ -155,16 +156,16 @@ You can write source files directly into the sandbox or upload local files from 
    )
 
    # 1. Write untrusted model-generated script into the sandbox
-   code = """
-   def fibonacci(n):
-       a, b = 0, 1
-       for _ in range(n):
-           a, b = b, a + b
-       return a
+   code = textwrap.dedent("""\
+       def fibonacci(n):
+           a, b = 0, 1
+           for _ in range(n):
+               a, b = b, a + b
+           return a
 
-   with open('/workspace/output.txt', 'w') as f:
-       f.write(f"fib(30) = {fibonacci(30)}")
-   """
+       with open('/workspace/output.txt', 'w') as f:
+           f.write(f"fib(30) = {fibonacci(30)}")
+   """)
    ray.get(sb.write_file.remote("/workspace/solution.py", code))
 
    # 2. Execute the script inside the sandbox
@@ -250,96 +251,19 @@ If you are building custom RL environment actors or specialized rollout workers,
 API Reference
 =============
 
-``ray.experimental.sandbox.create``
------------------------------------
+For detailed signatures, parameters, and return types, see the :ref:`Ray Sandbox API reference <ray-sandbox-ref>`.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 20 15 15 50
+.. autosummary::
+    :nosignatures:
+    :toctree: api/doc/
 
-   * - Parameter
-     - Type
-     - Default
-     - Description
-   * - ``image``
-     - ``str``
-     - *Required*
-     - Container image name (e.g., ``"python:3.10-slim"``, ``"busybox:latest"``) or local tar archive path.
-   * - ``cpu``
-     - ``float``
-     - ``None``
-     - Number of CPU cores allocated to the sandbox and Ray actor.
-   * - ``memory``
-     - ``str | int | float``
-     - ``None``
-     - Memory allocation limit (e.g., ``"512Mi"``, ``"1Gi"``, or integer bytes).
-   * - ``env``
-     - ``dict``
-     - ``None``
-     - Dictionary of environment variables to inject into the sandbox.
-   * - ``workdir``
-     - ``str``
-     - ``None``
-     - Working directory inside the sandbox (e.g., ``"/workspace"``). The working directory is mounted as a writable scratch directory.
-   * - ``ttl_seconds``
-     - ``int``
-     - ``3600``
-     - Automatic cleanup time-to-live in seconds.
-   * - ``timeout_seconds``
-     - ``float``
-     - ``30.0``
-     - Timeout in seconds for sandbox creation and image pulling.
-   * - ``rootless``
-     - ``bool``
-     - ``True``
-     - Whether to run gVisor in rootless mode.
-   * - ``network``
-     - ``str``
-     - ``"none"``
-     - Network isolation mode (``"none"``, ``"host"``, or ``"sandbox"``).
-   * - ``readonly``
-     - ``bool``
-     - ``True``
-     - Whether to mount the base container image root filesystem as read-only.
-   * - ``resources``
-     - ``dict``
-     - ``None``
-     - Custom Ray logical resource requirements for actor placement.
+    ray.experimental.sandbox.create
+    ray.experimental.sandbox.Sandbox
+    ray.experimental.sandbox.SandboxRuntime
+    ray.experimental.sandbox.ExecResult
+    ray.experimental.sandbox.SandboxStatus
+    ray.experimental.sandbox.SandboxError
 
-``ray.experimental.sandbox.Sandbox``
-------------------------------------
-
-Ray Actor representing an isolated sandbox instance.
-
-* **``exec(command: str | list[str], timeout: float = None, cwd: str = None, env: dict = None) -> ExecResult``**: Executes a command synchronously inside the running sandbox.
-* **``write_file(path: str, content: str | bytes) -> None``**: Writes string or binary data directly to a file inside the sandbox.
-* **``read_file(path: str) -> bytes``**: Reads binary file content from the sandbox.
-* **``upload_file(local_path: str, remote_path: str) -> None``**: Copies a file from the host node filesystem into the sandbox.
-* **``download_file(remote_path: str, local_path: str) -> None``**: Copies a file from the sandbox back to the host filesystem.
-* **``get_status() -> SandboxStatus``**: Returns the operational status (``SandboxStatus.RUNNING``, ``SandboxStatus.TERMINATED``, etc.).
-* **``get_instance_id() -> str``**: Returns the unique instance identifier (e.g. ``"ray-sandbox-a1b2c3d4e5f6"``).
-* **``get_config() -> SandboxConfig``**: Returns the configuration used to instantiate the sandbox.
-* **``delete() -> None`` / ``terminate() -> None``**: Immediately shuts down the sandbox container and cleans up temporary bundle directories.
-
-``ray.experimental.sandbox.backend.base.ExecResult``
-----------------------------------------------------
-
-Dataclass returned by command execution:
-
-* **``exit_code``** (``int``): Process return code (``0`` indicates success).
-* **``stdout``** (``str``): Standard output string.
-* **``stderr``** (``str``): Standard error string.
-* **``duration_seconds``** (``float``): Wall-clock command execution duration in seconds.
-* **``duration_ms``** (``float``): Wall-clock command execution duration in milliseconds.
-
-Exceptions
-----------
-
-* **``SandboxError``**: Base exception class for all sandbox errors.
-* **``SandboxCreationError``**: Raised when sandbox creation or container image acquisition fails.
-* **``SandboxTimeoutError``**: Raised when command execution exceeds the specified timeout.
-* **``SandboxExecError``**: Raised when command execution encounters an unexpected backend failure.
-* **``SandboxNotFoundError``**: Raised when accessing an unknown or already deleted sandbox ID.
 
 Security & Isolation Model
 ==========================

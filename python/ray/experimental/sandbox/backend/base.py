@@ -4,8 +4,10 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.config import SandboxConfig
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI(stability="alpha")
 class SandboxStatus(Enum):
     """Operational status of a Sandbox."""
 
@@ -15,6 +17,7 @@ class SandboxStatus(Enum):
     ERROR = "ERROR"
 
 
+@DeveloperAPI(stability="alpha")
 @dataclass
 class ExecResult:
     """Result of executing a command inside a Sandbox.
