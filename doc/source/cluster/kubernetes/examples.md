@@ -44,4 +44,4 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-rayservice-deepseek-example`
 - {ref}`kuberay-verl`
 - {ref}`kuberay-agent-sandbox`
-* {ref}`kuberay-sandboxing`
+- {ref}`kuberay-sandboxing`

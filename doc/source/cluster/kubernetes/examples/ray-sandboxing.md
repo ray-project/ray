@@ -42,7 +42,7 @@ gcloud container clusters create ray-sandbox-cluster \
 
 ## Step 2: Install the KubeRay Operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator using the Helm repository.
+Follow {ref}`this document <kuberay-operator-deploy>` to install the latest stable KubeRay operator using the Helm repository.
 
 ---
 
@@ -100,7 +100,7 @@ Monitor the status and output of the job:
 kubectl get pods -l job-name=rayjob-sandbox
 
 # Stream the demo logs
-$ kubectl logs -f -l job-name=rayjob-sandbox
+kubectl logs -f -l job-name=rayjob-sandbox
 ```
 
 The output should be similar to the following:
@@ -119,7 +119,7 @@ RayJob completed successfully!
 ```
 ---
 
-## (Optional) Step 6: Verify Isolation and Security Guarantees
+## (Optional) Step 4: Verify Isolation and Security Guarantees
 
 You can verify that untrusted code running inside the sandbox cannot compromise the host environment or escape its sandbox boundary:
 
@@ -146,7 +146,7 @@ print(res.exit_code)  # Non-zero exit code
 
 ---
 
-## (Optional) Step 7: Build a Custom Ray Image with Pre-installed `runsc`
+## (Optional) Step 5: Build a Custom Ray Image with Pre-installed `runsc`
 
 Ray Sandboxes require the `runsc` binary to be available in the Ray worker container's `$PATH` (for example, `/usr/local/bin/runsc`).
 
@@ -173,6 +173,6 @@ USER ray
 
 ## Next Steps
 
-* Read the [Ray Sandboxes Core Documentation](ray-core-sandboxes) for API details and custom actor patterns.
+* Read the {ref}`Ray Sandboxes Core Documentation <ray-core-sandboxes>` for API details and custom actor patterns.
 * Learn more about [gVisor](https://gvisor.dev/docs/).
-* Explore [Resource Isolation with Writable Cgroups](resource-isolation-with-writable-cgroups) to isolate Ray system processes from worker processes.
+* Explore {ref}`Resource Isolation with Cgroup v2 <resource-isolation>` to isolate Ray system processes from worker processes.
