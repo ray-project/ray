@@ -108,7 +108,18 @@ class SandboxRuntime:
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
     ) -> ExecResult:
-        """Execute a command inside the specified sandbox."""
+        """Execute a command inside the specified sandbox.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            command: Command to execute, either as a string or a list of arguments.
+            timeout: Maximum execution time in seconds.
+            cwd: Working directory inside the sandbox for command execution.
+            env: Environment variables to set for the command.
+
+        Returns:
+            ExecResult containing exit code, stdout, and stderr.
+        """
         return self._backend.exec_command(
             instance_id,
             command,
@@ -125,7 +136,18 @@ class SandboxRuntime:
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
     ) -> ExecResult:
-        """Execute a command inside the specified sandbox asynchronously."""
+        """Execute a command inside the specified sandbox asynchronously.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            command: Command to execute, either as a string or a list of arguments.
+            timeout: Maximum execution time in seconds.
+            cwd: Working directory inside the sandbox for command execution.
+            env: Environment variables to set for the command.
+
+        Returns:
+            ExecResult containing exit code, stdout, and stderr.
+        """
         return await asyncio.to_thread(
             self.exec,
             instance_id,
@@ -136,7 +158,13 @@ class SandboxRuntime:
         )
 
     def upload_file(self, instance_id: str, local_path: str, remote_path: str) -> None:
-        """Copy local file into the sandbox."""
+        """Copy local file into the sandbox.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            local_path: Path to the source file on the local filesystem.
+            remote_path: Destination path inside the sandbox.
+        """
         with open(local_path, "rb") as f:
             content = f.read()
         self._backend.write_file(instance_id, remote_path, content)
@@ -144,7 +172,13 @@ class SandboxRuntime:
     def download_file(
         self, instance_id: str, remote_path: str, local_path: str
     ) -> None:
-        """Copy file from the sandbox to local."""
+        """Copy file from the sandbox to local.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            remote_path: Path to the source file inside the sandbox.
+            local_path: Destination path on the local filesystem.
+        """
         content = self._backend.read_file(instance_id, remote_path)
         local_dir = os.path.dirname(os.path.abspath(local_path))
         if local_dir:
@@ -155,25 +189,58 @@ class SandboxRuntime:
     def write_file(
         self, instance_id: str, path: str, content: Union[str, bytes]
     ) -> None:
-        """Write string or binary content directly to a file inside the sandbox."""
+        """Write string or binary content directly to a file inside the sandbox.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            path: Destination file path inside the sandbox.
+            content: String or binary content to write into the file.
+        """
         self._backend.write_file(instance_id, path, content)
 
     def read_file(self, instance_id: str, path: str) -> bytes:
-        """Read binary content from a file inside the sandbox."""
+        """Read binary content from a file inside the sandbox.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            path: Path to the file inside the sandbox to read.
+
+        Returns:
+            File content as bytes.
+        """
         return self._backend.read_file(instance_id, path)
 
     def get_status(self, instance_id: str) -> SandboxStatus:
-        """Query operational status of the sandbox."""
+        """Query operational status of the sandbox.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+
+        Returns:
+            SandboxStatus of the sandbox instance.
+        """
         return self._backend.get_status(instance_id)
 
     def delete(self, instance_id: str) -> None:
-        """Clean up and terminate the sandbox instance."""
+        """Clean up and terminate the sandbox instance.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+        """
         self._backend.delete_sandbox(instance_id)
 
     def terminate(self, instance_id: str) -> None:
-        """Clean up and terminate the sandbox instance."""
+        """Clean up and terminate the sandbox instance.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+        """
         self.delete(instance_id)
 
     async def delete_async(self, instance_id: str) -> None:
-        """Clean up and terminate the sandbox instance asynchronously."""
+        """Clean up and terminate the sandbox instance asynchronously.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+        """
         await asyncio.to_thread(self.delete, instance_id)
