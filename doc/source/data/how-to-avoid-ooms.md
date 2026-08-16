@@ -151,7 +151,7 @@ To change the frequency of this warning, set
 or disable the warning by setting value to -1. (current value: 30)
 ```
 
-Set ``memory`` to 1.25 times the maximum `max_uss_bytes` value. At the observed maximum, worker heap usage is 80% of the requested memory, leaving a 20% buffer.
+Set ``memory`` to 1.25 times the `max` value in `max_uss_bytes`. At the observed maximum, worker heap usage is 80% of the requested memory, leaving a 20% buffer.
 
 ### Enable default map memory
 
