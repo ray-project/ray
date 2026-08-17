@@ -44,6 +44,10 @@ PARTS="${PARTS:-}"
 say() { printf '\n\033[1;35m### %s\033[0m\n' "$*"; }
 
 say "1/3 environment (setup.sh)"
+# env.sh (written by setup.sh) exports its own ARROW_RS_S3_BUCKET; preserve a
+# value the caller set explicitly so `ARROW_RS_S3_BUCKET=… bash run_loss_triage.sh`
+# is honored rather than silently clobbered.
+CALLER_S3_BUCKET="${ARROW_RS_S3_BUCKET:-}"
 if [ "${FORCE_SETUP:-0}" != "1" ] && [ -f "$SCRIPT_DIR/env.sh" ] && \
    ( source "$SCRIPT_DIR/env.sh" >/dev/null 2>&1 && \
      python -c "import ray, ray_data_arrow_rs" >/dev/null 2>&1 ); then
@@ -52,6 +56,7 @@ else
   bash "$SCRIPT_DIR/setup.sh"
 fi
 source "$SCRIPT_DIR/env.sh"
+[ -n "$CALLER_S3_BUCKET" ] && export ARROW_RS_S3_BUCKET="$CALLER_S3_BUCKET"
 export RAY_ADDRESS=local
 
 say "2/3 fixtures (root=$FIXTURES_ROOT scale=$FIXTURE_SCALE: auto_rg, bin_sweep, tensors_cp)"
