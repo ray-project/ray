@@ -129,7 +129,7 @@ If your UDF runs on GPU, a good rule of thumb is to use about 1/4 of the GPU mem
 
 If a task or actor uses more than a few GiB of memory, set ``memory``. This tells Ray Data how much memory each task or actor needs so it doesn't launch too many at once.
 
-To pick a value for ``memory``, read the Ray Data log file and look for the `max_uss_bytes` field. Ray typically writes the log file to `/tmp/ray/session-latest/ray-data/ray-data.log`.
+To pick a value for ``memory``, read the Ray Data log file and look for the `max` value in the `max_uss_bytes` field. Set ``memory`` to 1.25 times that value. This keeps the observed maximum worker heap usage at 80% of the requested memory, leaving a 20% buffer. Ray typically writes the log file to `/tmp/ray/session-latest/ray-data/ray-data.log`.
 
 ```
 ReadRange->MapBatches(uses_lots_of_memory): {'average_num_outputs_per_task': 1.0, ..., 'max_uss_bytes': {'num_samples': 20, 'mean': 4393336422.4, 'variance': 26855731156.89417, 'min': 4393119744, 'max': 4393529344, 'p50': 4393418752.0, 'p90': 4393500672.0, 'p95': 4393529344.0, 'p99': 4393529344.0}, ...}
@@ -150,8 +150,6 @@ To change the frequency of this warning, set
 `DataContext.get_current().issue_detectors_config.high_memory_detector_config.detection_time_interval_s`,
 or disable the warning by setting value to -1. (current value: 30)
 ```
-
-Set ``memory`` to 1.25 times the `max` value in `max_uss_bytes`. At the observed maximum, worker heap usage is 80% of the requested memory, leaving a 20% buffer.
 
 ### Enable default map memory
 
