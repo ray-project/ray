@@ -17,7 +17,7 @@ from ray.data._internal.execution.interfaces.distribution_tracker import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data.block import BlockMetadata, TaskExecWorkerStats
+from ray.data.block import BlockMetadata, ReadFilesTaskStats, TaskExecWorkerStats
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -577,6 +577,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._op_task_duration_stats = DistributionTracker()
         self._max_uss_bytes = DistributionTracker()
         self._max_rss_bytes = DistributionTracker()
+        # Per-task reader-level aggregates, reported by ReadFiles tasks via
+        # ``TaskExecWorkerStats.custom_op_stats`` (see ``ReadFilesTaskStats``).
+        # Empty for non-read operators.
+        self._read_task_decoded_bytes = DistributionTracker()
+        self._read_task_decode_wall_s = DistributionTracker()
+        self._read_task_peak_batch_bytes = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -906,6 +912,45 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         return self._max_uss_bytes
 
     @metric_property(
+        description="Distribution across read tasks of bytes the reader decoded.",
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def read_task_decoded_bytes(self) -> DistributionTracker:
+        return self._read_task_decoded_bytes
+
+    @metric_property(
+        description=(
+            "Distribution across read tasks of wall seconds spent inside the "
+            "reader's decode iterator."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def read_task_decode_wall_s(self) -> DistributionTracker:
+        return self._read_task_decode_wall_s
+
+    @metric_property(
+        description=(
+            "Distribution across read tasks of the largest single table the "
+            "reader yielded (decode working-set proxy)."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def read_task_peak_batch_bytes(self) -> DistributionTracker:
+        return self._read_task_peak_batch_bytes
+
+    @metric_property(
+        description="Average bytes decoded by the reader per read task.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    def average_decoded_bytes_per_read_task(self) -> Optional[float]:
+        if self.read_task_decoded_bytes.num_samples == 0:
+            return None
+        return self.read_task_decoded_bytes.mean
+
+    @metric_property(
         description="Average USS usage of tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
@@ -1206,6 +1251,29 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         if task_exec_stats is not None and task_exec_stats.max_rss_bytes is not None:
             self._max_rss_bytes.add_sample(task_exec_stats.max_rss_bytes)
+
+        # Fold reader-level per-task aggregates (reported by ReadFiles tasks)
+        # into their distributions. Fused Read->X tasks report exactly one
+        # entry (the read transform); the sum handles hypothetical multiples.
+        if task_exec_stats is not None and task_exec_stats.custom_op_stats:
+            read_stats = [
+                s
+                for s in task_exec_stats.custom_op_stats
+                # manifests == 0 means the task read nothing (e.g. every
+                # manifest pruned away) — sampling its zeros would skew the
+                # per-task decode distributions.
+                if isinstance(s, ReadFilesTaskStats) and s.manifests > 0
+            ]
+            if read_stats:
+                self._read_task_decoded_bytes.add_sample(
+                    sum(s.decoded_bytes for s in read_stats)
+                )
+                self._read_task_decode_wall_s.add_sample(
+                    sum(s.decode_wall_s for s in read_stats)
+                )
+                self._read_task_peak_batch_bytes.add_sample(
+                    max(s.peak_batch_bytes for s in read_stats)
+                )
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s
