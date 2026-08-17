@@ -63,7 +63,7 @@ Block size limiting
 Ray Data bounds block sizes to avoid excessive communication overhead and prevent
 out-of-memory errors. Small blocks are good for latency and more streamed execution,
 while large blocks reduce scheduler and communication overhead. The default range
-attempts to make a good tradeoff for most jobs.
+attempts to make a good trade-off for most jobs.
 
 Ray Data attempts to bound block sizes between 1 MiB and 128 MiB. To change the block
 size range, configure the ``target_min_block_size`` and ``target_max_block_size``
@@ -102,8 +102,8 @@ Shuffle algorithms
 In data processing, *shuffling* is the process of redistributing a dataset's partitions. Ray Data calls these partitions
 :ref:`blocks <data_key_concepts>`.
 
-Ray Data provides several shuffle backends. The newest, :ref:`Shuffle v2 <shuffle-v2>` (currently
-in Alpha), is the intended replacement for the classical :ref:`hash-shuffling <hash-shuffle>` and
+Ray Data provides several shuffle backends. The newest, :ref:`shuffle v2 <shuffle-v2>`, is in alpha
+and is the intended replacement for the classical :ref:`hash-shuffling <hash-shuffle>` and
 :ref:`range-partitioning <range-partitioning-shuffle>` backends.
 
 .. _shuffle-v2:
@@ -111,13 +111,13 @@ in Alpha), is the intended replacement for the classical :ref:`hash-shuffling <h
 Shuffle v2
 ~~~~~~~~~~
 
-.. note:: Shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is currently in **Alpha**.
+.. note:: Shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is in alpha.
 
-Shuffle v2 is a new shuffle backend intended to replace the other shuffle backends. Today it
-provides an updated hash-shuffle implementation. Unlike the aggregator-actor model used by the previous
-:ref:`hash-shuffling <hash-shuffle>` implementation, shuffle v2 is *driver-driven* and doesn't store intermediate
-shuffle data in long-lived aggregator actors. Instead, that data lives in the object store, which
-means:
+Shuffle v2 is the intended replacement for the other shuffle backends. Today it provides an updated
+hash-shuffle implementation. Unlike the aggregator-actor model used by the previous
+:ref:`hash-shuffling <hash-shuffle>` implementation, shuffle v2 is *driver-driven* and doesn't store
+intermediate shuffle data in long-lived aggregator actors. Instead, that data lives in the object
+store, which means:
 
 - Ray can spill intermediate data to disk under memory pressure, avoiding the out-of-memory risk of
   holding whole partitions in aggregator memory.
@@ -129,7 +129,7 @@ Shuffle v2 also coalesces shuffle inputs into larger batches before partitioning
 Shuffle v2 supports the following operations:
 
 - Aggregations (:meth:`Dataset.aggregate <ray.data.Dataset.aggregate>`)
-- Group-bys (:meth:`Dataset.groupby <ray.data.Dataset.groupby>`)
+- Group-by operations (:meth:`Dataset.groupby <ray.data.Dataset.groupby>`)
 - Key-based repartitioning (:meth:`Dataset.repartition <ray.data.Dataset.repartition>` with ``keys``)
 - Joins (:meth:`Dataset.join <ray.data.Dataset.join>`)
 
@@ -137,12 +137,12 @@ Shuffle v2 doesn't yet support :meth:`Dataset.sort <ray.data.Dataset.sort>` or
 :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, which use the
 :ref:`range-partitioning shuffle <range-partitioning-shuffle>`.
 
-To enable shuffle v2 for the whole cluster, set the environment variable before starting your
-application:
+To enable shuffle v2 for the whole cluster, set ``RAY_DATA_DEFAULT_SHUFFLE_STRATEGY`` before
+starting your application:
 
 .. code-block:: bash
 
-    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY="shuffle_v2"
+    export RAY_DATA_DEFAULT_SHUFFLE_STRATEGY="shuffle_v2"
 
 To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
 
@@ -157,10 +157,10 @@ To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
 Tuning shuffle v2
 ^^^^^^^^^^^^^^^^^
 
-Shuffle v2 provides the following knobs:
+Shuffle v2 provides the following settings:
 
-**Input batch size** (``DataContext.shuffle_input_batch_bytes``, environment variable
-``RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES``, default 1 GiB). This setting only applies to the
+**Input batch size**: ``DataContext.shuffle_input_batch_bytes``, environment variable
+``RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES``, default 1 GiB. This setting applies only to the
 ``SHUFFLE_V2`` strategy.
 
 Shuffle v2 buffers input blocks from the same node until their combined size reaches this
@@ -174,8 +174,8 @@ parallelism and the number of intermediate shard objects:
   coarse-grained.
 - Set the threshold to ``0`` to disable batching and partition each input bundle individually.
 
-**Inline object threshold** (``max_direct_call_object_size``, environment variable
-``RAY_max_direct_call_object_size``, default 100 KB). This is a Ray Core setting rather than a Ray
+**Inline object threshold**: ``max_direct_call_object_size``, environment variable
+``RAY_max_direct_call_object_size``, default 100 KiB. This is a Ray Core setting rather than a Ray
 Data one.
 
 When shuffle v2 partitions a block across many partitions, an individual partition's shard can be
@@ -184,7 +184,7 @@ the memory of the process that submitted the work (typically the driver on the h
 than in the object store. For a shuffle that produces many small shards, these inline objects
 accumulate on the head node and can cause an out-of-memory failure there.
 
-Lower this threshold (for example, ``RAY_max_direct_call_object_size=8192`` for 8 KB) so that only
+Lower this threshold, for example ``RAY_max_direct_call_object_size=8192`` for 8 KiB, so that only
 small metadata stays inline and shard data travels through the object store, which is spillable and
 distributed across the cluster. This reduces the risk of head-node out-of-memory failures.
 
@@ -205,8 +205,8 @@ Hash-shuffling is particularly useful for operations that require deterministic 
 ensures that rows with the same key values land in the same partition.
 
 .. note:: Hash-shuffle (``ShuffleStrategy.HASH_SHUFFLE``) is the default shuffle strategy for
-    key-based operations: aggregations, group-bys, key-based repartitioning, and joins. To set it
-    explicitly, specify
+    key-based operations: aggregations, group-by operations, key-based repartitioning, and joins.
+    To select it explicitly, set
     ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before
     creating a ``Dataset``.
 
