@@ -91,7 +91,8 @@ load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependen
 # Bazel's downloader, where --experimental_repository_downloader_retries and downloader
 # URL rewriting would finally apply to them. That upgrade rewrites whl_library, repo
 # naming and the generated requirements.bzl, so it needs to be its own change; delete
-# this block as part of it.
+# this block as part of it, including the pip patch - once Bazel does the fetching,
+# pip's own retry schedule stops being what governs a wheel download.
 #
 # Note that upgrading pip for the hermetic interpreter is not an alternative. The
 # python_register_toolchains() CPython build ships its own pip (also 22.0.4), but
@@ -115,6 +116,14 @@ py_library(
 http_archive(
     name = "pypi__pip",
     build_file_content = _PYPI_WHEEL_BUILD_FILE,
+    patch_args = ["-p1"],
+    # pip hardcodes backoff_factor=0.25 when it builds its urllib3.Retry and exposes
+    # no flag or environment variable for the shape of the retry schedule, and the
+    # urllib3 it vendors (1.26.17) implements exponential backoff only - jitter arrived
+    # in urllib3 2.x. The patch swaps in a constant, jittered schedule so that the
+    # --retries count below translates into a predictable amount of wall-clock. See
+    # the comment on pip_parse's extra_pip_args for why that shape is the one wanted.
+    patches = ["//thirdparty/patches:pip-constant-jittered-retry-backoff.patch"],
     sha256 = "ba0d021a166865d2265246961bec0152ff124de910c5cc39f1156ce3fa7c69dc",
     type = "zip",
     url = "https://files.pythonhosted.org/packages/8a/6a/19e9fe04fca059ccf770861c7d5721ab4c2aebc539889e97c7977528a53b/pip-24.0-py3-none-any.whl",
@@ -159,12 +168,18 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 # For CI scripts use only; not for ray testing.
 pip_parse(
     name = "py_deps_py310",
-    # pip retries 5 times by default with backoff_factor=0.25, and urllib3 doubles the
-    # delay each round, so it gives up after only ~8 seconds (0, 0.5, 1, 2, 4). Nine
-    # retries widens that to ~2 minutes (0, 0.5, 1, 2, 4, 8, 16, 32, 64), which is long
-    # enough to ride out a brief files.pythonhosted.org outage instead of failing the
-    # whole build. Nine is also the last round before urllib3's 120s per-sleep cap
-    # kicks in, so going higher buys progressively coarser waits.
+    # pip retries 5 times by default, and the schedule is exponential, so it gives up
+    # after ~8 seconds (0, 0.5, 1, 2, 4). That is far shorter than a PyPI incident,
+    # and simply raising the count does not fix it: exponential backoff doubles until
+    # it saturates urllib3's 120s per-sleep cap, so most of a larger budget is spent
+    # asleep in 2-minute blocks rather than covering the outage. At 50 retries the
+    # upstream schedule would run for ~5050s, which no sane fetch timeout accommodates.
+    #
+    # The patch on pypi__pip above replaces that with a constant schedule jittered over
+    # 6-12s per sleep, which makes the count buy wall-clock linearly: 50 retries is 49
+    # sleeps, so 294-588s, ~440s typical, bounded under 600s. The jitter also spreads
+    # out the many wheel fetches Bazel runs in parallel, which would otherwise retry in
+    # lockstep and hit an already-degraded origin all at once.
     #
     # Both settings are needed because two different pip processes fetch from PyPI
     # here. PIP_RETRIES covers the pip that setuptools spawns for setup_requires when
@@ -172,17 +187,17 @@ pip_parse(
     # environment. --retries covers this pip invocation, which runs with --isolated
     # and therefore ignores PIP_* variables. Neither helps unless 502 is retryable in
     # the first place, which is what the pip 24.0 pin above provides.
-    environment = {"PIP_RETRIES": "9"},
-    extra_pip_args = ["--retries=9"],
+    environment = {"PIP_RETRIES": "50"},
+    extra_pip_args = ["--retries=50"],
     python_interpreter_target = python310,
     requirements_lock = "//release:requirements_py310.txt",
     # The retries above are only usable if the fetch is allowed to last long enough to
     # spend them. timeout defaults to 600s and pip_parse forwards it to every generated
-    # whl_library, so it bounds each package's pip invocation, not just this rule. Nine
-    # retries can spend ~2 minutes sleeping before the download itself starts making
-    # progress, and a degraded PyPI is slow as well as flaky, so 600s can expire
-    # mid-retry and fail the fetch that the retries were meant to save. 1800s leaves
-    # room for the full backoff plus a slow transfer.
+    # whl_library, so it bounds each package's pip invocation, not just this rule. The
+    # retry budget alone reaches 588s at worst, and each of the 50 attempts can burn up
+    # to pip's 15s socket timeout on top of that when the failure mode is a hang rather
+    # than a fast 502, so the default cannot hold the schedule. 1800s covers the full
+    # backoff, the per-attempt timeouts and a slow transfer afterwards.
     timeout = 1800,
 )
 
