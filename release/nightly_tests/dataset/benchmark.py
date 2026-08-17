@@ -14,6 +14,20 @@ from ray.util.state import list_runtime_envs
 
 logger = logging.getLogger(__name__)
 
+# Poll per-task memory (MemoryProfiler in each map worker) at 20 Hz instead of the
+# 1 Hz production default. At 1 Hz, a task shorter than ~3 s gets its "max USS"
+# from the single synchronous end-of-task sample — end-of-task RESIDENT memory,
+# not peak working set — which made 16 of 37 instrumented tests unmeasurable in
+# the 2026-08-14 A/B. Each sample is one /proc/self/statm read (microseconds), so
+# 20 Hz costs ~0.01% CPU per worker. Set here (release harness only, both arms of
+# an A/B identically) rather than upstream, where the conservative default is
+# deliberate. The DataContext is captured at dataset creation, so importing
+# benchmark.py before building datasets — which every release script does — is
+# sufficient for this to reach the workers.
+ray.data.DataContext.get_current().memory_usage_poll_interval_s = float(
+    os.environ.get("RAY_DATA_BENCH_MEMORY_POLL_S", "0.05")
+)
+
 
 def _get_spilled_bytes_total(state) -> float:
     """Get the total number of spilled bytes across the cluster."""
