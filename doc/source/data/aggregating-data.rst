@@ -101,8 +101,8 @@ The aggregation process follows these steps:
 3. **Combination**: The `combine` method merges partial results into a single accumulator
 4. **Finalization**: The `finalize` method transforms the final accumulator into the desired output
 
-Example: create a custom mean aggregator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Creating a custom mean aggregator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here's an example of creating a custom aggregator that calculates the Mean of values in a column:
 

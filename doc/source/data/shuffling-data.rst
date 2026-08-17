@@ -247,8 +247,8 @@ Example of hash shuffling based on column `id`:
 
 .. _optimizing_shuffles:
 
-Advanced: optimize shuffles
-===========================
+Advanced: Optimizing shuffles
+=============================
 .. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle,
     `file a Ray Data issue on GitHub <https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+>`_.
 
