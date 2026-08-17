@@ -1,0 +1,88 @@
+--- a/pip/_internal/network/session.py
++++ b/pip/_internal/network/session.py
+@@ -10,11 +10,13 @@
+ import mimetypes
+ import os
+ import platform
++import random
+ import shutil
+ import subprocess
+ import sys
+ import urllib.parse
+ import warnings
++from itertools import takewhile
+ from typing import (
+     TYPE_CHECKING,
+     Any,
+@@ -315,6 +317,50 @@
+         super().cert_verify(conn=conn, url=url, verify=False, cert=cert)
+ 
+ 
++class _ConstantJitteredRetry(urllib3.Retry):
++    """A ``Retry`` policy with constant, jittered backoff.
++
++    urllib3 1.26 -- the version pip 24.0 vendors -- implements only exponential
++    backoff (``backoff_factor * 2 ** (n - 1)``) and offers no jitter at all;
++    ``Retry.backoff_jitter`` exists only in urllib3 2.x. Neither the shape of
++    the schedule nor ``backoff_factor`` is reachable from pip's command line,
++    so this subclass replaces ``get_backoff_time`` outright.
++
++    Exponential backoff is the wrong shape for riding out a PyPI outage. It
++    spends its early retries before the outage has plausibly cleared and its
++    late ones sleeping for minutes at a time, so a given retry count covers far
++    less wall-clock than a flat schedule of the same length would, and the part
++    of the budget that lands inside the recovery window is small. A constant
++    schedule turns the retry count into a predictable amount of wall-clock:
++    ``n`` retries cover roughly ``n`` times the nominal wait.
++
++    The jitter matters because Bazel fetches many wheels concurrently, each in
++    its own pip process. Without it, all of them fail at the same instant,
++    sleep for identical durations and re-converge on the origin together,
++    turning every retry round into a thundering herd against a service that is
++    already degraded.
++    """
++
++    #: Bounds on a single sleep, in seconds -- equal jitter around a 12s
++    #: nominal wait, meaning half the interval is fixed and half is random.
++    BACKOFF_FLOOR = 6.0
++    BACKOFF_CEILING = 12.0
++
++    def get_backoff_time(self) -> float:
++        # urllib3 does not sleep before the first retry of a sequence. Keep
++        # that, so a lone blip is recovered from immediately rather than
++        # costing a full sleep.
++        consecutive_errors = len(
++            list(
++                takewhile(lambda x: x.redirect_location is None, reversed(self.history))
++            )
++        )
++        if consecutive_errors <= 1:
++            return 0.0
++
++        return random.uniform(self.BACKOFF_FLOOR, self.BACKOFF_CEILING)
++
++
+ class PipSession(requests.Session):
+     timeout: Optional[int] = None
+ 
+@@ -346,7 +392,7 @@
+ 
+         # Create our urllib3.Retry instance which will allow us to customize
+         # how we handle retries.
+-        retries = urllib3.Retry(
++        retries = _ConstantJitteredRetry(
+             # Set the total number of retries that a particular request can
+             # have.
+             total=retries,
+@@ -358,9 +404,8 @@
+             # A 502 may be a transient error from a CDN like CloudFlare or CloudFront
+             # A 520 or 527 - may indicate transient error in CloudFlare
+             status_forcelist=[500, 502, 503, 520, 527],
+-            # Add a small amount of back off between failed requests in
+-            # order to prevent hammering the service.
+-            backoff_factor=0.25,
++            # backoff_factor is deliberately not passed: _ConstantJitteredRetry
++            # replaces get_backoff_time() entirely, so it would have no effect.
+         )  # type: ignore
+ 
+         # Our Insecure HTTPAdapter disables HTTPS validation. It does not
