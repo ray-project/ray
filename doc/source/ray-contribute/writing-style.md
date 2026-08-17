@@ -341,3 +341,131 @@ Pick the format that makes the information easiest to extract:
 - Explaining what something is or how it works is prose.
 - Mapping topics to pages, or comparing options side by side, is a table.
 - Listing benefits is usually a cut. Fold the one point that matters into prose.
+
+(kubernetes-docs-style)=
+
+## Writing Ray on Kubernetes and KubeRay docs
+
+Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/cluster/kubernetes/` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
+
+When two rules conflict in this domain, follow this order:
+
+1. This guide.
+1. The [Kubernetes documentation style guide](https://kubernetes.io/docs/contribute/style/style-guide/), for Kubernetes casing and terminology only.
+1. The Google developer documentation style guide, as the general fallback.
+
+The Kubernetes guide wins on how to write Kubernetes nouns, because readers arriving from the Kubernetes ecosystem already read those conventions. It doesn't override anything else here. Some of its rules exist to serve the Kubernetes site build or its translation workflow rather than the prose, and those don't carry over. Its front-matter title casing is one example, since Ray takes a page title from the H1 rather than a front-matter field.
+
+### Capitalize Kubernetes API objects
+
+Write Kubernetes API object names in UpperCamelCase, matching the object as the API defines it: Pod, ConfigMap, Secret, Ingress, ServiceAccount, DaemonSet, CustomResourceDefinition. Don't wrap them in backticks in prose, so possessives read normally: "the CustomResourceDefinition's `.spec.group` field." Reserve backticks for field paths, values, and commands.
+
+The same rule covers Kubernetes ecosystem API objects, such as Kueue's ClusterQueue and LocalQueue or the Prometheus Operator's PodMonitor and ServiceMonitor.
+
+Node is an API object too, but keep it lowercase in these pages. Kubernetes applies the same two-part rule it applies everywhere else, capitalizing Node only for the resource, as in "two Nodes can't have the same name," and lowercasing it for the machine, as in "each node is managed by the control plane." These pages almost always mean the machine: "size each Pod to take up the entire Kubernetes node." The resource sense shows up mostly inside `kubectl` commands, which are code rather than prose, so a capitalized Node is rare here and a sweep to add one is wrong.
+
+### Disambiguate names Ray and Kubernetes share
+
+Deployment, Job, and Service each name both a Kubernetes API object and a distinct Ray concept. Capitalization is what tells them apart, so pick the case from which one you mean:
+
+- Capitalize when you mean the Kubernetes object: "The chart creates a Deployment for the operator."
+- Lowercase when you mean the Ray concept: "Each Ray Serve deployment scales independently," "Submit a Ray job to the cluster."
+
+When a sentence needs both, name the system: "the Kubernetes Service that fronts the Ray Serve deployment." A reader who can't tell which one you mean will read the sentence twice.
+
+### Distinguish a custom resource from the thing it creates
+
+KubeRay's custom resources take UpperCamelCase: RayCluster, RayJob, RayService, RayCronJob. The concept each one produces is lowercase: a Ray cluster, a Ray job, a Ray service. This follows the Kubernetes rule for API objects versus general concepts, and the distinction carries meaning.
+
+- Use: "Apply a RayCluster to create a Ray cluster."
+- Use: "Each Ray cluster consists of a head Pod and a collection of worker Pods."
+- Not: "Apply a Ray cluster manifest," or "Each RayCluster consists of a head Pod."
+
+Write "head Pod" and "worker Pod" for the Kubernetes-hosted case rather than "head node" and "worker node." On Kubernetes a node is a machine, so "head node" invites the wrong reading. Reserve "head node" for generic Ray architecture that isn't specific to Kubernetes, and don't stack both vocabularies, as in "head node pod."
+
+### Qualify a Pod only when the qualifier distinguishes something
+
+Don't write "Ray Pod." A Pod is a Kubernetes host that contains a Ray node, along with any sidecars such as the autoscaler, a log shipper, or a job submitter, so naming the Pod after Ray overstates what it is. "TPU Pod" also already occupies the qualified-Pod form in these pages, and it means a group of interconnected TPU chips rather than a Kubernetes object.
+
+"Ray node" is correct, and the contrast explains the rule. A Ray node and a Kubernetes node are two different things. One is the process group the Ray scheduler and autoscaler operate on, and the other is a machine. The qualifier tells two referents apart, so it earns its place. Apply that test: qualify when the qualifier distinguishes two things, and don't qualify when it relabels one thing.
+
+Write one of these instead:
+
+- "head Pod" and "worker Pod" when you mean a specific role.
+- "the RayCluster's Pods" or "Ray head and worker Pods" for the general case.
+- "Ray node" when you mean the Ray-level abstraction, such as what the autoscaler adds and removes.
+
+Use the resource name in the possessive form. The operator creates these Pods, sets their `ownerReferences` to the RayCluster, and labels them `ray.io/cluster`, so ownership, selection, and lifecycle are all facts about the resource rather than about the Ray cluster it produces. Write "the RayCluster's Pods" wherever the sentence turns on one of those, which is nearly every sentence that needs a possessive. "Ray head and worker Pods" stays available when you want the roles without the resource.
+
+Drop the qualifier entirely where the sentence or a nearby command already scopes it. A bare "Pod" is clear on a page that describes nothing else, as in "each Pod generates its own private key." Keep the scope explicit where the page also describes Pods the RayCluster doesn't own, such as the operator, Redis, or a `curl` Pod, and where a nearby command filters by label. "List the RayCluster's Pods" belongs above `kubectl get pods -l=ray.io/is-ray-node=yes`, and "List all Pods" belongs above a bare `kubectl get pods`. The two commands don't do the same thing, so the two sentences shouldn't read the same way.
+
+### State the node-to-Pod mapping once, early
+
+A reader arriving from either direction needs the relationship between a Ray node and a Kubernetes Pod stated plainly, and stated before the page depends on it. Give it once, near the top, then use the shorter forms throughout the remainder of the page.
+
+- Use: "Each Ray node runs as a Kubernetes Pod."
+- Use: "KubeRay runs each Ray node as a Pod, so a Ray cluster's head node is its head Pod."
+
+Say it at the point where the two vocabularies first meet, then trust it. Once the page states the mapping, "head Pod" and "worker Pod" carry the meaning on their own. A page that restates the mapping in every section reads as though the author doesn't trust the reader to hold it.
+
+Orientation pages carry more of this weight than deep reference pages. The Ray on Kubernetes landing page and the getting-started pages are where a reader forms the model, so the mapping belongs there even when a page on TLS configuration can assume it.
+
+### Keep Pods out of Ray-general pages
+
+Pods belong on pages about Kubernetes. Everywhere else, write "node" and leave the deployment substrate out of it. A Ray node can be a Pod, a virtual machine, or a physical machine, and Ray Core, Ray Serve, and Ray Train documentation describes behavior that holds in all three cases. Naming Pods there narrows a general claim to one substrate and implies the behavior depends on Kubernetes.
+
+The split follows the audience. A reader on a Ray Core page is thinking about tasks and actors on nodes. A reader on a Kubernetes page is thinking about the objects an API server manages, and Pods are one of them. Write for the reader the page has.
+
+- Use, on a Ray Core page: "Ray schedules the actor on a node with a free CPU."
+- Not, on a Ray Core page: "Ray schedules the actor on a Pod with a free CPU."
+- Use, on a Kubernetes page: "The Ray autoscaler adds worker Pods when tasks are pending."
+
+When a Ray-general page genuinely needs the Kubernetes case, give it as an example rather than as the default: "On Kubernetes, each Ray node runs as a Pod."
+
+### Case a feature stage to match the project that owns the feature
+
+Kubernetes writes feature stages in start case, as in "In-Place Pod Resize graduated to GA in Kubernetes 1.35." Ray and KubeRay write them lowercase, as in "the embedded backend is alpha." Follow the project that owns the feature, which keeps each stage name in the form its own release notes and feature-gate documentation use.
+
+- Use: "The `RayServiceIncrementalUpgrade` feature gate is alpha."
+- Use: "The RayService controller uses GA Gateway API resources."
+- Use: "In-Place Pod Resize is GA as of Kubernetes 1.35, and KubeRay support for it is alpha."
+
+The last example is the case the rule exists for. A sentence that names both stages sets them in different forms on purpose, because the two projects graduate features on their own schedules and under their own criteria. The mixed casing carries that information rather than looking like an inconsistency.
+
+Ask whose feature gate turns it on when ownership isn't obvious. A gate on the KubeRay operator is KubeRay's, a gate on `kube-apiserver` is Kubernetes's, and a gate on a third-party controller belongs to that project and takes the Kubernetes form.
+
+A stage name still capitalizes where any word would, such as at the start of a sentence or in an admonition title.
+
+### Keep backticks on configuration values
+
+The Kubernetes guide writes field values bare, as in "set `imagePullPolicy` to Always." This guide uses backticks for configuration values, and that rule holds on these pages: "set `imagePullPolicy` to `Always`." Backticks mark the string as something the reader types into a manifest rather than a word in the sentence, which matters most for values that are ordinary English, such as `Always`, `Never`, `Retain`, and `Delete`.
+
+- Use: "Set `upgradeStrategy.type` to `NewClusterWithIncrementalUpgrade`."
+- Use: "Set `imagePullPolicy` to `Always` to pull on every restart."
+- Not: "Set `imagePullPolicy` to Always to pull on every restart."
+
+Backticks stay on the value even when the field name doesn't appear, as in "the default is `IfNotPresent`." Prose that describes a value's meaning rather than the value itself takes no backticks: "the operator always pulls the image."
+
+### Specially-cased terms
+
+Look up the form here rather than deriving it. Generic nouns stay lowercase even next to a capitalized product name, per the capitalization rule earlier in this guide.
+
+| Use | Not | Note |
+|---|---|---|
+| KubeRay | Kuberay, kuberay | Lowercase `kuberay` only in identifiers, such as the Helm repo or image name. |
+| Kubernetes | K8s, k8s | Spell it out in prose. Reserve `k8s` for identifiers and paths. |
+| RayCluster, RayJob, RayService, RayCronJob | Raycluster, Rayjob, Rayservice, Raycronjob | The custom resources. |
+| Ray cluster, Ray job, Ray service | RayCluster as a concept, ray cluster, ray job, ray service | The things the custom resources produce. |
+| head Pod, worker Pod | head pod, Head Pod, head node | On Kubernetes. |
+| Pod, the RayCluster's Pods | Ray Pod, Ray pod | A Pod hosts a Ray node. Qualify by role or by ownership, not by framework. |
+| Ray node, Kubernetes node | Ray Node, Kubernetes Node | Lowercase both. Capitalize Node only for the API object, which is rare in prose. |
+| worker group | Worker Group | The API field `workerGroupSpecs` keeps code style. |
+| Ray autoscaler | Ray Autoscaler | "Autoscaler" is a generic noun. |
+| Ray dashboard, KubeRay dashboard | Ray Dashboard, KubeRay Dashboard | "Dashboard" is a generic noun, same as "autoscaler". |
+| GCS fault tolerance | GCS FT | Spell out "FT" as "fault tolerance". |
+| custom resource | Custom Resource | Lowercase as a general concept. Distinct from a CustomResourceDefinition. |
+| namespace | Namespace | Lowercase in prose. The capitalized `Namespace` appears in manifests and command output, which take code style. |
+| YuniKorn, Kueue, Volcano, Helm, Prometheus, Grafana | Yunikorn, kueue, volcano, helm, prometheus, grafana | Third-party names take each project's own casing. |
+| `kubectl` | Kubectl | Always lowercase, always in backticks. |
+
+A lowercase third-party name is correct when it names a Helm release or a Kubernetes object rather than the project, as in "the `grafana` deployment." Put it in backticks in that case.

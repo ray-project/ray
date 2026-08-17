@@ -1676,6 +1676,7 @@ def _find_available_subslice(
     worker_labels: Dict[str, Dict[str, str]],
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
+    subslice_index: Optional[int] = None,
 ) -> Tuple[Optional[List[str]], Optional[int]]:
     """Find an idle subslice of *subslice_topology* within *slice_name*.
 
@@ -1691,6 +1692,8 @@ def _find_available_subslice(
     for worker_id, labels in worker_labels.items():
         idx = labels.get(label_key)
         if idx is not None:
+            if subslice_index is not None and int(idx) != subslice_index:
+                continue
             subslice_indices.setdefault(idx, []).append(worker_id)
 
     if not subslice_indices:
@@ -1989,6 +1992,7 @@ def _find_available_cached_subslice(
     nodes: List[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
+    subslice_index: Optional[int] = None,
 ) -> Optional[Tuple[List[str], int, str, str, Dict[str, Dict[str, str]]]]:
     """Return the first idle subslice across all cached slices of any valid
     parent topology, or ``None``.
@@ -2007,6 +2011,7 @@ def _find_available_cached_subslice(
                 worker_labels,
                 avail,
                 slice_worker_to_node,
+                subslice_index,
             )
             if worker_ids is not None:
                 return worker_ids, idx, slice_name, parent_topology, worker_labels
@@ -2162,6 +2167,7 @@ def subslice_placement_group(
     head_reservation_timeout_s: Optional[
         float
     ] = DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
+    subslice_index: Optional[int] = None,
 ) -> SubslicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU subslice.
 
@@ -2188,6 +2194,10 @@ def subslice_placement_group(
         head_reservation_timeout_s: Maximum seconds to wait for TPU head
             placement groups. Defaults to
             ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``.
+        subslice_index: Optional index of the subslice to select. If specified,
+            only the subslice at this index within the physical slice will be
+            considered. If that subslice is busy, the request will fail even if
+            other subslices are idle.
 
     Returns:
         A :class:`SubslicePlacementGroup` handle.
@@ -2242,7 +2252,12 @@ def subslice_placement_group(
         # search and the undiscovered-parent check observe persisted slices.
         _refresh_cache_from_kv(parent_topologies, nodes)
         cached_subslice = _find_available_cached_subslice(
-            parent_topologies, subslice_topology, nodes, avail, slice_worker_to_node
+            parent_topologies,
+            subslice_topology,
+            nodes,
+            avail,
+            slice_worker_to_node,
+            subslice_index,
         )
         discoverable = _find_undiscovered_idle_slice(
             parent_topologies, nodes, avail, version
