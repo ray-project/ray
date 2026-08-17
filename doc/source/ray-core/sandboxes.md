@@ -6,12 +6,12 @@ myst:
 
 (ray-core-sandboxes)=
 
-# Ray Sandboxes (Experimental)
+# Ray Sandboxes
 
 Ray Sandboxes use [gVisor](https://gvisor.dev/docs/) to provide lightweight, kernel-isolated execution environments for running untrusted code and agent tool calls safely on Ray clusters.
 
 :::{warning}
-This is an **experimental** library (`ray.experimental.sandbox`). Experimental APIs are subject to change or removal in future releases prior to General Availability (GA) graduation.
+Ray Sandboxes (`ray.experimental.sandbox`) is an {ref}`alpha <api-stability-alpha>` library. The API can change or disappear in any release before it graduates to stable.
 :::
 
 ## Background
