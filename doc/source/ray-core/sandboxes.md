@@ -16,7 +16,7 @@ Ray Sandboxes (`ray.experimental.sandbox`) is an {ref}`alpha <api-stability-alph
 
 ## Background
 
-The ability to sandbox model-generated code is critical for agentic RL and LLM agents. However, executing untrusted code directly within Ray worker processes or host environments introduces critical security and stability risks. Ray Sandboxes solve this challenge by running lightweight, kernel-isolated sandboxes directly on Ray worker nodes using [gVisor](https://gvisor.dev/docs/) (`runsc`). The library allows developers to scale and manage sandbox environments using familiar Ray concepts and primitives.
+The ability to sandbox model-generated code is critical for agentic reinforcement learning (RL) and large language model (LLM) agents. Executing untrusted code directly in Ray worker processes or host environments introduces security and stability risks. Ray Sandboxes solve this challenge by running lightweight, kernel-isolated sandboxes directly on Ray worker nodes using [gVisor](https://gvisor.dev/docs/) (`runsc`). Scale and manage sandbox environments with familiar Ray concepts and primitives.
 
 ### What is gVisor?
 
