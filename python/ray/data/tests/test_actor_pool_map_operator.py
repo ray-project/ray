@@ -979,6 +979,29 @@ def test_setting_initial_size_for_actor_pool():
     ray.shutdown()
 
 
+def test_max_concurrent_calls_per_actor():
+    # The value must be positive.
+    with pytest.raises(ValueError, match="max_concurrent_calls_per_actor"):
+        ActorPoolStrategy(max_concurrent_calls_per_actor=0)
+
+    data_context = DataContext.get_current()
+    # Use 2 instead of the default 1 so the test fails if the option is ignored.
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_concurrent_calls_per_actor=2,
+    )
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+    )
+
+    # Pass the value to both the Ray actor and the actor pool.
+    assert op._ray_remote_args["max_concurrency"] == 2
+    assert op._actor_pool.max_actor_concurrency() == 2
+
+
 def _create_bundle_with_single_row(row):
     block = pa.Table.from_pylist([row])
     block_ref = ray.put(block)

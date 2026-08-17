@@ -174,6 +174,10 @@ class ActorPoolMapOperator(MapOperator):
         self._ray_remote_args = self._apply_default_remote_args(
             self._ray_remote_args, self.data_context
         )
+        # Pass the actor concurrency setting to Ray Core.
+        max_concurrency = compute_strategy.max_concurrent_calls_per_actor
+        if max_concurrency is not None:
+            self._ray_remote_args["max_concurrency"] = max_concurrency
         self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
             ray_actor_task_remote_args, self.data_context
         )
