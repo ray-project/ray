@@ -50,6 +50,16 @@ Follow {ref}`KubeRay operator installation <kuberay-operator-deploy>` to install
 
 Create a RayJob that creates a RayCluster configured with `runsc` and submits a Ray job that manages Ray sandboxes:
 
+```bash
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.sandbox.yaml
+```
+
+The RayJob is configured to do the following:
+* Create a RayCluster configured to install `runsc` at startup with the necessary `securityContext` required for gVisor
+* Submit a Ray job which will create a sandbox and execute some Python code inside it
+* Terminate sandboxes after the job is done
+
+Below is the script used for the RayJob:
 
 ```python
 import ray
@@ -85,6 +95,28 @@ print("RayJob completed successfully!")
 
 Monitor the status and output of the job:
 
+```bash
+# List running job pods (wait for Ray cluster to be in ready state)
+kubectl get pods -l job-name=rayjob-sandbox
+
+# Stream the demo logs
+kubectl logs -f -l job-name=rayjob-sandbox
+```
+
+The output should be similar to the following:
+
+```text
+Sandbox output:
+=== Hello from inside Ray Sandbox! ===
+Python Version : 3.12.14 (main, Aug 13 2026, 19:41:13) [GCC 14.2.0]
+Platform       : Linux-4.19.0-gvisor-x86_64-with-glibc2.41
+
+RayJob completed successfully!
+2026-08-15 17:38:41,535	INFO sdk.py:520 -- WebSocket closed for job rayjob-sandbox-gz8j6 with close code 1000
+2026-08-15 17:38:41,546	SUCC cli.py:66 -- ------------------------------------
+2026-08-15 17:38:41,546	SUCC cli.py:67 -- Job 'rayjob-sandbox-gz8j6' succeeded
+2026-08-15 17:38:41,546	SUCC cli.py:68 -- ------------------------------------
+```
 
 ---
 
