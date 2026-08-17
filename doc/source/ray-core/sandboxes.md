@@ -24,14 +24,11 @@ The ability to sandbox model-generated code is critical for agentic reinforcemen
 
 Unlike standard container runtimes such as Docker or `runc`, where containers share the host Linux kernel directly, gVisor intercepts system calls made by containerized processes before they reach the host. gVisor is daemonless and runs as a non-privileged user, so you can deploy and manage it on top of existing container orchestrators such as Kubernetes.
 
-#### Benefits of gVisor
+### Why gVisor?
 
-Using gVisor as the execution backend for Ray Sandboxes provides key advantages over traditional Virtual Machines (VMs) and standard container runtimes:
+Untrusted code interacts with gVisor's user-space kernel rather than the host Linux kernel, which shrinks the attack surface for host kernel vulnerabilities and container breakout exploits. gVisor also runs entirely in user space, without host root privileges, the Docker daemon, or nested virtualization hardware extensions, so it runs inside existing Kubernetes Ray worker Pods and cloud container environments.
 
-* **Strong Kernel Isolation:** Because untrusted code interacts with the user-space kernel rather than the host Linux kernel, the attack surface for host kernel vulnerabilities and container breakout exploits is dramatically minimized.
-* **Sub-100ms Startup Latency:** Unlike full VMs or MicroVMs that require booting guest OS kernels and managing heavy disk images, gVisor sandboxes boot in tens of milliseconds. This enables high-frequency, low-latency execution loops needed for iterative RL rollouts and agent tool calls.
-* **Dense Bin Packing & Low Footprint:** Each gVisor sandbox has a minimal memory overhead and near-zero idle CPU usage. Ray worker nodes can densely pack hundreds of concurrent sandboxes alongside standard Ray tasks and actors.
-* **Rootless & Container-Native:** gVisor runs entirely in user space without requiring host root privileges, the Docker daemon, or nested virtualization hardware extensions. This makes it straightforward to run securely inside existing Kubernetes Ray worker Pods and cloud container environments.
+The runtime cost is low next to full virtual machines (VMs) and MicroVMs, which boot a guest OS kernel and manage heavy disk images. A gVisor sandbox boots in tens of milliseconds, adds minimal memory overhead, and uses near-zero idle CPU, so Ray worker nodes can densely pack hundreds of concurrent sandboxes alongside standard Ray tasks and actors and sustain the high-frequency execution loops that RL rollouts and agent tool calls need.
 
 ## Requirements
 
