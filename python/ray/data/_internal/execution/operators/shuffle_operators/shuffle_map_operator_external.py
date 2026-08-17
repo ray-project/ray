@@ -313,9 +313,7 @@ class ExternalHashShuffleMapOp(
         # `task_done_callback` fires only after the handle ref is ready,
         # so this is just local deserialization.
         handle = ray.get(handle_ref)
-        # decoded_bytes is a dense per-partition int64 array (was a Dict).
-        # Consumed one handle per completed map task, so accumulation stays
-        # incremental (no need to batch as the reducer does).
+        # decoded_bytes is a dense per-partition int64 array.
         dec = handle.get("decoded_bytes")
         if dec is not None:
             for pid in dec.nonzero()[0]:
