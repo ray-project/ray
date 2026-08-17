@@ -570,9 +570,6 @@ class Quantized(Sampler):
         if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
             random_state = _BackwardsCompatibleNumpyRng(random_state)
 
-        if self.q == 1:
-            return self.sampler.sample(domain, config, size, random_state=random_state)
-
         quantized_domain = copy(domain)
         quantized_domain.lower = np.ceil(domain.lower / self.q) * self.q
         quantized_domain.upper = np.floor(domain.upper / self.q) * self.q

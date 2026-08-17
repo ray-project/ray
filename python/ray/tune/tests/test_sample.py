@@ -437,6 +437,39 @@ class SearchSpaceTest(unittest.TestCase):
         samples = ray.tune.search.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
+    def testQuantizedQOne(self):
+        # `q=1` used to short circuit `Quantized.sample()` straight to the
+        # wrapped sampler, so the value came back un-quantized even though every
+        # `q*` docstring promises it is "rounded to an integer increment of q".
+        # See https://github.com/ray-project/ray/issues/45494.
+        #
+        # `RandomState` rather than `default_rng`, so the draw is identical on
+        # every numpy version: only the legacy generator has a frozen stream.
+        random_state = np.random.RandomState(1000)
+
+        samples = tune.quniform(-10, 10, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(float(s).is_integer() for s in samples))
+        self.assertTrue(all(-10 <= s <= 10 for s in samples))
+        # "Quantization makes the upper bound inclusive", so both ends are drawn.
+        self.assertIn(-10.0, samples)
+        self.assertIn(10.0, samples)
+
+        # The other float domains quantize at `q=1` too.
+        samples = tune.qrandn(0, 5, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(float(s).is_integer() for s in samples))
+
+        samples = tune.qloguniform(1, 100, 1).sample(
+            size=1000, random_state=random_state
+        )
+        self.assertTrue(all(float(s).is_integer() for s in samples))
+        self.assertTrue(all(1 <= s <= 100 for s in samples))
+
+        # Integer domains are unchanged: at `q=1` the grid is every integer, so
+        # the same values come out of either path.
+        samples = tune.qrandint(1, 10, 1).sample(size=1000, random_state=random_state)
+        self.assertTrue(all(float(s).is_integer() for s in samples))
+        self.assertTrue(all(1 <= s <= 10 for s in samples))
+
     def testCategoricalDtype(self):
         dist = tune.choice([1.0, "str"])
 
