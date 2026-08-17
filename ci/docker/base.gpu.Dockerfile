@@ -18,6 +18,10 @@ ENV RAY_DEFAULT_BUILD=1
 ENV RAY_INSTALL_JAVA=0
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 
+# See ci/docker/base.test.Dockerfile: retry transient files.pythonhosted.org failures.
+ENV PIP_RETRIES=9
+ENV UV_HTTP_RETRIES=9
+
 RUN <<EOF
 #!/bin/bash
 
