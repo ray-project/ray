@@ -17,6 +17,14 @@ ENV RAY_DEFAULT_BUILD=1
 ENV RAY_INSTALL_JAVA=0
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 
+# Make PyPI fetches survive a transient files.pythonhosted.org 502, which otherwise fails
+# an image build outright. Set on the roots of the image graph so every descendant image
+# inherits them, at build time and at test time. Retrying a 502 needs pip >= 24.0 (that is
+# where 502 joined urllib3's status_forcelist); uv defaults to only 3 retries and has been
+# seen to exhaust them. Older uv releases ignore UV_HTTP_RETRIES rather than erroring.
+ENV PIP_RETRIES=9
+ENV UV_HTTP_RETRIES=9
+
 RUN <<EOF
 #!/bin/bash
 
