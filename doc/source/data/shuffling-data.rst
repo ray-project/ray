@@ -1,3 +1,6 @@
+.. meta::
+   :description: Shuffle Ray Data at different granularities: file order, local buffer shuffle, map_batches shuffle, block order, and global per-epoch shuffle.
+
 .. _shuffling_data:
 
 ==============
@@ -229,6 +232,19 @@ Example of hash shuffling based on column `id`:
     # Hash-shuffle
     hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
 
+.. tip::
+
+    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a new shuffle backend,
+    currently in Alpha, that provides an updated hash-shuffle implementation:
+
+    .. code-block:: python
+
+        from ray.data.context import DataContext, ShuffleStrategy
+
+        DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+    See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available knobs.
+
 .. _optimizing_shuffles:
 
 Advanced: Optimizing shuffles
@@ -260,6 +276,10 @@ shuffle quality higher until you reach this threshold.
 
 Enabling push-based shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note:: ``DataContext.use_push_based_shuffle`` and the ``RAY_DATA_PUSH_BASED_SHUFFLE`` environment
+    variable are deprecated. Configure the shuffle strategy through ``DataContext.shuffle_strategy``
+    (for example, ``ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED``) instead.
 
 Some Dataset operations require a *shuffle* operation, meaning that the system shuffles data from all of the input partitions to all of the output partitions.
 These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,

@@ -517,33 +517,47 @@ def test_get_tpu_version_invalid(invalid_type):
 
 
 @pytest.mark.parametrize(
-    "topology, accelerator_type, num_workers, resources_per_worker, expected_slices",
+    "topology, accelerator_type, num_workers, resources_per_worker, tpu_resource_per_chip, expected_slices",
     [
         # "2x2x1" has 4 chips, for 4 workers with TPU: 1 each we expect num_slices=1.
-        ("2x2x1", "TPU-V4", 4, {"TPU": 1}, 1),
+        ("2x2x1", "TPU-V4", 4, {"TPU": 1}, 1, 1),
         # "2x2x1" has 4 chips, for 8 workers with TPU: 1 each we expect num_slices=2.
-        ("2x2x1", "v4", 8, {"TPU": 1}, 2),
+        ("2x2x1", "v4", 8, {"TPU": 1}, 1, 2),
         # "2x2x2" has 8 chips and 2 hosts, defaulting to 1 TPU worker per host
         # and requesting 4 workers, we expect num_slices=2.
-        ("2x2x2", "TPU-V4", 4, None, 2),
+        ("2x2x2", "TPU-V4", 4, None, 1, 2),
         # "2x2x4" has 16 chips and 4 hosts, defaulting to 1 TPU worker per host
         # and requesting 4 workers, we expect num_slices=1.
-        ("2x2x4", "TPU-V4", 4, None, 1),
+        ("2x2x4", "TPU-V4", 4, None, 1, 1),
         # 0 workers requested -> fallback to 1 slice.
-        ("2x2x1", "v4", 0, None, 1),
+        ("2x2x1", "v4", 0, None, 1, 1),
         # Invalid topology -> fallback to 1 slice.
-        ("", "v4", 4, {"TPU": 1}, 1),
-        ("2x2x1", "", 4, {"TPU": 1}, 1),
+        ("", "v4", 4, {"TPU": 1}, 1, 1),
+        ("2x2x1", "", 4, {"TPU": 1}, 1, 1),
+        # "2x2x1" has 4 chips. With tpu_resource_per_chip=2, we have 8 logical resources.
+        # For 8 workers with TPU: 1 each we expect num_slices=1.
+        ("2x2x1", "v4", 8, {"TPU": 1}, 2, 1),
+        # "2x2x2" has 8 chips and 2 hosts. With tpu_resource_per_chip=2, default worker
+        # needs 8 TPU resources (4 physical chips/host * 2 logical resources/chip = 8).
+        # We have 16 logical resources total (2 hosts). For 4 workers with default resources,
+        # we need 4 workers * 8 TPU/worker = 32 logical resources. Thus, num_slices=2.
+        ("2x2x2", "TPU-V4", 4, None, 2, 2),
     ],
 )
 def test_get_tpu_num_slices_for_workers(
-    topology, accelerator_type, num_workers, resources_per_worker, expected_slices
+    topology,
+    accelerator_type,
+    num_workers,
+    resources_per_worker,
+    tpu_resource_per_chip,
+    expected_slices,
 ):
     num_slices = ray.util.tpu.get_tpu_num_slices_for_workers(
         topology=topology,
         accelerator_type=accelerator_type,
         num_workers=num_workers,
         resources_per_worker=resources_per_worker,
+        tpu_resource_per_chip=tpu_resource_per_chip,
     )
     assert num_slices == expected_slices
 
@@ -924,11 +938,67 @@ def test_get_tpu_worker_resources_chips_per_vm_override():
     assert resources_override["TPU"] == 4
 
 
+def test_get_tpu_worker_resources_ray_tpu_resource_per_chip():
+    """Test that tpu_resource_per_chip correctly overrides the logical TPU device calculations."""
+    # Default tpu7x 2x2x2 = 2 hosts with 4 chips each (8 chips total). With multiplier=2, we should get 8 TPU logic units per VM, and 16 total.
+    num_workers, resources = ray.util.tpu.get_tpu_worker_resources(
+        topology="2x2x2", accelerator_type="TPU-V7X", tpu_resource_per_chip=2
+    )
+    assert num_workers == 2
+    assert resources["TPU"] == 8
+
+
+def test_slice_placement_group_ray_tpu_resource_per_chip(ray_v6e_tpu_cluster):
+    """Test that SlicePlacementGroup respects tpu_resource_per_chip for host calculation."""
+    # Default behavior (1 VM with 8 physical chips). Multiplier 2 means 16 logical TPU devices.
+    override_pg = SlicePlacementGroup(
+        topology="2x4", accelerator_version="v6e", tpu_resource_per_chip=2
+    )
+    assert override_pg.devices_per_host == 16
+    assert override_pg.chips_per_host == 8
+    assert override_pg.num_hosts == 1
+    assert override_pg.num_bundles == 1
+    assert override_pg.bundle_resources["TPU"] == 16
+
+
+@pytest.mark.parametrize(
+    "func_to_test, use_avail_resources",
+    [
+        (ray.util.tpu.get_num_ready_tpu_slices, True),
+        (ray.util.tpu.get_num_tpu_slices, False),
+    ],
+)
+@patch("ray.is_initialized", return_value=True)
+@patch("ray._private.state.available_resources_per_node")
+@patch("ray.nodes")
+def test_tpu_slices_ray_tpu_resource_per_chip(
+    mock_nodes_call,
+    mock_avail_resources_call,
+    mock_is_initialized,
+    func_to_test,
+    use_avail_resources,
+):
+    """Test slice readiness and integrity calculations with tpu_resource_per_chip."""
+    # 2x2x4 tpu7x has 16 physical chips. With multiplier 2, it expects 32 logical TPU devices.
+    mock_nodes = [
+        _make_mock_tpu_node(True, "v7x-32", "slice-1", 0, tpu_chips=32, node_id="A"),
+    ]
+    mock_nodes_call.return_value = mock_nodes
+    if use_avail_resources:
+        mock_avail_resources_call.return_value = {"A": {"TPU": 32}}
+
+    result = func_to_test(
+        topology="2x2x4", accelerator_type="TPU-V7X", tpu_resource_per_chip=2
+    )
+    assert result == 1
+
+
 def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
     """Test that SlicePlacementGroup respects chips_per_vm for host calculation."""
 
     # Default behavior (1 VM with 8 chips)
     default_pg = SlicePlacementGroup(topology="2x4", accelerator_version="v6e")
+    assert default_pg.devices_per_host == 8
     assert default_pg.chips_per_host == 8
     assert default_pg.num_hosts == 1
     assert default_pg.num_bundles == 1
@@ -938,6 +1008,7 @@ def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
     override_pg = SlicePlacementGroup(
         topology="2x4", accelerator_version="v6e", chips_per_vm=4
     )
+    assert override_pg.devices_per_host == 4
     assert override_pg.chips_per_host == 4
     assert override_pg.num_hosts == 2
     assert override_pg.num_bundles == 2
@@ -1107,6 +1178,7 @@ def _make_mock_slice_handle(
     mock_handle.num_slices = num_slices
     mock_handle.num_bundles = num_bundles
     mock_handle.chips_per_host = chips_per_host
+    mock_handle.devices_per_host = chips_per_host
     mock_handle.bundle_resources = {"TPU": tpu_per_bundle, "CPU": 1.0}
     mock_pg = MagicMock()
     mock_handle.slice_placement_group = mock_pg
@@ -1285,11 +1357,12 @@ def test_dispatch_sets_num_cpus_zero_and_tpu_resources(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_tpu_count_falls_back_to_chips_per_host(mock_spg_cls):
+def test_dispatch_tpu_count_falls_back_to_devices_per_host(mock_spg_cls):
     """When bundle_resources has no 'TPU' key, the TPU resource count
-    falls back to chips_per_host."""
-    chips_per_host = 4
-    mock_handle = _make_mock_slice_handle(chips_per_host=chips_per_host)
+    falls back to devices_per_host."""
+    devices_per_host = 8
+    mock_handle = _make_mock_slice_handle()
+    mock_handle.devices_per_host = devices_per_host
     # Remove the 'TPU' key so the fallback path is exercised.
     mock_handle.bundle_resources = {"CPU": 1.0}
     mock_spg_cls.return_value = mock_handle
@@ -1300,7 +1373,7 @@ def test_dispatch_tpu_count_falls_back_to_chips_per_host(mock_spg_cls):
             ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
 
     for call in fn.options.call_args_list:
-        assert call.kwargs["resources"] == {"TPU": chips_per_host}
+        assert call.kwargs["resources"] == {"TPU": devices_per_host}
 
 
 def test_dispatch_non_remote_fn_raises_type_error():
@@ -1870,6 +1943,77 @@ def test_subslice_auto_select_skips_busy_first_subslice(mock_4x4_pgs):
     assert sg.subslice_index == 1
     assert sg.num_hosts == 2
     sg.shutdown()
+
+
+def test_subslice_select_specific_index_success(mock_4x4_pgs):
+    """Specifying subslice_index selects that specific subslice even if others are idle."""
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-specific-index"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    # Pre-populate cache so no discovery is needed.
+    ray.util.tpu._tpu_subslice_cache[slice_name] = _SUBSLICE_2X4_LABELS
+
+    # All workers idle.
+    avail = {
+        "node_0": {"TPU": 4},
+        "node_1": {"TPU": 4},
+        "node_2": {"TPU": 4},
+        "node_3": {"TPU": 4},
+    }
+
+    with (
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail,
+        ),
+    ):
+        sg = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+            subslice_index=1,
+        )
+
+    assert sg.subslice_index == 1
+    assert sg.num_hosts == 2
+    sg.shutdown()
+
+
+def test_subslice_select_specific_index_busy(mock_4x4_pgs):
+    """Specifying subslice_index fails if that specific subslice is busy, even if others are idle."""
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-specific-index-busy"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    # Pre-populate cache so no discovery is needed.
+    ray.util.tpu._tpu_subslice_cache[slice_name] = _SUBSLICE_2X4_LABELS
+
+    # Workers 2 and 3 (subslice 1) busy; workers 0 and 1 (subslice 0) idle.
+    avail = {
+        "node_0": {"TPU": 4},
+        "node_1": {"TPU": 4},
+        "node_2": {"TPU": 0},
+        "node_3": {"TPU": 0},
+    }
+
+    with (
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail,
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="No subslice of '2x4' is schedulable"):
+            ray.util.tpu.subslice_placement_group(
+                subslice_topology="2x4",
+                accelerator_version="v6e",
+                chips_per_vm=4,
+                subslice_index=1,
+            )
 
 
 def test_subslice_release_head_pgs_and_shutdown():

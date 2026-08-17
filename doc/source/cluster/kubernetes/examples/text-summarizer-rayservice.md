@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve a text summarization model on a GPU Kubernetes cluster with RayService, including teardown steps."
+---
+
 (kuberay-text-summarizer-rayservice-example)=
 
 # Serve a text summarizer on Kubernetes

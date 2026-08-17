@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Deploy Ray clusters with ArgoCD, including operator install and the ignoreDifferences settings that stop autoscaling from fighting GitOps sync."
+---
+
 (deploying-on-argocd-example)=
 
 # Deploying Ray Clusters via ArgoCD
