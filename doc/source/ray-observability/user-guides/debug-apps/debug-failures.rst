@@ -1,5 +1,5 @@
 .. meta::
-   :description: Diagnose Ray application failures, including PyArrow HDFS JVM SIGSEGV crashes, file-descriptor exhaustion, and memory-related crashes.
+   :description: Diagnose Ray application failures: the kinds of failures that occur, print and debugger workflows, file-descriptor exhaustion, and memory-related crashes.
 
 .. _observability-debug-failures:
 
