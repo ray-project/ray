@@ -35,7 +35,6 @@ import ray
 from ray._raylet import (
     StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
 )
-from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
     _SHUFFLE_FILE_SERVER_NAMESPACE,
@@ -365,10 +364,9 @@ def _external_shuffle_reduce_task(
                                 ) from e
                             raise
 
-                    def _fetch_with_fsync(args):
+                    def _fetch_with_fsync(base, size, group):
                         # Fetch from one ShuffleFileServer to its staging region, then
                         # fsync.
-                        base, size, group = args
                         _fetch_from_file_server(
                             _PwriteSink(fd, base),
                             group.shuffle_id,
@@ -393,33 +391,17 @@ def _external_shuffle_reduce_task(
                         """Decode one staging-file region's IPC frames into ``accum_tables``."""
                         pos = base
                         end = base + size
-                        region_tables: List[pa.Table] = []
                         while pos < end:
                             length = struct.unpack(">Q", os.pread(fd, 8, pos))[0]
                             ipc_buf = os.pread(fd, length, pos + 8)
                             pos += 8 + length
-                            table = _read_ipc(ipc_buf, _compression)
-                            region_tables.append(table)
-                        # Default: DO NOT coalesce (like v2) — keep shards as separate
-                        # chunks and let the write control row-group size (write_parquet
-                        # row_group_size). The old per-region combine was a workaround for
-                        # write_dataset defaulting to one row group per chunk; it costs a
-                        # full copy and is only worth it on slow disks at very high chunk
-                        # counts. Set RAY_SHUFFLE_REDUCE_COMBINE=1 to re-enable.
-                        if (
-                            len(region_tables) > 1
-                            and os.environ.get("RAY_SHUFFLE_REDUCE_COMBINE") == "1"
-                        ):
-                            accum_tables.append(
-                                transform_pyarrow.combine_chunks(
-                                    pa.concat_tables(region_tables)
-                                )
-                            )
-                        else:
-                            accum_tables.extend(region_tables)
+                            accum_tables.append(_read_ipc(ipc_buf, _compression))
 
                     with ThreadPoolExecutor(max_workers=n_threads) as ex:
-                        futs = [ex.submit(_fetch_with_fsync, w) for w in work]
+                        futs = [
+                            ex.submit(_fetch_with_fsync, base, size, group)
+                            for base, size, group in work
+                        ]
                         for fut in as_completed(futs):
                             base, size = fut.result()
                             if size > 0:
