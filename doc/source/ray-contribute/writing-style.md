@@ -194,9 +194,9 @@ Use sentence case for every heading. Capitalize only the first word and proper n
 
 When a heading opens with a short label and a colon, capitalize the first term after the colon. The label is a prefix, not the start of the sentence, so the title that follows it begins like a title. Sentence case still governs the rest of the heading.
 
-- Use: "Example: Creating a custom mean aggregator"
-- Not: "Example: creating a custom mean aggregator"
-- Not: "Example: Creating a Custom Mean Aggregator"
+- Use: "Example: Create a custom mean aggregator"
+- Not: "Example: create a custom mean aggregator"
+- Not: "Example: Create a Custom Mean Aggregator"
 
 The same applies to "Step 2:", "Advanced:", "Guide:", and any similar prefix. The one exception is a code identifier, which keeps its real casing: "Pod configuration: headGroupSpec and workerGroupSpecs" is correct, because `headGroupSpec` is an API field name. Never capitalize an identifier to satisfy this rule.
 
