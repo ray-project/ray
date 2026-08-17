@@ -17,6 +17,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     DEFAULT_ANTHROPIC_ENDPOINTS,
     AnthropicIngress,
     OpenAiIngress,
+    init_anthropic,
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.core.server.builder import (
@@ -391,6 +392,7 @@ def build_anthropic_app(builder_config: dict) -> Application:
     ingress_cls = make_fastapi_ingress(
         ingress_cls_config.ingress_cls,
         endpoint_map=DEFAULT_ANTHROPIC_ENDPOINTS,
+        app=init_anthropic(),
     )
 
     logger.info("============== Ingress Options ==============")

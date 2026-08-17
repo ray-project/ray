@@ -59,6 +59,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TranscriptionRequest,
 )
 from ray.llm._internal.serve.core.ingress.anthropic_utils import (
+    add_anthropic_exception_handlers,
     anthropic_messages_http_response,
     translate_error_response,
 )
@@ -180,6 +181,13 @@ def init() -> FastAPI:
     _fastapi_router_app.add_middleware(SetRequestIdMiddleware)
 
     return _fastapi_router_app
+
+
+def init_anthropic() -> FastAPI:
+    """Create a FastAPI app with Anthropic-compatible error responses."""
+    app = init()
+    add_anthropic_exception_handlers(app)
+    return app
 
 
 def make_fastapi_ingress(
@@ -749,13 +757,7 @@ class AnthropicIngress(OpenAiIngress):
                 return translate_error_response(initial_response)
 
             if isinstance(initial_response, str):
-
-                async def stream():
-                    yield initial_response
-                    async for item in gen:
-                        yield item
-
-                return anthropic_messages_http_response(stream())
+                return anthropic_messages_http_response(gen)
 
             return anthropic_messages_http_response(initial_response)
 

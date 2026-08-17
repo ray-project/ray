@@ -1,6 +1,7 @@
 """HTTP tests for Anthropic Messages API ingress."""
 
 import sys
+from typing import List
 from unittest.mock import patch
 
 import httpx
@@ -26,10 +27,19 @@ MESSAGES_BODY = {
     "messages": [{"role": "user", "content": "hi"}],
 }
 
+STREAMING_MESSAGES_BODY = {**MESSAGES_BODY, "stream": True}
+
 COUNT_TOKENS_BODY = {
     "model": "test-model",
     "messages": [{"role": "user", "content": "hi there"}],
 }
+
+
+def _sse_event_names(body: str) -> List[str]:
+    prefix = "event: "
+    return [
+        line[len(prefix) :] for line in body.splitlines() if line.startswith(prefix)
+    ]
 
 
 def _mock_llm_config() -> LLMConfig:
@@ -84,6 +94,24 @@ class TestAnthropicHttp:
         assert payload["role"] == "assistant"
 
     @pytest.mark.asyncio
+    async def test_messages_stream(self, anthropic_app):
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "http://localhost:8000/v1/messages",
+                json=STREAMING_MESSAGES_BODY,
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"].startswith("text/event-stream")
+        # The ingress peeks at the first chunk to detect errors, so every event
+        # must reach the client exactly once and in the order the engine emitted.
+        assert _sse_event_names(response.text) == [
+            "message_start",
+            "content_block_delta",
+            "message_stop",
+        ]
+
+    @pytest.mark.asyncio
     async def test_count_tokens(self, anthropic_app):
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
@@ -97,17 +125,46 @@ class TestAnthropicHttp:
         assert payload["input_tokens"] > 0
 
     @pytest.mark.asyncio
-    async def test_messages_missing_model(self, anthropic_app):
+    @pytest.mark.parametrize(
+        ("endpoint", "body"),
+        [
+            ("/v1/messages", MESSAGES_BODY),
+            ("/v1/messages/count_tokens", COUNT_TOKENS_BODY),
+        ],
+    )
+    async def test_missing_model_error_envelope(self, anthropic_app, endpoint, body):
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                "http://localhost:8000/v1/messages",
+                f"http://localhost:8000{endpoint}",
                 json={
-                    **MESSAGES_BODY,
+                    **body,
                     "model": "missing-model",
                 },
             )
 
         assert response.status_code == 404
+        payload = response.json()
+        assert payload["type"] == "error"
+        assert payload["error"]["type"] == "not_found_error"
+        assert "missing-model" in payload["error"]["message"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "endpoint",
+        ["/v1/messages", "/v1/messages/count_tokens"],
+    )
+    async def test_validation_error_envelope(self, anthropic_app, endpoint):
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"http://localhost:8000{endpoint}",
+                json={},
+            )
+
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["type"] == "error"
+        assert payload["error"]["type"] == "invalid_request_error"
+        assert payload["error"]["message"]
 
     @pytest.mark.asyncio
     async def test_direct_streaming_messages(self):
