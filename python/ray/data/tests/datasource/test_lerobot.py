@@ -72,6 +72,8 @@ def create_lerobot_dataset(
     frames_per_episode: int = 5,
     has_video: bool = True,
     image_camera: bool = False,
+    multidimensional_feature: bool = False,
+    multidimensional_extension: bool = False,
 ) -> str:
     """Create a minimal LeRobot v3 dataset directory structure.
 
@@ -87,6 +89,10 @@ def create_lerobot_dataset(
             "has_video and image_camera are mutually exclusive: a camera is "
             "stored as mp4 video or as in-parquet images, not both. For an "
             "image-camera dataset pass has_video=False, image_camera=True."
+        )
+    if multidimensional_extension and not multidimensional_feature:
+        raise ValueError(
+            "multidimensional_extension requires multidimensional_feature=True."
         )
     os.makedirs(root, exist_ok=True)
     total_frames = num_episodes * frames_per_episode
@@ -124,6 +130,8 @@ def create_lerobot_dataset(
             "dtype": "image",
             "shape": [FRAME_H, FRAME_W, FRAME_C],
         }
+    if multidimensional_feature:
+        features["matrix"] = {"dtype": "float32", "shape": [2, 2]}
 
     meta_dir = os.path.join(root, "meta")
     os.makedirs(meta_dir, exist_ok=True)
@@ -135,6 +143,11 @@ def create_lerobot_dataset(
         "action": {"mean": [0.0, 0.0], "std": [1.0, 1.0]},
         "state": {"mean": [0.0, 0.0], "std": [1.0, 1.0]},
     }
+    if multidimensional_feature:
+        stats["matrix"] = {
+            "mean": [[0.0, 0.0], [0.0, 0.0]],
+            "std": [[1.0, 1.0], [1.0, 1.0]],
+        }
     with open(os.path.join(meta_dir, "stats.json"), "w") as f:
         json.dump(stats, f)
 
@@ -209,6 +222,25 @@ def create_lerobot_dataset(
                 type=pa.struct([("bytes", pa.binary()), ("path", pa.string())]),
             ),
         )
+    if multidimensional_feature:
+        matrix_values = [
+            [[float(i), float(i + 1)], [float(i + 2), float(i + 3)]] for i in indices
+        ]
+        if multidimensional_extension:
+            from datasets import Array2D
+
+            matrix_type = Array2D(shape=(2, 2), dtype="float32")()
+            matrix_storage = pa.array(matrix_values, type=matrix_type.storage_type)
+            matrix_column = pa.ExtensionArray.from_storage(matrix_type, matrix_storage)
+        else:
+            matrix_column = pa.array(
+                matrix_values,
+                type=pa.list_(pa.list_(pa.float32(), 2), 2),
+            )
+        data_table = data_table.append_column(
+            "matrix",
+            matrix_column,
+        )
     pq.write_table(data_table, os.path.join(data_dir, "file-000.parquet"))
 
     # -- videos/ --
@@ -249,6 +281,18 @@ def lerobot_dataset_image(tmp_path):
     return create_lerobot_dataset(
         str(tmp_path / "ds_img"), has_video=False, image_camera=True
     )
+
+
+@pytest.fixture(params=[False, True], ids=["nested-lists", "hf-array2d"])
+def lerobot_dataset_multidimensional(tmp_path, request):
+    """Create a 2-D feature using nested lists or an HF Array2D extension."""
+    root = create_lerobot_dataset(
+        str(tmp_path / "ds_matrix"),
+        has_video=False,
+        multidimensional_feature=True,
+        multidimensional_extension=request.param,
+    )
+    return root, request.param
 
 
 # ---------------------------------------------------------------------------
@@ -1226,6 +1270,61 @@ def test_delta_targets_clamps_to_episode():
     assert pad.tolist() == [[True, False, False], [False, False, True]]
 
 
+@pytest.mark.parametrize(
+    "extension_kind, expected_ndim",
+    [
+        # HF ArrayXD: a Python-defined pa.ExtensionType backed by nested lists.
+        ("hf-array2d", 3),
+        # A canonical (C++-defined) extension type -- a pa.BaseExtensionType but
+        # NOT a pa.ExtensionType -- backed by one flat fixed-size list.
+        ("fixed-shape-tensor", 2),
+    ],
+)
+def test_delta_tensor_type_preserves_extension_dimensions(
+    extension_kind, expected_ndim
+):
+    """The declared window rank follows the extension's *storage* nesting, for
+    Python-defined and canonical extension types alike."""
+    from ray.data._internal.datasource.lerobot_datasource import _delta_tensor_type
+
+    if extension_kind == "hf-array2d":
+        from datasets import Array2D
+
+        extension_type = Array2D(shape=(2, 3), dtype="float32")()
+    else:
+        extension_type = pa.fixed_shape_tensor(pa.float32(), [2, 2])
+
+    tensor_type = _delta_tensor_type(extension_type)
+    assert tensor_type.value_type == pa.float32()
+    assert tensor_type.ndim == expected_ndim
+
+
+def test_nested_list_column_to_numpy_rejects_null_lists():
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _nested_list_column_to_numpy,
+    )
+
+    column = pa.array(
+        [[[1.0, 2.0], None]],
+        type=pa.list_(pa.list_(pa.float32())),
+    )
+    with pytest.raises(ValueError, match="cannot contain null lists"):
+        _nested_list_column_to_numpy(column, "matrix")
+
+
+def test_nested_list_column_to_numpy_rejects_ragged_lists():
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _nested_list_column_to_numpy,
+    )
+
+    column = pa.array(
+        [[[1.0, 2.0]], [[3.0, 4.0], [5.0, 6.0]]],
+        type=pa.list_(pa.list_(pa.float32())),
+    )
+    with pytest.raises(ValueError, match="must have one uniform shape"):
+        _nested_list_column_to_numpy(column, "matrix")
+
+
 def test_read_lerobot_delta_tabular(ray_start_regular_shared, lerobot_dataset_no_video):
     """Tabular windows: ``action`` gathers [t, t+1] and ``state`` gathers
     [t-1, t], each clamped to the anchor's episode with an is_pad mask."""
@@ -1256,6 +1355,47 @@ def test_read_lerobot_delta_tabular(ray_start_regular_shared, lerobot_dataset_no
         np.testing.assert_allclose(state[0], [j_prev * 0.1, j_prev * 0.2], rtol=1e-6)
         np.testing.assert_allclose(state[1], [i * 0.1, i * 0.2], rtol=1e-6)
         assert list(state_pad) == [i - 1 < ep_from, False]
+
+
+def test_read_lerobot_delta_multidimensional_tabular(
+    ray_start_regular_shared, lerobot_dataset_multidimensional
+):
+    """A temporal window preserves every dimension of a tabular feature."""
+    from ray.data.datasource import LeRobotDatasource
+
+    dataset_path, uses_extension = lerobot_dataset_multidimensional
+    parquet_path = os.path.join(dataset_path, "data", "chunk-000", "file-000.parquet")
+    matrix_type = pq.read_schema(parquet_path).field("matrix").type
+    assert isinstance(matrix_type, pa.ExtensionType) is uses_extension
+
+    source = LeRobotDatasource(
+        dataset_path,
+        delta_timestamps={"matrix": [0.0, 0.1]},
+    )
+    tasks = source.get_read_tasks(1)
+    block = pa.concat_tables([b for task in tasks for b in task()])
+    assert tasks[0].schema.equals(block.schema)
+
+    rows = block.to_pylist()
+    for row in rows:
+        i = row["index"]
+        ep_to = (i // 5) * 5 + 5
+        j_next = min(i + 1, ep_to - 1)
+        matrix = np.asarray(row["matrix"])
+        assert matrix.shape == (2, 2, 2)
+        assert matrix.dtype == np.float32
+        np.testing.assert_array_equal(
+            matrix[0],
+            [[i, i + 1], [i + 2, i + 3]],
+        )
+        np.testing.assert_array_equal(
+            matrix[1],
+            [[j_next, j_next + 1], [j_next + 2, j_next + 3]],
+        )
+        assert list(np.asarray(row["matrix_is_pad"])) == [
+            False,
+            i + 1 >= ep_to,
+        ]
 
 
 def test_read_lerobot_delta_video(ray_start_regular_shared, lerobot_dataset):
