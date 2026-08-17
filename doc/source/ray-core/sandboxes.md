@@ -256,7 +256,7 @@ ray.get(sb.delete.remote())
 
 ## Architecture
 
-The Ray Sandboxing subsystem is organized into hierarchical layers:
+The Ray Sandboxes subsystem has the following layers:
 
 ```text
 +-------------------------------------------------------------------+
@@ -297,7 +297,7 @@ The Ray Sandboxing subsystem is organized into hierarchical layers:
 
 * **High-level helper ({func}`~ray.experimental.sandbox.create`)**: Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an `ActorHandle`.
 * **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
-* **Sandbox runtime ({class}`~ray.experimental.sandbox.runtime.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
+* **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
 * **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands and isolates processes through gVisor's OCI runtime (`runsc`).
 * **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
@@ -313,13 +313,13 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 
 ## API reference
 
-For detailed signatures, parameters, and return types, see the {ref}`Ray Sandbox API reference <ray-sandbox-ref>`.
+For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref`.
 
 ## Troubleshooting
 
-* **`runsc` not found in `PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and located in a directory present in the system `PATH` (such as `/usr/local/bin/runsc`).
-* **Cgroup or permission errors**: If running in containerized environments (such as Kubernetes) without root permissions, ensure `rootless=True` is set (the default). If running in environments where cgroups are restricted, you can set the environment variable `RAY_SANDBOX_IGNORE_CGROUPS=1`.
-* **Image pull failures**: Ensure the node has internet access to reach the container registry (such as Docker Hub or GHCR), or pre-populate the image cache directory at `/tmp/ray/sandbox/images`.
+* **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
+* **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
+* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`.
 
 ## Next steps
 
