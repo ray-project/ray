@@ -1737,25 +1737,42 @@ Status CoreWorker::GetLocationFromOwner(
     objects_by_owner[owner_address].push_back(object_id);
   }
 
+  const int64_t configured_batch_size = RayConfig::instance().worker_fetch_request_size();
+  if (configured_batch_size <= 0) {
+    return Status::InvalidArgument(absl::StrCat(
+        "worker_fetch_request_size must be positive, got ", configured_batch_size, "."));
+  }
+  const auto batch_size = static_cast<size_t>(configured_batch_size);
+
   auto mutex = std::make_shared<absl::Mutex>();
-  auto num_remaining = std::make_shared<size_t>(0);  // Will be incremented per batch
+  auto num_remaining = std::make_shared<size_t>(0);
   auto ready_promise = std::make_shared<std::promise<void>>();
   auto location_by_id =
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
+  // Count every request before dispatching any of them. Callbacks run on the io_service
+  // thread and can fire while this function is still dispatching, so a counter that is
+  // incremented as we go could be observed at zero and complete the promise before the
+  // remaining batches exist. This loop mirrors the dispatch loop below, and the check
+  // after that loop enforces that the two stay in step.
+  size_t num_batches = 0;
+  for (const auto &owner_and_objects : objects_by_owner) {
+    for (size_t batch_start = 0; batch_start < owner_and_objects.second.size();
+         batch_start += batch_size) {
+      ++num_batches;
+    }
+  }
+  *num_remaining = num_batches;
+
+  size_t num_dispatched = 0;
   for (const auto &owner_and_objects : objects_by_owner) {
     const auto &owner_address = owner_and_objects.first;
     const auto &owner_object_ids = owner_and_objects.second;
 
-    // Calculate the number of batches
-    // Use the same config from worker_fetch_request_size
-    auto batch_size =
-        static_cast<size_t>(RayConfig::instance().worker_fetch_request_size());
-
     for (size_t batch_start = 0; batch_start < owner_object_ids.size();
          batch_start += batch_size) {
-      *num_remaining += 1;
       size_t batch_end = std::min(batch_start + batch_size, owner_object_ids.size());
+      const int batch_length = static_cast<int>(batch_end - batch_start);
       auto client = core_worker_client_pool_->GetOrConnect(owner_address);
       rpc::GetObjectLocationsOwnerRequest request;
       request.set_intended_worker_id(owner_address.worker_id());
@@ -1769,6 +1786,7 @@ Status CoreWorker::GetLocationFromOwner(
           request,
           [owner_object_ids,
            batch_start,
+           batch_length,
            mutex,
            num_remaining,
            ready_promise,
@@ -1777,7 +1795,12 @@ Status CoreWorker::GetLocationFromOwner(
                           const rpc::GetObjectLocationsOwnerReply &reply) {
             absl::MutexLock lock(mutex.get());
             if (status.ok()) {
-              for (int i = 0; i < reply.object_location_infos_size(); ++i) {
+              // The owner is expected to reply with one location per requested object,
+              // but nothing enforces that, so ignore any extra entries rather than
+              // indexing past this batch.
+              const int num_locations =
+                  std::min(reply.object_location_infos_size(), batch_length);
+              for (int i = 0; i < num_locations; ++i) {
                 // Map the object ID to its location, adjusting index by batch_start
                 location_by_id->emplace(
                     owner_object_ids[batch_start + i],
@@ -1790,13 +1813,20 @@ Status CoreWorker::GetLocationFromOwner(
                   << debug_string(owner_object_ids)
                   << " owned by worker with error: " << status;
             }
+            // A decrement below zero would wrap and the promise would never be
+            // completed, so fail loudly instead of hanging the caller.
+            RAY_CHECK_GT(*num_remaining, 0u);
             (*num_remaining)--;
             if (*num_remaining == 0) {
               ready_promise->set_value();
             }
           });
+      ++num_dispatched;
     }
   }
+  // The pre-count above and this loop have to agree, or the promise is either completed
+  // early or never at all. Catch a future edit that changes only one of them.
+  RAY_CHECK_EQ(num_dispatched, num_batches);
 
   // Wait for all batches to be processed or timeout
   if (timeout_ms < 0) {
