@@ -134,13 +134,17 @@ handles an expected, recoverable JVM fault or starts crash reporting for a genui
 fatal error. These recoverable signals are normally invisible to the application.
 
 Ray's CoreWorker also installs an Abseil failure-signal handler for signals including
-``SIGSEGV``. Abseil doesn't understand HotSpot's JIT-generated code or VM-specific
-signal contexts, so it can't determine whether a particular signal is recoverable by
-the JVM. Installing both handlers doesn't necessarily cause an immediate crash. The
-conflict is established when the handlers are installed, but the crash occurs later
-when HotSpot produces a recoverable internal fault and no longer gets the first
-opportunity to classify and handle it. JVM execution paths, JIT compilation, thread
-scheduling, and memory layout can therefore make the failure appear intermittent.
+``SIGSEGV``. Linux maintains one current signal disposition for each signal; it doesn't
+automatically invoke multiple handlers in registration order. Unless the libraries
+explicitly implement chaining, a later registration can replace an earlier handler.
+Abseil doesn't understand HotSpot's JIT-generated code or VM-specific signal contexts,
+so it can't determine whether a particular signal is recoverable by the JVM.
+
+Installing both handlers doesn't necessarily cause an immediate crash. The conflict is
+established when the handlers are installed, but the crash occurs later when HotSpot
+produces a recoverable internal fault and no longer gets the first opportunity to
+classify and handle it. JVM execution paths, JIT compilation, thread scheduling, and
+memory layout can therefore make the failure appear intermittent.
 
 Use HotSpot signal chaining
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -163,11 +167,14 @@ the same JDK selected by ``JAVA_HOME``, and preload it before starting Python:
     export LD_PRELOAD="$LIBJSIG${LD_PRELOAD:+:$LD_PRELOAD}"
     python your_program.py
 
-``libjsig.so`` intercepts subsequent ``signal()``, ``sigset()``, and ``sigaction()``
-calls and chains newly installed handlers behind the HotSpot handler. The ordering is
-important because only HotSpot can classify a JVM-generated ``SIGSEGV`` as recoverable.
-HotSpot consumes its internal faults, while signals it doesn't recognize continue to
-Ray's handler. This approach keeps Ray's native crash diagnostics enabled.
+``LD_PRELOAD`` makes the dynamic loader load ``libjsig.so`` before the other native
+libraries; the environment variable itself doesn't change signal semantics.
+``libjsig.so`` then intercepts subsequent ``signal()``, ``sigset()``, and
+``sigaction()`` calls and turns what would otherwise be handler replacement into an
+explicit chain behind the HotSpot handler. The ordering is important because only
+HotSpot can classify a JVM-generated ``SIGSEGV`` as recoverable. HotSpot consumes and
+recovers from its internal faults without forwarding them. Signals it doesn't
+recognize continue to Ray's handler, which preserves Ray's native crash diagnostics.
 
 You must configure ``LD_PRELOAD`` before the Python process starts. Setting it through
 ``os.environ`` in a running Python process is too late. The library path varies by JDK;
