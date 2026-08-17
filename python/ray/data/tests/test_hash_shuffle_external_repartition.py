@@ -222,3 +222,8 @@ def test_external_flag_off_keeps_object_store_path(
         assert ds.count() == 200
 
 
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
+

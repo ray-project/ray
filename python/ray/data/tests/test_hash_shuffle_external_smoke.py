@@ -123,3 +123,9 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         reduce_op.shutdown(Timer(), force=True)
         map_op.shutdown(Timer(), force=True)
         upstream.shutdown(Timer(), force=True)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
