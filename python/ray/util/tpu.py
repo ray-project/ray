@@ -1017,7 +1017,7 @@ def run_on_slice(
             ignored otherwise.
         tpu_slice: An existing :class:`SlicePlacementGroup` to schedule
             onto. When provided, the slice is used directly and
-            ``dispatch`` does **not** create, modify, or tear down
+            ``run_on_slice`` does **not** create, modify, or tear down
             any placement groups. When ``None`` (default), a new slice
             is reserved internally and its head placement groups are
             released once the worker placement group becomes ready.
@@ -1198,6 +1198,10 @@ def run_on_slice(
     warning=True,
 )
 def dispatch(*args: Any, **kwargs: Any) -> "List[ray.ObjectRef]":
+    """Run a remote function on every host in a TPU slice.
+
+    Deprecated, please use ``run_on_slice`` instead.
+    """
     return run_on_slice(*args, **kwargs)
 
 
