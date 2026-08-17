@@ -65,14 +65,18 @@ class SandboxRuntime:
             cpu: Number of CPU cores allocated to the sandbox.
             memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
             env: Environment variables to inject into the sandbox.
-            workdir: Default working directory inside the sandbox. Note that the
-                working directory is the only writable path in the sandbox. If not provided,
-                the container's WORKDIR is used.
+            workdir: Default working directory inside the sandbox. By default, the
+                working directory is the only writable path in the sandbox (unless
+                ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
             ttl_seconds: Optional automatic cleanup time-to-live in seconds.
             timeout_seconds: Timeout in seconds for sandbox creation.
             rootless: If True, run gVisor in rootless mode.
             network: Network mode for runsc.
-            readonly: If True, mount container image rootfs in read-only mode (default: True).
+            readonly: If True (default), mount container image rootfs in read-only mode
+                such that only ``workdir`` is writable. If False, the entire root filesystem
+                is writable. Writes are isolated within a per-sandbox copy-on-write overlay
+                filesystem, ensuring multiple sandboxes running the same container image do
+                not interfere with each other or modify the base image.
             _oci_spec_transform_fn: PRIVATE — development/testing only. Called with the fully-built OCI
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.

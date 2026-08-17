@@ -12,21 +12,25 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 
 @ray.remote
 class Sandbox:
-    """Ray actor interface for managing scheduling and lifecycle of an isolated sandbox.
+    """Ray actor proxy for managing scheduling, lifecycle, command execution, and file I/O for an isolated sandbox instance.
 
     Args:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        workdir: Default working directory inside the sandbox. Note that the
-            working directory is the only writable path in the sandbox. If not provided,
-            the container's WORKDIR is used.
+        workdir: Default working directory inside the sandbox. By default, the
+            working directory is the only writable path in the sandbox (unless
+            ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
-        readonly: If True, mount container image rootfs in read-only mode (default: True).
+        readonly: If True (default), mount container image rootfs in read-only mode
+            such that only ``workdir`` is writable. If False, the entire root filesystem
+            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
+            filesystem, ensuring multiple sandboxes running the same container image do
+            not interfere with each other or modify the base image.
         **kwargs: Additional parameters passed to runtime.
     """
 

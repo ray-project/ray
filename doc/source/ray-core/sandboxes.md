@@ -33,53 +33,6 @@ Using gVisor as the execution backend for Ray Sandboxes provides key advantages 
 * **Dense Bin Packing & Low Footprint:** Each gVisor sandbox has a minimal memory overhead and near-zero idle CPU usage. Ray worker nodes can densely pack hundreds of concurrent sandboxes alongside standard Ray tasks and actors.
 * **Rootless & Container-Native:** gVisor runs entirely in user space without requiring host root privileges, the Docker daemon, or nested virtualization hardware extensions. This makes it straightforward to run securely inside existing Kubernetes Ray worker Pods and cloud container environments.
 
-## Architecture
-
-The Ray Sandboxing subsystem is organized into hierarchical layers:
-
-```text
-+-------------------------------------------------------------------+
-|               Ray Application / RL Framework                      |
-|           (e.g., veRL, SkyRL, RL Rollout Workers, Agents)         |
-+-------------------------------------------------------------------+
-                                  |
-                                  v
-+-------------------------------------------------------------------+
-|                      ray.experimental.sandbox                     |
-|           (High-level create() API & Sandbox Ray Actor)           |
-+-------------------------------------------------------------------+
-                                  |
-                                  v
-+-------------------------------------------------------------------+
-|                  ray.experimental.sandbox.runtime                 |
-|                      SandboxRuntime Interface                     |
-+-------------------------------------------------------------------+
-                                  |
-                                  v
-+-------------------------------------------------------------------+
-|                 ray.experimental.sandbox.backend                  |
-|               GVisorSandboxBackend (runsc OCI)                    |
-+-------------------------------------------------------------------+
-                                  |
-                                  v
-+-------------------------------------------------------------------+
-|                        Ray Worker Node                            |
-|   +-----------------------+       +-----------------------+       |
-|   |  gVisor Sandbox 1     |       |  gVisor Sandbox 2     |       |
-|   | (python:3.10-slim)    |       | (busybox:latest)      |       |
-|   |   CPU: 0.5, Mem: 256M |       |   CPU: 1.0, Mem: 512M |       |
-|   +-----------------------+       +-----------------------+       |
-+-------------------------------------------------------------------+
-```
-
-### Core Components
-
-1. **High-Level Helper ({func}`ray.experimental.sandbox.create <ray.experimental.sandbox.create>`):** Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an `ActorHandle`.
-2. **Sandbox Actor ({class}`ray.experimental.sandbox.Sandbox <ray.experimental.sandbox.Sandbox>`):** A Ray actor managing scheduling, lifecycle, command execution, and file I/O for an isolated sandbox instance.
-3. **Sandbox Runtime ({class}`ray.experimental.sandbox.runtime.SandboxRuntime <ray.experimental.sandbox.runtime.SandboxRuntime>`):** A low-level abstraction that manages the lifecycle of local sandboxes, image pulling/caching, and interactions with the execution backend.
-4. **gVisor Backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`):** Executes commands and isolates processes via gVisor's OCI runtime (`runsc`).
-5. **Image Manager (`ray.experimental.sandbox.image_manager.ImageManager`):** Automatically pulls container images (e.g. from Docker Hub, GHCR, or local tar archives), extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
-
 ## Requirements
 
 To use Ray Sandboxes on your Ray nodes:
@@ -232,9 +185,124 @@ print(result.stdout)
 ray.get(pool.close.remote())
 ```
 
-## API Reference
+### Example (Advanced): Passing Configurations Directly to gVisor
 
-For detailed signatures, parameters, and return types, see the {ref}`Ray Sandbox API reference <ray-sandbox-ref>`.
+For advanced workloads, you may need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Ray Sandboxes provide the `_oci_spec_transform_fn` parameter to allow you to inspect and modify the generated [OCI runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before it is passed to gVisor (`runsc`).
+
+:::{note}
+`_oci_spec_transform_fn` is an experimental hook intended for advanced use cases while we iterate on first-class configuration APIs for Ray Sandboxes (such as higher-level volume mount and capability abstractions). We are actively exploring how to best expose these capabilities directly without requiring low-level OCI specification manipulation.
+:::
+
+The `_oci_spec_transform_fn` callable receives the fully generated OCI specification dictionary and can mutate it in place or return a modified dictionary. Common use cases include:
+
+1. **Host Mounts:** Mounting host directories or read-only datasets and model weights into the sandbox container.
+2. **Networking and DNS Configuration:** Setting up DNS resolution by mounting host configuration files (such as `/etc/resolv.conf` and `/etc/hosts`) or modifying network namespace parameters when using `network="sandbox"`.
+3. **Linux Capabilities:** Adding or restricting Linux process capabilities (such as `CAP_NET_RAW` or `CAP_SYS_PTRACE`) under `spec["process"]["capabilities"]`.
+
+```python
+import ray
+from ray.experimental import sandbox
+
+ray.init()
+
+
+def configure_oci_spec(spec: dict) -> dict:
+    # Add a host bind mount (e.g., read-only dataset or cache directory)
+    spec.setdefault("mounts", []).append(
+        {
+            "destination": "/mnt/dataset",
+            "source": "/path/to/host/dataset",
+            "type": "bind",
+            "options": ["rbind", "ro"],
+        }
+    )
+
+    # Configure networking and DNS resolution
+    spec["mounts"].append(
+        {
+            "destination": "/etc/resolv.conf",
+            "source": "/etc/resolv.conf",
+            "type": "bind",
+            "options": ["rbind", "ro"],
+        }
+    )
+
+    # Grant additional Linux process capabilities
+    caps = spec.setdefault("process", {}).setdefault("capabilities", {})
+    for cap_set in ["bounding", "effective", "permitted"]:
+        caps.setdefault(cap_set, [])
+        if "CAP_NET_RAW" not in caps[cap_set]:
+            caps[cap_set].append("CAP_NET_RAW")
+
+    return spec
+
+
+# Pass the transformation hook when creating the sandbox
+sb = sandbox.create(
+    image="python:3.10-slim",
+    workdir="/workspace",
+    network="sandbox",  # Enable network isolation namespace in gVisor
+    _oci_spec_transform_fn=configure_oci_spec,
+)
+
+# Execute commands within the customized sandbox
+result = ray.get(
+    sb.exec.remote(
+        "python3 -c 'print(\"Sandbox initialized with custom OCI configuration!\")'"
+    )
+)
+print(result.stdout)
+
+# Clean up resources
+ray.get(sb.delete.remote())
+```
+
+## Architecture
+
+The Ray Sandboxing subsystem is organized into hierarchical layers:
+
+```text
++-------------------------------------------------------------------+
+|               Ray Application / RL Framework                      |
+|           (e.g., veRL, SkyRL, RL Rollout Workers, Agents)         |
++-------------------------------------------------------------------+
+                                  |
+                                  v
++-------------------------------------------------------------------+
+|                      ray.experimental.sandbox                     |
+|           (High-level create() API & Sandbox Ray Actor)           |
++-------------------------------------------------------------------+
+                                  |
+                                  v
++-------------------------------------------------------------------+
+|                  ray.experimental.sandbox.runtime                 |
+|                      SandboxRuntime Interface                     |
++-------------------------------------------------------------------+
+                                  |
+                                  v
++-------------------------------------------------------------------+
+|                 ray.experimental.sandbox.backend                  |
+|               GVisorSandboxBackend (runsc OCI)                    |
++-------------------------------------------------------------------+
+                                  |
+                                  v
++-------------------------------------------------------------------+
+|                        Ray Worker Node                            |
+|   +-----------------------+       +-----------------------+       |
+|   |  gVisor Sandbox 1     |       |  gVisor Sandbox 2     |       |
+|   | (python:3.10-slim)    |       | (busybox:latest)      |       |
+|   |   CPU: 0.5, Mem: 256M |       |   CPU: 1.0, Mem: 512M |       |
+|   +-----------------------+       +-----------------------+       |
++-------------------------------------------------------------------+
+```
+
+### Core Components
+
+1. **High-Level Helper ({func}`ray.experimental.sandbox.create <ray.experimental.sandbox.create>`):** Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an `ActorHandle`.
+2. **Sandbox Actor ({class}`ray.experimental.sandbox.Sandbox <ray.experimental.sandbox.Sandbox>`):** A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
+3. **Sandbox Runtime ({class}`ray.experimental.sandbox.runtime.SandboxRuntime <ray.experimental.sandbox.runtime.SandboxRuntime>`):** A low-level abstraction that manages the lifecycle of local sandboxes, image pulling/caching, and interactions with the execution backend.
+4. **gVisor Backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`):** Executes commands and isolates processes via gVisor's OCI runtime (`runsc`).
+5. **Image Manager (`ray.experimental.sandbox.image_manager.ImageManager`):** Automatically pulls container images (e.g. from Docker Hub, GHCR, or local tar archives), extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
 ## Security & Isolation Model
 
@@ -245,6 +313,10 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 3. **Restricted Working Directory:** Only the explicit `workdir` (e.g. `/workspace`) is mounted read-write for application artifacts.
 4. **Network Containment:** By default, `network="none"` disables all outbound network interfaces, preventing untrusted code from making external API calls or scanning the internal cluster network.
 5. **Resource Quotas:** CPU quotas and memory limits are enforced via cgroups, preventing CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
+
+## API Reference
+
+For detailed signatures, parameters, and return types, see the {ref}`Ray Sandbox API reference <ray-sandbox-ref>`.
 
 ## Troubleshooting
 
