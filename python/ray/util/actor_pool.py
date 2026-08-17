@@ -171,7 +171,9 @@ class ActorPool:
 
         return get_generator()
 
-    def submit(self, fn: Callable[["ray.actor.ActorHandle", V], Any], value: V):
+    def submit(
+        self, fn: Callable[["ray.actor.ActorHandle", V], Any], value: V
+    ) -> Optional["ray.ObjectRef"]:
         """Schedule a single task to run in the pool.
 
         This has the same argument semantics as map(), but takes on a single
@@ -183,6 +185,16 @@ class ActorPool:
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
             value: Value to compute a result for.
+
+        Returns:
+            Whatever ``fn`` returned (typically an ObjectRef) if an actor was
+            idle and the task was dispatched immediately, otherwise ``None``
+            because every actor is busy and the task was only queued. Use
+            has_free() beforehand to tell the two cases apart.
+
+            Awaiting the returned reference directly does not release the actor
+            back to the pool; get_next() / get_next_unordered() must still be
+            called to mark the actor idle and to drain queued submissions.
 
         Examples:
             .. testcode::
@@ -212,8 +224,10 @@ class ActorPool:
             self._future_to_actor[future_key] = (self._next_task_index, actor)
             self._index_to_future[self._next_task_index] = future
             self._next_task_index += 1
-        else:
-            self._pending_submits.append((fn, value))
+            return future
+
+        self._pending_submits.append((fn, value))
+        return None
 
     def has_next(self):
         """Returns whether there are any pending results to return.
