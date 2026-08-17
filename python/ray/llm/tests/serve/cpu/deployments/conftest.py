@@ -1,7 +1,10 @@
 import pytest
 
 import ray
-from ray.tests.conftest import _ray_start_cluster
+from ray.tests.conftest import (
+    _isolate_token_auth_state,  # noqa: F401
+    _ray_start_cluster,
+)
 
 
 @pytest.fixture

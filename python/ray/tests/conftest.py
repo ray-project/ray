@@ -1602,6 +1602,45 @@ def clean_token_sources(cleanup_auth_token_env):
 
     yield
 
+
+@pytest.fixture(autouse=True)
+def _isolate_token_auth_state():
+    """Isolate token-authentication state across tests.
+
+    A local cluster enables token auth by default and writes a token to
+    ``~/.ray/auth_token``, and ``ray.init`` sets ``RAY_AUTH_MODE`` in the
+    environment. Both persist and, without isolation, leak into later tests (and,
+    under ``bazel test`` where HOME is unset, across test targets sharing one
+    home), enabling auth on a cluster whose other processes can't authenticate.
+    Give each test a clean slate and put the original state back afterward, so a
+    developer's existing ``~/.ray/auth_token`` is never modified by a test run.
+    """
+    keys = ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
+    saved_env = {k: os.environ.get(k) for k in keys}
+    default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
+    original_token = None
+    if os.path.exists(default_token):
+        with open(default_token) as f:
+            original_token = f.read()
+        os.remove(default_token)
+    reset_auth_token_state()
+    try:
+        yield
+    finally:
+        if original_token is None:
+            if os.path.exists(default_token):
+                os.remove(default_token)
+        else:
+            os.makedirs(os.path.dirname(default_token), exist_ok=True)
+            with open(default_token, "w") as f:
+                f.write(original_token)
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        reset_auth_token_state()
+
     if ray.is_initialized():
         ray.shutdown()
 
