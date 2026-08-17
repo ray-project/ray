@@ -1772,7 +1772,7 @@ Status CoreWorker::GetLocationFromOwner(
     for (size_t batch_start = 0; batch_start < owner_object_ids.size();
          batch_start += batch_size) {
       size_t batch_end = std::min(batch_start + batch_size, owner_object_ids.size());
-      const int batch_length = static_cast<int>(batch_end - batch_start);
+      const size_t batch_length = batch_end - batch_start;
       auto client = core_worker_client_pool_->GetOrConnect(owner_address);
       rpc::GetObjectLocationsOwnerRequest request;
       request.set_intended_worker_id(owner_address.worker_id());
@@ -1797,15 +1797,16 @@ Status CoreWorker::GetLocationFromOwner(
             if (status.ok()) {
               // The owner is expected to reply with one location per requested object,
               // but nothing enforces that, so ignore any extra entries rather than
-              // indexing past this batch.
-              const int num_locations =
-                  std::min(reply.object_location_infos_size(), batch_length);
-              for (int i = 0; i < num_locations; ++i) {
+              // indexing past this batch. Comparing as size_t keeps the clamp
+              // independent of how large a batch the config allows.
+              const size_t num_locations = std::min(
+                  static_cast<size_t>(reply.object_location_infos_size()), batch_length);
+              for (size_t i = 0; i < num_locations; ++i) {
                 // Map the object ID to its location, adjusting index by batch_start
                 location_by_id->emplace(
                     owner_object_ids[batch_start + i],
-                    std::make_shared<ObjectLocation>(
-                        CreateObjectLocation(reply.object_location_infos(i))));
+                    std::make_shared<ObjectLocation>(CreateObjectLocation(
+                        reply.object_location_infos(static_cast<int>(i)))));
               }
             } else {
               RAY_LOG(WARNING).WithField(WorkerID::FromBinary(owner_address.worker_id()))
