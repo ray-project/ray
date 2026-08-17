@@ -31,8 +31,8 @@ def _reader(**kwargs):
     return FooterReader(filesystem=LocalFileSystem(), io_concurrency=2, **kwargs)
 
 
-def _filter_leaves(reader, metadata, rg_idx=0):
-    return reader._locate_filter_columns(metadata.row_group(rg_idx))
+def _filter_leaves(reader, metadata):
+    return reader._locate_filter_columns(metadata.schema)
 
 
 def _has_filter_nulls(reader, metadata, rg_idx=0):
@@ -54,17 +54,21 @@ class _FakeStatistics:
 
 
 class _FakeColumn:
-    def __init__(self, path_in_schema, statistics):
-        self.path_in_schema = path_in_schema
+    def __init__(self, path, statistics):
+        self.path = self.path_in_schema = path
         self.statistics = statistics
+        self.physical_type = "INT64"
+        self.logical_type = None
 
 
 class _FakeMetadata:
     """Enough of ``FileMetaData`` for ``_has_filter_nulls``: one row group.
 
-    Statistics states that no PyArrow writer emits -- notably a ``Statistics``
-    with ``has_null_count`` false -- are reachable in files written by other
-    Parquet implementations, so they are faked rather than written.
+    Doubles as its own ``ParquetSchema`` and ``RowGroupMetaData``, since the
+    leaves line up one-to-one. Statistics states that no PyArrow writer emits
+    -- notably a ``Statistics`` with ``has_null_count`` false -- are reachable
+    in files written by other Parquet implementations, so they are faked rather
+    than written.
     """
 
     def __init__(self, *columns):
@@ -74,7 +78,14 @@ class _FakeMetadata:
         return self
 
     @property
+    def schema(self):
+        return self
+
+    @property
     def num_columns(self):
+        return len(self._columns)
+
+    def __len__(self):
         return len(self._columns)
 
     def column(self, j):
@@ -324,6 +335,137 @@ class TestNullsAreNeverExactSurvivors:
         chunks = reader._read_and_chunk(path, size)
 
         assert not any(rg.fully_matched for rg in chunks.row_groups)
+
+
+class TestFloatsAreNeverExactSurvivors:
+    """A predicate on a float column means ``num_rows`` is not an exact count.
+
+    Parquet min/max statistics are computed over non-NaN values, so a NaN row
+    is invisible to the bounds: ``[35.0, 40.0, NaN]`` reports min 35 / max 40,
+    which makes ``~(id >= 30)`` look impossible even though the NaN row does
+    satisfy it and does not survive the filter. Nothing in the footer counts
+    NaNs, so no float predicate column can be cleared.
+    """
+
+    @pytest.mark.parametrize("dtype", [pa.float64(), pa.float32()])
+    def test_a_nan_row_does_not_count_as_a_survivor(self, tmp_path, dtype):
+        path, size = _write(
+            tmp_path / "nan.parquet",
+            pa.table({"id": pa.array([35.0, 40.0, float("nan")], dtype)}),
+            row_group_size=3,
+        )
+        reader = _reader(filter_expr=col("id") >= 30)
+
+        # The null guard cannot catch this: NaN is not null, so the writer
+        # records a zero null count and the bounds exclude the NaN outright.
+        metadata = pq.ParquetFile(path).metadata
+        statistics = metadata.row_group(0).column(0).statistics
+        assert (statistics.min, statistics.max) == (35.0, 40.0)
+        assert statistics.null_count == 0 and statistics.has_null_count
+        assert not _has_filter_nulls(reader, metadata)
+
+        chunks = reader._read_and_chunk(path, size)
+
+        # Two of the three rows survive, so the group's num_rows would
+        # over-count and limit push-down would stop a row early.
+        assert pq.read_table(path).filter(col("id").to_pyarrow() >= 30).num_rows == 2
+        assert [rg.num_rows for rg in chunks.row_groups] == [3]
+        assert not any(rg.fully_matched for rg in chunks.row_groups)
+
+    def test_a_nan_free_float_column_is_also_not_exact(self, tmp_path):
+        """Conservative by necessity: no footer field counts NaNs.
+
+        This data has none, but nothing in the file says so, and inferring it
+        from min/max is exactly the inference that over-counts.
+        """
+        path, size = _write(
+            tmp_path / "clean.parquet",
+            pa.table({"id": pa.array([35.0, 40.0, 45.0], pa.float64())}),
+            row_group_size=3,
+        )
+
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+
+        assert [rg.rg_idx for rg in chunks.row_groups] == [0]
+        assert not any(rg.fully_matched for rg in chunks.row_groups)
+
+    def test_a_float_leaf_outside_the_predicate_stays_exact(self, tmp_path):
+        """Only the predicate's own columns can distort its survivor count."""
+        path, size = _write(
+            tmp_path / "other.parquet",
+            pa.table(
+                {
+                    "id": pa.array([35, 40, 45], pa.int64()),
+                    "score": pa.array([1.0, float("nan"), 3.0], pa.float64()),
+                }
+            ),
+            row_group_size=3,
+        )
+
+        chunks = _reader(filter_expr=col("id") >= 30)._read_and_chunk(path, size)
+
+        assert all(rg.fully_matched for rg in chunks.row_groups)
+
+    @pytest.mark.parametrize(
+        "column,arrow_type,expected",
+        [
+            pytest.param("id", pa.float64(), True, id="double"),
+            pytest.param("id", pa.float32(), True, id="float"),
+            # Half floats ride on FIXED_LEN_BYTE_ARRAY, so a physical-type check
+            # alone would miss them; only the logical type gives them away.
+            pytest.param("id", pa.float16(), True, id="float16"),
+            pytest.param("id", pa.int64(), False, id="int"),
+            # A wide decimal shares the half float's physical type -- the reason
+            # the check reads the logical type rather than widening to cover
+            # FIXED_LEN_BYTE_ARRAY -- but cannot be NaN.
+            pytest.param("id", pa.decimal128(21, 2), False, id="decimal"),
+            pytest.param("sepal.length", pa.float64(), True, id="dotted-flat-name"),
+        ],
+    )
+    def test_leaf_classification(self, tmp_path, column, arrow_type, expected):
+        values = pa.array([1, 2, 3]).cast(arrow_type)
+        path, _ = _write(
+            tmp_path / "leaf.parquet",
+            pa.table({column: values}),
+            row_group_size=3,
+        )
+        reader = _reader(filter_expr=col(column) >= 0)
+
+        leaves = _filter_leaves(reader, pq.ParquetFile(path).metadata)
+
+        assert leaves.all_filter_columns_found
+        assert leaves.has_float_leaf is expected
+
+    def test_a_nested_float_leaf_disqualifies_its_top_level_column(self, tmp_path):
+        """A predicate names a top-level column; any leaf under it can be NaN."""
+        path, _ = _write(
+            tmp_path / "nested.parquet",
+            pa.table({"outer": [{"a": 1, "b": 2.0}] * 3}),
+            row_group_size=3,
+        )
+        reader = _reader(filter_expr=col("outer") >= 0)
+        metadata = pq.ParquetFile(path).metadata
+
+        leaves = _filter_leaves(reader, metadata)
+
+        assert [metadata.schema.column(j).path for j in leaves.indices] == [
+            "outer.a",
+            "outer.b",
+        ]
+        assert leaves.has_float_leaf
+        assert not _rg_can_fully_match(reader, metadata)
+
+    def test_a_file_without_statistics_still_reports_its_float_leaves(self, tmp_path):
+        """Leaf types come off the schema, which a statistics-less file still has."""
+        path, _ = _write(
+            tmp_path / "nostats.parquet",
+            pa.table({"id": pa.array([35.0, 40.0], pa.float64())}),
+            row_group_size=2,
+            write_statistics=False,
+        )
+        reader = _reader(filter_expr=col("id") >= 30)
+
+        assert _filter_leaves(reader, pq.ParquetFile(path).metadata).has_float_leaf
 
 
 class TestMissingFilterColumnsSkipPruning:

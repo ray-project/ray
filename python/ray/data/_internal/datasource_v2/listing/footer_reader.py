@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Iterable, Iterator, NamedTuple
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
-from pyarrow.parquet import RowGroupMetaData
+from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
 
 import ray
 from ray.data._internal.datasource.parquet_datasource import (
@@ -50,17 +50,33 @@ def _leaf_matches(leaf_path: str, names: set[str]) -> bool:
     return bool(_get_prefix_matches(leaf_path, names))
 
 
+# Half floats are the odd one out: they ride on FIXED_LEN_BYTE_ARRAY, which
+# also carries decimals and UUIDs, so they are only identifiable by logical type.
+_FLOAT_PHYSICAL_TYPES = frozenset({"FLOAT", "DOUBLE"})
+_FLOAT16_LOGICAL_TYPE = "FLOAT16"
+
+
+def _is_float_leaf(column: ColumnSchema) -> bool:
+    """Whether a Parquet leaf holds floating-point values, and so maybe NaN."""
+    if column.physical_type in _FLOAT_PHYSICAL_TYPES:
+        return True
+    logical_type = column.logical_type
+    return logical_type is not None and logical_type.type == _FLOAT16_LOGICAL_TYPE
+
+
 class _FilterLeaves(NamedTuple):
     """Where the predicate's columns sit in a file's schema.
 
     A Parquet file has one schema, so this holds for all of its row groups and
     is resolved once per file. ``all_filter_columns_found`` is false when some
     predicate column has no leaf in the schema at all; pruning is then skipped
-    because PyArrow would raise on the missing field.
+    because PyArrow would raise on the missing field. ``has_float_leaf`` marks
+    a predicate column that may hold NaN -- see ``_rg_can_fully_match``.
     """
 
     indices: list[int]
     all_filter_columns_found: bool
+    has_float_leaf: bool = False
 
 
 class FooterReader:
@@ -109,8 +125,9 @@ class FooterReader:
         self.filter: "pc.Expression" | None = (
             filter_expr.to_pyarrow() if filter_expr is not None else None
         )
-        # Top-level columns the predicate reads. A row group with a null in any
-        # of them cannot be an exact-survivor count -- see ``_has_filter_nulls``.
+        # Top-level columns the predicate reads. A row group whose value in any
+        # of them may be a null or a NaN cannot be an exact-survivor count --
+        # see ``_rg_can_fully_match``.
         self.filter_columns: set[str] = (
             set(get_column_references(filter_expr))
             if filter_expr is not None
@@ -161,23 +178,28 @@ class FooterReader:
             fully_matched=fully_matched,
         )
 
-    def _locate_filter_columns(self, row_group: RowGroupMetaData) -> _FilterLeaves:
+    def _locate_filter_columns(self, schema: ParquetSchema) -> _FilterLeaves:
         # Resolve the predicate's column names to Parquet leaf-column indices,
         # the same mapping ``_projected_leaf_indices`` does for the projection.
         # Called once per file so the per-row-group null check below is an
-        # index lookup instead of another scan over every leaf.
+        # index lookup instead of another scan over every leaf. Leaf order is
+        # the schema's, so these index a row group's columns just as well.
+        # Read off the schema rather than a row group because a leaf's logical
+        # type lives there, whereas a row group only exposes it via statistics
+        # -- which a file need not carry.
         if not self.filter_columns:
             return _FilterLeaves([], True)
         indices: list[int] = []
         matched: set[str] = set()
-        for j in range(row_group.num_columns):
-            hits = _get_prefix_matches(
-                row_group.column(j).path_in_schema, self.filter_columns
-            )
+        has_float_leaf = False
+        for j in range(len(schema)):
+            column = schema.column(j)
+            hits = _get_prefix_matches(column.path, self.filter_columns)
             if hits:
                 matched.update(hits)
                 indices.append(j)
-        return _FilterLeaves(indices, matched == self.filter_columns)
+                has_float_leaf = has_float_leaf or _is_float_leaf(column)
+        return _FilterLeaves(indices, matched == self.filter_columns, has_float_leaf)
 
     def _has_filter_nulls(
         self, row_group: RowGroupMetaData, indices: list[int]
@@ -203,12 +225,20 @@ class FooterReader:
     ) -> bool:
         """Whether this row group's ``num_rows`` can be an exact survivor count.
 
-        Two conditions must both hold: every predicate column is present in
-        the schema, and none of those columns has a null. A missing column is
-        unverified, not null-free -- treating it as null-free is what lets a
-        partial survivor count as exact.
+        Three conditions must all hold: every predicate column is present in
+        the schema, no predicate column is floating point, and none of those
+        columns has a null. A missing column is unverified, not null-free --
+        treating it as null-free is what lets a partial survivor count as exact.
+
+        Floats are excluded because Parquet min/max statistics skip NaN, so a
+        NaN row is invisible to the bounds the negation test reasons over: a
+        group of ``[35.0, 40.0, NaN]`` reports min 35 / max 40, which makes
+        ``~(id >= 30)`` look impossible even though the NaN row does satisfy it
+        and does not survive the filter. No footer field counts NaNs, so a float
+        predicate column can never be cleared -- ``num_rows`` would over-count
+        and limit push-down would stop early.
         """
-        if not filter_leaves.all_filter_columns_found:
+        if not filter_leaves.all_filter_columns_found or filter_leaves.has_float_leaf:
             return False
         return not self._has_filter_nulls(row_group, filter_leaves.indices)
 
@@ -247,15 +277,15 @@ class FooterReader:
             match=self.retried_io_errors,
         )
         # Both column look-ups are schema-derived, and a Parquet file has a
-        # single schema, so resolve them once against row group 0 rather than
-        # rescanning every leaf for each group.
-        if metadata.num_row_groups:
-            first_row_group = metadata.row_group(0)
-            leaf_indices = self._projected_leaf_indices(first_row_group)
-            filter_leaves = self._locate_filter_columns(first_row_group)
-        else:
-            leaf_indices = None
-            filter_leaves = _FilterLeaves([], False)
+        # single schema, so resolve them once rather than rescanning every leaf
+        # for each group. The projection reads leaf paths off row group 0, which
+        # a file with no row groups has none of; it projects nothing either way.
+        filter_leaves = self._locate_filter_columns(metadata.schema)
+        leaf_indices = (
+            self._projected_leaf_indices(metadata.row_group(0))
+            if metadata.num_row_groups
+            else None
+        )
 
         if self.filter is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
@@ -277,18 +307,13 @@ class FooterReader:
             # which is always safe (falls back to the post-filter stop).
             not_fully_ids = self._try_split_by_row_group(fragment, ~self.filter, path)
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
-            # The negation test alone is not sufficient under three-valued
-            # logic. A row whose filter column is null satisfies neither
-            # ``filter`` nor ``~filter``, so a group of [35, 40, 45, NULL] under
-            # ``id >= 30`` can have ``~filter`` prune it while one row did not
-            # actually survive -- ``num_rows`` would then over-count and limit
-            # push-down would stop early and under-deliver.
-            #
-            # PyArrow happens to decline that prune today (it does not use
-            # ``null_count`` to sharpen the inverted predicate), so the negation
-            # test is currently safe by accident. Do not rely on that: check
-            # ``null_count`` directly, which holds regardless of how clever the
-            # engine's statistics pruning gets.
+            # The negation test alone is not sufficient: ``~filter`` can prune a
+            # group that still holds a row the filter does not return, and then
+            # ``num_rows`` over-counts and limit push-down stops early. Nulls do
+            # this under three-valued logic and NaNs because min/max skip them,
+            # so ``_rg_can_fully_match`` rules both out from the footer instead
+            # -- which holds however clever the engine's statistics pruning gets.
+            # PyArrow declines the null prune today but already makes the NaN one.
             fully_by_idx: dict[int, bool] = {
                 i: i not in not_fully
                 and self._rg_can_fully_match(metadata.row_group(i), filter_leaves)
