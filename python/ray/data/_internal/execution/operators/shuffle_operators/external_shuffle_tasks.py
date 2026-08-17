@@ -1,9 +1,9 @@
 """External-shuffle task bodies (map + reduce).
 
 - each MAP task writes ONE file (all its partitions, Arrow IPC) and returns ONE
-  small handle (path + per-partition offset index + the source node's fetch
-  endpoint). Driver tracks O(N) handles; bulk data
-  stays on local disk and never enters Ray's object store.
+  small handle (path + per-partition offset index + ``shuffle_id`` /
+  ``node_id``). Driver tracks O(N) handles; bulk data stays on local disk and
+  never enters Ray's object store.
 - a per-node ``ShuffleFileServer`` Ray actor runs its OWN Arrow Flight server
   that ``pread``s requested byte-ranges and streams them back. The REDUCE task
   is a client of that server.
@@ -90,13 +90,13 @@ def _external_shuffle_map_task(
     shuffle_id: str,
     compression: Optional[str] = None,
 ) -> ShuffleHandle:
-    """Map stage: partition input blocks, write them to a single file on the
-    local node's spill dir, and return a ``ShuffleHandle`` (path + per-partition
-    byte index + file-server endpoint). Shuffle bytes never enter the
-    Ray object store.
+    """Map stage: partition input blocks, write them to a single file under
+    ``out_dir``, and return a ``ShuffleHandle`` (path + per-partition byte
+    index + ``shuffle_id`` / ``node_id``). Shuffle bytes never enter the Ray
+    object store.
 
     The output file is sealed via atomic ``rename``: writes land in
-    ``map_{i}.shf.tmp``, then flush + optional ``fsync`` + size sanity check
+    ``map_{i}.shf.tmp``, then flush + ``fsync`` + size sanity check
     against the index, then ``os.rename`` to the published path. Readers see
     either no file or a complete, size-validated one.
 
@@ -167,12 +167,10 @@ def _external_shuffle_map_task(
                 )
             else:
                 expected_size = 0
-            if final_size_on_close != expected_size:
-                raise RuntimeError(
-                    f"_external_shuffle_map_task: file size mismatch — wrote "
-                    f"{final_size_on_close} bytes, index implies "
-                    f"{expected_size}. Refusing to publish corrupt file."
-                )
+            assert final_size_on_close == expected_size, (
+                f"_external_shuffle_map_task: file size mismatch — wrote "
+                f"{final_size_on_close} bytes, index implies {expected_size}"
+            )
 
         # Atomic publish: .tmp → .shf.
         os.rename(tmp_path, final_path)
@@ -199,7 +197,7 @@ def _external_shuffle_map_task(
         # Total bytes written to the output file, post-seal.
         "total_bytes": final_size_on_close,
         "compression": compression,
-        # Dense per-partition decoded bytes (was a Dict[partition_id,int]).
+        # Dense per-partition decoded bytes.
         "decoded_bytes": _decoded_to_array(
             writer.decoded_bytes_per_partition, num_partitions
         ),
@@ -221,19 +219,14 @@ def _external_shuffle_reduce_task(
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch this partition's shards from every mapper over Arrow
     Flight, run ``reduce_fn`` on the accumulated tables, and yield ``(block,
-    pickled metadata)`` pairs. Shuffle bytes flow directly from the Flight
-    stream into the reducer's user-space accumulator, never entering the Ray
-    object store.
+    pickled metadata)`` pairs. Shuffle bytes stay out of the Ray object store:
+    Flight streams into a per-partition local staging file, then this task
+    decodes from that file.
 
     Fetch + decode are pipelined: one thread per ShuffleFileServer pwrites
     response frames into this partition's ``reduce_p{partition_id}.bin`` at
-    pre-assigned offsets, and this generator mmap-decodes each region as
+    pre-assigned offsets, and this generator ``pread``-decodes each region as
     its future completes.
-
-    Always blocking-mode: accumulate the whole partition, reduce once, then
-    finalize. Repartition semantics ("one partition = one block") make
-    incremental flushing dead code. Output is reshaped to
-    ``target_max_block_size`` via ``BlockOutputBuffer`` (no-op when None).
 
     Args:
         handles: One ``ShuffleHandle`` per mapper (single upstream input).
@@ -315,13 +308,12 @@ def _external_shuffle_reduce_task(
 
         try:
             # Fetch each source region in parallel, pwrite at pre-assigned offsets
-            # into this partition's prefetch file (disjoint → lock-free). Buffered
-            # pwrite lands in page cache so the decode-side mmap reads hit cache.
+            # into this partition's staging file (disjoint → lock-free). Buffered
+            # pwrite lands in page cache so the decode-side ``pread``s hit cache.
             total_size, base_offsets, node_sizes = _compute_prefetch_layout(groups)
 
             # Accumulator for the final reduce.
             accum_tables: List[pa.Table] = []
-            accum_bytes: int = 0
             output_buffer: Optional[BlockOutputBuffer] = None
             # Codec from data_context.hash_shuffle_compression (same field the map used).
             _compression = (
@@ -373,8 +365,9 @@ def _external_shuffle_reduce_task(
                                 ) from e
                             raise
 
-                    def _fetch_one(args):
-                        base, size, group = args
+                    def _fetch_with_fsync(base, size, group):
+                        # Fetch from one ShuffleFileServer to its staging region, then
+                        # fsync.
                         _fetch_from_file_server(
                             _PwriteSink(fd, base),
                             group.shuffle_id,
@@ -396,8 +389,7 @@ def _external_shuffle_reduce_task(
                         random.Random(partition_id).shuffle(work)
 
                     def _decode_region(base: int, size: int):
-                        """Decode + coalesce a region's shards into one chunk."""
-                        nonlocal accum_bytes
+                        """Decode one staging-file region's IPC frames into ``accum_tables``."""
                         pos = base
                         end = base + size
                         region_tables: List[pa.Table] = []
@@ -406,7 +398,6 @@ def _external_shuffle_reduce_task(
                             ipc_buf = os.pread(fd, length, pos + 8)
                             pos += 8 + length
                             table = _read_ipc(ipc_buf, _compression)
-                            accum_bytes += table.nbytes
                             region_tables.append(table)
                         # Default: DO NOT coalesce (like v2) — keep shards as separate
                         # chunks and let the write control row-group size (write_parquet
@@ -427,7 +418,10 @@ def _external_shuffle_reduce_task(
                             accum_tables.extend(region_tables)
 
                     with ThreadPoolExecutor(max_workers=n_threads) as ex:
-                        futs = [ex.submit(_fetch_one, w) for w in work]
+                        futs = [
+                            ex.submit(_fetch_with_fsync, base, size, group)
+                            for base, size, group in work
+                        ]
                         for fut in as_completed(futs):
                             base, size = fut.result()
                             if size > 0:
