@@ -16,12 +16,15 @@
 
 #include <boost/optional/optional_io.hpp>
 #include <chrono>
+#include <future>
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
@@ -376,6 +379,193 @@ TEST_F(RedisStoreClientTest, Random) {
       reinterpret_cast<RedisStoreClient *>(store_client_.get());
   absl::MutexLock lock(&redis_store_client_raw_ptr->mu_);
   ASSERT_TRUE(redis_store_client_raw_ptr->pending_redis_request_by_key_.empty());
+}
+
+// Tests for RedisDelKeyPrefixSync (namespace cleanup). These assert exact
+// command-count deltas from INFO commandstats: RedisDelKeyPrefixSync runs its
+// own Connect(), and every non-Sentinel connect issues one DEL DUMMY, so
+// cmdstat_del is never absent and only exact deltas prove which verb the
+// delete loop used.
+//
+// CAUTION for new test cases: the fixture helpers go through RunArgvAsync,
+// which treats every Redis *error reply* as transient -- it retries
+// num_redis_request_retries times and then RAY_LOG(FATAL)s. A command the
+// server rejects (unknown command, bad arguments, ACL denial) therefore aborts
+// the test process after ~2s of retries instead of failing an assertion. Gate
+// on server capabilities (e.g. RedisMajorVersion below) before issuing any
+// command the server might reject.
+class RedisDelKeyPrefixSyncTest : public ::testing::Test {
+ public:
+  static void SetUpTestCase() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+
+  static void TearDownTestCase() { TestSetupUtil::ShutDownRedisServers(); }
+
+  void SetUp() override {
+    if (std::getenv("REDIS_CHAOS") != nullptr) {
+      GTEST_SKIP() << "Exact command-count assertions are incompatible with "
+                      "REPLICAOF flapping.";
+    }
+    port_ = TEST_REDIS_SERVER_PORTS.front();
+    TestSetupUtil::FlushRedisServer(port_);
+    // Tests mutate this config; pin the default so no test leaks state.
+    RayConfig::instance().redis_namespace_cleanup_use_unlink() = true;
+    io_service_ = std::make_unique<instrumented_io_context>(
+        /*emit_metrics=*/false, /*running_on_single_thread=*/true);
+    context_ = std::make_unique<RedisContext>(*io_service_, clock_);
+    RAY_CHECK_OK(context_->Connect("127.0.0.1",
+                                   port_,
+                                   /*username=*/"",
+                                   /*password=*/"",
+                                   /*enable_ssl=*/false));
+    thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_->get_executor());
+      io_service_->run();
+    });
+  }
+
+  void TearDown() override {
+    if (io_service_ != nullptr) {
+      io_service_->stop();
+      thread_->join();
+      context_.reset();
+      io_service_.reset();
+    }
+  }
+
+ protected:
+  // Runs one command on the admin connection and returns its reply.
+  std::shared_ptr<CallbackReply> RunCmd(std::vector<std::string> cmd) {
+    std::promise<std::shared_ptr<CallbackReply>> promise;
+    context_->RunArgvAsync(std::move(cmd),
+                           [&promise](const std::shared_ptr<CallbackReply> &reply) {
+                             promise.set_value(reply);
+                           });
+    return promise.get_future().get();
+  }
+
+  // Creates one GCS-shaped hash per table under the namespace prefix.
+  void SeedNamespace(const std::string &ns, const std::vector<std::string> &tables) {
+    for (const auto &table : tables) {
+      auto reply = RunCmd({"HSET", RedisKey{ns, table}.ToString(), "field", "value"});
+      ASSERT_EQ(reply->ReadAsInteger(), 1);
+    }
+  }
+
+  void ResetCommandStats() { RunCmd({"CONFIG", "RESETSTAT"}); }
+
+  // Returns cmdstat_<command> calls since the last RESETSTAT, 0 if absent.
+  int64_t CommandCalls(const std::string &command) {
+    auto reply = RunCmd({"INFO", "commandstats"});
+    const std::string &info = reply->ReadAsString();
+    // Lines look like: cmdstat_del:calls=3,usec=...
+    const std::string needle = absl::StrCat("cmdstat_", command, ":calls=");
+    auto pos = info.find(needle);
+    if (pos == std::string::npos) {
+      return 0;
+    }
+    return std::stoll(info.substr(pos + needle.size()));
+  }
+
+  int64_t NumKeysWithPrefix(const std::string &ns) {
+    auto reply = RunCmd({"KEYS", absl::StrCat("RAY", ns, "@*")});
+    return static_cast<int64_t>(reply->ReadAsStringArray().size());
+  }
+
+  // Parses the server's major version from INFO server. Capability gates must
+  // use this instead of probing with the command in question: an error reply
+  // on this connection aborts the process (see the fixture comment).
+  int RedisMajorVersion() {
+    auto reply = RunCmd({"INFO", "server"});
+    const std::string &info = reply->ReadAsString();
+    const std::string needle = "redis_version:";
+    auto pos = info.find(needle);
+    RAY_CHECK(pos != std::string::npos) << "No redis_version in INFO server: " << info;
+    return std::stoi(info.substr(pos + needle.size()));
+  }
+
+  bool RunCleanup(const std::string &ns,
+                  const std::string &username = "",
+                  const std::string &password = "") {
+    return RedisDelKeyPrefixSync(
+        "127.0.0.1", port_, username, password, /*use_ssl=*/false, ns);
+  }
+
+  ray::Clock clock_;
+  int port_ = 0;
+  std::unique_ptr<instrumented_io_context> io_service_;
+  std::unique_ptr<RedisContext> context_;
+  std::unique_ptr<std::thread> thread_;
+};
+
+TEST_F(RedisDelKeyPrefixSyncTest, UnlinkIsUsedByDefault) {
+  const std::vector<std::string> tables = {"KV", "NODE", "WORKERS"};
+  SeedNamespace("unlink_ns", tables);
+  ResetCommandStats();
+  ASSERT_TRUE(RunCleanup("unlink_ns"));
+  ASSERT_EQ(NumKeysWithPrefix("unlink_ns"), 0);
+  // The cleanup's own Connect() issues exactly one DEL (DEL DUMMY); the delete
+  // loop must not add to it.
+  ASSERT_EQ(CommandCalls("del"), 1);
+  // The capability probe + one UNLINK per key.
+  ASSERT_EQ(CommandCalls("unlink"), static_cast<int64_t>(tables.size()) + 1);
+}
+
+TEST_F(RedisDelKeyPrefixSyncTest, FallsBackToDelWhenDisabled) {
+  const std::vector<std::string> tables = {"KV", "NODE", "WORKERS"};
+  SeedNamespace("nounlink_ns", tables);
+  RayConfig::instance().redis_namespace_cleanup_use_unlink() = false;
+  ResetCommandStats();
+  ASSERT_TRUE(RunCleanup("nounlink_ns"));
+  ASSERT_EQ(NumKeysWithPrefix("nounlink_ns"), 0);
+  // DEL DUMMY + one DEL per key.
+  ASSERT_EQ(CommandCalls("del"), static_cast<int64_t>(tables.size()) + 1);
+  // The probe is skipped entirely.
+  ASSERT_EQ(CommandCalls("unlink"), 0);
+}
+
+TEST_F(RedisDelKeyPrefixSyncTest, NopermFallsBackToDel) {
+  // ACL exists since Redis 6.0. The Windows test server is tporadowski Redis
+  // 5.0.9 (//:redis-server select), where ACL SETUSER would be an unknown
+  // command -- which on this connection is a process abort, not a failed
+  // assertion (see the fixture comment). Gate on the version, not on a trial
+  // ACL command, for the same reason.
+  if (RedisMajorVersion() < 6) {
+    GTEST_SKIP() << "ACL requires Redis >= 6.";
+  }
+  const std::vector<std::string> tables = {"KV", "NODE", "WORKERS"};
+  SeedNamespace("noperm_ns", tables);
+  // A user that can run everything except UNLINK: the probe receives NOPERM
+  // and cleanup must degrade to DEL automatically.
+  RunCmd({"ACL", "SETUSER", "nounlink", "on", ">pw", "~*", "+@all", "-unlink"});
+  // FLUSHALL does not remove ACL users, so clean up even on early assertion
+  // failure.
+  auto delete_acl_user = absl::MakeCleanup([this]() {
+    RunCmd({"ACL", "DELUSER", "nounlink"});
+  });
+  ResetCommandStats();
+  ASSERT_TRUE(RunCleanup("noperm_ns", "nounlink", "pw"));
+  ASSERT_EQ(NumKeysWithPrefix("noperm_ns"), 0);
+  // DEL DUMMY + one DEL per key. No assertion on unlink counts: whether an
+  // ACL-rejected command is counted in commandstats is a server detail.
+  ASSERT_EQ(CommandCalls("del"), static_cast<int64_t>(tables.size()) + 1);
+}
+
+TEST_F(RedisDelKeyPrefixSyncTest, CleanupIsIdempotent) {
+  SeedNamespace("idem_ns", {"KV", "NODE"});
+  ASSERT_TRUE(RunCleanup("idem_ns"));
+  ASSERT_EQ(NumKeysWithPrefix("idem_ns"), 0);
+  // The second run finds nothing and must still report success.
+  ASSERT_TRUE(RunCleanup("idem_ns"));
+}
+
+TEST_F(RedisDelKeyPrefixSyncTest, OtherNamespacesSurvive) {
+  SeedNamespace("ns1", {"KV", "NODE"});
+  SeedNamespace("ns2", {"KV", "NODE"});
+  ASSERT_TRUE(RunCleanup("ns1"));
+  ASSERT_EQ(NumKeysWithPrefix("ns1"), 0);
+  // Guards both the SCAN match pattern and the probe-key prefix.
+  ASSERT_EQ(NumKeysWithPrefix("ns2"), 2);
 }
 
 }  // namespace gcs
