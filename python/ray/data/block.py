@@ -206,6 +206,50 @@ class CustomOpStats:
 
 @DeveloperAPI
 @dataclass(frozen=True)
+class ReadFilesTaskStats(CustomOpStats):
+    """Per-task aggregate of a ``ReadFiles`` task's decode loop.
+
+    Reported once per read task by the ``ReadFiles`` transform (see
+    ``plan_read_files_op.py``) and folded into per-task distributions by
+    ``OpRuntimeMetrics.on_task_finished``. These are the reader-level facts the
+    node- and task-memory metrics cannot see: how many bytes the decoder
+    actually produced, how long the task spent inside the reader's iterator
+    (vs. downstream block shaping / fused compute), and the largest single
+    table the reader handed over (a proxy for the decode working set).
+    Reader-implementation agnostic: identical for the PyArrow and arrow-rs
+    Parquet readers, and for every other file-based V2 datasource.
+
+    Worker-side mutability: the driver reads these off the FINAL output
+    block's ``TaskExecWorkerStats``, but whether any block is emitted after
+    the read generator's last resume depends on buffer/batch alignment — a
+    report made only at end-of-task is dropped on some shapes. The transform
+    therefore reports one instance up front and keeps it current via
+    ``_update`` as batches flow; every block snapshot then carries the totals
+    so far. Frozen like its base class — ``_update`` is the single sanctioned
+    writer (worker-side only; the driver must treat instances as immutable).
+    """
+
+    def _update(self, **fields: Any) -> None:
+        for key, value in fields.items():
+            object.__setattr__(self, key, value)
+
+    # Wall-clock seconds spent inside the reader's table iterator (pure
+    # decode + IO wait), excluding downstream consumption of the tables.
+    decode_wall_s: float = 0.0
+    # Sum of ``table.nbytes`` over every table the reader yielded.
+    decoded_bytes: int = 0
+    # Number of tables the reader yielded.
+    decoded_batches: int = 0
+    # Sum of rows over those tables.
+    decoded_rows: int = 0
+    # ``nbytes`` of the single largest yielded table.
+    peak_batch_bytes: int = 0
+    # Number of (non-empty, post-pruning) file manifests the task read.
+    manifests: int = 0
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
 class TaskExecWorkerStats:
     """Task's execution stats reported from the executing worker"""
 

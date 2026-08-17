@@ -235,6 +235,13 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
         ("max_uss_per_task_dist", "max_uss_bytes"),
         ("max_rss_per_task_dist", "max_rss_bytes"),
         ("task_duration_dist", "op_task_duration_stats"),
+        # Reader-level per-task aggregates (ReadFilesTaskStats, reported by the
+        # ReadFiles transform on every V2 file read): what the DECODER did,
+        # independent of the memory profiler — bytes/decode-seconds per task
+        # and the largest single table the reader yielded (working-set proxy).
+        ("decoded_bytes_per_task_dist", "read_task_decoded_bytes"),
+        ("decode_wall_s_per_task_dist", "read_task_decode_wall_s"),
+        ("peak_batch_bytes_per_task_dist", "read_task_peak_batch_bytes"),
     ]
 
     out: Dict[str, Any] = {"operators_detail": []}

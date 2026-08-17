@@ -46,6 +46,83 @@ def test_average_max_uss_per_task():
     assert metrics.average_max_uss_per_task == 200  # (100 + 300) / 2
 
 
+def test_read_files_task_stats_distributions():
+    """ReadFilesTaskStats entries on TaskExecWorkerStats.custom_op_stats are
+    folded into the read_task_* per-task distributions (bytes/wall summed
+    across entries, peak_batch maxed)."""
+    from ray.data.block import ReadFilesTaskStats
+
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    assert metrics.average_decoded_bytes_per_read_task is None
+
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
+
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(
+        0,
+        None,
+        TaskExecWorkerStats(
+            task_wall_time_s=1.0,
+            custom_op_stats=[
+                ReadFilesTaskStats(
+                    decode_wall_s=0.5,
+                    decoded_bytes=100,
+                    decoded_batches=2,
+                    decoded_rows=10,
+                    peak_batch_bytes=60,
+                    manifests=1,
+                ),
+                # A hypothetical second reporting transform in a fused task:
+                # bytes/wall sum, peak_batch maxes.
+                ReadFilesTaskStats(
+                    decode_wall_s=0.25,
+                    decoded_bytes=50,
+                    decoded_batches=1,
+                    decoded_rows=5,
+                    peak_batch_bytes=50,
+                    manifests=1,
+                ),
+            ],
+        ),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    metrics.on_task_submitted(1, input_bundle)
+    metrics.on_task_finished(
+        1,
+        None,
+        TaskExecWorkerStats(
+            task_wall_time_s=1.0,
+            custom_op_stats=[
+                ReadFilesTaskStats(
+                    decode_wall_s=0.25,
+                    decoded_bytes=50,
+                    decoded_batches=1,
+                    decoded_rows=5,
+                    peak_batch_bytes=50,
+                    manifests=1,
+                )
+            ],
+        ),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    # Tasks without read stats leave the distributions untouched.
+    metrics.on_task_submitted(2, input_bundle)
+    metrics.on_task_finished(
+        2,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+
+    assert metrics.read_task_decoded_bytes.num_samples == 2
+    assert metrics.average_decoded_bytes_per_read_task == 100  # (150 + 50) / 2
+    assert metrics.read_task_decoded_bytes.max == 150
+    assert metrics.read_task_decode_wall_s.max == 0.75
+    assert metrics.read_task_peak_batch_bytes.max == 60
+
+
 def test_task_completion_time_histogram():
     """Test task completion time histogram bucket assignment and counting."""
     op = MagicMock()
