@@ -53,14 +53,14 @@ def test_experiment_restore(tmp_path, runner_type):
         - Each round of 2 trials should take 4 seconds
         - Without any interrupts/restoration:
             - Minimum runtime: 4 rounds * 4 seconds / round = 16 seconds
-        - The test will stop the script with a SIGINT at a random time between
+        - The test will stop the script with a SIGUSR1 at a random time between
         6-10 iterations each restore.
 
     - For Trainer.restore:
         - 1 trial with 4 workers
         - Each iteration takes 0.5 seconds
         - Runs for 32 iterations --> Minimum runtime = 16 seconds
-        - The test will stop the script with a SIGINT at a random time between
+        - The test will stop the script with a SIGUSR1 at a random time between
         6-10 iterations after each restore.
 
     Requirements:
@@ -156,7 +156,7 @@ def test_experiment_restore(tmp_path, runner_type):
             total_runtime += time.monotonic() - start_time
 
             if run.poll() is None:
-                # Send "SIGINT" to stop the run
+                # Send "SIGUSR1" to stop the run
                 _print_message(f"Sending SIGUSR1 to run #{run_iter} w/ PID = {run.pid}")
                 run.send_signal(signal.SIGUSR1)
                 interrupted = True

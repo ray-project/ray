@@ -2,6 +2,7 @@ import collections
 import json
 import os
 import random
+import signal
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -158,6 +159,19 @@ def trainer(experiment_path: str, run_config: train.RunConfig) -> train.Result:
     return result
 
 
+def ignore_late_interrupts():
+    """Ignore SIGUSR1 once the run is done, so that a late interrupt can't kill us.
+
+    The driver test signals this script at a random time, which can land after the
+    run has already finished, while the interpreter is shutting down. Tune's SIGUSR1
+    handler is a Python-level handler, and CPython resets those to `SIG_DFL` during
+    interpreter finalization (`_PySignal_Fini`) back to a termination. This would
+    result in a nonzero return code despite completing successfully.
+    """
+    if hasattr(signal, "SIGUSR1"):
+        signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+
+
 if __name__ == "__main__":
     experiment_path = os.path.join(STORAGE_PATH, EXP_NAME)
 
@@ -172,8 +186,10 @@ if __name__ == "__main__":
 
     if RUNNER_TYPE == "tuner":
         tuner(experiment_path, run_config)
+        ignore_late_interrupts()
     elif RUNNER_TYPE == "trainer":
         trainer(experiment_path, run_config)
+        ignore_late_interrupts()
     else:
         raise NotImplementedError(
             "`RUNNER_TYPE` environment var must be one of ['tuner', 'trainer']"
