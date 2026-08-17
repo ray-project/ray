@@ -209,7 +209,7 @@ number of files and their sizes, because every block can carry rows for any part
 
     # ── Partitioned write ──────────────────────────────────────────────────────
     # 1. Repartition so all rows with the same (city, year) land in the same
-    #    block – this minimises shuffling during the write.
+    #    block. This minimizes shuffling during the write.
     # 2. Pass the same columns to ``partition_cols`` so Ray creates a
     #    Hive-style directory layout:  city=<value>/year=<value>/....
     # 3. Use ``max_rows_per_file`` to cap how many rows Ray puts in each
