@@ -35,6 +35,7 @@ import ray
 from ray._raylet import (
     StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
 )
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
     _SHUFFLE_FILE_SERVER_NAMESPACE,
@@ -334,6 +335,8 @@ def _external_shuffle_reduce_task(
                 # Wrap in a 1-element list — external is single-input, but
                 # reduce_fn's signature is ``(partition_id, tables_by_input)``.
                 for block in reduce_fn(partition_id, [tables]):
+                    if isinstance(block, pa.Table) and block.num_columns > 0:
+                        block = transform_pyarrow.combine_chunks(block)
                     if output_buffer is None:
                         # target_max_block_size=None: emit blocks as-is.
                         yield block
