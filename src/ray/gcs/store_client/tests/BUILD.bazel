@@ -30,6 +30,7 @@ ray_cc_test(
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
         "@boost//:optional",
+        "@com_google_absl//absl/cleanup",
     ],
 )
 
@@ -60,6 +61,7 @@ ray_cc_test(
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
         "@boost//:optional",
+        "@com_google_absl//absl/cleanup",
     ],
 )
 

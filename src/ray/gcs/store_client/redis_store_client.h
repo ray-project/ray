@@ -307,6 +307,10 @@ class RedisStoreClient : public StoreClient {
 };
 
 // Helper function used by Python to delete all redis HASHes with a given prefix.
+// Deletes with UNLINK when the server accepts it (automatic fallback to DEL
+// otherwise) so large hashes are reclaimed off the Redis main thread. Returns
+// true unless the cleanup process aborted; keys that are already absent count
+// as success, so cleanup is idempotent.
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,
                            const std::string &username,
