@@ -206,10 +206,10 @@ Configure the collector sidecar container with the following environment variabl
   - 
   - No
   - Owner resource name, if applicable.
-* - `RAY_ROOT_DIR`
-  - `--ray-root-dir`
+* - `STORAGE_ROOT_DIR`
+  - `--storage-root-dir`
   - No
-  - Root path prefix for stored Ray logs in object storage (defaults to `"log"`).
+  - Root path prefix inside the object storage bucket (defaults to `""`).
 * - `EVENTS_PORT`
   - `--events-port`
   - No
@@ -241,7 +241,7 @@ kubectl logs -l ray.io/node-type=head -c collector --tail=20
 List the bucket contents to confirm session log uploads:
 
 ```sh
-gcloud storage ls gs://${GCS_BUCKET}/log/
+gcloud storage ls gs://${GCS_BUCKET}/
 ```
 
 ## Terminate the RayCluster
@@ -256,10 +256,10 @@ After the RayCluster terminates, the collector uploads the final events and logs
 
 ### Storage layout
 
-The collector organizes files in object storage according to the following directory structure:
+The collector organizes files in object storage according to the following directory structure (if `STORAGE_ROOT_DIR` is set, paths are prefixed with that directory):
 
 ```text
-gs://${GCS_BUCKET}/${RAY_ROOT_DIR}/
+gs://${GCS_BUCKET}/
 ├── cluster-metadata/
 │   ├── raycluster/
 │   │   └── <namespace>_<cluster_name>/
@@ -300,10 +300,10 @@ gcloud storage ls --recursive gs://${GCS_BUCKET}
 ```
 
 ```text
-gs://BUCKET/log/cluster-metadata/raycluster/NAMESPACE_raycluster-historyserver/session_2026-02-20_13-03-16_320452_1
-gs://BUCKET/log/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/logs/dashboard_agent.log
-gs://BUCKET/log/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/node_events/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-02-20-13
-gs://BUCKET/log/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/job_events/AQAAAA==/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-02-20-13
+gs://BUCKET/cluster-metadata/raycluster/NAMESPACE_raycluster-historyserver/session_2026-02-20_13-03-16_320452_1
+gs://BUCKET/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/logs/dashboard_agent.log
+gs://BUCKET/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/node_events/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-02-20-13
+gs://BUCKET/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/job_events/AQAAAA==/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-02-20-13
 ```
 
 ## Access a terminated RayCluster from the Ray Dashboard

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "End-to-end Serve fault tolerance: replica health checks, constructor retries, worker node recovery, and GCS-backed head node recovery."
+---
+
 (serve-e2e-ft)=
 # Add End-to-End Fault Tolerance
 
@@ -560,7 +566,7 @@ While the controller is dead, replica health-checking and deployment autoscaling
 
 ### Deployment replica failure
 
-You can simulate replica failures by manually killing deployment replicas. If you're running KubeRay, make sure to `exec` into a Ray pod before running these commands.
+You can simulate replica failures by manually killing deployment replicas. If you're running KubeRay, make sure to `exec` into one of the RayCluster's Pods before running these commands.
 
 ```console
 $ ray summary actors
@@ -619,7 +625,7 @@ $ python
 
 ### Proxy failure
 
-You can simulate Proxy failures by manually killing `ProxyActor` actors. If you're running KubeRay, make sure to `exec` into a Ray pod before running these commands.
+You can simulate Proxy failures by manually killing `ProxyActor` actors. If you're running KubeRay, make sure to `exec` into one of the RayCluster's Pods before running these commands.
 
 ```console
 $ ray summary actors
