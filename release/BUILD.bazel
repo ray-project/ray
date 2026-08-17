@@ -22,12 +22,17 @@ _requirements_py310_data = [
     ":requirements_py310.txt",
 ]
 
+# pip-tools 7.4.1 replaced its pep517 dependency with build + pyproject_hooks, and
+# build additionally needs packaging. Those three repositories are declared in
+# //:WORKSPACE because rules_python does not provide them.
 _requirements_py310_deps = [
+    "@pypi__build//:lib",
     "@pypi__click//:lib",
     "@pypi__colorama//:lib",
-    "@pypi__pep517//:lib",
+    "@pypi__packaging//:lib",
     "@pypi__pip//:lib",
     "@pypi__pip_tools//:lib",
+    "@pypi__pyproject_hooks//:lib",
     "@pypi__setuptools//:lib",
     "@pypi__tomli//:lib",
 ]
