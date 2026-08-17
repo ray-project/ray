@@ -315,9 +315,13 @@ To read formats other than Parquet, see the :ref:`Loading Data API <loading-data
 Reading files from the Hadoop Distributed File System
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To read files from the Hadoop Distributed File System (HDFS), configure PyArrow and
-``libhdfs`` on every relevant Ray node, then pass a fully qualified ``hdfs://`` URI to
-a supported read API. For example:
+To read files from the Hadoop Distributed File System (HDFS), install the Hadoop client
+on every relevant Ray node and set ``HADOOP_HOME``, ``JAVA_HOME``, and ``CLASSPATH`` so
+that `PyArrow can load the native HDFS library and the Hadoop Java client
+<https://arrow.apache.org/docs/python/filesystems.html#hadoop-file-system-hdfs>`_. If
+``libhdfs.so`` isn't under ``$HADOOP_HOME/lib/native``, also set
+``ARROW_LIBHDFS_DIR``. Then, pass a fully qualified ``hdfs://`` URI to a supported read
+API. For example:
 
 .. testcode::
     :skipif: True
