@@ -62,9 +62,14 @@ kubectl get all -n prometheus-system
   ```sh
   # Enable the ServiceMonitor and set the label `release: prometheus` to the ServiceMonitor so that Prometheus can discover it
   helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0 \
-    --set metrics.serviceMonitor.enabled=true \ 
-    --set metrics.serviceMonitor.selector.release=prometheus 
+    --set metrics.serviceMonitor.enabled=true \
+    --set metrics.serviceMonitor.additionalLabels.release=prometheus
   ```
+
+  :::{warning}
+  KubeRay v1.7.0 renames the `metrics.serviceMonitor.selector` value to `metrics.serviceMonitor.additionalLabels`, because the value sets labels on the ServiceMonitor rather than a selector. On KubeRay v1.6.x or earlier, use `--set metrics.serviceMonitor.selector.release=prometheus` instead.
+  :::
+
   You can verify the ServiceMonitor creation with:
   ```sh
   kubectl get servicemonitor
