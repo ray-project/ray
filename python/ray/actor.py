@@ -2704,6 +2704,15 @@ class ActorHandle(Generic[T]):
     def _actor_id(self):
         return self._ray_actor_id
 
+    @property
+    def actor_id(self) -> str:
+        """Return the hex ID of the actor.
+
+        Returns:
+            The actor ID of this actor handle, in hex format.
+        """
+        return self._ray_actor_id.hex()
+
     def _get_local_state(self):
         """Get the local actor state.
 

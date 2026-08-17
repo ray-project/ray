@@ -359,6 +359,16 @@ def test_actor_class_name(ray_start_regular):
     assert "test_actor" in actor_class_info["module"]
 
 
+def test_actor_handle_actor_id(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        pass
+
+    foo = Foo.remote()
+    assert isinstance(foo.actor_id, str)
+    assert foo.actor_id == foo._actor_id.hex()
+
+
 def test_actor_exit_from_task(ray_start_regular_shared):
     @ray.remote
     class Actor:
