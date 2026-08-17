@@ -35,6 +35,30 @@ bins — an OOM there is the stage's result, not a broken run). Stage rationale 
 `replication_matrix.py`'s docstring; the predictions each stage falsifies are in
 `arrow_rs_docs/TODO.md` items 1ab/10.
 
+## Loss triage — the 2026-08-15 release-A/B losses in 3 parts (M31/M32/M33)
+
+One command; answers "is each loss the native decoder, Ray integration, or the S3
+path?" by running each loss shape **standalone (no Ray/no S3) → Ray on local files →
+Ray on S3**, both readers per part, plus a `MALLOC_ARENA_MAX=2` arm on the arrow-rs
+Ray cells (the glibc-arena-retention discriminator). Shapes: `auto` (M31
+read_large_parquet_autoscaling: one ~69 MiB rg/task, re-measured at 20 Hz because the
+release 1 Hz poll can't see sub-second tasks), `write` (M32 write_parquet: fused
+read→write, ~1.25 GiB churn/task), `tensorscp` (M33 wide_schema tensors: the 1y
+skip+realign path — the shape with a history of losing outside Ray). Mapping and
+rationale in `loss_triage.py`'s docstring.
+
+```bash
+bash release/nightly_tests/dataset/arrow_rs_probe/run_loss_triage.sh
+# with the S3 part (scratch bucket you own; AWS creds exported):
+ARROW_RS_S3_BUCKET=s3://arrowrs-bench-xxxx bash .../run_loss_triage.sh
+# subsets / smoke:
+SHAPES=write PARTS=ray_local FIXTURE_SCALE=0.25 REPEAT=1 bash .../run_loss_triage.sh
+```
+
+Results: `loss_triage_runs/<ts>/summary.json` + per-cell logs; the summary table is
+R = arrow_rs/pyarrow per (shape, part) — a loss only in `ray_local` with the arena2
+column collapsing ⇒ allocator retention; only in `ray_s3` ⇒ crate S3 path.
+
 For item 1o's crate-level A/B, `patch_crate_parquet.sh` rebuilds `ray_data_arrow_rs`
 against a vendored parquet 59.1.0 carrying the dictionary values-reserve fix
 (`patches/parquet-59.1.0-dict-reserve.diff`; REVERT=1 restores stock — see the script

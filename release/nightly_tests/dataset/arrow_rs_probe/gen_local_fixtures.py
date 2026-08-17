@@ -100,6 +100,36 @@ def gen_single_rg_files(d, scale):
     return {"files": n_files, "rows": n_files * rows_per, "uncompressed_bytes": total}
 
 
+def gen_auto_rg(d, scale):
+    """48 files x one ~69 MiB row group each — the M31 shape.
+
+    `read_large_parquet_autoscaling` (release A/B #3 loss M31) reads
+    s3://.../large-parquet/: ~103 files whose row groups are ~69 MiB uncompressed,
+    under RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864 (64 MiB) — a row group is
+    the packing atom and already exceeds the bin, so every read task is exactly
+    ONE ~69 MiB row group and finishes in under a second. That sub-second task is
+    why the release per-task "max USS" is an end-of-task sample, not a peak
+    (2026-08-15.md §4b) — the loss_triage stage re-measures it at a 20 Hz poll.
+    `single_rg_files` (128 MiB) is the parquet_split shape; this one exists so the
+    per-task decode volume matches M31's.
+    """
+    rng = np.random.default_rng(8)
+    pool = _str_pool(rng)
+    n_files = max(4, int(48 * scale))
+    rows_per = 270_000  # ~69 MiB uncompressed at ~260 B/row
+    total = 0
+    for f in range(n_files):
+        t = _string_table(rng, pool, rows_per, id_start=f * rows_per)
+        pq.write_table(
+            t,
+            os.path.join(d, f"part{f}.parquet"),
+            write_page_index=True,
+            row_group_size=rows_per,
+        )
+        total += t.nbytes
+    return {"files": n_files, "rows": n_files * rows_per, "uncompressed_bytes": total}
+
+
 def gen_tiny_rgs(d, scale):
     """4 files, blob column, ~2 MiB row groups (32 rows x 64 KiB blobs)."""
     rng = np.random.default_rng(2)
@@ -322,6 +352,7 @@ def gen_tensors_cp(d, scale):
 SHAPES = {
     "lone_big_rg": gen_lone_big_rg,
     "single_rg_files": gen_single_rg_files,
+    "auto_rg": gen_auto_rg,
     "tiny_rgs": gen_tiny_rgs,
     "wide": gen_wide,
     "fat_col": gen_fat_col,
