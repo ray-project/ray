@@ -101,13 +101,16 @@ def _external_shuffle_map_task(
     either no file or a complete, size-validated one.
 
     Args:
-        blocks: Input blocks to partition.
+        *blocks: Input blocks to partition.
         partition_fn: Hash partitioner returning ``Dict[partition_id, Table]``.
         num_partitions: Total downstream partitions M.
         out_dir: Directory to write ``map_{i}.shf`` into.
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the file server's actor name.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
+
+    Returns:
+        ShuffleHandle describing the on-disk shards for reducers to fetch.
     """
     node_id = ray.get_runtime_context().get_node_id()
     # Ensure the file-server actor exists (get_if_exists=True → reuse across
@@ -272,7 +275,7 @@ def _external_shuffle_reduce_task(
         )
 
     def _emit_blocks(blocks):
-        """Mirror v2: fused map sees the full reduce stream in one call."""
+        """Apply fused map (if any) over the full reduce stream, then yield."""
         if map_transformer is None:
             for block in blocks:
                 yield from _yield_with_stats(block)
@@ -299,152 +302,150 @@ def _external_shuffle_reduce_task(
                 yield from reduce_fn(partition_id, [[]])
 
         yield from _emit_blocks(_empty_blocks())
-        return
+    else:
+        # Shared per-shuffle staging dir; partition_id lives on the file.
+        shuffle_id = sources[0].shuffle_id
+        staging_dir = os.path.join(
+            tempfile.gettempdir(), f"ray_shuffle_external_{shuffle_id}_reduce"
+        )
+        os.makedirs(staging_dir, exist_ok=True)
+        prefetch_file = os.path.join(staging_dir, f"reduce_p{partition_id}.bin")
 
-    # Shared per-shuffle staging dir; partition_id lives on the file.
-    shuffle_id = sources[0].shuffle_id
-    staging_dir = os.path.join(
-        tempfile.gettempdir(), f"ray_shuffle_external_{shuffle_id}_reduce"
-    )
-    os.makedirs(staging_dir, exist_ok=True)
-    prefetch_file = os.path.join(staging_dir, f"reduce_p{partition_id}.bin")
+        groups = _group_by_server(sources)
 
-    groups = _group_by_server(sources)
-
-    try:
-        # Fetch each source region in parallel, pwrite at pre-assigned offsets
-        # into this partition's prefetch file (disjoint → lock-free). Buffered
-        # pwrite lands in page cache so the decode-side mmap reads hit cache.
-        total_size, base_offsets, node_sizes = _compute_prefetch_layout(groups)
-
-        # Accumulator for the final reduce.
-        accum_tables: List[pa.Table] = []
-        accum_bytes: int = 0
-        output_buffer: Optional[BlockOutputBuffer] = None
-        # Codec from data_context.hash_shuffle_compression (same field the map used).
-        _compression = (
-            data_context if data_context is not None else DataContext.get_current()
-        ).hash_shuffle_compression
-
-        def _flush(tables: List[pa.Table]):
-            """Call reduce_fn on ``tables`` and yield reshaped raw blocks.
-
-            Fused map / stats are applied downstream of ``_reduce_output_blocks``,
-            matching v2's ``_shuffle_reduce_task``.
-            """
-            nonlocal output_buffer
-            if output_buffer is None and target_max_block_size is not None:
-                output_buffer = BlockOutputBuffer(
-                    OutputBlockSizeOption.of(
-                        target_max_block_size=target_max_block_size,
-                    )
-                )
-            # Wrap in a 1-element list — external is single-input, but
-            # reduce_fn's signature is ``(partition_id, tables_by_input)``.
-            for block in reduce_fn(partition_id, [tables]):
-                if output_buffer is None:
-                    # target_max_block_size=None: emit blocks as-is.
-                    yield block
-                else:
-                    output_buffer.add_block(block)
-                    while output_buffer.has_next():
-                        yield output_buffer.next()
-
-        def _reduce_output_blocks():
-            # O_RDWR: same fd serves ``os.pwrite`` from fetch threads AND
-            # ``os.pread`` from decode. Plain file I/O (no ``pa.memory_map``).
-            fd = os.open(prefetch_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o644)
-            try:
-                if total_size > 0:
-                    try:
-                        os.posix_fallocate(fd, 0, total_size)  # Linux only
-                    except AttributeError:
-                        # posix_fallocate not on this platform (macOS /
-                        # Windows / minimal Python). Fall back to sparse
-                        # ftruncate; pwrite allocates blocks on demand and
-                        # will surface a real ENOSPC if the disk fills.
-                        os.ftruncate(fd, total_size)
-                    except OSError as e:
-                        if _is_disk_exhausted(e):
-                            raise ShuffleDiskError(
-                                f"Disk exhausted pre-allocating {total_size} "
-                                f"bytes for {prefetch_file}: {e}"
-                            ) from e
-                        raise
-
-                def _fetch_one(args):
-                    base, size, group = args
-                    _fetch_from_file_server(
-                        _PwriteSink(fd, base),
-                        group.shuffle_id,
-                        group.node_id,
-                        group.members,
-                        max_bytes_per_fetch,
-                    )
-                    if size > 0:
-                        # fsync here (fetch thread) overlaps other fetches' network I/O.
-                        os.fsync(fd)
-                    return base, size
-
-                n_threads = min(len(groups), max(1, fetch_threads))
-                work = list(zip(base_offsets, node_sizes, groups))
-                # Randomize submission order per reducer (seeded by partition_id →
-                # deterministic/retry-stable) so concurrent fan-in spreads evenly
-                # across file servers. Disjoint offsets make reordering safe.
-                if work:
-                    random.Random(partition_id).shuffle(work)
-
-                def _decode_region(base: int, size: int):
-                    """Decode + coalesce a region's shards into one chunk."""
-                    nonlocal accum_bytes
-                    pos = base
-                    end = base + size
-                    region_tables: List[pa.Table] = []
-                    while pos < end:
-                        length = struct.unpack(">Q", os.pread(fd, 8, pos))[0]
-                        ipc_buf = os.pread(fd, length, pos + 8)
-                        pos += 8 + length
-                        table = _read_ipc(ipc_buf, _compression)
-                        accum_bytes += table.nbytes
-                        region_tables.append(table)
-                    # Default: DO NOT coalesce (like v2) — keep shards as separate
-                    # chunks and let the write control row-group size (write_parquet
-                    # row_group_size). The old per-region combine was a workaround for
-                    # write_dataset defaulting to one row group per chunk; it costs a
-                    # full copy and is only worth it on slow disks at very high chunk
-                    # counts. Set RAY_SHUFFLE_REDUCE_COMBINE=1 to re-enable.
-                    if (
-                        len(region_tables) > 1
-                        and os.environ.get("RAY_SHUFFLE_REDUCE_COMBINE") == "1"
-                    ):
-                        accum_tables.append(
-                            transform_pyarrow.combine_chunks(
-                                pa.concat_tables(region_tables)
-                            )
-                        )
-                    else:
-                        accum_tables.extend(region_tables)
-
-                with ThreadPoolExecutor(max_workers=n_threads) as ex:
-                    futs = [ex.submit(_fetch_one, w) for w in work]
-                    for fut in as_completed(futs):
-                        base, size = fut.result()
-                        if size > 0:
-                            _decode_region(base, size)
-
-                # Drain the accumulator tail.
-                if accum_tables:
-                    yield from _flush(accum_tables)
-                if output_buffer is not None:
-                    output_buffer.finalize()
-                    yield from output_buffer.iter_ready_blocks()
-            finally:
-                os.close(fd)
-
-        yield from _emit_blocks(_reduce_output_blocks())
-    finally:
-        # Unlink this reducer's own file.
         try:
-            os.unlink(prefetch_file)
-        except OSError:
-            pass
+            # Fetch each source region in parallel, pwrite at pre-assigned offsets
+            # into this partition's prefetch file (disjoint → lock-free). Buffered
+            # pwrite lands in page cache so the decode-side mmap reads hit cache.
+            total_size, base_offsets, node_sizes = _compute_prefetch_layout(groups)
+
+            # Accumulator for the final reduce.
+            accum_tables: List[pa.Table] = []
+            accum_bytes: int = 0
+            output_buffer: Optional[BlockOutputBuffer] = None
+            # Codec from data_context.hash_shuffle_compression (same field the map used).
+            _compression = (
+                data_context if data_context is not None else DataContext.get_current()
+            ).hash_shuffle_compression
+
+            def _flush(tables: List[pa.Table]):
+                """Call reduce_fn on ``tables`` and yield reshaped raw blocks.
+
+                Fused map / stats are applied downstream of ``_reduce_output_blocks``.
+                """
+                nonlocal output_buffer
+                if output_buffer is None and target_max_block_size is not None:
+                    output_buffer = BlockOutputBuffer(
+                        OutputBlockSizeOption.of(
+                            target_max_block_size=target_max_block_size,
+                        )
+                    )
+                # Wrap in a 1-element list — external is single-input, but
+                # reduce_fn's signature is ``(partition_id, tables_by_input)``.
+                for block in reduce_fn(partition_id, [tables]):
+                    if output_buffer is None:
+                        # target_max_block_size=None: emit blocks as-is.
+                        yield block
+                    else:
+                        output_buffer.add_block(block)
+                        while output_buffer.has_next():
+                            yield output_buffer.next()
+
+            def _reduce_output_blocks():
+                # O_RDWR: same fd serves ``os.pwrite`` from fetch threads AND
+                # ``os.pread`` from decode. Plain file I/O (no ``pa.memory_map``).
+                fd = os.open(prefetch_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o644)
+                try:
+                    if total_size > 0:
+                        try:
+                            os.posix_fallocate(fd, 0, total_size)  # Linux only
+                        except AttributeError:
+                            # posix_fallocate not on this platform (macOS /
+                            # Windows / minimal Python). Fall back to sparse
+                            # ftruncate; pwrite allocates blocks on demand and
+                            # will surface a real ENOSPC if the disk fills.
+                            os.ftruncate(fd, total_size)
+                        except OSError as e:
+                            if _is_disk_exhausted(e):
+                                raise ShuffleDiskError(
+                                    f"Disk exhausted pre-allocating {total_size} "
+                                    f"bytes for {prefetch_file}: {e}"
+                                ) from e
+                            raise
+
+                    def _fetch_one(args):
+                        base, size, group = args
+                        _fetch_from_file_server(
+                            _PwriteSink(fd, base),
+                            group.shuffle_id,
+                            group.node_id,
+                            group.members,
+                            max_bytes_per_fetch,
+                        )
+                        if size > 0:
+                            # fsync here (fetch thread) overlaps other fetches' network I/O.
+                            os.fsync(fd)
+                        return base, size
+
+                    n_threads = min(len(groups), max(1, fetch_threads))
+                    work = list(zip(base_offsets, node_sizes, groups))
+                    # Randomize submission order per reducer (seeded by partition_id →
+                    # deterministic/retry-stable) so concurrent fan-in spreads evenly
+                    # across file servers. Disjoint offsets make reordering safe.
+                    if work:
+                        random.Random(partition_id).shuffle(work)
+
+                    def _decode_region(base: int, size: int):
+                        """Decode + coalesce a region's shards into one chunk."""
+                        nonlocal accum_bytes
+                        pos = base
+                        end = base + size
+                        region_tables: List[pa.Table] = []
+                        while pos < end:
+                            length = struct.unpack(">Q", os.pread(fd, 8, pos))[0]
+                            ipc_buf = os.pread(fd, length, pos + 8)
+                            pos += 8 + length
+                            table = _read_ipc(ipc_buf, _compression)
+                            accum_bytes += table.nbytes
+                            region_tables.append(table)
+                        # Default: DO NOT coalesce (like v2) — keep shards as separate
+                        # chunks and let the write control row-group size (write_parquet
+                        # row_group_size). The old per-region combine was a workaround for
+                        # write_dataset defaulting to one row group per chunk; it costs a
+                        # full copy and is only worth it on slow disks at very high chunk
+                        # counts. Set RAY_SHUFFLE_REDUCE_COMBINE=1 to re-enable.
+                        if (
+                            len(region_tables) > 1
+                            and os.environ.get("RAY_SHUFFLE_REDUCE_COMBINE") == "1"
+                        ):
+                            accum_tables.append(
+                                transform_pyarrow.combine_chunks(
+                                    pa.concat_tables(region_tables)
+                                )
+                            )
+                        else:
+                            accum_tables.extend(region_tables)
+
+                    with ThreadPoolExecutor(max_workers=n_threads) as ex:
+                        futs = [ex.submit(_fetch_one, w) for w in work]
+                        for fut in as_completed(futs):
+                            base, size = fut.result()
+                            if size > 0:
+                                _decode_region(base, size)
+
+                    # Drain the accumulator tail.
+                    if accum_tables:
+                        yield from _flush(accum_tables)
+                    if output_buffer is not None:
+                        output_buffer.finalize()
+                        yield from output_buffer.iter_ready_blocks()
+                finally:
+                    os.close(fd)
+
+            yield from _emit_blocks(_reduce_output_blocks())
+        finally:
+            # Unlink this reducer's own file.
+            try:
+                os.unlink(prefetch_file)
+            except OSError:
+                pass
