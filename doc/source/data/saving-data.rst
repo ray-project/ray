@@ -156,27 +156,25 @@ number of output files, configure ``min_rows_per_file``.
     ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']
 
 
-Writing into Partitioned Dataset
+Write into a partitioned dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When writing partitioned dataset (using Hive-style, folder-based partitioning), it's
-recommended to repartition the dataset by the partition columns prior to writing into it.
-This lets you control the file sizes and their number. When the dataset is repartitioned
-by the partition columns, every block should contain all of the rows corresponding to a
-particular partition, meaning that the number of files created should be controlled by
-the repartitioning, with optional limits from the write method, such as
-``max_rows_per_file``. Since every block is written out independently, when writing the
-dataset without prior repartitioning you could potentially get an N number of files per
-partition (where N is the number of blocks in your dataset) with very limited ability to
-control the number of files and their sizes, since every block could potentially carry
-the rows corresponding to any partition.
+When you write a partitioned dataset using Hive-style, folder-based partitioning,
+repartition the dataset by the partition columns first. Repartitioning gives you control
+over the number of files and their sizes. After you repartition by the partition columns,
+every block holds all the rows for a particular partition, so the repartitioning
+determines how many files Ray creates, with optional limits from the write method such as
+``max_rows_per_file``. Ray writes every block out independently, so if you write the
+dataset without repartitioning first, you can get N files per partition, where N is the
+number of blocks in your dataset. In that case, you have very limited control over the
+number of files and their sizes, because every block can carry rows for any partition.
 
 .. warning::
-    Ray Data deprecates using ``min_rows_per_file`` with non-empty ``partition_cols``
-    and plans to stop supporting this combination after February 2027. Use
-    ``repartition()`` with the partition columns and an explicit ``num_blocks``, and use
-    ``max_rows_per_file`` instead. If the dataset is already repartitioned by the
-    partition columns, removing ``min_rows_per_file`` doesn't change the output layout.
+    Ray Data has deprecated using ``min_rows_per_file`` with non-empty
+    ``partition_cols``. Support for this combination ends after February 2027. Instead,
+    call ``repartition()`` with the partition columns and an explicit ``num_blocks``, and
+    use ``max_rows_per_file``. If you already repartition the dataset by the partition
+    columns, removing ``min_rows_per_file`` leaves the output layout unchanged.
 
 .. testcode::
     import ray
