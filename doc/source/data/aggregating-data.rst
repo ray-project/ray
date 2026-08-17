@@ -3,12 +3,12 @@
 
 .. _aggregations:
 
-Aggregating Data
+Aggregating data
 ================
 
-Ray Data provides a flexible and performant API for performing aggregations on :class:`~ray.data.dataset.Dataset`. 
+Ray Data provides a flexible and performant API for performing aggregations on :class:`~ray.data.dataset.Dataset`.
 
-Basic Aggregations
+Basic aggregations
 ------------------
 
 Ray Data provides several built-in aggregation functions like :class:`~ray.data.Dataset.max`,
@@ -83,10 +83,10 @@ Multiple aggregations can also be computed at once:
     # result: [{'group_key': 0, 'count(id)': 34, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...},
     #          {'group_key': 1, 'count(id)': 33, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...},
     #          {'group_key': 2, 'count(id)': 33, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...}]
-    
 
-Custom Aggregations
---------------------
+
+Custom aggregations
+-------------------
 
 You can create custom aggregations by implementing the :class:`~ray.data.aggregate.AggregateFnV2` interface. The AggregateFnV2 interface has three key methods to implement:
 
@@ -101,8 +101,8 @@ The aggregation process follows these steps:
 3. **Combination**: The `combine` method merges partial results into a single accumulator
 4. **Finalization**: The `finalize` method transforms the final accumulator into the desired output
 
-Example: Creating a Custom Mean Aggregator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: create a custom mean aggregator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here's an example of creating a custom aggregator that calculates the Mean of values in a column:
 
@@ -166,6 +166,6 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
     Hash-shuffling can provide better performance for aggregations in certain cases. For more information see `comparison between hash based shuffling and Range Based shuffling approach <https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/>`_ .
 
-    A new shuffle strategy, :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``), is currently in Alpha. To use it for aggregations, set the strategy before creating a ``Dataset``:
-    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2``. See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available knobs.
-    
+    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a shuffle strategy in alpha. To use it for aggregations, set the strategy before creating a ``Dataset``:
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2``. See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available settings.
+

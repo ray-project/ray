@@ -4,7 +4,7 @@
 .. _shuffling_data:
 
 ==============
-Shuffling Data
+Shuffling data
 ==============
 
 When consuming or iterating over Ray :class:`Datasets <ray.data.dataset.Dataset>`, it can be useful to
@@ -234,8 +234,8 @@ Example of hash shuffling based on column `id`:
 
 .. tip::
 
-    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a new shuffle backend,
-    currently in Alpha, that provides an updated hash-shuffle implementation:
+    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a shuffle backend in alpha
+    that provides an updated hash-shuffle implementation:
 
     .. code-block:: python
 
@@ -243,12 +243,12 @@ Example of hash shuffling based on column `id`:
 
         DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
-    See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available knobs.
+    See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available settings.
 
 .. _optimizing_shuffles:
 
-Advanced: Optimizing shuffles
-=============================
+Advanced: optimize shuffles
+===========================
 .. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle,
     `file a Ray Data issue on GitHub <https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+>`_.
 
