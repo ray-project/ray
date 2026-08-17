@@ -62,6 +62,96 @@ python_register_toolchains(
 load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
+# rules_python's whl_library shells out to pip rather than using Bazel's downloader, so
+# wheel fetches are invisible to Bazel's retry and mirroring settings. The pip that
+# rules_python pins (22.0.4) leaves 502 out of urllib3's status_forcelist, so a
+# transient PyPI/Fastly 502 fails a repository fetch on the first try with no retry at
+# all, breaking the whole build. pip 24.0 added 502 to that list upstream.
+#
+# pip 24 also drops pip._internal.cli.progress_bars.BAR_TYPES, which the pip-tools 6.6.0
+# that rules_python pins alongside it imports, so pip-tools moves to 7.4.1 here as well.
+# 7.4.1 replaced pep517 with build + pyproject_hooks and needs packaging, none of which
+# rules_python provides, so those three are declared below too and wired into
+# //release:requirements_py310.update via _requirements_py310_deps. Versions are the set
+# rules_python itself pairs with pip 24.0 / pip-tools 7.4.1 upstream, rather than an
+# ad-hoc combination.
+#
+# The pypi__pip and pypi__pip_tools entries are declared before
+# pip_install_dependencies() so that its maybe() calls become no-ops and these win. Keep
+# the url/sha256 pairs in sync with _RULE_DEPS in
+# @rules_python//python/pip_install:repositories.bzl.
+#
+# All five entries exist only because rules_python here is 0.9.0, from July 2022, which
+# is where the pip 22.0.4 pin comes from. Ray never declares rules_python: it arrives
+# transitively via ray_deps_build_all() -> rules_foreign_cc_dependencies(), which pins it
+# at rules_foreign_cc/foreign_cc/repositories.bzl:85. That is also a maybe(), so pinning
+# rules_python explicitly before ray_deps_build_all() would take precedence and is the
+# real fix - a modern rules_python pins pip 24.0 itself, making all five entries below
+# unnecessary, and adds the experimental_index_url path that fetches wheels through
+# Bazel's downloader, where --experimental_repository_downloader_retries and downloader
+# URL rewriting would finally apply to them. That upgrade rewrites whl_library, repo
+# naming and the generated requirements.bzl, so it needs to be its own change; delete
+# this block as part of it.
+#
+# Note that upgrading pip for the hermetic interpreter is not an alternative. The
+# python_register_toolchains() CPython build ships its own pip (also 22.0.4), but
+# whl_library puts the pypi__* repositories on PYTHONPATH, which precedes site-packages
+# on sys.path, so pypi__pip shadows it and the interpreter's copy is never used.
+_PYPI_WHEEL_BUILD_FILE = """\
+package(default_visibility = ["//visibility:public"])
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "lib",
+    srcs = glob(["**/*.py"]),
+    data = glob(["**/*"], exclude=["**/*.py", "**/* *", "BUILD", "WORKSPACE"]),
+    # This makes this directory a top-level in the python import
+    # search path for anything that depends on this.
+    imports = ["."],
+)
+"""
+
+http_archive(
+    name = "pypi__pip",
+    build_file_content = _PYPI_WHEEL_BUILD_FILE,
+    sha256 = "ba0d021a166865d2265246961bec0152ff124de910c5cc39f1156ce3fa7c69dc",
+    type = "zip",
+    url = "https://files.pythonhosted.org/packages/8a/6a/19e9fe04fca059ccf770861c7d5721ab4c2aebc539889e97c7977528a53b/pip-24.0-py3-none-any.whl",
+)
+
+http_archive(
+    name = "pypi__pip_tools",
+    build_file_content = _PYPI_WHEEL_BUILD_FILE,
+    sha256 = "4c690e5fbae2f21e87843e89c26191f0d9454f362d8acdbd695716493ec8b3a9",
+    type = "zip",
+    url = "https://files.pythonhosted.org/packages/0d/dc/38f4ce065e92c66f058ea7a368a9c5de4e702272b479c0992059f7693941/pip_tools-7.4.1-py3-none-any.whl",
+)
+
+http_archive(
+    name = "pypi__build",
+    build_file_content = _PYPI_WHEEL_BUILD_FILE,
+    sha256 = "75e10f767a433d9a86e50d83f418e83efc18ede923ee5ff7df93b6cb0306c5d4",
+    type = "zip",
+    url = "https://files.pythonhosted.org/packages/e2/03/f3c8ba0a6b6e30d7d18c40faab90807c9bb5e9a1e3b2fe2008af624a9c97/build-1.2.1-py3-none-any.whl",
+)
+
+http_archive(
+    name = "pypi__packaging",
+    build_file_content = _PYPI_WHEEL_BUILD_FILE,
+    sha256 = "2ddfb553fdf02fb784c234c7ba6ccc288296ceabec964ad2eae3777778130bc5",
+    type = "zip",
+    url = "https://files.pythonhosted.org/packages/49/df/1fceb2f8900f8639e278b056416d49134fb8d84c5942ffaa01ad34782422/packaging-24.0-py3-none-any.whl",
+)
+
+http_archive(
+    name = "pypi__pyproject_hooks",
+    build_file_content = _PYPI_WHEEL_BUILD_FILE,
+    sha256 = "7ceeefe9aec63a1064c18d939bdc3adf2d8aa1988a510afec15151578b232aa2",
+    type = "zip",
+    url = "https://files.pythonhosted.org/packages/ae/f3/431b9d5fe7d14af7a32340792ef43b8a714e7726f1d7b69cc4e8e7a3f1d7/pyproject_hooks-1.1.0-py3-none-any.whl",
+)
+
 pip_install_dependencies()
 
 load("@rules_python//python:pip.bzl", "pip_parse")
@@ -69,6 +159,21 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 # For CI scripts use only; not for ray testing.
 pip_parse(
     name = "py_deps_py310",
+    # pip retries 5 times by default with backoff_factor=0.25, and urllib3 doubles the
+    # delay each round, so it gives up after only ~8 seconds (0, 0.5, 1, 2, 4). Nine
+    # retries widens that to ~2 minutes (0, 0.5, 1, 2, 4, 8, 16, 32, 64), which is long
+    # enough to ride out a brief files.pythonhosted.org outage instead of failing the
+    # whole build. Nine is also the last round before urllib3's 120s per-sleep cap
+    # kicks in, so going higher buys progressively coarser waits.
+    #
+    # Both settings are needed because two different pip processes fetch from PyPI
+    # here. PIP_RETRIES covers the pip that setuptools spawns for setup_requires when
+    # a locked package ships only an sdist; that one is not isolated, so it reads the
+    # environment. --retries covers this pip invocation, which runs with --isolated
+    # and therefore ignores PIP_* variables. Neither helps unless 502 is retryable in
+    # the first place, which is what the pip 24.0 pin above provides.
+    environment = {"PIP_RETRIES": "9"},
+    extra_pip_args = ["--retries=9"],
     python_interpreter_target = python310,
     requirements_lock = "//release:requirements_py310.txt",
 )
