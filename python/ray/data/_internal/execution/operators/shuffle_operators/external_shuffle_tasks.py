@@ -335,8 +335,6 @@ def _external_shuffle_reduce_task(
                 # Wrap in a 1-element list — external is single-input, but
                 # reduce_fn's signature is ``(partition_id, tables_by_input)``.
                 for block in reduce_fn(partition_id, [tables]):
-                    if isinstance(block, pa.Table) and block.num_columns > 0:
-                        block = transform_pyarrow.combine_chunks(block)
                     if output_buffer is None:
                         # target_max_block_size=None: emit blocks as-is.
                         yield block
@@ -394,11 +392,20 @@ def _external_shuffle_reduce_task(
                         """Decode one staging-file region's IPC frames into ``accum_tables``."""
                         pos = base
                         end = base + size
+                        region_tables: List[pa.Table] = []
                         while pos < end:
                             length = struct.unpack(">Q", os.pread(fd, 8, pos))[0]
                             ipc_buf = os.pread(fd, length, pos + 8)
                             pos += 8 + length
-                            accum_tables.append(_read_ipc(ipc_buf, _compression))
+                            region_tables.append(_read_ipc(ipc_buf, _compression))
+                        if len(region_tables) == 1:
+                            accum_tables.append(region_tables[0])
+                        elif region_tables:
+                            accum_tables.append(
+                                transform_pyarrow.combine_chunks(
+                                    pa.concat_tables(region_tables)
+                                )
+                            )
 
                     with ThreadPoolExecutor(max_workers=n_threads) as ex:
                         futs = [
