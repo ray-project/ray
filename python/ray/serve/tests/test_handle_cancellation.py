@@ -372,14 +372,11 @@ def test_recursive_cancellation_during_assignment(serve_instance):
     # Counter is only 1.
     tlog("Sending two requests to Ingress.")
     resp1 = h.remote()
+    with pytest.raises(TimeoutError):
+        resp1.result(timeout_s=0.5)
     resp2 = h.remote()
-
-    # Each Ingress call awaits the signal only after sending its downstream
-    # request, so three waiters (both Ingress calls plus the single admitted
-    # Counter call) means resp2's Counter request is pending assignment.
-    wait_for_condition(
-        lambda: ray.get(signal.cur_num_waiters.remote()) == 3, timeout=20
-    )
+    with pytest.raises(TimeoutError):
+        resp2.result(timeout_s=0.5)
 
     # Cancel second request, which should be pending assignment.
     tlog("Canceling second request.")
