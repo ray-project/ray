@@ -226,8 +226,8 @@ might no longer print the C++ failure stack normally produced by Abseil. Setting
 ``PYTHONFAULTHANDLER=1`` can provide Python-level diagnostics, but it doesn't restore
 the disabled C++ failure stack.
 
-Don't combine this fallback with ``libjsig.so``. When Ray's handler is disabled, there
-is little value in chaining it. For an A/B stress reproducer and test results, see
+Use this fallback instead if HotSpot signal chaining isn't available or doesn't resolve
+the conflict. For more background and discussion, see
 `GitHub issue #36415 <https://github.com/ray-project/ray/issues/36415>`_.
 
 
