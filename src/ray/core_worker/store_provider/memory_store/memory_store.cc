@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <exception>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -483,9 +484,7 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
     }
   }
 
-  for (const auto &unhandled_error : unhandled_errors) {
-    ReportUnhandledError(unhandled_error);
-  }
+  ReportUnhandledErrors(unhandled_errors);
 }
 
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
@@ -504,9 +503,7 @@ void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
     }
   }
 
-  for (const auto &unhandled_error : unhandled_errors) {
-    ReportUnhandledError(unhandled_error);
-  }
+  ReportUnhandledErrors(unhandled_errors);
 }
 
 bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma) {
@@ -523,6 +520,23 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
 
 void CoreWorkerMemoryStore::ReportUnhandledError(const std::shared_ptr<RayObject> &obj) {
   unhandled_exception_handler_(*obj);
+}
+
+void CoreWorkerMemoryStore::ReportUnhandledErrors(
+    const std::vector<std::shared_ptr<RayObject>> &unhandled_errors) {
+  std::exception_ptr first_exception;
+  for (const auto &unhandled_error : unhandled_errors) {
+    try {
+      ReportUnhandledError(unhandled_error);
+    } catch (...) {
+      if (first_exception == nullptr) {
+        first_exception = std::current_exception();
+      }
+    }
+  }
+  if (first_exception != nullptr) {
+    std::rethrow_exception(first_exception);
+  }
 }
 
 void CoreWorkerMemoryStore::NotifyUnhandledErrors() {
@@ -544,9 +558,7 @@ void CoreWorkerMemoryStore::NotifyUnhandledErrors() {
     }
   }
 
-  for (const auto &unhandled_error : unhandled_errors) {
-    ReportUnhandledError(unhandled_error);
-  }
+  ReportUnhandledErrors(unhandled_errors);
 }
 
 inline void CoreWorkerMemoryStore::EraseObjectAndUpdateStats(const ObjectID &object_id) {

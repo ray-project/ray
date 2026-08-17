@@ -194,6 +194,11 @@ class CoreWorkerMemoryStore {
   void ReportUnhandledError(const std::shared_ptr<RayObject> &obj)
       ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// Reports all unhandled errors, then rethrows the first callback exception.
+  void ReportUnhandledErrors(
+      const std::vector<std::shared_ptr<RayObject>> &unhandled_errors)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
   /// Emplace the given object entry to the in-memory-store and update stats properly.
   void EmplaceObjectAndUpdateStats(const ObjectID &object_id,
                                    std::shared_ptr<RayObject> &object_entry)

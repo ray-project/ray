@@ -17,7 +17,9 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -41,6 +43,14 @@ std::shared_ptr<ray::LocalMemoryBuffer> MakeLocalMemoryBufferFromString(
   auto meta_buffer =
       std::make_shared<ray::LocalMemoryBuffer>(metadata, str.size(), /*copy_data=*/true);
   return meta_buffer;
+}
+
+bool TryLockAndUnlock(absl::Mutex *mutex) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  const bool lock_acquired = mutex->TryLock();
+  if (lock_acquired) {
+    mutex->Unlock();
+  }
+  return lock_acquired;
 }
 
 }  // namespace
@@ -108,10 +118,12 @@ TEST(TestMemoryStore, TestUnhandledErrorCallbacksRunOutsideLock) {
       nullptr,
       nullptr,
       [&](const RayObject &) {
-        const bool lock_acquired = memory_store->mu_.TryLock();
+        bool lock_acquired = false;
+        std::thread lock_probe(
+            [&] { lock_acquired = TryLockAndUnlock(&memory_store->mu_); });
+        lock_probe.join();
         EXPECT_TRUE(lock_acquired);
         if (lock_acquired) {
-          memory_store->mu_.Unlock();
           EXPECT_GE(memory_store->Size(), 0);
         }
         unhandled_count++;
@@ -137,6 +149,42 @@ TEST(TestMemoryStore, TestUnhandledErrorCallbacksRunOutsideLock) {
   memory_store->NotifyUnhandledErrors();
 
   EXPECT_EQ(unhandled_count, 4);
+}
+
+TEST(TestMemoryStore, TestUnhandledErrorCallbacksContinueAfterException) {
+  InstrumentedIOContextWithThread io_context(
+      "TestUnhandledErrorCallbacksContinueAfterException");
+  FakeClock clock(absl::Now() + absl::Seconds(10));
+  int unhandled_count = 0;
+  auto memory_store = std::make_shared<CoreWorkerMemoryStore>(
+      io_context.GetIoService(),
+      clock,
+      /*reference_counting_enabled=*/true,
+      nullptr,
+      nullptr,
+      [&](const RayObject &) {
+        unhandled_count++;
+        if (unhandled_count == 1) {
+          throw std::runtime_error("error reporting failed");
+        }
+      });
+  RayObject unhandled_error(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+
+  const auto delete_id_1 = ObjectID::FromRandom();
+  const auto delete_id_2 = ObjectID::FromRandom();
+  memory_store->Put(unhandled_error, delete_id_1, /*has_reference=*/true);
+  memory_store->Put(unhandled_error, delete_id_2, /*has_reference=*/true);
+  EXPECT_THROW(memory_store->Delete(std::vector<ObjectID>{delete_id_1, delete_id_2}),
+               std::runtime_error);
+  EXPECT_EQ(unhandled_count, 2);
+
+  unhandled_count = 0;
+  const auto notify_id_1 = ObjectID::FromRandom();
+  const auto notify_id_2 = ObjectID::FromRandom();
+  memory_store->Put(unhandled_error, notify_id_1, /*has_reference=*/true);
+  memory_store->Put(unhandled_error, notify_id_2, /*has_reference=*/true);
+  EXPECT_THROW(memory_store->NotifyUnhandledErrors(), std::runtime_error);
+  EXPECT_EQ(unhandled_count, 2);
 }
 
 TEST(TestMemoryStore, TestMemoryStoreStats) {
