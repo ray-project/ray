@@ -26,13 +26,17 @@ class Edge:
     output_index: int
 
 
-@dataclass
+@dataclass(eq=False, repr=False)
 class TaskNode:
     """
     A node within the lineage graph tracking the child and parents of a task.
     Note: The data task id represents the id of the initial task execution. All
     retry of the initial task should be represented by the same data task id even
     if the ray core task id differs.
+
+    Note: Nodes hold references to their neighbors, so the graph is cyclic. The
+    generated `__eq__` and `__repr__` are disabled in favor of implementations
+    that only look at the neighbors' data task ids and never traverse the graph.
     """
 
     data_task_id: str
@@ -40,6 +44,23 @@ class TaskNode:
     child_task: Optional["TaskNode"]
     # The indecies of outputs produced by this block that the child task depends on.
     child_task_block_dependencies: List[int]
+
+    def __repr__(self) -> str:
+        parent_id = self.parent_task.data_task_id if self.parent_task else None
+        child_id = self.child_task.data_task_id if self.child_task else None
+        return (
+            f"{type(self).__name__}(data_task_id={self.data_task_id!r}, "
+            f"parent_task={parent_id!r}, child_task={child_id!r}, "
+            f"child_task_block_dependencies={self.child_task_block_dependencies!r})"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TaskNode):
+            return False
+        return self.data_task_id == other.data_task_id
+
+    def __hash__(self) -> int:
+        return hash(self.data_task_id)
 
 
 class LineageTracker:
@@ -139,13 +160,10 @@ class LineageTracker:
         task_node = self._data_task_id_to_task_node[data_task_id]
         logger.debug(f"Registering failed task for task {data_task_id}")
 
-        def _trace_parent_for_reconstruction(task_node: TaskNode):
-            if task_node.parent_task is None:
-                return task_node.data_task_id
-            else:
-                return _trace_parent_for_reconstruction(task_node.parent_task)
-
-        return _trace_parent_for_reconstruction(task_node)
+        curr_node = task_node
+        while curr_node.parent_task is not None:
+            curr_node = curr_node.parent_task
+        return curr_node.data_task_id
 
     def get_pending_children(self, data_task_id: str) -> Dict[str, List[int]]:
         """
@@ -208,10 +226,7 @@ class LineageTracker:
         task_node = self._data_task_id_to_task_node[data_task_id]
 
         # check if any child task depends on the output object
-        object_used_by_child = False
-        for dependency_output_index in task_node.child_task_block_dependencies:
-            if dependency_output_index == output_index:
-                object_used_by_child = True
+        object_used_by_child = output_index in task_node.child_task_block_dependencies
 
         if object_used_by_child:
             logger.debug(
