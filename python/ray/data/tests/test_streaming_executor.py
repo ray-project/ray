@@ -2190,7 +2190,7 @@ class TestOpTaskCancel:
         ref = Actor.remote().f.remote()
         task = MetadataOpTask(0, ref, lambda: None)
 
-        # temporary replace ray.cancel with a simplified version that
+        # Temporary replace ray.cancel with a simplified version that
         # raises an exception when force=True is passed.
         def reject_actor(waitable, *, recursive, force):
             if force:
