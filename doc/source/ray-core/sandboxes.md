@@ -32,15 +32,15 @@ The runtime cost is low next to full virtual machines (VMs) and MicroVMs, which 
 
 ## Requirements
 
-To use Ray Sandboxes on your Ray nodes:
+Ray Sandboxes need the following on every Ray node that runs a sandbox:
 
-* **Linux OS:** Linux x86_64 or arm64.
-* **gVisor (`runsc`):** The `runsc` binary must be installed on worker nodes and accessible in the system `$PATH`.
-* **Ray 2.58.0+** with the `ray.experimental.sandbox` package.
+* **Linux:** x86_64 or arm64.
+* **gVisor (`runsc`):** Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
+* **Ray:** version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
 
 To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/).
 
-## Usage Patterns and Examples
+## Usage patterns and examples
 
 ### Example: Basic Sandbox Creation and Command Execution
 
@@ -76,7 +76,7 @@ ray.get(sb.delete.remote())
 
 ### Example: File Operations (Reading, Writing, Uploading, Downloading)
 
-You can write source files directly into the sandbox or upload local files from the host before execution. By default, the root filesystem is read-only, and the configured `workdir` (e.g. `/workspace`) is the writable scratch space.
+Write source files directly into the sandbox, or upload local files from the host before execution. By default, the root filesystem is read-only and the configured `workdir`, such as `/workspace`, is the writable scratch space.
 
 ```python
 import textwrap
@@ -121,7 +121,7 @@ ray.get(sb.delete.remote())
 
 ### Example: Direct Actor Creation with Resource Scheduling
 
-Because `Sandbox` is a standard Ray Actor, you can instantiate it directly with Ray actor scheduling options such as `num_cpus`, `memory`, and custom accelerator or placement constraints.
+Because `Sandbox` is a standard Ray actor, you can instantiate it directly with Ray actor scheduling options such as `num_cpus`, `memory`, and custom accelerator or placement constraints.
 
 ```python
 import ray
@@ -153,7 +153,7 @@ ray.get(sandbox_actor.delete.remote())
 
 ### Example: Custom Actors using `SandboxRuntime`
 
-If you are building custom RL environment actors or specialized rollout workers, you can embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
+If you're building custom RL environment actors or specialized rollout workers, embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
 
 ```python
 import ray
@@ -184,17 +184,17 @@ ray.get(pool.close.remote())
 
 ### Example (Advanced): Passing Configurations Directly to gVisor
 
-For advanced workloads, you may need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Ray Sandboxes provide the `_oci_spec_transform_fn` parameter to allow you to inspect and modify the generated [OCI runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before it is passed to gVisor (`runsc`).
+For advanced workloads, you might need to configure low-level runtime options such as custom host mounts, Linux capabilities, or custom network and DNS settings. Use the `_oci_spec_transform_fn` parameter to inspect and modify the generated [OCI runtime specification](https://github.com/opencontainers/runtime-spec) dictionary before Ray passes it to gVisor (`runsc`).
 
 :::{note}
-`_oci_spec_transform_fn` is an experimental hook intended for advanced use cases while we iterate on first-class configuration APIs for Ray Sandboxes (such as higher-level volume mount and capability abstractions). We are actively exploring how to best expose these capabilities directly without requiring low-level OCI specification manipulation.
+`_oci_spec_transform_fn` is an experimental hook for advanced use cases. The Ray project is designing first-class configuration APIs for Ray Sandboxes, such as higher-level volume mount and capability abstractions, and this hook is likely to change once those land. To help shape them, open an issue describing your use case.
 :::
 
-The `_oci_spec_transform_fn` callable receives the fully generated OCI specification dictionary and can mutate it in place or return a modified dictionary. Common use cases include:
+The `_oci_spec_transform_fn` callable receives the fully generated OCI specification dictionary. It can mutate the dictionary in place or return a modified one. Common use cases include the following:
 
-1. **Host Mounts:** Mounting host directories or read-only datasets and model weights into the sandbox container.
-2. **Networking and DNS Configuration:** Setting up DNS resolution by mounting host configuration files (such as `/etc/resolv.conf` and `/etc/hosts`) or modifying network namespace parameters when using `network="sandbox"`.
-3. **Linux Capabilities:** Adding or restricting Linux process capabilities (such as `CAP_NET_RAW` or `CAP_SYS_PTRACE`) under `spec["process"]["capabilities"]`.
+* **Host mounts:** Mount host directories, read-only datasets, or model weights into the sandbox container.
+* **Networking and DNS:** Set up DNS resolution by mounting host configuration files such as `/etc/resolv.conf` and `/etc/hosts`, or modify network namespace parameters when using `network="sandbox"`.
+* **Linux capabilities:** Add or restrict Linux process capabilities such as `CAP_NET_RAW` or `CAP_SYS_PTRACE` under `spec["process"]["capabilities"]`.
 
 ```python
 import ray
@@ -293,23 +293,23 @@ The Ray Sandboxing subsystem is organized into hierarchical layers:
 +-------------------------------------------------------------------+
 ```
 
-### Core Components
+### Core components
 
-1. **High-Level Helper ({func}`ray.experimental.sandbox.create <ray.experimental.sandbox.create>`):** Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an `ActorHandle`.
-2. **Sandbox Actor ({class}`ray.experimental.sandbox.Sandbox <ray.experimental.sandbox.Sandbox>`):** A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
-3. **Sandbox Runtime ({class}`ray.experimental.sandbox.runtime.SandboxRuntime <ray.experimental.sandbox.runtime.SandboxRuntime>`):** A low-level abstraction that manages the lifecycle of local sandboxes, image pulling/caching, and interactions with the execution backend.
-4. **gVisor Backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`):** Executes commands and isolates processes via gVisor's OCI runtime (`runsc`).
-5. **Image Manager (`ray.experimental.sandbox.image_manager.ImageManager`):** Automatically pulls container images (e.g. from Docker Hub, GHCR, or local tar archives), extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
+* **High-level helper ({func}`ray.experimental.sandbox.create <ray.experimental.sandbox.create>`):** Spawns a Ray actor that encapsulates the sandbox lifecycle and returns an `ActorHandle`.
+* **Sandbox actor ({class}`ray.experimental.sandbox.Sandbox <ray.experimental.sandbox.Sandbox>`):** A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
+* **Sandbox runtime ({class}`ray.experimental.sandbox.runtime.SandboxRuntime <ray.experimental.sandbox.runtime.SandboxRuntime>`):** A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
+* **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`):** Executes commands and isolates processes through gVisor's OCI runtime (`runsc`).
+* **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`):** Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
-## Security & Isolation Model
+## Security and isolation model
 
 Ray Sandboxes implement multi-layered defense-in-depth isolation:
 
-1. **System Call Interception:** gVisor's Sentry application kernel intercepts system calls in user space, isolating untrusted code from the host Linux kernel.
-2. **Read-Only Root Filesystem:** Base container filesystems are mounted read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
-3. **Restricted Working Directory:** Only the explicit `workdir` (e.g. `/workspace`) is mounted read-write for application artifacts.
-4. **Network Containment:** By default, `network="none"` disables all outbound network interfaces, preventing untrusted code from making external API calls or scanning the internal cluster network.
-5. **Resource Quotas:** CPU quotas and memory limits are enforced via cgroups, preventing CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
+* **System call interception:** gVisor's Sentry application kernel intercepts system calls in user space, isolating untrusted code from the host Linux kernel.
+* **Read-only root filesystem:** Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
+* **Restricted working directory:** Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
+* **Network containment:** By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network.
+* **Resource quotas:** cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
 
 ## API Reference
 
@@ -325,4 +325,4 @@ For detailed signatures, parameters, and return types, see the {ref}`Ray Sandbox
 
 * Deploy Ray Sandboxes on Kubernetes with KubeRay: {ref}`kuberay-sandboxing`.
 * Learn more about [gVisor](https://gvisor.dev/docs/).
-* Explore {ref}`Resource Isolation With Cgroup v2 <resource-isolation>` to isolate Ray system processes from worker processes.
+* Explore {ref}`resource-isolation` to isolate Ray system processes from worker processes.

@@ -9,12 +9,12 @@ myst:
 # Sandbox API
 
 :::{note}
-Ray Sandboxes (`ray.experimental.sandbox`) is an {ref}`alpha <api-stability-alpha>` library. APIs may evolve prior to graduation.
+Ray Sandboxes (`ray.experimental.sandbox`) is an {ref}`alpha <api-stability-alpha>` library. The API can change before it graduates to stable.
 :::
 
-For an introduction and usage guides, see {ref}`Ray Sandboxes <ray-core-sandboxes>`.
+For an introduction and usage guides, see {ref}`ray-core-sandboxes`.
 
-## Sandbox Lifecycle & Execution
+## Sandbox lifecycle and execution
 
 ```{eval-rst}
 .. autosummary::
