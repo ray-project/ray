@@ -2283,6 +2283,10 @@ class ActorHandle(Generic[T]):
     cloudpickle).
 
     Attributes:
+        actor_id: The actor's ID in hex format. This is only set when the actor
+            class does not define a method named ``actor_id``; otherwise that
+            method takes precedence and the ID remains available via
+            ``_actor_id``.
         _ray_actor_language: The actor language.
         _ray_actor_id: Actor ID.
         _ray_enable_task_events: The default value of whether task events is
@@ -2463,6 +2467,14 @@ class ActorHandle(Generic[T]):
                     method_name
                 ),
             )
+
+        # Expose the actor ID as a public attribute (see #32638). This is set as
+        # an instance attribute rather than a class-level property so that an
+        # actor defining its own `actor_id` method is never shadowed: in that
+        # case the attribute is not set, normal lookup fails, and `__getattr__`
+        # resolves the name to the user's ActorMethod as it always has.
+        if "actor_id" not in self._method_shells:
+            self.actor_id = self._ray_actor_id.hex()
 
     def __del__(self):
         # Weak references don't count towards the distributed ref count, so no
@@ -2703,15 +2715,6 @@ class ActorHandle(Generic[T]):
     @property
     def _actor_id(self):
         return self._ray_actor_id
-
-    @property
-    def actor_id(self) -> str:
-        """Return the hex ID of the actor.
-
-        Returns:
-            The actor ID of this actor handle, in hex format.
-        """
-        return self._ray_actor_id.hex()
 
     def _get_local_state(self):
         """Get the local actor state.

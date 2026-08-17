@@ -368,6 +368,23 @@ def test_actor_handle_actor_id(ray_start_regular_shared):
     assert isinstance(foo.actor_id, str)
     assert foo.actor_id == foo._actor_id.hex()
 
+    # The ID survives serialization of the handle.
+    assert pickle.loads(pickle.dumps(foo)).actor_id == foo.actor_id
+
+
+def test_actor_handle_actor_id_does_not_shadow_method(ray_start_regular_shared):
+    """An actor defining `actor_id` keeps its own method (see #32638)."""
+
+    @ray.remote
+    class Bar:
+        def actor_id(self):
+            return "user-defined"
+
+    bar = Bar.remote()
+    assert ray.get(bar.actor_id.remote()) == "user-defined"
+    # The ID is still reachable through the private attribute.
+    assert isinstance(bar._actor_id.hex(), str)
+
 
 def test_actor_exit_from_task(ray_start_regular_shared):
     @ray.remote
