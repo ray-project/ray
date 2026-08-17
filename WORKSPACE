@@ -176,6 +176,14 @@ pip_parse(
     extra_pip_args = ["--retries=9"],
     python_interpreter_target = python310,
     requirements_lock = "//release:requirements_py310.txt",
+    # The retries above are only usable if the fetch is allowed to last long enough to
+    # spend them. timeout defaults to 600s and pip_parse forwards it to every generated
+    # whl_library, so it bounds each package's pip invocation, not just this rule. Nine
+    # retries can spend ~2 minutes sleeping before the download itself starts making
+    # progress, and a degraded PyPI is slow as well as flaky, so 600s can expire
+    # mid-retry and fail the fetch that the retries were meant to save. 1800s leaves
+    # room for the full backoff plus a slow transfer.
+    timeout = 1800,
 )
 
 load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps")
