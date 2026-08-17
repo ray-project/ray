@@ -26,7 +26,7 @@ For an introduction and usage guides, see {ref}`ray-core-sandboxes`.
     ray.experimental.sandbox.SandboxRuntime
 ```
 
-## Data Structures & Status
+## Data structures and status
 
 ```{eval-rst}
 .. autosummary::

@@ -44,7 +44,7 @@ def create(
     """Create a remote sandbox environment managed by a Ray actor.
 
     Spawns a :class:`~ray.experimental.sandbox.Sandbox` actor on the Ray cluster to manage
-    the sandbox lifecycle and returns an :class:`ray.actor.ActorHandle`. For low-level local
+    the sandbox lifecycle and returns an :class:`~ray.actor.ActorHandle`. For low-level local
     sandbox management on the current node (e.g., inside custom worker actors), use
     :class:`~ray.experimental.sandbox.runtime.SandboxRuntime` instead.
 
