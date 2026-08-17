@@ -22,7 +22,7 @@ The ability to sandbox model-generated code is critical for agentic reinforcemen
 
 [gVisor](https://gvisor.dev/docs/) is an open-source application kernel written in Go that provides lightweight, defense-in-depth isolation for containers. Developed by Google, gVisor implements a substantial portion of the Linux system call interface in user space, acting as an isolation barrier between untrusted applications and the host operating system kernel.
 
-Unlike standard container runtimes (such as Docker or `runc`) where containers share the host Linux kernel directly, gVisor intercepts system calls made by containerized processes before they reach the host. Due to the daemonless nature of gVisor and its ability to run as a non-privileged user, it is easy to deploy and manage on top of existing container orchestrators like Kubernetes.
+Unlike standard container runtimes such as Docker or `runc`, where containers share the host Linux kernel directly, gVisor intercepts system calls made by containerized processes before they reach the host. gVisor is daemonless and runs as a non-privileged user, so you can deploy and manage it on top of existing container orchestrators such as Kubernetes.
 
 #### Benefits of gVisor
 
