@@ -23,6 +23,8 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/common/test_utils.h"
@@ -92,6 +94,49 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   memory_store->GetAsync({id1}, [](std::shared_ptr<RayObject> obj) {});
   memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
+}
+
+TEST(TestMemoryStore, TestUnhandledErrorCallbacksRunOutsideLock) {
+  InstrumentedIOContextWithThread io_context("TestUnhandledErrorCallbacksRunOutsideLock");
+  FakeClock clock(absl::Now() + absl::Seconds(10));
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store;
+  int unhandled_count = 0;
+  memory_store = std::make_shared<CoreWorkerMemoryStore>(
+      io_context.GetIoService(),
+      clock,
+      /*reference_counting_enabled=*/true,
+      nullptr,
+      nullptr,
+      [&](const RayObject &) {
+        const bool lock_acquired = memory_store->mu_.TryLock();
+        EXPECT_TRUE(lock_acquired);
+        if (lock_acquired) {
+          memory_store->mu_.Unlock();
+          EXPECT_GE(memory_store->Size(), 0);
+        }
+        unhandled_count++;
+      });
+
+  RayObject unhandled_error(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+
+  const auto vector_delete_id = ObjectID::FromRandom();
+  memory_store->Put(unhandled_error, vector_delete_id, /*has_reference=*/true);
+  memory_store->Delete(std::vector<ObjectID>{vector_delete_id});
+
+  const auto set_delete_id = ObjectID::FromRandom();
+  memory_store->Put(unhandled_error, set_delete_id, /*has_reference=*/true);
+  absl::flat_hash_set<ObjectID> plasma_ids_to_delete;
+  memory_store->Delete(absl::flat_hash_set<ObjectID>{set_delete_id},
+                       &plasma_ids_to_delete);
+
+  const auto no_reference_id = ObjectID::FromRandom();
+  memory_store->Put(unhandled_error, no_reference_id, /*has_reference=*/false);
+
+  const auto notify_id = ObjectID::FromRandom();
+  memory_store->Put(unhandled_error, notify_id, /*has_reference=*/true);
+  memory_store->NotifyUnhandledErrors();
+
+  EXPECT_EQ(unhandled_count, 4);
 }
 
 TEST(TestMemoryStore, TestMemoryStoreStats) {

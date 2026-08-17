@@ -141,6 +141,16 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
       object_allocator_(std::move(object_allocator)) {}
 
+inline bool IsUnhandledError(const std::shared_ptr<RayObject> &obj) {
+  rpc::ErrorType error_type;
+  // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
+  return obj->IsException(&error_type) &&
+         // Only warn on task failures (avoid actor died, for example).
+         (error_type == rpc::ErrorType::WORKER_DIED ||
+          error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION) &&
+         !obj->WasAccessed();
+}
+
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
   absl::MutexLock lock(&mu_);
@@ -175,6 +185,7 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
                                 const ObjectID &object_id,
                                 const bool has_reference) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
+  std::shared_ptr<RayObject> unhandled_error;
   RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
   if (object_allocator_ != nullptr) {
@@ -221,14 +232,22 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
     } else {
       // It is equivalent to the object being added and immediately deleted from the
       // store.
-      OnDelete(object_entry);
+      if (IsUnhandledError(object_entry) && unhandled_exception_handler_ != nullptr) {
+        unhandled_error = object_entry;
+      }
     }
 
     if (!async_callbacks.empty()) {
       object_entry->SetAccessed();
-    } else {
-      return;
     }
+  }
+
+  if (unhandled_error != nullptr) {
+    ReportUnhandledError(unhandled_error);
+  }
+
+  if (async_callbacks.empty()) {
+    return;
   }
 
   // It's important for performance to run the callbacks outside the lock.
@@ -445,30 +464,48 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
 
 void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids,
                                    absl::flat_hash_set<ObjectID> *plasma_ids_to_delete) {
-  absl::MutexLock lock(&mu_);
-  for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG) << "Delete an object from a memory store. ObjectId: " << object_id;
-    auto it = objects_.find(object_id);
-    if (it != objects_.end()) {
-      if (it->second->IsInPlasmaError()) {
-        plasma_ids_to_delete->insert(object_id);
-      } else {
-        OnDelete(it->second);
-        EraseObjectAndUpdateStats(object_id);
+  std::vector<std::shared_ptr<RayObject>> unhandled_errors;
+  {
+    absl::MutexLock lock(&mu_);
+    for (const auto &object_id : object_ids) {
+      RAY_LOG(DEBUG) << "Delete an object from a memory store. ObjectId: " << object_id;
+      auto it = objects_.find(object_id);
+      if (it != objects_.end()) {
+        if (it->second->IsInPlasmaError()) {
+          plasma_ids_to_delete->insert(object_id);
+        } else {
+          if (IsUnhandledError(it->second) && unhandled_exception_handler_ != nullptr) {
+            unhandled_errors.push_back(it->second);
+          }
+          EraseObjectAndUpdateStats(object_id);
+        }
       }
     }
+  }
+
+  for (const auto &unhandled_error : unhandled_errors) {
+    ReportUnhandledError(unhandled_error);
   }
 }
 
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
-  absl::MutexLock lock(&mu_);
-  for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG) << "Delete an object from a memory store. ObjectId: " << object_id;
-    auto it = objects_.find(object_id);
-    if (it != objects_.end()) {
-      OnDelete(it->second);
-      EraseObjectAndUpdateStats(object_id);
+  std::vector<std::shared_ptr<RayObject>> unhandled_errors;
+  {
+    absl::MutexLock lock(&mu_);
+    for (const auto &object_id : object_ids) {
+      RAY_LOG(DEBUG) << "Delete an object from a memory store. ObjectId: " << object_id;
+      auto it = objects_.find(object_id);
+      if (it != objects_.end()) {
+        if (IsUnhandledError(it->second) && unhandled_exception_handler_ != nullptr) {
+          unhandled_errors.push_back(it->second);
+        }
+        EraseObjectAndUpdateStats(object_id);
+      }
     }
+  }
+
+  for (const auto &unhandled_error : unhandled_errors) {
+    ReportUnhandledError(unhandled_error);
   }
 }
 
@@ -484,36 +521,31 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   return false;
 }
 
-inline bool IsUnhandledError(const std::shared_ptr<RayObject> &obj) {
-  rpc::ErrorType error_type;
-  // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
-  return obj->IsException(&error_type) &&
-         // Only warn on task failures (avoid actor died, for example).
-         (error_type == rpc::ErrorType::WORKER_DIED ||
-          error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION) &&
-         !obj->WasAccessed();
-}
-
-void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
-  if (IsUnhandledError(obj) && unhandled_exception_handler_ != nullptr) {
-    unhandled_exception_handler_(*obj);
-  }
+void CoreWorkerMemoryStore::ReportUnhandledError(const std::shared_ptr<RayObject> &obj) {
+  unhandled_exception_handler_(*obj);
 }
 
 void CoreWorkerMemoryStore::NotifyUnhandledErrors() {
-  absl::MutexLock lock(&mu_);
-  int64_t threshold = clock_.NowUnixNanos() - kUnhandledErrorGracePeriodNanos;
-  auto it = objects_.begin();
-  int count = 0;
-  while (it != objects_.end() && count < kMaxUnhandledErrorScanItems) {
-    const auto &obj = it->second;
-    if (IsUnhandledError(obj) && obj->CreationTimeNanos() < threshold &&
-        unhandled_exception_handler_ != nullptr) {
-      obj->SetAccessed();
-      unhandled_exception_handler_(*obj);
+  std::vector<std::shared_ptr<RayObject>> unhandled_errors;
+  {
+    absl::MutexLock lock(&mu_);
+    int64_t threshold = clock_.NowUnixNanos() - kUnhandledErrorGracePeriodNanos;
+    auto it = objects_.begin();
+    int count = 0;
+    while (it != objects_.end() && count < kMaxUnhandledErrorScanItems) {
+      const auto &obj = it->second;
+      if (IsUnhandledError(obj) && obj->CreationTimeNanos() < threshold &&
+          unhandled_exception_handler_ != nullptr) {
+        obj->SetAccessed();
+        unhandled_errors.push_back(obj);
+      }
+      it++;
+      count++;
     }
-    it++;
-    count++;
+  }
+
+  for (const auto &unhandled_error : unhandled_errors) {
+    ReportUnhandledError(unhandled_error);
   }
 }
 
