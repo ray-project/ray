@@ -177,4 +177,4 @@ USER ray
 
 * See {ref}`ray-core-sandboxes` for API details and custom actor patterns.
 * Learn more about [gVisor](https://gvisor.dev/docs/).
-* Explore {ref}`kuberay-resource-isolation` to configure resource isolation on Kubernetes.
+* Explore {ref}`resource-isolation-with-writable-cgroups` to configure resource isolation on Kubernetes.
