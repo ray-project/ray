@@ -17,6 +17,7 @@ from ray.serve._private.test_utils import (
     ping_grpc_healthz,
     ping_grpc_list_applications,
     request_with_retries,
+    skip_if_haproxy,
 )
 from ray.serve.config import gRPCOptions
 from ray.serve.context import _get_global_client
@@ -69,6 +70,9 @@ class TestTimeoutKeepAliveConfig:
         )
 
 
+@skip_if_haproxy(
+    "no per-node gRPC proxy to drain, tested via test_drain_and_undrain_haproxy_manager"
+)
 def test_grpc_proxy_on_draining_nodes(ray_cluster):
     """Test gRPC request on the draining node.
 
@@ -196,6 +200,10 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
     ping_grpc_healthz(worker_node_channel, test_draining=True)
 
 
+@skip_if_haproxy(
+    "drains the native Serve ProxyActor, which is not the ingress under HAProxy. "
+    "HAProxy draining is covered by test_drain_and_undrain_haproxy_manager"
+)
 def test_drain_and_undrain_http_proxy_actors(
     monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):

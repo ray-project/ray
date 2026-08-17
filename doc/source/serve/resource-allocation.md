@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Assign CPUs, GPUs, fractional accelerators, and custom resources to Serve deployment replicas using ray_actor_options and placement group configurations."
+---
+
 (serve-resource-allocation)=
 
 # Resource Allocation

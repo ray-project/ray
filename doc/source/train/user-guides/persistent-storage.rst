@@ -1,3 +1,6 @@
+.. meta::
+   :description: Configure persistent storage for Ray Train: cloud object storage, shared filesystems, local storage, fsspec, and S3-compatible backends.
+
 .. _persistent-storage-guide:
 
 .. _train-log-dir:

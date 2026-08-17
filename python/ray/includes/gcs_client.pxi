@@ -20,6 +20,7 @@ from ray._common.utils import get_or_create_event_loop
 from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
+import ray._private.ray_constants as ray_constants
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.includes.common cimport (
     CGcsClient,
@@ -278,6 +279,23 @@ cdef class InnerGcsClient:
     #############################################################
     # NodeInfo methods
     #############################################################
+    def is_gcs_leader_local(self) -> bool:
+        if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
+            return True
+        return self.inner.get().Nodes().IsGcsLeader()
+
+    def is_gcs_leader(self) -> bool:
+        if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
+            return True
+        try:
+            self.check_alive([], timeout=2)
+        except (RpcError, GetTimeoutError):
+            # The GCS may be unreachable or slow to respond (e.g. during a
+            # failover). Fall back to the last cached leadership status instead
+            # of failing. Other, unexpected errors are allowed to propagate.
+            pass
+        return self.inner.get().Nodes().IsGcsLeader()
+
     def check_alive(
         self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> List[bool]:
@@ -638,7 +656,8 @@ cdef class InnerGcsClient:
             node_id: c_string,
             reason: int32_t,
             reason_message: c_string,
-            deadline_timestamp_ms: int64_t):
+            deadline_timestamp_ms: int64_t,
+            timeout: Optional[int | float] = None):
         """Send a DrainNode request to GCS to gracefully terminate a node.
 
         Used by the `ray drain-node` CLI command and by autoscaler v2's
@@ -654,6 +673,10 @@ cdef class InnerGcsClient:
             deadline_timestamp_ms: Timestamp (ms) when the node will be
                 force-killed. Used as a hint so workloads can drain
                 before the deadline.
+            timeout: Optional RPC timeout in seconds. ``None`` (the default)
+                uses an unlimited gRPC deadline; latency-sensitive callers
+                (e.g. draining on SIGTERM before shutdown) should bound this
+                so a hung or unreachable GCS cannot block indefinitely.
 
         Returns:
             Tuple of (is_accepted, rejection_reason_message). When
@@ -661,7 +684,7 @@ cdef class InnerGcsClient:
             why the raylet rejected the request.
         """
         cdef:
-            int64_t timeout_ms = -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool is_accepted = False
             c_string rejection_reason_message
         with nogil:

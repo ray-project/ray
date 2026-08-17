@@ -135,6 +135,17 @@ RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 /// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 
+/// The TTL for CancelWorkerLease tombstones on the raylet. Note that a tombstone only has
+/// to cover the message-reordering window between a CancelWorkerLease and its
+/// matching RequestWorkerLease, not the lifetime of the lease itself.
+RAY_CONFIG(uint64_t, cancelled_lease_tombstone_ttl_ms, 10 * 60 * 1000)
+
+/// Maximum number of CancelWorkerLease tombstones retained by a raylet. Each
+/// tombstone is a 32-byte LeaseID plus an 8-byte timestamp, so 100,000 entries
+/// is roughly 10MB including flat_hash_set / deque overhead. Oldest entries
+/// are dropped when the cap is hit.
+RAY_CONFIG(uint32_t, max_cancelled_lease_tombstones, 100000)
+
 /// The number of retries for the task or actor when
 /// it fails due to the process being killed when the memory is running low on the node.
 /// The process killing is done by memory monitor, which is enabled via
@@ -185,6 +196,14 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 /// will attempt to reconstruct the object from its lineage if the object is
 /// lost.
 RAY_CONFIG(bool, lineage_pinning_enabled, true)
+
+/// The maximum number of objects (object ids) sent in a single coalesced
+/// FreeLocalObjects RPC. Anything beyond this rides the next batch.
+RAY_CONFIG(int64_t, max_free_local_objects_batch_size, 256)
+
+/// Warn when a node's buffered FreeLocalObjects backlog reaches this many objects,
+/// then again every 1024 objects.
+RAY_CONFIG(int64_t, free_local_objects_backlog_warn_objects_per_node, 500000)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
@@ -432,11 +451,40 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
+/// ActorTableData entry ≈ 200-400B serialize (~600B-1.5KB deserialized).
+/// Worst-case footprint: 100,000 x ~600B-1.5KB =~ 60-150MB
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead workers in GCS server memory cache.
+/// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
+/// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB
+RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
+/// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
+/// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+/// The storage backend to use for the GCS. It can be 'memory', 'redis', or
+/// 'rocksdb'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
+
+/// Filesystem path for the RocksDB GCS database files. Only meaningful when
+/// gcs_storage == "rocksdb".
+RAY_CONFIG(std::string, gcs_storage_path, "")
+
+/// Number of worker threads in the RocksDB I/O offload pool. RocksDB I/O
+/// (including the WAL fsync that dominates per-call latency) always runs
+/// on this pool so blocking ops do not stall the GCS event loop. RocksDB
+/// serializes WAL writes internally and batches concurrent in-flight
+/// writers into one fsync (group commit), so a small pool (~4) is enough
+/// to capture the aggregate-throughput benefit on the GCS metadata
+/// workload.
+RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
+
+/// Number of per-key strand buckets used for single-key op ordering on
+/// the RocksDB I/O offload pool. Single-key ops (Put/Get/Delete/Exists)
+/// are bucketed by hash(table, key) and serialized within a bucket;
+/// different buckets run concurrently up to the pool size. Default 64
+/// gives ~16x headroom over the typical pool size (4).
+RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -571,6 +619,10 @@ RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
 /// During graceful shutdown, the TaskEventBuffer and RayEventRecorder will wait up to
 /// this duration for in-flight gRPC calls to complete before stopping the io_service.
 RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
+
+/// Interval in milliseconds at which the dashboard-head task-event store trims each job's
+/// tracked dropped-attempt set (GcJobSummary).
+RAY_CONFIG(int64_t, task_events_gc_job_summary_interval_ms, 5 * 1000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
@@ -860,7 +912,7 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
 RAY_CONFIG(std::string,
            custom_unit_instance_resources,
-           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA")
+           "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU,MBLT")
 
 /// The name of the system-created concurrency group for actors. This group is
 /// created with 1 thread, and is created lazily. The intended usage is for
@@ -1085,11 +1137,28 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 // migrated to the event aggregator.
 RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 
+// Whether to enable GCS active-passive leader election.
+// Uppercased so the overriding env var (RAY_ENABLE_GCS_LEADER_ELECTION) matches the name
+// Python reads (ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION), keeping the C++ and Python
+// views of leader election in sync.
+RAY_CONFIG(bool, ENABLE_GCS_LEADER_ELECTION, false)
+
 // Whether to enable the ray event to send to the event aggregator.
 // Currently, only task events are supported.
 // TODO(myan): #54515 Remove this flag after the task events are fully migrated to the
 // event aggregator.
 RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
+
+// Whether core-worker task events are sent to the event aggregator via the
+// RayTaskEventRecorder. When true (and enable_ray_event is also true),
+// the recorder is used.
+RAY_CONFIG(bool, enable_ray_task_event_recorder, false)
+
+// Flag for the migration of task events from GCS to dashboard head. When true: the
+// aggregator publishes task events to the dashboard head, the TaskEventsHead module is
+// loaded, and the state API (list tasks / ray.timeline) reads task events from the
+// dashboard head instead of GCS.
+RAY_CONFIG(bool, enable_task_events_to_dashboard_head, false)
 
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)

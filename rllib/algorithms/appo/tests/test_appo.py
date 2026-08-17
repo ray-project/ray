@@ -234,7 +234,12 @@ class TestAPPO(unittest.TestCase):
             # The global server actor exists iff the flag is enabled.
             self.assertEqual(algo._env_runner_state_server is not None, use_server)
 
-            results = algo.train()
+            # APPO trains asynchronously. Train until a learner update lands, mirroring the
+            # warm-up loop in `test_env_runner_state_server_kill_and_recover`.
+            for _ in range(20):
+                results = algo.train()
+                if DEFAULT_POLICY_ID in results.get(LEARNER_RESULTS, {}):
+                    break
             check_train_results_new_api_stack(results)
             algo.stop()
 

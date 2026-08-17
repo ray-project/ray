@@ -274,6 +274,16 @@ warnings.filterwarnings("once", category=NumReturnsWarning)
 current_task_id = None
 current_task_id_lock = threading.Lock()
 
+# Task ids of the tasks (there can be >1 exit tasks when max_concurrency > 1)
+# that called exit_actor(). Used to ensure that for tasks that called exit_actor(),
+# their results are discarded (the caller sees the actor death error) even
+# if user code swallows the resulting exception — while other tasks that complete
+# during the graceful exit still deliver their results.
+# Guarded by exit_actor_task_ids_lock since concurrent actors mutate it from
+# multiple worker threads.
+exit_actor_task_ids = set()
+exit_actor_task_ids_lock = threading.Lock()
+
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
@@ -419,6 +429,107 @@ def wait_for_persisted_port(
     if not result.has_value():
         raise RuntimeError(result.message().decode())
     return result.value()
+
+
+cdef extern from *:
+    """
+#if PY_VERSION_HEX >= 0x030E0000 && !defined(MS_WINDOWS)
+#include <dlfcn.h>
+#ifndef RTLD_DEFAULT
+#define RTLD_DEFAULT ((void *)0)
+#endif
+#include "ray/core_worker/task_execution/fiber.h"
+
+typedef int (*_RaySetStackProtectionFn)(PyThreadState *, void *, size_t);
+
+/* CPython 3.14+ detects C-stack overflow by comparing the stack pointer
+ * against the thread's recorded stack bounds, which it fills in once, from
+ * pthreads, when a thread state first attaches. Async-actor tasks run on
+ * 256 KiB boost fiber stacks pthreads knows nothing about; on Linux the fiber
+ * stacks sit below the thread stack, so the checks see a negative margin,
+ * conclude the stack is exhausted, and _Py_Dealloc defers every GC-object
+ * deallocation onto a per-thread-state list that is never drained -- leaking
+ * the task's whole object graph. Call this at async-actor task entry and again
+ * after YieldCurrentFiber resumes, because concurrent fibers share one thread
+ * state and each overwrites the bounds recorded by the last one to run.
+ *
+ * Callers must only invoke this while running on a fiber, which both call
+ * sites enforce by testing for an actor task. An async actor's creation task
+ * reaches run_async_func_or_coro_in_event_loop too -- for argument
+ * deserialization and for __init__ via sync_to_async, where
+ * boost::this_fiber::yield() is a no-op on a thread's main context -- and
+ * re-anchoring there would replace the correct bounds on that thread's
+ * long-lived PyThreadState with fiber-shaped ones that nothing restores.
+ *
+ * used_upper_bound reconstructs the fiber stack's top from a local's address:
+ * top = &anchor + used_upper_bound, base = top - kStackSize. It should
+ * upper-bound the fiber stack already consumed at the call site.
+ *
+ *   - Over-estimating is safe but costs usable stack: the reported base sits
+ *     (used_upper_bound - actual) bytes above the real one, so Python raises
+ *     RecursionError that much earlier.
+ *   - Under-estimating is only unsafe beyond one soft margin. CPython places
+ *     its soft limit at base + 2 * _PyOS_STACK_MARGIN_BYTES (32 KiB on 64-bit),
+ *     so recursion can only run past the real end of the buffer -- which has no
+ *     guard page -- once actual usage exceeds used_upper_bound + 32 KiB.
+ *
+ * Hence the two values below: 32 KiB at task entry, which sits roughly six C++
+ * frames from the fiber's entry point, and 96 KiB after YieldCurrentFiber
+ * returns, which is reached through the interpreter and so carries additional
+ * eval-loop and Cython frames. Both are round numbers chosen to be far above
+ * anything those chains plausibly use, not measurements.
+ *
+ * TODO(#63290): record the fiber stack's real base in FiberState when the fiber
+ * starts -- its body is the outermost frame, so the unknown shrinks to boost's
+ * fixed entry trampoline -- and drop these estimates entirely.
+ *
+ * PyUnstable_ThreadState_SetStackProtection only exists on CPython >= 3.14.2;
+ * on older 3.14 releases the dlsym below fails and this is a no-op. The leak
+ * itself only reproduces where the fiber stacks land below the thread stack
+ * (Linux), but the bounds are equally wrong elsewhere -- on macOS they make the
+ * margin hugely positive, which suppresses the overflow check instead of the
+ * deallocator -- so the re-anchoring is applied on every non-Windows platform.
+ */
+static int RayReanchorStackProtectionToCurrentFiberStack(size_t used_upper_bound) {
+    static _RaySetStackProtectionFn set_stack_protection =
+        (_RaySetStackProtectionFn)dlsym(
+            RTLD_DEFAULT, "PyUnstable_ThreadState_SetStackProtection");
+    if (set_stack_protection == NULL) {
+        /* CPython 3.14.0 and 3.14.1 predate the API. Say so once: otherwise the
+         * only symptom is unbounded memory growth in async actors, with nothing
+         * in the logs to point at the cause. */
+        static bool warned_missing_api = false;
+        if (!warned_missing_api) {
+            warned_missing_api = true;
+            RAY_LOG(WARNING)
+                << "PyUnstable_ThreadState_SetStackProtection is not available in "
+                << "this interpreter (Python " << PY_VERSION << "). Async actor "
+                << "tasks will leak memory on Python 3.14; upgrade to CPython "
+                << "3.14.2 or later. See "
+                << "https://github.com/ray-project/ray/issues/63290";
+        }
+        return 0;
+    }
+    char anchor;
+    uintptr_t top = (uintptr_t)&anchor + used_upper_bound;
+    size_t stack_size = ray::core::FiberState::kStackSize;
+    int rc = set_stack_protection(
+        PyThreadState_Get(), (void *)(top - stack_size), stack_size);
+    if (rc < 0) {
+        /* Cannot happen for kStackSize (only fails for sizes below
+         * _PyOS_MIN_STACK_SIZE), but never leak an exception. */
+        PyErr_Clear();
+    }
+    return rc;
+}
+#else
+static int RayReanchorStackProtectionToCurrentFiberStack(size_t used_upper_bound) {
+    (void)used_upper_bound;
+    return 0;
+}
+#endif
+    """
+    int RayReanchorStackProtectionToCurrentFiberStack(size_t used_upper_bound)
 
 
 cdef increase_recursion_limit():
@@ -1329,14 +1440,25 @@ async def _async_wait_for_object_consumed(
     Waits on the generator's asyncio.Event, which the core worker sets from every
     path that can relieve backpressure (consumption, owner death, report
     failure). No-op when the per-task option is disabled."""
+    cdef:
+        c_bool backpressured
     event = context.backpressure_event
-    while context.waiter.get().IsBackpressured():
+    # Take the waiter mutex without the GIL. Sync waiters call check_signals
+    # (which needs the GIL) after waiting under the same mutex; holding both in
+    # opposite order deadlocks.
+    with nogil:
+        backpressured = context.waiter.get().IsBackpressured()
+    while backpressured:
         # Clear before re-checking so a wake-up delivered between the check and
         # the await is not lost.
         event.clear()
-        if not context.waiter.get().IsBackpressured():
+        with nogil:
+            backpressured = context.waiter.get().IsBackpressured()
+        if not backpressured:
             break
         await event.wait()
+        with nogil:
+            backpressured = context.waiter.get().IsBackpressured()
 
 
 async def _async_reserve_actor_generator_slot(
@@ -1348,13 +1470,21 @@ async def _async_reserve_actor_generator_slot(
     Waits on the generator's asyncio.Event, which the core worker sets whenever
     actor-wide budget may have freed (consumption, a sibling task releasing its
     slot, owner death)."""
-    cdef int64_t num_objects = context.num_objects_per_yield
+    cdef:
+        int64_t num_objects = context.num_objects_per_yield
+        c_bool reserved
     event = context.backpressure_event
     while True:
         # Clear before attempting so a wake-up delivered while we attempt (and
         # fail) is not lost.
         event.clear()
-        if context.actor_backpressure_metadata.get().TryReserveSlot(num_objects):
+        # Take the actor-wide waiter mutex without the GIL. Sync generators call
+        # ReserveActorWideSlot -> check_signals (needs GIL) under that mutex;
+        # holding both locks in opposite order deadlocks.
+        with nogil:
+            reserved = context.actor_backpressure_metadata.get().TryReserveSlot(
+                num_objects)
+        if reserved:
             break
         await event.wait()
 
@@ -1938,6 +2068,12 @@ cdef void execute_task(
         TaskID task_id = core_worker.get_current_task_id()
         uint64_t attempt_number = core_worker.get_current_task_attempt_number()
 
+    # Whether this is an actor *task*, as opposed to an actor creation task or a
+    # normal task. Async-actor tasks run on boost fiber stacks; the creation task
+    # of an async actor does not -- it runs on the main task-execution thread --
+    # so anything keyed on "am I on a fiber" must distinguish the two.
+    is_actor_task = <int>task_type == <int>TASK_TYPE_ACTOR_TASK
+
     # Helper method used to exit current asyncio actor.
     # This is called when a KeyboardInterrupt is received by the main thread.
     # Upon receiving a KeyboardInterrupt signal, Ray will exit the current
@@ -2005,7 +2141,8 @@ cdef void execute_task(
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, task_id=task_id,
+                        name_of_concurrency_group_to_execute,
+                        is_actor_task=is_actor_task, task_id=task_id,
                         task_name=task_name, func_args=(actor, *arguments),
                         func_kwargs=kwarguments)
 
@@ -2032,7 +2169,8 @@ cdef void execute_task(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
                             deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute)
+                            name_of_concurrency_group_to_execute,
+                            is_actor_task=is_actor_task)
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
                         # deserialization context has been left.
@@ -2113,6 +2251,7 @@ cdef void execute_task(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
+                                is_actor_task=is_actor_task,
                                 task_id=task_id,
                                 task_name=task_name)
                         else:
@@ -2167,8 +2306,23 @@ cdef void execute_task(
                     worker.record_task_log_end(task_id, attempt_number)
                     if task_exception_instance is not None:
                         raise task_exception_instance
-                    if core_worker.get_current_actor_should_exit():
-                        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
+                    with exit_actor_task_ids_lock:
+                        this_task_called_exit_actor = task_id in exit_actor_task_ids
+                        exit_actor_task_ids.discard(task_id)
+                    if this_task_called_exit_actor:
+                        # exit_actor() records the task id and sets the
+                        # should-exit flag (which is never cleared) before
+                        # raising, so the flag must be set here.
+                        assert core_worker.get_current_actor_should_exit(), (
+                            "exit_actor() recorded this task id but the "
+                            "actor-should-exit flag is not set."
+                        )
+                        # This task called exit_actor(). Exit before storing
+                        # its outputs even if user code swallowed the
+                        # resulting exception, so the caller sees the actor
+                        # death instead of a return value.
+                        raise_sys_exit_with_custom_error_message(
+                            "exit_actor() is called.")
 
                 if (returns[0].size() == 1
                         and not inspect.isgenerator(outputs)
@@ -2264,6 +2418,19 @@ cdef void execute_task(
                         f"{returns[0].size()} return values already created. "
                         "This should only occur when using generator tasks.\n"
                         "See https://github.com/ray-project/ray/issues/28689.")
+        finally:
+            # exit_actor() sets a worker-wide flag that every task must check, so
+            # that the worker exits even when exit_actor() is called from a
+            # concurrently running task (threaded/async actors) or a background
+            # thread rather than this task itself. The check must run only after
+            # the task's outputs (or errors) have been stored above;
+            # Skip the check if an exception is propagating: it is either an exit
+            # or cancellation path (SystemExit/KeyboardInterrupt) or an internal
+            # error that must surface as such, and it must not be masked by
+            # raising from a finally block.
+            if (sys.exc_info()[0] is None
+                    and core_worker.get_current_actor_should_exit()):
+                raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
 
 cdef execute_task_with_cancellation_handler(
@@ -2506,6 +2673,16 @@ cdef CRayStatus task_execution_handler(
         int64_t num_objects_per_yield,
         optional[c_string] c_tensor_transport) nogil:
     with gil, disable_client_hook():
+        # Async actor tasks run on a boost fiber stack; re-anchor CPython's
+        # stack protection to it. The handler entry is close to the top of the
+        # fiber stack, so a small used-stack upper bound suffices. Actor
+        # creation tasks are excluded: they run on the regular task-execution
+        # pthread, not a fiber, even for async actors.
+        if (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                and CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .CurrentActorIsAsync()):
+            RayReanchorStackProtectionToCurrentFiberStack(32 * 1024)
+
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
@@ -2629,6 +2806,7 @@ cdef c_bool kill_main_task(const CTaskID &task_id) nogil:
 
 
 cdef CRayStatus check_signals() nogil:
+    cdef optional[c_bool] should_interrupt
     with gil:
         # The Python exceptions are not handled if it is raised from cdef,
         # so we have to handle it here.
@@ -2662,7 +2840,15 @@ cdef CRayStatus check_signals() nogil:
         # signal to worker threads (CancelActorTaskOnExecutor for non-async actors).
         # Unblock nogil backpressure waits. Uses job/task guards so periodic io threads
         # do not call GetCurrentTaskID() without a job (WorkerContext CHECK).
-        if CCoreWorkerProcess.GetCoreWorker().ShouldInterruptTaskForCancellation():
+        #
+        # Empty means the core worker is gone, which background threads polling here run
+        # into while ray.shutdown() clears it. Report that the same way the
+        # sys.is_finalizing() branch above does and let the caller stop; reaching the core
+        # worker through GetCoreWorker() instead would exit the process outright.
+        should_interrupt = CCoreWorkerProcess.ShouldInterruptTaskForCancellation()
+        if not should_interrupt.has_value():
+            return CRayStatus.IntentionalSystemExit(b"The core worker is shut down.")
+        if should_interrupt.value():
             return CRayStatus.Interrupted(b"")
 
     return CRayStatus.OK()
@@ -3580,14 +3766,6 @@ cdef class CoreWorker:
                 not_ready.append(object_ref_or_generator)
 
         return ready, not_ready
-
-    def free_objects(self, object_refs, c_bool local_only):
-        cdef:
-            c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
-
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().
-                         Delete(free_ids, local_only))
 
     def get_local_ongoing_lineage_reconstruction_tasks(self):
         cdef:
@@ -4777,6 +4955,7 @@ cdef class CoreWorker:
           function_descriptor: FunctionDescriptor,
           specified_cgname: str,
           *,
+          is_actor_task: bool,
           task_id: Optional[TaskID] = None,
           task_name: Optional[str] = None,
           func_args: Optional[Tuple] = None,
@@ -4846,6 +5025,21 @@ cdef class CoreWorker:
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
+        # Re-anchor this fiber's stack before running the rest of the task on it:
+        # while this fiber was parked, other fibers of the same concurrency group
+        # ran and overwrote the bounds on the thread state they all share. The
+        # bound is larger than at task entry because this call site is several C
+        # frames deeper.
+        #
+        # Guarded on the same condition as the hook at task entry. An async
+        # actor's creation task also reaches here -- for argument deserialization
+        # and for __init__ via sync_to_async -- but runs on the main
+        # task-execution thread rather than a fiber, where CPython's recorded
+        # bounds are already correct and must not be overwritten. The
+        # CurrentActorIsAsync() half of the entry-site condition is implied here:
+        # every caller of this method is already inside an is-asyncio branch.
+        if is_actor_task:
+            RayReanchorStackProtectionToCurrentFiberStack(96 * 1024)
         try:
             result = future.result()
         except concurrent.futures.CancelledError:
@@ -4881,6 +5075,8 @@ cdef class CoreWorker:
                 .CurrentActorIsAsync())
 
     def set_current_actor_should_exit(self):
+        with exit_actor_task_ids_lock:
+            exit_actor_task_ids.add(self.get_current_task_id())
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .SetCurrentActorShouldExit())
 

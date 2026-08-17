@@ -1,0 +1,52 @@
+{# Custom 404 page for the Ray docs (DOC-945).
+
+   Read the Docs serves this page's HTML for ANY missing URL under the docs
+   domain (e.g. a request to /en/latest/some/deep/typo). The browser keeps the
+   originally requested URL, so every *relative* href/src on the page would
+   otherwise resolve against that wrong path and 404 again. The <base> element
+   below pins the document base to the canonical version root, so all relative
+   URLs -- theme CSS/JS, the top navigation, the logo, and the recovery links
+   below -- resolve correctly no matter which path served the page.
+
+   This is scoped to the 404 page alone (see add_custom_assets in conf.py); no
+   other page's rendering is touched, so the sitewide sidebar-href regression
+   that reverted PR #63343 cannot recur. #}
+{% extends "!layout.html" %}
+
+{# <base> must precede the theme's asset <link>/<script> tags in <head>.
+   `block htmltitle` (from basic/layout.html) renders before `block css`, so
+   this is the earliest override point that still keeps the <title>. #}
+{% block htmltitle %}
+{{ super() }}
+<base href="{{ notfound_base_url }}" />
+{% endblock %}
+
+<!-- prettier-ignore -->
+{%- block extrahead -%}
+{% include 'extrahead.html' %}
+{{ super() }}
+{% endblock %}
+
+{% block body %}
+<div class="notfound-page">
+  <p class="notfound-code">404</p>
+  <h1 class="notfound-title">Page not found</h1>
+  <p class="notfound-lead">
+    The page you're looking for is not available at this location. The content
+    might be in a different location, no longer available, or the URL might be
+    incorrect. Use the search to find what you need.
+  </p>
+  {# Reuse the site-wide Algolia DocSearch already initialized in the navbar by
+     sphinx-docsearch. Opening its modal from here keeps the page free of
+     hardcoded content-page links, which would rot if those pages move. #}
+  <button
+    type="button"
+    class="notfound-search"
+    aria-label="Search the Ray documentation"
+    onclick="document.querySelector('.DocSearch-Button')?.click()"
+  >
+    <i class="fa-solid fa-magnifying-glass notfound-search__icon" aria-hidden="true"></i>
+    <span class="notfound-search__text">Search the Ray docs&hellip;</span>
+  </button>
+</div>
+{% endblock %}

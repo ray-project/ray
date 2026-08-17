@@ -19,7 +19,7 @@ class DeploymentInfo:
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
-        route_prefix: str = None,
+        route_prefix: Optional[str] = None,
         ingress: bool = False,
         ingress_request_router: bool = False,
         target_capacity: Optional[float] = None,
@@ -56,10 +56,10 @@ class DeploymentInfo:
 
     def update(
         self,
-        deployment_config: DeploymentConfig = None,
-        replica_config: ReplicaConfig = None,
-        version: str = None,
-        route_prefix: str = None,
+        deployment_config: Optional[DeploymentConfig] = None,
+        replica_config: Optional[ReplicaConfig] = None,
+        version: Optional[str] = None,
+        route_prefix: Optional[str] = None,
     ) -> "DeploymentInfo":
         return DeploymentInfo(
             deployment_config=deployment_config or self.deployment_config,
@@ -152,7 +152,7 @@ class DeploymentInfo:
         return cls(**data)
 
     def to_proto(self):
-        data = {
+        data: Dict[str, Any] = {
             "start_time_ms": self.start_time_ms,
             "actor_name": self.actor_name,
             "version": self.version,
