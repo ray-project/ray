@@ -1,7 +1,7 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -21,6 +21,7 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
     FileReader,
+    _FragmentReadUnit,
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
@@ -272,7 +273,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self,
         dataset: pds.Dataset,
         manifest: FileManifest,
-    ) -> List[Tuple[pds.Fragment, int]]:
+    ) -> List[_FragmentReadUnit]:
         """Fan file fragments into chunk-level sub-fragments per manifest row.
 
         For each manifest row, looks up the file's fragment by path and:
@@ -300,25 +301,31 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
         }
-        fragments: List[Tuple[pds.Fragment, int]] = []
+        read_units: List[_FragmentReadUnit] = []
         for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
             fragment = path_to_fragment[path]
             if chunk_metadata is None:
-                fragments.append((fragment, 0))
+                read_units.append(_FragmentReadUnit(fragment=fragment))
             else:
-                fragments.extend(
-                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
+                read_units.extend(
+                    _FragmentReadUnit(
+                        fragment=subfragment,
+                        file_row_offset=file_row_offset,
+                    )
+                    for subfragment, file_row_offset in _fragments_from_chunk_metadata(
+                        fragment, chunk_metadata
+                    )
                 )
-        return fragments
+        return read_units
 
     @override
     def _iter_fragment_tables(
         self,
-        fragment: pds.Fragment,
+        read_unit: _FragmentReadUnit,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
         for table in self._iter_fragment_tables_without_pickle_check(
-            fragment, scanner_kwargs
+            read_unit, scanner_kwargs
         ):
             # When you unpickle untrusted data, attackers can execute arbitrary
             # code. To avoid exposing our users, raise unless the user has
@@ -329,7 +336,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
     def _iter_fragment_tables_without_pickle_check(
         self,
-        fragment: pds.Fragment,
+        read_unit: _FragmentReadUnit,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
         """Use V1's nested-type fallback path when the fragment has nested
@@ -346,6 +353,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             _resolve_read_columns,
         )
 
+        fragment = read_unit.fragment
         columns = scanner_kwargs.get("columns")
         filter_expr: pc.Expression = scanner_kwargs.get("filter")
         # Include filter-referenced columns in the fallback check: a filter
@@ -355,7 +363,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         filter_columns = self._filter_columns
         read_columns = _resolve_read_columns(columns, filter_expr, filter_columns)
         if not _needs_nested_type_fallback(fragment, read_columns):
-            yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+            yield from super()._iter_fragment_tables(read_unit, scanner_kwargs)
             return
 
         if log_once(f"parquet_nested_fallback_v2:{fragment.path}"):

@@ -71,7 +71,7 @@ class OrcDatasourceV2(DataSourceV2[FileManifest]):
         self._paths = resolved_paths
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
-        self._file_extensions = file_extensions or self._FILE_EXTENSIONS
+        self._file_extensions = file_extensions
         self._ignore_missing_paths = ignore_missing_paths
         self._include_paths = include_paths
         self._shuffle = shuffle
@@ -92,7 +92,7 @@ class OrcDatasourceV2(DataSourceV2[FileManifest]):
         return self._partitioning
 
     @property
-    def file_extensions(self) -> List[str]:
+    def file_extensions(self) -> Optional[List[str]]:
         return self._file_extensions
 
     @property

@@ -144,6 +144,12 @@ def test_datasource_defaults_to_orc_file_chunker(tmp_path):
     assert isinstance(indexer.file_chunker, OrcFileChunker)
 
 
+def test_datasource_preserves_disabled_extension_filter(tmp_path):
+    datasource = OrcDatasourceV2([str(tmp_path)], file_extensions=None)
+
+    assert datasource.file_extensions is None
+
+
 def test_orc_file_reader_reads_chunked_manifest(tmp_path):
     file_path = str(tmp_path / "data.orc")
     expected_rows = 200
@@ -176,6 +182,94 @@ def test_orc_file_reader_reads_chunked_manifest(tmp_path):
     )
 
     assert sorted(chunked_rows) == sorted(whole_rows) == list(range(expected_rows))
+
+
+def test_orc_file_reader_respects_batch_size(tmp_path):
+    file_path = str(tmp_path / "data.orc")
+    _write_orc(
+        file_path,
+        pa.table({"id": list(range(100))}),
+        rows_per_stripe=100,
+    )
+    assert orc.ORCFile(file_path).nstripes == 1
+
+    tables = list(OrcFileReader(batch_size=7).read(_manifest_of([file_path])))
+
+    assert sum(table.num_rows for table in tables) == 100
+    assert max(table.num_rows for table in tables) <= 7
+
+
+def test_orc_file_reader_retries_read_unit_without_duplicates(tmp_path, monkeypatch):
+    from ray.data._internal import util
+    from ray.data.context import DataContext
+
+    file_path = str(tmp_path / "data.orc")
+    _write_orc(
+        file_path,
+        pa.table({"id": list(range(5))}),
+        rows_per_stripe=5,
+    )
+    reader = OrcFileReader(batch_size=2)
+    original_iter = reader._iter_fragment_tables
+    attempts = 0
+
+    def flaky_iter(read_unit, scanner_kwargs):
+        nonlocal attempts
+        attempts += 1
+        for index, table in enumerate(original_iter(read_unit, scanner_kwargs)):
+            yield table
+            if attempts == 1 and index == 0:
+                raise OSError("retryable ORC read")
+
+    monkeypatch.setattr(reader, "_iter_fragment_tables", flaky_iter)
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
+    monkeypatch.setattr(util.time, "sleep", lambda _: None)
+
+    tables = list(reader.read(_manifest_of([file_path])))
+
+    assert attempts == 2
+    assert pa.concat_tables(tables).column("id").to_pylist() == list(range(5))
+
+
+def test_orc_file_reader_preserves_chunk_order(tmp_path, monkeypatch):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
+    file_path = str(tmp_path / "data.orc")
+    _write_multi_stripe_orc(file_path, num_rows=100, rows_per_stripe=10)
+    file_size = os.path.getsize(file_path)
+    chunks = list(
+        OrcFileChunker(target_chunk_size=256).generate_chunk_metadatas(
+            file_path, file_size
+        )
+    )
+    assert len(chunks) > 1
+
+    expected_chunks = []
+    for metadata, chunk_size in chunks:
+        manifest = FileManifest.construct_manifest(
+            [file_path], [chunk_size], [metadata]
+        )
+        tables = list(OrcFileReader().read(manifest))
+        expected_chunks.append(
+            pa.concat_tables(tables).column("id").to_pylist() if tables else []
+        )
+
+    reversed_chunks = list(reversed(chunks))
+    reversed_manifest = FileManifest.construct_manifest(
+        [file_path] * len(reversed_chunks),
+        [chunk_size for _, chunk_size in reversed_chunks],
+        [metadata for metadata, _ in reversed_chunks],
+    )
+    actual = (
+        pa.concat_tables(list(OrcFileReader().read(reversed_manifest)))
+        .column("id")
+        .to_pylist()
+    )
+
+    assert actual == [row for chunk in reversed(expected_chunks) for row in chunk]
 
 
 def test_orc_file_reader_handles_out_of_range_chunks(tmp_path):

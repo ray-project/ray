@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property, partial
 from typing import Any, Iterator, List, Optional, Tuple
@@ -37,7 +38,7 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
 
 # Number of worker threads used to read fragments concurrently per task.
 # Defaults to 4 to overlap remote-filesystem I/O latency across multiple
-# fragments. ``_read_fragment_batches`` caps this to ``len(fragments)``
+# read units. ``_read_fragment_batches`` caps this to ``len(read_units)``
 # at runtime so single-fragment tasks don't spin up extra workers, and
 # falls back to the sequential path entirely when
 # ``DataContext.execution_options.preserve_order`` is set.
@@ -54,6 +55,18 @@ class FileFormat(str, Enum):
     ARROW = "arrow"
     IPC = "ipc"
     ORC = "orc"
+
+
+@dataclass(frozen=True)
+class _FragmentReadUnit:
+    """A fragment and its starting row offset within the source file."""
+
+    fragment: pds.Fragment
+    file_row_offset: int = 0
+
+    @property
+    def path(self) -> str:
+        return self.fragment.path
 
 
 @DeveloperAPI
@@ -368,9 +381,8 @@ class FileReader(Reader[FileManifest]):
         self,
         dataset: pds.Dataset,
         manifest: FileManifest,
-    ) -> List[Tuple[pds.Fragment, int]]:
-        """Return ``(fragment, file_row_offset)`` pairs to scan for this
-        manifest.
+    ) -> List[_FragmentReadUnit]:
+        """Return fragment read units to scan for this manifest.
 
         ``file_row_offset`` is the cumulative pre-filter row count of all
         rows in the underlying file that precede this fragment. It seeds
@@ -378,7 +390,7 @@ class FileReader(Reader[FileManifest]):
         same file produce unique ``_compute_row_hashes`` keys instead of
         colliding on ``(path, 0, n)``.
 
-        Default impl returns one ``(fragment, 0)`` per file in the dataset
+        Default impl returns one read unit per file in the dataset
         (paths are deduped in :meth:`read` before the dataset is built).
         Subclasses that support per-row chunk metadata
         (e.g. :class:`ParquetFileReader`) override this to fan a single
@@ -386,7 +398,9 @@ class FileReader(Reader[FileManifest]):
         based on :attr:`FileManifest.file_chunk_metadatas`, each paired
         with its starting row offset in the file.
         """
-        return [(fragment, 0) for fragment in dataset.get_fragments()]
+        return [
+            _FragmentReadUnit(fragment=fragment) for fragment in dataset.get_fragments()
+        ]
 
     def _read_fragment_batches(
         self,
@@ -430,26 +444,24 @@ class FileReader(Reader[FileManifest]):
 
         # ``preserve_ordering=True`` would drain the input iterator
         # eagerly anyway, so materialize once here to (a) cap
-        # ``num_workers`` at the actual fragment count and (b) avoid
-        # an early-fallback when the manifest has a single fragment.
+        # ``num_workers`` at the actual read-unit count and (b) avoid
+        # an early-fallback when the manifest has a single read unit.
         # Subclasses (e.g. ``ParquetFileReader``) override
         # ``_get_fragments_to_read`` to fan out chunk-level
         # sub-fragments from the manifest's chunk metadata.
-        fragments_with_offsets = self._get_fragments_to_read(dataset, manifest)
-        if not fragments_with_offsets:
+        read_units = self._get_fragments_to_read(dataset, manifest)
+        if not read_units:
             return
 
-        num_workers = min(_DEFAULT_NUM_THREADS, len(fragments_with_offsets))
+        num_workers = min(_DEFAULT_NUM_THREADS, len(read_units))
         if num_workers <= 1 or ctx.execution_options.preserve_order:
-            yield from self._read_fragments_sequential(
-                iter(fragments_with_offsets), scanner_kwargs
-            )
+            yield from self._read_fragments_sequential(iter(read_units), scanner_kwargs)
             return
 
         # Set `preserve_ordering=True` to ensure deterministic output ordering.
         # This is required so that Ray Data task retries (block reconstruction)
         yield from make_async_gen(
-            base_iterator=iter(fragments_with_offsets),
+            base_iterator=iter(read_units),
             fn=partial(self._read_fragments_sequential, scanner_kwargs=scanner_kwargs),
             preserve_ordering=True,
             num_workers=num_workers,
@@ -457,14 +469,14 @@ class FileReader(Reader[FileManifest]):
 
     def _read_fragments_sequential(
         self,
-        fragments_with_offsets: Iterator[Tuple[pds.Fragment, int]],
+        read_units: Iterator[_FragmentReadUnit],
         scanner_kwargs: dict,
     ) -> Iterator[Tuple[pa.Table, str, int]]:
-        """Read each fragment in ``fragments_with_offsets`` in order, yielding
+        """Read each read unit in order, yielding
         ``(table, fragment_path, fragment_row_offset)`` triples.
 
-        Each input pair is ``(fragment, file_row_offset)``. The yielded
-        ``fragment_row_offset`` starts at ``file_row_offset`` (the row
+        The yielded ``fragment_row_offset`` starts at the read unit's
+        ``file_row_offset`` (the row
         position of the fragment's first row within its underlying file)
         and accumulates per yielded batch, so the per-fragment row-hash
         math in :meth:`read` keys off the right window even when chunking
@@ -476,24 +488,24 @@ class FileReader(Reader[FileManifest]):
 
         This is the per-worker body for the threaded path in
         :meth:`_read_fragment_batches` (one thread per call, each
-        consuming a disjoint slice of fragments via ``make_async_gen``)
+        consuming a disjoint slice of read units via ``make_async_gen``)
         and is also the entire read loop for the sequential path.
         """
         ctx = DataContext.get_current()
-        for fragment, file_row_offset in fragments_with_offsets:
-            offset = file_row_offset
+        for read_unit in read_units:
+            offset = read_unit.file_row_offset
             for table in iterate_with_retry(
-                partial(self._iter_fragment_tables, fragment, scanner_kwargs),
-                f"read fragment {fragment.path}",
+                partial(self._iter_fragment_tables, read_unit, scanner_kwargs),
+                f"read fragment {read_unit.path}",
                 match=ctx.retried_io_errors,
             ):
                 if table.num_rows > 0:
-                    yield table, fragment.path, offset
+                    yield table, read_unit.path, offset
                     offset += table.num_rows
 
     def _iter_fragment_tables(
         self,
-        fragment: pds.Fragment,
+        read_unit: _FragmentReadUnit,
         scanner_kwargs: dict,
     ) -> Iterator[pa.Table]:
         """Yield Arrow tables for a single fragment.
@@ -509,6 +521,7 @@ class FileReader(Reader[FileManifest]):
         per-fragment ``physical_schema`` preserves the variable-shape
         tensor escape hatch already encoded in ``_file_dataset_schema``.
         """
+        fragment = read_unit.fragment
         fragment_schema = (
             self._file_dataset_schema
             if self._file_dataset_schema is not None

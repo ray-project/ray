@@ -114,6 +114,14 @@ def test_read_orc_empty_dir_raises(tmp_path):
         ray.data.read_orc(str(tmp_path))
 
 
+def test_read_orc_without_extension(tmp_path):
+    _write(tmp_path / "data", pa.table({"a": [1, 2]}))
+
+    ds = ray.data.read_orc(str(tmp_path), file_extensions=None)
+
+    assert ds.take_all() == [{"a": 1}, {"a": 2}]
+
+
 if __name__ == "__main__":
     import sys
 

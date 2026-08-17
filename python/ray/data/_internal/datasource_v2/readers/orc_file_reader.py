@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
-from typing import Iterator, List, Optional, Sequence, Set, Tuple
+from dataclasses import dataclass
+from typing import Iterator, List, Optional, Set
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -16,8 +17,10 @@ from ray.data._internal.datasource_v2.chunkers.orc_file_chunking_utils import (
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import (
+    _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
     FileReader,
+    _FragmentReadUnit,
 )
 from ray.data._internal.datasource_v2.readers.supports_metadata import (
     MetadataType,
@@ -44,34 +47,21 @@ def _pick_carrier_column(schema: pa.Schema) -> str:
 
 def _iter_stripe_indices(
     orc_file: orc.ORCFile,
-    chunk_metadatas: Sequence[Optional[OrcFileChunkMetadata]],
+    chunk_metadata: Optional[OrcFileChunkMetadata],
 ) -> Iterator[int]:
-    for metadata in chunk_metadatas:
-        if metadata is None:
-            stripe_range = (0, orc_file.nstripes)
-        else:
-            stripe_range = stripe_range_from_chunk_metadata(metadata, orc_file.nstripes)
-        if stripe_range is not None:
-            yield from range(*stripe_range)
+    if chunk_metadata is None:
+        stripe_range = (0, orc_file.nstripes)
+    else:
+        stripe_range = stripe_range_from_chunk_metadata(
+            chunk_metadata, orc_file.nstripes
+        )
+    if stripe_range is not None:
+        yield from range(*stripe_range)
 
 
-def _iter_path_groups(
-    manifest: FileManifest,
-) -> Iterator[Tuple[str, List[Optional[OrcFileChunkMetadata]]]]:
-    current_path: Optional[str] = None
-    current_metadatas: List[Optional[OrcFileChunkMetadata]] = []
-
-    for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
-        if current_path is None:
-            current_path = path
-        if path != current_path:
-            yield current_path, current_metadatas
-            current_path = path
-            current_metadatas = []
-        current_metadatas.append(metadata)
-
-    if current_path is not None:
-        yield current_path, current_metadatas
+@dataclass(frozen=True)
+class _OrcReadUnit(_FragmentReadUnit):
+    chunk_metadata: Optional[OrcFileChunkMetadata] = None
 
 
 @DeveloperAPI
@@ -84,6 +74,7 @@ class OrcFileReader(FileReader, SupportsMetadata):
 
     def __init__(
         self,
+        batch_size: Optional[int] = None,
         columns: Optional[List[str]] = None,
         predicate: Optional[Expr] = None,
         limit: Optional[int] = None,
@@ -94,6 +85,7 @@ class OrcFileReader(FileReader, SupportsMetadata):
     ):
         super().__init__(
             format=FileFormat.ORC,
+            batch_size=batch_size or _ARROW_DEFAULT_BATCH_SIZE,
             columns=columns,
             predicate=predicate,
             limit=limit,
@@ -104,22 +96,28 @@ class OrcFileReader(FileReader, SupportsMetadata):
         )
 
     @override
-    def _read_fragment_batches(
+    def _get_fragments_to_read(
         self,
         dataset: pds.Dataset,
-        scanner_kwargs: dict,
         manifest: FileManifest,
-    ) -> Iterator[Tuple[pa.Table, str, int]]:
-        for path, chunk_metadatas in _iter_path_groups(manifest):
-            row_offset = 0
-            for table in self._read_file_stripes(path, chunk_metadatas, scanner_kwargs):
-                yield table, path, row_offset
-                row_offset += table.num_rows
+    ) -> List[_FragmentReadUnit]:
+        path_to_fragment = {
+            fragment.path: fragment for fragment in dataset.get_fragments()
+        }
+        return [
+            _OrcReadUnit(
+                fragment=path_to_fragment[path],
+                chunk_metadata=chunk_metadata,
+            )
+            for path, chunk_metadata in zip(
+                manifest.paths, manifest.file_chunk_metadatas
+            )
+        ]
 
-    def _read_file_stripes(
+    @override
+    def _iter_fragment_tables(
         self,
-        path: str,
-        chunk_metadatas: Sequence[Optional[OrcFileChunkMetadata]],
+        read_unit: _FragmentReadUnit,
         scanner_kwargs: dict,
     ) -> Iterator[pa.Table]:
         """Read ORC stripes against the unified dataset schema.
@@ -132,8 +130,9 @@ class OrcFileReader(FileReader, SupportsMetadata):
         """
         from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
 
+        assert isinstance(read_unit, _OrcReadUnit)
         filesystem = self._filesystem or LocalFileSystem()
-        with filesystem.open_input_file(path) as handle:
+        with filesystem.open_input_file(read_unit.path) as handle:
             orc_file = orc.ORCFile(handle)
             physical_columns = orc_file.schema.names
             file_dataset_schema = self._file_dataset_schema
@@ -185,7 +184,7 @@ class OrcFileReader(FileReader, SupportsMetadata):
                 for column_name in columns_to_null_fill
             }
 
-            for stripe_idx in _iter_stripe_indices(orc_file, chunk_metadatas):
+            for stripe_idx in _iter_stripe_indices(orc_file, read_unit.chunk_metadata):
                 batch = orc_file.read_stripe(stripe_idx, columns=physical_read_columns)
                 table = pa.Table.from_batches([batch])
 
@@ -212,7 +211,17 @@ class OrcFileReader(FileReader, SupportsMetadata):
                     table = _align_struct_fields([table], align_schema)[0].cast(
                         align_schema
                     )
-                yield table
+
+                batch_size = scanner_kwargs.get("batch_size")
+                if (
+                    batch_size is None
+                    or batch_size <= 0
+                    or table.num_rows <= batch_size
+                ):
+                    yield table
+                    continue
+                for offset in range(0, table.num_rows, batch_size):
+                    yield table.slice(offset, min(batch_size, table.num_rows - offset))
 
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
