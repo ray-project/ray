@@ -123,9 +123,11 @@ class ExternalHashShuffleMapOp(
         self._total_input_rows: int = 0
         self._total_input_bytes: int = 0
         self._map_blocks_stats: List[BlockStats] = []
-        # Per-partition decoded (pa.Table.nbytes, pre-compression) byte total,
-        # summed across all completed mappers. Consumed by
-        # ExternalHashShuffleReduceOp via ``get_partition_bytes``.
+        # Per-partition decoded stats summed across completed mappers:
+        # ``_partition_rows`` from tbl.num_rows, ``_partition_bytes`` from
+        # tbl.nbytes (pre-compression). Rows gate empty partitions; bytes
+        # feed reduce-task memory estimates via ``get_partition_bytes``.
+        self._partition_rows: Dict[int, int] = defaultdict(int)
         self._partition_bytes: Dict[int, int] = defaultdict(int)
 
         # -- Sub-progress bars -----------------------------------------------
@@ -313,11 +315,21 @@ class ExternalHashShuffleMapOp(
         # `task_done_callback` fires only after the handle ref is ready,
         # so this is just local deserialization.
         handle = ray.get(handle_ref)
-        # decoded_bytes is a dense per-partition int64 array.
+        # Dense [num_partitions] arrays. Accumulate rows and bytes separately;
+        # do not gate rows on nbytes (a null-typed table can have rows with
+        # nbytes == 0).
+        rows = handle.get("num_rows")
+        if rows is not None:
+            for pid in range(rows.shape[0]):
+                n = int(rows[pid])
+                if n:
+                    self._partition_rows[pid] += n
         dec = handle.get("decoded_bytes")
         if dec is not None:
-            for pid in dec.nonzero()[0]:
-                self._partition_bytes[int(pid)] += int(dec[pid])
+            for pid in range(dec.shape[0]):
+                n = int(dec[pid])
+                if n:
+                    self._partition_bytes[pid] += n
         if self._output_schema is None:
             self._output_schema = handle.get("schema")
 
@@ -370,7 +382,8 @@ class ExternalHashShuffleMapOp(
         """Emit one wrapper bundle per partition into ``_output_queue``.
 
         All N wrappers share the same ``_shared_handles_ref`` and differ
-        only by the stamped ``__partition__<pid>`` sentinel.
+        by the stamped ``__partition__<pid>`` sentinel plus aggregated
+        ``num_rows`` / ``size_bytes`` from mapper handles.
         """
         if self._partition_bundles_emitted:
             return
@@ -389,11 +402,10 @@ class ExternalHashShuffleMapOp(
 
         partition_bytes = self.get_partition_bytes()
         for partition_id in range(self._num_partitions):
-            size_bytes = partition_bytes.get(partition_id, 0)
             exec_stats = BlockExecStats.builder().build(block_ser_time_s=0.0)
             wrapper_meta = BlockMetadata(
-                num_rows=0,
-                size_bytes=size_bytes,
+                num_rows=self._partition_rows.get(partition_id, 0),
+                size_bytes=partition_bytes.get(partition_id, 0),
                 exec_stats=exec_stats,
                 input_files=list(make_partition_sentinel(partition_id)),
             )

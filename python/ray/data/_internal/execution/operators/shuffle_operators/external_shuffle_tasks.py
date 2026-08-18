@@ -44,7 +44,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_r
     ShuffleHandle,
     _build_range_index,
     _compute_prefetch_layout,
-    _decoded_to_array,
+    _counts_to_array,
     _fetch_from_file_server,
     _file_server_name,
     _group_by_server,
@@ -91,9 +91,10 @@ def _external_shuffle_map_task(
     compression: Optional[str] = None,
 ) -> ShuffleHandle:
     """Map stage: partition input blocks, write them to a single file under
-    ``out_dir``, and return a ``ShuffleHandle`` (path + per-partition byte
-    index + ``shuffle_id`` / ``node_id``). Shuffle bytes never enter the Ray
-    object store.
+    ``out_dir``, and return a ``ShuffleHandle`` (on-disk path +
+    ``index_ranges`` + per-partition ``num_rows`` / ``decoded_bytes`` +
+    ``shuffle_id`` / ``node_id``). Shuffle bytes never enter the Ray object
+    store.
 
     The output file is sealed via atomic ``rename``: writes land in
     ``map_{i}.shf.tmp``, then flush + size sanity check against the index,
@@ -196,8 +197,12 @@ def _external_shuffle_map_task(
         # Total bytes written to the output file, post-seal.
         "total_bytes": final_size_on_close,
         "compression": compression,
-        # Dense per-partition decoded bytes.
-        "decoded_bytes": _decoded_to_array(
+        # Dense [num_partitions] row counts; empty-gating uses this, not nbytes.
+        "num_rows": _counts_to_array(
+            writer.rows_per_partition, num_partitions
+        ),
+        # Dense [num_partitions] decoded tbl.nbytes; reduce memory estimates.
+        "decoded_bytes": _counts_to_array(
             writer.decoded_bytes_per_partition, num_partitions
         ),
         "schema": output_schema,
@@ -280,18 +285,15 @@ def _external_shuffle_reduce_task(
             for out_block in map_transformer.apply_transform(blocks, map_task_context):
                 yield from _yield_with_stats(out_block)
 
-    # No shards for this partition. Without a fused map, reduce_fn on ``[]``
-    # yields nothing and the operator's fast path already produced this
-    # partition's empty block. With a fused map (e.g. Write), the map still
-    # needs to run so the sink lays down an empty artifact.
+    # No shards for this partition. Yield a typed empty table so the
+    # N-block contract holds when the operator fast path was skipped
+    # (fused map, or wrapper schema missing). Do not call reduce_fn on
+    # ``[[]]``: concat/sort reduces yield nothing for empty input.
     if not sources:
 
         def _empty_blocks():
-            if map_transformer is not None:
-                assert output_schema is not None
-                yield output_schema.empty_table()
-            else:
-                yield from reduce_fn(partition_id, [[]])
+            assert output_schema is not None
+            yield output_schema.empty_table()
 
         yield from _emit_blocks(_empty_blocks())
     else:

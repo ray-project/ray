@@ -129,17 +129,27 @@ def _file_server_name(shuffle_id: str, node_id: str) -> str:
 
 
 class ShuffleHandle(TypedDict, total=False):
-    """Handle written by each mapper task, consumed by reducer.
+    """Handle written by each mapper task.
 
-    Only the fields the runtime consumes are declared; the mapper task can
-    add producer-side bookkeeping (byte counts, schema, etc.) as extra keys.
+    Fetch/runtime fields (``path``, ``index_ranges``, ``shuffle_id``,
+    ``node_id``) are consumed by reducers. Driver bookkeeping fields
+    (``num_rows``, ``decoded_bytes``, ``schema``) are consumed by the map
+    operator when emitting partition wrappers.
     """
 
     path: str
     # Dense per-partition range index (see _build_range_index): row ``p`` is
-    # ``(offset, length)`` of partition ``p``'s frame; ``length == 0`` => the
-    # partition is absent/empty.
+    # ``(offset, length)`` of partition ``p``'s on-disk IPC frame.
+    # ``length == 0`` => this mapper wrote no frame for ``p`` (reducer skips
+    # the fetch). Not the same as decoded ``nbytes`` or ``num_rows``.
     index_ranges: "np.ndarray"  # shape [num_partitions, 2], int64
+    # Dense per-partition row counts (see _counts_to_array). Empty-partition
+    # gating uses this, not ``decoded_bytes``: a ``null``-typed table can
+    # have ``num_rows > 0`` with ``tbl.nbytes == 0``.
+    num_rows: "np.ndarray"  # shape [num_partitions], int64
+    # Dense per-partition decoded-byte counts (see _counts_to_array):
+    # pre-compression ``tbl.nbytes``. Used for reduce memory estimates.
+    decoded_bytes: "np.ndarray"  # shape [num_partitions], int64
     shuffle_id: str
     node_id: str
     schema: Optional["pa.Schema"]
@@ -199,14 +209,16 @@ class ShuffleFileServerAnomalyError(RuntimeError):
 
 # =============================================================================
 # MAP SIDE (map tasks): buffer per-partition shards, seal them to one file, and
-# build the ShuffleHandle's dense byte index. What this writes is exactly what
-# the SERVER serves and the FETCH side reads.
+# build the ShuffleHandle's dense range index plus per-partition row/byte
+# counts. What this writes is exactly what the SERVER serves and the FETCH
+# side reads.
 # =============================================================================
 def _build_range_index(index, num_partitions):
     """Dense per-partition (offset, length) index: one row per partition.
 
-    Row ``p`` is ``(offset, length)`` of partition ``p``'s IPC frame; absent or
-    empty partitions stay ``(0, 0)`` (``length == 0`` => the reducer skips them).
+    Row ``p`` is ``(offset, length)`` of partition ``p``'s on-disk IPC frame;
+    mappers that wrote nothing for ``p`` stay ``(0, 0)`` (``length == 0`` =>
+    the reducer skips the fetch).
     """
     ranges = np.zeros((num_partitions, 2), dtype=np.int64)
     for partition_id, frame_range in index.items():
@@ -214,11 +226,15 @@ def _build_range_index(index, num_partitions):
     return ranges
 
 
-def _decoded_to_array(decoded, num_partitions):
-    """Dense per-partition decoded-byte counts, indexed by partition_id."""
+def _counts_to_array(counts, num_partitions):
+    """Dense per-partition int64 counts, indexed by partition_id.
+
+    Absent partitions stay 0. Used for both ``num_rows`` (``tbl.num_rows``)
+    and ``decoded_bytes`` (``tbl.nbytes``).
+    """
     arr = np.zeros(num_partitions, dtype=np.int64)
-    for partition_id, nbytes in decoded.items():
-        arr[partition_id] = nbytes
+    for partition_id, n in counts.items():
+        arr[partition_id] = n
     return arr
 
 
@@ -237,6 +253,7 @@ class _PartitionWriter:
         "_compression",
         "_staging",
         "_index",
+        "_rows_per_partition",
         "_decoded_bytes_per_partition",
         "_combine_native_ok",
     )
@@ -253,6 +270,7 @@ class _PartitionWriter:
         self._compression = compression
         self._staging: Dict[int, List[pa.Table]] = {}
         self._index: Dict[int, List[Tuple[int, int]]] = {}
+        self._rows_per_partition: Dict[int, int] = {}
         self._decoded_bytes_per_partition: Dict[int, int] = {}
         # Native combine is safe when there are no extension columns.
         self._combine_native_ok: Optional[bool] = None
@@ -270,6 +288,7 @@ class _PartitionWriter:
             self._combine_native_ok = not any(
                 _is_pa_extension_type(f.type) for f in tbl.schema
             )
+        self._rows_per_partition[partition_id] = tbl.num_rows
         self._decoded_bytes_per_partition[partition_id] = tbl.nbytes
         buf = _encode_shard(tbl, self._compression, self._combine_native_ok)
         if buf.size > _MAX_RANGE_BYTES:
@@ -296,6 +315,10 @@ class _PartitionWriter:
     @property
     def index(self) -> Dict[int, List[Tuple[int, int]]]:
         return self._index
+
+    @property
+    def rows_per_partition(self) -> Dict[int, int]:
+        return self._rows_per_partition
 
     @property
     def decoded_bytes_per_partition(self) -> Dict[int, int]:
@@ -670,9 +693,10 @@ def _chunk_members_by_bytes(
 def _handle_batch_size(handles, batch_bytes):
     """#handles to resolve per batch so materialized metadata stays ≈ batch_bytes.
 
-    Peeks one handle for ``num_partitions`` (each handle ≈ num_partitions × 16
-    bytes of CSR arrays), so in-flight handle memory stays constant regardless
-    of #mappers/#partitions.
+    Peeks one handle for ``num_partitions`` (each handle ≈ num_partitions × 32
+    bytes of dense arrays: ``index_ranges`` is ``[P, 2]`` int64;
+    ``num_rows`` and ``decoded_bytes`` are ``[P]`` int64), so in-flight
+    handle memory stays constant regardless of #mappers/#partitions.
     """
     if not handles:
         return 1
@@ -683,7 +707,7 @@ def _handle_batch_size(handles, batch_bytes):
         npart = int(probe.get("num_partitions") or len(probe["index_ranges"]))
     except Exception:
         npart = 1
-    per_handle = max(1, npart * 16)
+    per_handle = max(1, npart * 32)
     return max(1, min(len(handles), batch_bytes // per_handle))
 
 
@@ -697,7 +721,8 @@ def _handles_to_sources(
     Resolves handle refs in ≈``batch_bytes`` batches, reads this partition's row
     out of each handle's dense range index, then frees the batch — so in-flight
     handle memory stays constant, not O(maps × partitions). Skips handles with
-    zero bytes for this partition; picks the first non-None schema.
+    ``index_ranges[p].length == 0`` (no on-disk frame); picks the first
+    non-None schema.
     """
     sources: List[_SourceRef] = []
     output_schema: Optional[pa.Schema] = None
