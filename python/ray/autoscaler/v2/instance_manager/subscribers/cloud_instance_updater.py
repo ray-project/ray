@@ -70,9 +70,15 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             dict.fromkeys(
                 event.cloud_instance_id
                 for event in new_terminations
+        cloud_instance_ids = list(
+            dict.fromkeys(
+                event.cloud_instance_id
+                for event in new_terminations
                 if event.cloud_instance_id
             )
         )
+        if not cloud_instance_ids:
+            return
 
         # This is an async call.
         self._cloud_provider.terminate(
