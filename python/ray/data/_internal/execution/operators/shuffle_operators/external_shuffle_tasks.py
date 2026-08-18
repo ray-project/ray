@@ -364,17 +364,6 @@ def _external_shuffle_reduce_task(
                                 ) from e
                             raise
 
-                    def _fetch_region(base, size, group):
-                        # Fetch from one ShuffleFileServer to its staging region.
-                        _fetch_from_file_server(
-                            _PwriteSink(fd, base),
-                            group.shuffle_id,
-                            group.node_id,
-                            group.members,
-                            max_bytes_per_fetch,
-                        )
-                        return base, size
-
                     n_threads = min(len(groups), max(1, fetch_threads))
                     work = list(zip(base_offsets, node_sizes, groups))
                     # Randomize submission order per reducer (seeded by partition_id →
@@ -403,12 +392,20 @@ def _external_shuffle_reduce_task(
                             )
 
                     with ThreadPoolExecutor(max_workers=n_threads) as ex:
-                        futs = [
-                            ex.submit(_fetch_region, base, size, group)
+                        futs = {
+                            ex.submit(
+                                _fetch_from_file_server,
+                                _PwriteSink(fd, base),
+                                group.shuffle_id,
+                                group.node_id,
+                                group.members,
+                                max_bytes_per_fetch,
+                            ): (base, size)
                             for base, size, group in work
-                        ]
+                        }
                         for fut in as_completed(futs):
-                            base, size = fut.result()
+                            fut.result()
+                            base, size = futs[fut]
                             if size > 0:
                                 _decode_region(base, size)
 
