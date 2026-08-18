@@ -2466,7 +2466,7 @@ traitlets==5.14.3
     #   nbclient
     #   nbconvert
     #   nbformat
-transformers==4.36.2
+transformers==5.5.0
     # via
     #   -r python/requirements/ml/py313/core-requirements.txt
     #   -r python/requirements/ml/py313/ml-requirements.txt
