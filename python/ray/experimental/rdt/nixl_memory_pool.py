@@ -11,6 +11,22 @@ _MAX_ALIGNMENT = 16
 
 
 def _align_up(value: int, alignment: int) -> int:
+    """Round ``value`` up to the next multiple of ``alignment``.
+
+    Adding ``alignment - 1`` pushes any value past the boundary it belongs to and
+    the floor division truncates back down to it, so a value already on a
+    boundary comes back unchanged. At most ``alignment - 1`` is added, which is
+    what bounds the padding a dtype boundary can cost.
+
+    Args:
+        value: Byte count or offset to round up.
+        alignment: Boundary to round to, always a power of two here: either a
+            dtype's element size or ``_MAX_ALIGNMENT``.
+
+    Returns:
+        The smallest multiple of ``alignment`` that is at least ``value``, for
+        example 8 for both ``(1, 8)`` and ``(8, 8)``, and 16 for ``(9, 8)``.
+    """
     return (value + alignment - 1) // alignment * alignment
 
 
@@ -35,54 +51,54 @@ def packed_offsets(
         (offsets, packed_nbytes) for the group.
     """
     offsets: List[int] = []
-    cursor = 0
+    byte_index = 0
     for size, alignment in zip(sizes, alignments):
-        cursor = _align_up(cursor, alignment)
-        offsets.append(cursor)
-        cursor += size
-    return offsets, cursor
+        byte_index = _align_up(byte_index, alignment)
+        offsets.append(byte_index)
+        byte_index += size
+    return offsets, byte_index
 
 
 def group_tensors_by_desc(
-    sizes: Sequence[int], alignments: Sequence[int], desc_lens: Sequence[int]
+    tensor_sizes: Sequence[int], alignments: Sequence[int], desc_lens: Sequence[int]
 ) -> List[List[int]]:
     """Recover which tensors each descriptor covers from the packed sizes.
 
-    Walks sizes in order and closes a group when its packed byte count equals
-    the current descriptor length. Raises if sizes and lengths are not consumed
-    exactly.
+    Walks the sizes in order and closes a group when its packed byte count equals
+    the current descriptor length. Raises if the sizes and lengths are not
+    consumed exactly.
 
     The byte count is carried forward one tensor at a time rather than repacking
     the group from scratch on each step, which keeps this linear in the tensor
     count.
 
     Args:
-        sizes: Byte sizes of the tensors, in tensor order.
+        tensor_sizes: Byte sizes of the tensors, in tensor order.
         alignments: Element size of each tensor, in tensor order.
         desc_lens: Length of each NIXL transfer descriptor, in order.
 
     Returns:
-        One group per descriptor, each a list of indices into sizes.
+        One group per descriptor, each a list of indices into tensor_sizes.
     """
     desc_groups: List[List[int]] = []
     size_idx = 0
     for desc_len in desc_lens:
-        if size_idx >= len(sizes):
+        if size_idx >= len(tensor_sizes):
             raise ValueError(
                 f"Extra descriptor length {desc_len} after consuming all "
-                f"{len(sizes)} tensor sizes"
+                f"{len(tensor_sizes)} tensor sizes"
             )
         desc_group: List[int] = []
         packed_nbytes = 0
         closed = False
-        while size_idx < len(sizes):
+        while size_idx < len(tensor_sizes):
             candidate_nbytes = (
-                _align_up(packed_nbytes, alignments[size_idx]) + sizes[size_idx]
+                _align_up(packed_nbytes, alignments[size_idx]) + tensor_sizes[size_idx]
             )
             if candidate_nbytes > desc_len:
                 raise ValueError(
-                    f"Tensor sizes {[sizes[i] for i in desc_group + [size_idx]]} do "
-                    f"not pack into descriptor length {desc_len} under the wire "
+                    f"Tensor sizes {[tensor_sizes[i] for i in desc_group + [size_idx]]}"
+                    f" do not pack into descriptor length {desc_len} under the wire "
                     f"contract (packed_nbytes={candidate_nbytes})"
                 )
             desc_group.append(size_idx)
@@ -98,10 +114,10 @@ def group_tensors_by_desc(
             )
         desc_groups.append(desc_group)
 
-    if size_idx != len(sizes):
+    if size_idx != len(tensor_sizes):
         raise ValueError(
             f"Descriptor lengths {list(desc_lens)} did not consume all "
-            f"{len(sizes)} tensor sizes (stopped at index {size_idx})"
+            f"{len(tensor_sizes)} tensor sizes (stopped at index {size_idx})"
         )
     return desc_groups
 
@@ -113,13 +129,6 @@ class NixlOutOfMemoryError(RuntimeError):
     requested allocation. Increase the pool size passed to
     ``register_nixl_memory_pool`` to avoid this error.
     """
-
-
-def _out_of_memory(detail: str) -> NixlOutOfMemoryError:
-    return NixlOutOfMemoryError(
-        f"NIXL memory pool out of memory: {detail}. Consider increasing the "
-        f"pool size when calling register_nixl_memory_pool."
-    )
 
 
 class MemoryBlock:
@@ -222,8 +231,10 @@ class MemoryPoolManager:
             _merge_free_blocks(temp_free)
 
         if sum(b.size for b in temp_free) < sum(sizes):
-            raise _out_of_memory(
-                f"cannot allocate {len(sizes)} tensor(s) totaling {sum(sizes)} bytes"
+            raise NixlOutOfMemoryError(
+                f"NIXL memory pool out of memory: cannot allocate {len(sizes)} "
+                f"tensor(s) totaling {sum(sizes)} bytes. Consider increasing the "
+                f"pool size when calling register_nixl_memory_pool."
             )
 
         blocks: List[MemoryBlock] = []
@@ -266,9 +277,11 @@ class MemoryPoolManager:
                     take_count = n + 1
                     placed_nbytes = offsets[n] + size
                 if take_count == 0:
-                    raise _out_of_memory(
-                        f"cannot allocate next tensor of {rem_sizes[0]} bytes "
-                        f"(largest free block is {hole_size} bytes)"
+                    raise NixlOutOfMemoryError(
+                        f"NIXL memory pool out of memory: cannot allocate next "
+                        f"tensor of {rem_sizes[0]} bytes (largest free block is "
+                        f"{hole_size} bytes). Consider increasing the pool size "
+                        f"when calling register_nixl_memory_pool."
                     )
 
             # Round the carved block up so subsequent offsets stay aligned.
