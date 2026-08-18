@@ -311,7 +311,7 @@ def gen_tensors_wide(d, scale):
     }
 
 
-def gen_tensors_cp(d, scale):
+def gen_tensors_cp(d, scale, _pool=None, _rows=None, _rg=None, _files=None):
     """4 files, 5000 tensor columns with **cloudpickle** extension metadata.
 
     The fixture that actually reproduces T15/1y (T22): `tensors_wide` above is
@@ -338,15 +338,20 @@ def gen_tensors_cp(d, scale):
     tx.ARROW_EXTENSION_SERIALIZATION_FORMAT = tx._SerializationFormat.CLOUDPICKLE
     try:
         rng = np.random.default_rng(7)
-        n_files = 4
+        n_files = 4 if _files is None else _files
         n_cols = 5000
-        rows_per_file = max(200, int(400 * scale))
-        row_group_size = max(100, int(200 * scale))
+        rows_per_file = max(200, int(400 * scale)) if _rows is None else _rows
+        row_group_size = max(100, int(200 * scale)) if _rg is None else _rg
         total = 0
         for f in range(n_files):
             cols = {}
             for c in range(n_cols):
-                vals = rng.random((rows_per_file, 2, 2), dtype=np.float32)
+                if _pool is None:
+                    vals = rng.random((rows_per_file, 2, 2), dtype=np.float32)
+                else:
+                    # Low-entropy leaves: draw from a small pool so the f32
+                    # leaf columns RLE_DICTIONARY-encode (see gen_tensors_dict).
+                    vals = _pool[rng.integers(0, len(_pool), (rows_per_file, 2, 2))]
                 cols[f"t{c}"] = ArrowTensorArray.from_numpy(vals)
             t = pa.table(cols)
             pq.write_table(
@@ -386,6 +391,53 @@ def gen_tensors_cp(d, scale):
     }
 
 
+def gen_tensors_dict(d, scale):
+    """tensors_cp with DICTIONARY-COMPRESSIBLE leaves — the release wide_schema
+    tensors shape's missing property (M43).
+
+    The release tensors data must dictionary-encode ~9x — implied by A/B #4's
+    own numbers: arrow-rs's peak yielded batch was 288 MiB on a 32 MiB decode
+    budget, and the crate's byte budget divides by ENCODED footer bytes/row
+    (`byte_budget_rows`, src/lib.rs), so batch bytes = budget x (decoded/encoded).
+    `tensors_cp`'s random floats encode ~1.1x, which is why no box run ever
+    reproduced M39's fat batches. Here leaves come from a 16-value pool
+    (4-bit dictionary indices -> roughly the release's expansion; the achieved
+    ratio is measured and recorded in the manifest), and rows-per-file is
+    raised so a 2048-row batch can actually materialize (release row groups
+    are ~1.6k rows; tensors_cp's 200-row files cap any batch at 200 rows).
+    Runs need RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1, same as
+    tensors_cp.
+    """
+    rng = np.random.default_rng(11)
+    pool = rng.random(16, dtype=np.float32)
+    rows = max(2560, int(2560 * scale))
+    stats = gen_tensors_cp(d, scale, _pool=pool, _rows=rows, _rg=rows, _files=2)
+    # Footer reads hydrate the (in-process-registered) extension schema, which
+    # needs the cloudpickle opt-in; flip the module flag around them, mirroring
+    # the write-side format flip above. Decoded bytes are already in
+    # stats["uncompressed_bytes"] (sum of Table.nbytes at write time).
+    import ray.data._internal.tensor_extensions.arrow as tx
+
+    prev = tx._AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA
+    tx._AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = True
+    try:
+        enc = 0
+        for f in sorted(os.listdir(d)):
+            if f.endswith(".parquet"):
+                md = pq.read_metadata(os.path.join(d, f))
+                enc += sum(
+                    md.row_group(i).total_byte_size for i in range(md.num_row_groups)
+                )
+    finally:
+        tx._AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = prev
+    stats["enc_to_dec_ratio"] = round(stats["uncompressed_bytes"] / max(1, enc), 2)
+    print(f"  tensors_dict: enc->dec expansion {stats['enc_to_dec_ratio']}x")
+    return stats
+
+
+gen_tensors_dict._fixture_version = 1
+
+
 SHAPES = {
     "lone_big_rg": gen_lone_big_rg,
     "single_rg_files": gen_single_rg_files,
@@ -396,6 +448,7 @@ SHAPES = {
     "bin_sweep": gen_bin_sweep,
     "tensors_wide": gen_tensors_wide,
     "tensors_cp": gen_tensors_cp,
+    "tensors_dict": gen_tensors_dict,
 }
 
 
