@@ -1015,12 +1015,12 @@ def dispatch(
         accelerator_version: The TPU accelerator generation
             (e.g. ``"v4"``, ``"v6e"``). Required when ``tpu_slice`` is ``None``;
             ignored otherwise.
-        tpu_slice: An existing :class:`SlicePlacementGroup` to schedule
-            onto. When provided, the slice is used directly and
-            ``dispatch`` does **not** create, modify, or tear down
-            any placement groups. When ``None`` (default), a new slice
-            is reserved internally and its head placement groups are
-            released once the worker placement group becomes ready.
+        tpu_slice: An existing :class:`SlicePlacementGroup` or
+            :class:`SubslicePlacementGroup`  to schedule onto. When provided,
+            the slice is used directly and ``dispatch`` does **not** create,
+            modify, or tear down any placement groups. When ``None`` (default),
+            a new slice is reserved internally and its head placement groups
+            are released once the worker placement group becomes ready.
         slice_index: Optional. If ``tpu_slice`` was created with ``pg_per_slice=True``,
             specify a ``slice_index`` to dispatch tasks only to that specific
             TPU slice. If ``None``, tasks are dispatched to all slices.
