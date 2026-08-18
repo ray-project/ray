@@ -20,11 +20,31 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
-GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
-GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
-GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
-GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
+# Environment variables set by GKE / Cloud TPU VM platforms.
+TPU_NAME_ENV_VAR = "TPU_NAME"
+TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
+TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
+TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
+
+# Environment variables for LibTPU / JAX mesh and subslice configuration.
+# See: https://github.com/google/jax/issues/14977 for an example/more details.
+TPU_WORKER_HOSTNAMES_ENV_VAR = "TPU_WORKER_HOSTNAMES"
+TPU_PROCESS_BOUNDS_ENV_VAR = "TPU_PROCESS_BOUNDS"
+TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_PROCESS_BOUNDS"
+TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
+TPU_SINGLE_HOST_BOUNDS = "1,1,1"
+TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
+TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
+TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
+TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+
+# TorchTPU (PyTorch/XLA) environment variables.
+TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
+TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
+
+# Ray-specific TPU control flags.
+RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
+NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
 # Constants for accessing the `accelerator-type` from TPU VM
 # instance metadata.
@@ -39,28 +59,12 @@ GCE_TPU_ENV_KEY = "tpu-env"
 GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
-TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
-NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
-TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
-TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
-
-
-# The following defines environment variables that allow
-# us to access a subset of TPU visible chips.
-#
-# See: https://github.com/google/jax/issues/14977 for an example/more details.
-TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
-TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
-TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
-
-TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
-TPU_SINGLE_HOST_BOUNDS = "1,1,1"
-
+# Hardware and topology configuration defaults.
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
+TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
 
 # PCI vendor ID for Google TPUs (used to validate VFIO devices).
 # See https://cloud.google.com/tpu/docs/custom-os-image.
@@ -232,7 +236,7 @@ def get_tpu_resource_per_chip(accelerator_type: Optional[str] = None) -> int:
                 f"{RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR} must be a positive integer, got: {val!r}"
             )
     if not accelerator_type:
-        accelerator_type = os.environ.get(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+        accelerator_type = os.environ.get(TPU_ACCELERATOR_TYPE_ENV_VAR, "")
     acc_str = normalize_tpu_accelerator_type(accelerator_type)
     if any(acc_str.startswith(t) for t in DUAL_DEVICE_TPU_TYPES):
         return 2
@@ -259,6 +263,30 @@ def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
                 f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_3D.keys())}"
             )
         return _VALID_TOPOLOGY_WORKER_DIMS_3D[topology]
+
+
+def get_jax_process_bounds(topology: str) -> str:
+    """Returns the JAX/libtpu process bounds string (e.g. '1,2,1' for '2x4'; '1,1,2' for '2x2x2')."""
+    dims = _get_worker_dims_for_topology(topology)
+    if len(dims) == 2:
+        return f"{dims[0]},{dims[1]},1"
+    return ",".join(str(d) for d in dims)
+
+
+def get_jax_chips_per_process_bounds(
+    chips_per_host: int = DEFAULT_TPU_NUM_CHIPS_PER_HOST,
+    accelerator_version: Optional[str] = None,
+) -> str:
+    """Returns the JAX/libtpu chips-per-process bounds string (e.g. '2,2,1' for 4 chips)."""
+    if chips_per_host == 8:
+        return "2,4,1"
+    elif chips_per_host == 4:
+        return "2,2,1"
+    elif chips_per_host == 2:
+        return "1,2,1"
+    elif chips_per_host == 1:
+        return "1,1,1"
+    return f"{chips_per_host},1,1"
 
 
 def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
@@ -886,7 +914,7 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         """
         # Start with GKE-based check
-        accelerator_type = os.getenv(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+        accelerator_type = os.getenv(TPU_ACCELERATOR_TYPE_ENV_VAR, "")
         if not accelerator_type:
             # GCE-based VM check
             accelerator_type = _get_tpu_metadata(key=GCE_TPU_ACCELERATOR_KEY)
@@ -914,7 +942,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         """
         try:
             # Start with GKE-based check
-            tpu_name = os.getenv(GKE_TPU_NAME_ENV_VAR, None)
+            tpu_name = os.getenv(TPU_NAME_ENV_VAR, None)
             if not tpu_name:
                 # GCE-based VM check
                 tpu_name = _get_tpu_metadata(key=GCE_TPU_INSTANCE_ID_KEY)
@@ -928,7 +956,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         """Return the worker index of the TPU pod."""
         try:
             # Start with GKE-based check
-            worker_id = os.getenv(GKE_TPU_WORKER_ID_ENV_VAR, None)
+            worker_id = os.getenv(TPU_WORKER_ID_ENV_VAR, None)
             if not worker_id:
                 # GCE-based VM check
                 worker_id = _get_tpu_metadata(key=GCE_TPU_WORKER_ID_KEY)
@@ -962,7 +990,7 @@ class TPUAcceleratorManager(AcceleratorManager):
     def get_current_node_tpu_topology() -> Optional[str]:
         try:
             # Attempt GKE based lookup first
-            if topology := os.environ.get(GKE_TPU_TOPOLOGY_ENV_VAR):
+            if topology := os.environ.get(TPU_TOPOLOGY_ENV_VAR):
                 return topology.strip().lower()
             # GCE-based VM check using TPU env string.
             tpu_env = _get_tpu_metadata(key=GCE_TPU_ENV_KEY)

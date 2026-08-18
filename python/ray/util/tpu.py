@@ -13,7 +13,11 @@ from ray._private.accelerators.tpu import (
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
     TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR,
     TORCH_TPU_TOPOLOGY_ENV_VAR,
+    TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR,
+    TPU_PROCESS_BOUNDS_ENV_VAR,
     TPU_SUBSLICE_LABEL_PREFIX,
+    TPU_WORKER_HOSTNAMES_ENV_VAR,
+    TPU_WORKER_ID_ENV_VAR,
     VALID_TPU_TYPES,
     _build_subslice_labels,
     _get_default_chips_per_vm,
@@ -21,6 +25,8 @@ from ray._private.accelerators.tpu import (
     _get_worker_dims_for_topology,
     _parse_topology_dims,
     get_chips_per_host,
+    get_jax_chips_per_process_bounds,
+    get_jax_process_bounds,
     get_num_chips_from_topology,
     get_tpu_resource_per_chip,
     infer_tpu_pod_type_from_topology,
@@ -296,6 +302,51 @@ def get_torchtpu_env_vars(
             )
         else:
             env_vars[TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR] = slicebuilder_addresses
+    return env_vars
+
+
+@PublicAPI(stability="alpha")
+def get_jax_env_vars(
+    worker_hostnames: Union[str, List[str]],
+    worker_id: Optional[Union[int, str]] = None,
+    process_bounds: Optional[str] = None,
+    chips_per_process_bounds: Optional[str] = None,
+) -> Dict[str, str]:
+    """Returns environment variables required for JAX / libtpu execution on TPU slices or subslices.
+
+    Args:
+        worker_hostnames: Comma-separated string or list of host IP addresses or DNS hostnames.
+            If port numbers are included (e.g. "10.0.0.1:8471"), they will be stripped.
+        worker_id: Optional integer or string ID of the worker (0-indexed).
+        process_bounds: Optional process bounds string (e.g. "1,2,1") for subslice execution.
+        chips_per_process_bounds: Optional chips per process bounds string (e.g. "2,2,1").
+
+    Returns:
+        A dictionary mapping JAX / libtpu environment variables to their values.
+    """
+    if isinstance(worker_hostnames, str):
+        raw_list = [h.strip() for h in worker_hostnames.split(",") if h.strip()]
+    else:
+        raw_list = [str(h).strip() for h in worker_hostnames if str(h).strip()]
+
+    # Strip port if host is formatted as host:port
+    clean_hosts = []
+    for h in raw_list:
+        if ":" in h:
+            clean_hosts.append(h.split(":")[0])
+        else:
+            clean_hosts.append(h)
+
+    env_vars = {
+        TPU_WORKER_HOSTNAMES_ENV_VAR: ",".join(clean_hosts),
+    }
+    if worker_id is not None:
+        env_vars[TPU_WORKER_ID_ENV_VAR] = str(worker_id)
+    if process_bounds is not None:
+        env_vars[TPU_PROCESS_BOUNDS_ENV_VAR] = str(process_bounds)
+    if chips_per_process_bounds is not None:
+        env_vars[TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR] = str(chips_per_process_bounds)
+
     return env_vars
 
 
@@ -1100,6 +1151,86 @@ class SlicePlacementGroup:
         )
         return RuntimeEnv(env_vars=env_vars)
 
+    @property
+    def worker_addrs(self) -> List[Optional[str]]:
+        """The list of host IP addresses for each bundle in this placement group.
+
+        Returns:
+            A list of IP address strings (or None for unscheduled bundles),
+            in bundle order (index 0 to num_bundles - 1).
+        """
+        nodes = ray.nodes() if ray.is_initialized() else []
+        if self._pg_per_slice:
+            addrs: List[Optional[str]] = []
+            for pg in self._managed_pgs:
+                if pg is None:
+                    continue
+                table = placement_group_table(pg) if ray.is_initialized() else {}
+                bundles = table.get("bundles_to_node_id", {})
+                for b_idx in range(len(bundles) or 1):
+                    addrs.append(_get_pg_bundle_node_ip(pg, b_idx, nodes=nodes))
+            return addrs
+        else:
+            if not self._managed_pgs:
+                return [None] * self._num_bundles
+            pg = self._managed_pgs[0]
+            return [
+                _get_pg_bundle_node_ip(pg, i, nodes=nodes)
+                for i in range(self._num_bundles)
+            ]
+
+    @PublicAPI(stability="alpha")
+    def get_jax_env_vars(
+        self,
+        worker_id: Optional[Union[int, str]] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
+    ) -> Dict[str, str]:
+        """Returns the JAX TPU environment variables for this slice.
+
+        Args:
+            worker_id: Optional integer or string ID of the worker within the slice.
+            worker_hostnames: Optional comma-separated string or list of host IP
+                addresses or DNS hostnames. If omitted, resolved from placement
+                group bundles.
+
+        Returns:
+            A dictionary mapping JAX TPU environment variables to their values.
+        """
+        if worker_hostnames is None:
+            addrs = [a for a in self.worker_addrs if a is not None]
+            if addrs:
+                worker_hostnames = addrs
+            else:
+                worker_hostnames = os.environ.get(TPU_WORKER_HOSTNAMES_ENV_VAR, "")
+
+        return get_jax_env_vars(
+            worker_hostnames=worker_hostnames,
+            worker_id=worker_id,
+        )
+
+    @PublicAPI(stability="alpha")
+    def get_jax_runtime_env(
+        self,
+        worker_id: Optional[Union[int, str]] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
+    ) -> RuntimeEnv:
+        """Returns a Ray RuntimeEnv populated with JAX TPU environment variables.
+
+        Args:
+            worker_id: Optional integer or string ID of the worker within the slice.
+            worker_hostnames: Optional comma-separated string or list of host IP
+                addresses or DNS hostnames. If omitted, resolved from placement
+                group bundles.
+
+        Returns:
+            A Ray RuntimeEnv configured with JAX TPU environment variables.
+        """
+        env_vars = self.get_jax_env_vars(
+            worker_id=worker_id,
+            worker_hostnames=worker_hostnames,
+        )
+        return RuntimeEnv(env_vars=env_vars)
+
 
 @PublicAPI(stability="alpha")
 @client_mode_wrap
@@ -1470,7 +1601,7 @@ def _tpu_cache_put(
 
 def _get_subslice_kv_key(slice_name: str) -> bytes:
     """Build internal KV key for subslice topology data."""
-    return f"tpu_subslice_v2/{slice_name}".encode()
+    return f"tpu_subslice/{slice_name}".encode()
 
 
 def _find_valid_parent_topologies(
@@ -1612,8 +1743,12 @@ def _discover_and_persist_subslices(
             )
             if existing:
                 data = json.loads(existing)
-                worker_labels = data.get("worker_labels", {})
-                host_addresses = data.get("host_addresses_by_worker_id")
+                if isinstance(data, dict) and "worker_labels" in data:
+                    worker_labels = data["worker_labels"]
+                    host_addresses = data.get("host_addresses_by_worker_id")
+                else:
+                    worker_labels = data
+                    host_addresses = None
                 _tpu_cache_put(slice_name, worker_labels, host_addresses)
                 logger.info(
                     "Subslice labels for '%s' found in KV after slice "
@@ -1738,6 +1873,13 @@ def _discover_and_persist_subslices(
                 f"'tpu-worker-id' labels or failed to return chip coordinates."
             )
 
+        # Persist to internal KV alongside coords.
+        # Cache invalidation: the addresses must be dropped and re-collected
+        # whenever the coords for that slice are re-discovered. Never carry an
+        # address map across a slice-name change. On GKE these are usually
+        # stable headless-service DNS names, but raw pod IPs are also possible,
+        # and those go stale on pod restart — so the map's lifetime must not
+        # exceed the coords' lifetime.
         payload = {
             "worker_labels": subslice_labels_by_worker_id,
             "host_addresses_by_worker_id": discovered_host_addresses,
@@ -1831,6 +1973,8 @@ def _refresh_cache_from_kv(
     # redundant GCS round-trips for the same key.
     seen_slice_names: Set[str] = set()
     for node in nodes:
+        if not node.get("Alive"):
+            continue
         node_labels = node.get("Labels", {})
         slice_name = node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
         node_topology = node_labels.get(ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY)
@@ -1852,8 +1996,12 @@ def _refresh_cache_from_kv(
             )
             if existing:
                 data = json.loads(existing)
-                worker_labels = data.get("worker_labels")
-                host_addresses = data.get("host_addresses_by_worker_id")
+                if isinstance(data, dict) and "worker_labels" in data:
+                    worker_labels = data["worker_labels"]
+                    host_addresses = data.get("host_addresses_by_worker_id")
+                else:
+                    worker_labels = data
+                    host_addresses = None
             else:
                 worker_labels = None
                 host_addresses = None
@@ -1890,6 +2038,8 @@ def _collect_known_slice_labels(
     results: List[Tuple[str, Dict[str, Dict[str, str]]]] = []
     for slice_name, labels in cache_snapshot.items():
         for node in nodes:
+            if not node.get("Alive"):
+                continue
             node_labels = node.get("Labels", {})
             if (
                 node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY) == slice_name
@@ -2294,6 +2444,90 @@ class SubslicePlacementGroup:
         )
         return RuntimeEnv(env_vars=env_vars)
 
+    @property
+    def worker_addrs(self) -> List[Optional[str]]:
+        """The list of host IP addresses for each bundle in this subslice placement group.
+
+        Returns:
+            A list of IP address strings (or None for unscheduled bundles),
+            in bundle order (index 0 to num_hosts - 1).
+        """
+        if self._placement_group is None:
+            return [None] * self._num_hosts
+        nodes = ray.nodes() if ray.is_initialized() else []
+        return [
+            _get_pg_bundle_node_ip(self._placement_group, i, nodes=nodes)
+            for i in range(self._num_hosts)
+        ]
+
+    @PublicAPI(stability="alpha")
+    def get_jax_env_vars(
+        self,
+        worker_id: Optional[Union[int, str]] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
+    ) -> Dict[str, str]:
+        """Returns the JAX TPU environment variables for this sub-slice.
+
+        Args:
+            worker_id: Optional integer or string ID of the worker within the sub-slice (0 to num_hosts - 1).
+            worker_hostnames: Optional comma-separated string or list of host IP
+                addresses or DNS hostnames for this sub-slice. If omitted, resolved
+                from placement group bundles or discovery data.
+
+        Returns:
+            A dictionary mapping JAX TPU environment variables to their values.
+        """
+        if worker_hostnames is None:
+            addrs = [a for a in self.worker_addrs if a is not None]
+            if addrs:
+                worker_hostnames = addrs
+            elif self._slicebuilder_addresses:
+                # Extract host IPs from slicebuilder address:port list
+                clean = []
+                for a in self._slicebuilder_addresses:
+                    h = a.split(":")[0] if ":" in a else a
+                    if h not in clean:
+                        clean.append(h)
+                worker_hostnames = clean
+            else:
+                worker_hostnames = os.environ.get(TPU_WORKER_HOSTNAMES_ENV_VAR, "")
+
+        process_bounds = get_jax_process_bounds(self._subslice_topology)
+        chips_per_process_bounds = get_jax_chips_per_process_bounds(
+            chips_per_host=self._chips_per_host,
+            accelerator_version=self._accelerator_version,
+        )
+
+        return get_jax_env_vars(
+            worker_hostnames=worker_hostnames,
+            worker_id=worker_id,
+            process_bounds=process_bounds,
+            chips_per_process_bounds=chips_per_process_bounds,
+        )
+
+    @PublicAPI(stability="alpha")
+    def get_jax_runtime_env(
+        self,
+        worker_id: Optional[Union[int, str]] = None,
+        worker_hostnames: Optional[Union[str, List[str]]] = None,
+    ) -> RuntimeEnv:
+        """Returns a Ray RuntimeEnv populated with JAX TPU environment variables for this sub-slice.
+
+        Args:
+            worker_id: Optional integer or string ID of the worker within the sub-slice.
+            worker_hostnames: Optional comma-separated string or list of host IP
+                addresses or DNS hostnames. If omitted, resolved from placement
+                group bundles.
+
+        Returns:
+            A Ray RuntimeEnv configured with JAX TPU environment variables.
+        """
+        env_vars = self.get_jax_env_vars(
+            worker_id=worker_id,
+            worker_hostnames=worker_hostnames,
+        )
+        return RuntimeEnv(env_vars=env_vars)
+
 
 def _build_slice_worker_to_node(
     nodes: List[Dict[str, Any]],
@@ -2305,6 +2539,7 @@ def _build_slice_worker_to_node(
             node_labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY),
         ): node
         for node in nodes
+        if node.get("Alive")
         for node_labels in [node.get("Labels", {})]
         if node_labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
         and node_labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
