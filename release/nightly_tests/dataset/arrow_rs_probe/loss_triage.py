@@ -76,16 +76,24 @@ SHAPE_BINS = {
     "auto": 67_108_864,
     "write": 1_342_177_280,
     "tensorscp": 40_894_464,
+    # M43's shape in-Ray: tensors with ~9.4x dictionary expansion (the release
+    # wide_schema tensors regime). Same release bin as tensorscp. tensorscp
+    # (~1.1x expansion) stays as the control.
+    "tensorsdict": 40_894_464,
 }
 SHAPE_FIXTURE = {
     "auto": "auto_rg",
     "write": "bin_sweep",
     "tensorscp": "tensors_cp",
+    "tensorsdict": "tensors_dict",
 }
+# Shapes that decode through the crate's skip+realign path (cloudpickle
+# ARROW:schema) — they share the env flag and the per-batch realign cast.
+TENSOR_SHAPES = {"tensorscp", "tensorsdict"}
 # Env every cell of a shape needs, standalone included (the cloudpickle flag
 # must be set before ray.data is imported).
 SHAPE_ENV = {
-    "tensorscp": {"RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA": "1"},
+    s: {"RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA": "1"} for s in TENSOR_SHAPES
 }
 
 
@@ -220,7 +228,7 @@ def run_case(a):
         raise SystemExit(f"no parquet files under {a.path}")
 
     realign_fields = None
-    if a.shape == "tensorscp":
+    if a.shape in TENSOR_SHAPES:
         # Both readers need Ray's tensor extension types registered (the
         # release run has them via ray.data); the rs leg additionally realigns
         # to the footer's extension schema, exactly like the reader.

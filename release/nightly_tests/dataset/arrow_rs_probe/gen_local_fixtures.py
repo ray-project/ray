@@ -408,8 +408,18 @@ def gen_tensors_dict(d, scale):
     Runs need RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1, same as
     tensors_cp.
     """
+    return _gen_tensors_pooled(d, scale, pool_size=16)
+
+
+def _gen_tensors_pooled(d, scale, pool_size):
+    """Shared body for the expansion-sweep shapes: tensors_cp with leaves drawn
+    from a ``pool_size``-value pool. Smaller pool -> narrower dictionary
+    indices -> larger decoded/encoded expansion. The achieved ratio is
+    measured from the footers and recorded in the manifest
+    (``enc_to_dec_ratio``) — the ablation reads the measured value, so the
+    pool size only needs to land in the right regime, not hit a target."""
     rng = np.random.default_rng(11)
-    pool = rng.random(16, dtype=np.float32)
+    pool = rng.random(pool_size, dtype=np.float32)
     rows = max(2560, int(2560 * scale))
     stats = gen_tensors_cp(d, scale, _pool=pool, _rows=rows, _rg=rows, _files=2)
     # Footer reads hydrate the (in-process-registered) extension schema, which
@@ -431,11 +441,33 @@ def gen_tensors_dict(d, scale):
     finally:
         tx._AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = prev
     stats["enc_to_dec_ratio"] = round(stats["uncompressed_bytes"] / max(1, enc), 2)
-    print(f"  tensors_dict: enc->dec expansion {stats['enc_to_dec_ratio']}x")
+    print(
+        f"  tensors(pool={pool_size}): enc->dec expansion {stats['enc_to_dec_ratio']}x"
+    )
     return stats
 
 
 gen_tensors_dict._fixture_version = 1
+
+
+def gen_tensors_lo(d, scale):
+    """Expansion-sweep LOW point: ~2-3x decoded/encoded (4096-value pool).
+    With tensors_cp (~1.1x), tensors_dict (~9.4x) and tensors_hi (~15x+) this
+    gives four points to check that batch overshoot scales linearly with the
+    expansion ratio (M43) and that a fix holds across the whole range."""
+    return _gen_tensors_pooled(d, scale, pool_size=4096)
+
+
+gen_tensors_lo._fixture_version = 1
+
+
+def gen_tensors_hi(d, scale):
+    """Expansion-sweep HIGH point: 2-value pool (1-bit dictionary indices),
+    the worst plausible expansion — the stress case for any sizing policy."""
+    return _gen_tensors_pooled(d, scale, pool_size=2)
+
+
+gen_tensors_hi._fixture_version = 1
 
 
 SHAPES = {
@@ -449,6 +481,8 @@ SHAPES = {
     "tensors_wide": gen_tensors_wide,
     "tensors_cp": gen_tensors_cp,
     "tensors_dict": gen_tensors_dict,
+    "tensors_lo": gen_tensors_lo,
+    "tensors_hi": gen_tensors_hi,
 }
 
 

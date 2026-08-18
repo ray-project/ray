@@ -18,7 +18,7 @@
 #   1. setup.sh          venv + commit-matched wheel + source symlink + crate
 #                        (skipped when env.sh already imports; FORCE_SETUP=1 to
 #                        redo — MANDATORY after a git pull that touches the crate)
-#   2. fixtures          gen_local_fixtures.py: auto_rg, bin_sweep, tensors_cp
+#   2. fixtures          gen_local_fixtures.py: auto_rg, bin_sweep, tensors_cp, tensors_dict
 #   3. matrix            loss_triage.py (S3 part auto-enabled when
 #                        ARROW_RS_S3_BUCKET is set; AWS creds must be exported)
 #
@@ -26,7 +26,7 @@
 #   FIXTURE_SCALE=0.25   smaller fixtures for a smoke run
 #   FIXTURES_ROOT=<dir>  default ~/arrow_rs_repl_fixtures
 #   REPEAT=3 WARMUP=1    per-cell medians (as in run_replication.sh)
-#   SHAPES=write         subset: auto,write,tensorscp
+#   SHAPES=write         subset: auto,write,tensorscp,tensorsdict
 #   PARTS=ray_local      subset: standalone,ray_local,ray_s3
 #   FORCE_SETUP=1        re-run setup.sh even if the env already imports
 # ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ FIXTURES_ROOT="${FIXTURES_ROOT:-$HOME/arrow_rs_repl_fixtures}"
 FIXTURE_SCALE="${FIXTURE_SCALE:-1.0}"
 REPEAT="${REPEAT:-3}"
 WARMUP="${WARMUP:-1}"
-SHAPES="${SHAPES:-auto,write,tensorscp}"
+SHAPES="${SHAPES:-auto,write,tensorscp,tensorsdict}"
 PARTS="${PARTS:-}"
 
 say() { printf '\n\033[1;35m### %s\033[0m\n' "$*"; }
@@ -59,9 +59,9 @@ source "$SCRIPT_DIR/env.sh"
 [ -n "$CALLER_S3_BUCKET" ] && export ARROW_RS_S3_BUCKET="$CALLER_S3_BUCKET"
 export RAY_ADDRESS=local
 
-say "2/3 fixtures (root=$FIXTURES_ROOT scale=$FIXTURE_SCALE: auto_rg, bin_sweep, tensors_cp)"
+say "2/3 fixtures (root=$FIXTURES_ROOT scale=$FIXTURE_SCALE: auto_rg, bin_sweep, tensors_cp, tensors_dict)"
 python "$SCRIPT_DIR/gen_local_fixtures.py" --root "$FIXTURES_ROOT" \
-  --scale "$FIXTURE_SCALE" --shapes auto_rg,bin_sweep,tensors_cp
+  --scale "$FIXTURE_SCALE" --shapes auto_rg,bin_sweep,tensors_cp,tensors_dict
 
 say "3/3 loss triage matrix (repeat=$REPEAT warmup=$WARMUP shapes=$SHAPES s3=${ARROW_RS_S3_BUCKET:-off})"
 python "$SCRIPT_DIR/loss_triage.py" \
