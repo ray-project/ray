@@ -92,17 +92,26 @@ def test_netrc_is_mounted_into_the_container(tmp_path) -> None:
     def _mock_popen(input: List[str]) -> None:
         inputs.append(" ".join(input))
 
-    netrc = tmp_path / "netrc"
+    netrc = tmp_path / ".rayci-netrc"
     netrc.write_text("machine example.invalid\nlogin aws\npassword tok\n")
+    host_checkout = "/var/lib/buildkite-agent/builds/agent-1/ray-project/microcheck"
 
     with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
         "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
         return_value=None,
-    ), mock.patch.dict(os.environ, {"NETRC": str(netrc)}):
+    ), mock.patch.dict(
+        os.environ, {"NETRC": str(netrc), "RAYCI_CHECKOUT_DIR": host_checkout}
+    ):
         LinuxTesterContainer("team")._run_tests_in_docker(["t1"], [], "/tmp", [])
-        # Mounted at this layer's workspace path, not the agent's: the value the
-        # step container carries points at its own mount, which is not here.
-        assert f"--volume {netrc}:/rayci/.rayci-netrc:ro" in inputs[-1]
+        # The source must be the host path. This docker run is served by the host
+        # daemon through the mounted socket, so passing the path as seen inside
+        # this container makes docker create a directory of that name and fail
+        # with "not a directory".
+        assert (
+            f"--volume {host_checkout}/.rayci-netrc:/rayci/.rayci-netrc:ro"
+            in inputs[-1]
+        )
+        assert f"--volume {netrc}:" not in inputs[-1]
         assert "--env NETRC=/rayci/.rayci-netrc" in inputs[-1]
 
 
@@ -114,6 +123,7 @@ def test_netrc_is_not_mounted_when_unset() -> None:
         inputs.append(" ".join(input))
 
     environ = {k: v for k, v in os.environ.items() if k != "NETRC"}
+    environ["RAYCI_CHECKOUT_DIR"] = "/some/host/checkout"
     with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
         "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
         return_value=None,

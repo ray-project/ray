@@ -130,13 +130,22 @@ class LinuxContainer(Container):
         # way the rest of the checkout does: tests.env.Dockerfile COPYs the
         # workspace into an image, and a token does not belong in an image layer,
         # so .rayci-netrc is excluded from the build context. Bind-mount it
-        # instead, and name it at this layer's workspace path -- the agent's
-        # value points at the step container's mount, which does not exist here.
+        # instead.
+        #
+        # Both paths are needed and they are not interchangeable. $NETRC is where
+        # the file is *here*, which is what says whether there is one to mount.
+        # The mount source has to be the path on the *host*, because this docker
+        # run is served by the host daemon through the mounted socket -- passing
+        # the in-container path makes docker create a directory of that name and
+        # fail with "not a directory". RAYCI_CHECKOUT_DIR is the same checkout as
+        # the host sees it, which is how the workspace mount above is built too.
         netrc = os.environ.get("NETRC")
-        if netrc and os.path.exists(netrc):
+        checkout = os.environ.get("RAYCI_CHECKOUT_DIR")
+        if netrc and checkout and os.path.exists(netrc):
+            host_netrc = os.path.join(checkout, os.path.basename(netrc))
             extra_args += [
                 "--volume",
-                f"{netrc}:/rayci/.rayci-netrc:ro",
+                f"{host_netrc}:/rayci/.rayci-netrc:ro",
                 "--env",
                 "NETRC=/rayci/.rayci-netrc",
             ]
