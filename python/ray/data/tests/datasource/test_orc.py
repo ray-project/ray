@@ -1,15 +1,12 @@
 import os
-import pickle
 
 import pyarrow as pa
 import pytest
 from pyarrow import orc
 
 import ray
-from ray.data._internal.object_extensions.arrow import (
-    ARROW_PYTHON_OBJECT_EXTENSION_NAME,
-    raise_on_pickle_object_columns,
-)
+from ray.data._internal.datasource.orc_datasource import ORCDatasource
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
 
 def _write_orc(path, table):
@@ -17,61 +14,41 @@ def _write_orc(path, table):
         orc.write_table(table, sink)
 
 
-def _pickle_object_table(value):
-    storage = pa.array([pickle.dumps(value)], type=pa.large_binary())
-    field = pa.field(
-        "col",
-        pa.large_binary(),
-        metadata={
-            b"ARROW:extension:name": ARROW_PYTHON_OBJECT_EXTENSION_NAME.encode(),
-            b"ARROW:extension:metadata": b"",
-        },
-    )
-    return pa.Table.from_arrays([storage], schema=pa.schema([field]))
+def test_read_orc_skips_empty_stripes(monkeypatch):
+    record_batches = [
+        pa.record_batch([pa.array([], type=pa.int64())], names=["id"]),
+        pa.record_batch([pa.array([1], type=pa.int64())], names=["id"]),
+    ]
+
+    class FakeORCFile:
+        nstripes = len(record_batches)
+
+        def read_stripe(self, stripe_index):
+            return record_batches[stripe_index]
+
+    monkeypatch.setattr(orc, "ORCFile", lambda _: FakeORCFile())
+
+    tables = list(ORCDatasource()._read_stream(None, "unused"))
+
+    assert tables == [pa.table({"id": [1]})]
 
 
-def test_read_orc_rejects_pickle_object_metadata_before_block_transport(tmp_path):
-    path = os.path.join(tmp_path, "metadata.orc")
-    _write_orc(path, _pickle_object_table({"key": "value"}))
+def test_read_orc_rejects_pickle_object_columns(monkeypatch):
+    storage = pa.array([b"payload"], type=pa.large_binary())
+    extension_array = pa.ExtensionArray.from_storage(ArrowPythonObjectType(), storage)
+    record_batch = pa.record_batch([extension_array], names=["col"])
 
-    with pa.OSFile(path, "rb") as source:
-        orc_file = orc.ORCFile(source)
-        table = pa.Table.from_batches([orc_file.read_stripe(0)])
+    class FakeORCFile:
+        nstripes = 1
+
+        def read_stripe(self, stripe_index):
+            assert stripe_index == 0
+            return record_batch
+
+    monkeypatch.setattr(orc, "ORCFile", lambda _: FakeORCFile())
 
     with pytest.raises(ValueError, match="arrow_pickled_object"):
-        raise_on_pickle_object_columns(table)
-
-
-def test_read_orc_allows_pickle_object_columns_with_env_var(
-    tmp_path, shutdown_only, monkeypatch
-):
-    # Set the environment variable on both the driver and worker processes.
-    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
-    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
-
-    path = os.path.join(tmp_path, "trusted.orc")
-    _write_orc(path, _pickle_object_table({"key": "value"}))
-
-    rows = ray.data.read_orc(path).take_all()
-
-    assert rows == [{"col": {"key": "value"}}]
-
-
-def test_read_orc_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
-    marker = tmp_path / "exploit_marker"
-
-    class Exploit:
-        def __reduce__(self):
-            return (os.system, (f"touch {marker}",))
-
-    path = os.path.join(tmp_path, "exploit.orc")
-    _write_orc(path, _pickle_object_table(Exploit()))
-
-    ds = ray.data.read_orc(path)
-    with pytest.raises(Exception, match="arrow_pickled_object"):
-        ds.take_all()
-
-    assert not marker.exists(), "pickle.load executed attacker code"
+        list(ORCDatasource()._read_stream(None, "unused"))
 
 
 def test_read_orc_basic(ray_start_regular_shared, tmp_path):

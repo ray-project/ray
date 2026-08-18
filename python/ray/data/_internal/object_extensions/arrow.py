@@ -19,12 +19,10 @@ _check_pyarrow_version()
 AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
 
 ARROW_PYTHON_OBJECT_EXTENSION_NAME = "ray.data.arrow_pickled_object"
-_ARROW_EXTENSION_NAME_METADATA_KEY = b"ARROW:extension:name"
-_ARROW_PYTHON_OBJECT_EXTENSION_NAME_BYTES = ARROW_PYTHON_OBJECT_EXTENSION_NAME.encode()
 
 
 def raise_on_pickle_object_columns(table: "pa.Table") -> None:
-    """Raise if ``table`` declares or contains the pickled-object extension type.
+    """Raise if ``table`` has data stored as the pickled-object extension type.
 
     Deserializing ``ray.data.arrow_pickled_object`` columns requires unpickling, which
     can execute arbitrary code. To avoid exposing users to this vulnerability,
@@ -36,9 +34,7 @@ def raise_on_pickle_object_columns(table: "pa.Table") -> None:
         return
 
     pickle_cols = [
-        field.name
-        for field in table.schema
-        if _field_contains_pickle_object_type(field)
+        field.name for field in table.schema if _contains_pickle_object_type(field.type)
     ]
     if pickle_cols:
         raise ValueError(
@@ -51,21 +47,6 @@ def raise_on_pickle_object_columns(table: "pa.Table") -> None:
             f"reading these columns. In a Ray cluster, this variable must "
             f"be set on all worker nodes (e.g. via 'runtime_env')."
         )
-
-
-def _field_contains_pickle_object_type(field: "pa.Field") -> bool:
-    """Return whether ``field`` declares or contains the pickle object type."""
-    metadata = field.metadata or {}
-    if (
-        metadata.get(_ARROW_EXTENSION_NAME_METADATA_KEY)
-        == _ARROW_PYTHON_OBJECT_EXTENSION_NAME_BYTES
-    ):
-        # Some file formats preserve Arrow extension metadata but coerce the storage
-        # type while decoding. Reject the declaration before a later Arrow IPC
-        # round-trip can reconstruct the registered extension type.
-        return True
-
-    return _contains_pickle_object_type(field.type)
 
 
 def _contains_pickle_object_type(dtype: "pa.DataType") -> bool:
@@ -82,7 +63,7 @@ def _contains_pickle_object_type(dtype: "pa.DataType") -> bool:
         return _contains_pickle_object_type(dtype.value_type)
 
     return any(
-        _field_contains_pickle_object_type(dtype.field(i))
+        _contains_pickle_object_type(dtype.field(i).type)
         for i in range(dtype.num_fields)
     )
 

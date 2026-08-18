@@ -26,10 +26,11 @@ class ORCDatasource(FileBasedDatasource):
         # needed here.
         for stripe_index in range(orc_file.nstripes):
             table = pa.Table.from_batches([orc_file.read_stripe(stripe_index)])
-            # Unpickling untrusted data can execute arbitrary code. Reject object
-            # columns unless the user has explicitly opted in.
-            raise_on_pickle_object_columns(table)
-            yield table
+            if table.num_rows > 0:
+                # Unpickling untrusted data can execute arbitrary code. Reject object
+                # columns unless the user has explicitly opted in.
+                raise_on_pickle_object_columns(table)
+                yield table
 
     def _open_input_source(
         self,
