@@ -142,6 +142,10 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         RayActorOptionsSchema.model_validate(ray_actor_options_schema)
 
+    def test_invalid_label_selector(self):
+        with pytest.raises(ValidationError, match="Invalid label key name"):
+            RayActorOptionsSchema.model_validate({"label_selector": {"-bad-key-": "v"}})
+
     def test_ge_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
