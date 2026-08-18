@@ -31,6 +31,8 @@ Result-dict fields it adds (all ``None``/absent if disabled or unavailable):
     node_mem_peak_used_node        that node's IP
     node_mem_peak_used_source      cgroup | meminfo | psutil — which one it came from
     node_mem_peak_worker_uss_gb    peak summed worker USS on the worst node (Linux)
+    node_mem_p50/p90_worker_uss_gb same series' time-percentiles on that node —
+                                   peak>>p50 = transient spike, peak~=p50 = sustained
     node_mem_peak_worker_rss_gb    same in RSS, which includes object-store pages
     node_mem_top_workers_uss/_rss  {proctitle: peak GB}, biggest first — the provenance
     node_mem_trace_path            the JSONL trace, one line per (node, sample)
@@ -390,6 +392,35 @@ class NodeMemoryMonitor:
         peak_worker_uss, _ = _worst("peak_workers_uss")
         peak_worker_rss, _ = _worst("peak_workers_rss")
 
+        # p50/p90 of summed worker USS OVER TIME, on the same node that produced
+        # the peak. The peak answers "how bad did it get"; these answer "how
+        # loaded was that node typically" - peak >> p50 is a transient spike,
+        # peak ~= p50 is sustained pressure (retention floors show up here).
+        def _series_pctile(node, key, q):
+            vals = sorted(
+                smp[key]
+                for smp in (node.get("samples") or [])
+                if smp.get(key) is not None
+            )
+            if not vals:
+                return None
+            return vals[min(len(vals) - 1, int(q * len(vals)))]
+
+        uss_node = (
+            next(
+                (n for n in per_node if n.get("peak_workers_uss") == peak_worker_uss),
+                None,
+            )
+            if peak_worker_uss is not None
+            else None
+        )
+        p50_worker_uss = (
+            _series_pctile(uss_node, "workers_uss", 0.50) if uss_node else None
+        )
+        p90_worker_uss = (
+            _series_pctile(uss_node, "workers_uss", 0.90) if uss_node else None
+        )
+
         # Worst single node per proctitle — the provenance the node total lacks.
         # USS where available, RSS as a separate field rather than a silent substitute.
         def _top(key):
@@ -405,6 +436,8 @@ class NodeMemoryMonitor:
             "node_mem_peak_used_node": peak_used_node,
             "node_mem_peak_used_source": used_source if peak_used is not None else None,
             "node_mem_peak_worker_uss_gb": _bytes_to_gb(peak_worker_uss),
+            "node_mem_p50_worker_uss_gb": _bytes_to_gb(p50_worker_uss),
+            "node_mem_p90_worker_uss_gb": _bytes_to_gb(p90_worker_uss),
             "node_mem_peak_worker_rss_gb": _bytes_to_gb(peak_worker_rss),
             "node_mem_top_workers_uss": _top("peak_uss_by_title"),
             "node_mem_top_workers_rss": _top("peak_rss_by_title"),
