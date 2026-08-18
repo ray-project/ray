@@ -3,10 +3,14 @@ import sys
 import time
 from types import SimpleNamespace
 from typing import AsyncGenerator, Optional
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
+from fastapi.testclient import TestClient
+from vllm.entrypoints.openai.cli_args import make_arg_parser
+from vllm.utils.argparse_utils import FlexibleArgumentParser
+from vllm.v1.engine.exceptions import EngineDeadError
 
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -18,6 +22,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import CompletionReq
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.vllm_engine import (
+    VLLMEngine,
     _canonicalize_request_id_header,
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
@@ -783,6 +788,49 @@ class TestMaybeAddRequestId:
         finally:
             serve.context._serve_request_context.set(serve.context._RequestContext())
         assert not hasattr(req, "request_id")
+
+
+class TestBuildAsgiApp:
+    """``VLLMEngine.build_asgi_app`` must produce an app vLLM's error handlers work on."""
+
+    @pytest.mark.asyncio
+    async def test_engine_error_reaches_the_client(self):
+        """A dead engine reports vLLM's error, not the handler's own AttributeError.
+
+        vLLM's engine error handler reads ``app.state.server``, which neither
+        ``build_app`` nor ``init_app_state`` sets.
+        """
+        # Building the parser resolves VllmConfig's defaults, which infer the device
+        # type. A GPU-less CI node has no vLLM platform, so pin one; this app is never
+        # served and no engine is started.
+        from vllm.platforms import current_platform
+
+        if not current_platform.device_type:
+            current_platform.device_type = "cpu"
+
+        vllm_args = make_arg_parser(FlexibleArgumentParser()).parse_args([])
+        engine = VLLMEngine.__new__(VLLMEngine)
+        engine._vllm_args = vllm_args
+        engine._engine_client = SimpleNamespace(model_config=None)
+        engine._token_receiver = None
+
+        # init_app_state needs a live engine; supply only what the handler reads.
+        with patch(
+            "vllm.entrypoints.openai.api_server.init_app_state",
+            new_callable=AsyncMock,
+        ):
+            app = await engine.build_asgi_app()
+        app.state.args = vllm_args
+        app.state.engine_client = SimpleNamespace(errored=True, is_running=False)
+
+        @app.get("/engine_dead")
+        async def engine_dead():
+            raise EngineDeadError()
+
+        response = TestClient(app, raise_server_exceptions=False).get("/engine_dead")
+
+        assert response.status_code == 500
+        assert "EngineCore encountered an issue" in response.json()["error"]["message"]
 
 
 if __name__ == "__main__":

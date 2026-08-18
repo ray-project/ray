@@ -1,25 +1,26 @@
-.. meta::
-   :description: API reference index for Ray Train, covering the PyTorch, Lightning, Transformers, TensorFlow/Keras, XGBoost, and LightGBM trainers and configs.
+---
+myst:
+  html_meta:
+    description: "API reference index for Ray Train, covering the PyTorch, Lightning, Transformers, TensorFlow/Keras, XGBoost, and LightGBM trainers and configs."
+---
 
-.. _train-api:
+(train-api)=
 
-Ray Train API
-=============
+# Ray Train API
 
+```{eval-rst}
 .. currentmodule:: ray
+```
 
+:::{important}
+These API references are for the revamped Ray Train V2 implementation that is available starting from Ray 2.43 by enabling the environment variable `RAY_TRAIN_V2_ENABLED=1`. These APIs assume that the environment variable has been enabled.
 
-.. important::
+See {ref}`train-deprecated-api` for the old API references and the [Ray Train V2 Migration Guide](https://github.com/ray-project/ray/issues/49454).
+:::
 
-    These API references are for the revamped Ray Train V2 implementation that is available starting from Ray 2.43
-    by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``. These APIs assume that the environment variable has been enabled.
+## PyTorch Ecosystem
 
-    See :ref:`train-deprecated-api` for the old API references and the `Ray Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_.
-
-
-PyTorch Ecosystem
------------------
-
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -27,12 +28,13 @@ PyTorch Ecosystem
     ~train.torch.TorchTrainer
     ~train.torch.TorchConfig
     ~train.torch.xla.TorchXLAConfig
+```
 
-.. _train-pytorch-integration:
+(train-pytorch-integration)=
 
-PyTorch
-~~~~~~~
+### PyTorch
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -42,12 +44,13 @@ PyTorch
     ~train.torch.prepare_model
     ~train.torch.prepare_data_loader
     ~train.torch.enable_reproducibility
+```
 
-.. _train-lightning-integration:
+(train-lightning-integration)=
 
-PyTorch Lightning
-~~~~~~~~~~~~~~~~~
+### PyTorch Lightning
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -58,26 +61,26 @@ PyTorch Lightning
     ~train.lightning.RayFSDPStrategy
     ~train.lightning.RayDeepSpeedStrategy
     ~train.lightning.RayTrainReportCallback
+```
 
-.. _train-transformers-integration:
+(train-transformers-integration)=
 
-Hugging Face Transformers
-~~~~~~~~~~~~~~~~~~~~~~~~~
+### Hugging Face Transformers
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     ~train.huggingface.transformers.prepare_trainer
     ~train.huggingface.transformers.RayTrainReportCallback
+```
 
+## More Frameworks
 
-More Frameworks
----------------
+### TensorFlow/Keras
 
-TensorFlow/Keras
-~~~~~~~~~~~~~~~~
-
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -86,22 +89,22 @@ TensorFlow/Keras
     ~train.tensorflow.TensorflowConfig
     ~train.tensorflow.prepare_dataset_shard
     ~train.tensorflow.keras.ReportCheckpointCallback
+```
 
+### XGBoost
 
-XGBoost
-~~~~~~~
-
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     ~train.xgboost.XGBoostTrainer
     ~train.xgboost.RayTrainReportCallback
+```
 
+### LightGBM
 
-LightGBM
-~~~~~~~~
-
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -110,22 +113,23 @@ LightGBM
     ~train.lightgbm.get_network_params
     ~train.lightgbm.RayTrainReportCallback
     ~train.lightgbm.normalize_pandas_for_lightgbm
+```
 
-JAX
-~~~
+### JAX
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     ~train.v2.jax.JaxTrainer
+```
 
+(ray-train-configs-api)=
 
-.. _ray-train-configs-api:
+## Ray Train Configuration
 
-Ray Train Configuration
------------------------
-
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -137,14 +141,15 @@ Ray Train Configuration
     ~train.RunConfig
     ~train.ScalingConfig
     ~train.ValidationConfig
+```
 
-.. _train-loop-api:
+(train-loop-api)=
 
-Ray Train Utilities
--------------------
+## Ray Train Utilities
 
 **Classes**
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -155,16 +160,20 @@ Ray Train Utilities
     ~train.TrainContext
     ~train.ValidationFn
     ~train.ValidationTaskConfig
+```
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
     ~train.PreemptionInfo
+```
 
 **Functions**
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -175,19 +184,22 @@ Ray Train Utilities
     ~train.get_dataset_shard
     ~train.get_preemption_info
     ~train.report
+```
 
 **Collective**
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     ~train.collective.barrier
     ~train.collective.broadcast_from_rank_zero
+```
 
-Ray Train Output
-----------------
+## Ray Train Output
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :template: autosummary/class_without_autosummary.rst
@@ -196,10 +208,11 @@ Ray Train Output
     ~train.ReportedCheckpoint
     ~train.ReportedCheckpointStatus
     ~train.Result
+```
 
-Ray Train Errors
-----------------
+## Ray Train Errors
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :template: autosummary/class_without_autosummary.rst
@@ -209,32 +222,33 @@ Ray Train Errors
     ~train.PreemptionError
     ~train.WorkerGroupError
     ~train.TrainingFailedError
+```
 
-Ray Tune Integration Utilities
-------------------------------
+## Ray Tune Integration Utilities
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     tune.integration.ray_train.TuneReportCallback
+```
 
+## Ray Train Developer APIs
 
-Ray Train Developer APIs
-------------------------
+### Trainer Base Class
 
-Trainer Base Class
-~~~~~~~~~~~~~~~~~~
-
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     ~train.v2.api.data_parallel_trainer.DataParallelTrainer
+```
 
-Train Backend Base Classes
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Train Backend Base Classes
 
+```{eval-rst}
 .. _train-backend:
 .. _train-backend-config:
 
@@ -245,12 +259,14 @@ Train Backend Base Classes
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
+```
 
-Trainer Callbacks
-~~~~~~~~~~~~~~~~~
+### Trainer Callbacks
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     ~train.UserCallback
+```
