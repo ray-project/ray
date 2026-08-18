@@ -255,7 +255,7 @@ Learn more about Ray Train
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
 :animate: fade-in-slide-down
 
-[Ray Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
+{doc}`Ray Tune </tune/index>` is a library for hyperparameter tuning at any scale.
 It automatically finds the best hyperparameters for your models with efficient distributed search algorithms.
 With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code, supporting any deep learning framework including PyTorch, TensorFlow, and Keras.
 

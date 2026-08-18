@@ -58,7 +58,7 @@ To see an example, deploy the [Text ML example](serve-in-production-example). Th
 $ curl -o ray-service.text-ml.yaml https://raw.githubusercontent.com/ray-project/kuberay/2ba0dd7bea387ac9df3681666bab3d622e89846c/ray-operator/config/samples/ray-service.text-ml.yaml
 ```
 
-To deploy the example, we simply `kubectl apply` the CR. This creates the underlying Ray cluster, consisting of a head and worker node pod (see [Ray Clusters Key Concepts](../../cluster/key-concepts.rst) for more details on Ray clusters), as well as the service that can be used to query our application:
+To deploy the example, we simply `kubectl apply` the CR. This creates the underlying Ray cluster, consisting of a head and worker node pod (see {doc}`Ray Clusters Key Concepts </cluster/key-concepts>` for more details on Ray clusters), as well as the service that can be used to query our application:
 
 ```console
 $ kubectl apply -f ray-service.text-ml.yaml
