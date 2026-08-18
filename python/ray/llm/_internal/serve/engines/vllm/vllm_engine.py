@@ -381,6 +381,13 @@ class VLLMEngine(LLMEngine):
         # Overrides vLLM's own handler; the direct-streaming path never reaches
         # _make_error_response.
         app.add_exception_handler(VLLMError, _unwrapping_vllm_error_handler)
+        # On an engine error, vLLM's handler reads state.server -- the uvicorn.Server
+        # its own launcher sets -- and flips should_exit on it, which is what makes
+        # uvicorn stop serving and the process exit. Ray runs no uvicorn loop to
+        # observe that flag (Serve restarts the replica via check_health), but the
+        # read must still succeed: otherwise it raises AttributeError, and that
+        # replaces the engine error in the response.
+        app.state.server = types.SimpleNamespace()
         if self._token_receiver is not None:
             install_prompt_token_forwarding(
                 app.state,
