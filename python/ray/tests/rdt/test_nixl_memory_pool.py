@@ -34,6 +34,29 @@ def _layout(tensors):
     return [_nbytes(t) for t in tensors], [t.element_size() for t in tensors]
 
 
+def _unpack(regions, tensors):
+    """Recover per-tensor views from packed regions, the way a receiver does.
+
+    ``allocate_group`` returns only the regions to transfer, so what the pool
+    packed is checked by decoding them with the same two layout functions the
+    receive path uses.
+    """
+    sizes, alignments = _layout(tensors)
+    runs = split_run_by_desc_lens(sizes, alignments, [r.numel() for r in regions])
+    views = [None] * len(tensors)
+    for region, run in zip(regions, runs):
+        offsets, _ = packed_run_offsets(
+            [sizes[i] for i in run], [alignments[i] for i in run]
+        )
+        for offset, i in zip(offsets, run):
+            views[i] = (
+                region[offset : offset + sizes[i]]
+                .view(tensors[i].dtype)
+                .reshape(tensors[i].shape)
+            )
+    return views
+
+
 # ---------------------------------------------------------------------------
 # Wire-contract layout helpers
 # ---------------------------------------------------------------------------
@@ -175,44 +198,45 @@ class TestAllocateGroup:
     def test_single_tensor(self):
         t = _make_tensor([1.0, 2.0, 3.0])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        regions, placements, views = pool.allocate_group("o1", [t])
+        regions = pool.allocate_group("o1", [t])
 
         assert len(regions) == 1
-        assert len(views) == 1
-        assert torch.equal(views[0], t)
-        assert placements[0] == (0, 0)
         assert regions[0].numel() == _nbytes(t)
+        assert torch.equal(_unpack(regions, [t])[0], t)
         assert "o1" in pool._allocated_by_obj
 
     def test_multiple_independent_tensors_one_block(self):
         t1 = _make_tensor([1.0, 2.0])
         t2 = _make_tensor([3.0, 4.0, 5.0])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        regions, placements, views = pool.allocate_group("o1", [t1, t2])
+        regions = pool.allocate_group("o1", [t1, t2])
+        views = _unpack(regions, [t1, t2])
 
+        # Both tensors share a dtype, so they pack into one block with no pad.
         assert len(regions) == 1
+        assert regions[0].numel() == _nbytes(t1) + _nbytes(t2)
         assert torch.equal(views[0], t1)
         assert torch.equal(views[1], t2)
-        assert placements[0][0] == placements[1][0] == 0
 
-    def test_pool_views_are_backed_by_pool_tensor(self):
+    def test_regions_are_backed_by_pool_tensor(self):
         t = _make_tensor([10.0, 20.0])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        _regions, _placements, views = pool.allocate_group("o1", [t])
+        regions = pool.allocate_group("o1", [t])
 
         assert (
-            views[0].untyped_storage().data_ptr()
+            regions[0].untyped_storage().data_ptr()
             == pool.get_pool_tensor().untyped_storage().data_ptr()
         )
 
     def test_data_is_copied_not_aliased(self):
         t = _make_tensor([1.0, 2.0, 3.0])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        _regions, _placements, views = pool.allocate_group("o1", [t])
+        regions = pool.allocate_group("o1", [t])
+        view = _unpack(regions, [t])[0]
 
-        original = views[0].clone()
+        original = view.clone()
         t[0] = 999.0
-        assert torch.equal(views[0], original)
+        assert torch.equal(view, original)
 
     def test_view_of_large_storage_copies_only_view_bytes(self):
         """A small view of a large storage should only consume the view's bytes."""
@@ -220,11 +244,10 @@ class TestAllocateGroup:
         view = base[100:104]  # 16 bytes
         # Pool sized just above the view — far smaller than the full storage.
         pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
-        regions, _placements, views = pool.allocate_group("o1", [view])
+        regions = pool.allocate_group("o1", [view])
 
         assert regions[0].numel() == 16
-        assert pool._allocated_by_obj["o1"][0].size >= 16
-        assert torch.equal(views[0], view)
+        assert torch.equal(_unpack(regions, [view])[0], view)
         # Full storage would not fit.
         assert base.untyped_storage().nbytes() > 64
 
@@ -232,30 +255,90 @@ class TestAllocateGroup:
         t_f32 = torch.tensor([1.0], dtype=torch.float32)  # 4 bytes
         t_f64 = torch.tensor([2.0], dtype=torch.float64)  # 8 bytes
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        _regions, placements, views = pool.allocate_group("o1", [t_f32, t_f64])
+        regions = pool.allocate_group("o1", [t_f32, t_f64])
+        views = _unpack(regions, [t_f32, t_f64])
 
+        # The float64 starts on an 8-byte boundary, so the region carries 4
+        # bytes of padding past the float32.
+        assert regions[0].numel() == 16
         assert torch.equal(views[0], t_f32)
         assert torch.equal(views[1], t_f64)
-        assert views[0].dtype == torch.float32
-        assert views[1].dtype == torch.float64
-        # The float64 starts on an 8-byte boundary, so it is padded past the
-        # float32's 4 bytes.
-        assert placements[1][1] == 8
 
-    def test_multidimensional_shape_preserved(self):
+    def test_multidimensional_tensor(self):
         t = torch.tensor([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        _regions, _placements, views = pool.allocate_group("o1", [t])
-        assert views[0].shape == (3, 2)
-        assert torch.equal(views[0], t)
+        regions = pool.allocate_group("o1", [t])
+        assert regions[0].numel() == _nbytes(t)
+        assert torch.equal(_unpack(regions, [t])[0], t)
 
     def test_view_with_storage_offset(self):
         base = _make_tensor([1.0, 2.0, 3.0, 4.0, 5.0])
         view = base[2:4]
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
-        _regions, _placements, views = pool.allocate_group("o1", [view])
-        assert torch.equal(views[0], view)
-        assert views[0].shape == (2,)
+        regions = pool.allocate_group("o1", [view])
+        assert regions[0].numel() == _nbytes(view)
+        assert torch.equal(_unpack(regions, [view])[0], view)
+
+    def test_chained_views_of_one_storage(self):
+        """Ordered views of one weight are packed as one copy, byte-exact.
+
+        This is the weight-sync layout the chaining in ``_copy_into_pool``
+        targets, so it needs to produce the same bytes as the per-tensor path it
+        replaces.
+        """
+        base = torch.arange(64, dtype=torch.float32).reshape(8, 8)
+        rows = [base[i] for i in range(8)]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", rows)
+
+        # One consecutive run: a single block, tightly packed in order.
+        assert len(regions) == 1
+        assert regions[0].numel() == 8 * 32
+        for row, view in zip(rows, _unpack(regions, rows)):
+            assert torch.equal(view, row)
+
+    def test_reversed_views_still_byte_exact(self):
+        """Out-of-order sources cannot chain, and must still copy correctly."""
+        base = torch.arange(32, dtype=torch.float32).reshape(4, 8)
+        rows = [base[i] for i in reversed(range(4))]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", rows)
+
+        for row, view in zip(rows, _unpack(regions, rows)):
+            assert torch.equal(view, row)
+
+    def test_interleaved_storages_still_byte_exact(self):
+        """Alternating between two storages breaks chains at every tensor."""
+        a = torch.arange(8, dtype=torch.float32)
+        b = torch.arange(100, 108, dtype=torch.float32)
+        tensors = [a[0:2], b[0:2], a[2:4], b[2:4]]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", tensors)
+
+        for tensor, view in zip(tensors, _unpack(regions, tensors)):
+            assert torch.equal(view, tensor)
+
+    def test_mixed_dtypes_copied_correctly(self):
+        """A dtype change mid-group breaks the copy chain but keeps the bytes."""
+        f32 = torch.arange(4, dtype=torch.float32)
+        f64 = torch.arange(2, dtype=torch.float64)
+        i8 = torch.arange(3, dtype=torch.int8)
+        tensors = [f32, f64, i8, f32 + 1]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        regions = pool.allocate_group("o1", tensors)
+
+        for tensor, view in zip(tensors, _unpack(regions, tensors)):
+            assert torch.equal(view, tensor)
+
+    def test_chain_broken_by_gap_in_source(self):
+        """Skipping bytes in the source must not be copied over as one run."""
+        base = torch.arange(16, dtype=torch.float32)
+        tensors = [base[0:4], base[8:12]]
+        pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
+        views = _unpack(pool.allocate_group("o1", tensors), tensors)
+
+        assert torch.equal(views[0], base[0:4])
+        assert torch.equal(views[1], base[8:12])
 
     def test_reallocate_same_obj_id_replaces_prior(self):
         pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
@@ -263,9 +346,9 @@ class TestAllocateGroup:
         t2 = _make_tensor([3.0, 4.0, 5.0, 6.0])
         pool.allocate_group("o1", [t1])
         assert len(pool._allocated_by_obj["o1"]) == 1
-        regions, _placements, views = pool.allocate_group("o1", [t2])
-        assert torch.equal(views[0], t2)
+        regions = pool.allocate_group("o1", [t2])
         assert regions[0].numel() == _nbytes(t2)
+        assert torch.equal(_unpack(regions, [t2])[0], t2)
         # Only one allocation recorded for o1.
         assert len(pool._allocated_by_obj) == 1
 
@@ -296,14 +379,14 @@ class TestFragmentedPacking:
         # Request two 32-byte tensors — neither hole fits both, so 2 blocks.
         t0 = torch.arange(8, dtype=torch.float32)
         t1 = torch.arange(8, dtype=torch.float32) + 10
-        regions, placements, views = pool.allocate_group("g", [t0, t1])
+        regions = pool.allocate_group("g", [t0, t1])
+        views = _unpack(regions, [t0, t1])
 
         assert len(regions) == 2
-        assert placements[0][0] != placements[1][0]
         assert torch.equal(views[0], t0)
         assert torch.equal(views[1], t1)
 
-        # Wire-contract round-trip: desc lens recover the runs.
+        # Wire-contract round-trip: desc lens recover one run per block.
         sizes, aligns = _layout([t0, t1])
         desc_lens = [r.numel() for r in regions]
         runs = split_run_by_desc_lens(sizes, aligns, desc_lens)
@@ -328,16 +411,16 @@ class TestOOM:
         t2 = _make_tensor([3.0, 4.0, 5.0])  # 12 bytes
         pool = MemoryPoolManager(pool_size=16, device=torch.device("cpu"))
 
-        _regions, _placements, views1 = pool.allocate_group("o1", [t1])
-        assert torch.equal(views1[0], t1)
+        regions = pool.allocate_group("o1", [t1])
+        assert torch.equal(_unpack(regions, [t1])[0], t1)
 
         with pytest.raises(NixlOutOfMemoryError):
             pool.allocate_group("o2", [t2])
 
         # Free and reallocate to confirm state is intact.
         assert pool.free_object("o1")
-        _regions, _placements, views2 = pool.allocate_group("o2", [t2])
-        assert torch.equal(views2[0], t2)
+        regions = pool.allocate_group("o2", [t2])
+        assert torch.equal(_unpack(regions, [t2])[0], t2)
         assert pool.free_object("o2")
 
     def test_atomic_allocation_failure(self):
@@ -360,12 +443,12 @@ class TestOOM:
         t_small = _make_tensor([1.0, 2.0])  # 8 bytes
         # Bigger than the whole pool even after reclaiming the prior block.
         t_big = _make_tensor([1.0] * 20)  # 80 bytes
-        regions1, _, views1 = pool.allocate_group("o1", [t_small])
+        regions = pool.allocate_group("o1", [t_small])
         with pytest.raises(NixlOutOfMemoryError):
             pool.allocate_group("o1", [t_big])
         assert "o1" in pool._allocated_by_obj
-        assert torch.equal(views1[0], t_small)
-        assert regions1[0].numel() == _nbytes(t_small)
+        assert regions[0].numel() == _nbytes(t_small)
+        assert torch.equal(_unpack(regions, [t_small])[0], t_small)
 
     def test_replace_can_reuse_own_space(self):
         """Re-extract for the same obj_id can reuse its previously allocated space."""
@@ -374,8 +457,8 @@ class TestOOM:
         t2 = torch.arange(8, dtype=torch.float32)
         pool.allocate_group("o1", [t1])
         # Without reclaiming o1's own block this would OOM.
-        _regions, _placements, views = pool.allocate_group("o1", [t2])
-        assert torch.equal(views[0], t2)
+        regions = pool.allocate_group("o1", [t2])
+        assert torch.equal(_unpack(regions, [t2])[0], t2)
         assert len(pool._allocated_by_obj) == 1
 
 
@@ -394,8 +477,8 @@ class TestFreeObject:
         assert "o1" not in pool._allocated_by_obj
 
         t2 = _make_tensor([3.0, 4.0])
-        _regions, _placements, views = pool.allocate_group("o2", [t2])
-        assert torch.equal(views[0], t2)
+        regions = pool.allocate_group("o2", [t2])
+        assert torch.equal(_unpack(regions, [t2])[0], t2)
 
     def test_free_unknown_is_noop(self):
         pool = MemoryPoolManager(pool_size=64, device=torch.device("cpu"))
@@ -419,8 +502,8 @@ class TestFreeObject:
             pool.allocate_group("big", [t_big])
 
         assert pool.free_object("o2")
-        _regions, _placements, views = pool.allocate_group("big", [t_big])
-        assert views[0].shape == t_big.shape
+        regions = pool.allocate_group("big", [t_big])
+        assert regions[0].numel() == _nbytes(t_big)
 
 
 if __name__ == "__main__":

@@ -725,7 +725,7 @@ def test_nixl_memory_pool_collapses_descriptors(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_nixl_memory_pool_fragmented_multi_descriptor(ray_start_regular):
     """Fragmented free list yields multiple descriptors with correct data."""
-    from ray.experimental.rdt.nixl_memory_pool import packed_run_offsets
+    from ray.experimental.rdt.nixl_memory_pool import split_run_by_desc_lens
     from ray.experimental.rdt.nixl_tensor_transport import (
         NixlTensorTransport,
     )
@@ -751,21 +751,12 @@ def test_nixl_memory_pool_fragmented_multi_descriptor(ray_start_regular):
     assert descs.descCount() == 2
     assert len(transport._memory_pool._allocated_by_obj[obj_id]) == 2
 
-    # End-to-end: fetch into a second transport and check values.
-    # Use the same agent via a loopback-style fetch isn't trivial without
-    # actors; instead verify the packed extents match the wire contract.
+    # Neither hole fits both tensors, so the receiver recovers one tensor per
+    # descriptor from the lengths alone.
     sizes = [t0.numel() * t0.element_size(), t1.numel() * t1.element_size()]
     aligns = [t0.element_size(), t1.element_size()]
     desc_lens = [descs[i][1] for i in range(descs.descCount())]
-    from ray.experimental.rdt.nixl_memory_pool import split_run_by_desc_lens
-
-    runs = split_run_by_desc_lens(sizes, aligns, desc_lens)
-    assert runs == [[0], [1]]
-    for run, desc_len in zip(runs, desc_lens):
-        _, extent = packed_run_offsets(
-            [sizes[i] for i in run], [aligns[i] for i in run]
-        )
-        assert extent == desc_len
+    assert split_run_by_desc_lens(sizes, aligns, desc_lens) == [[0], [1]]
 
     transport.garbage_collect(obj_id, meta, [t0, t1])
     transport.garbage_collect("filler_1", filler_metas[1], [fillers[1]])

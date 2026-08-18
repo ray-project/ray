@@ -1,12 +1,13 @@
 import functools
 import glob
 import logging
+import math
 import os
 import threading
 import time
 import traceback
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
@@ -156,7 +157,9 @@ class NixlFetchRequest(FetchRequest):
         nixl_agent: Reference to the NIXL agent.
         remote_name: Name of the remote NIXL agent.
         remove_tensor_descs: Whether to remove tensor descriptors from the cache during cleanup.
-        registered_tensors: Tensors to deregister on cleanup; defaults to ``tensors``.
+        registered_tensors: Tensors that were registered with NIXL, to deregister
+            on cleanup. These are the buffers behind ``tensors``, which for a
+            group transfer are views into fewer, larger buffers.
     """
 
     xfer_handle: Any = None
@@ -164,18 +167,13 @@ class NixlFetchRequest(FetchRequest):
     remote_name: Optional[str] = None
     remove_tensor_descs: bool = False
     transport: Any = None
-    registered_tensors: Optional[List["torch.Tensor"]] = None
+    registered_tensors: List["torch.Tensor"] = field(default_factory=list)
 
     def __del__(self):
         if self.transport is not None:
-            to_remove = (
-                self.registered_tensors
-                if self.registered_tensors is not None
-                else self.tensors
-            )
             self.transport._cleanup_transfer(
                 self.obj_id,
-                to_remove,
+                self.registered_tensors,
                 self.xfer_handle,
                 self.remote_name,
                 self.remove_tensor_descs,
@@ -443,23 +441,18 @@ class NixlTensorTransport(TensorTransportManager):
         remote_name = None
         xfer_handle = None
         added_tensor_descs = False
-        registered_tensors: Optional[List["torch.Tensor"]] = None
+        registered_tensors: List["torch.Tensor"] = []
         tensors: List["torch.Tensor"] = []
 
         try:
             nixl_agent = self.get_nixl_agent()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
-            desc_count = remote_xfer_descs.descCount()
-            desc_lens = [remote_xfer_descs[i][1] for i in range(desc_count)]
+            desc_lens = [
+                remote_xfer_descs[i][1] for i in range(remote_xfer_descs.descCount())
+            ]
 
-            sizes: List[int] = []
-            alignments: List[int] = []
-            for shape, dtype in tensor_meta:
-                numel = 1
-                for dim in shape:
-                    numel *= int(dim)
-                sizes.append(numel * dtype.itemsize)
-                alignments.append(dtype.itemsize)
+            sizes = [math.prod(shape) * dtype.itemsize for shape, dtype in tensor_meta]
+            alignments = [dtype.itemsize for _shape, dtype in tensor_meta]
 
             runs = split_run_by_desc_lens(sizes, alignments, desc_lens)
 
@@ -482,14 +475,12 @@ class NixlTensorTransport(TensorTransportManager):
                         local_descs.append(merged)
                         remote_descs.append((addr, extent, dev_id))
                         continue
-                    for local_k, tensor_i in enumerate(run):
+                    for offset, tensor_i in zip(offsets, run):
                         buf = tensors[tensor_i]
                         local_descs.append(
                             (buf.data_ptr(), sizes[tensor_i], max(buf.get_device(), 0))
                         )
-                        remote_descs.append(
-                            (addr + offsets[local_k], sizes[tensor_i], dev_id)
-                        )
+                        remote_descs.append((addr + offset, sizes[tensor_i], dev_id))
                 if len(local_descs) > len(runs):
                     # TODO(swang): There is a circular import error because
                     # ray.util currently depends on ray.experimental.internal_kv.
@@ -527,12 +518,11 @@ class NixlTensorTransport(TensorTransportManager):
                     offsets, _ = packed_run_offsets(
                         [sizes[j] for j in run], [alignments[j] for j in run]
                     )
-                    for local_k, tensor_i in enumerate(run):
+                    for offset, tensor_i in zip(offsets, run):
                         shape, dtype = tensor_meta[tensor_i]
-                        off = offsets[local_k]
                         nbytes = sizes[tensor_i]
                         tensors[tensor_i] = (
-                            group_buffers[run_idx][off : off + nbytes]
+                            group_buffers[run_idx][offset : offset + nbytes]
                             .view(dtype)
                             .reshape(shape)
                         )
@@ -590,7 +580,7 @@ class NixlTensorTransport(TensorTransportManager):
         except Exception:
             self._cleanup_transfer(
                 obj_id,
-                registered_tensors if registered_tensors is not None else tensors,
+                registered_tensors,
                 xfer_handle,
                 remote_name,
                 added_tensor_descs,
@@ -835,16 +825,14 @@ class NixlTensorTransport(TensorTransportManager):
 
     def _tensor_memory_registered(self, t: "torch.Tensor") -> bool:
         """Check if the tensor's memory has been registered with NIXL."""
-        entry = self._tensor_desc_cache.get(t.untyped_storage().data_ptr())
-        return entry is not None and entry.reg_desc is not None
+        return t.untyped_storage().data_ptr() in self._tensor_desc_cache
 
     def _allocate_pool_xfer_descs(
         self, obj_id: str, tensors: List["torch.Tensor"]
     ) -> Any:
         """Allocate pool memory for tensors and return NIXL transfer descriptors."""
         pool = self._memory_pool
-        assert pool is not None
-        regions, _placements, _views = pool.allocate_group(obj_id, tensors)
+        regions = pool.allocate_group(obj_id, tensors)
         try:
             return self._nixl_agent.get_xfer_descs(regions)
         except Exception:
