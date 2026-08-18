@@ -14,25 +14,25 @@ def _align_up(value: int, alignment: int) -> int:
     return (value + alignment - 1) // alignment * alignment
 
 
-def packed_run_offsets(
+def packed_offsets(
     sizes: Sequence[int], alignments: Sequence[int]
 ) -> Tuple[List[int], int]:
-    """Compute offsets for one consecutive run of tensors.
+    """Compute offsets for one consecutive group of tensors.
 
     Each tensor starts on a multiple of its own element size, which is what
-    ``Tensor.view(dtype)`` needs to reinterpret the packed bytes. A run of
+    ``Tensor.view(dtype)`` needs to reinterpret the packed bytes. A group of
     tensors sharing a dtype therefore packs with no padding, so a receiver
     holding one contiguous buffer can match this layout exactly.
 
     Both sender and receiver use this to place tensors within a descriptor.
-    The returned extent ends at the last tensor with no trailing pad.
+    The returned byte count ends at the last tensor with no trailing pad.
 
     Args:
-        sizes: Byte sizes of the tensors in the run, in tensor order.
+        sizes: Byte sizes of the tensors in the group, in tensor order.
         alignments: Element size of each tensor, in tensor order.
 
     Returns:
-        (offsets, extent) for the run.
+        (offsets, packed_nbytes) for the group.
     """
     offsets: List[int] = []
     cursor = 0
@@ -43,16 +43,18 @@ def packed_run_offsets(
     return offsets, cursor
 
 
-def split_run_by_desc_lens(
+def group_tensors_by_desc(
     sizes: Sequence[int], alignments: Sequence[int], desc_lens: Sequence[int]
 ) -> List[List[int]]:
-    """Recover consecutive runs from packed sizes and descriptor lengths.
+    """Recover which tensors each descriptor covers from the packed sizes.
 
-    Walks sizes in order and closes a run when its extent equals the current
-    descriptor length. Raises if sizes and lengths are not consumed exactly.
+    Walks sizes in order and closes a group when its packed byte count equals
+    the current descriptor length. Raises if sizes and lengths are not consumed
+    exactly.
 
-    The extent is carried forward one tensor at a time rather than repacking the
-    run from scratch on each step, which keeps this linear in the tensor count.
+    The byte count is carried forward one tensor at a time rather than repacking
+    the group from scratch on each step, which keeps this linear in the tensor
+    count.
 
     Args:
         sizes: Byte sizes of the tensors, in tensor order.
@@ -60,9 +62,9 @@ def split_run_by_desc_lens(
         desc_lens: Length of each NIXL transfer descriptor, in order.
 
     Returns:
-        A list of runs, each a list of indices into sizes.
+        One group per descriptor, each a list of indices into sizes.
     """
-    runs: List[List[int]] = []
+    desc_groups: List[List[int]] = []
     size_idx = 0
     for desc_len in desc_lens:
         if size_idx >= len(sizes):
@@ -70,37 +72,38 @@ def split_run_by_desc_lens(
                 f"Extra descriptor length {desc_len} after consuming all "
                 f"{len(sizes)} tensor sizes"
             )
-        run: List[int] = []
-        extent = 0
+        desc_group: List[int] = []
+        packed_nbytes = 0
         closed = False
         while size_idx < len(sizes):
-            candidate_extent = _align_up(extent, alignments[size_idx]) + sizes[size_idx]
-            if candidate_extent > desc_len:
-                candidate = run + [size_idx]
+            candidate_nbytes = (
+                _align_up(packed_nbytes, alignments[size_idx]) + sizes[size_idx]
+            )
+            if candidate_nbytes > desc_len:
                 raise ValueError(
-                    f"Tensor sizes {[sizes[i] for i in candidate]} do not pack "
-                    f"into descriptor length {desc_len} under the wire contract "
-                    f"(extent={candidate_extent})"
+                    f"Tensor sizes {[sizes[i] for i in desc_group + [size_idx]]} do "
+                    f"not pack into descriptor length {desc_len} under the wire "
+                    f"contract (packed_nbytes={candidate_nbytes})"
                 )
-            run.append(size_idx)
-            extent = candidate_extent
+            desc_group.append(size_idx)
+            packed_nbytes = candidate_nbytes
             size_idx += 1
-            if extent == desc_len:
+            if packed_nbytes == desc_len:
                 closed = True
                 break
         if not closed:
             raise ValueError(
-                f"Descriptor length {desc_len} does not match packed extent "
-                f"{extent} for tensor indices {run}"
+                f"Descriptor length {desc_len} does not match packed byte count "
+                f"{packed_nbytes} for tensor indices {desc_group}"
             )
-        runs.append(run)
+        desc_groups.append(desc_group)
 
     if size_idx != len(sizes):
         raise ValueError(
             f"Descriptor lengths {list(desc_lens)} did not consume all "
             f"{len(sizes)} tensor sizes (stopped at index {size_idx})"
         )
-    return runs
+    return desc_groups
 
 
 class NixlOutOfMemoryError(RuntimeError):
@@ -191,7 +194,7 @@ class MemoryPoolManager:
 
         Copies only each tensor's own bytes (numel * element_size), not the
         full underlying storage. Packs in tensor order so each block covers a
-        consecutive run. Replaces any prior allocation for ``obj_id``.
+        consecutive group. Replaces any prior allocation for ``obj_id``.
 
         Args:
             obj_id: Object ID that owns the allocation.
@@ -200,7 +203,7 @@ class MemoryPoolManager:
         Returns:
             One pool-backed region per block, in order, to transfer as is. The
             receiver recovers the individual tensors from the region lengths
-            with ``split_run_by_desc_lens`` and ``packed_run_offsets``.
+            with ``group_tensors_by_desc`` and ``packed_offsets``.
 
         Raises:
             NixlOutOfMemoryError: If the pool has insufficient space.
@@ -227,28 +230,28 @@ class MemoryPoolManager:
         # Bytes actually packed into each block, and the absolute pool offset of
         # each tensor. Tensors are taken in order, so pool_starts ends up in
         # tensor order.
-        extents: List[int] = []
+        block_nbytes: List[int] = []
         pool_starts: List[int] = []
         remaining = list(range(len(tensors)))
 
         while remaining:
             rem_sizes = [sizes[i] for i in remaining]
             rem_aligns = [alignments[i] for i in remaining]
-            offsets, full_extent = packed_run_offsets(rem_sizes, rem_aligns)
+            offsets, total_nbytes = packed_offsets(rem_sizes, rem_aligns)
 
             # Prefer the smallest free block that fits everything remaining.
             free_idx = min(
-                (i for i, b in enumerate(temp_free) if b.size >= full_extent),
+                (i for i, b in enumerate(temp_free) if b.size >= total_nbytes),
                 key=lambda i: temp_free[i].size,
                 default=None,
             )
             if free_idx is not None:
                 take_count = len(remaining)
-                used_extent = full_extent
+                placed_nbytes = total_nbytes
             else:
                 # Take the largest free block and pack as many as fit in order.
                 # Each offset already carries the packing forward, so a prefix's
-                # extent is a lookup rather than a repack.
+                # byte count is a lookup rather than a repack.
                 free_idx = max(
                     range(len(temp_free)),
                     key=lambda i: temp_free[i].size,
@@ -256,22 +259,22 @@ class MemoryPoolManager:
                 )
                 hole_size = 0 if free_idx is None else temp_free[free_idx].size
                 take_count = 0
-                used_extent = 0
+                placed_nbytes = 0
                 for n, size in enumerate(rem_sizes):
                     if offsets[n] + size > hole_size:
                         break
                     take_count = n + 1
-                    used_extent = offsets[n] + size
+                    placed_nbytes = offsets[n] + size
                 if take_count == 0:
                     raise _out_of_memory(
                         f"cannot allocate next tensor of {rem_sizes[0]} bytes "
                         f"(largest free block is {hole_size} bytes)"
                     )
 
-            # Round the carved free-list extent up so subsequent offsets stay aligned.
+            # Round the carved block up so subsequent offsets stay aligned.
             free_block = temp_free[free_idx]
             block_offset = free_block.offset
-            carved = min(_align_up(used_extent, _MAX_ALIGNMENT), free_block.size)
+            carved = min(_align_up(placed_nbytes, _MAX_ALIGNMENT), free_block.size)
             if carved == free_block.size:
                 temp_free.pop(free_idx)
             else:
@@ -279,7 +282,7 @@ class MemoryPoolManager:
                 free_block.size -= carved
 
             blocks.append(MemoryBlock(block_offset, carved))
-            extents.append(used_extent)
+            block_nbytes.append(placed_nbytes)
             pool_starts.extend(block_offset + off for off in offsets[:take_count])
             remaining = remaining[take_count:]
 
@@ -289,8 +292,8 @@ class MemoryPoolManager:
         self._allocated_by_obj[obj_id] = blocks
 
         regions = [
-            self._pool_tensor[b.offset : b.offset + extent]
-            for b, extent in zip(blocks, extents)
+            self._pool_tensor[b.offset : b.offset + nbytes]
+            for b, nbytes in zip(blocks, block_nbytes)
         ]
         self._copy_into_pool(tensors, sizes, pool_starts)
         return regions

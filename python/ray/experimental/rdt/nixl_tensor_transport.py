@@ -16,8 +16,8 @@ from ray._private.ray_constants import (
 )
 from ray.experimental.rdt.nixl_memory_pool import (
     MemoryPoolManager,
-    packed_run_offsets,
-    split_run_by_desc_lens,
+    group_tensors_by_desc,
+    packed_offsets,
 )
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
@@ -101,39 +101,40 @@ class NixlTransportMetadata(TensorTransportMetadata):
     __hash__ = object.__hash__
 
 
-def _merged_run_desc(
+def _merged_desc(
     buffers: List["torch.Tensor"],
-    run: List[int],
+    desc_group: List[int],
     offsets: List[int],
-    extent: int,
+    packed_nbytes: int,
 ) -> Optional[Tuple[int, int, int]]:
-    """Return one descriptor covering ``run`` if the buffers already match the layout.
+    """Return one descriptor covering the group if the buffers match the layout.
 
     A NIXL descriptor cannot span memory registrations, and ``_add_tensor_descs``
-    registers one region per storage, so the run's buffers must share a storage
+    registers one region per storage, so the group's buffers must share a storage
     and sit at exactly the packed offsets within it.
 
     Args:
         buffers: The full list of target buffers, in tensor order.
-        run: Indices into ``buffers`` for the tensors covered by one descriptor.
-        offsets: Packed byte offset of each tensor in the run, relative to the
-            start of the run.
-        extent: Total byte length of the packed run.
+        desc_group: Indices into ``buffers`` for the tensors covered by one
+            descriptor.
+        offsets: Packed byte offset of each tensor in the group, relative to the
+            start of the group.
+        packed_nbytes: Total byte length of the packed group.
 
     Returns:
-        A single (addr, len, device_id) descriptor, or None if the run needs one
-        descriptor per tensor.
+        A single (addr, len, device_id) descriptor, or None if the group needs
+        one descriptor per tensor.
     """
-    first = buffers[run[0]]
+    first = buffers[desc_group[0]]
     storage_ptr = first.untyped_storage().data_ptr()
     base = first.data_ptr()
-    for local_k, tensor_i in enumerate(run):
+    for local_k, tensor_i in enumerate(desc_group):
         buf = buffers[tensor_i]
         if buf.untyped_storage().data_ptr() != storage_ptr:
             return None
         if buf.data_ptr() - base != offsets[local_k]:
             return None
-    return (base, extent, max(first.get_device(), 0))
+    return (base, packed_nbytes, max(first.get_device(), 0))
 
 
 @dataclass
@@ -454,34 +455,35 @@ class NixlTensorTransport(TensorTransportManager):
             sizes = [math.prod(shape) * dtype.itemsize for shape, dtype in tensor_meta]
             alignments = [dtype.itemsize for _shape, dtype in tensor_meta]
 
-            runs = split_run_by_desc_lens(sizes, alignments, desc_lens)
+            desc_groups = group_tensors_by_desc(sizes, alignments, desc_lens)
 
-            if target_buffers is not None:
+            if target_buffers:
                 tensors = target_buffers
                 # NIXL requires the local and remote lists to agree on descriptor
                 # count and length, so build both together: one descriptor for a
-                # whole run when the user's buffers already match the packed
+                # whole group when the user's buffers already match the packed
                 # layout, otherwise one per tensor.
                 mem_type = "cuda" if device == "cuda" else "cpu"
                 local_descs = []
                 remote_descs = []
-                for run_idx, run in enumerate(runs):
-                    addr, _length, dev_id = remote_xfer_descs[run_idx]
-                    offsets, extent = packed_run_offsets(
-                        [sizes[j] for j in run], [alignments[j] for j in run]
+                for desc_idx, desc_group in enumerate(desc_groups):
+                    addr, _length, dev_id = remote_xfer_descs[desc_idx]
+                    offsets, packed_nbytes = packed_offsets(
+                        [sizes[j] for j in desc_group],
+                        [alignments[j] for j in desc_group],
                     )
-                    merged = _merged_run_desc(tensors, run, offsets, extent)
+                    merged = _merged_desc(tensors, desc_group, offsets, packed_nbytes)
                     if merged is not None:
                         local_descs.append(merged)
-                        remote_descs.append((addr, extent, dev_id))
+                        remote_descs.append((addr, packed_nbytes, dev_id))
                         continue
-                    for offset, tensor_i in zip(offsets, run):
+                    for offset, tensor_i in zip(offsets, desc_group):
                         buf = tensors[tensor_i]
                         local_descs.append(
                             (buf.data_ptr(), sizes[tensor_i], max(buf.get_device(), 0))
                         )
                         remote_descs.append((addr + offset, sizes[tensor_i], dev_id))
-                if len(local_descs) > len(runs):
+                if len(local_descs) > len(desc_groups):
                     # TODO(swang): There is a circular import error because
                     # ray.util currently depends on ray.experimental.internal_kv.
                     from ray.util.debug import log_once
@@ -496,7 +498,7 @@ class NixlTensorTransport(TensorTransportManager):
                             "to match the tensors in the object.",
                             obj_id,
                             len(local_descs),
-                            len(runs),
+                            len(desc_groups),
                         )
                 self._add_tensor_descs(tensors)
                 added_tensor_descs = True
@@ -514,15 +516,16 @@ class NixlTensorTransport(TensorTransportManager):
                     for desc_len in desc_lens
                 ]
                 tensors = [None] * len(tensor_meta)  # type: ignore[list-item]
-                for run_idx, run in enumerate(runs):
-                    offsets, _ = packed_run_offsets(
-                        [sizes[j] for j in run], [alignments[j] for j in run]
+                for desc_idx, desc_group in enumerate(desc_groups):
+                    offsets, _ = packed_offsets(
+                        [sizes[j] for j in desc_group],
+                        [alignments[j] for j in desc_group],
                     )
-                    for offset, tensor_i in zip(offsets, run):
+                    for offset, tensor_i in zip(offsets, desc_group):
                         shape, dtype = tensor_meta[tensor_i]
                         nbytes = sizes[tensor_i]
                         tensors[tensor_i] = (
-                            group_buffers[run_idx][offset : offset + nbytes]
+                            group_buffers[desc_idx][offset : offset + nbytes]
                             .view(dtype)
                             .reshape(shape)
                         )

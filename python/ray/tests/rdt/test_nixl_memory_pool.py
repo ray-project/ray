@@ -10,10 +10,10 @@ import torch
 from ray.experimental.rdt.nixl_memory_pool import (
     MemoryPoolManager,
     NixlOutOfMemoryError,
-    packed_run_offsets,
-    split_run_by_desc_lens,
+    group_tensors_by_desc,
+    packed_offsets,
 )
-from ray.experimental.rdt.nixl_tensor_transport import _merged_run_desc
+from ray.experimental.rdt.nixl_tensor_transport import _merged_desc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -42,13 +42,13 @@ def _unpack(regions, tensors):
     receive path uses.
     """
     sizes, alignments = _layout(tensors)
-    runs = split_run_by_desc_lens(sizes, alignments, [r.numel() for r in regions])
+    desc_groups = group_tensors_by_desc(sizes, alignments, [r.numel() for r in regions])
     views = [None] * len(tensors)
-    for region, run in zip(regions, runs):
-        offsets, _ = packed_run_offsets(
-            [sizes[i] for i in run], [alignments[i] for i in run]
+    for region, desc_group in zip(regions, desc_groups):
+        offsets, _ = packed_offsets(
+            [sizes[i] for i in desc_group], [alignments[i] for i in desc_group]
         )
-        for offset, i in zip(offsets, run):
+        for offset, i in zip(offsets, desc_group):
             views[i] = (
                 region[offset : offset + sizes[i]]
                 .view(tensors[i].dtype)
@@ -64,76 +64,77 @@ def _unpack(regions, tensors):
 
 class TestPackedLayout:
     def test_single_size(self):
-        offsets, extent = packed_run_offsets([12], [4])
+        offsets, packed_nbytes = packed_offsets([12], [4])
         assert offsets == [0]
-        assert extent == 12
+        assert packed_nbytes == 12
 
     def test_uniform_dtype_has_no_padding(self):
-        """A run sharing one dtype packs tightly, matching a contiguous buffer."""
-        offsets, extent = packed_run_offsets([12, 8], [4, 4])
+        """A group sharing one dtype packs tightly, matching a contiguous buffer."""
+        offsets, packed_nbytes = packed_offsets([12, 8], [4, 4])
         assert offsets == [0, 12]
-        assert extent == 20
+        assert packed_nbytes == 20
 
     def test_alignment_padding_for_wider_dtype(self):
         # 1-byte tensor, then a float64 that must start on an 8-byte boundary.
-        offsets, extent = packed_run_offsets([1, 8], [1, 8])
+        offsets, packed_nbytes = packed_offsets([1, 8], [1, 8])
         assert offsets == [0, 8]
-        assert extent == 16
+        assert packed_nbytes == 16
 
     def test_already_aligned(self):
-        offsets, extent = packed_run_offsets([16, 16], [8, 8])
+        offsets, packed_nbytes = packed_offsets([16, 16], [8, 8])
         assert offsets == [0, 16]
-        assert extent == 32
+        assert packed_nbytes == 32
 
     def test_split_single_desc(self):
         sizes, aligns = [1, 8], [1, 8]
-        _, extent = packed_run_offsets(sizes, aligns)
-        runs = split_run_by_desc_lens(sizes, aligns, [extent])
-        assert runs == [[0, 1]]
+        _, packed_nbytes = packed_offsets(sizes, aligns)
+        desc_groups = group_tensors_by_desc(sizes, aligns, [packed_nbytes])
+        assert desc_groups == [[0, 1]]
 
     def test_split_multiple_descs(self):
         sizes, aligns = [12, 8, 4], [4, 4, 4]
-        _, e0 = packed_run_offsets(sizes[:2], aligns[:2])
-        _, e1 = packed_run_offsets(sizes[2:], aligns[2:])
-        runs = split_run_by_desc_lens(sizes, aligns, [e0, e1])
-        assert runs == [[0, 1], [2]]
+        _, e0 = packed_offsets(sizes[:2], aligns[:2])
+        _, e1 = packed_offsets(sizes[2:], aligns[2:])
+        desc_groups = group_tensors_by_desc(sizes, aligns, [e0, e1])
+        assert desc_groups == [[0, 1], [2]]
 
     def test_split_one_per_tensor(self):
         sizes, aligns = [12, 8, 4], [4, 4, 4]
-        runs = split_run_by_desc_lens(sizes, aligns, sizes)
-        assert runs == [[0], [1], [2]]
+        desc_groups = group_tensors_by_desc(sizes, aligns, sizes)
+        assert desc_groups == [[0], [1], [2]]
 
     def test_split_mismatch_raises(self):
         with pytest.raises(ValueError):
-            split_run_by_desc_lens([12, 8], [4, 4], [12])
+            group_tensors_by_desc([12, 8], [4, 4], [12])
         with pytest.raises(ValueError):
-            split_run_by_desc_lens([12], [4], [12, 8])
+            group_tensors_by_desc([12], [4], [12, 8])
         with pytest.raises(ValueError):
-            # 1 packs at offset 0; the float64 pads to 8, so extent is 16 not 15.
-            split_run_by_desc_lens([1, 8], [1, 8], [15])
+            # 1 packs at offset 0; the float64 pads to 8, so the packed byte
+            # count is 16 not 15.
+            group_tensors_by_desc([1, 8], [1, 8], [15])
 
     def test_roundtrip_randomized(self):
-        """split_run_by_desc_lens recovers exactly the packer's runs."""
+        """group_tensors_by_desc recovers exactly the packer's groups."""
         rng = random.Random(0)
         for _ in range(50):
             n = rng.randint(1, 12)
             aligns = [rng.choice([1, 2, 4, 8, 16]) for _ in range(n)]
             sizes = [a * rng.randint(1, 8) for a in aligns]
-            # Simulate packing into random run breaks.
+            # Simulate packing into random group breaks.
             cuts = sorted(rng.sample(range(1, n), k=rng.randint(0, min(3, n - 1))))
             cuts = [0] + cuts + [n]
             desc_lens = []
-            expected_runs = []
+            expected_desc_groups = []
             for a, b in zip(cuts, cuts[1:]):
-                run = list(range(a, b))
-                _, extent = packed_run_offsets(sizes[a:b], aligns[a:b])
-                desc_lens.append(extent)
-                expected_runs.append(run)
-            recovered = split_run_by_desc_lens(sizes, aligns, desc_lens)
-            assert recovered == expected_runs
-            for run in recovered:
-                offs, _ = packed_run_offsets(
-                    [sizes[i] for i in run], [aligns[i] for i in run]
+                desc_group = list(range(a, b))
+                _, packed_nbytes = packed_offsets(sizes[a:b], aligns[a:b])
+                desc_lens.append(packed_nbytes)
+                expected_desc_groups.append(desc_group)
+            recovered = group_tensors_by_desc(sizes, aligns, desc_lens)
+            assert recovered == expected_desc_groups
+            for desc_group in recovered:
+                offs, _ = packed_offsets(
+                    [sizes[i] for i in desc_group], [aligns[i] for i in desc_group]
                 )
                 assert offs[0] == 0
 
@@ -143,27 +144,27 @@ class TestPackedLayout:
 # ---------------------------------------------------------------------------
 
 
-class TestMergedRunDesc:
-    """A run collapses to one descriptor only if the buffers already match it."""
+class TestMergedDesc:
+    """A group collapses to one descriptor only if the buffers already match it."""
 
     def _desc_for(self, buffers):
         sizes, aligns = _layout(buffers)
-        offsets, extent = packed_run_offsets(sizes, aligns)
-        run = list(range(len(buffers)))
-        return _merged_run_desc(buffers, run, offsets, extent), extent
+        offsets, packed_nbytes = packed_offsets(sizes, aligns)
+        desc_group = list(range(len(buffers)))
+        return _merged_desc(buffers, desc_group, offsets, packed_nbytes), packed_nbytes
 
     def test_views_of_one_buffer_merge(self):
         parent = torch.zeros(6, dtype=torch.float32)
-        desc, extent = self._desc_for([parent[0:2], parent[2:6]])
+        desc, packed_nbytes = self._desc_for([parent[0:2], parent[2:6]])
         assert desc is not None
         addr, length, _dev_id = desc
         assert addr == parent.data_ptr()
-        assert length == extent == 24
+        assert length == packed_nbytes == 24
 
     def test_single_buffer_merges(self):
         t = _make_tensor([1.0, 2.0])
-        desc, extent = self._desc_for([t])
-        assert desc == (t.data_ptr(), extent, 0)
+        desc, packed_nbytes = self._desc_for([t])
+        assert desc == (t.data_ptr(), packed_nbytes, 0)
 
     def test_separate_allocations_do_not_merge(self):
         desc, _ = self._desc_for([torch.zeros(2), torch.zeros(4)])
@@ -183,10 +184,12 @@ class TestMergedRunDesc:
         # torch itself requires the float64 view to start on an 8-byte boundary,
         # which is exactly where the sender packs it.
         parent = torch.zeros(24, dtype=torch.int8)
-        desc, extent = self._desc_for([parent[0:3], parent[8:24].view(torch.float64)])
+        desc, packed_nbytes = self._desc_for(
+            [parent[0:3], parent[8:24].view(torch.float64)]
+        )
         assert desc is not None
         assert desc[0] == parent.data_ptr()
-        assert desc[1] == extent == 24
+        assert desc[1] == packed_nbytes == 24
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +294,7 @@ class TestAllocateGroup:
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
         regions = pool.allocate_group("o1", rows)
 
-        # One consecutive run: a single block, tightly packed in order.
+        # One consecutive group: a single block, tightly packed in order.
         assert len(regions) == 1
         assert regions[0].numel() == 8 * 32
         for row, view in zip(rows, _unpack(regions, rows)):
@@ -331,7 +334,7 @@ class TestAllocateGroup:
             assert torch.equal(view, tensor)
 
     def test_chain_broken_by_gap_in_source(self):
-        """Skipping bytes in the source must not be copied over as one run."""
+        """Skipping bytes in the source must not be copied over as one chain."""
         base = torch.arange(16, dtype=torch.float32)
         tensors = [base[0:4], base[8:12]]
         pool = MemoryPoolManager(pool_size=1024, device=torch.device("cpu"))
@@ -362,7 +365,7 @@ class TestFragmentedPacking:
     def test_multi_block_on_fragmented_pool(self):
         """Allocate three blocks, free the outer two, then pack a group that
         cannot fit in either hole alone — should span both holes."""
-        # Use sizes that are multiples of alignment so extents are exact.
+        # Use sizes that are multiples of alignment so byte counts are exact.
         # Each "filler" is 32 bytes; holes after freeing outer two are 32 each.
         pool = MemoryPoolManager(pool_size=96, device=torch.device("cpu"))
         fillers = [
@@ -386,11 +389,11 @@ class TestFragmentedPacking:
         assert torch.equal(views[0], t0)
         assert torch.equal(views[1], t1)
 
-        # Wire-contract round-trip: desc lens recover one run per block.
+        # Wire-contract round-trip: desc lens recover one group per block.
         sizes, aligns = _layout([t0, t1])
         desc_lens = [r.numel() for r in regions]
-        runs = split_run_by_desc_lens(sizes, aligns, desc_lens)
-        assert runs == [[0], [1]]
+        desc_groups = group_tensors_by_desc(sizes, aligns, desc_lens)
+        assert desc_groups == [[0], [1]]
 
 
 # ---------------------------------------------------------------------------

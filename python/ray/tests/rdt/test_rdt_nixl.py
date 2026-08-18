@@ -715,7 +715,7 @@ def test_nixl_memory_pool_collapses_descriptors(ray_start_regular):
 
     descs = transport.get_nixl_agent().deserialize_descs(meta.nixl_serialized_descs)
     assert descs.descCount() == 1
-    # A run sharing one dtype packs with no padding.
+    # A group sharing one dtype packs with no padding.
     assert descs[0][1] == total
     assert len(transport._memory_pool._allocated_by_obj[obj_id]) == 1
 
@@ -725,7 +725,7 @@ def test_nixl_memory_pool_collapses_descriptors(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_nixl_memory_pool_fragmented_multi_descriptor(ray_start_regular):
     """Fragmented free list yields multiple descriptors with correct data."""
-    from ray.experimental.rdt.nixl_memory_pool import split_run_by_desc_lens
+    from ray.experimental.rdt.nixl_memory_pool import group_tensors_by_desc
     from ray.experimental.rdt.nixl_tensor_transport import (
         NixlTensorTransport,
     )
@@ -756,7 +756,7 @@ def test_nixl_memory_pool_fragmented_multi_descriptor(ray_start_regular):
     sizes = [t0.numel() * t0.element_size(), t1.numel() * t1.element_size()]
     aligns = [t0.element_size(), t1.element_size()]
     desc_lens = [descs[i][1] for i in range(descs.descCount())]
-    assert split_run_by_desc_lens(sizes, aligns, desc_lens) == [[0], [1]]
+    assert group_tensors_by_desc(sizes, aligns, desc_lens) == [[0], [1]]
 
     transport.garbage_collect(obj_id, meta, [t0, t1])
     transport.garbage_collect("filler_1", filler_metas[1], [fillers[1]])
@@ -788,17 +788,23 @@ def test_nixl_memory_pool_with_target_buffers(ray_start_regular):
                 torch.empty(3, dtype=torch.float32, device="cuda"),
             ]
 
-        def get_with_buffers(self, ref):
-            set_target_for_ref(ref, self.buffers)
-            tensors = ray.get(ref)
+        def get_with_buffers(self, refs):
+            from ray.util.debug import log_once
+
+            set_target_for_ref(refs[0], self.buffers)
+            tensors = ray.get(refs[0])
             for t, buf in zip(tensors, self.buffers):
                 assert id(t) == id(buf)
+            # Separately allocated buffers cannot take the sender's packed
+            # region in one read, so the receive path splits the group back
+            # into one descriptor per tensor and logs that it did so.
+            assert not log_once("nixl_target_buffers_not_packed")
             return [t.cpu().tolist() for t in tensors]
 
     src = PoolSrc.remote()
     dst = PoolDst.remote()
     ref = ray.get(src.get_ref.remote())
-    result = ray.get(dst.get_with_buffers.remote(ref))
+    result = ray.get(dst.get_with_buffers.remote([ref]))
     assert result == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
 
 
@@ -828,17 +834,25 @@ def test_nixl_memory_pool_contiguous_target_buffers(ray_start_regular):
             self.parent = torch.empty(8, dtype=torch.float32, device="cuda")
             self.buffers = [self.parent[0:4], self.parent[4:8]]
 
-        def get_with_buffers(self, ref):
-            set_target_for_ref(ref, self.buffers)
-            tensors = ray.get(ref)
+        def get_with_buffers(self, refs):
+            from ray.util.debug import log_once
+
+            # The ref must be passed inside a list, otherwise Ray dereferences
+            # the argument and transfers the object before this method runs.
+            set_target_for_ref(refs[0], self.buffers)
+            tensors = ray.get(refs[0])
             for t, buf in zip(tensors, self.buffers):
                 assert t.data_ptr() == buf.data_ptr()
+            # The buffers already match the sender's packed layout, so the whole
+            # region arrives in one read: the fallback to one descriptor per
+            # tensor never ran and so never claimed this log key.
+            assert log_once("nixl_target_buffers_not_packed")
             return self.parent.cpu().tolist()
 
     src = PoolSrc.remote()
     dst = PoolDst.remote()
     ref = ray.get(src.get_ref.remote())
-    assert ray.get(dst.get_with_buffers.remote(ref)) == [
+    assert ray.get(dst.get_with_buffers.remote([ref])) == [
         1.0,
         2.0,
         3.0,
@@ -877,15 +891,17 @@ def test_nixl_memory_pool_multi_tensor_e2e(ray_start_regular):
 
     @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
     class PoolDst:
-        def consume(self, ref):
-            tensors = ray.get(ref)
+        def consume(self, refs):
+            # The ref must be passed inside a list, otherwise Ray dereferences
+            # the argument and transfers the object before this method runs.
+            tensors = ray.get(refs[0])
             return [t.cpu().tolist() for t in tensors]
 
     src = PoolSrc.remote()
     dst = PoolDst.remote()
     ref, desc_count = ray.get(src.put_list.remote())
     assert desc_count == 1
-    result = ray.get(dst.consume.remote(ref))
+    result = ray.get(dst.consume.remote([ref]))
     assert result == [[1.0, 2.0], [3.0, 4.0, 5.0]]
 
 
