@@ -31,6 +31,10 @@ EOF
 
 # Package index configuration for CI, sourced by the login shell each step runs.
 # No-op unless the agent wrote the matching files into the checkout.
+#
+# The base image already runs as forge (crane config reports User "forge"), and
+# /etc/profile.d is root-owned, so this has to step up and back down again.
+USER root
 RUN \
   --mount=type=bind,source=ci/docker/rayci-codeartifact-profile.sh,target=rayci-codeartifact-profile.sh \
 <<EOF
@@ -42,3 +46,5 @@ install -D -m 0644 rayci-codeartifact-profile.sh \
   /etc/profile.d/zz-rayci-codeartifact.sh
 
 EOF
+
+USER forge
