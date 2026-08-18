@@ -15,6 +15,16 @@ ENV RAY_BUILD_ENV=ubuntu22.04_forge
 ENV PIP_RETRIES=9
 ENV UV_HTTP_RETRIES=9
 
+# Where pip and uv resolve from during this build. ci/pypi_proxy_profile.sh sets
+# RAYCI_IMAGE_PIP_INDEX_URL to the CI package mirror when the job can reach it and
+# leaves it empty otherwise, which is also the case for any build outside CI, and
+# then this is the index pip would have used anyway. Kept as one build arg with a
+# default rather than a bare ARG so the value stays stable across jobs: it is part
+# of the wanda cache key, and a per-job value would rebuild every image every build.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 RUN \
   --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
   --mount=type=bind,source=ci/pypi_index_proxy.py,target=pypi_index_proxy.py \

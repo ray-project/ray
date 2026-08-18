@@ -47,6 +47,9 @@ class LinuxContainer(Container):
         self, build_type: Optional[str] = None, mask: Optional[str] = None
     ) -> List[str]:
         cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
+        # Empty unless the CI package mirror is reachable and usable from a docker
+        # build; the Dockerfile falls back to PyPI on an empty value.
+        image_index_url = os.environ.get("RAYCI_IMAGE_PIP_INDEX_URL", "")
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
@@ -63,6 +66,8 @@ class LinuxContainer(Container):
             f"BUILD_TYPE={build_type or ''}",
             "--build-arg",
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
+            "--build-arg",
+            f"RAYCI_IMAGE_PIP_INDEX_URL={image_index_url}",
         ]
 
         if not build_type or build_type in (

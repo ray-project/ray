@@ -15,6 +15,14 @@ ARG BUILD_TYPE
 ARG BUILDKITE_CACHE_READONLY
 ARG RAY_INSTALL_MASK=
 
+# Where pip and uv resolve from during this build. See the same block on the roots of
+# the image graph in ci/docker/: ci/pypi_proxy_profile.sh sets this to the CI package
+# mirror when the job can reach it and leaves it empty otherwise, which is also the
+# case outside CI, and then this is the index pip would have used anyway.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 # Disable C++ API/worker building by default on CI.
 # To use C++ API/worker, set BUILD_TYPE to "multi-lang".
 ENV RAY_DISABLE_EXTRA_CPP=1

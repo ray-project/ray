@@ -51,6 +51,11 @@ _rayci_pypi_index_setup() {
       export PIP_INDEX_URL="${mirror}/simple"
       export UV_INDEX_URL="${mirror}/simple"
       export RULES_PYTHON_PIP_ISOLATED=0
+      # Docker builds resolve through this too, as a build arg on the roots of the
+      # image graph. Only exported in this mode: a build container cannot reach a
+      # proxy on this container's loopback, and a per-job address would change the
+      # wanda cache key on every build and rebuild every image.
+      export RAYCI_IMAGE_PIP_INDEX_URL="${mirror}/simple"
       echo "pypi index: using the mirror's rewriting simple index -> ${PIP_INDEX_URL}"
       return 0
     fi
