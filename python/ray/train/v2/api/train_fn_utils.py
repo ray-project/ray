@@ -170,7 +170,7 @@ def report(
         return
 
     try:
-        if train_context.get_world_rank() == 0 and train_context.annotation:
+        if train_context.get_world_rank() == 0:
             metrics_json = json.dumps(metrics, default=str)
             if len(metrics_json) > _ANNOTATION_MAX_METRICS_LENGTH:
                 metrics_json = (
@@ -442,10 +442,6 @@ def annotate(
     tag. All custom annotations share one dashboard layer, because Ray emits
     them under a fixed internal event name, and ``severity`` colors them.
 
-    Setting ``RAY_TRAIN_ANNOTATIONS_ENABLED=0`` turns all Ray Train annotations
-    off, in which case this call emits nothing. It still validates its arguments
-    either way, so an invalid ``severity`` always raises.
-
     Example:
 
         .. testcode::
@@ -494,8 +490,6 @@ def annotate(
         return
 
     if rank_zero_only and train_context.get_world_rank() != 0:
-        return
-    if train_context.annotation is None:
         return
 
     annotation_fields = {"message": message}

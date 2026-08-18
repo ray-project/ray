@@ -9,7 +9,6 @@ import ray
 import ray.train
 import ray.train.v2._internal.execution.train_fn_utils
 from ray.train.v2._internal.constants import (
-    ANNOTATIONS_ENABLED_ENV_VAR,
     TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
     TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
 )
@@ -78,44 +77,26 @@ def captured_api_warnings():
         api_logger.removeHandler(handler)
 
 
-@pytest.mark.parametrize("annotations_enabled", [True, False])
-def test_report_annotation_env_flag(
-    monkeypatch, in_train_worker, captured_annotations, annotations_enabled
-):
-    """``ray.train.report`` annotates by default and skips the annotation
-    entirely (including building its payload) when annotations are disabled."""
-    monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, "1" if annotations_enabled else "0")
-
+def test_report_emits_annotation(in_train_worker, captured_annotations):
+    """``ray.train.report`` annotates on every call from rank 0."""
     ray.train.report({"loss": 0.5})
 
-    if annotations_enabled:
-        assert len(captured_annotations) == 1
-        record = captured_annotations[0]
-        assert record["event"] == TRAIN_ANNOTATION_RAY_TRAIN_REPORT
-        assert json.loads(record["metrics"]) == {"loss": 0.5}
-        assert record["has_checkpoint"] is False
-    else:
-        assert in_train_worker.annotation is None
-        assert captured_annotations == []
+    assert len(captured_annotations) == 1
+    record = captured_annotations[0]
+    assert record["event"] == TRAIN_ANNOTATION_RAY_TRAIN_REPORT
+    assert json.loads(record["metrics"]) == {"loss": 0.5}
+    assert record["has_checkpoint"] is False
 
 
-@pytest.mark.parametrize("annotations_enabled", [True, False])
-def test_annotate_env_flag(
-    monkeypatch, in_train_worker, captured_annotations, annotations_enabled
-):
-    """``ray.train.annotate`` is a no-op when annotations are disabled."""
-    monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, "1" if annotations_enabled else "0")
-
+def test_annotate_emits_annotation(in_train_worker, captured_annotations):
+    """``ray.train.annotate`` emits a single custom annotation."""
     ray.train.annotate(message="finished epoch", epoch=3)
 
-    if annotations_enabled:
-        assert len(captured_annotations) == 1
-        record = captured_annotations[0]
-        assert record["event"] == TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
-        assert record["message"] == "finished epoch"
-        assert json.loads(record["fields"]) == {"epoch": 3}
-    else:
-        assert captured_annotations == []
+    assert len(captured_annotations) == 1
+    record = captured_annotations[0]
+    assert record["event"] == TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
+    assert record["message"] == "finished epoch"
+    assert json.loads(record["fields"]) == {"epoch": 3}
 
 
 def test_annotate_rejects_invalid_severity(in_train_worker, captured_annotations):
@@ -127,30 +108,41 @@ def test_annotate_rejects_invalid_severity(in_train_worker, captured_annotations
     assert captured_annotations == []
 
 
-def test_annotation_failure_reported_once_per_event(
+def test_report_annotation_failure_reported_once(
     monkeypatch, in_train_worker, captured_annotations, captured_api_warnings
 ):
-    """A persistent annotation failure must not log a traceback per call, since
-    ``ray.train.report`` can be called thousands of times per run. It is tracked
-    per event, so one failing event kind does not silence the others."""
+    """The annotation is a side effect of ``ray.train.report``, so a failure in
+    it must never break or block the report barrier. It also must not log a
+    traceback per call, since ``ray.train.report`` can be called thousands of
+    times per run."""
     monkeypatch.setattr(train_fn_utils, "_annotation_failures_reported", set())
     monkeypatch.setattr(
         in_train_worker.annotation, "annotate", MagicMock(side_effect=RuntimeError)
     )
 
     for _ in range(5):
-        # The failure is swallowed: annotations never break the caller.
-        ray.train.annotate(message="finished epoch")
+        ray.train.report({"loss": 0.5})
 
     assert len(captured_api_warnings) == 1
     assert captured_api_warnings[0].exc_info is not None
+    assert TRAIN_ANNOTATION_RAY_TRAIN_REPORT in captured_api_warnings[0].getMessage()
+    assert captured_annotations == []
 
-    for _ in range(5):
-        ray.train.report({"loss": 0.5})
 
-    # The `ray.train.report` failure is still reported, once.
-    assert len(captured_api_warnings) == 2
-    assert TRAIN_ANNOTATION_RAY_TRAIN_REPORT in captured_api_warnings[1].getMessage()
+def test_annotate_propagates_annotation_errors(
+    monkeypatch, in_train_worker, captured_annotations
+):
+    """Unlike ``ray.train.report``, ``ray.train.annotate`` is an explicit user
+    call, so a failure in the annotation path raises rather than being silently
+    swallowed. Emission and I/O failures are still handled (swallowed and warned
+    once) inside ``Annotation.annotate`` itself."""
+    monkeypatch.setattr(
+        in_train_worker.annotation, "annotate", MagicMock(side_effect=RuntimeError)
+    )
+
+    with pytest.raises(RuntimeError):
+        ray.train.annotate(message="finished epoch")
+
     assert captured_annotations == []
 
 

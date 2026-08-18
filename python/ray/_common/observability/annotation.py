@@ -135,15 +135,16 @@ class Annotation:
         base_tags: Tags attached to every emitted event, such as the run name,
             run ID, and world rank. These identify the run and the worker, so
             you can filter annotations per run in LogQL. Keys must not collide
-            with the reserved fields ``annotation_source``, ``timestamp_s``,
-            ``event``, and ``session_name``, which they would silently shadow.
+            with the reserved fields ``ray_annotations``, ``annotation_source``,
+            ``timestamp_s``, ``event``, and ``session_name``, which they would
+            silently shadow.
 
     Raises:
         ValueError: If ``base_tags`` contains a reserved field name.
     """
 
     _RESERVED_FIELDS = frozenset(
-        {"annotation_source", "timestamp_s", "event", "session_name"}
+        {"ray_annotations", "annotation_source", "timestamp_s", "event", "session_name"}
     )
 
     def __init__(
@@ -178,9 +179,6 @@ class Annotation:
         with _logger_lock:
             annotation_logger.setLevel(logging.INFO)
             # Disable propagating to the root logger echoed to the terminal.
-            # Set unconditionally: if something else attached a handler to this
-            # logger first, propagation must still be off so annotation JSON
-            # lines never reach the terminal.
             annotation_logger.propagate = False
 
             if not any(
@@ -210,8 +208,7 @@ class Annotation:
                 ``severity``, or event-specific data.
         """
         try:
-            # Drop only the colliding fields; the rest of the event (most
-            # importantly its `message`) is still worth emitting.
+            # Drop colliding fields
             emitted_fields = {}
             for key, value in fields.items():
                 if key in self._RESERVED_FIELDS or key in self._base_tags:
@@ -225,14 +222,13 @@ class Annotation:
                 emitted_fields[key] = value
 
             record = {
+                # The stream-label contract with the log collector
+                # Keep in sync with ``DEFAULT_ANNOTATION_STREAM_SELECTOR``
+                "ray_annotations": "true",
                 "annotation_source": self._source,
                 "timestamp_s": time.time(),
                 "event": event,
-                # Identifies the cluster that emitted the event. Dashboards scope
-                # annotations by this rather than by the log collector's stream
-                # labels, which Ray knows nothing about: a backend aggregating
-                # several clusters would otherwise leak one cluster's
-                # annotations onto another's dashboard.
+                # Identifies the cluster that emitted the event
                 "session_name": _get_session_name(),
                 **emitted_fields,
                 **self._base_tags,

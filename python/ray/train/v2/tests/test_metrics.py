@@ -9,7 +9,6 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
-from ray.train.v2._internal.constants import ANNOTATIONS_ENABLED_ENV_VAR
 from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
@@ -358,14 +357,8 @@ def test_controller_state_metrics(monkeypatch, mock_gauge):
     )
 
 
-@pytest.mark.parametrize("annotations_enabled", [True, False])
-def test_controller_annotations_env_flag(
-    monkeypatch, mock_gauge, captured_annotations, annotations_enabled
-):
-    """Controller annotations are emitted by default and can be turned off with
-    ``RAY_TRAIN_ANNOTATIONS_ENABLED``, without affecting the state metrics."""
-    monkeypatch.setenv(ANNOTATIONS_ENABLED_ENV_VAR, "1" if annotations_enabled else "0")
-
+def test_controller_annotations(mock_gauge, captured_annotations):
+    """Controller state changes are annotated alongside the state metrics."""
     callback = ControllerMetricsCallback()
     callback.after_controller_start(train_run_context=create_dummy_run_context())
     callback.after_controller_state_update(
@@ -381,15 +374,9 @@ def test_controller_annotations_env_flag(
         == 1
     )
 
-    if annotations_enabled:
-        # One annotation for the controller starting, one for the transition.
-        assert len(captured_annotations) == 2
-        assert (
-            captured_annotations[1]["message"] == "Controller: INITIALIZING → RUNNING"
-        )
-    else:
-        assert callback._annotation is None
-        assert captured_annotations == []
+    # One annotation for the controller starting, one for the transition.
+    assert len(captured_annotations) == 2
+    assert captured_annotations[1]["message"] == "Controller: INITIALIZING → RUNNING"
 
 
 if __name__ == "__main__":

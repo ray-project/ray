@@ -46,18 +46,13 @@ GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_LOG_LINK_U
 GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR = "RAY_GRAFANA_ANNOTATIONS_ENABLED"
 GRAFANA_ANNOTATION_DATASOURCE_UID_ENV_VAR = "RAY_GRAFANA_ANNOTATION_DATASOURCE_UID"
 GRAFANA_ANNOTATION_DATASOURCE_TYPE_ENV_VAR = "RAY_GRAFANA_ANNOTATION_DATASOURCE_TYPE"
-GRAFANA_ANNOTATION_STREAM_SELECTOR_ENV_VAR = "RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR"
 DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE = "loki"
+GRAFANA_ANNOTATION_STREAM_SELECTOR_ENV_VAR = "RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR"
+DEFAULT_ANNOTATION_STREAM_SELECTOR = '{ray_annotations="true"}'
 
 # Name of the datasource template variable backing the annotation queries when
 # ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID`` is unset.
 ANNOTATION_DATASOURCE_VARIABLE = "annotation_datasource"
-
-# Stream selector used when ``RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR`` is unset.
-# Unlike the datasource, this cannot be discovered, so Ray publishes it as a
-# contract instead: label the stream carrying `annotations_*.log` this way in the
-# log collector and the generated queries find it with no further configuration.
-DEFAULT_ANNOTATION_STREAM_SELECTOR = '{ray_annotations="true"}'
 
 # Grafana dashboard layout constants
 # Dashboard uses a 24-column grid with 2-column panels
@@ -267,26 +262,21 @@ def read_annotation_datasource_config() -> Optional[AnnotationDatasourceConfig]:
         ``RAY_GRAFANA_ANNOTATIONS_ENABLED=0``, in which case they are omitted
         from the generated dashboard JSON entirely.
     """
-    if not env_bool(GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR, True):
-        return None
+    if env_bool(GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR, True):
+        uid = (os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_UID_ENV_VAR) or "").strip()
+        stream_selector = (
+            os.environ.get(GRAFANA_ANNOTATION_STREAM_SELECTOR_ENV_VAR) or ""
+        ).strip()
+        datasource_type = (
+            os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_TYPE_ENV_VAR) or ""
+        ).strip() or DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE
 
-    # Strip surrounding whitespace from all three: these are commonly sourced
-    # from a file or a k8s ConfigMap, and a trailing newline in the uid or type
-    # would silently land in the dashboard JSON as an unresolvable datasource.
-    uid = (os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_UID_ENV_VAR) or "").strip()
-    stream_selector = (
-        os.environ.get(GRAFANA_ANNOTATION_STREAM_SELECTOR_ENV_VAR) or ""
-    ).strip()
-    datasource_type = (
-        os.environ.get(GRAFANA_ANNOTATION_DATASOURCE_TYPE_ENV_VAR) or ""
-    ).strip() or DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE
-
-    return AnnotationDatasourceConfig(
-        uid=uid or f"${{{ANNOTATION_DATASOURCE_VARIABLE}}}",
-        stream_selector=stream_selector or DEFAULT_ANNOTATION_STREAM_SELECTOR,
-        datasource_type=datasource_type,
-        pins_datasource=bool(uid),
-    )
+        return AnnotationDatasourceConfig(
+            uid=uid or f"${{{ANNOTATION_DATASOURCE_VARIABLE}}}",
+            stream_selector=stream_selector or DEFAULT_ANNOTATION_STREAM_SELECTOR,
+            datasource_type=datasource_type,
+            pins_datasource=bool(uid),
+        )
 
 
 def generate_annotation_variables(config: AnnotationDatasourceConfig) -> List[dict]:
@@ -351,9 +341,6 @@ def generate_annotation(
         The annotation entry to append to the dashboard's ``annotations.list``.
     """
     datasource = {"type": config.datasource_type, "uid": config.uid}
-    # json.dumps for the two interpolated values: LogQL string literals are
-    # Go-quoted, so this escapes anything that would otherwise break out of the
-    # quotes and rewrite the query.
     expr = (
         f"{config.stream_selector} |= {json.dumps(annotation.source)} | json "
         f"| annotation_source={json.dumps(annotation.source)} "

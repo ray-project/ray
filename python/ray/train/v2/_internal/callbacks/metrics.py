@@ -6,7 +6,6 @@ from ray._common.observability.annotation import Annotation
 from ray.train.v2._internal.constants import (
     TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
     TRAIN_ANNOTATION_SOURCE,
-    are_annotations_enabled,
 )
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
@@ -35,26 +34,21 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         self._metrics: Dict[str, Metric] = ControllerMetrics.get_controller_metrics(
             self._run_name, self._run_id
         )
-        self._annotation: Optional[Annotation] = (
-            Annotation(
-                source=TRAIN_ANNOTATION_SOURCE,
-                base_tags={
-                    RUN_NAME_TAG_KEY: self._run_name,
-                    RUN_ID_TAG_KEY: self._run_id,
-                },
-            )
-            if are_annotations_enabled()
-            else None
+        self._annotation = Annotation(
+            source=TRAIN_ANNOTATION_SOURCE,
+            base_tags={
+                RUN_NAME_TAG_KEY: self._run_name,
+                RUN_ID_TAG_KEY: self._run_id,
+            },
         )
         # Record initial state
         self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
             TrainControllerStateType.INITIALIZING
         )
-        if self._annotation is not None:
-            self._annotation.annotate(
-                event=TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
-                message=f"Controller started: {TrainControllerStateType.INITIALIZING.name}",
-            )
+        self._annotation.annotate(
+            event=TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
+            message=f"Controller started: {TrainControllerStateType.INITIALIZING.name}",
+        )
 
     async def before_controller_shutdown(self):
         """Shutdown metrics before controller shuts down."""
@@ -70,10 +64,7 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
         self._metrics[ControllerMetrics.CONTROLLER_STATE].record(
             current_state._state_type
         )
-        if (
-            self._annotation is not None
-            and previous_state._state_type is not current_state._state_type
-        ):
+        if previous_state._state_type is not current_state._state_type:
             self._annotation.annotate(
                 event=TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE,
                 message=f"Controller: {previous_state._state_type.name} → {current_state._state_type.name}",

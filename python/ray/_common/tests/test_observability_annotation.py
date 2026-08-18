@@ -13,11 +13,9 @@ from ray._common.observability.annotation import (
     _AnnotationFileHandler,
 )
 
-# The annotation module is core and has no dependency on Ray Train, so this test
-# must not import ``ray.train``
-TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
-RUN_NAME_TAG_KEY = "ray_train_run_name"
-RUN_ID_TAG_KEY = "ray_train_run_id"
+ANNOTATION_SOURCE = "test_annotation_source"
+RUN_NAME_TAG_KEY = "run_name"
+RUN_ID_TAG_KEY = "run_id"
 
 _ANNOTATION_MODULE_LOGGER = annotation_mod.__name__
 _ANNOTATION_LOGGER_BASE_NAME = "ray.annotations"
@@ -80,14 +78,15 @@ def captured_warnings():
 
 def test_annotation_emits_json(captured_annotations):
     annotation = Annotation(
-        source=TRAIN_ANNOTATION_SOURCE,
+        source=ANNOTATION_SOURCE,
         base_tags={RUN_NAME_TAG_KEY: "my_run", RUN_ID_TAG_KEY: "abc123"},
     )
     annotation.annotate(event="custom_event", epoch=3, loss=0.5)
 
     assert len(captured_annotations) == 1
     record = captured_annotations[0]
-    assert record["annotation_source"] == TRAIN_ANNOTATION_SOURCE
+    assert record["ray_annotations"] == "true"
+    assert record["annotation_source"] == ANNOTATION_SOURCE
     assert record["event"] == "custom_event"
 
     assert "severity" not in record
@@ -96,8 +95,7 @@ def test_annotation_emits_json(captured_annotations):
     assert record["epoch"] == 3
     assert record["loss"] == 0.5
     assert isinstance(record["timestamp_s"], float)
-    # Empty here because Ray is not initialized; see
-    # ``test_annotation_records_session_name``.
+    # Empty here because Ray is not initialized
     assert record["session_name"] == ""
 
 
@@ -111,7 +109,7 @@ def test_annotation_records_session_name(monkeypatch, captured_annotations):
 
     monkeypatch.setattr(ray._private.worker, "_global_node", _FakeNode())
 
-    annotation = Annotation(source=TRAIN_ANNOTATION_SOURCE, base_tags={})
+    annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
     annotation.annotate(event="custom_event")
 
     assert captured_annotations[0]["session_name"] == _FakeNode.session_name
@@ -120,7 +118,7 @@ def test_annotation_records_session_name(monkeypatch, captured_annotations):
 def test_annotation_cannot_spoof_session_name(captured_annotations, captured_warnings):
     """``session_name`` is what isolates one cluster's annotations from another's,
     so a caller-supplied field must never be able to overwrite it."""
-    annotation = Annotation(source=TRAIN_ANNOTATION_SOURCE, base_tags={})
+    annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
     annotation.annotate(event="custom_event", session_name="hijacked")
 
     assert captured_annotations[0]["session_name"] != "hijacked"
@@ -133,7 +131,7 @@ def test_annotation_field_collision_drops_only_the_colliding_field(
     """A field that collides with a reserved field or a base tag is dropped on its
     own; the rest of the event, in particular its ``message``, is still emitted."""
     annotation = Annotation(
-        source=TRAIN_ANNOTATION_SOURCE,
+        source=ANNOTATION_SOURCE,
         base_tags={RUN_NAME_TAG_KEY: "my_run"},
     )
     annotation.annotate(
@@ -150,7 +148,7 @@ def test_annotation_field_collision_drops_only_the_colliding_field(
     assert record["message"] == "still emitted"
     assert record["epoch"] == 3
     # The colliding fields did not overwrite the real values.
-    assert record["annotation_source"] == TRAIN_ANNOTATION_SOURCE
+    assert record["annotation_source"] == ANNOTATION_SOURCE
     assert record[RUN_NAME_TAG_KEY] == "my_run"
 
     assert len(captured_warnings) == 2
@@ -162,7 +160,7 @@ def test_annotation_rejects_reserved_base_tag(reserved_field: str):
     so it is a construction-time error rather than a per-emit warning."""
     with pytest.raises(ValueError, match="reserved field"):
         Annotation(
-            source=TRAIN_ANNOTATION_SOURCE,
+            source=ANNOTATION_SOURCE,
             base_tags={RUN_NAME_TAG_KEY: "my_run", reserved_field: "hijacked"},
         )
 
@@ -178,7 +176,7 @@ def test_annotation_logger_setup_with_preexisting_handler():
     annotation_logger.addHandler(other_handler)
 
     try:
-        Annotation(source=TRAIN_ANNOTATION_SOURCE, base_tags={})
+        Annotation(source=ANNOTATION_SOURCE, base_tags={})
 
         assert annotation_logger.propagate is False
         assert any(
@@ -201,9 +199,9 @@ class FakeNode:
 
 
 def test_annotation_file_handler_writes_utf8(monkeypatch, tmp_path):
-    """Annotation messages contain non-ASCII characters (e.g. the ``→`` in the
-    controller state-change messages), which the platform default encoding cannot
-    write under a ``C``/``POSIX`` locale."""
+    """Annotation messages can contain non-ASCII characters (e.g. Ray Train's
+    controller state-change messages contain ``→``), which the platform default
+    encoding cannot write under a ``C``/``POSIX`` locale."""
     import ray._private.worker as worker_mod
 
     logs_dir = tmp_path / "logs"
@@ -263,7 +261,7 @@ def test_annotation_file_handler_reopens_after_session_restart():
         ray.init(num_cpus=1, include_dashboard=False)
         logs_dir_a = worker._global_node.get_logs_dir_path()
 
-        Annotation(source=TRAIN_ANNOTATION_SOURCE, base_tags={}).annotate(
+        Annotation(source=ANNOTATION_SOURCE, base_tags={}).annotate(
             event="test_restart", message="from-session-a"
         )
         logging.getLogger(_ANNOTATION_LOGGER_BASE_NAME).handlers[0].flush()
@@ -281,7 +279,7 @@ def test_annotation_file_handler_reopens_after_session_restart():
         # A restart yields a fresh, distinct session logs dir.
         assert logs_dir_b != logs_dir_a
 
-        Annotation(source=TRAIN_ANNOTATION_SOURCE, base_tags={}).annotate(
+        Annotation(source=ANNOTATION_SOURCE, base_tags={}).annotate(
             event="test_restart", message="from-session-b"
         )
         logging.getLogger(_ANNOTATION_LOGGER_BASE_NAME).handlers[0].flush()
