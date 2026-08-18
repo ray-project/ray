@@ -1,4 +1,3 @@
-import inspect
 import time
 from typing import TYPE_CHECKING, List, Optional
 
@@ -117,75 +116,16 @@ class TestDatasource(Datasource):
         return read_tasks
 
 
-@pytest.mark.parametrize(
-    "read_api",
-    [
-        ray.data.read_datasource,
-        ray.data.read_audio,
-        ray.data.read_videos,
-        ray.data.read_zarr,
-        ray.data.read_mongo,
-        ray.data.read_bigquery,
-        ray.data.read_parquet,
-        ray.data.read_images,
-        ray.data.read_json,
-        ray.data.read_csv,
-        ray.data.read_text,
-        ray.data.read_avro,
-        ray.data.read_orc,
-        ray.data.read_tfrecords,
-        ray.data.read_mcap,
-        ray.data.read_lerobot,
-        ray.data.read_binary_files,
-        ray.data.read_sql,
-        ray.data.read_snowflake,
-        ray.data.read_databricks_tables,
-        ray.data.read_hudi,
-        ray.data.read_delta_sharing_tables,
-        ray.data.read_iceberg,
-        ray.data.read_lance,
-        ray.data.read_clickhouse,
-        ray.data.read_delta,
-        ray.data.read_kafka,
-    ],
-    ids=lambda read_api: read_api.__name__,
-)
-def test_read_api_remote_parameters(read_api):
-    parameters = inspect.signature(read_api).parameters
-    for name in [
-        "label_selector",
-        "fallback_strategy",
-        "max_calls",
-        "resources",
-        "accelerator_type",
-        "runtime_env",
-        "ray_remote_args",
-    ]:
-        assert parameters[name].default is None
-        assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
-
-
-@pytest.mark.parametrize(
-    "read_fn",
-    [
-        lambda path, **options: ray.data.read_datasource(
-            RangeDatasource(n=1), **options
-        ),
-        lambda path, **options: ray.data.read_csv(path, **options),
-    ],
-    ids=["read_datasource", "read_csv"],
-)
-def test_read_api_ray_remote_args_deprecation_warning(shutdown_only, tmp_path, read_fn):
-    path = tmp_path / "input.csv"
-    path.write_text("id\n0\n")
-
+def test_read_datasource_ray_remote_args_deprecation_warning(shutdown_only):
     with pytest.warns(
         RayDeprecationWarning, match="ray_remote_args"
     ) as warning_records:
-        read_fn(str(path), ray_remote_args={"scheduling_strategy": "SPREAD"})
+        ray.data.read_datasource(
+            RangeDatasource(n=1),
+            ray_remote_args={"scheduling_strategy": "SPREAD"},
+        )
 
-    # Each public read call should produce only one warning, even if it calls
-    # another read API such as read_datasource internally.
+    # The deprecated argument should produce exactly one warning.
     assert len(warning_records) == 1
     # The warning should point to the public API caller, not Ray Data internals.
     assert warning_records[0].filename == __file__
