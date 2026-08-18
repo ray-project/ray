@@ -2605,7 +2605,7 @@ class Replica:
 
         return tracing_ctx
 
-    async def _prepare_direct_ingress_grpc_request(
+    def _prepare_direct_ingress_grpc_request(
         self,
         service_method: str,
         context: grpc._cython.cygrpc._ServicerContext,
@@ -2741,7 +2741,7 @@ class Replica:
         Returns empty bytes if the request was rejected or failed (returning `None`
         to gRPC would cause serialization errors).
         """
-        prepared = await self._prepare_direct_ingress_grpc_request(
+        prepared = self._prepare_direct_ingress_grpc_request(
             service_method,
             context,
             request_input=request_input,
@@ -2807,7 +2807,7 @@ class Replica:
         bytes and sets the final gRPC status on `context` as a side effect; a
         rejected request yields nothing.
         """
-        prepared = await self._prepare_direct_ingress_grpc_request(
+        prepared = self._prepare_direct_ingress_grpc_request(
             service_method,
             context,
             request_input=request_input,
