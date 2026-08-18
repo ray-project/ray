@@ -117,13 +117,21 @@ http_archive(
     name = "pypi__pip",
     build_file_content = _PYPI_WHEEL_BUILD_FILE,
     patch_args = ["-p1"],
-    # pip hardcodes backoff_factor=0.25 when it builds its urllib3.Retry and exposes
-    # no flag or environment variable for the shape of the retry schedule, and the
-    # urllib3 it vendors (1.26.17) implements exponential backoff only - jitter arrived
-    # in urllib3 2.x. The patch swaps in a constant, jittered schedule so that the
-    # --retries count below translates into a predictable amount of wall-clock. See
-    # the comment on pip_parse's extra_pip_args for why that shape is the one wanted.
-    patches = ["//thirdparty/patches:pip-constant-jittered-retry-backoff.patch"],
+    # The patch changes two things pip does not let a caller configure, which between
+    # them decide whether retrying can succeed at all.
+    #
+    # When to retry. pip hardcodes backoff_factor=0.25 where it builds its urllib3.Retry
+    # and exposes no flag or environment variable for the shape of the backoff, and the
+    # urllib3 it vendors (1.26.17) implements exponential only - jitter arrived in
+    # urllib3 2.x. A constant jittered schedule goes in instead, so the --retries count
+    # below buys a predictable amount of wall-clock; see the comment on extra_pip_args.
+    #
+    # Where to retry. urllib3 drains a failed response specifically in order to keep the
+    # socket alive, and Fastly selects the edge node per connection, so every retry is
+    # pinned to the node that just failed. Sending Connection: close makes each attempt
+    # redial and re-draw a node. Without it no retry count helps against a single bad
+    # node, which is the failure mode described in pypi/support#11876.
+    patches = ["//thirdparty/patches:pip-retry-backoff-and-redial.patch"],
     sha256 = "ba0d021a166865d2265246961bec0152ff124de910c5cc39f1156ce3fa7c69dc",
     type = "zip",
     url = "https://files.pythonhosted.org/packages/8a/6a/19e9fe04fca059ccf770861c7d5721ab4c2aebc539889e97c7977528a53b/pip-24.0-py3-none-any.whl",
@@ -168,6 +176,14 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 # For CI scripts use only; not for ray testing.
 pip_parse(
     name = "py_deps_py310",
+    # The retries above are only usable if the fetch is allowed to last long enough to
+    # spend them. timeout defaults to 600s and pip_parse forwards it to every generated
+    # whl_library, so it bounds each package's pip invocation, not just this rule. The
+    # retry budget alone reaches 588s at worst, and each of the 50 attempts can burn up
+    # to pip's 15s socket timeout on top of that when the failure mode is a hang rather
+    # than a fast 502, so the default cannot hold the schedule. 1800s covers the full
+    # backoff, the per-attempt timeouts and a slow transfer afterwards.
+    timeout = 1800,
     # pip retries 5 times by default, and the schedule is exponential, so it gives up
     # after ~8 seconds (0, 0.5, 1, 2, 4). That is far shorter than a PyPI incident,
     # and simply raising the count does not fix it: exponential backoff doubles until
@@ -191,14 +207,6 @@ pip_parse(
     extra_pip_args = ["--retries=50"],
     python_interpreter_target = python310,
     requirements_lock = "//release:requirements_py310.txt",
-    # The retries above are only usable if the fetch is allowed to last long enough to
-    # spend them. timeout defaults to 600s and pip_parse forwards it to every generated
-    # whl_library, so it bounds each package's pip invocation, not just this rule. The
-    # retry budget alone reaches 588s at worst, and each of the 50 attempts can burn up
-    # to pip's 15s socket timeout on top of that when the failure mode is a hang rather
-    # than a fast 502, so the default cannot hold the schedule. 1800s covers the full
-    # backoff, the per-attempt timeouts and a slow transfer afterwards.
-    timeout = 1800,
 )
 
 load("@py_deps_py310//:requirements.bzl", install_py_deps_py310 = "install_deps")

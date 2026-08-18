@@ -65,7 +65,26 @@
  class PipSession(requests.Session):
      timeout: Optional[int] = None
  
-@@ -346,7 +392,7 @@
+@@ -341,12 +387,26 @@
+         # Attach our User Agent to the request
+         self.headers["User-Agent"] = user_agent()
+ 
++        # Force a new TCP connection for every request, and so for every retry.
++        # Fastly selects the edge node per connection, and urllib3's retry path
++        # deliberately drains a failed response in order to keep the socket
++        # alive, which pins every retry to the node that just failed -- against
++        # one bad node no retry count helps, because the requests never go
++        # anywhere else. Redialling re-draws the node instead: measured against
++        # files.pythonhosted.org, eight separate connections to a single pinned
++        # address reached seven distinct edge nodes, while six requests sent
++        # over one kept-alive socket all landed on the same one.
++        #
++        # The cost is a TLS handshake per request, which is minor next to a
++        # wheel download and only paid on this CI-scripts pip.
++        self.headers["Connection"] = "close"
++
+         # Attach our Authentication handler to the session
+         self.auth = MultiDomainBasicAuth(index_urls=index_urls)
  
          # Create our urllib3.Retry instance which will allow us to customize
          # how we handle retries.
@@ -74,7 +93,7 @@
              # Set the total number of retries that a particular request can
              # have.
              total=retries,
-@@ -358,9 +404,8 @@
+@@ -358,9 +418,8 @@
              # A 502 may be a transient error from a CDN like CloudFlare or CloudFront
              # A 520 or 527 - may indicate transient error in CloudFlare
              status_forcelist=[500, 502, 503, 520, 527],
