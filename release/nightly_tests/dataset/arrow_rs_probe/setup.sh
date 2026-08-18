@@ -132,8 +132,13 @@ fi
 # it; without it the agent crashes and the raylet fate-shares (`ray.init()` hangs
 # indefinitely) — cost a day on the 2026-07-27 workspace run.
 # awscli: gen_s3_fixtures.py uploads fixtures via `aws s3 sync`.
-say "installing probe deps (psutil, numpy, pyarrow, aiohttp, awscli)"
-PIP psutil numpy pyarrow aiohttp awscli
+# grpcio: NOT pulled by ray[data] (only the [default] extra) but imported
+# unconditionally by release/nightly_tests/dataset/benchmark.py:12
+# (get_memory_info_reply -> grpc channel to GCS) — the tpch stage runs the
+# release scripts through benchmark.py and died on ModuleNotFoundError
+# without it.
+say "installing probe deps (psutil, numpy, pyarrow, aiohttp, awscli, grpcio)"
+PIP psutil numpy pyarrow aiohttp awscli grpcio
 # aiohttp failure mode is silent (runtime-env agent crashes -> ray.init hangs
 # forever), so verify the import loudly here instead of debugging a hang later.
 "$PY" -c "import aiohttp, psutil, numpy, pyarrow" \

@@ -108,6 +108,12 @@ fi
 
 if has_stage tpch; then
   say "stage: tpch suspects (sf=$TPCH_SF — q9 spill T27, q20 shuffle_v2 M46)"
+  # benchmark.py:12 imports grpc unconditionally; ray[data] doesn't ship it and
+  # an already-set-up box skips setup.sh, so top it up here (cheap, idempotent).
+  python -c "import grpc" >/dev/null 2>&1 || {
+    say "installing missing grpcio (benchmark.py dependency)"
+    uv pip install --python "$(command -v python)" grpcio
+  }
   python "$SCRIPT_DIR/tpch_probe.py" \
     --outdir "$RUN_DIR/tpch" --sf "$TPCH_SF" \
     ${TPCH_QUERIES:+--queries "$TPCH_QUERIES"} \
