@@ -838,12 +838,19 @@ put the node-level strategy under ``ray.io/node-id`` in the same dict, as shown 
   exposes an identifier for each NVLink domain with the node label
   ``nvidia.com/gpu.clique`` from GPU Feature Discovery.
 
-  If your Ray workers are running within Pods, you can use the Kubernetes Downward
-  API to set an environment variable such as ``NVIDIA_GPU_CLIQUE`` to the value of
-  the ``nvidia.com/gpu.clique`` node label, which enables the NVLink domain-aware
-  placement groups feature.
+  The `Kubernetes Downward API <https://kubernetes.io/docs/concepts/workloads/pods/downward-api/>`_ can't expose node labels directly to a Pod. Instead, expose the assigned node name to the Ray container:
 
-  For example, a Ray worker's start command might look like this:
+  .. code-block:: yaml
+
+    env:
+      - name: KUBERNETES_NODE_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: spec.nodeName
+
+  In a startup wrapper, use ``KUBERNETES_NODE_NAME`` and the Pod's ServiceAccount credentials to read the Node object from the Kubernetes API. Extract ``metadata.labels["nvidia.com/gpu.clique"]``, fail if the label is absent, and assign it to a user-defined shell variable such as ``NVIDIA_GPU_CLIQUE`` before running ``ray start``. The ServiceAccount requires ``get`` permission on the cluster-scoped ``nodes`` resource. The manifest only supplies the node name; the wrapper retrieves the label after Kubernetes schedules the Pod.
+
+  After you set ``NVIDIA_GPU_CLIQUE`` to the retrieved label value, a Ray worker's start command might look like this:
 
   .. code-block:: bash
 
