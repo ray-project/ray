@@ -42,12 +42,10 @@ def create_oai_client():
     serve.shutdown()
 
 
-def test_invalid_top_logprobs_returns_400(client):
-    """``top_logprobs=-2`` is rejected by a ``mode="before"`` validator on the
-    request model, so it never reaches the engine. The error is a ``VLLMError``
-    rather than a ``ValueError``, so pydantic does not wrap it and the ingress
-    must map it explicitly or answer 500.
-    """
+def test_invalid_top_logprobs_is_400(client):
+    """``top_logprobs=-2`` is rejected by a ``mode="before"`` validator. The error
+    is a ``VLLMError``, not a ``ValueError``, so pydantic does not wrap it and the
+    ingress must map it explicitly or answer 500."""
     with pytest.raises(openai.BadRequestError) as exc_info:
         client.chat.completions.create(
             model="llm_model_id",

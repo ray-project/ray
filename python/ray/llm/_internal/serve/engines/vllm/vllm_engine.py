@@ -102,7 +102,7 @@ logger = get_logger(__name__)
 # re-raises anything but a ``VLLMClientError`` as ``EngineGenerateError``, so bad
 # requests lose their 4xx type and are served as 500s.
 # TODO (jeffreywang): Remove this and the ``EngineGenerateError`` handling below
-# once vLLM's grammar validators raise ``VLLMClientError`` (vllm-project/vllm#48227).
+# once vLLM's grammar validators raise ``VLLMClientError`` (vllm-project/vllm#52394).
 def _unwrap_client_error(exc: BaseException) -> BaseException:
     if isinstance(exc, EngineGenerateError) and isinstance(
         exc.__cause__, (ValueError, VLLMClientError)
