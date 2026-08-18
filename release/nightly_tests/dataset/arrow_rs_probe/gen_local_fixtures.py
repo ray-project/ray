@@ -95,9 +95,15 @@ def gen_single_rg_files(d, scale):
             os.path.join(d, f"part{f}.parquet"),
             write_page_index=True,
             row_group_size=rows_per,
+            use_dictionary=False,
         )
         total += t.nbytes
-    return {"files": n_files, "rows": n_files * rows_per, "uncompressed_bytes": total}
+    return {
+        "files": n_files,
+        "rows": n_files * rows_per,
+        "uncompressed_bytes": total,
+        "v": 2,
+    }
 
 
 def gen_auto_rg(d, scale):
@@ -112,6 +118,13 @@ def gen_auto_rg(d, scale):
     (2026-08-15.md §4b) — the loss_triage stage re-measures it at a 20 Hz poll.
     `single_rg_files` (128 MiB) is the parquet_split shape; this one exists so the
     per-task decode volume matches M31's.
+
+    v2 (2026-08-18): written with use_dictionary=False. The bin packer budgets
+    `rg.total_byte_size` = uncompressed-but-still-ENCODED page bytes, and the
+    4096-string pool dictionary-encoded ~14.6x (4.9 MiB encoded vs 72 MiB
+    decoded) — so v1 packed ~13 files per 64 MiB bin and the promised
+    one-row-group-per-task shape NEVER held (M41). Plain encoding makes
+    total_byte_size ~= decoded bytes and restores the release shape.
     """
     rng = np.random.default_rng(8)
     pool = _str_pool(rng)
@@ -125,9 +138,18 @@ def gen_auto_rg(d, scale):
             os.path.join(d, f"part{f}.parquet"),
             write_page_index=True,
             row_group_size=rows_per,
+            use_dictionary=False,
         )
         total += t.nbytes
-    return {"files": n_files, "rows": n_files * rows_per, "uncompressed_bytes": total}
+    return {
+        "files": n_files,
+        "rows": n_files * rows_per,
+        "uncompressed_bytes": total,
+        "v": 2,
+    }
+
+
+gen_auto_rg._fixture_version = 2
 
 
 def gen_tiny_rgs(d, scale):
@@ -173,9 +195,15 @@ def gen_wide(d, scale):
             os.path.join(d, f"part{f}.parquet"),
             write_page_index=True,
             row_group_size=rows_per,
+            use_dictionary=False,
         )
         total += t.nbytes
-    return {"files": n_files, "rows": n_files * rows_per, "uncompressed_bytes": total}
+    return {
+        "files": n_files,
+        "rows": n_files * rows_per,
+        "uncompressed_bytes": total,
+        "v": 2,
+    }
 
 
 def gen_fat_col(d, scale):
@@ -208,6 +236,10 @@ def gen_bin_sweep(d, scale):
     unbounded thread pool, has never been measured). replication_matrix.py derives
     the actual byte grid from this manifest entry's rg/file stats, so --scale
     changes sizes without breaking the regimes.
+
+    v2 (2026-08-18): use_dictionary=False, same reason as gen_auto_rg (M41) —
+    v1's encoded rgs were ~4.9 MiB, so the whole fixture fit ONE release-yaml
+    write bin (1.29 GiB) and the M32/M38 task shape never ran on a box.
     """
     rng = np.random.default_rng(5)
     pool = _str_pool(rng)
@@ -223,6 +255,7 @@ def gen_bin_sweep(d, scale):
             os.path.join(d, f"part{f}.parquet"),
             write_page_index=True,
             row_group_size=rows_per_rg,
+            use_dictionary=False,
         )
         total += t.nbytes
     return {
@@ -231,7 +264,11 @@ def gen_bin_sweep(d, scale):
         "uncompressed_bytes": total,
         "rgs_per_file": rgs_per_file,
         "rows_per_rg": rows_per_rg,
+        "v": 2,
     }
+
+
+gen_bin_sweep._fixture_version = 2
 
 
 def gen_tensors_wide(d, scale):
@@ -388,12 +425,14 @@ def main():
         if os.path.isdir(d) and shape in manifest:
             # Skip ONLY at the same scale. A 0.25-scale smoke run must not leave
             # quarter-size fixtures behind for the full run to silently benchmark.
-            if manifest[shape].get("scale") == args.scale:
+            want_v = getattr(gen, "_fixture_version", None)
+            have_v = manifest[shape].get("v")
+            if manifest[shape].get("scale") == args.scale and have_v == want_v:
                 print(f"  {shape}: exists, skipping ({manifest[shape]})", flush=True)
                 continue
             print(
-                f"  {shape}: exists at scale={manifest[shape].get('scale')}, "
-                f"want scale={args.scale} — regenerating",
+                f"  {shape}: exists at scale={manifest[shape].get('scale')} "
+                f"v={have_v}, want scale={args.scale} v={want_v} — regenerating",
                 flush=True,
             )
             shutil.rmtree(d)
