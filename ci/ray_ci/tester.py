@@ -118,13 +118,6 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 @click.option(
     "--network",
     type=str,
-    # The nested test container has its own loopback, so it cannot see a PyPI index
-    # proxy bound on 127.0.0.1 in the forge container. When that proxy is what the
-    # index points at, ci/pypi_proxy_profile.sh publishes the forge container's id
-    # here so the test container joins its network namespace. Unset when the index
-    # needs no proxy or none is running, which leaves networking as it was, and an
-    # explicit --network on the command line still wins.
-    default=lambda: os.environ.get("RAYCI_PYPI_PROXY_NETWORK"),
     help="Network to use for the test.",
 )
 @click.option(

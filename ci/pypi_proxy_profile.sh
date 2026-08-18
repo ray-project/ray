@@ -73,8 +73,26 @@ _rayci_pypi_index_setup() {
   fi
 
   local port="${RAYCI_PYPI_PROXY_PORT:-35999}"
-  local url="http://127.0.0.1:${port}"
   local log=/tmp/pypi_index_proxy.log
+
+  # Addressed by this container's bridge address rather than 127.0.0.1, because the
+  # nested containers ci/ray_ci starts for tests have their own loopback. The
+  # alternative, joining this container's network namespace with
+  # `docker run --network container:<id>`, is what build 72099 died on: docker
+  # rejects that combination with the `--add-host rayci.localhost:host-gateway` that
+  # ci/ray_ci/linux_container.py always passes -- "conflicting options: custom
+  # host-to-IP mapping and the network mode" -- so every test container failed to
+  # start. Sharing a namespace would also share ports with the tests, which is its
+  # own hazard. This address works unchanged from here and from any container on the
+  # same bridge.
+  local host
+  host="$(hostname -i 2>/dev/null | awk '{print $1}')"
+  if [[ -z "${host}" ]]; then
+    export RAYCI_PYPI_INDEX_MODE="pypi"
+    echo "pypi index: could not determine this container's address; resolving from public PyPI" >&2
+    return 0
+  fi
+  local url="http://${host}:${port}"
 
   # setsid gives the proxy its own session: `bash -i` enables job control, so a
   # plain background job shares the step shell's process group and would be
@@ -101,16 +119,15 @@ _rayci_pypi_index_setup() {
   export RAYCI_PYPI_PROXY_LOG="${log}"
   export PIP_INDEX_URL="${url}/simple"
   export UV_INDEX_URL="${url}/simple"
+  # pip and uv treat a plain-HTTP index as insecure and refuse it, with loopback the
+  # one exemption -- and this address is deliberately not loopback, so the exemption
+  # no longer applies and the host has to be named explicitly. Both variables are
+  # already forwarded into nested containers by ci/ray_ci/container.py.
+  export PIP_TRUSTED_HOST="${host}"
+  export UV_INSECURE_HOST="${host}"
   # rules_python passes --isolated to whl_library's pip, which makes it ignore
   # every PIP_* variable. It reads this before deciding to pass the flag.
   export RULES_PYTHON_PIP_ISOLATED=0
-
-  # The proxy is on this container's loopback, which a nested container does not
-  # share. Publish this container's id so ci/ray_ci/tester.py can join its network
-  # namespace; docker sets the hostname to the container's short id.
-  local container_id
-  container_id="$(cat /etc/hostname 2>/dev/null || hostname)"
-  export RAYCI_PYPI_PROXY_NETWORK="container:${container_id}"
 
   echo "pypi index: using the local rewriting proxy over the mirror -> ${PIP_INDEX_URL}"
 }

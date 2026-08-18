@@ -108,8 +108,13 @@ app = CrossOriginProtection(
 if __name__ == "__main__":
     # Bind before serving so the ephemeral port is known and announced
     # synchronously: once the lines below are printed, the socket accepts.
+    # Bound on all interfaces rather than loopback: the nested containers CI starts
+    # for tests have their own loopback, and reaching this on the container's bridge
+    # address is what lets them resolve through it without sharing a network
+    # namespace. The agent is single-tenant and terminated after one job, and the
+    # cross-origin protection below covers the rest.
     listener = socket.create_server(
-        ("127.0.0.1", int(sys.argv[1]) if len(sys.argv) > 1 else 0)
+        ("0.0.0.0", int(sys.argv[1]) if len(sys.argv) > 1 else 0)
     )
     base_url = "http://{}:{}".format(*listener.getsockname())
     print(f"listening on {base_url}", flush=True)
