@@ -75,7 +75,7 @@ _MAX_RANGE_BYTES: int = (1 << 64) - 1
 _WF_HEADER = struct.Struct("<Q")
 
 
-def _codec_for(compression: Compression) -> Optional["pa.Codec"]:
+def _codec_for(compression: Optional[str]) -> Optional["pa.Codec"]:
     """Codec name -> pa.Codec; None/"none" -> None (pyarrow has no "none" codec)."""
     if not compression or compression.lower() == "none":
         return None
@@ -83,7 +83,7 @@ def _codec_for(compression: Compression) -> Optional["pa.Codec"]:
 
 
 def _encode_shard(
-    table: pa.Table, compression: Compression = "zstd", combine_native: bool = False
+    table: pa.Table, compression: Optional[str] = "zstd", combine_native: bool = False
 ) -> pa.Buffer:
     """Encode a partition shard as a whole-frame blob (one codec frame per shard,
     vs Arrow's per-buffer IPC compression)."""
@@ -110,7 +110,7 @@ def _encode_shard(
 
 
 def _read_ipc(
-    buf: Union[bytes, "pa.Buffer", memoryview], compression: Compression = "zstd"
+    buf: Union[bytes, "pa.Buffer", memoryview], compression: Optional[str] = "zstd"
 ) -> pa.Table:
     """Decode a whole-frame shard: read the u64 size header, one decompress of
     the rest (per ``compression``, same value the map encoded with), then read
@@ -157,7 +157,7 @@ class ShuffleHandle(TypedDict, total=False):
     # Extra mapper bookkeeping (not required for fetch).
     num_partitions: int
     total_bytes: int
-    compression: Compression
+    compression: Optional[str]
 
 
 class _Endpoint(NamedTuple):
@@ -267,7 +267,7 @@ class _PartitionWriter:
         self,
         out_file: BinaryIO,
         map_id: int,
-        compression: Compression,
+        compression: Optional[str],
     ):
         self._out_file = out_file
         self._map_id = map_id
