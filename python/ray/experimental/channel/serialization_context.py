@@ -198,7 +198,12 @@ class _SerializationContext:
                     # It does zero-copy convert np_array inside shared memory to
                     # a tensor. Since we move data to GPU immediately, it is safe.
                     cpu_tensor = torch.from_numpy(np_array).view(dtype)
-                    return cpu_tensor.to(device=target_device_type)
+                    if not cpu_tensor.is_pinned():
+                        try:
+                            cpu_tensor = cpu_tensor.pin_memory()
+                        except Exception:
+                            pass
+                    return cpu_tensor.to(device=target_device_type, non_blocking=True)
 
             global _TORCH_WARNING_FILTER_ACTIVATE
             # filtering warning messages would be the bottleneck for
