@@ -19,6 +19,7 @@ examples/rayserve-deepseek-example
 examples/verl-post-training
 examples/argocd
 examples/rayjob-agent-sandbox
+examples/ray-sandboxing
 ```
 
 
@@ -37,3 +38,4 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-rayservice-deepseek-example`
 - {ref}`kuberay-verl`
 - {ref}`kuberay-agent-sandbox`
+- {ref}`kuberay-sandboxing`
