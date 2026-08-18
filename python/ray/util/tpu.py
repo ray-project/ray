@@ -1151,6 +1151,49 @@ class SlicePlacementGroup:
         )
         return RuntimeEnv(env_vars=env_vars)
 
+    @PublicAPI(stability="alpha")
+    def get_worker_addrs(
+        self, slice_index: int = 0, nodes: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Optional[str]]:
+        """Returns the list of host IP addresses for bundles in a given slice.
+
+        Args:
+            slice_index: The 0-based index of the TPU slice.
+            nodes: Optional list of node dictionaries (e.g. from ray.nodes()) to
+                avoid repeated GCS scans during batched resolution.
+
+        Returns:
+            A list of IP address strings (or None for unscheduled bundles) for the slice.
+
+        Raises:
+            ValueError: If slice_index is out of range.
+        """
+        if slice_index < 0 or slice_index >= self._num_slices:
+            raise ValueError(
+                f"slice_index {slice_index} is out of range for {self._num_slices} slice(s)."
+            )
+
+        bundles_per_slice = self._num_bundles // self._num_slices
+        if self._pg_per_slice:
+            if not self._managed_pgs or slice_index >= len(self._managed_pgs):
+                return [None] * bundles_per_slice
+            pg = self._managed_pgs[slice_index]
+            if pg is None:
+                return [None] * bundles_per_slice
+            return [
+                _get_pg_bundle_node_ip(pg, i, nodes=nodes)
+                for i in range(bundles_per_slice)
+            ]
+        else:
+            if not self._managed_pgs or self._managed_pgs[0] is None:
+                return [None] * bundles_per_slice
+            pg = self._managed_pgs[0]
+            start = slice_index * bundles_per_slice
+            return [
+                _get_pg_bundle_node_ip(pg, start + i, nodes=nodes)
+                for i in range(bundles_per_slice)
+            ]
+
     @property
     def worker_addrs(self) -> List[Optional[str]]:
         """The list of host IP addresses for each bundle in this placement group.
@@ -1160,44 +1203,36 @@ class SlicePlacementGroup:
             in bundle order (index 0 to num_bundles - 1).
         """
         nodes = ray.nodes() if ray.is_initialized() else []
-        if self._pg_per_slice:
-            addrs: List[Optional[str]] = []
-            for pg in self._managed_pgs:
-                if pg is None:
-                    continue
-                table = placement_group_table(pg) if ray.is_initialized() else {}
-                bundles = table.get("bundles_to_node_id", {})
-                for b_idx in range(len(bundles) or 1):
-                    addrs.append(_get_pg_bundle_node_ip(pg, b_idx, nodes=nodes))
-            return addrs
-        else:
-            if not self._managed_pgs:
-                return [None] * self._num_bundles
-            pg = self._managed_pgs[0]
-            return [
-                _get_pg_bundle_node_ip(pg, i, nodes=nodes)
-                for i in range(self._num_bundles)
-            ]
+        addrs: List[Optional[str]] = []
+        for s_idx in range(self._num_slices):
+            addrs.extend(self.get_worker_addrs(s_idx, nodes=nodes))
+        return addrs
 
     @PublicAPI(stability="alpha")
     def get_jax_env_vars(
         self,
+        slice_index: int = 0,
         worker_id: Optional[Union[int, str]] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> Dict[str, str]:
         """Returns the JAX TPU environment variables for this slice.
 
         Args:
+            slice_index: The 0-based index of the TPU slice.
             worker_id: Optional integer or string ID of the worker within the slice.
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames. If omitted, resolved from placement
-                group bundles.
+                group bundles in this slice.
 
         Returns:
             A dictionary mapping JAX TPU environment variables to their values.
+
+        Raises:
+            ValueError: If slice_index is out of range.
         """
         if worker_hostnames is None:
-            addrs = [a for a in self.worker_addrs if a is not None]
+            slice_addrs = self.get_worker_addrs(slice_index)
+            addrs = [a for a in slice_addrs if a is not None]
             if addrs:
                 worker_hostnames = addrs
             else:
@@ -1211,21 +1246,27 @@ class SlicePlacementGroup:
     @PublicAPI(stability="alpha")
     def get_jax_runtime_env(
         self,
+        slice_index: int = 0,
         worker_id: Optional[Union[int, str]] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
     ) -> RuntimeEnv:
         """Returns a Ray RuntimeEnv populated with JAX TPU environment variables.
 
         Args:
+            slice_index: The 0-based index of the TPU slice.
             worker_id: Optional integer or string ID of the worker within the slice.
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames. If omitted, resolved from placement
-                group bundles.
+                group bundles in this slice.
 
         Returns:
             A Ray RuntimeEnv configured with JAX TPU environment variables.
+
+        Raises:
+            ValueError: If slice_index is out of range.
         """
         env_vars = self.get_jax_env_vars(
+            slice_index=slice_index,
             worker_id=worker_id,
             worker_hostnames=worker_hostnames,
         )

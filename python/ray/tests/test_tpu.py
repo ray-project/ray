@@ -3451,8 +3451,8 @@ def test_tpu_cache_put():
     assert "slice-0" not in ray.util.tpu._tpu_host_addresses_cache
 
 
-def test_build_slice_worker_to_node_ignores_dead_tombstones():
-    """Test _build_slice_worker_to_node tracks only live nodes, ignoring dead tombstones."""
+def test_build_slice_worker_to_node_ignores_dead_nodes():
+    """Test _build_slice_worker_to_node tracks only live nodes, ignoring dead nodes."""
     live_worker_0 = {
         "NodeID": "node-0-new",
         "Alive": True,
@@ -3478,7 +3478,7 @@ def test_build_slice_worker_to_node_ignores_dead_tombstones():
         },
     }
 
-    # Dead tombstone appearing after live node in ray.nodes() must not overwrite live node
+    # Dead node appearing after live node in ray.nodes() must not overwrite live node
     nodes = [live_worker_0, dead_worker_0, live_worker_1]
     lookup = ray.util.tpu._build_slice_worker_to_node(nodes)
 
@@ -3500,10 +3500,15 @@ def test_slice_placement_group_addresses_and_jax_env():
     assert slice_pg.master_addr is None
     assert slice_pg.master_addrs == [None]
     assert slice_pg.worker_addrs == [None, None]
+    assert slice_pg.get_worker_addrs(0) == [None, None]
     assert slice_pg.get_master_addr(0) is None
 
     with pytest.raises(ValueError, match="slice_index 1 is out of range"):
         slice_pg.get_master_addr(1)
+    with pytest.raises(ValueError, match="slice_index 1 is out of range"):
+        slice_pg.get_worker_addrs(1)
+    with pytest.raises(ValueError, match="slice_index 1 is out of range"):
+        slice_pg.get_jax_env_vars(slice_index=1)
     with pytest.raises(ValueError, match="slice_index -1 is out of range"):
         slice_pg.get_master_addr(-1)
 
@@ -3522,15 +3527,16 @@ def test_slice_placement_group_addresses_and_jax_env():
     ):
         assert slice_pg.master_addr == "10.0.0.1"
         assert slice_pg.master_addrs == ["10.0.0.1"]
+        assert slice_pg.get_worker_addrs(0) == ["10.0.0.1", "10.0.0.2"]
         assert slice_pg.worker_addrs == ["10.0.0.1", "10.0.0.2"]
         assert slice_pg.get_master_addr(0) == "10.0.0.1"
 
-        env_w0 = slice_pg.get_jax_env_vars(worker_id=0)
+        env_w0 = slice_pg.get_jax_env_vars(slice_index=0, worker_id=0)
         assert env_w0 == {
             "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
             "TPU_WORKER_ID": "0",
         }
-        runtime_env = slice_pg.get_jax_runtime_env(worker_id=1)
+        runtime_env = slice_pg.get_jax_runtime_env(slice_index=0, worker_id=1)
         assert runtime_env["env_vars"] == {
             "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
             "TPU_WORKER_ID": "1",
@@ -3542,7 +3548,7 @@ def test_slice_placement_group_addresses_and_jax_env():
     )
     assert env_explicit["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
 
-    # 3. Multi-slice with pg_per_slice=False (2 slices, 4 bundles total)
+    # 3. Multi-slice with pg_per_slice=False (2 slices, 4 bundles total, 2 bundles per slice)
     slice_pg_multi = SlicePlacementGroup.__new__(SlicePlacementGroup)
     slice_pg_multi._pg_per_slice = False
     slice_pg_multi._num_slices = 2
@@ -3558,7 +3564,9 @@ def test_slice_placement_group_addresses_and_jax_env():
     }
     mock_multi_nodes = [
         {"NodeID": "node-1", "NodeManagerAddress": "10.0.0.1"},
+        {"NodeID": "node-2", "NodeManagerAddress": "10.0.0.2"},
         {"NodeID": "node-3", "NodeManagerAddress": "10.0.0.3"},
+        {"NodeID": "node-4", "NodeManagerAddress": "10.0.0.4"},
     ]
     with (
         patch("ray.is_initialized", return_value=True),
@@ -3572,6 +3580,21 @@ def test_slice_placement_group_addresses_and_jax_env():
         assert slice_pg_multi.master_addrs == ["10.0.0.1", "10.0.0.3"]
         assert slice_pg_multi.get_master_addr(0) == "10.0.0.1"
         assert slice_pg_multi.get_master_addr(1) == "10.0.0.3"
+        assert slice_pg_multi.get_worker_addrs(0) == ["10.0.0.1", "10.0.0.2"]
+        assert slice_pg_multi.get_worker_addrs(1) == ["10.0.0.3", "10.0.0.4"]
+        assert slice_pg_multi.worker_addrs == [
+            "10.0.0.1",
+            "10.0.0.2",
+            "10.0.0.3",
+            "10.0.0.4",
+        ]
+
+        # JAX env vars must be scoped to each slice's hosts
+        env_s0 = slice_pg_multi.get_jax_env_vars(slice_index=0, worker_id=0)
+        assert env_s0["TPU_WORKER_HOSTNAMES"] == "10.0.0.1,10.0.0.2"
+
+        env_s1 = slice_pg_multi.get_jax_env_vars(slice_index=1, worker_id=0)
+        assert env_s1["TPU_WORKER_HOSTNAMES"] == "10.0.0.3,10.0.0.4"
 
     # 4. Multi-slice with pg_per_slice=True
     mock_pg_0 = MagicMock()
@@ -3590,9 +3613,9 @@ def test_slice_placement_group_addresses_and_jax_env():
 
     def mock_pg_table_fn(pg):
         if pg == mock_pg_0:
-            return {"bundles_to_node_id": {0: "node-1"}}
+            return {"bundles_to_node_id": {0: "node-1", 1: "node-2"}}
         elif pg == mock_pg_1:
-            return {"bundles_to_node_id": {0: "node-3"}}
+            return {"bundles_to_node_id": {0: "node-3", 1: "node-4"}}
         return {}
 
     with (
@@ -3604,9 +3627,21 @@ def test_slice_placement_group_addresses_and_jax_env():
         patch("ray.nodes", return_value=mock_multi_nodes),
     ):
         assert slice_pg_pps.master_addrs == ["10.0.0.1", "10.0.0.3"]
-        assert slice_pg_pps.worker_addrs == ["10.0.0.1", "10.0.0.3"]
+        assert slice_pg_pps.get_worker_addrs(0) == ["10.0.0.1", "10.0.0.2"]
+        assert slice_pg_pps.get_worker_addrs(1) == ["10.0.0.3", "10.0.0.4"]
+        assert slice_pg_pps.worker_addrs == [
+            "10.0.0.1",
+            "10.0.0.2",
+            "10.0.0.3",
+            "10.0.0.4",
+        ]
         assert slice_pg_pps.get_master_addr(0) == "10.0.0.1"
         assert slice_pg_pps.get_master_addr(1) == "10.0.0.3"
+
+        # Partial/unplaced PG retains exact length num_bundles
+        slice_pg_pps._managed_pgs = [mock_pg_0, None]
+        assert slice_pg_pps.get_worker_addrs(1) == [None, None]
+        assert slice_pg_pps.worker_addrs == ["10.0.0.1", "10.0.0.2", None, None]
 
 
 def test_subslice_placement_group_addresses_and_jax_env():

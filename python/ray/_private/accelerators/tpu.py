@@ -38,6 +38,14 @@ TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
 TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
 
+# Mapping of chips-per-host to LibTPU 3D coordinate bounding boxes (X,Y,Z).
+_JAX_CHIPS_PER_PROCESS_BOUNDS: Dict[int, str] = {
+    1: TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG,
+    2: TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+    4: "2,2,1",
+    8: "2,4,1",
+}
+
 # TorchTPU (PyTorch/XLA) environment variables.
 TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
 TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
@@ -278,15 +286,7 @@ def get_jax_chips_per_process_bounds(
     accelerator_version: Optional[str] = None,
 ) -> str:
     """Returns the JAX/libtpu chips-per-process bounds string (e.g. '2,2,1' for 4 chips)."""
-    if chips_per_host == 8:
-        return "2,4,1"
-    elif chips_per_host == 4:
-        return "2,2,1"
-    elif chips_per_host == 2:
-        return "1,2,1"
-    elif chips_per_host == 1:
-        return "1,1,1"
-    return f"{chips_per_host},1,1"
+    return _JAX_CHIPS_PER_PROCESS_BOUNDS.get(chips_per_host, f"{chips_per_host},1,1")
 
 
 def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
