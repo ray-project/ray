@@ -254,3 +254,8 @@ CLAUDE.local.md
 # Worktrees
 .worktrees/
 .claude/worktrees/
+
+# CodeArtifact index configuration written by .buildkite/hooks/pre-command.
+# .rayci-netrc holds a short-lived bearer token.
+.rayci-netrc
+.rayci-codeartifact.env

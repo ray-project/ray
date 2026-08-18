@@ -56,10 +56,6 @@ _DOCKER_ENV = [
     "UV_EXTRA_INDEX_URL",
     "UV_INSECURE_HOST",
     "RULES_PYTHON_PIP_ISOLATED",
-    # Where the index credential lives, for an index that needs one. Both pip
-    # and uv read $NETRC, which keeps the token out of the index URL and so out
-    # of this very list. The file itself is bind-mounted in get_run_command.
-    "NETRC",
 ]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
 
@@ -146,13 +142,6 @@ class Container(abc.ABC):
         ]
         for env in self.envs:
             command += ["--env", env]
-        # Forwarding $NETRC only names a path; the file has to exist inside the
-        # container too, and at the same path, since that is the value the
-        # variable carries. Read-only: nothing in a test container should be
-        # rewriting the index credential.
-        netrc = os.environ.get("NETRC")
-        if netrc and os.path.exists(netrc):
-            command += ["--volume", f"{netrc}:{netrc}:ro"]
         if network:
             command += ["--network", network]
         for volume in (volumes or []) + self.volumes:

@@ -126,6 +126,20 @@ class LinuxContainer(Container):
             "/rayci",
             "--shm-size=2.5gb",
         ]
+        # The index credential cannot ride the workspace into this container the
+        # way the rest of the checkout does: tests.env.Dockerfile COPYs the
+        # workspace into an image, and a token does not belong in an image layer,
+        # so .rayci-netrc is excluded from the build context. Bind-mount it
+        # instead, and name it at this layer's workspace path -- the agent's
+        # value points at the step container's mount, which does not exist here.
+        netrc = os.environ.get("NETRC")
+        if netrc and os.path.exists(netrc):
+            extra_args += [
+                "--volume",
+                f"{netrc}:/rayci/.rayci-netrc:ro",
+                "--env",
+                "NETRC=/rayci/.rayci-netrc",
+            ]
         return extra_args
 
     def get_artifact_mount(self) -> Tuple[str, str]:

@@ -100,7 +100,10 @@ def test_netrc_is_mounted_into_the_container(tmp_path) -> None:
         return_value=None,
     ), mock.patch.dict(os.environ, {"NETRC": str(netrc)}):
         LinuxTesterContainer("team")._run_tests_in_docker(["t1"], [], "/tmp", [])
-        assert f"--volume {netrc}:{netrc}:ro" in inputs[-1]
+        # Mounted at this layer's workspace path, not the agent's: the value the
+        # step container carries points at its own mount, which is not here.
+        assert f"--volume {netrc}:/rayci/.rayci-netrc:ro" in inputs[-1]
+        assert "--env NETRC=/rayci/.rayci-netrc" in inputs[-1]
 
 
 def test_netrc_is_not_mounted_when_unset() -> None:
@@ -116,7 +119,7 @@ def test_netrc_is_not_mounted_when_unset() -> None:
         return_value=None,
     ), mock.patch.dict(os.environ, environ, clear=True):
         LinuxTesterContainer("team")._run_tests_in_docker(["t1"], [], "/tmp", [])
-        assert ":ro" not in inputs[-1]
+        assert ".rayci-netrc" not in inputs[-1]
 
 
 def test_run_tests_in_docker() -> None:
@@ -143,7 +146,7 @@ def test_run_tests_in_docker() -> None:
         assert (
             "--env PIP_INDEX_URL --env PIP_EXTRA_INDEX_URL --env PIP_TRUSTED_HOST "
             "--env UV_INDEX_URL --env UV_EXTRA_INDEX_URL --env UV_INSECURE_HOST "
-            "--env RULES_PYTHON_PIP_ISOLATED --env NETRC" in input_str
+            "--env RULES_PYTHON_PIP_ISOLATED" in input_str
         )
         assert "--network host" in input_str
         assert '--gpus "device=0,1"' in input_str

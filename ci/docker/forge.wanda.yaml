@@ -6,3 +6,4 @@ build_args:
 dockerfile: ci/docker/forge.Dockerfile
 srcs:
   - ci/k8s/install-k8s-tools.sh
+  - ci/docker/rayci-codeartifact-profile.sh

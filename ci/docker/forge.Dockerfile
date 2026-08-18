@@ -143,6 +143,20 @@ set -euo pipefail
 
 EOF
 
+# Package index configuration for CI, sourced by the login shell each step runs.
+# No-op unless the agent wrote the matching files into the checkout.
+RUN \
+  --mount=type=bind,source=ci/docker/rayci-codeartifact-profile.sh,target=rayci-codeartifact-profile.sh \
+<<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+cp rayci-codeartifact-profile.sh /etc/profile.d/zz-rayci-codeartifact.sh
+chmod 0644 /etc/profile.d/zz-rayci-codeartifact.sh
+
+EOF
+
 ENV DOCKER_API_VERSION=1.43
 
 CMD ["echo", "ray forge"]

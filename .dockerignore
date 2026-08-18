@@ -1,0 +1,7 @@
+# ci/ray_ci/linux_container.py builds the test image with `COPY . .` from the
+# checkout. .rayci-netrc holds a CodeArtifact bearer token, which must not end up
+# in an image layer -- it is bind-mounted into that container at run time
+# instead. The env file is excluded with it because the same settings reach the
+# container as forwarded environment variables.
+.rayci-netrc
+.rayci-codeartifact.env
