@@ -25,7 +25,12 @@ class Sandbox:
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
-        network: Network mode for runsc.
+        network: Network mode for runsc ("none", "host", "sandbox"). With
+            "host", the host's /etc/resolv.conf is bind-mounted read-only so
+            DNS resolution works out of the box.
+        capabilities: Optional additional Linux capabilities granted to the
+            container process (see
+            :data:`~ray.experimental.sandbox.config.DOCKER_DEFAULT_CAPABILITIES`).
         readonly: If True (default), mount container image rootfs in read-only mode
             such that only ``workdir`` is writable. If False, the entire root filesystem
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
@@ -45,6 +50,7 @@ class Sandbox:
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
+        capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         **kwargs,
     ):
@@ -72,6 +78,7 @@ class Sandbox:
             timeout_seconds=timeout_seconds,
             rootless=rootless,
             network=network,
+            capabilities=capabilities,
             readonly=readonly,
             **kwargs,
         )

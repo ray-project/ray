@@ -53,6 +53,7 @@ class SandboxRuntime:
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
+        capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
@@ -71,7 +72,16 @@ class SandboxRuntime:
             ttl_seconds: Optional automatic cleanup time-to-live in seconds.
             timeout_seconds: Timeout in seconds for sandbox creation.
             rootless: If True, run gVisor in rootless mode.
-            network: Network mode for runsc.
+            network: Network mode for runsc ("none", "host", "sandbox"). With
+                "host", the container shares the host network namespace and the
+                host's /etc/resolv.conf is bind-mounted read-only (mirroring
+                Docker) so DNS resolution works out of the box.
+            capabilities: Optional additional Linux capabilities (e.g.
+                "CAP_CHOWN") granted to the container process, unioned into the
+                bounding/effective/inheritable/permitted sets on top of the
+                runtime defaults (ambient untouched). Use
+                :data:`~ray.experimental.sandbox.config.DOCKER_DEFAULT_CAPABILITIES`
+                to match how Docker runs images.
             readonly: If True (default), mount container image rootfs in read-only mode
                 such that only ``workdir`` is writable. If False, the entire root filesystem
                 is writable. Writes are isolated within a per-sandbox copy-on-write overlay
@@ -96,6 +106,7 @@ class SandboxRuntime:
             timeout_seconds=timeout_seconds,
             rootless=rootless,
             network=network,
+            capabilities=capabilities,
             readonly=readonly,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,

@@ -49,6 +49,24 @@ def test_gvisor_sandbox_config():
     assert config._ignore_cgroups is True
 
 
+def test_capabilities_config():
+    config = SandboxConfig(image="python:3.10-slim")
+    assert config.capabilities is None
+
+    config = SandboxConfig(
+        image="python:3.10-slim", capabilities=["CAP_CHOWN", "CAP_SETUID"]
+    )
+    assert config.capabilities == ["CAP_CHOWN", "CAP_SETUID"]
+
+
+def test_invalid_network_mode_rejected():
+    with pytest.raises(ValueError, match="network mode"):
+        SandboxConfig(image="python:3.10-slim", network="bridge")
+
+    for mode in ("none", "host", "sandbox"):
+        assert SandboxConfig(image="python:3.10-slim", network=mode).network == mode
+
+
 def test_parse_memory_bytes():
     assert parse_memory_bytes("1Gi") == 1073741824
     assert parse_memory_bytes("1GiB") == 1073741824

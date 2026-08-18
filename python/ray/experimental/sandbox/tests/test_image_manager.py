@@ -280,5 +280,96 @@ def test_custom_image_manager_subclass(tmp_path):
     assert ("another-image", 120.0) in custom_mgr.pull_calls
 
 
+class _StubImageManager(ImageManager):
+    """ImageManager that skips pulling so spec construction is testable offline."""
+
+    def __init__(self, tmp_path):
+        super().__init__(images_dir=str(tmp_path))
+        self._fake_image_dir = str(tmp_path)
+
+    def pull_image(self, image, timeout_seconds=120.0):
+        return self._fake_image_dir
+
+    def get_image_config(self, image):
+        return {}
+
+
+def _sample_base_spec():
+    return {
+        "process": {"capabilities": {"bounding": ["CAP_KILL"]}},
+        "root": {},
+        "mounts": [],
+        "linux": {
+            "namespaces": [
+                {"type": "pid"},
+                {"type": "network"},
+                {"type": "mount"},
+            ]
+        },
+    }
+
+
+def test_create_oci_spec_unions_capabilities(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        capabilities=["CAP_CHOWN", "CAP_SETUID"],
+    )
+    for cap_set in ("bounding", "effective", "inheritable", "permitted"):
+        caps = spec["process"]["capabilities"][cap_set]
+        assert "CAP_CHOWN" in caps
+        assert "CAP_SETUID" in caps
+    # Anything the runtime default grants survives the union.
+    assert "CAP_KILL" in spec["process"]["capabilities"]["bounding"]
+    # The ambient set is deliberately left alone.
+    assert "ambient" not in spec["process"]["capabilities"]
+
+
+def test_create_oci_spec_default_capabilities_untouched(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=_sample_base_spec())
+    assert spec["process"]["capabilities"] == {"bounding": ["CAP_KILL"]}
+
+
+def test_create_oci_spec_host_network_drops_empty_netns(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=_sample_base_spec(), network="host"
+    )
+    assert {"type": "network"} not in spec["linux"]["namespaces"]
+    assert {"type": "pid"} in spec["linux"]["namespaces"]
+
+    # Host networking gets the host's resolver, like Docker.
+    if os.path.exists("/etc/resolv.conf"):
+        resolv_mounts = [
+            m for m in spec["mounts"] if m["destination"] == "/etc/resolv.conf"
+        ]
+        assert len(resolv_mounts) == 1
+        assert resolv_mounts[0]["source"] == "/etc/resolv.conf"
+        assert "ro" in resolv_mounts[0]["options"]
+
+
+def test_create_oci_spec_host_network_keeps_pathed_netns(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["linux"]["namespaces"] = [{"type": "network", "path": "/proc/1/ns/net"}]
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=base, network="host")
+    # A *pathed* network namespace is somebody's explicit choice; keep it.
+    assert spec["linux"]["namespaces"] == [
+        {"type": "network", "path": "/proc/1/ns/net"}
+    ]
+
+
+def test_create_oci_spec_non_host_network_untouched(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    for mode in ("none", "sandbox"):
+        spec = mgr.create_oci_spec(
+            image="fake:latest", base_spec=_sample_base_spec(), network=mode
+        )
+        assert {"type": "network"} in spec["linux"]["namespaces"]
+        assert all(m["destination"] != "/etc/resolv.conf" for m in spec["mounts"])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

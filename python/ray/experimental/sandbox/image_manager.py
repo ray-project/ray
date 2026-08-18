@@ -16,6 +16,13 @@ from ray.experimental.sandbox.config import parse_memory_bytes
 
 logger = logging.getLogger(__name__)
 
+# The OCI capability sets a container process starts with. "ambient" is
+# deliberately excluded: these are the sets Docker populates, and ambient
+# capabilities would additionally survive into non-root execve'd children.
+_OCI_CAPABILITY_SETS = ("bounding", "effective", "inheritable", "permitted")
+
+_RESOLV_CONF = "/etc/resolv.conf"
+
 
 def get_default_oci_spec() -> Dict[str, Any]:
     """Derive default OCI runtime specification by executing `runsc spec` in a temporary directory.
@@ -126,6 +133,8 @@ class BaseImageManager(ABC):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
+        capabilities: Optional[List[str]] = None,
+        network: str = "none",
         base_spec: Optional[Dict[str, Any]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
@@ -139,6 +148,11 @@ class BaseImageManager(ABC):
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
             readonly: Whether rootfs is mounted read-only.
+            capabilities: Optional additional Linux capabilities unioned into the
+                bounding/effective/inheritable/permitted sets (ambient untouched).
+            network: runsc network mode the sandbox will run with; "host" drops
+                the spec's empty network namespace and bind-mounts the host's
+                resolv.conf so host networking works like Docker's.
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
@@ -158,6 +172,8 @@ class BaseImageManager(ABC):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
+        capabilities: Optional[List[str]] = None,
+        network: str = "none",
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -171,6 +187,8 @@ class BaseImageManager(ABC):
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
             readonly: Read-only rootfs flag.
+            capabilities: Optional additional Linux capabilities (see create_oci_spec).
+            network: runsc network mode the sandbox will run with (see create_oci_spec).
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -298,6 +316,8 @@ class ImageManager(BaseImageManager):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
+        capabilities: Optional[List[str]] = None,
+        network: str = "none",
         base_spec: Optional[Dict[str, Any]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
@@ -311,6 +331,11 @@ class ImageManager(BaseImageManager):
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
             readonly: Whether rootfs is mounted read-only.
+            capabilities: Optional additional Linux capabilities unioned into the
+                bounding/effective/inheritable/permitted sets (ambient untouched).
+            network: runsc network mode the sandbox will run with; "host" drops
+                the spec's empty network namespace and bind-mounts the host's
+                resolv.conf so host networking works like Docker's.
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
@@ -349,6 +374,14 @@ class ImageManager(BaseImageManager):
                 envs.append(f"{k}={v}")
         spec["process"]["env"] = envs
 
+        if capabilities:
+            caps = spec["process"].setdefault("capabilities", {})
+            for cap_set in _OCI_CAPABILITY_SETS:
+                # Union rather than replace, so anything the runtime default
+                # grants survives.
+                merged = dict.fromkeys([*caps.get(cap_set, []), *capabilities])
+                caps[cap_set] = list(merged)
+
         # Set up default mounts
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
@@ -370,6 +403,34 @@ class ImageManager(BaseImageManager):
                             ],
                         }
                     )
+        if network == "host":
+            # A namespace entry with no "path" means "create a new, empty
+            # namespace", and the default spec has one for "network". That
+            # netns has nothing but loopback, which silently defeats runsc's
+            # --network=host: the sandbox comes up with no route off the
+            # host. Dropping the entry lets the container inherit the netns
+            # runsc was launched in, which is what host networking means.
+            namespaces = spec.setdefault("linux", {}).get("namespaces", [])
+            spec["linux"]["namespaces"] = [
+                ns
+                for ns in namespaces
+                if not (ns.get("type") == "network" and not ns.get("path"))
+            ]
+            # Host networking shares the host's network stack but not its
+            # resolver configuration, and most images ship an empty
+            # /etc/resolv.conf because container engines inject one at run
+            # time. Mirror Docker by bind-mounting the host's resolv.conf,
+            # so DNS works out of the box (including on readonly rootfses).
+            if os.path.exists(_RESOLV_CONF) and _RESOLV_CONF not in existing_dests:
+                mounts.append(
+                    {
+                        "destination": _RESOLV_CONF,
+                        "type": "bind",
+                        "source": _RESOLV_CONF,
+                        "options": ["rbind", "ro"],
+                    }
+                )
+
         spec["mounts"] = mounts
 
         # Configure OCI cgroup resource limits for CPU and memory
@@ -405,6 +466,8 @@ class ImageManager(BaseImageManager):
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         readonly: bool = True,
+        capabilities: Optional[List[str]] = None,
+        network: str = "none",
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -418,6 +481,8 @@ class ImageManager(BaseImageManager):
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
             readonly: Read-only rootfs flag.
+            capabilities: Optional additional Linux capabilities (see create_oci_spec).
+            network: runsc network mode the sandbox will run with (see create_oci_spec).
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -435,6 +500,8 @@ class ImageManager(BaseImageManager):
             cpu=cpu,
             memory=memory,
             readonly=readonly,
+            capabilities=capabilities,
+            network=network,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 
