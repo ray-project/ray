@@ -42,9 +42,6 @@ from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
 
-# Annotation the KubeRay operator acts on to terminate the cluster.
-NO_DRIVER_TTL_EXPIRED_ANNOTATION = "ray.io/no-driver-ttl-expired"
-
 AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 NO_DRIVER_TIMEOUT_SECONDS_KEY = "noDriverTimeoutSeconds"
 
@@ -667,7 +664,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         return self._k8s_api_client.patch(remote_path, payload)
 
     def _evaluate_no_driver_termination(self) -> None:
-        """Patches the no-driver-TTL annotation once no driver held for the timeout.
+        """Deletes the RayCluster once no driver held for the timeout.
 
         Detached actors do not count as a driver.
         """
@@ -693,7 +690,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._no_driver_observed_since = now
         if now - self._no_driver_observed_since < self._no_driver_timeout_seconds:
             return
-        self._set_no_driver_annotation()
+        self._delete_ray_cluster()
 
     def _driver_status(self) -> Tuple[bool, int]:
         """Returns whether a non-internal driver is alive and the latest job end time.
@@ -723,38 +720,24 @@ class KubeRayProvider(ICloudInstanceProvider):
                 has_active_driver = True
         return has_active_driver, latest_job_end_time
 
-    def _set_no_driver_annotation(self) -> None:
-        """Sets `ray.io/no-driver-ttl-expired=true` on the RayCluster CR.
+    def _delete_ray_cluster(self) -> None:
+        """Deletes the RayCluster CR once the no-driver TTL has expired.
 
-        Idempotent via the CR cached this reconcile loop; PATCH errors are swallowed.
+        The autoscaler's service account is scoped by KubeRay to allow deleting
+        only its own RayCluster. Skips when a deletion is already in progress.
+        DELETE errors are swallowed so the next reconcile loop retries.
         """
-        annotations = self._ray_cluster.get("metadata", {}).get("annotations", {})
-        if annotations.get(NO_DRIVER_TTL_EXPIRED_ANNOTATION) == "true":
+        if "deletionTimestamp" in self._ray_cluster["metadata"]:
             return
 
-        path = f"rayclusters/{self._cluster_name}"
-        # Merge patch covers missing and present annotations in one call.
-        payload = {
-            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
-        }
         try:
-            self._k8s_api_client.patch(
-                path,
-                payload,
-                content_type="application/merge-patch+json",
-            )
+            self._k8s_api_client.delete(f"rayclusters/{self._cluster_name}")
         except Exception:
-            logger.exception(
-                "Failed to PATCH %s=true on RayCluster %s",
-                NO_DRIVER_TTL_EXPIRED_ANNOTATION,
-                self._cluster_name,
-            )
+            logger.exception("Failed to DELETE RayCluster %s", self._cluster_name)
             return
 
         logger.info(
-            "Set %s=true on RayCluster %s.",
-            NO_DRIVER_TTL_EXPIRED_ANNOTATION,
-            self._cluster_name,
+            "Deleted RayCluster %s (no-driver TTL expired).", self._cluster_name
         )
 
     def _get_head_pod_resource_version(self) -> str:

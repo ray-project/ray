@@ -276,6 +276,11 @@ class IKubernetesHttpApiClient(ABC):
         """Wrapper for REST PATCH of resource with proper headers."""
         pass
 
+    @abstractmethod
+    def delete(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST DELETE of resource with proper headers."""
+        pass
+
 
 class KubernetesHttpApiClient(IKubernetesHttpApiClient):
     def __init__(self, namespace: str, kuberay_crd_version: str = KUBERAY_CRD_VER):
@@ -360,6 +365,39 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         if not result.status_code == 200:
             result.raise_for_status()
         return result.json()
+
+    def delete(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST DELETE of resource with proper headers.
+
+        Args:
+            path: The part of the resource path that starts with the resource type.
+
+        Returns:
+            The JSON response of the DELETE request, or an empty dict if the
+            response has no body.
+
+        Raises:
+            HTTPError: If the DELETE request fails.
+        """
+        url = url_from_resource(
+            namespace=self._namespace,
+            path=path,
+            kuberay_crd_version=self._kuberay_crd_version,
+        )
+        headers, verify = self._get_refreshed_headers_and_verify()
+        result = requests.delete(
+            url,
+            headers=headers,
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
+            verify=verify,
+        )
+        # 200 (OK) and 202 (Accepted, async delete with finalizers) both mean the
+        # deletion was accepted; 404 means the resource is already gone.
+        if result.status_code == 404:
+            return {}
+        if result.status_code not in (200, 202):
+            result.raise_for_status()
+        return result.json() if result.content else {}
 
 
 class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
