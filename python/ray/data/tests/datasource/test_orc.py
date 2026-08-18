@@ -28,7 +28,8 @@ def test_read_orc_skips_empty_stripes(monkeypatch):
 
     monkeypatch.setattr(orc, "ORCFile", lambda _: FakeORCFile())
 
-    tables = list(ORCDatasource()._read_stream(None, "unused"))
+    datasource = ORCDatasource.__new__(ORCDatasource)
+    tables = list(datasource._read_stream(None, "unused"))
 
     assert tables == [pa.table({"id": [1]})]
 
@@ -47,8 +48,9 @@ def test_read_orc_rejects_pickle_object_columns(monkeypatch):
 
     monkeypatch.setattr(orc, "ORCFile", lambda _: FakeORCFile())
 
+    datasource = ORCDatasource.__new__(ORCDatasource)
     with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(ORCDatasource()._read_stream(None, "unused"))
+        list(datasource._read_stream(None, "unused"))
 
 
 def test_read_orc_basic(ray_start_regular_shared, tmp_path):
