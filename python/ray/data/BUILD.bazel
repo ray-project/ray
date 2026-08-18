@@ -776,6 +776,20 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle_external_runtime",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle_external_runtime.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
@@ -959,6 +973,20 @@ py_test(
 )
 
 py_test(
+    name = "test_orc",
+    size = "small",
+    srcs = ["tests/datasource/test_orc.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_pandas",
     size = "small",
     srcs = ["tests/datasource/test_pandas.py"],
@@ -1114,7 +1142,7 @@ py_test(
 
 py_test(
     name = "test_tensor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_tensor.py"],
     tags = [
         "exclusive",
@@ -1760,6 +1788,20 @@ py_test(
     name = "test_streaming_executor",
     size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_no_progress_guard",
+    size = "medium",
+    srcs = ["tests/test_no_progress_guard.py"],
     tags = [
         "exclusive",
         "team:data",
