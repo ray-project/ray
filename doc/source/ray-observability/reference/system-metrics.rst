@@ -42,6 +42,15 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_placement_groups`
      - `State`
      - Current number of placement groups by state. The State label (e.g., PENDING, CREATED, REMOVED) describes the state of the placement group. See `rpc::PlacementGroupTable <https://github.com/ray-project/ray/blob/e85355b9b593742b4f5cb72cab92051980fa73d3/src/ray/protobuf/gcs.proto#L517>`_ for more information.
+   * - `ray_gcs_redis_request_payload_bytes`
+     - `Command`, `TableName`
+     - Bytes of Redis command arguments sent by the GCS, broken down by Redis command and GCS table. Exported only when the GCS storage backend is Redis. The value is the sum of the byte lengths of the RESP arguments, so it includes the command verb, the Redis key, hash field names and values, and excludes RESP framing, TLS and TCP/IP overhead. GCS values aren't compressed. Counted once per command, not per retry. `Command` is one of a fixed set of verbs (`OTHER` for anything else) and `TableName` is a GCS table name, `NONE` for commands with no table, or `ALL` for commands that span the storage namespace.
+   * - `ray_gcs_redis_response_payload_bytes`
+     - `Command`, `TableName`
+     - Bytes of Redis replies received by the GCS, broken down by Redis command and GCS table. Exported only when the GCS storage backend is Redis. The value is the sum of the byte lengths of every bulk string and status string in the reply, including the field names returned by HSCAN; integer and nil replies contribute zero, and RESP framing, TLS and TCP/IP overhead are excluded. A reply that comes back as an error is retried instead of delivered and contributes nothing at all, so error bytes are never counted here.
+   * - `ray_gcs_redis_command_count_total`
+     - `Command`, `TableName`
+     - Number of Redis commands issued by the GCS, broken down by Redis command and GCS table. Exported only when the GCS storage backend is Redis. This counts round trips, not `StoreClient` calls: batched operations count once per chunk and a whole-table read counts once per HSCAN round. Divide the payload byte counters by this to get mean bytes per Redis operation. Set `RAY_gcs_redis_payload_metrics_enabled=false` to stop recording all three metrics. Note the differing suffixes: the two byte metrics are non-monotonic sums and are exported without a `_total` suffix, while this one is a monotonic counter and gains it. With the legacy OpenCensus stack (`RAY_enable_open_telemetry=false`) the byte metrics are additionally exported as `ray_gcs_redis_*_payload_bytes_total`.
    * - `ray_memory_manager_worker_eviction_total`
      - `Type`, `Name`
      - The number of tasks and actors killed by the Ray Out of Memory killer (https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html) broken down by types (whether it is tasks or actors) and names (name of tasks and actors).
