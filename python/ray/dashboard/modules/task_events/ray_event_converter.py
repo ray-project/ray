@@ -91,16 +91,22 @@ _TASK_LOG_INFO_FIELDS = (
 )
 
 
-def _convert_task_log_info(src, dst) -> None:
-    """Copy only the fields the event actually set.
+def _convert_task_log_info(src_event_log_info, dst_state_update_log_info) -> None:
+    """Copy the set log-info fields from the incoming event into the ``TaskEvents``.
 
-    The log paths and start offsets arrive when the task starts and the end offsets in a
-    later event, so copying an unset field would overwrite what the earlier event
-    reported once the two are merged.
+    ``src_event_log_info`` is the ``task_log_info`` on the incoming ``TaskLifecycleEvent``;
+    ``dst_state_update_log_info`` is the ``state_updates.task_log_info`` on the ``TaskEvents``
+    being built.
+
+    Only fields actually set in the incoming event are copied: the log paths and start
+    offsets arrive when the task starts and the end offsets in a later event, so copying an
+    unset field would overwrite what the earlier event reported once the two are merged.
     """
     for field in _TASK_LOG_INFO_FIELDS:
-        if src.HasField(field):
-            setattr(dst, field, getattr(src, field))
+        if src_event_log_info.HasField(field):
+            setattr(
+                dst_state_update_log_info, field, getattr(src_event_log_info, field)
+            )
 
 
 def _convert_task_lifecycle_event(event) -> gcs_pb2.TaskEvents:

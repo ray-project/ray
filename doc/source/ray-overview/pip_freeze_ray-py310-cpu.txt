@@ -1,20 +1,20 @@
 absl-py==2.4.0
 adlfs==2026.4.0
 aiohappyeyeballs==2.6.1
-aiohttp==3.13.5
+aiohttp==3.14.3
 aiohttp-cors==0.8.1
 aiosignal==1.4.0
 amqp==5.3.1
 annotated-doc==0.0.4
-annotated-types @ file:///home/conda/feedstock_root/build_artifacts/annotated-types_1733247046149/work
+annotated-types==0.7.0
 anyio==4.13.0
 archspec @ file:///home/conda/feedstock_root/build_artifacts/archspec_1737352602016/work
 async-timeout==5.0.1
 attrs==26.1.0
 azure-common==1.1.28
-azure-core==1.39.0
+azure-core==1.35.1
 azure-datalake-store==0.0.53
-azure-identity==1.17.1
+azure-identity==1.23.1
 azure-storage-blob==12.28.0
 backports.zstd @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_backports.zstd_1781450813/work
 billiard==4.2.4
@@ -36,13 +36,13 @@ click-repl==0.3.0
 cloudpickle==3.1.1
 colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1733218098505/work
 colorful==0.5.8
-conda @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda_1782918518/work/conda-src
-conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-libmamba-solver_1782936994/work/src
+conda @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda_1785769805/work/conda-src
+conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-libmamba-solver_1784200590/work/src
 conda-lockfiles @ file:///home/conda/feedstock_root/build_artifacts/conda-lockfiles_1783438273155/work
 conda-package-handling @ file:///home/conda/feedstock_root/build_artifacts/conda-package-handling_1736345463896/work
-conda-pypi @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-pypi_1783079435/work
+conda-pypi @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-pypi_1784203008/work
 conda-rattler-solver @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_conda-rattler-solver_1781212602/work
-conda-self @ file:///home/conda/feedstock_root/build_artifacts/conda-self_1778152796009/work
+conda-self @ file:///home/conda/feedstock_root/build_artifacts/conda-self_1784724887257/work
 conda_index @ file:///home/conda/feedstock_root/build_artifacts/conda-index_1782239657976/work
 conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/conda-package-streaming_1781292971987/work
 cryptography==44.0.3
@@ -70,7 +70,7 @@ google-crc32c==1.8.0
 google-oauth==1.0.1
 google-resumable-media==2.8.2
 googleapis-common-protos==1.74.0
-grpcio==1.76.0
+grpcio==1.75.0
 gymnasium==1.2.2
 h11 @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_h11_1767729720/work
 h2 @ file:///home/conda/feedstock_root/build_artifacts/h2_1733298745555/work
@@ -80,7 +80,7 @@ httplib2==0.20.4
 httptools==0.8.0
 httpx @ file:///home/conda/feedstock_root/build_artifacts/httpx_1733663348460/work
 hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1733298771451/work
-idna==3.12
+idna==3.18
 importlib-metadata==6.11.0
 installer @ file:///home/conda/feedstock_root/build_artifacts/python-installer_1778554130319/work
 isodate==0.7.2
@@ -91,7 +91,7 @@ jsonpointer @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-buil
 jsonschema==4.24.1
 jsonschema-specifications==2025.9.1
 kombu==5.6.2
-libmambapy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_libmambapy_1780948903/work/libmambapy
+libmambapy @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_libmambapy_1786125663/work/libmambapy
 linkify-it-py==2.1.0
 lz4==4.4.5
 markdown-it-py==2.2.0
@@ -99,10 +99,10 @@ MarkupSafe @ file:///home/conda/feedstock_root/build_artifacts/markupsafe_177244
 mdit-py-plugins==0.3.5
 mdurl==0.1.2
 memray==1.19.3
-menuinst @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_menuinst_1782415211/work
+menuinst @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_menuinst_1786008816/work
 mmh3==5.2.1
-msal==1.28.1
-msal-extensions==1.2.0b1
+msal==1.34.0b1
+msal-extensions==1.2.0
 msgpack==1.1.2
 multidict==6.7.1
 numpy==2.2.6
@@ -125,7 +125,7 @@ propcache==0.4.1
 proto-plus==1.27.2
 protobuf==6.33.6
 psutil==5.9.8
-py-rattler @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_py-rattler_1781020717/work
+py-rattler @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_py-rattler_1784707900/work
 py-spy==0.4.1
 pyarrow==23.0.1
 pyasn1==0.6.3
@@ -146,7 +146,7 @@ python-discovery==1.2.2
 python-dotenv==1.2.2
 pytz==2022.7.1
 PyYAML==6.0.3
-ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=cfd3b3ec3ad4d38682cccdf7499bc9005bf5b8a0a12e1b80ac8352d6912bfb20
+ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=9fac89d3ddf4c6adda119029a4d4e4a0f9e1bb8acc8dca8ea91697fa97c3c753
 ray-haproxy==2.8.25
 referencing==0.36.2
 requests==2.33.1

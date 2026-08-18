@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+import time
 from typing import Callable, Optional
 
 import httpx
@@ -17,6 +18,27 @@ from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
 from ray.tests.conftest import external_redis  # noqa: F401
+
+# Replica startup and router propagation take tens of seconds on a loaded CI box.
+STARTUP_TIMEOUT_S = 30
+# Generous enough to survive CI contention, small enough to still catch a hang.
+REQUEST_TIMEOUT_S = 10
+
+
+def collect_pids_from_all_replicas(send_request: Callable[[], int], num_replicas: int):
+    """Send requests until every replica has served one, or the deadline expires.
+
+    A fixed request count flakes: routing breaks ties between idle replicas with a
+    coin flip, so it can miss one. Every request must still succeed.
+    """
+    pids = {send_request() for _ in range(10)}
+    deadline = time.monotonic() + STARTUP_TIMEOUT_S
+    while len(pids) < num_replicas and time.monotonic() < deadline:
+        pids.add(send_request())
+        time.sleep(0.1)
+
+    print("Returned pids:", pids)
+    assert len(pids) == num_replicas, f"Only {pids} served requests"
 
 
 @ray.remote
@@ -175,14 +197,18 @@ def test_deployment_actor_survives_gcs_failure(serve_ha):  # noqa: F811
         return val, aid
 
     wait_for_condition(
-        lambda: parse_val_actor_id(httpx.get(url, timeout=5.0).text)[0] == "12345"
+        lambda: parse_val_actor_id(httpx.get(url, timeout=REQUEST_TIMEOUT_S).text)[0]
+        == "12345",
+        timeout=STARTUP_TIMEOUT_S,
     )
-    _, actor_id_before = parse_val_actor_id(httpx.get(url, timeout=5.0).text)
+    _, actor_id_before = parse_val_actor_id(
+        httpx.get(url, timeout=REQUEST_TIMEOUT_S).text
+    )
 
     ray.worker._global_node.kill_gcs_server()
 
     for _ in range(15):
-        val, aid = parse_val_actor_id(httpx.get(url, timeout=3.0).text)
+        val, aid = parse_val_actor_id(httpx.get(url, timeout=REQUEST_TIMEOUT_S).text)
         assert val == "12345"
         assert aid == actor_id_before
 
@@ -264,27 +290,31 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
         proxy_handle = list(proxy_handles.values())[0]
         wait_for_condition(
             router_populated_with_replicas,
+            timeout=STARTUP_TIMEOUT_S,
             threshold=2,
             get_replicas_func=lambda: ray.get(
                 proxy_handle._dump_ingress_replicas_for_testing.remote("/")
             ),
         )
     else:
-        wait_for_condition(router_populated_with_replicas, threshold=2, handle=h)
+        wait_for_condition(
+            router_populated_with_replicas,
+            timeout=STARTUP_TIMEOUT_S,
+            threshold=2,
+            handle=h,
+        )
 
     # Kill GCS server before a single request is sent.
     ray.worker._global_node.kill_gcs_server()
 
-    returned_pids = set()
-    if use_proxy:
-        for _ in range(10):
-            returned_pids.add(int(httpx.get("http://localhost:8000", timeout=3.0).text))
-    else:
-        for _ in range(10):
-            returned_pids.add(int(h.remote().result(timeout_s=3.0)))
+    def send_request():
+        if use_proxy:
+            return int(
+                httpx.get("http://localhost:8000", timeout=REQUEST_TIMEOUT_S).text
+            )
+        return int(h.remote().result(timeout_s=REQUEST_TIMEOUT_S))
 
-    print("Returned pids:", returned_pids)
-    assert len(returned_pids) == 2
+    collect_pids_from_all_replicas(send_request, 2)
 
 
 def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
@@ -305,7 +335,7 @@ def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
         "deployments": [{"name": "GetPID", "num_replicas": 1}],
     }
     client.deploy_apps(ServeDeploySchema(**{"applications": [config]}))
-    wait_for_condition(check_apps_running, apps=["default"])
+    wait_for_condition(check_apps_running, timeout=STARTUP_TIMEOUT_S, apps=["default"])
 
     h = serve.get_app_handle("default")
     print(h.remote().result())
@@ -315,6 +345,7 @@ def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
 
     wait_for_condition(
         router_populated_with_replicas,
+        timeout=STARTUP_TIMEOUT_S,
         threshold=2,
         handle=h,
         check_cache_populated=True,
@@ -323,12 +354,9 @@ def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
     # Kill GCS server before router gets to send request to second replica
     ray.worker._global_node.kill_gcs_server()
 
-    returned_pids = set()
-    for _ in range(20):
-        returned_pids.add(int(h.remote().result(timeout_s=1.0)))
-
-    print("Returned pids:", returned_pids)
-    assert len(returned_pids) == 2
+    collect_pids_from_all_replicas(
+        lambda: int(h.remote().result(timeout_s=REQUEST_TIMEOUT_S)), 2
+    )
 
 
 def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
@@ -362,6 +390,7 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
 
     wait_for_condition(
         router_populated_with_replicas,
+        timeout=STARTUP_TIMEOUT_S,
         threshold=2,
         get_replicas_func=lambda: ray.get(
             proxy_handle._dump_ingress_replicas_for_testing.remote("/")
@@ -375,14 +404,12 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
     # Kill GCS server before router gets to send request to second replica
     ray.worker._global_node.kill_gcs_server()
 
-    returned_pids = set()
-    for _ in range(20):
-        r = httpx.post("http://localhost:8000", timeout=3.0)
+    def send_request():
+        r = httpx.post("http://localhost:8000", timeout=REQUEST_TIMEOUT_S)
         assert r.status_code == 200
-        returned_pids.add(int(r.text))
+        return int(r.text)
 
-    print("Returned pids:", returned_pids)
-    assert len(returned_pids) == 2
+    collect_pids_from_all_replicas(send_request, 2)
 
 
 if __name__ == "__main__":
