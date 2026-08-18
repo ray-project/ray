@@ -11,6 +11,19 @@ build:linux --workspace_status_command="bash ./bazel/workspace_status.sh"
 # To distinguish different incompatible environments.
 build --action_env=RAY_BUILD_ENV
 
+# Let the invoking environment pick the Python package index that repository
+# rules resolve from, e.g. to point a CI fleet at a caching mirror instead of
+# pypi.org. All of these are deliberately valueless, so bazel inherits whatever
+# the client environment holds and pins nothing here. rules_python runs
+# whl_library's pip with --isolated, which makes pip ignore every PIP_* variable,
+# so RULES_PYTHON_PIP_ISOLATED=0 is what lets the others through. PIP_TRUSTED_HOST
+# is here because a mirror reached over plain HTTP is otherwise refused. None of
+# them is set in a plain checkout, and then pip resolves from PyPI as before.
+common --repo_env=PIP_INDEX_URL
+common --repo_env=PIP_EXTRA_INDEX_URL
+common --repo_env=PIP_TRUSTED_HOST
+common --repo_env=RULES_PYTHON_PIP_ISOLATED
+
 ###############################################################################
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python

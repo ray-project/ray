@@ -36,3 +36,12 @@ fi
 
 RAYCI_CHECKOUT_DIR="$(pwd)"
 export RAYCI_CHECKOUT_DIR
+
+# Resolve Python packages from CodeArtifact when it is reachable from this
+# agent, so that a files.pythonhosted.org 502 cannot fail the job. Sourced, not
+# executed: the point is the exports. Fail-open -- if the index does not answer,
+# it exports nothing and the job resolves from PyPI as before.
+if [[ "${OSTYPE}" == linux* && -f "${RAYCI_CHECKOUT_DIR}/ci/codeartifact_env.sh" ]]; then
+  # shellcheck source=ci/codeartifact_env.sh
+  source "${RAYCI_CHECKOUT_DIR}/ci/codeartifact_env.sh" || true
+fi

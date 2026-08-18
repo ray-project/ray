@@ -70,3 +70,17 @@ COPY . .
 RUN bash --login -ie -c '\
     BUILD=1 SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh \
 '
+
+# Package index configuration for CI, sourced by the login shell each step runs.
+# No-op unless the agent wrote the matching files into the checkout.
+RUN \
+  --mount=type=bind,source=ci/docker/rayci-codeartifact-profile.sh,target=rayci-codeartifact-profile.sh \
+<<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+install -D -m 0644 rayci-codeartifact-profile.sh \
+  /etc/profile.d/zz-rayci-codeartifact.sh
+
+EOF

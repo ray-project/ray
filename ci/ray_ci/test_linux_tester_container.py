@@ -80,6 +80,58 @@ def test_persist_test_results(
         assert mock_move_test_state.called
 
 
+def test_netrc_is_mounted_into_the_container(tmp_path) -> None:
+    """The index credential must exist inside the container, at the same path.
+
+    Forwarding $NETRC only carries the path. Without the bind mount the variable
+    names a file that is not there, pip falls back to anonymous access and an
+    index that requires auth answers 401.
+    """
+    inputs = []
+
+    def _mock_popen(input: List[str]) -> None:
+        inputs.append(" ".join(input))
+
+    netrc = tmp_path / ".rayci-netrc"
+    netrc.write_text("machine example.invalid\nlogin aws\npassword tok\n")
+    host_checkout = "/var/lib/buildkite-agent/builds/agent-1/ray-project/microcheck"
+
+    with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
+        return_value=None,
+    ), mock.patch.dict(
+        os.environ, {"NETRC": str(netrc), "RAYCI_CHECKOUT_DIR": host_checkout}
+    ):
+        LinuxTesterContainer("team")._run_tests_in_docker(["t1"], [], "/tmp", [])
+        # The source must be the host path. This docker run is served by the host
+        # daemon through the mounted socket, so passing the path as seen inside
+        # this container makes docker create a directory of that name and fail
+        # with "not a directory".
+        assert (
+            f"--volume {host_checkout}/.rayci-netrc:/rayci/.rayci-netrc:ro"
+            in inputs[-1]
+        )
+        assert f"--volume {netrc}:" not in inputs[-1]
+        assert "--env NETRC=/rayci/.rayci-netrc" in inputs[-1]
+
+
+def test_netrc_is_not_mounted_when_unset() -> None:
+    """A plain checkout sets no NETRC, so nothing extra is mounted."""
+    inputs = []
+
+    def _mock_popen(input: List[str]) -> None:
+        inputs.append(" ".join(input))
+
+    environ = {k: v for k, v in os.environ.items() if k != "NETRC"}
+    environ["RAYCI_CHECKOUT_DIR"] = "/some/host/checkout"
+    with mock.patch("subprocess.Popen", side_effect=_mock_popen), mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
+        return_value=None,
+    ), mock.patch.dict(os.environ, environ, clear=True):
+        LinuxTesterContainer("team")._run_tests_in_docker(["t1"], [], "/tmp", [])
+        assert ".rayci-netrc" not in inputs[-1]
+
+
 def test_run_tests_in_docker() -> None:
     inputs = []
 
@@ -98,6 +150,14 @@ def test_run_tests_in_docker() -> None:
         )._run_tests_in_docker(["t1", "t2"], [0, 1], "/tmp", ["v=k"], "flag")
         input_str = inputs[-1]
         assert "--env ENV_01 --env ENV_02 --env BUILDKITE" in input_str
+        # The index configuration has to reach the nested container: the bazel
+        # invocation inside it reads the --repo_env passthrough from the repo's
+        # .bazelrc, which only has an effect on variables that container has.
+        assert (
+            "--env PIP_INDEX_URL --env PIP_EXTRA_INDEX_URL --env PIP_TRUSTED_HOST "
+            "--env UV_INDEX_URL --env UV_EXTRA_INDEX_URL --env UV_INSECURE_HOST "
+            "--env RULES_PYTHON_PIP_ISOLATED" in input_str
+        )
         assert "--network host" in input_str
         assert '--gpus "device=0,1"' in input_str
         assert "--volume /tmp:/tmp/bazel_event_logs" in input_str

@@ -2,6 +2,7 @@ name: "oss-ci-base_test-aarch64-py$PYTHON"
 froms: ["ubuntu:jammy"]
 dockerfile: ci/docker/base.test.Dockerfile
 srcs:
+  - ci/docker/rayci-codeartifact-profile.sh
   - ci/env/install-bazel.sh
   - ci/env/install-miniforge.sh
   - ci/suppress_output
