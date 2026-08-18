@@ -58,7 +58,11 @@ numbers:
                  shipping (floor2048) overshoot ~= expansion ratio on dict
                  shapes (M43); a fix must hold overshoot <= 1.5 on EVERY shape.
   G2 memory      peak RSS <= 1.10x the pa reference cell.
-  G3 wall        <= 1.25x pa. NB the static `decoded` policy is EXPECTED to
+  G3 wall        <= 1.25x pa, with pa decoding SINGLE-THREADED (use_threads=
+                 False): the crate side is K=1 and in-Ray both arms take their
+                 parallelism from tasks, so the gate compares CPU cost. A
+                 threaded pa baseline fails every cell by ~cores (M35's
+                 standalone artifact — bit the first Linux run). NB the static `decoded` policy is EXPECTED to
                  fail G3 on the 5000-col tensor shapes (per-batch realign cost,
                  T22/T23) — that failure is the argument that the real fix must
                  be crate-side mid-stream adaptation (size from the first
@@ -185,7 +189,11 @@ def run_cell(a):
     rows = 0
     for f in files:
         if a.policy == "pa":
-            it = _pa_batches(f, request)
+            # Single-threaded pa: G3 compares CPU cost, not thread-pool
+            # fan-out — the crate side is K=1 and in-Ray both arms get their
+            # parallelism from tasks (M35). Threaded pa here made every wall
+            # gate fail by ~cores on Linux.
+            it = _pa_batches(f, request, use_threads=False)
         else:
             it = _rs_batches(f, request, knobs, realign_fields=realign_fields)
         rows += _consume(observed(it), "decode", None)

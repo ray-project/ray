@@ -142,7 +142,13 @@ def _batch_size(md, knobs):
     return max(knobs["min_rows"], int(knobs["budget"] // bpr))
 
 
-def _pa_batches(path, batch_size):
+def _pa_batches(path, batch_size, use_threads=True):
+    # use_threads=False gives the single-thread CPU-cost baseline — the fair
+    # comparison against the crate's K=1 decode and the in-Ray regime, where
+    # parallelism comes from tasks and M35 measured wall R 0.81-1.00 vs the
+    # 1.16-1.54 threaded-standalone artifact. Default True is kept for this
+    # file's own standalone leg (comparable with prior runs, artifact
+    # documented in M35).
     import pyarrow as pa
     import pyarrow.dataset as pds
     from pyarrow.fs import LocalFileSystem
@@ -151,7 +157,7 @@ def _pa_batches(path, batch_size):
         default_fragment_scan_options=pds.ParquetFragmentScanOptions(pre_buffer=True)
     )
     frag = fmt.make_fragment(path, filesystem=LocalFileSystem())
-    for b in frag.scanner(batch_size=batch_size, use_threads=True).to_batches():
+    for b in frag.scanner(batch_size=batch_size, use_threads=use_threads).to_batches():
         yield pa.Table.from_batches([b])
 
 
