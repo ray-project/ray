@@ -241,6 +241,31 @@ def test_high_memory_detection(
     assert should_return_issue == bool(issues)
 
 
+
+def test_high_memory_detection_uses_current_dynamic_memory_request(
+    restore_data_context,
+):
+    ctx = DataContext.get_current()
+    dynamic_memory_request = 1 * GiB
+
+    input_data_buffer = InputDataBuffer(ctx, input_data=[])
+    map_operator = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=input_data_buffer,
+        data_context=ctx,
+        ray_remote_args={"memory": 1 * GiB},
+        ray_remote_args_fn=lambda: {"memory": dynamic_memory_request},
+    )
+    map_operator._metrics = MagicMock(average_max_uss_per_task=8 * GiB)
+    detector = HighMemoryIssueDetector(
+        dataset_id="id",
+        operators=[input_data_buffer, map_operator],
+        config=ctx.issue_detectors_config.high_memory_detector_config,
+    )
+
+    dynamic_memory_request = 10 * GiB
+
+    assert not detector.detect()
 if __name__ == "__main__":
     import sys
 

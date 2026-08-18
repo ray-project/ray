@@ -1,6 +1,6 @@
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, List
 
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -20,8 +20,8 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 HIGH_MEMORY_PERIODIC_WARNING = """
-Operator '{op_name}' uses {memory_per_task} of memory per task on average, but Ray
-only requests {initial_memory_request} per task at the start of the pipeline.
+Operator '{op_name}' uses {memory_per_task} of memory per task on average, but Ray only
+requests {memory_request} per task.
 
 To avoid out-of-memory errors, consider setting `memory={memory_per_task}` in the
 appropriate function or method call. (This might be unnecessary if the number of
@@ -49,13 +49,6 @@ class HighMemoryIssueDetector(IssueDetector):
         self._dataset_id = dataset_id
         self._detector_cfg = config
         self._operators = operators
-
-        self._initial_memory_requests: Dict[MapOperator, int] = {}
-        for op in operators:
-            if isinstance(op, MapOperator):
-                self._initial_memory_requests[op] = (
-                    op._get_dynamic_ray_remote_args().get("memory") or 0
-                )
 
     @classmethod
     def from_executor(cls, executor: "StreamingExecutor") -> "HighMemoryIssueDetector":
@@ -85,18 +78,17 @@ class HighMemoryIssueDetector(IssueDetector):
                 continue
 
             remote_args = op._get_dynamic_ray_remote_args()
+            memory_request = remote_args.get("memory") or 0
             safe_memory_per_task = get_safe_default_logical_memory(remote_args)
 
             if (
-                op.metrics.average_max_uss_per_task > self._initial_memory_requests[op]
+                op.metrics.average_max_uss_per_task > memory_request
                 and op.metrics.average_max_uss_per_task >= safe_memory_per_task
             ):
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
                     memory_per_task=memory_string(op.metrics.average_max_uss_per_task),
-                    initial_memory_request=memory_string(
-                        self._initial_memory_requests[op]
-                    ),
+                    memory_request=memory_string(memory_request),
                     detection_time_interval_s=self.detection_time_interval_s(),
                 )
                 issues.append(
