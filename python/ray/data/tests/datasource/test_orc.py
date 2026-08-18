@@ -1,15 +1,77 @@
 import os
+import pickle
 
 import pyarrow as pa
 import pytest
 from pyarrow import orc
 
 import ray
+from ray.data._internal.object_extensions.arrow import (
+    ARROW_PYTHON_OBJECT_EXTENSION_NAME,
+    raise_on_pickle_object_columns,
+)
 
 
 def _write_orc(path, table):
     with pa.OSFile(path, "wb") as sink:
         orc.write_table(table, sink)
+
+
+def _pickle_object_table(value):
+    storage = pa.array([pickle.dumps(value)], type=pa.large_binary())
+    field = pa.field(
+        "col",
+        pa.large_binary(),
+        metadata={
+            b"ARROW:extension:name": ARROW_PYTHON_OBJECT_EXTENSION_NAME.encode(),
+            b"ARROW:extension:metadata": b"",
+        },
+    )
+    return pa.Table.from_arrays([storage], schema=pa.schema([field]))
+
+
+def test_read_orc_rejects_pickle_object_metadata_before_block_transport(tmp_path):
+    path = os.path.join(tmp_path, "metadata.orc")
+    _write_orc(path, _pickle_object_table({"key": "value"}))
+
+    with pa.OSFile(path, "rb") as source:
+        orc_file = orc.ORCFile(source)
+        table = pa.Table.from_batches([orc_file.read_stripe(0)])
+
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        raise_on_pickle_object_columns(table)
+
+
+def test_read_orc_allows_pickle_object_columns_with_env_var(
+    tmp_path, shutdown_only, monkeypatch
+):
+    # Set the environment variable on both the driver and worker processes.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+
+    path = os.path.join(tmp_path, "trusted.orc")
+    _write_orc(path, _pickle_object_table({"key": "value"}))
+
+    rows = ray.data.read_orc(path).take_all()
+
+    assert rows == [{"col": {"key": "value"}}]
+
+
+def test_read_orc_rejects_pickle_object_columns(tmp_path, ray_start_regular_shared):
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    path = os.path.join(tmp_path, "exploit.orc")
+    _write_orc(path, _pickle_object_table(Exploit()))
+
+    ds = ray.data.read_orc(path)
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
 
 
 def test_read_orc_basic(ray_start_regular_shared, tmp_path):

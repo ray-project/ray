@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Iterator
 
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -24,7 +25,11 @@ class ORCDatasource(FileBasedDatasource):
         # by the read operator's BlockMapTransformFn, so no manual buffering is
         # needed here.
         for stripe_index in range(orc_file.nstripes):
-            yield pa.Table.from_batches([orc_file.read_stripe(stripe_index)])
+            table = pa.Table.from_batches([orc_file.read_stripe(stripe_index)])
+            # Unpickling untrusted data can execute arbitrary code. Reject object
+            # columns unless the user has explicitly opted in.
+            raise_on_pickle_object_columns(table)
+            yield table
 
     def _open_input_source(
         self,

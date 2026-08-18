@@ -108,6 +108,37 @@ def test_raise_on_pickle_object_columns_rejects_unregistered_extension():
         raise_on_pickle_object_columns(table)
 
 
+def test_raise_on_pickle_object_columns_rejects_serialized_extension_metadata():
+    storage = pa.array([pickle.dumps({"key": "value"})], type=pa.large_binary())
+    field = pa.field(
+        "col",
+        storage.type,
+        metadata={
+            b"ARROW:extension:name": ARROW_PYTHON_OBJECT_EXTENSION_NAME.encode(),
+            b"ARROW:extension:metadata": b"",
+        },
+    )
+    table = pa.Table.from_arrays([storage], schema=pa.schema([field]))
+
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        raise_on_pickle_object_columns(table)
+
+
+def test_raise_on_pickle_object_columns_rejects_nested_extension_metadata():
+    item_field = pa.field(
+        "item",
+        pa.large_binary(),
+        metadata={
+            b"ARROW:extension:name": ARROW_PYTHON_OBJECT_EXTENSION_NAME.encode(),
+            b"ARROW:extension:metadata": b"",
+        },
+    )
+    table = pa.table({"col": pa.array([[b"value"]], type=pa.list_(item_field))})
+
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        raise_on_pickle_object_columns(table)
+
+
 def test_raise_on_pickle_object_columns_allows_plain_columns():
     table = pa.table(
         {
