@@ -19,19 +19,25 @@
 #              (per-task USS at 20 Hz, decoder dists), both readers + arena2
 #              arm. S3 legs run iff ARROW_RS_S3_BUCKET is set (fixtures are
 #              synced up automatically). This is the release-metric gate.
+#   tpch       tpch_probe.py — the two suspect RELEASE TPC-H queries (q9 =
+#              the T-only spiller T27, q20 = the hash_shuffle_v2-only wall
+#              loss M46) run via the release scripts themselves at --sf 10,
+#              matrix strategy x reader, wall + spill per cell. Needs AWS
+#              creds for s3://ray-benchmark-data (public bucket).
 #   soak       soak_probe.py — long-lived session, O(100) tasks/worker,
 #              idle-USS floor per round, arms pa/rs/rs_arena2/rs_trim/
 #              rs_jemalloc. This is the retention gate (M37/M38/M44).
 #   tensors    tensors_nbytes_probe.py — cheap M39 representation check.
 #
 # Knobs (env):
-#   STAGES=...             subset of setup,fixtures,mechanism,release,soak,tensors
+#   STAGES=...             subset of setup,fixtures,mechanism,release,tpch,soak,tensors
 #   FIXTURES_ROOT=<dir>    default ~/arrow_rs_repl_fixtures
 #   FIXTURE_SCALE=1.0      0.25 for a smoke run
 #   ARROW_RS_S3_BUCKET=s3://...   enables the release stage's S3 legs
 #   BUDGETS=32             mechanism budget sweep, e.g. 16,32,128
 #   ABLATION_SHAPES=...    mechanism shapes (default: batch_ablation.py's 10)
 #   TRIAGE_SHAPES=auto,write,tensorscp,tensorsdict,agg (agg = the aggregate-win positive control)
+#   TPCH_SF=10 TPCH_QUERIES=tpch_q9,tpch_q20 TPCH_STRATEGIES=...
 #   SOAK_SHAPES=auto,write  ARMS=pa,rs,rs_arena2,rs_trim,rs_jemalloc
 #   REPEAT=3 WARMUP=1 WORKERS=4
 #   FORCE_SETUP=1          re-run setup.sh even if the env imports
@@ -45,13 +51,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-STAGES="${STAGES:-setup,fixtures,mechanism,release,soak,tensors}"
+STAGES="${STAGES:-setup,fixtures,mechanism,release,tpch,soak,tensors}"
 FIXTURES_ROOT="${FIXTURES_ROOT:-$HOME/arrow_rs_repl_fixtures}"
 FIXTURE_SCALE="${FIXTURE_SCALE:-1.0}"
 BUDGETS="${BUDGETS:-32}"
 TRIAGE_SHAPES="${TRIAGE_SHAPES:-auto,write,tensorscp,tensorsdict,agg}"
 SOAK_SHAPES="${SOAK_SHAPES:-auto,write}"
 ARMS="${ARMS:-pa,rs,rs_arena2,rs_trim,rs_jemalloc}"
+TPCH_SF="${TPCH_SF:-10}"
 REPEAT="${REPEAT:-3}"
 WARMUP="${WARMUP:-1}"
 WORKERS="${WORKERS:-4}"
@@ -99,6 +106,15 @@ if has_stage release; then
     2>&1 | tee "$RUN_DIR/release.log"
 fi
 
+if has_stage tpch; then
+  say "stage: tpch suspects (sf=$TPCH_SF — q9 spill T27, q20 shuffle_v2 M46)"
+  python "$SCRIPT_DIR/tpch_probe.py" \
+    --outdir "$RUN_DIR/tpch" --sf "$TPCH_SF" \
+    ${TPCH_QUERIES:+--queries "$TPCH_QUERIES"} \
+    ${TPCH_STRATEGIES:+--strategies "$TPCH_STRATEGIES"} \
+    2>&1 | tee "$RUN_DIR/tpch.log"
+fi
+
 if has_stage soak; then
   say "stage: soak/retention (shapes=$SOAK_SHAPES arms=$ARMS workers=$WORKERS)"
   python "$SCRIPT_DIR/soak_probe.py" \
@@ -116,7 +132,7 @@ fi
 
 say "DONE — artifact index"
 for f in "$RUN_DIR/ablation.json" "$RUN_DIR/loss_triage/summary.json" \
-         "$RUN_DIR/soak/summary.json" "$RUN_DIR"/*.log; do
+         "$RUN_DIR/tpch/summary.json" "$RUN_DIR/soak/summary.json" "$RUN_DIR"/*.log; do
   [ -e "$f" ] && echo "  $f"
 done
 echo
