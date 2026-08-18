@@ -381,6 +381,14 @@ RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 /// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
 RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 
+/// Whether the GCS records per-command Redis payload byte metrics
+/// (gcs_redis_request_payload_bytes, gcs_redis_response_payload_bytes,
+/// gcs_redis_command_count). Recording costs three additional
+/// ray::stats::Metric::Record calls per Redis command, each of which takes a
+/// process-global registration mutex. Set to false to restore the pre-change
+/// behavior if that contention is measurable in a high-throughput GCS.
+RAY_CONFIG(bool, gcs_redis_payload_metrics_enabled, true)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 
