@@ -50,7 +50,11 @@ _DOCKER_ENV = [
     # .bazelrc. Docker passes nothing through for a variable that is unset, which
     # is the case in a plain checkout, and then pip and uv resolve from PyPI.
     "PIP_INDEX_URL",
+    "PIP_EXTRA_INDEX_URL",
+    "PIP_TRUSTED_HOST",
     "UV_INDEX_URL",
+    "UV_EXTRA_INDEX_URL",
+    "UV_INSECURE_HOST",
     "RULES_PYTHON_PIP_ISOLATED",
 ]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
