@@ -60,6 +60,17 @@ def test_per_job_logger_released_after_last_setup(tmp_path):
     assert first_logger.handlers == []
     assert all(handler.stream is None for handler in handlers)
 
+    # Cleanup runs in a finally block and must not mask the setup exception.
+    with pytest.raises(RuntimeError, match="setup failed"):
+        try:
+            raise RuntimeError("setup failed")
+        finally:
+            agent._release_per_job_logger(job_id)
+
+    agent._per_job_logger_ref_counts[job_id.decode()] = 1
+    agent._release_per_job_logger(job_id)
+    assert job_id.decode() not in agent._per_job_logger_ref_counts
+
 
 def test_reference_table():
     expected_unused_uris = []

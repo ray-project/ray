@@ -316,21 +316,30 @@ class RuntimeEnvAgent:
 
     def _release_per_job_logger(self, job_id: bytes):
         job_id = job_id.decode()
-        ref_count = self._per_job_logger_ref_counts[job_id]
+        ref_count = self._per_job_logger_ref_counts.get(job_id, 0)
+        if ref_count == 0:
+            return
         if ref_count > 1:
             self._per_job_logger_ref_counts[job_id] = ref_count - 1
             return
 
-        del self._per_job_logger_ref_counts[job_id]
-        per_job_logger = self._per_job_logger_cache.pop(job_id)
+        self._per_job_logger_ref_counts.pop(job_id, None)
+        per_job_logger = self._per_job_logger_cache.pop(job_id, None)
+        if per_job_logger is None:
+            return
+
         for handler in per_job_logger.handlers[:]:
             per_job_logger.removeHandler(handler)
             handler.close()
 
         # logging keeps loggers alive in a process-wide registry. Remove this
         # instance so completed jobs do not accumulate there either.
-        if logging.Logger.manager.loggerDict.get(per_job_logger.name) is per_job_logger:
-            del logging.Logger.manager.loggerDict[per_job_logger.name]
+        with logging._lock:
+            if (
+                logging.Logger.manager.loggerDict.get(per_job_logger.name)
+                is per_job_logger
+            ):
+                del logging.Logger.manager.loggerDict[per_job_logger.name]
 
     async def GetOrCreateRuntimeEnv(self, request):
         self._logger.debug(
