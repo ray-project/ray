@@ -128,6 +128,20 @@ curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v${
 chmod +x /usr/local/bin/crane
 EOF
 
+# Package index configuration for CI, sourced by the login shell each step runs.
+# No-op unless the agent wrote the matching files into the checkout.
+RUN \
+  --mount=type=bind,source=ci/docker/rayci-codeartifact-profile.sh,target=rayci-codeartifact-profile.sh \
+<<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+cp rayci-codeartifact-profile.sh /etc/profile.d/zz-rayci-codeartifact.sh
+chmod 0644 /etc/profile.d/zz-rayci-codeartifact.sh
+
+EOF
+
 USER forge
 
 RUN <<EOF
@@ -140,20 +154,6 @@ set -euo pipefail
   echo "build --announce_rc"
   echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}"
 } > ~/.bazelrc
-
-EOF
-
-# Package index configuration for CI, sourced by the login shell each step runs.
-# No-op unless the agent wrote the matching files into the checkout.
-RUN \
-  --mount=type=bind,source=ci/docker/rayci-codeartifact-profile.sh,target=rayci-codeartifact-profile.sh \
-<<EOF
-#!/bin/bash
-
-set -euo pipefail
-
-cp rayci-codeartifact-profile.sh /etc/profile.d/zz-rayci-codeartifact.sh
-chmod 0644 /etc/profile.d/zz-rayci-codeartifact.sh
 
 EOF
 
