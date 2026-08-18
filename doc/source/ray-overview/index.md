@@ -49,65 +49,70 @@ Ray's unified compute framework consists of three layers:
 2. **Ray Core**--An open-source, Python, general purpose, distributed computing library that enables ML engineers and Python developers to scale Python applications and accelerate machine learning workloads.
 3. **Ray Clusters**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
 
-```{eval-rst}
-.. grid:: 1 2 3 3
-    :gutter: 1
-    :class-container: container pb-3
+::::{grid} 1 2 3 3
+:gutter: 1
+:class-container: container pb-3
 
-    .. grid-item-card::
+:::{grid-item-card}
 
-        **Scale machine learning workloads**
-        ^^^
-        Build ML applications with a toolkit of libraries for distributed
-        :doc:`data processing <../data/data>`,
-        :doc:`model training <../train/train>`,
-        :doc:`tuning <../tune/index>`,
-        :doc:`reinforcement learning <../rllib/index>`,
-        :doc:`model serving <../serve/index>`,
-        and :doc:`more <../ray-more-libs/index>`.
-        +++
-        .. button-ref:: libraries-quickstart
-            :color: primary
-            :outline:
-            :expand:
+**Scale machine learning workloads**
+^^^
+Build ML applications with a toolkit of libraries for distributed
+{doc}`data processing <../data/data>`,
+{doc}`model training <../train/train>`,
+{doc}`tuning <../tune/index>`,
+{doc}`reinforcement learning <../rllib/index>`,
+{doc}`model serving <../serve/index>`,
+and {doc}`more <../ray-more-libs/index>`.
++++
+```{button-ref} libraries-quickstart
+:color: primary
+:outline:
+:expand:
 
-            Ray AI Libraries
-
-    .. grid-item-card::
-
-        **Build distributed applications**
-        ^^^
-        Build and run distributed applications with a
-        :doc:`simple and flexible API <../ray-core/walkthrough>`.
-        :doc:`Parallelize <../ray-core/walkthrough>` single machine code with
-        little to zero code changes.
-
-        +++
-        .. button-ref:: ../ray-core/walkthrough
-            :color: primary
-            :outline:
-            :expand:
-
-            Ray Core
-
-    .. grid-item-card::
-
-        **Deploy large-scale workloads**
-        ^^^
-        Deploy workloads on :doc:`AWS, GCP, Azure <../cluster/getting-started>` or
-        :doc:`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`.
-        Use Ray cluster managers to run Ray on existing
-        :doc:`Kubernetes <../cluster/kubernetes/index>`,
-        :doc:`YARN <../cluster/vms/user-guides/community/yarn>`,
-        or :doc:`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
-        +++
-        .. button-ref:: ../cluster/getting-started
-            :color: primary
-            :outline:
-            :expand:
-
-            Ray Clusters
+Ray AI Libraries
 ```
+:::
+
+:::{grid-item-card}
+
+**Build distributed applications**
+^^^
+Build and run distributed applications with a
+{doc}`simple and flexible API <../ray-core/walkthrough>`.
+{doc}`Parallelize <../ray-core/walkthrough>` single machine code with
+little to zero code changes.
+
++++
+```{button-ref} ../ray-core/walkthrough
+:color: primary
+:outline:
+:expand:
+
+Ray Core
+```
+:::
+
+:::{grid-item-card}
+
+**Deploy large-scale workloads**
+^^^
+Deploy workloads on {doc}`AWS, GCP, Azure <../cluster/getting-started>` or
+{doc}`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`.
+Use Ray cluster managers to run Ray on existing
+{doc}`Kubernetes <../cluster/kubernetes/index>`,
+{doc}`YARN <../cluster/vms/user-guides/community/yarn>`,
+or {doc}`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
++++
+```{button-ref} ../cluster/getting-started
+:color: primary
+:outline:
+:expand:
+
+Ray Clusters
+```
+:::
+::::
 
 Each of [Ray's](../ray-air/getting-started) five native libraries distributes a specific ML task:
 - [Data](../data/data): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
