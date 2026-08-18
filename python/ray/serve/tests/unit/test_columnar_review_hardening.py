@@ -204,6 +204,55 @@ def test_array_path_equals_production_object_path_unrounded_timestamps():
             assert [float(p.timestamp) for p in merged] == [float(x) for x in mts]
 
 
+def test_merge_emits_event_for_change_inside_one_bucket():
+    """Regression: a source changing value twice inside ONE 10ms bucket must still emit
+    an event. Rounding and collapsing before LOCF change detection nets the change to
+    zero and drops it -- this input emptied the merge entirely, which makes
+    merge_and_aggregate_arrays short-circuit to 0.0 and the deployment read no load."""
+    tl = [
+        [TimeStampedValue(0.7608, 0.0)],
+        [TimeStampedValue(0.3669, 3.0), TimeStampedValue(0.3684, 0.0)],
+    ]
+    ts, val, offs = _to_arrays(tl)
+    mts, mtot = merge.merge_instantaneous_total_arrays(ts, val, offs)
+    ref = merge_instantaneous_total(tl)
+    assert len(ref) == 1 and len(mts) == 1
+    assert abs(float(mts[0]) - ref[0].timestamp) < 1e-9
+    assert abs(float(mtot[0]) - ref[0].value) < 1e-9
+
+
+def test_array_merge_matches_object_kernels_dense_buckets():
+    """Both harnesses above keep points >=10ms apart -- one pre-rounds timestamps to 2
+    decimals, the other steps by >=0.031s -- so no two points of a source ever land in
+    the same rounding bucket and the collapse path goes untested. This one packs several
+    points per bucket, which is where change detection and rounding can disagree."""
+    rng = random.Random(19)
+    for _ in range(400):
+        tl = []
+        for _ in range(rng.randint(2, 5)):
+            t = 88.0 + rng.random()
+            s = []
+            for _ in range(rng.randint(1, 9)):
+                t += rng.choice([0.0005, 0.001, 0.003, 0.02, 0.5])
+                s.append(TimeStampedValue(t, float(rng.choice([0, 1, 2, 3]))))
+            tl.append(s)
+        ts, val, offs = _to_arrays(tl)
+        mts, mtot = merge.merge_instantaneous_total_arrays(ts, val, offs)
+        ref = merge_instantaneous_total(tl)
+        assert len(mts) == len(ref), (len(mts), len(ref), tl)
+        for i, p in enumerate(ref):
+            assert abs(float(mts[i]) - p.timestamp) < 1e-9, (i, tl)
+            assert abs(float(mtot[i]) - p.value) < 1e-9, (i, tl)
+
+
+def test_round_10ms_matches_c_round_on_ties():
+    """The kernel rounds with C round() (half away from zero); np.round is half-to-even,
+    so the two disagree on exact .5 ties at the 10ms scale."""
+    ties = np.array([0.125, 1700000000.125])
+    assert [float(x) for x in merge._round_10ms(ties)] == [0.13, 1700000000.13]
+    assert float(np.round(ties[0], 2)) == 0.12
+
+
 # ---- randomized equivalence through the PRODUCTION handle-array path ----
 
 

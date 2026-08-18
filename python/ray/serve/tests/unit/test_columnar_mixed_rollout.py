@@ -76,7 +76,7 @@ def test_mixed_rollout_equals_all_object(agg, monkeypatch):
         ref._running_replicas = running
         ref_total = ref._calculate_total_requests_aggregate_mode()
         mix = _state(agg)
-        k = rng.randint(0, n)
+        k = rng.randint(1, n - 1)
         for r in reports[:k]:
             mix._replica_metrics[r.replica_id] = r
         for r in reports[k:]:

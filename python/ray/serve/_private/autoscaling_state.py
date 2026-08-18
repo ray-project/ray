@@ -367,21 +367,14 @@ class DeploymentAutoscalingState:
 
     def _handle_running_columnar_segments(self, running):
         """Array-view segments of each columnar handle's running series, masked to
-        replicas still in `running` (mirrors _collect_handle_running_requests)."""
-        segs = []
-        for hm in self._handle_arrays.values():
-            mi = hm["mi"]
-            if mi < 0:
-                continue
-            rk, ts, val = hm["replica_keys"], hm["ts"], hm["val"]
-            for row in hm["entries"]:
-                if int(row[0]) != mi or int(row[3]) <= 0:
-                    continue
-                if rk[int(row[1])] not in running:
-                    continue
-                off, n = int(row[2]), int(row[3])
-                segs.append((ts[off : off + n], val[off : off + n]))
-        return segs
+        replicas still in `running` (mirrors _collect_handle_running_requests). Sliced
+        at write time; this runs on the 0.1s decision path."""
+        return [
+            (rts, rval)
+            for hm in self._handle_arrays.values()
+            for rkey, rts, rval in hm["running_segments"]
+            if rkey in running
+        ]
 
     def _series_to_segment(self, series):
         """Object timeseries -> (ts, val) float64 arrays (the cheap direction: object
@@ -437,6 +430,23 @@ class DeploymentAutoscalingState:
         last_ts = self._handle_report_ts.get(hid)
         if last_ts is None or payload["timestamp"] > last_ts:
             self._handle_report_ts[hid] = payload["timestamp"]
+            mi = payload["mi"]
+            # entries/replica_keys/mi are frozen once stored, so slice the running
+            # segments here rather than rebuilding them on every 0.1s decision tick.
+            p_ts, p_val = payload["ts"], payload["val"]
+            running_segments = (
+                [
+                    (
+                        payload["replica_keys"][int(r[1])],
+                        p_ts[int(r[2]) : int(r[2]) + int(r[3])],
+                        p_val[int(r[2]) : int(r[2]) + int(r[3])],
+                    )
+                    for r in payload["entries"]
+                    if int(r[0]) == mi and int(r[3]) > 0
+                ]
+                if mi >= 0
+                else []
+            )
             self._handle_arrays[hid] = {
                 "actor_id": payload["actor_id"],
                 "is_component": payload["handle_source"]
@@ -452,6 +462,7 @@ class DeploymentAutoscalingState:
                 "replica_keys": payload["replica_keys"],
                 "q_ts": payload["q_ts"],
                 "q_val": payload["q_val"],
+                "running_segments": running_segments,
             }
             self._handle_requests.pop(hid, None)
 

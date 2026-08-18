@@ -10,10 +10,11 @@ tests/unit/test_columnar_review_hardening.py).
 Pinned semantics of merge_instantaneous_total_cython (verified 8000/8000):
   1. Drop empty sources.
   2. If exactly ONE active source -> return it as-is (identity; no dedup, no merge).
-  3. Else, per source: round ts to 2 decimals (10ms); collapse same-rounded-ts
-     keeping the last value; then keep only points where the value CHANGED from that
-     source's previous value (LOCF), recording the delta (first point delta = value).
-  4. Merge all per-source change-points by timestamp (sum deltas at equal ts),
+  3. Else, per source: keep only points where the value CHANGED from that source's
+     previous RAW value (LOCF, baseline 0), recording the delta (first point delta =
+     value); THEN round those points' ts to 2 decimals (10ms). Order matters -- see
+     _round_10ms and the change-detect comment below.
+  4. Merge all per-source change-points by rounded timestamp (sum deltas at equal ts),
      cumsum -> instantaneous total. Keep EVERY change-point timestamp (an event
      survives if any source changed there, even if deltas net to zero).
 """
@@ -25,6 +26,13 @@ try:
     import numpy as np
 except ModuleNotFoundError:  # numpy is only needed on the columnar (opt-in) path;
     np = None  # serve-minimal installs lack it and never reach the columnar code.
+
+
+def _round_10ms(ts: np.ndarray) -> np.ndarray:
+    """Kernel-exact 10ms rounding. The kernel uses c_round (half away from zero);
+    np.round is half-to-even, so the two disagree on exact ties. ts is a positive
+    unix timestamp, so floor(x+0.5) reproduces the C rule."""
+    return np.floor(ts * 100.0 + 0.5) / 100.0
 
 
 def merge_instantaneous_total_arrays(
@@ -46,17 +54,14 @@ def merge_instantaneous_total_arrays(
 
     ev_ts, ev_d = [], []
     for a, b in active:
-        st = np.round(ts[a:b], 2)
         sv = val[a:b]
-        # collapse same-rounded-ts within source, keep last value
-        keep_last = np.ones(len(st), dtype=bool)
-        keep_last[:-1] = st[1:] != st[:-1]
-        st, sv = st[keep_last], sv[keep_last]
-        # LOCF: keep only value changes vs previous (baseline 0); delta = v - prev
+        # LOCF change-detect on RAW points (baseline 0), rounding only after: the
+        # kernel change-detects before rounding, so a v->w->v inside one 10ms bucket
+        # still emits an event there. Collapsing first would net it to zero and drop it.
         prev = np.concatenate(([0.0], sv[:-1]))
         delta = sv - prev
         changed = delta != 0
-        ev_ts.append(st[changed])
+        ev_ts.append(_round_10ms(ts[a:b])[changed])
         ev_d.append(delta[changed])
     all_ts = np.concatenate(ev_ts)
     all_d = np.concatenate(ev_d)
