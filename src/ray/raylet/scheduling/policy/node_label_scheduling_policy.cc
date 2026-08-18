@@ -103,7 +103,7 @@ NodeLabelSchedulingPolicy::FilterNodesByLabelMatchExpressions(
     for (auto iter = match_nodes.begin(); iter != match_nodes.end();) {
       auto cur = iter++;
       if (!IsNodeMatchLabelExpression(*(cur->second), expression)) {
-       match_nodes.erase(cur);
+        match_nodes.erase(cur);
       }
     }
   }
