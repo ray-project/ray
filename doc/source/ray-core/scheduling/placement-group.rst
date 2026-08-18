@@ -838,7 +838,7 @@ put the node-level strategy under ``ray.io/node-id`` in the same dict, as shown 
   exposes an identifier for each NVLink domain with the node label
   ``nvidia.com/gpu.clique`` from GPU Feature Discovery.
 
-  The `Kubernetes Downward API <https://kubernetes.io/docs/concepts/workloads/pods/downward-api/>`_ can't expose node labels directly to a Pod. Instead, expose the assigned node name to the Ray container:
+  The `Kubernetes Downward API <https://kubernetes.io/docs/concepts/workloads/pods/downward-api/>`_ cannot expose node labels directly to a Pod. Instead, expose the assigned node name to the Ray container:
 
   .. code-block:: yaml
 
