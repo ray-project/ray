@@ -40,6 +40,14 @@ class ReleaseTestStateMachine(TestStateMachine):
             for result in self.test_results[:CONTINUOUS_FAILURE_TO_JAIL]
         )
 
+    # TODO(sai): release tests never enter the FLAKY state -- every flaky transition
+    # below is hardcoded to False. That was tolerable while a failure of any kind was
+    # retried and only the final attempt was recorded, which hid flakes from the state
+    # machine entirely. Retries are now limited to RETRYABLE_EXIT_CODES, so a test that
+    # fails for non-infra reasons has its first-attempt failure persisted and flakiness
+    # is visible in the result history for the first time. Implement real flaky
+    # detection here so those tests surface as FLAKY instead of oscillating between
+    # PASSING and FAILING and triggering a bisect on every flip.
     def _passing_to_flaky(self) -> bool:
         return False
 
