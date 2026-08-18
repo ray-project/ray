@@ -43,7 +43,7 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_t
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     extract_partition_id,
 )
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_external import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
     ExternalHashShuffleMapOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
@@ -151,17 +151,20 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
         partition_id = extract_partition_id(refs)
         estimated_bytes = sum((m.size_bytes or 0) for m in refs.metadata)
+        estimated_rows = sum((m.num_rows or 0) for m in refs.metadata)
 
         # Empty-partition fast path: wrappers for partitions that no
-        # mapper wrote to have ``size_bytes==0`` (the map op sums
-        # per-partition decoded bytes across mappers into wrapper
-        # metadata). Skipped when a downstream map is fused in — the
-        # map still needs to run even on empty partitions (e.g. Write).
+        # mapper wrote rows to have ``num_rows==0`` (the map op sums
+        # per-partition decoded row counts across mappers into wrapper
+        # metadata). Do not gate on ``size_bytes``: a ``null``-typed
+        # table can have rows with ``tbl.nbytes == 0``. Skipped when a
+        # downstream map is fused in — the map still needs to run even
+        # on empty partitions (e.g. Write).
         schema = refs.schema
         if (
             self._fused_output_map_transformer is None
             and isinstance(schema, pa.Schema)
-            and estimated_bytes == 0
+            and estimated_rows == 0
         ):
             self._emit_empty_partition(refs, schema)
             return

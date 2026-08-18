@@ -173,6 +173,29 @@ def test_external_repartition_empty_dataset(
     assert rows_per_block == [0, 0, 0, 0]
 
 
+def test_external_repartition_preserves_null_typed_rows(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    disable_fallback_to_object_extension,
+):
+    """A null-typed column has rows with ``tbl.nbytes == 0``. Empty-gating
+    by bytes would drop the partition; gating by ``num_rows`` must keep them.
+    """
+    import pyarrow as pa
+
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_external_hash_shuffle = True
+
+    table = pa.table({"k": pa.nulls(10)})
+    assert table.num_rows == 10
+    assert table.nbytes == 0
+
+    out = ray.data.from_arrow(table).repartition(4, keys=["k"]).materialize()
+    assert out.count() == 10
+    assert out.num_blocks() == 4
+
+
 def test_external_repartition_with_sort_produces_sorted_partitions(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
@@ -205,7 +228,7 @@ def test_external_flag_off_keeps_object_store_path(
     raise so any construction of the external op fails the test immediately.
     """
     from unittest import mock
-    from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator_external import (  # noqa: E501
+    from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
         ExternalHashShuffleMapOp,
     )
 
