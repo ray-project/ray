@@ -6,10 +6,7 @@ import sys
 import pytest
 
 from ray._private import ray_constants
-from ray.autoscaler._private.kuberay.run_autoscaler import (
-    _LazyStreamHandler,
-    _setup_logging,
-)
+from ray.autoscaler._private.kuberay.run_autoscaler import _setup_logging
 
 
 @pytest.fixture
@@ -121,7 +118,7 @@ def test_default_level_filters_debug(emit_records):
         ("critical", logging.CRITICAL, logging.CRITICAL),
     ],
 )
-def test_handler_levels_track_logger_level(
+def test_handler_types_and_levels_track_logger_level(
     tmp_path,
     clean_root_logger,
     monkeypatch,
@@ -129,7 +126,7 @@ def test_handler_levels_track_logger_level(
     expected_stdout_level,
     expected_stderr_level,
 ):
-    """stdout follows LOGGER_LEVEL; stderr follows it but never drops below WARNING.
+    """stdout uses StreamHandler; stderr stays lazy and floors at WARNING.
 
     This asserts handler configuration rather than emitted output, because the "ray"
     logger carries its own explicit level and that, not the root logger's level, decides
@@ -137,12 +134,18 @@ def test_handler_levels_track_logger_level(
     """
     monkeypatch.setattr(ray_constants, "LOGGER_LEVEL", logger_level)
     _setup_logging(str(tmp_path))
-    handlers = [h for h in logging.root.handlers if isinstance(h, _LazyStreamHandler)]
+    handlers = [
+        h
+        for h in logging.root.handlers
+        if getattr(h, "stream", None) in (sys.stdout, sys.stderr)
+    ]
     by_stream = {
         "stdout": next(h for h in handlers if h.stream is sys.stdout),
         "stderr": next(h for h in handlers if h.stream is sys.stderr),
     }
     assert len(handlers) == 2
+    assert type(by_stream["stdout"]) is logging.StreamHandler
+    assert type(by_stream["stderr"]) is logging._StderrHandler
     assert by_stream["stdout"].level == expected_stdout_level
     assert by_stream["stderr"].level == expected_stderr_level
 
@@ -172,34 +175,6 @@ def test_invalid_logger_level_raises(emit_records):
     """An unrecognized RAY_LOGGER_LEVEL fails loudly, as it did before the split."""
     with pytest.raises(ValueError, match="Unknown level"):
         emit_records(logging.INFO, logger_level="bogus")
-
-
-def test_lazy_stream_handler_follows_stream_reassignment():
-    """The handler must resolve sys.stdout at emit time, not construction time.
-
-    ray#33652 chose logging._StderrHandler so handlers keep working when the streams are
-    replaced after construction. _LazyStreamHandler preserves that for stdout too.
-    """
-    handler = _LazyStreamHandler("stdout")
-    original, replacement = sys.stdout, io.StringIO()
-    assert handler.stream is original
-    sys.stdout = replacement
-    try:
-        assert handler.stream is replacement
-        handler.emit(
-            logging.LogRecord(
-                name="test",
-                level=logging.INFO,
-                pathname=__file__,
-                lineno=1,
-                msg="REDIRECTED",
-                args=(),
-                exc_info=None,
-            )
-        )
-    finally:
-        sys.stdout = original
-    assert "REDIRECTED" in replacement.getvalue()
 
 
 if __name__ == "__main__":

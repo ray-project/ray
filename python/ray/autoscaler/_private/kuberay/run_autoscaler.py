@@ -27,32 +27,6 @@ logger = logging.getLogger(__name__)
 BACKOFF_S = 5
 
 
-class _LazyStreamHandler(logging.StreamHandler):
-    """A StreamHandler that resolves its stream at emit time.
-
-    Like ``logging._StderrHandler``, this always uses whatever ``sys.stdout`` or
-    ``sys.stderr`` currently points to rather than the value captured at handler
-    construction time, so it keeps working if the streams are replaced after
-    setup (see ray#33652).
-
-    Since ``stream`` is a read-only property, ``setStream()`` does not work on this
-    handler; redirect ``sys.stdout``/``sys.stderr`` instead. ``logging._StderrHandler``
-    has the same limitation.
-
-    Args:
-        stream_name: Either ``"stdout"`` or ``"stderr"``.
-    """
-
-    def __init__(self, stream_name: str):
-        # Skip StreamHandler.__init__, which would assign to ``self.stream``.
-        logging.Handler.__init__(self)
-        self._stream_name = stream_name
-
-    @property
-    def stream(self):
-        return getattr(sys, self._stream_name)
-
-
 class _MaxLevelFilter(logging.Filter):
     """Filter that passes only records below a given level.
 
@@ -182,12 +156,13 @@ def _setup_logging(log_dir: str) -> None:
     level = logging.getLevelName(ray_constants.LOGGER_LEVEL.upper())
     formatter = logging.Formatter(ray_constants.LOGGER_FORMAT)
 
-    stdout_handler = _LazyStreamHandler("stdout")
+    # The KubeRay entry point does not redirect stdout after logging setup.
+    stdout_handler = logging.StreamHandler(sys.stdout)
     stdout_handler.setFormatter(formatter)
     stdout_handler.setLevel(level)
     stdout_handler.addFilter(_MaxLevelFilter(logging.WARNING))
 
-    stderr_handler = _LazyStreamHandler("stderr")
+    stderr_handler = logging._StderrHandler()
     stderr_handler.setFormatter(formatter)
     stderr_handler.setLevel(level)
     # Floor stderr at WARNING, but keep a stricter LOGGER_LEVEL (e.g. "error"). The level
