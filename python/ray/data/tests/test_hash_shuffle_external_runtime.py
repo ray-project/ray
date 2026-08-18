@@ -50,14 +50,13 @@ def _make_file_server(tmp_path, shuffle_id="shuffle-0", node_id="node-1"):
     """Create a named (not detached) ShuffleFileServer; return (actor, endpoint)."""
     import ray
 
+    actor_cls = cast(ActorClass[Any], ShuffleFileServer)
     actor = cast(
         ActorHandle[Any],
-        cast(ActorClass, ShuffleFileServer)
-        .options(
+        actor_cls.options(
             name=_file_server_name(shuffle_id, node_id),
             namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
-        )
-        .remote(str(tmp_path)),
+        ).remote(str(tmp_path)),
     )
     endpoint = cast(_Endpoint, ray.get(actor.endpoint.remote()))
     return actor, endpoint
