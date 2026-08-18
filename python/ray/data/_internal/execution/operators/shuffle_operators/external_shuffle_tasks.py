@@ -27,6 +27,7 @@ from typing import (
     List,
     Optional,
     Union,
+    cast,
 )
 
 import pyarrow as pa
@@ -35,6 +36,7 @@ import ray
 from ray._raylet import (
     StreamingGeneratorStats,  # pyrefly: ignore[missing-module-attribute]
 )
+from ray.actor import ActorClass
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
@@ -118,7 +120,7 @@ def _external_shuffle_map_task(
     # Ensure the file-server actor exists (get_if_exists=True → reuse across
     # mappers on the same node). We don't need to keep the handle: reducers
     # will look the file server up by name via ``ray.get_actor``.
-    ShuffleFileServer.options(  # pyrefly: ignore[missing-attribute]
+    cast(ActorClass, ShuffleFileServer).options(
         name=_file_server_name(shuffle_id, node_id),
         namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
         get_if_exists=True,
@@ -318,9 +320,14 @@ def _external_shuffle_reduce_task(
             accum_tables: List[pa.Table] = []
             output_buffer: Optional[BlockOutputBuffer] = None
             # Codec from data_context.hash_shuffle_compression (same field the map used).
-            _compression = (
-                data_context if data_context is not None else DataContext.get_current()
-            ).hash_shuffle_compression
+            _compression: Compression = cast(
+                Compression,
+                (
+                    data_context
+                    if data_context is not None
+                    else DataContext.get_current()
+                ).hash_shuffle_compression,
+            )
 
             def _flush(tables: List[pa.Table]):
                 """Call reduce_fn on ``tables`` and yield reshaped raw blocks.

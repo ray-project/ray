@@ -133,8 +133,9 @@ class ShuffleHandle(TypedDict, total=False):
 
     Fetch/runtime fields (``path``, ``index_ranges``, ``shuffle_id``,
     ``node_id``) are consumed by reducers. Driver bookkeeping fields
-    (``num_rows``, ``decoded_bytes``, ``schema``) are consumed by the map
-    operator when emitting partition wrappers.
+    (``num_rows``, ``decoded_bytes``, ``schema``, ``num_partitions``,
+    ``total_bytes``, ``compression``) are consumed by the map operator
+    when emitting partition wrappers.
     """
 
     path: str
@@ -153,6 +154,10 @@ class ShuffleHandle(TypedDict, total=False):
     shuffle_id: str
     node_id: str
     schema: Optional["pa.Schema"]
+    # Extra mapper bookkeeping (not required for fetch).
+    num_partitions: int
+    total_bytes: int
+    compression: Compression
 
 
 class _Endpoint(NamedTuple):

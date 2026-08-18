@@ -8,11 +8,12 @@ import contextlib
 import os
 import socket
 import struct
-from typing import cast
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.actor import ActorClass, ActorHandle
 from ray.data._internal.execution.operators.shuffle_operators import (
     external_shuffle_runtime as _runtime,
 )
@@ -49,10 +50,15 @@ def _make_file_server(tmp_path, shuffle_id="shuffle-0", node_id="node-1"):
     """Create a named (not detached) ShuffleFileServer; return (actor, endpoint)."""
     import ray
 
-    actor = ShuffleFileServer.options(  # pyrefly: ignore[missing-attribute]
-        name=_file_server_name(shuffle_id, node_id),
-        namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
-    ).remote(str(tmp_path))
+    actor = cast(
+        ActorHandle[Any],
+        cast(ActorClass, ShuffleFileServer)
+        .options(
+            name=_file_server_name(shuffle_id, node_id),
+            namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
+        )
+        .remote(str(tmp_path)),
+    )
     endpoint = cast(_Endpoint, ray.get(actor.endpoint.remote()))
     return actor, endpoint
 

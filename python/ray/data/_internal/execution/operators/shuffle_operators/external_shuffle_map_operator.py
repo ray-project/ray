@@ -156,8 +156,8 @@ class ExternalHashShuffleMapOp(
         # ``_completed_handle_refs``; at emit time we ``ray.put`` that list
         # once into ``_shared_handles_ref`` and every partition wrapper
         # points at that single ref (O(1) per-reducer arg serialization).
-        self._completed_handle_refs: List[ObjectRef] = []
-        self._shared_handles_ref: Optional[ObjectRef] = None
+        self._completed_handle_refs = []
+        self._shared_handles_ref = None
         # First non-None schema seen; propagated onto every wrapper so
         # downstream ops (fusion, empty-partition fast path) don't see None.
         self._output_schema: Optional["pa.Schema"] = None
@@ -314,7 +314,7 @@ class ExternalHashShuffleMapOp(
 
         # `task_done_callback` fires only after the handle ref is ready,
         # so this is just local deserialization.
-        handle = ray.get(handle_ref)
+        handle = ray.get(task.get_waitable())
         # Dense [num_partitions] arrays. Accumulate rows and bytes separately;
         # do not gate rows on nbytes (a null-typed table can have rows with
         # nbytes == 0).
@@ -398,7 +398,7 @@ class ExternalHashShuffleMapOp(
             return
 
         # One Ray object shared across all N wrappers.
-        self._shared_handles_ref = ray.put(self._completed_handle_refs)  # pyrefly: ignore[bad-assignment]
+        self._shared_handles_ref = ray.put(self._completed_handle_refs)
 
         partition_bytes = self.get_partition_bytes()
         for partition_id in range(self._num_partitions):
@@ -495,7 +495,7 @@ class ExternalHashShuffleMapOp(
         seen_nodes: set = set()
         for ref in self._completed_handle_refs:
             try:
-                handle = ray.get(ref)  # pyrefly: ignore[no-matching-overload]
+                handle = ray.get(ref)
             except Exception:
                 continue
             if not isinstance(handle, dict):
