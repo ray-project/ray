@@ -51,8 +51,10 @@ class GpuUtilizationInfo(TypedDict):
     name: str
     uuid: str
     utilization_gpu: Optional[Percentage]
-    memory_used: Megabytes
-    memory_total: Megabytes
+    # None when the device does not report a separate GPU memory pool
+    # (e.g. unified-memory parts such as GB10). This means "unknown", not zero.
+    memory_used: Optional[Megabytes]
+    memory_total: Optional[Megabytes]
     processes_pids: Optional[Dict[int, ProcessGPUInfo]]
     # Optional: power in milliwatts, temperature in Celsius (e.g. from NVIDIA/AMD)
     power_mw: NotRequired[Optional[int]]
@@ -237,7 +239,15 @@ class NvidiaGpuProvider(GpuProvider):
     ) -> Optional[GpuUtilizationInfo]:
         """Get utilization info for a single MIG device."""
         try:
-            memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(mig_handle)
+            memory_info = None
+            try:
+                memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(mig_handle)
+            except self._pynvml.NVMLError as e:
+                if log_once("mig_memory_info"):
+                    logger.info(
+                        "Failed to retrieve MIG device memory info via "
+                        f"`nvmlDeviceGetMemoryInfo`: {e}"
+                    )
 
             # Get MIG device utilization
             utilization = -1
@@ -296,8 +306,12 @@ class NvidiaGpuProvider(GpuProvider):
                 name=mig_name,
                 uuid=mig_uuid,
                 utilization_gpu=utilization,
-                memory_used=int(memory_info.used) // MB,
-                memory_total=int(memory_info.total) // MB,
+                memory_used=(
+                    int(memory_info.used) // MB if memory_info is not None else None
+                ),
+                memory_total=(
+                    int(memory_info.total) // MB if memory_info is not None else None
+                ),
                 processes_pids=processes_pids,
                 power_mw=None,  # MIG devices don't expose per-slice power in NVML
                 temperature_c=None,
@@ -310,7 +324,17 @@ class NvidiaGpuProvider(GpuProvider):
     def _get_gpu_info(self, gpu_handle, gpu_index: int) -> Optional[GpuUtilizationInfo]:
         """Get utilization info for a regular (non-MIG) GPU."""
         try:
-            memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+            # Some devices (e.g. unified-memory parts such as GB10) do not expose a
+            # separate GPU memory pool; NVML returns NVML_ERROR_NOT_SUPPORTED here.
+            memory_info = None
+            try:
+                memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+            except self._pynvml.NVMLError as e:
+                if log_once("gpu_memory_info"):
+                    logger.info(
+                        "Failed to retrieve GPU memory info via "
+                        f"`nvmlDeviceGetMemoryInfo`: {e}"
+                    )
 
             # Get GPU utilization
             utilization = -1
@@ -403,8 +427,12 @@ class NvidiaGpuProvider(GpuProvider):
                 name=self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
                 uuid=self._decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
                 utilization_gpu=utilization,
-                memory_used=int(memory_info.used) // MB,
-                memory_total=int(memory_info.total) // MB,
+                memory_used=(
+                    int(memory_info.used) // MB if memory_info is not None else None
+                ),
+                memory_total=(
+                    int(memory_info.total) // MB if memory_info is not None else None
+                ),
                 processes_pids=processes_pids,
                 power_mw=power_mw,
                 temperature_c=temperature_c,

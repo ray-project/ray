@@ -107,11 +107,18 @@ const getMemDisplayRatioNoPercent = (used: number, total: number) => {
   return `${memoryConverter(usedBytes)}/${memoryConverter(totalBytes)}`;
 };
 
+// Accelerators may report memory as null (GPUs with no separate memory pool, such
+// as unified-memory parts) or NaN (TPU generations that omit the absolute
+// metrics). Both mean "unknown" and must not be rendered as a quantity.
+const isKnownMemoryValue = (
+  value: number | null | undefined,
+): value is number => value !== null && value !== undefined && !isNaN(value);
+
 type AcceleratorMemoryEntryProps = {
   gpuName: string;
   slot: number;
-  utilization: number;
-  total: number;
+  utilization: number | null;
+  total: number | null;
   utilPercent?: number;
 };
 
@@ -122,14 +129,44 @@ const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
   total,
   utilPercent,
 }) => {
-  let ratioStr = getMemDisplayRatioNoPercent(utilization, total);
+  let used = utilization;
+  let capacity = total;
+  let ratioStr: string | undefined;
+
   // When the utilization percentage is present but absolute usage is missing
   // (as is the case on some TPU generations), spoof the bar with just a percentage.
-  if (utilPercent !== undefined && (total === 0 || isNaN(total))) {
+  if (
+    utilPercent !== undefined &&
+    (capacity === 0 || !isKnownMemoryValue(capacity))
+  ) {
     ratioStr = `${utilPercent.toFixed(1)}%`;
-    utilization = utilPercent;
-    total = 100;
+    used = utilPercent;
+    capacity = 100;
   }
+
+  let body: React.ReactNode;
+  if (isKnownMemoryValue(used) && isKnownMemoryValue(capacity)) {
+    body = (
+      <PercentageBar num={used} total={capacity}>
+        {ratioStr ?? getMemDisplayRatioNoPercent(used, capacity)}
+      </PercentageBar>
+    );
+  } else if (isKnownMemoryValue(used)) {
+    // Usage is known but capacity is not, so there is no ratio to draw. Show the
+    // absolute usage rather than discarding a real measurement.
+    body = (
+      <Typography component="span" variant="inherit">
+        {memoryConverter(used * 1024 * 1024)}
+      </Typography>
+    );
+  } else {
+    body = (
+      <Typography color="textSecondary" component="span" variant="inherit">
+        N/A
+      </Typography>
+    );
+  }
+
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
@@ -137,9 +174,7 @@ const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
           <RightPaddedTypography variant="body1">
             [{slot}]:{" "}
           </RightPaddedTypography>
-          <PercentageBar num={utilization} total={total}>
-            {ratioStr}
-          </PercentageBar>
+          {body}
         </Box>
       </Tooltip>
     </Box>

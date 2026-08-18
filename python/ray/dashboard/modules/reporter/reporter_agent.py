@@ -1668,15 +1668,21 @@ class ReporterAgent(
                 # Consume GPU may not report its utilization.
                 if gpu["utilization_gpu"] is not None:
                     gpus_utilization += gpu["utilization_gpu"]
-                gram_used += gpu["memory_used"]
-                gram_total += gpu["memory_total"]
+                # Some devices (e.g. unified-memory parts such as GB10) do not
+                # report a separate GPU memory pool. Leave the GRAM metrics
+                # unreported in that case: a 0 would be indistinguishable from an
+                # idle GPU and would skew cluster-wide sums.
+                gram_known = (
+                    gpu["memory_used"] is not None and gpu["memory_total"] is not None
+                )
+                if gram_known:
+                    gram_used = gpu["memory_used"]
+                    gram_total = gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
                 gpu_uuid = gpu.get("uuid")
                 gpu_power_mw = gpu.get("power_mw")
                 gpu_temperature_c = gpu.get("temperature_c")
-
-                gram_available = gram_total - gram_used
 
                 if gpu_index is not None:
                     gpu_tags = {**node_tags, "GpuIndex": str(gpu_index)}
@@ -1696,22 +1702,25 @@ class ReporterAgent(
                         value=gpus_utilization,
                         tags=gpu_tags,
                     )
-                    gram_used_record = Record(
-                        gauge=METRICS_GAUGES["node_gram_used"],
-                        value=gram_used,
-                        tags=gpu_tags,
-                    )
-                    gram_available_record = Record(
-                        gauge=METRICS_GAUGES["node_gram_available"],
-                        value=gram_available,
-                        tags=gpu_tags,
-                    )
                     gpu_records_to_add = [
                         gpus_available_record,
                         gpus_utilization_record,
-                        gram_used_record,
-                        gram_available_record,
                     ]
+                    if gram_known:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gram_used"],
+                                value=gram_used,
+                                tags=gpu_tags,
+                            )
+                        )
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gram_available"],
+                                value=gram_total - gram_used,
+                                tags=gpu_tags,
+                            )
+                        )
                     # Optional GPU power and temperature (e.g. NVIDIA, AMD)
                     if gpu_power_mw is not None:
                         gpu_records_to_add.append(

@@ -11,8 +11,10 @@ export type UnifiedAcceleratorStat = {
   index: number;
   type: "GPU" | "TPU";
   utilization?: number;
-  memoryUsed: number;
-  memoryTotal: number;
+  // null for GPUs that report no separate memory pool; NaN for TPU generations
+  // that omit the absolute memory metrics. Both mean "unknown", not zero.
+  memoryUsed: number | null;
+  memoryTotal: number | null;
   processesPids?: UnifiedProcessAcceleratorUsage[];
   rawGpu?: GPUStats;
   rawTpu?: TPUStats;
