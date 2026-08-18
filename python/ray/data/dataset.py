@@ -5724,11 +5724,15 @@ class Dataset:
         if arrow_orc_args_fn is None:
             arrow_orc_args_fn = lambda: {}  # noqa: E731
 
+        effective_min_rows, _ = _validate_rows_per_file_args(
+            min_rows_per_file=min_rows_per_file
+        )
+
         datasink = ORCDatasink(
             path,
             arrow_orc_args_fn=arrow_orc_args_fn,
             arrow_orc_args=arrow_orc_args,
-            min_rows_per_file=min_rows_per_file,
+            min_rows_per_file=effective_min_rows,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,

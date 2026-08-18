@@ -305,6 +305,16 @@ def test_orc_write_min_rows_per_file(
         assert num_rows_written == min_rows_per_file
 
 
+@pytest.mark.parametrize("min_rows_per_file", [0, -1])
+def test_orc_write_rejects_non_positive_min_rows_per_file(
+    ray_start_regular_shared, tmp_path, min_rows_per_file
+):
+    with pytest.raises(
+        ValueError, match="min_rows_per_file must be a positive integer"
+    ):
+        ray.data.range(1).write_orc(tmp_path, min_rows_per_file=min_rows_per_file)
+
+
 if __name__ == "__main__":
     import sys
 
