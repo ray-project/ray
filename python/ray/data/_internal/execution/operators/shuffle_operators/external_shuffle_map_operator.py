@@ -14,7 +14,7 @@ import secrets
 import tempfile
 import typing
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
@@ -62,8 +62,8 @@ logger = logging.getLogger(__name__)
 _MAPPER_ID_SENTINEL = "__external_mapper__"
 
 
-def _make_mapper_sentinel(mapper_id: int) -> List[str]:
-    return [f"{_MAPPER_ID_SENTINEL}{mapper_id}"]
+def _make_mapper_sentinel(mapper_id: int) -> Tuple[str, ...]:
+    return (f"{_MAPPER_ID_SENTINEL}{mapper_id}",)
 
 
 class ExternalHashShuffleMapOp(
@@ -398,7 +398,7 @@ class ExternalHashShuffleMapOp(
             return
 
         # One Ray object shared across all N wrappers.
-        self._shared_handles_ref = ray.put(self._completed_handle_refs)
+        self._shared_handles_ref = ray.put(self._completed_handle_refs)  # pyrefly: ignore[bad-assignment]
 
         partition_bytes = self.get_partition_bytes()
         for partition_id in range(self._num_partitions):
@@ -407,10 +407,15 @@ class ExternalHashShuffleMapOp(
                 num_rows=self._partition_rows.get(partition_id, 0),
                 size_bytes=partition_bytes.get(partition_id, 0),
                 exec_stats=exec_stats,
-                input_files=list(make_partition_sentinel(partition_id)),
+                input_files=make_partition_sentinel(partition_id),
             )
             wrapper = RefBundle(
-                (BlockEntry(ref=self._shared_handles_ref, metadata=wrapper_meta),),
+                (
+                    BlockEntry(
+                        ref=self._shared_handles_ref,  # pyrefly: ignore[bad-argument-type]
+                        metadata=wrapper_meta,
+                    ),
+                ),
                 schema=self._output_schema,
                 owns_blocks=False,
             )
@@ -490,7 +495,7 @@ class ExternalHashShuffleMapOp(
         seen_nodes: set = set()
         for ref in self._completed_handle_refs:
             try:
-                handle = ray.get(ref)
+                handle = ray.get(ref)  # pyrefly: ignore[no-matching-overload]
             except Exception:
                 continue
             if not isinstance(handle, dict):

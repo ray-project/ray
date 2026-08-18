@@ -39,6 +39,7 @@ from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
     _SHUFFLE_FILE_SERVER_NAMESPACE,
+    Compression,
     ShuffleDiskError,
     ShuffleFileServer,
     ShuffleHandle,
@@ -80,7 +81,7 @@ _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 _DEFAULT_FETCH_THREADS = 16
 
 
-@ray.remote
+@ray.remote  # pyrefly: ignore[no-matching-overload]
 def _external_shuffle_map_task(
     *blocks: Block,
     partition_fn: PartitionFn,
@@ -88,7 +89,7 @@ def _external_shuffle_map_task(
     out_dir: str,
     map_id: int,
     shuffle_id: str,
-    compression: Optional[str] = None,
+    compression: Compression = None,
 ) -> ShuffleHandle:
     """Map stage: partition input blocks, write them to a single file under
     ``out_dir``, and return a ``ShuffleHandle`` (on-disk path +
@@ -117,7 +118,7 @@ def _external_shuffle_map_task(
     # Ensure the file-server actor exists (get_if_exists=True → reuse across
     # mappers on the same node). We don't need to keep the handle: reducers
     # will look the file server up by name via ``ray.get_actor``.
-    ShuffleFileServer.options(
+    ShuffleFileServer.options(  # pyrefly: ignore[missing-attribute]
         name=_file_server_name(shuffle_id, node_id),
         namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
         get_if_exists=True,
@@ -214,12 +215,12 @@ def _external_shuffle_reduce_task(
     handles: List[ShuffleHandle],
     partition_id: int,
     reduce_fn: ReduceFn,
-    max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH,
-    fetch_threads: int = _DEFAULT_FETCH_THREADS,
-    target_max_block_size: Optional[int] = None,
-    map_transformer: Optional[Any] = None,
-    map_task_context: Optional["TaskContext"] = None,
-    data_context: Optional["DataContext"] = None,
+    max_bytes_per_fetch: int,
+    fetch_threads: int,
+    target_max_block_size: Optional[int],
+    map_transformer: Optional[Any],
+    map_task_context: Optional["TaskContext"],
+    data_context: Optional["DataContext"],
 ) -> Generator[Union[Block, bytes], None, None]:
     """Reduce stage: fetch this partition's shards from every mapper over Arrow
     Flight, run ``reduce_fn`` on the accumulated tables, and yield ``(block,
