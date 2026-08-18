@@ -8,11 +8,11 @@ myst:
 
 # TPU subslicing and dynamic slicing on GKE
 
-TPU slice topology dictates the kind of workload you can run on your cluster. Use subslicing, dynamic slicing, and superslicing to change your topology on the fly for more flexibility when you schedule, parallelize, and isolate your workloads.
+TPU slice topology dictates the kind of workload you can run on your cluster. Use subslicing and dynamic slicing to change your topology on the fly for more flexibility when you schedule, parallelize, and isolate your workloads.
 
 This guide covers three primary methods for managing TPU topologies with Ray on Google Kubernetes Engine (GKE):
 
-1. **Ray's {class}`~ray.util.tpu.SubslicePlacementGroup`**: A Ray Core API for configuring a Ray job to run on a subslice of a provisioned worker group within a TPU-enabled Ray cluster.
+1. **Ray {class}`~ray.util.tpu.SubslicePlacementGroup`**: A Ray Core API for configuring a Ray job to run on a subslice of a provisioned worker group within a TPU-enabled Ray cluster.
 2. **RayCluster Subslicing**: A KubeRay feature for provisioning multiple isolated RayClusters on a single, pre-deployed TPU nodepool.
 3. **Dynamic Slicing**: A GKE provisioning mode that couples TPU provisioning with RayCluster creation, replacing the default "all-or-nothing" provisioning.
 
@@ -35,9 +35,9 @@ Use the following table to choose the best option for your workload and infrastr
 
 ---
 
-## Ray's SubslicePlacementGroup
+## Ray SubslicePlacementGroup
 
-Ray's {class}`~ray.util.tpu.SubslicePlacementGroup` is a runtime API for partitioning TPU resources *within* a single, running Ray cluster.
+The Ray {class}`~ray.util.tpu.SubslicePlacementGroup` is a runtime API for partitioning TPU resources *within* a single, running Ray cluster.
 
 This is the most flexible option for sharing and reusing TPU resources, queuing jobs in Ray, and adjusting resource usage without administrative intervention.
 
@@ -83,7 +83,7 @@ Below is a complete example of reserving a `2x4` subslice (2 hosts, 8 chips) out
 
 ```python
 import ray
-from ray.util.tpu import subslice_placement_group, dispatch
+from ray.util.tpu import subslice_placement_group, run_on_slice
 
 ray.init()
 
@@ -101,9 +101,9 @@ def train():
     # Each task runs on a full host and sees 4 chips
     return jax.device_count()
 
-# Launch tasks on all hosts in the subslice using dispatch.
-# dispatch automatically waits for the placement group to be ready.
-results = ray.get(dispatch(train, tpu_slice=sg))
+# Launch tasks on all hosts in the subslice using run_on_slice.
+# run_on_slice automatically waits for the placement group to be ready.
+results = ray.get(run_on_slice(train, tpu_slice=sg))
 print(results)  # Output: [4, 4]
 
 sg.shutdown()
@@ -207,7 +207,7 @@ Within this RayCluster, only the `2x4` subslice will be visible and usable. You 
 
 To use dynamic slicing, follow the [GKE Dynamic Slicing Guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/use-gke-dynamic-slicing#kueue-dynamic-slicing) to set up Kueue and TAS. Instead of a `JobSet`, deploy a `RayCluster` configured to target the Kueue local queue.
 
-Here is an example `RayCluster` targeting a `4x12x16` TPU topology (768 chips):
+Here is an example `RayCluster` targeting a `2x2x1` TPU topology (768 chips):
 
 ```yaml
 apiVersion: ray.io/v1
@@ -218,7 +218,6 @@ metadata:
     # Target the Kueue LocalQueue
     kueue.x-k8s.io/queue-name: lq
 spec:
-  rayVersion: '2.56.0'
   # Suspend the cluster initially. Kueue will unsuspend it once capacity is provisioned.
   suspend: true
   # Kueue manages the lifecycle; do not let KubeRay autoscale workers.
@@ -239,11 +238,10 @@ spec:
 
   workerGroupSpecs:
   - groupName: jax-tpu-workers
-    # Multi-Host TPU Slice Representation:
-    # A 4x12x16 topology has 768 chips. Since tpu7x has 4 chips per VM host,
-    # we need 192 VMs (Hosts). In KubeRay, this is 1 replica of 192 hosts.
+    # A 2x2x1 topology has 4 chips. Since tpu7x has 4 chips per VM host,
+    # numOfHosts is set to 1.
     replicas: 1
-    numOfHosts: 192
+    numOfHosts: 1
     minReplicas: 1
     maxReplicas: 1
     rayStartParams: {}
@@ -251,7 +249,7 @@ spec:
       metadata:
         annotations:
           # Request the specific GKE TPU topology
-          cloud.google.com/gke-tpu-slice-topology: 4x12x16
+          cloud.google.com/gke-tpu-slice-topology: 2x2x1
         labels:
           ray.io/node-type: worker
       spec:
