@@ -96,9 +96,9 @@ def _external_shuffle_map_task(
     object store.
 
     The output file is sealed via atomic ``rename``: writes land in
-    ``map_{i}.shf.tmp``, then flush + ``fsync`` + size sanity check
-    against the index, then ``os.rename`` to the published path. Readers see
-    either no file or a complete, size-validated one.
+    ``map_{i}.shf.tmp``, then flush + size sanity check against the index,
+    then ``os.rename`` to the published path. Readers see either no file or
+    a complete, size-validated one.
 
     Args:
         *blocks: Input blocks to partition.
@@ -153,12 +153,11 @@ def _external_shuffle_map_task(
                     writer.add_shard(partition_id, shard)
             writer.flush_all()
 
-            # userspace --flush-→ page cache --fsync-→ disk, then sanity-check the file
-            # size matches the index. Mismatch = logic bug or silent short
-            # write; refuse to publish (the except below unlinks tmp).
+            # Flush userspace to page cache, then sanity-check the file size
+            # matches the index. Mismatch = logic bug or silent short write;
+            # refuse to publish (the except below unlinks tmp).
             out_file.flush()
             final_size_on_close = out_file.tell()
-            os.fsync(out_file.fileno())  # durability: to disk before the rename
             if writer.index:
                 expected_size = max(
                     off + length
@@ -365,9 +364,8 @@ def _external_shuffle_reduce_task(
                                 ) from e
                             raise
 
-                    def _fetch_with_fsync(base, size, group):
-                        # Fetch from one ShuffleFileServer to its staging region, then
-                        # fsync.
+                    def _fetch_one(base, size, group):
+                        # Fetch from one ShuffleFileServer to its staging region.
                         _fetch_from_file_server(
                             _PwriteSink(fd, base),
                             group.shuffle_id,
@@ -375,9 +373,6 @@ def _external_shuffle_reduce_task(
                             group.members,
                             max_bytes_per_fetch,
                         )
-                        if size > 0:
-                            # fsync here (fetch thread) overlaps other fetches' network I/O.
-                            os.fsync(fd)
                         return base, size
 
                     n_threads = min(len(groups), max(1, fetch_threads))
@@ -409,7 +404,7 @@ def _external_shuffle_reduce_task(
 
                     with ThreadPoolExecutor(max_workers=n_threads) as ex:
                         futs = [
-                            ex.submit(_fetch_with_fsync, base, size, group)
+                            ex.submit(_fetch_one, base, size, group)
                             for base, size, group in work
                         ]
                         for fut in as_completed(futs):
