@@ -341,6 +341,10 @@ NodeManager::NodeManager(
   periodical_runner_->RunFnPeriodically([this]() { GCWorkerFailureReason(); },
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
+  periodical_runner_->RunFnPeriodically(
+      [this]() { GCCancelledLeaseTombstones(); },
+      RayConfig::instance().cancelled_lease_tombstone_ttl_ms(),
+      "NodeManager.GCCancelledLeaseTombstones");
 }
 
 void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {
@@ -571,12 +575,17 @@ void NodeManager::HandleAccept(const boost::system::error_code &error) {
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
                                 const std::string &disconnect_detail,
-                                bool force) {
+                                bool force,
+                                std::optional<int64_t> memory_used_bytes_at_death) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(
-      worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
+  DisconnectClient(worker->Connection(),
+                   /*graceful=*/false,
+                   disconnect_type,
+                   disconnect_detail,
+                   /*creation_task_exception=*/nullptr,
+                   memory_used_bytes_at_death);
   worker->KillAsync(io_service_, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
     number_workers_killed_++;
@@ -1486,7 +1495,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    bool graceful,
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
-                                   const rpc::RayException *creation_task_exception) {
+                                   const rpc::RayException *creation_task_exception,
+                                   std::optional<int64_t> memory_used_bytes_at_death) {
   bool is_worker = false, is_driver = false;
   std::shared_ptr<WorkerInterface> worker;
   if ((worker = worker_pool_.GetRegisteredWorker(client))) {
@@ -1531,7 +1541,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    disconnect_type,
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
-                                   creation_task_exception);
+                                   creation_task_exception,
+                                   memory_used_bytes_at_death);
+  if (!worker->GetAssignedJobId().IsNil()) {
+    worker_failure_data_ptr->set_job_id(worker->GetAssignedJobId().Binary());
+  }
   gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr);
 
   if (is_worker) {
@@ -1904,6 +1918,16 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     reply->mutable_worker_address()->set_port(worker->Port());
     reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
     reply->mutable_worker_address()->set_node_id(self_node_id_.Binary());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+  // Reject leases that were already cancelled (e.g. CancelWorkerLease arrived
+  // before this RequestWorkerLease due to message reordering).
+  if (cancelled_lease_tombstones_.contains(lease_id)) {
+    reply->set_canceled(true);
+    reply->set_failure_type(rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+    reply->set_scheduling_failure_message(
+        "Cancelled leasing because the lease was already cancelled.");
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
@@ -2355,12 +2379,10 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const LeaseID lease_id = LeaseID::FromBinary(request.lease_id());
-  bool canceled = cluster_lease_manager_.CancelLease(lease_id);
-  // The lease cancellation failed if we did not have the lease queued, since
-  // this means that we may not have received the lease request yet. It is
-  // successful if we did have the lease queued, since we have now replied to
-  // the client that requested the lease.
-  reply->set_success(canceled);
+  // The tombstone makes the cancellation stick even if the lease request has not
+  // reached us yet, so the caller never has to retry.
+  AddCancelledLeaseTombstone(lease_id);
+  cluster_lease_manager_.CancelLease(lease_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -3232,10 +3254,18 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                                      should_retry);
             }
 
+            std::optional<int64_t> memory_used_bytes_at_death;
+            auto memory_used_or = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+                process_memory_snapshot, worker_to_kill->GetProcess().GetId());
+            if (memory_used_or.has_value()) {
+              memory_used_bytes_at_death = memory_used_or.value();
+            }
+
             DestroyWorker(worker_to_kill,
                           rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
                           worker_exit_message,
-                          true /* force */);
+                          true /* force */,
+                          memory_used_bytes_at_death);
 
             if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
               // TODO(sang): Add the job entrypoint to the name.
@@ -3476,6 +3506,36 @@ void NodeManager::GCWorkerFailureReason() {
           << "Removing worker failure reason since it expired";
       worker_failure_reasons_.erase(entry.first);
     }
+  }
+}
+
+void NodeManager::AddCancelledLeaseTombstone(const LeaseID &lease_id) {
+  if (!cancelled_lease_tombstones_.insert(lease_id).second) {
+    return;
+  }
+  cancelled_lease_tombstone_queue_.emplace_back(lease_id, clock_.SteadyNow());
+  const auto max_tombstones = RayConfig::instance().max_cancelled_lease_tombstones();
+  if (cancelled_lease_tombstones_.size() > max_tombstones) {
+    const auto &oldest = cancelled_lease_tombstone_queue_.front();
+    cancelled_lease_tombstones_.erase(oldest.first);
+    cancelled_lease_tombstone_queue_.pop_front();
+  }
+}
+
+void NodeManager::GCCancelledLeaseTombstones() {
+  const auto ttl_ms =
+      static_cast<int64_t>(RayConfig::instance().cancelled_lease_tombstone_ttl_ms());
+  const auto now = clock_.SteadyNow();
+  while (!cancelled_lease_tombstone_queue_.empty()) {
+    const auto &oldest = cancelled_lease_tombstone_queue_.front();
+    auto age_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - oldest.second)
+            .count();
+    if (age_ms <= ttl_ms) {
+      break;
+    }
+    cancelled_lease_tombstones_.erase(oldest.first);
+    cancelled_lease_tombstone_queue_.pop_front();
   }
 }
 
@@ -3764,6 +3824,7 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
       });
 }
 
+// Idempotent because ObjectIDs are never reused: re-freeing an id is a no-op.
 void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
                                          rpc::FreeLocalObjectsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {

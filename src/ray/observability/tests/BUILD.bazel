@@ -97,6 +97,64 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "ray_worker_definition_event_test",
+    size = "small",
+    srcs = ["ray_worker_definition_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_worker_definition_event",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_task_definition_event_test",
+    size = "small",
+    srcs = ["ray_task_definition_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:function_descriptor",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/observability:ray_task_definition_event",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_actor_task_definition_event_test",
+    size = "small",
+    srcs = ["ray_actor_task_definition_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:function_descriptor",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/observability:ray_actor_task_definition_event",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_worker_lifecycle_event_test",
+    size = "small",
+    srcs = ["ray_worker_lifecycle_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_worker_lifecycle_event",
+    ],
+)
+
+ray_cc_test(
+    name = "ray_task_lifecycle_event_test",
+    size = "small",
+    srcs = ["ray_task_lifecycle_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/observability:ray_task_lifecycle_event",
+        "//src/ray/observability:task_state_update",
+    ],
+)
+
+ray_cc_test(
     name = "ray_node_definition_event_test",
     size = "small",
     srcs = ["ray_node_definition_event_test.cc"],

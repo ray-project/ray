@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Ray Serve API reference: the Python API for writing and running applications, configs and schemas, request router, CLI, and REST API."
+---
+
 (serve-api)=
 # Ray Serve API
 
@@ -96,6 +102,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
+   serve.config.BackpressureConfig
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
    serve.config.DeploymentActorConfig
@@ -278,7 +285,6 @@ Content-Type: application/json
             "status": "HEALTHY"
         }
     },
-    "deploy_mode": "MULTI_APP",
     "applications": {
         "app1": {
             "name": "app1",
@@ -475,6 +481,7 @@ Content-Type: application/json
    :template: autosummary/autopydantic.rst
 
    schema.LoggingConfig
+   schema.TracingConfig
 ```
 
 (serve-llm-api)=
@@ -524,5 +531,7 @@ Content-Type: application/json
    :toctree: doc/
 
    serve.llm.LLMServer
-   serve.llm.LLMRouter
+   serve.llm.deployment.PDDecodeServer
+   serve.llm.deployment.PDPrefillServer
+   serve.llm.deployment.DPServer
 ```

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How-to guides for deploying, scaling, and operating Ray Serve LLM, from configuration through production operations."
+---
+
 # User guides
 
 How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are new, start with the {doc}`Quickstart <../quick-start>`, then come back here to go deeper.

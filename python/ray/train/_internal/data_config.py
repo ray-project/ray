@@ -1,5 +1,4 @@
 import copy
-from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 from ray.actor import ActorHandle
@@ -31,17 +30,22 @@ class DataConfig:
             datasets_to_split: Specifies which datasets should be split among workers.
                 Can be set to "all" or a list of dataset names. Defaults to "all",
                 i.e. split all datasets.
-            execution_options: The execution options to pass to Ray Data. Can be either:
-                1. A single ExecutionOptions object that is applied to all datasets.
-                2. A dict mapping dataset names to ExecutionOptions. If a dataset name
-                is not in the dict, it defaults to ``DataConfig.default_ingest_options()``.
-                By default, the options are optimized for data ingest. When overriding,
-                base your options off ``DataConfig.default_ingest_options()``.
+            execution_options: Optional Ray Data execution options. When set, they are
+                applied to dataset shards. When ``None`` (the default), Train applies
+                :meth:`default_ingest_options` to each dataset shard. Can be either:
+
+                1. A single ExecutionOptions object applied to all datasets.
+                2. A dict mapping dataset names to ExecutionOptions for per-dataset
+                   overrides. Datasets not present in the dict use
+                   :meth:`default_ingest_options`.
+
+                NOTE: For exclude_resources and resource_limits, those options only affect
+                Ray Data *after* train performs its cluster resource reservation.
+                So if you specify exclude_resources, it will exclude the resources
+                from data's reservation, *not* train's reservation.
             enable_shard_locality: If true, dataset sharding across Train workers will
                 consider locality to minimize cross-node data transfer. Enabled by default.
         """
-        from ray.data import ExecutionOptions
-
         if isinstance(datasets_to_split, list) or datasets_to_split == "all":
             self._datasets_to_split = datasets_to_split
         else:
@@ -51,35 +55,32 @@ class DataConfig:
                 f"{type(datasets_to_split).__name__} with value {datasets_to_split}."
             )
 
-        default_execution_options = DataConfig.default_ingest_options()
-
-        if isinstance(execution_options, ExecutionOptions):
-            default_execution_options = execution_options
-        # If None, all datasets will use the default ingest options.
-        self._execution_options: Dict[str, "ExecutionOptions"] = defaultdict(
-            lambda: copy.deepcopy(default_execution_options)
-        )
-        if isinstance(execution_options, dict):
-            self._execution_options.update(execution_options)
-
+        self._user_execution_options = execution_options
         self._enable_shard_locality = enable_shard_locality
 
-        self._num_train_cpus = 0.0
-        self._num_train_gpus = 0.0
+    def _get_user_execution_options(
+        self, dataset_name: str
+    ) -> Optional["ExecutionOptions"]:
+        """Return user-provided execution options for a dataset, if any."""
+        if self._user_execution_options is None:
+            return None
+        if isinstance(self._user_execution_options, dict):
+            if dataset_name not in self._user_execution_options:
+                return None
+            return self._user_execution_options[dataset_name]
+        return self._user_execution_options
 
-    def set_train_total_resources(self, num_train_cpus: float, num_train_gpus: float):
-        """Set the total number of CPUs and GPUs used by training.
+    def _resolve_execution_options(self, dataset_name: str) -> "ExecutionOptions":
+        """Return a deep copy of the effective execution options for a dataset shard.
 
-        If CPU or GPU resource limits are not set, they will be set to the
-        total cluster resources minus the resources used by training.
+        Returns a deep copy so callers (including subclasses that override
+        ``configure``) can mutate the result without aliasing the driver
+        ``DataContext`` or the user-supplied ``ExecutionOptions`` object.
         """
-        # TODO: We may also include other resources besides CPU and GPU.
-        self._num_train_cpus = num_train_cpus
-        self._num_train_gpus = num_train_gpus
-
-    def _get_execution_options(self, dataset_name: str) -> "ExecutionOptions":
-        """Return a copy of the configured execution options for a given dataset name."""
-        return copy.deepcopy(self._execution_options[dataset_name])
+        return copy.deepcopy(
+            self._get_user_execution_options(dataset_name)
+            or self.default_ingest_options()
+        )
 
     @DeveloperAPI
     def configure(
@@ -104,10 +105,6 @@ class DataConfig:
             equal to `world_size`. Each element of the list contains the assigned
             `DataIterator` instances by name for the worker.
         """
-        from ray.data._internal.execution.interfaces.execution_options import (
-            ExecutionResources,
-        )
-
         output = [{} for _ in range(world_size)]
 
         for dataset_name, dataset in datasets.items():
@@ -121,20 +118,8 @@ class DataConfig:
 
         locality_hints = worker_node_ids if self._enable_shard_locality else None
         for name, ds in datasets.items():
-            execution_options = self._get_execution_options(name)
-
-            if execution_options.is_resource_limits_default():
-                if not self._scaling_policy_reserves_train_resources():
-                    execution_options._set_exclude_resources(
-                        execution_options.exclude_resources.add(
-                            ExecutionResources(
-                                cpu=self._num_train_cpus, gpu=self._num_train_gpus
-                            )
-                        )
-                    )
-
             ds = ds.copy(ds)
-            ds.context.execution_options = execution_options
+            ds.context.execution_options = self._resolve_execution_options(name)
 
             if name in datasets_to_split:
                 for i, split in enumerate(
@@ -148,16 +133,6 @@ class DataConfig:
                     output[i][name] = ds.iterator()
 
         return output
-
-    @classmethod
-    def _scaling_policy_reserves_train_resources(cls) -> bool:
-        """True iff Ray Train V2's ScalingPolicy will register training resources
-        with the AutoscalingCoordinator for this run.
-
-        """
-        from ray.train.v2._internal.constants import is_v2_enabled
-
-        return is_v2_enabled()
 
     @staticmethod
     def default_ingest_options() -> "ExecutionOptions":

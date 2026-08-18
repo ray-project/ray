@@ -45,7 +45,7 @@ def main(args):
         joined = lineitem.join(
             part,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=200,
             on=("l_partkey",),
             right_on=("p_partkey",),
         )

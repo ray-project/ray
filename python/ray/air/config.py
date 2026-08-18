@@ -236,6 +236,11 @@ class ScalingConfig:
             resources_per_worker.setdefault(accelerator, 0.001)
         return resources_per_worker
 
+    def _label_selector_per_worker(
+        self, num_workers: int
+    ) -> Optional[List[Dict[str, str]]]:
+        return None
+
     @property
     def _trainer_resources_not_none(self):
         if self.trainer_resources is None:

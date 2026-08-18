@@ -15,6 +15,7 @@ DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S = env_integer(
 # The maximum time that parent can be considered
 # as dead before agent kills itself.
 _PARENT_DEATH_THREASHOLD = 5
+
 RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME = "RAY_STATE_SERVER_MAX_HTTP_REQUEST"
 # Default number of in-progress requests to the state api server.
 RAY_STATE_SERVER_MAX_HTTP_REQUEST = env_integer(
@@ -68,7 +69,7 @@ DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
 # We use RayNodeType to mark head/worker nodes. IsHeadNode is retained
 # for backward compatibility for user-customized dashboards that might rely on it
 NODE_TAG_KEYS = ["ip", "Version", "SessionName", "IsHeadNode", "RayNodeType"]
-GPU_TAG_KEYS = NODE_TAG_KEYS + ["GpuDeviceName", "GpuIndex"]
+GPU_TAG_KEYS = NODE_TAG_KEYS + ["GpuDeviceName", "GpuIndex", "GpuUuid"]
 
 # TpuDeviceName and TpuIndex are expected to be equal to the number of TPU
 # chips in the cluster. TpuType and TpuTopology are proportional to the number
