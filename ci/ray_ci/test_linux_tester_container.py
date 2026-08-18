@@ -102,7 +102,8 @@ def test_run_tests_in_docker() -> None:
         # invocation inside it reads the --repo_env passthrough from the repo's
         # .bazelrc, which only has an effect on variables that container has.
         assert (
-            "--env PIP_INDEX_URL --env UV_INDEX_URL "
+            "--env PIP_INDEX_URL --env PIP_EXTRA_INDEX_URL --env PIP_TRUSTED_HOST "
+            "--env UV_INDEX_URL --env UV_EXTRA_INDEX_URL --env UV_INSECURE_HOST "
             "--env RULES_PYTHON_PIP_ISOLATED" in input_str
         )
         assert "--network host" in input_str
