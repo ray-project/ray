@@ -80,13 +80,24 @@ SHAPE_BINS = {
     # wide_schema tensors regime). Same release bin as tensorscp. tensorscp
     # (~1.1x expansion) stays as the control.
     "tensorsdict": 40_894_464,
+    # POSITIVE control (A/B #4 review): the aggregate_groups family is arrow-rs's
+    # biggest per-task USS win (R 0.56-0.81, scaling with decoded bytes — pa's
+    # scanner keeps the whole decoded task working set resident, we keep ~the
+    # budget). Projected read -> groupby -> count, Ray parts only. Any batch-
+    # sizing change must NOT regress this cell: the win comes from exactly the
+    # small-resident-batch behaviour the fix candidate touches.
+    "agg": 67_108_864,
 }
 SHAPE_FIXTURE = {
     "auto": "auto_rg",
     "write": "bin_sweep",
     "tensorscp": "tensors_cp",
     "tensorsdict": "tensors_dict",
+    "agg": "auto_rg",
 }
+# Ray-only shapes: no standalone part (agg's point is the read-op USS inside a
+# read->shuffle->aggregate pipeline, which has no standalone analogue).
+RAY_ONLY_SHAPES = {"agg"}
 # Shapes that decode through the crate's skip+realign path (cloudpickle
 # ARROW:schema) — they share the env flag and the per-batch realign cast.
 TENSOR_SHAPES = {"tensorscp", "tensorsdict"}
@@ -455,6 +466,9 @@ def main():
         local_path = fixture_path(shape)
 
         for part in parts:
+            if part == "standalone" and shape in RAY_ONLY_SHAPES:
+                print(f"\n=== [{shape}] standalone — skipped (Ray-only shape)")
+                continue
             print(f"\n=== [{shape}] {part} ===", flush=True)
             cells = {}
 
@@ -474,8 +488,14 @@ def main():
             else:
                 path = local_path if part == "ray_local" else s3_paths[shape]
                 extra_args = ["--mem-poll-s", "0.05"]
+                columns = None
                 if shape == "write":
                     extra_args += ["--consume", "write_parquet"]
+                elif shape == "agg":
+                    # Projection pushdown (the release aggregates read 2-3
+                    # columns of a wide table) + the shuffle/aggregate consume.
+                    extra_args += ["--consume", "groupby", "--groupby-key", "s0"]
+                    columns = ["id", "s0"]
                 env = dict(shape_env)
                 env["RAY_DATA_PARQUET_BIN_PACKING_BYTES"] = str(SHAPE_BINS[shape])
                 arms = [("pyarrow", "pa", {}), ("arrow_rs", "rs", {})]
@@ -490,7 +510,7 @@ def main():
                         path=path,
                         reader=reader,
                         concurrency=None,
-                        columns=None,
+                        columns=columns,
                         extra_env={**env, **arm_env},
                         extra_args=extra_args,
                     )
@@ -503,7 +523,10 @@ def main():
     )
     if sys.platform == "darwin":
         print("(macOS: peak_uss is None and wall is not certifiable — smoke run only)")
-    header = f"{'cell':<26} {'wall R':>8} {'peak mem R':>11} {'task USS R':>11} {'arena2 mem R':>13}"
+    header = (
+        f"{'cell':<26} {'wall R':>8} {'peak mem R':>11} {'task USS R':>11} "
+        f"{'arena2 mem R':>13} {'spill T/B GB':>13}"
+    )
     print(header)
     print("-" * len(header))
     for key, cells in summary["cells"].items():
@@ -525,8 +548,13 @@ def main():
             )
             ar_r = ratio(_num(ar_res, "peak_uss_gb"), _num(pa_res, "peak_uss_gb"))
         fmt = lambda v: f"{v:.2f}" if v is not None else "—"  # noqa: E731
+        sp_t, sp_b = _num(rs_res, "spilled_gb"), _num(pa_res, "spilled_gb")
+        spill = (
+            f"{sp_t:.1f}/{sp_b:.1f}" if sp_t is not None and sp_b is not None else "—"
+        )
         print(
-            f"{key:<26} {fmt(wall_r):>8} {fmt(mem_r):>11} {fmt(task_r):>11} {fmt(ar_r):>13}"
+            f"{key:<26} {fmt(wall_r):>8} {fmt(mem_r):>11} {fmt(task_r):>11} "
+            f"{fmt(ar_r):>13} {spill:>13}"
         )
     print(
         "\nRead it as: loss in standalone => decoder; only in ray_local => Ray worker/\n"

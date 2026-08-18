@@ -26,7 +26,7 @@
 #   FIXTURE_SCALE=0.25   smaller fixtures for a smoke run
 #   FIXTURES_ROOT=<dir>  default ~/arrow_rs_repl_fixtures
 #   REPEAT=3 WARMUP=1    per-cell medians (as in run_replication.sh)
-#   SHAPES=write         subset: auto,write,tensorscp,tensorsdict
+#   SHAPES=write         subset: auto,write,tensorscp,tensorsdict,agg
 #   PARTS=ray_local      subset: standalone,ray_local,ray_s3
 #   FORCE_SETUP=1        re-run setup.sh even if the env already imports
 # ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ FIXTURES_ROOT="${FIXTURES_ROOT:-$HOME/arrow_rs_repl_fixtures}"
 FIXTURE_SCALE="${FIXTURE_SCALE:-1.0}"
 REPEAT="${REPEAT:-3}"
 WARMUP="${WARMUP:-1}"
-SHAPES="${SHAPES:-auto,write,tensorscp,tensorsdict}"
+SHAPES="${SHAPES:-auto,write,tensorscp,tensorsdict,agg}"
 PARTS="${PARTS:-}"
 
 say() { printf '\n\033[1;35m### %s\033[0m\n' "$*"; }

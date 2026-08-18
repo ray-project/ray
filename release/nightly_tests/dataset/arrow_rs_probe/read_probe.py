@@ -113,14 +113,22 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--consume",
-        choices=["iter_bundles", "count", "write_parquet"],
+        choices=["iter_bundles", "count", "write_parquet", "groupby"],
         default="iter_bundles",
         help=(
             "write_parquet replicates the release write_parquet test (1aa): the "
             "read fuses into the write task, stats come from ds._write_ds (which "
             "materializes, so no capture_executor race). Output is deleted after "
-            "the run."
+            "the run. groupby replicates the release aggregate_groups pipeline "
+            "shape (read -> shuffle -> aggregate): ds.groupby(--groupby-key)"
+            ".count(), consumed with capture_executor=True — the read op's "
+            "per-task metrics still resolve through the grouped dataset's stats."
         ),
+    )
+    p.add_argument(
+        "--groupby-key",
+        default="s0",
+        help="Grouping column for --consume groupby (fixture string cols are s0..).",
     )
     p.add_argument(
         "--write-path",
@@ -407,6 +415,12 @@ def main():
                     # is materialized — read them via collect_read_op_metrics
                     # below as usual; only the bytes on disk need cleanup.
                     shutil.rmtree(write_out, ignore_errors=True)
+            elif args.consume == "groupby":
+                gds = ds.groupby(args.groupby_key).count()
+                bundle_iter, _, _ = gds._execute_to_iterator(capture_executor=True)
+                for _ in bundle_iter:
+                    pass
+                ds = gds  # read-op metrics resolve through the grouped stats
             else:
                 # Same zero-copy consumption as ds.iter_internal_ref_bundles(),
                 # but with capture_executor=True so ds.get_stats_summary() can
@@ -421,7 +435,23 @@ def main():
                     pass
             wall = time.perf_counter() - t0
 
+        # Object-store spill for this session (T27: treatment-only spilling on
+        # autoscaling tpch shuffles) — parse the raylet memory summary; 0.0 when
+        # the session never spilled.
+        spilled_gb = 0.0
+        try:
+            import re as _re
+
+            import ray._private.internal_api as _api
+
+            m = _re.search(r"Spilled (\d+) MiB", _api.memory_summary(stats_only=True))
+            if m:
+                spilled_gb = round(int(m.group(1)) / 1024, 3)
+        except Exception:
+            spilled_gb = None
+
         result = {
+            "spilled_gb": spilled_gb,
             "reader": args.reader,
             "wall_s": round(wall, 3),
             "worker_cpu_s": round(sampler.cpu_seconds, 3),

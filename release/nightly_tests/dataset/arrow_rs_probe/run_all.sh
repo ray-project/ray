@@ -31,7 +31,7 @@
 #   ARROW_RS_S3_BUCKET=s3://...   enables the release stage's S3 legs
 #   BUDGETS=32             mechanism budget sweep, e.g. 16,32,128
 #   ABLATION_SHAPES=...    mechanism shapes (default: batch_ablation.py's 10)
-#   TRIAGE_SHAPES=auto,write,tensorscp,tensorsdict
+#   TRIAGE_SHAPES=auto,write,tensorscp,tensorsdict,agg (agg = the aggregate-win positive control)
 #   SOAK_SHAPES=auto,write  ARMS=pa,rs,rs_arena2,rs_trim,rs_jemalloc
 #   REPEAT=3 WARMUP=1 WORKERS=4
 #   FORCE_SETUP=1          re-run setup.sh even if the env imports
@@ -49,7 +49,7 @@ STAGES="${STAGES:-setup,fixtures,mechanism,release,soak,tensors}"
 FIXTURES_ROOT="${FIXTURES_ROOT:-$HOME/arrow_rs_repl_fixtures}"
 FIXTURE_SCALE="${FIXTURE_SCALE:-1.0}"
 BUDGETS="${BUDGETS:-32}"
-TRIAGE_SHAPES="${TRIAGE_SHAPES:-auto,write,tensorscp,tensorsdict}"
+TRIAGE_SHAPES="${TRIAGE_SHAPES:-auto,write,tensorscp,tensorsdict,agg}"
 SOAK_SHAPES="${SOAK_SHAPES:-auto,write}"
 ARMS="${ARMS:-pa,rs,rs_arena2,rs_trim,rs_jemalloc}"
 REPEAT="${REPEAT:-3}"
