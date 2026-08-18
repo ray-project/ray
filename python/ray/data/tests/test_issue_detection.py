@@ -263,6 +263,7 @@ def test_high_memory_detection_uses_current_dynamic_memory_request(
         config=ctx.issue_detectors_config.high_memory_detector_config,
     )
 
+    assert len(detector.detect()) == 1
     dynamic_memory_request = 10 * GiB
 
     assert not detector.detect()
