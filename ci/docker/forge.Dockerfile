@@ -137,8 +137,8 @@ RUN \
 
 set -euo pipefail
 
-cp rayci-codeartifact-profile.sh /etc/profile.d/zz-rayci-codeartifact.sh
-chmod 0644 /etc/profile.d/zz-rayci-codeartifact.sh
+install -D -m 0644 rayci-codeartifact-profile.sh \
+  /etc/profile.d/zz-rayci-codeartifact.sh
 
 EOF
 

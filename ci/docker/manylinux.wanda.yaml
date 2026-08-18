@@ -6,3 +6,5 @@ build_args:
   - MANYLINUX_VERSION
   - HOSTTYPE
 dockerfile: ci/docker/manylinux-retag.Dockerfile
+srcs:
+  - ci/docker/rayci-codeartifact-profile.sh

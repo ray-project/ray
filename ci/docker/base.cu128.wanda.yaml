@@ -2,6 +2,7 @@ name: "oss-ci-base_cu128-py$PYTHON"
 froms: ["nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04"]
 dockerfile: ci/docker/base.gpu.Dockerfile
 srcs:
+  - ci/docker/rayci-codeartifact-profile.sh
   - .bazelrc
   - .bazelversion
   - ci/env/install-dependencies.sh
