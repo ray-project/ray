@@ -16,7 +16,6 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray.data._internal.datasource.parquet_datasource import (
-    ParquetDatasource,
     check_for_legacy_tensor_type,
 )
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
@@ -98,7 +97,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._paths: List[str] = resolved_paths
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
-        self._file_extensions = file_extensions or ParquetDatasource._FILE_EXTENSIONS
+        self._file_extensions = file_extensions
         self._ignore_missing_paths = ignore_missing_paths
         # Resolve "skip_paths" through the same path normalization as the
         # input paths so exact-match comparison against the resolved paths the
@@ -158,7 +157,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._partitioning
 
     @property
-    def file_extensions(self) -> List[str]:
+    def file_extensions(self) -> Optional[List[str]]:
         return self._file_extensions
 
     @property

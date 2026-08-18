@@ -121,6 +121,15 @@ def test_paths_and_filesystem_resolved(tmp_path):
     assert len(datasource.paths) == 1
 
 
+def test_none_file_extensions_disables_filtering(tmp_path):
+    file_path = tmp_path / "data"
+    _write_parquet(str(file_path), pa.table({"a": [1]}))
+
+    datasource = ParquetDatasourceV2([str(file_path)], file_extensions=None)
+
+    assert datasource.file_extensions is None
+
+
 def test_infer_schema_with_include_row_hash(tmp_path):
     file_path = tmp_path / "data.parquet"
     _write_parquet(str(file_path), pa.table({"a": [1, 2]}))
