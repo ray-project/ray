@@ -21,17 +21,26 @@ through it, so each worker executes hundreds of tasks, then reads the floor:
   - an idle-floor snapshot after each round (settle + gc) - floor(round);
   - Ray's own per-task USS (20 Hz in-task poll) per round - the avg/max trend.
 
-Arms: pyarrow / arrow_rs / arrow_rs + MALLOC_ARENA_MAX=2. Read the verdict as:
+Arms (the allocator ablation): pa / rs / rs_arena2 (MALLOC_ARENA_MAX=2) /
+rs_trim (MALLOC_TRIM_THRESHOLD_=0, eager top-of-heap trim on free) /
+rs_jemalloc (LD_PRELOAD system libjemalloc - routes the crate's glibc
+allocations through the same allocator family PyArrow bundles; skipped with a
+warning if no libjemalloc.so is found - `apt install libjemalloc2`). Every env
+lever is a deployable fix candidate on its own. Read the verdict as:
 
   rs floor climbs round-over-round while pa stays flat => the retention is
       real and single-node-reproducible (the release "multi-node" difference
       was worker lifetime all along);
-  ...and rs_arena2 collapses to pa                     => glibc arena retention
-      confirmed; the fix is allocator config or a crate-side malloc_trim(0)
-      at end-of-stream (glibc-only, cfg(target_os="linux"));
-  ...and rs_arena2 does NOT collapse                   => retention but not
-      arenas (heap fragmentation / Rust-side caching) - next levers are
-      malloc_trim and an LD_PRELOAD jemalloc A/B;
+  ...and rs_arena2 collapses to pa   => glibc ARENA retention; fixes: arena
+      cap via runtime_env, or crate-side malloc_trim(0) at end-of-stream
+      (glibc-only, cfg(target_os="linux"));
+  ...and only rs_trim collapses      => retention at top-of-heap, few arenas
+      involved; fix = trim (env or crate call);
+  ...and only rs_jemalloc collapses  => glibc-vs-jemalloc policy generally
+      (fragmentation across arenas trim can't reach); fix = LD_PRELOAD
+      jemalloc in the workers' runtime_env (cheap, no crate change);
+  ...and NONE of the rs_* arms collapse => not the C allocator - Rust-side
+      caching or genuine fragmentation; back to crate profiling;
   rs floor flat like pa even at 100s of tasks/worker   => the losses need
       something only the release cluster has (autoscaling node churn, plasma
       pressure, genuine multi-node) - escalate to TODO item 18's both-arms
@@ -397,6 +406,31 @@ def run_cell(logdir, name, shape, reader, path, env_extra, a):
     return {}
 
 
+def _find_jemalloc():
+    """Locate a system libjemalloc for the rs_jemalloc LD_PRELOAD arm.
+
+    JEMALLOC_PATH env overrides; otherwise probe the usual Linux locations.
+    Returns None (arm skipped) when not found or on macOS (LD_PRELOAD n/a).
+    """
+    if not sys.platform.startswith("linux"):
+        return None
+    cand = os.environ.get("JEMALLOC_PATH")
+    if cand and os.path.exists(cand):
+        return cand
+    import glob as _glob
+
+    for pat in (
+        "/usr/lib/x86_64-linux-gnu/libjemalloc.so*",
+        "/usr/lib/aarch64-linux-gnu/libjemalloc.so*",
+        "/usr/lib64/libjemalloc.so*",
+        "/usr/local/lib/libjemalloc.so*",
+    ):
+        hits = sorted(_glob.glob(pat))
+        if hits:
+            return hits[0]
+    return None
+
+
 def _ratio(a, b):
     return round(a / b, 2) if a and b else None
 
@@ -420,7 +454,7 @@ def main():
     p.add_argument("--fixture-root", default=None)
     p.add_argument("--outdir", default=None)
     p.add_argument("--shapes", default="auto,write")
-    p.add_argument("--arms", default="pa,rs,rs_arena2")
+    p.add_argument("--arms", default="pa,rs,rs_arena2,rs_trim,rs_jemalloc")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument(
         "--rounds", type=int, default=None, help="override per-shape default"
@@ -447,8 +481,22 @@ def main():
         "pa": ("pa", {}),
         "rs": ("rs", {}),
         "rs_arena2": ("rs", {"MALLOC_ARENA_MAX": "2"}),
+        # Eager glibc trim: return top-of-heap to the OS on every free that
+        # leaves >=0 bytes free above the break (also freezes the dynamic
+        # mmap/trim threshold adjustment - fine for an ablation arm).
+        "rs_trim": ("rs", {"MALLOC_TRIM_THRESHOLD_": "0"}),
     }
+    jemalloc = _find_jemalloc()
+    if jemalloc:
+        arm_defs["rs_jemalloc"] = ("rs", {"LD_PRELOAD": jemalloc})
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
+    if "rs_jemalloc" in arms and not jemalloc:
+        print(
+            "WARNING: rs_jemalloc arm skipped - no libjemalloc found "
+            "(set JEMALLOC_PATH or `apt install libjemalloc2`)",
+            flush=True,
+        )
+        arms = [a for a in arms if a != "rs_jemalloc"]
 
     outdir = args.outdir or os.path.join(
         HERE, "soak_runs", time.strftime("%Y%m%d_%H%M%S")
@@ -473,8 +521,8 @@ def main():
     if sys.platform == "darwin":
         print("(macOS: USS unavailable - rows are RSS; smoke run only)")
     header = (
-        f"{'cell':<16} {'end floor MiB':>14} {'climb MiB':>10} "
-        f"{'tUSS avg last':>14} {'floor R':>8} {'arena2 R':>9}"
+        f"{'cell':<20} {'end floor MiB':>14} {'climb MiB':>10} "
+        f"{'tUSS avg last':>14} {'floor R':>8}"
     )
     print(header)
     print("-" * len(header))
@@ -487,25 +535,18 @@ def main():
                 if tag != "pa"
                 else None
             )
-            arena_r = (
-                _ratio(
-                    (cells.get("rs_arena2") or {}).get("end_floor_mib"),
-                    pa.get("end_floor_mib"),
-                )
-                if tag == "rs_arena2"
-                else None
-            )
             fmt = lambda v: f"{v}" if v is not None else "-"  # noqa: E731
             print(
-                f"{shape + '.' + tag:<16} {fmt(r.get('end_floor_mib')):>14} "
+                f"{shape + '.' + tag:<20} {fmt(r.get('end_floor_mib')):>14} "
                 f"{fmt(r.get('floor_climb_mib')):>10} "
                 f"{fmt(r.get('task_uss_avg_last_mib')):>14} "
-                f"{fmt(floor_r):>8} {fmt(arena_r):>9}"
+                f"{fmt(floor_r):>8}"
             )
     print(
         "\nRead it as: rs floor climbs while pa stays flat => retention reproduced\n"
-        "single-node (worker lifetime was the release variable); rs_arena2 collapsing\n"
-        "to pa => glibc arenas confirmed (fix: allocator config / crate malloc_trim);\n"
+        "single-node (worker lifetime was the release variable). Whichever rs_* arm\n"
+        "collapses floor R to ~pa names the mechanism AND the fix (arena cap / trim /\n"
+        "LD_PRELOAD jemalloc - see the module docstring verdict table);\n"
         "rs flat like pa => release-cluster-only (escalate to TODO item 18).\n"
         "Climb curves: plot each cell's series.jsonl. Full metrics: "
         + os.path.join(outdir, "summary.json")

@@ -29,7 +29,7 @@
 #   FIXTURE_SCALE=0.25   smaller fixtures for a smoke run
 #   FIXTURES_ROOT=<dir>  default ~/arrow_rs_repl_fixtures
 #   SHAPES=auto          subset: auto,write
-#   ARMS=pa,rs           subset: pa,rs,rs_arena2
+#   ARMS=pa,rs           subset of: pa,rs,rs_arena2,rs_trim,rs_jemalloc
 #   WORKERS=4            pinned worker-pool size (num_cpus)
 #   ROUNDS= / PATH_REPEAT=   override soak_probe per-shape defaults
 #   SKIP_TENSORS=1       skip step 4
@@ -42,7 +42,7 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 FIXTURES_ROOT="${FIXTURES_ROOT:-$HOME/arrow_rs_repl_fixtures}"
 FIXTURE_SCALE="${FIXTURE_SCALE:-1.0}"
 SHAPES="${SHAPES:-auto,write}"
-ARMS="${ARMS:-pa,rs,rs_arena2}"
+ARMS="${ARMS:-pa,rs,rs_arena2,rs_trim,rs_jemalloc}"
 WORKERS="${WORKERS:-4}"
 
 say() { printf '\n\033[1;35m### %s\033[0m\n' "$*"; }
