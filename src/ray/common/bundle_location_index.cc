@@ -90,6 +90,9 @@ bool BundleLocationIndex::Erase(const NodeID &node_id) {
       auto pg_bundle_it = pg_bundle_locations->find(bundle_id);
       if (pg_bundle_it != pg_bundle_locations->end()) {
         pg_bundle_locations->erase(pg_bundle_it);
+        if (pg_bundle_locations->empty()) {
+          placement_group_to_bundle_locations_.erase(placement_group_it);
+        }
       }
     }
   }
