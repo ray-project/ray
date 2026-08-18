@@ -10,7 +10,7 @@ myst:
 
 This document provides tips on TPU usage with KubeRay.
 
-For advanced TPU topology management, including dynamic slicing, KubeRay subslicing, and Ray's `SubslicePlacementGroup`, see the {ref}`kuberay-tpu-subslicing` guide.
+For advanced TPU topology management, including KubeRay subslicing and Ray's `SubslicePlacementGroup`, see the {ref}`kuberay-tpu-subslicing` guide.
 
 TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure both the Kubernetes setup and add additional values to the RayCluster CR configuration. Configure TPUs on GKE by referencing the {ref}`kuberay-gke-tpu-cluster-setup`.
 
