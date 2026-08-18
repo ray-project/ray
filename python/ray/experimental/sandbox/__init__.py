@@ -23,8 +23,10 @@ from ray.experimental.sandbox.image_manager import (
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.experimental.sandbox.sandbox import Sandbox
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 def create(
     image: str,
     cpu: Optional[float] = None,
@@ -39,22 +41,31 @@ def create(
     readonly: bool = True,
     **kwargs,
 ) -> ActorHandle:
-    """Create a sandbox environment.
+    """Create a remote sandbox environment managed by a Ray actor.
+
+    Spawns a :class:`~ray.experimental.sandbox.Sandbox` actor on the Ray cluster to manage
+    the sandbox lifecycle and returns an :class:`~ray.actor.ActorHandle`. For low-level local
+    sandbox management on the current node (e.g., inside custom worker actors), use
+    :class:`~ray.experimental.sandbox.runtime.SandboxRuntime` instead.
 
     Args:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        workdir: Default working directory inside the sandbox. Note that the
-            working directory is the only writable path in the sandbox. If not provided,
-            the container's WORKDIR is used.
+        workdir: Default working directory inside the sandbox. By default, the
+            working directory is the only writable path in the sandbox (unless
+            ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc.
         resources: Custom logical resource requirements.
-        readonly: If True, mount container image rootfs in read-only mode (default: True).
+        readonly: If True (default), mount container image rootfs in read-only mode
+            such that only ``workdir`` is writable. If False, the entire root filesystem
+            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
+            filesystem, ensuring multiple sandboxes running the same container image do
+            not interfere with each other or modify the base image.
         **kwargs: Additional options.
 
     Returns:
