@@ -48,7 +48,8 @@ class RecordingPublisher : public pubsub::FakePublisher {
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
-    auto raylet_client = std::make_shared<rpc::FakeRayletClient>();
+    fake_raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
+    auto raylet_client = fake_raylet_client_;
     client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [raylet_client = std::move(raylet_client)](const rpc::Address &) {
           return raylet_client;
@@ -64,6 +65,7 @@ class GcsNodeManagerTest : public ::testing::Test {
   }
 
  protected:
+  std::shared_ptr<rpc::FakeRayletClient> fake_raylet_client_;
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
@@ -856,6 +858,127 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
 
     EXPECT_EQ(result.size(), 3);
   }
+}
+
+TEST_F(GcsNodeManagerTest, TestHandleUpdateNodeLabels) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  // Register an alive node with a reserved + a user label.
+  auto node = GenNodeInfo();
+  (*node->mutable_labels())["ray.io/node-id"] = node->node_id();
+  (*node->mutable_labels())["tier"] = "cpu";
+  auto node_id = NodeID::FromBinary(node->node_id());
+  rpc::RegisterNodeRequest register_request;
+  register_request.mutable_node_info()->CopyFrom(*node);
+  rpc::RegisterNodeReply register_reply;
+  node_manager.HandleRegisterNode(
+      register_request,
+      &register_reply,
+      [](ray::Status, std::function<void()>, std::function<void()>) {});
+  while (io_context_->poll() > 0) {
+  }
+
+  // Request replacing the user labels with {tier: gpu}.
+  rpc::UpdateNodeLabelsRequest request;
+  request.set_node_id(node->node_id());
+  (*request.mutable_labels())["tier"] = "gpu";
+  rpc::UpdateNodeLabelsReply reply;
+  bool replied = false;
+  node_manager.HandleUpdateNodeLabels(
+      request,
+      &reply,
+      [&replied](ray::Status status, std::function<void()>, std::function<void()>) {
+        replied = true;
+        EXPECT_TRUE(status.ok());
+      });
+  while (io_context_->poll() > 0) {
+  }
+
+  // GCS has forwarded to the raylet and is awaiting its reply.
+  EXPECT_FALSE(replied);
+
+  // The raylet ACKs with the resulting (merged) label set; GCS then refreshes its
+  // stored GcsNodeInfo and replies.
+  ASSERT_TRUE(fake_raylet_client_->ReplyUpdateRayletLabels(
+      {{"ray.io/node-id", node->node_id()}, {"tier", "gpu"}}));
+  while (io_context_->poll() > 0) {
+  }
+  EXPECT_TRUE(replied);
+
+  auto stored = node_manager.GetAliveNode(node_id);
+  ASSERT_TRUE(stored.has_value());
+  const auto &labels = stored.value()->labels();
+  EXPECT_EQ(labels.size(), 2);
+  EXPECT_EQ(labels.at("tier"), "gpu");
+  EXPECT_EQ(labels.at("ray.io/node-id"), node->node_id());
+}
+
+TEST_F(GcsNodeManagerTest, TestHandleUpdateNodeLabelsUnknownNode) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  rpc::UpdateNodeLabelsRequest request;
+  request.set_node_id(NodeID::FromRandom().Binary());
+  (*request.mutable_labels())["tier"] = "gpu";
+  rpc::UpdateNodeLabelsReply reply;
+  bool replied = false;
+  node_manager.HandleUpdateNodeLabels(
+      request,
+      &reply,
+      [&replied](ray::Status status, std::function<void()>, std::function<void()>) {
+        replied = true;
+        // Transport status is OK; the real status is carried in the reply payload.
+        EXPECT_TRUE(status.ok());
+      });
+  while (io_context_->poll() > 0) {
+  }
+  // A non-alive node is rejected up-front (payload status NotFound), and no raylet
+  // call is made.
+  EXPECT_TRUE(replied);
+  EXPECT_EQ(reply.status().code(), static_cast<int>(ray::StatusCode::NotFound));
+  EXPECT_FALSE(fake_raylet_client_->ReplyUpdateRayletLabels());
+}
+
+TEST_F(GcsNodeManagerTest, TestUpdateAliveNodeRefreshesLabels) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  (*node->mutable_labels())["tier"] = "cpu";
+  auto node_id = NodeID::FromBinary(node->node_id());
+  node_manager.AddNode(node);
+
+  // A resource-view sync carries the raylet's authoritative label set; the cached
+  // GcsNodeInfo labels follow it. This makes runtime label updates converge even if
+  // an UpdateNodeLabels raylet reply was applied to the cache out of order.
+  rpc::syncer::ResourceViewSyncMessage sync_message;
+  (*sync_message.mutable_labels())["tier"] = "gpu";
+  node_manager.UpdateAliveNode(node_id, sync_message);
+
+  auto stored = node_manager.GetAliveNode(node_id);
+  ASSERT_TRUE(stored.has_value());
+  const auto &labels = stored.value()->labels();
+  EXPECT_EQ(labels.size(), 1);
+  EXPECT_EQ(labels.at("tier"), "gpu");
 }
 
 }  // namespace ray

@@ -7,9 +7,11 @@ from unittest.mock import patch
 import pytest
 
 import ray
+import ray.experimental
 from ray._common.test_utils import wait_for_condition
 from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray.cluster_utils import AutoscalingCluster
+from ray.exceptions import GetTimeoutError
 
 
 def check_cmd_stderr(cmd):
@@ -227,6 +229,88 @@ def test_get_default_tpu_labels(shutdown_only, monkeypatch):
     assert labels.get("ray.io/tpu-worker-id") == "0"
     assert labels.get("ray.io/tpu-topology") == "4x8"
     assert labels.get("ray.io/tpu-pod-type") == "v6e-32"
+
+
+def test_update_node_labels_reflected_in_ray_nodes(shutdown_only):
+    ray.init(labels={"tier": "cpu", "region": "us"})
+    node_id = ray.nodes()[0]["NodeID"]
+
+    ray.experimental.update_node_labels(node_id, {"tier": "gpu"})
+
+    # `region` is replaced away, `tier` updated, reserved ray.io/node-id preserved.
+    def labels_updated():
+        node_info = ray.nodes()[0]
+        return node_info["Labels"] == add_default_labels_for_test(
+            node_info, {"tier": "gpu"}
+        )
+
+    wait_for_condition(labels_updated)
+
+
+def test_update_node_labels_affects_scheduling(shutdown_only):
+    ray.init(num_cpus=1, labels={"tier": "cpu"})
+    node_id = ray.nodes()[0]["NodeID"]
+
+    # Zero-CPU actors so placement is gated purely by the label selector (avoids
+    # any dependence on re-triggering of already-pending actors).
+    @ray.remote(num_cpus=0)
+    class Actor:
+        def ping(self):
+            return "pong"
+
+    # Before the relabel, the only node does not match tier=gpu.
+    before = Actor.options(label_selector={"tier": "gpu"}).remote()
+    with pytest.raises(GetTimeoutError):
+        ray.get(before.ping.remote(), timeout=5)
+
+    ray.experimental.update_node_labels(node_id, {"tier": "gpu"})
+    wait_for_condition(lambda: ray.nodes()[0]["Labels"].get("tier") == "gpu")
+
+    # An actor submitted after the relabel is placed on the now-matching node.
+    after = Actor.options(label_selector={"tier": "gpu"}).remote()
+    assert ray.get(after.ping.remote(), timeout=30) == "pong"
+
+    # The stale label value no longer matches any node.
+    stale = Actor.options(label_selector={"tier": "cpu"}).remote()
+    with pytest.raises(GetTimeoutError):
+        ray.get(stale.ping.remote(), timeout=5)
+
+
+def test_update_node_labels_validation(shutdown_only):
+    ray.init(labels={"tier": "cpu"})
+    node_id = ray.nodes()[0]["NodeID"]
+
+    # Reserved ray.io/ prefix is rejected before the RPC.
+    with pytest.raises(ValueError):
+        ray.experimental.update_node_labels(node_id, {"ray.io/node-id": "x"})
+
+    # Invalid label value syntax is rejected.
+    with pytest.raises(ValueError):
+        ray.experimental.update_node_labels(node_id, {"tier": "BAD VALUE!"})
+
+
+def test_update_node_labels_unknown_node(shutdown_only):
+    ray.init(labels={"tier": "cpu"})
+    # A well-formed but non-existent node id is rejected because it is not alive.
+    with pytest.raises(ValueError, match="not alive"):
+        ray.experimental.update_node_labels("00" * 28, {"tier": "gpu"})
+
+
+def test_update_node_labels_clear(shutdown_only):
+    ray.init(labels={"tier": "cpu", "region": "us"})
+    node_id = ray.nodes()[0]["NodeID"]
+
+    # An empty mapping clears all user labels; reserved ray.io/ labels are preserved.
+    ray.experimental.update_node_labels(node_id, {})
+
+    def cleared():
+        labels = ray.nodes()[0]["Labels"]
+        user_labels = {k for k in labels if not k.startswith("ray.io/")}
+        # No user labels remain, and the reserved node-id label is still present.
+        # (Hosts may auto-add other ray.io/* labels, so don't assert an exact set.)
+        return not user_labels and "ray.io/node-id" in labels
+
+    wait_for_condition(cleared)
 
 
 if __name__ == "__main__":
