@@ -34,6 +34,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
+    ExternalHashShuffleMapOp,
+)
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
     _DEFAULT_FETCH_THREADS,
     _DEFAULT_MAX_BYTES_PER_FETCH,
@@ -42,9 +45,6 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_t
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     extract_partition_id,
-)
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
-    ExternalHashShuffleMapOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
@@ -207,7 +207,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             map_task_context.kwargs.update(self._fused_output_map_task_kwargs)
 
         block_gen = _external_shuffle_reduce_task.options(**reduce_options).remote(
-            handles_ref,
+            handles_ref,  # pyrefly: ignore[bad-argument-type]
             partition_id,
             self._reduce_fn,
             self._max_bytes_per_fetch,
@@ -259,7 +259,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         out_bundle = RefBundle(
             (
                 BlockEntry(
-                    ref=ray.put(empty_block),
+                    ref=ray.put(empty_block),  # pyrefly: ignore[bad-argument-type]
                     metadata=block_meta,
                 ),
             ),
@@ -270,7 +270,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
         # Empty partition creates a new block; register it for memory tracking.
         self._block_ref_counter.on_block_produced(
-            out_bundle.blocks[0].ref,
+            out_bundle.blocks[0].ref,  # pyrefly: ignore[bad-argument-type]
             block_meta.size_bytes or 0,
             self.id,
         )
