@@ -364,7 +364,7 @@ def _external_shuffle_reduce_task(
                                 ) from e
                             raise
 
-                    def _fetch_one(base, size, group):
+                    def _fetch_region(base, size, group):
                         # Fetch from one ShuffleFileServer to its staging region.
                         _fetch_from_file_server(
                             _PwriteSink(fd, base),
@@ -404,7 +404,7 @@ def _external_shuffle_reduce_task(
 
                     with ThreadPoolExecutor(max_workers=n_threads) as ex:
                         futs = [
-                            ex.submit(_fetch_one, base, size, group)
+                            ex.submit(_fetch_region, base, size, group)
                             for base, size, group in work
                         ]
                         for fut in as_completed(futs):
