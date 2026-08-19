@@ -14,15 +14,24 @@ class ObjectReuseStatus(Enum):
 
 
 @dataclass
-class Edge:
+class ChildBlockDependency:
     """
-    A direction agnostic edge represented by a tuple of the
-    data task id associated with the block output. Data task id can be
-    either the parent id or the child id. The output index is always the
-    index of the output produced by the parent that the child task depends on.
+    A tuple to associate a child task to the
+    output index of the parent that the child task depends on.
     """
 
-    data_task_id: str
+    child_data_task_id: str
+    output_index: int
+
+
+@dataclass
+class ParentBlockOutput:
+    """
+    A tuple to associate a parent task to
+    one of its outputs indices.
+    """
+
+    parent_data_task_id: str
     output_index: int
 
 
@@ -30,19 +39,19 @@ class Edge:
 class TaskNode:
     """
     A node within the lineage graph tracking the child and parents of a task.
-    Note: The data task id represents the id of the initial task execution. All
-    retry of the initial task should be represented by the same data task id even
-    if the ray core task id differs.
+    Note: The data task ID represents the ID of the initial task execution. All
+    retries of the initial task should be represented by the same data task ID even
+    if the Ray Core task ID differs.
 
     Note: Nodes hold references to their neighbors, so the graph is cyclic. The
     generated `__eq__` and `__repr__` are disabled in favor of implementations
-    that only look at the neighbors' data task ids and never traverse the graph.
+    that only look at the neighbors' data task IDs and never traverse the graph.
     """
 
     data_task_id: str
     parent_task: Optional["TaskNode"]
     child_task: Optional["TaskNode"]
-    # The indecies of outputs produced by this block that the child task depends on.
+    # The output indices corresponding to blocks that the child task depends on.
     child_task_block_dependencies: List[int]
 
     def __repr__(self) -> str:
@@ -68,16 +77,16 @@ class LineageTracker:
         self._data_task_id_to_task_node: Dict[str, TaskNode] = {}
 
     def register_task_submission(
-        self, data_task_id: str, dependencies: List[Edge]
+        self, data_task_id: str, dependencies: List[ParentBlockOutput]
     ) -> None:
         """
         Register a newly submitted task with the lineage graph.
-        Repeated registration of the same data task id will be ignored.
+        Repeated registration of the same data task ID will be ignored.
 
         Args:
-            data_task_id: The id of the data task that was submitted.
+            data_task_id: The ID of the data task that was submitted.
             dependencies: The blocks that the task depends on.
-                          A tuple of the parent task id and the output index
+                          A tuple of the parent task ID and the output index
                           of the parent that the child task depends on.
 
         Raises:
@@ -85,6 +94,9 @@ class LineageTracker:
                         Invariant: A task can only be submitted if all its parents have been submitted.
         """
 
+        logger.debug(
+            f"Registering task submission for task {data_task_id} with dependencies {dependencies}"
+        )
         if data_task_id in self._data_task_id_to_task_node:
             return
 
@@ -92,12 +104,14 @@ class LineageTracker:
         if len(dependencies) == 0:
             parent_task_node = None
         else:
+            # We assume this is a linear DAG so dependencies[0] holds.
+            # We will remove this once we support fan-in and fan-outs.
             parent_task_node = self._data_task_id_to_task_node.get(
-                dependencies[0].data_task_id
+                dependencies[0].parent_data_task_id
             )
             if parent_task_node is None:
                 raise ValueError(
-                    f"Expected parent task {dependencies[0].data_task_id} to be registered before child task {data_task_id} but was not."
+                    f"Expected parent task {dependencies[0].parent_data_task_id} to be registered before child task {data_task_id} but was not."
                 )
         dependency_indices: List[int] = []
         for dependency in dependencies:
@@ -125,7 +139,7 @@ class LineageTracker:
             after dependencies of downstream tasks produced by this task are resolved.
 
         Args:
-            data_task_id: The id of the data task that was completed.
+            data_task_id: The ID of the data task that was completed.
 
         Raises:
             ValueError: If the task is not already registered.
@@ -140,14 +154,14 @@ class LineageTracker:
     def register_failed_task(self, data_task_id: str) -> str:
         """
         Mark a task as failed and record that the task and its lienage
-        has begun reconstruction. Returns the data task id associated
+        has begun reconstruction. Returns the data task ID associated
         with the seed task to be resubmitted for reconstruction.
 
         Args:
-            data_task_id: The id of the data task that was failed.
+            data_task_id: The ID of the data task that was failed.
 
         Returns:
-            The data task id associated with the seed task to be resubmitted for reconstruction.
+            The data task ID associated with the seed task to be resubmitted for reconstruction.
 
         Raises:
             ValueError: If the task is not already registered.
@@ -167,15 +181,15 @@ class LineageTracker:
 
     def get_pending_children(self, data_task_id: str) -> Dict[str, List[int]]:
         """
-        Get the child that needs to be reconstructed for the task associated with the given data task id.
+        Get the child that needs to be reconstructed for the task associated with the given data task ID.
         Children that already are in the middle of re-executing a reconstruction are not included.
-        Returns a mapping of the child task id to the indecies of outputs produced by the given
+        Returns a mapping of the child task ID to the indices of outputs produced by the given
         task that the child task depends on.
 
         Args:
-            data_task_id: The id of the data task to get the pending children for.
+            data_task_id: The ID of the data task to get the pending children for.
         Returns:
-            A mapping of the child task id to the indecies of outputs produced by the given
+            A mapping of the child task ID to the indices of outputs produced by the given
             task that the child task depends on.
 
         Raises:
@@ -202,14 +216,14 @@ class LineageTracker:
     ) -> ObjectReuseStatus:
         """
         Get the reuse status for the output object of the given task at the associated output index.
-        OOBJECT_PRUNED -> object should be ignored and gc'd
+        OBJECT_PRUNED -> object should be ignored and garbage collected
         OBJECT_NEW -> object is unseen and should be submitted to a fresh task
         OBJECT_REUSED -> object should be resubmitted for reconstruction attempt
         OBJECT_UNRELATED -> object is unrelated to this reconstruction attempt.
                             we might want to raise on this status when handling it outside of testing.
 
         Args:
-            data_task_id: The id of the data task to get the object reuse status for.
+            data_task_id: The ID of the data task to get the object reuse status for.
             output_index: The index of the output object to get the object reuse status for.
 
         Returns:

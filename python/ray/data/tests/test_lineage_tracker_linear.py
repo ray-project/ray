@@ -4,9 +4,9 @@ from typing import Dict, List
 import pytest
 
 from ray.data._internal.execution.lineage_tracker import (
-    Edge,
     LineageTracker,
     ObjectReuseStatus,
+    ParentBlockOutput,
 )
 
 # The linear tracker models one edge per parent, so the only axis that varies
@@ -20,26 +20,28 @@ def _register_linear_chain(
 ) -> None:
     """Register a linear chain ``task_ids[0] -> ... -> task_ids[-1]``.
 
-    Every task except the leaf is completed, honoring the invariant that a task
-    is only submitted once its parent has completed. Each non-seed task depends
-    on ``output_indices`` of its parent's output blocks.
+    Every task except the leaf is completed,
     """
     tracker.register_task_submission(task_ids[0], dependencies=[])
     for parent_task_id, child_task_id in zip(task_ids, task_ids[1:]):
-        tracker.register_task_complete(parent_task_id)
         tracker.register_task_submission(
             child_task_id,
             dependencies=[
-                Edge(data_task_id=parent_task_id, output_index=output_index)
+                ParentBlockOutput(
+                    parent_data_task_id=parent_task_id, output_index=output_index
+                )
                 for output_index in output_indices
             ],
         )
+        tracker.register_task_complete(parent_task_id)
 
 
-def _dependencies(parent_task_id: str, output_indices: List[int]) -> List[Edge]:
+def _dependencies(
+    parent_task_id: str, output_indices: List[int]
+) -> List[ParentBlockOutput]:
     """Build the dependency edges from ``parent_task_id``'s output blocks."""
     return [
-        Edge(data_task_id=parent_task_id, output_index=output_index)
+        ParentBlockOutput(parent_data_task_id=parent_task_id, output_index=output_index)
         for output_index in output_indices
     ]
 
@@ -49,11 +51,7 @@ def _assert_pending_children(
     parent_task_id: str,
     expected: Dict[str, List[int]],
 ) -> None:
-    """Assert the pending children of ``parent_task_id``.
-
-    ``expected`` maps each pending child task id to the indices of the parent's
-    output blocks that the child consumes.
-    """
+    """Assert the pending children of ``parent_task_id``."""
     assert tracker.get_pending_children(parent_task_id) == expected
 
 
@@ -77,11 +75,7 @@ def _assert_child_pending_on_parent(
     child_task_id: str,
     output_indices: List[int],
 ) -> None:
-    """Assert the child is the parent's only pending child.
-
-    The child must depend on exactly ``output_indices``, and each of those
-    outputs must be reused by the child rather than freshly produced.
-    """
+    """Assert the child is the parent's only pending child."""
     _assert_pending_children(tracker, parent_task_id, {child_task_id: output_indices})
     _assert_reuse_status(
         tracker, parent_task_id, output_indices, ObjectReuseStatus.OBJECT_REUSED
@@ -106,20 +100,17 @@ def _reconstruct_edge(
 ) -> None:
     """Re-execute one ``parent -> child`` edge during reconstruction.
 
-    The parent completes its re-execution and the child is resubmitted against
-    the parent's fresh outputs. The linear tracker keeps the lineage edge for the
-    lifetime of the graph, so the child stays a pending child of the parent and
-    the consumed outputs stay reused -- completing the parent does not retire the
-    edge, it only advances reconstruction one step down the chain.
+    The child is resubmitted against the parent's fresh outputs, and only then
+    does the parent complete its re-execution.
     """
     _assert_child_pending_on_parent(
         tracker, parent_task_id, child_task_id, output_indices
     )
 
-    tracker.register_task_complete(parent_task_id)
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(parent_task_id, output_indices)
     )
+    tracker.register_task_complete(parent_task_id)
 
     _assert_child_pending_on_parent(
         tracker, parent_task_id, child_task_id, output_indices
@@ -175,8 +166,8 @@ def test_unregistered_task_raises():
 def test_submission_with_unregistered_parent_raises():
     """A child cannot be submitted before its parent is registered.
 
-    The invariant is that a task is only submitted once its parent has completed,
-    so a dependency on an unknown parent is a caller error.
+    The invariant is that a task is only submitted once its parent has been
+    registered, so a dependency on an unknown parent is a caller error.
     """
     tracker = LineageTracker()
 
@@ -197,10 +188,10 @@ def test_unconsumed_parent_output_is_new():
     child_task_id = "child_task"
 
     tracker.register_task_submission(seed_task_id, dependencies=[])
-    tracker.register_task_complete(seed_task_id)
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(seed_task_id, [0])
     )
+    tracker.register_task_complete(seed_task_id)
 
     _assert_reuse_status(tracker, seed_task_id, [0], ObjectReuseStatus.OBJECT_REUSED)
     _assert_reuse_status(tracker, seed_task_id, [1], ObjectReuseStatus.OBJECT_NEW)
@@ -222,11 +213,61 @@ def test_child_task_fail_recovers_seed_and_reuse_status(output_indices: List[int
     seed_task_id = "seed_task"
     child_task_id = "child_task"
 
-    # Register and complete the seed task (no dependencies).
+    # Register the seed task (no dependencies).
+    tracker.register_task_submission(seed_task_id, dependencies=[])
+
+    # Register a child task depending on the seed's output blocks, then complete
+    # the seed now that every consumer of its outputs has been submitted.
+    tracker.register_task_submission(
+        child_task_id, dependencies=_dependencies(seed_task_id, output_indices)
+    )
+    tracker.register_task_complete(seed_task_id)
+
+    # Fail the child; reconstruction traces back to the seed as the retry root.
+    assert tracker.register_failed_task(child_task_id) == seed_task_id
+
+    # Resubmit the seed to emulate recovery. The child is still pending
+    # reconstruction, so it is a pending child of the seed depending on every
+    # output index it consumes, and each of those outputs is reused.
+    tracker.register_task_submission(seed_task_id, dependencies=[])
+    _assert_child_pending_on_parent(
+        tracker, seed_task_id, child_task_id, output_indices
+    )
+
+    # Re-executing the seed and resubmitting the child does not retire the edge.
+    _reconstruct_edge(tracker, seed_task_id, child_task_id, output_indices)
+
+    # The child is the leaf of this chain, so nothing depends on its outputs.
+    tracker.register_task_complete(child_task_id)
+    _assert_leaf_produces_new_objects(tracker, child_task_id, [0])
+
+
+@pytest.mark.parametrize("output_indices", OUTPUT_INDICES)
+def test_child_task_fail_recovers_seed_when_submitted_after_parent_complete(
+    output_indices: List[int],
+):
+    """Recover a failed child that was submitted after its parent completed.
+
+    The variant of ``test_child_task_fail_recovers_seed_and_reuse_status`` in
+    which the seed completes *before* the child is submitted against its outputs,
+    modeling an operator that only submits a downstream task once the upstream
+    task has finished producing blocks.
+
+    Recovery is expected to be indistinguishable from the in-flight ordering: the
+    lineage edge is recorded when the child is submitted, and a parent that has
+    already completed still reports the child as pending and its consumed outputs
+    as OBJECT_REUSED.
+    """
+    tracker = LineageTracker()
+    seed_task_id = "seed_task"
+    child_task_id = "child_task"
+
+    # Register and complete the seed task (no dependencies) before any child
+    # consumes its outputs.
     tracker.register_task_submission(seed_task_id, dependencies=[])
     tracker.register_task_complete(seed_task_id)
 
-    # Register a child task depending on the seed's output blocks.
+    # Only now register a child task depending on the completed seed's outputs.
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(seed_task_id, output_indices)
     )
@@ -268,14 +309,15 @@ def test_child_task_fail_twice_recovers_seed_and_reuse_status(
     seed_task_id = "seed_task"
     child_task_id = "child_task"
 
-    # Register and complete the seed task (no dependencies).
+    # Register the seed task (no dependencies).
     tracker.register_task_submission(seed_task_id, dependencies=[])
-    tracker.register_task_complete(seed_task_id)
 
-    # Register a child task depending on the seed's output blocks.
+    # Register a child task depending on the seed's output blocks, then complete
+    # the seed now that every consumer of its outputs has been submitted.
     tracker.register_task_submission(
         child_task_id, dependencies=_dependencies(seed_task_id, output_indices)
     )
+    tracker.register_task_complete(seed_task_id)
 
     # Fail the child; reconstruction traces back to the seed as the retry root.
     assert tracker.register_failed_task(child_task_id) == seed_task_id
@@ -336,19 +378,24 @@ def test_deep_chain_leaf_fail_recovers_seed_and_reuse_status(output_indices: Lis
 
 
 @pytest.mark.parametrize("output_indices", OUTPUT_INDICES)
+@pytest.mark.parametrize("retry_failure_index", [2, 4])
 def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
+    retry_failure_index: int,
     output_indices: List[int],
 ):
-    """Fail the leaf of a 5-deep chain, then fail a task mid-reconstruction.
+    """Fail leaf task of a 5-deep chain, then fail again at
+    retry_failure_index task during reconstruction.
 
     Chain: ``task_0 -> task_1 -> task_2 -> task_3 -> task_4``, each task
-    consuming ``output_indices`` of its parent's outputs. Verifies that:
+    consuming ``output_indices`` of its parent's outputs.
+
+    Verifies that:
       - Failing the leaf traces all the way back to the seed as the retry root.
-      - Reconstruction restarts from the seed and re-executes ``task_1`` and
-        ``task_2`` successfully.
-      - When ``task_3``'s re-execution fails, reconstruction traces back to the
-        same seed, and the tasks above it are pending again with their parents'
-        outputs still OBJECT_REUSED.
+      - Reconstruction restarts from the seed and re-executes every task above the
+        second failure point successfully.
+      - The second failure traces back to the same seed regardless of how deep in
+        the chain it happens, and the tasks above it are pending again with their
+        parents' outputs still OBJECT_REUSED.
       - After the second recovery the whole chain reconstructs as before.
     """
     tracker = LineageTracker()
@@ -363,64 +410,16 @@ def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
     # Resubmit the seed to emulate the first recovery.
     tracker.register_task_submission(seed_task_id, dependencies=[])
 
-    # Walk reconstruction partway down the chain: task_1 and task_2 re-execute
-    # successfully. The last edge resubmits task_3 against task_2's fresh outputs.
-    for parent_task_id, child_task_id in zip(task_ids[:3], task_ids[1:4]):
+    # Walk reconstruction down to the second failure point: every task above it
+    # re-executes successfully, and the last edge resubmits the task that is about
+    # to fail against its parent's fresh outputs.
+    for parent_task_id, child_task_id in zip(
+        task_ids[:retry_failure_index], task_ids[1 : retry_failure_index + 1]
+    ):
         _reconstruct_edge(tracker, parent_task_id, child_task_id, output_indices)
 
-    # task_3's re-execution fails; reconstruction traces back to the same seed.
-    assert tracker.register_failed_task(task_ids[3]) == seed_task_id
-
-    # Resubmit the seed again to emulate the second recovery, then walk the full
-    # reconstruction down the chain to completion.
-    tracker.register_task_submission(seed_task_id, dependencies=[])
-    for parent_task_id, child_task_id in zip(task_ids, task_ids[1:]):
-        _reconstruct_edge(tracker, parent_task_id, child_task_id, output_indices)
-
-    # The leaf has no children of its own.
-    _assert_leaf_produces_new_objects(tracker, leaf_task_id, [0])
-
-    # The leaf's own re-execution closes out the reconstruction.
-    tracker.register_task_complete(leaf_task_id)
-
-
-@pytest.mark.parametrize("output_indices", OUTPUT_INDICES)
-def test_deep_chain_leaf_retry_fail_recovers_seed_and_reuse_status(
-    output_indices: List[int],
-):
-    """Fail the leaf of a 5-deep chain, reconstruct it fully, then fail it again.
-
-    Chain: ``task_0 -> task_1 -> task_2 -> task_3 -> task_4``, each task
-    consuming ``output_indices`` of its parent's outputs. Unlike the
-    mid-reconstruction case, the second failure happens at the *end* of the chain,
-    after every intermediate task has already been re-executed successfully.
-    Verifies that:
-      - Failing the leaf traces all the way back to the seed as the retry root.
-      - Reconstruction restarts from the seed and re-executes ``task_1`` through
-        ``task_3`` successfully.
-      - The leaf's retry failing traces back to the same seed and reconstructs the
-        whole chain again, with every parent's outputs still OBJECT_REUSED.
-    """
-    tracker = LineageTracker()
-    task_ids = [f"task_{i}" for i in range(5)]
-    seed_task_id, leaf_task_id = task_ids[0], task_ids[-1]
-
-    _register_linear_chain(tracker, task_ids, output_indices=output_indices)
-
-    # Fail the leaf; reconstruction traces up the whole chain to the seed.
-    assert tracker.register_failed_task(leaf_task_id) == seed_task_id
-
-    # Resubmit the seed to emulate the first recovery.
-    tracker.register_task_submission(seed_task_id, dependencies=[])
-
-    # Walk reconstruction all the way down the chain: every intermediate task
-    # re-executes successfully. The last edge resubmits the leaf against task_3's
-    # fresh outputs.
-    for parent_task_id, child_task_id in zip(task_ids, task_ids[1:]):
-        _reconstruct_edge(tracker, parent_task_id, child_task_id, output_indices)
-
-    # The leaf fails again; reconstruction traces back to the same seed.
-    assert tracker.register_failed_task(leaf_task_id) == seed_task_id
+    # The retry fails; reconstruction traces back to the same seed.
+    assert tracker.register_failed_task(task_ids[retry_failure_index]) == seed_task_id
 
     # Resubmit the seed again to emulate the second recovery, then walk the full
     # reconstruction down the chain to completion.
