@@ -26,6 +26,11 @@ class WindowsBuilderContainer(WindowsContainer):
             "git config --global core.autocrlf false",
             "git clone . ray",
             "cd ray",
+            # Resolve through the CI package mirror where it is reachable. The commands
+            # are joined into one bash invocation, so the variables this exports apply
+            # to the wheel build below. `|| true` keeps a proxy problem from failing a
+            # release wheel: every path inside falls back to public PyPI.
+            "source ./ci/ray_ci/windows/pypi_proxy.sh || true",
             # build wheel
             f"export BUILD_ONE_PYTHON_ONLY={self.python_version}",
             "./python/build-wheel-windows.sh",

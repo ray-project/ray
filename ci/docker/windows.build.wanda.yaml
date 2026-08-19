@@ -4,6 +4,10 @@ dockerfile: ci/docker/windows.build.Dockerfile
 srcs:
   - python/deplocks/ci/windows-tests-torch27-ci_depset_py3.10.lock
   - ci/ray_ci/windows/build_base.sh
+  - ci/install_pypi_proxy.sh
+  - ci/pypi_index_proxy.py
+  - ci/pypi_proxy_profile.sh
+  - ci/ray_ci/windows/pypi_proxy.sh
   - ci/ray_ci/windows/install_bazelisk.ps1
   - ci/ray_ci/windows/cleanup.ps1
 tags:

@@ -31,6 +31,20 @@ sed 's/ \\$//; s/ --hash[^ ]*//g' \
   > /tmp/windows_tests_depset_no_hashes.txt
 pip install -U --ignore-installed --no-deps -r /tmp/windows_tests_depset_no_hashes.txt
 
+# The index proxy, so the package installs inside this image's containers resolve
+# through the CI package mirror rather than files.pythonhosted.org (pypi/support#11895).
+# Baked in here rather than installed per job because the Windows agent host carries
+# Python 3.8, below what the proxy supports, while conda above supplies 3.10 -- which is
+# enough, since the only dependency needing 3.11 is skipped by the installer and guarded
+# at import. ci/ray_ci/windows/pypi_proxy.sh starts it and is sourced by the two places
+# that install packages.
+(
+  cd ci &&
+    RAYCI_PYPI_PROXY_PREFIX="/c/pypiproxy" \
+      RAYCI_PYPI_PROXY_SKIP_PROFILE=1 \
+      bash install_pypi_proxy.sh "$(command -v python)"
+)
+
 # Clean up caches to minimize image size. These caches are not needed, and
 # removing them help with the build speed.
 pip cache purge
