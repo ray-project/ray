@@ -591,7 +591,7 @@ def test_groupby_arrow_multi_agg(
         (
             ds_format == "pandas"
             and configure_shuffle_method
-            in (ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.HASH_SHUFFLE_V2)
+            in (ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.SHUFFLE_V2)
         )
     )
 

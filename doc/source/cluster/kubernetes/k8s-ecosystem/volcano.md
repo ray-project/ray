@@ -7,7 +7,7 @@ myst:
 (kuberay-volcano)=
 # KubeRay integration with Volcano
 
-[Volcano](https://github.com/volcano-sh/volcano) is a batch scheduling system built on Kubernetes, providing gang scheduling, job queues, fair scheduling policies, and network topology-aware scheduling. KubeRay integrates natively with Volcano for RayCluster, RayJob, and RayService, enabling more efficient scheduling of Ray pods in multi-tenant Kubernetes environments.
+[Volcano](https://github.com/volcano-sh/volcano) is a batch scheduling system built on Kubernetes, providing gang scheduling, job queues, fair scheduling policies, and network topology-aware scheduling. KubeRay integrates natively with Volcano for RayCluster, RayJob, and RayService, enabling more efficient scheduling of Ray head and worker Pods in multi-tenant Kubernetes environments.
 
 This guide covers [setup instructions](#setup), [configuration options](#step-4-install-a-raycluster-with-the-volcano-scheduler), and [examples](#example) demonstrating gang scheduling for both RayCluster and RayJob.
 

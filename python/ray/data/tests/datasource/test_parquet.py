@@ -4,6 +4,7 @@ import pathlib
 import pickle
 import shutil
 import time
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Union
 from unittest.mock import MagicMock
@@ -2071,7 +2072,9 @@ def test_write_partition_cols_with_min_rows_per_file(
 
     ds = ray.data.from_pandas(df)
     ds.write_parquet(
-        tmp_path, partition_cols=["partition_col"], min_rows_per_file=min_rows_per_file
+        tmp_path,
+        partition_cols=["partition_col"],
+        min_rows_per_file=min_rows_per_file,
     )
 
     # Check partition directories exist
@@ -2127,6 +2130,38 @@ def test_write_partition_cols_with_min_rows_per_file(
     # Align column order and compare.
     actual_df = actual_df[expected_df.columns]
     pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+def test_write_partition_cols_with_num_rows_per_file_warns(
+    tmp_path,
+    ray_start_regular_shared,
+):
+    ds = ray.data.from_items(
+        [{"partition": index % 2, "value": index} for index in range(10)]
+    )
+
+    with pytest.warns(
+        DeprecationWarning,
+        match=r"will no longer be supported after February 2027",
+    ):
+        ds.write_parquet(tmp_path, partition_cols=["partition"], num_rows_per_file=5)
+
+
+def test_write_empty_partition_cols_with_min_rows_per_file_does_not_warn(
+    tmp_path,
+    ray_start_regular_shared,
+):
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        ray.data.range(10).write_parquet(
+            tmp_path, partition_cols=[], min_rows_per_file=5
+        )
+
+    assert not any(
+        issubclass(warning.category, DeprecationWarning)
+        and "non-empty `partition_cols`" in str(warning.message)
+        for warning in caught_warnings
+    )
 
 
 @pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])
