@@ -34,19 +34,6 @@ class FileIndexer(ABC):
         """The file chunker that this indexer uses."""
         ...
 
-    @property
-    def produces_partitioned_manifests(self) -> bool:
-        """Whether ``list_files`` already produces partitioned manifests.
-
-        ``False`` (default) means the indexer yields per-file / per-chunk
-        manifests that still need size-balanced partitioning downstream. An
-        indexer that bin-packs internally (e.g. the footer-based Parquet indexer,
-        which reads footers and packs row groups into ~one-block manifests)
-        returns ``True``; ``ListFiles`` then skips the partitioner and runs
-        listing as a single task so packing sees the whole file stream.
-        """
-        return False
-
     @abstractmethod
     def list_files(
         self,
@@ -187,6 +174,25 @@ class NonSamplingFileIndexer(FileIndexer):
         to introspect or override the chunking strategy.
         """
         return self._file_chunker
+
+    def as_whole_file_indexer(self) -> "NonSamplingFileIndexer":
+        """A plain per-file indexer sharing this one's traversal config.
+
+        Metadata-only consumers (the ``PushdownCountFiles`` rule) need a listing
+        that emits each file exactly once and does no per-file IO while listing.
+        Subclasses that override :meth:`list_files` with a metadata-aware
+        strategy -- e.g. ``FooterFileIndexer``, which footer-reads every file on
+        an actor pool and emits one manifest row per row-group run -- would both
+        duplicate that IO and emit a path more than once. So this deliberately
+        returns a base ``NonSamplingFileIndexer`` rather than ``type(self)``,
+        carrying over only the traversal settings.
+        """
+        return NonSamplingFileIndexer(
+            ignore_missing_paths=self._ignore_missing_paths,
+            num_workers=self._num_workers,
+            max_paths_per_output=self._max_paths_per_output,
+            file_chunker=WholeFileChunker(),
+        )
 
     def list_files(
         self,

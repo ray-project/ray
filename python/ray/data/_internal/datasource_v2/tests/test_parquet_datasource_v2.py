@@ -440,6 +440,45 @@ def test_datasource_uses_footer_indexer_when_flag_is_set(tmp_path, monkeypatch):
     assert isinstance(datasource._get_file_indexer(), FooterFileIndexer)
 
 
+def test_footer_indexer_skip_paths_excludes_listed_file(tmp_path, monkeypatch):
+    """``skip_paths`` must reach ``FooterFileIndexer`` or excluded files are read."""
+    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
+    keep = tmp_path / "keep.parquet"
+    skip = tmp_path / "skip.parquet"
+    _write_parquet(str(keep), pa.table({"a": [1]}))
+    _write_parquet(str(skip), pa.table({"a": [2]}))
+
+    datasource = ParquetDatasourceV2([str(keep), str(skip)], skip_paths=[str(skip)])
+    indexer = datasource._get_file_indexer()
+    assert isinstance(indexer, FooterFileIndexer)
+
+    infos = list(
+        indexer.list_file_infos(
+            pa.array(datasource.paths), filesystem=datasource.filesystem
+        )
+    )
+    assert [info.path for info in infos] == [datasource.paths[0]]
+
+
+def test_footer_indexer_skip_paths_ignores_missing_named_path(tmp_path, monkeypatch):
+    """A skip-only missing path must not fail listing on the footer indexer."""
+    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
+    keep = tmp_path / "keep.parquet"
+    missing = str(tmp_path / "gone.parquet")
+    _write_parquet(str(keep), pa.table({"a": [1]}))
+
+    datasource = ParquetDatasourceV2([str(keep), missing], skip_paths=[missing])
+    indexer = datasource._get_file_indexer()
+    assert isinstance(indexer, FooterFileIndexer)
+
+    infos = list(
+        indexer.list_file_infos(
+            pa.array(datasource.paths), filesystem=datasource.filesystem
+        )
+    )
+    assert [info.path for info in infos] == [datasource.paths[0]]
+
+
 def _write_multi_row_group_parquet(path, num_rows: int, row_group_size: int):
     table = pa.table({"id": list(range(num_rows))})
     pq.write_table(table, path, row_group_size=row_group_size)
@@ -459,6 +498,9 @@ def _row_group_manifest(path, row_group_ids, num_rows):
                 # Nominal projected uncompressed size (8-byte int64 ids); only
                 # used for footer-free batch sizing, not row selection.
                 uncompressed_size=num_rows * 8,
+                fully_matched=True,
+                rg_sizes=(),
+                rg_rows=(),
             )
         ],
     )

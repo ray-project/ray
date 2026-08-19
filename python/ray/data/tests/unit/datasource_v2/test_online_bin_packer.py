@@ -10,6 +10,9 @@ from ray.data._internal.datasource_v2.chunkers.parquet_row_group_coalescing impo
     coalesce_row_groups,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+    _manifest_of_runs,
+)
 from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
     OnlineBinPacker,
 )
@@ -106,7 +109,7 @@ def _pack(
     packer = OnlineBinPacker(max_bin_bytes, **kwargs)
     bins = []
     for file_chunks in file_chunks_list:
-        packer.add_file_chunks(file_chunks)
+        packer.add_input(_manifest_of_runs(file_chunks))
         while packer.has_partition():
             bins.append(_manifest_map(packer.next_partition()))
     packer.finalize()
@@ -169,15 +172,17 @@ def test_full_heavy_bin_is_sealed_immediately() -> None:
     # The first two row groups are light and fill a shared bin, which seals
     # immediately. The third makes this colour heavy and exactly fills its
     # dedicated bin, which must also seal for early scheduling.
-    packer.add_file_chunks(
-        FileChunks(
-            path="a",
-            size=200,
-            row_groups=(
-                _rg(idx=0, size=60),
-                _rg(idx=1, size=40),
-                _rg(idx=2, size=100),
-            ),
+    packer.add_input(
+        _manifest_of_runs(
+            FileChunks(
+                path="a",
+                size=200,
+                row_groups=(
+                    _rg(idx=0, size=60),
+                    _rg(idx=1, size=40),
+                    _rg(idx=2, size=100),
+                ),
+            )
         )
     )
     assert _manifest_map(packer.next_partition()) == {"a": [0, 1]}
