@@ -231,7 +231,7 @@ class TaskManagerTest : public ::testing::Test {
             /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
             /*set_direct_transport_metadata=*/
             [](const ObjectID &, const std::string &) {},
-            /*free_object_on_nodes_async=*/
+            /*free_stale_unconsumed_generator_objects_async=*/
             [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &nodes) {
               freed_objects_.emplace_back(object_id, nodes);
             },
@@ -1650,7 +1650,7 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
-      /*free_object_on_nodes_async=*/
+      /*free_stale_unconsumed_generator_objects_async=*/
       [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
@@ -1724,7 +1724,7 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
-      /*free_object_on_nodes_async=*/
+      /*free_stale_unconsumed_generator_objects_async=*/
       [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
@@ -1796,7 +1796,7 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
-      /*free_object_on_nodes_async=*/
+      /*free_stale_unconsumed_generator_objects_async=*/
       [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
@@ -5354,7 +5354,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
-      /*free_object_on_nodes_async=*/
+      /*free_stale_unconsumed_generator_objects_async=*/
       [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 
@@ -5445,7 +5445,7 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       fake_total_lineage_bytes_gauge_,
       /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
       /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
-      /*free_object_on_nodes_async=*/
+      /*free_stale_unconsumed_generator_objects_async=*/
       [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
       /*clock=*/clock_);
 

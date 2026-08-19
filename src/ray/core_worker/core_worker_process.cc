@@ -562,7 +562,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
             },
             "CoreWorker.SetDirectTransportMetadata");
       },
-      /*free_object_on_nodes_async=*/
+      /*free_stale_unconsumed_generator_objects_async=*/
       [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
         GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
       },

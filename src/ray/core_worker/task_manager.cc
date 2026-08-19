@@ -1137,14 +1137,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     if (caller_deleted && !stream_it->second.IsObjectConsumed(object_index)) {
       if (returned_object.in_plasma()) {
         const NodeID worker_node_id = NodeID::FromBinary(request.worker_addr().node_id());
-        if (!worker_node_id.IsNil()) {
-          const absl::flat_hash_set<NodeID> locations{worker_node_id};
-          RAY_LOG(DEBUG) << absl::StrFormat(
-              "Object %s for a deleted generator can no longer be used. They should be "
-              "freed immediately.",
-              object_id.Hex());
-          free_object_on_nodes_async_(object_id, locations);
-        }
+        RAY_CHECK(!worker_node_id.IsNil()) << absl::StrFormat(
+            "Request worker node id is nill for reported generator object %s",
+            object_id.Hex());
+        const absl::flat_hash_set<NodeID> locations{worker_node_id};
+        RAY_LOG(DEBUG) << absl::StrFormat(
+            "Object %s for a deleted generator can no longer be used. They should be "
+            "freed immediately.",
+            object_id.Hex());
+        free_stale_unconsumed_generator_objects_async_(object_id, locations);
       }
     } else {
       RAY_LOG(DEBUG) << absl::StrFormat(
