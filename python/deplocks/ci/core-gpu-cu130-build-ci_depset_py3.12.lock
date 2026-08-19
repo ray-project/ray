@@ -740,9 +740,9 @@ charset-normalizer==3.4.7 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   requests
-click==8.3.2 \
-    --hash=sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5 \
-    --hash=sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d
+click==8.4.2 \
+    --hash=sha256:9a6cea6e60b17ebe0a44c5cc636d94f09bd66142c1cd7d8b4cd731c4917a15f6 \
+    --hash=sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   celery
@@ -1078,9 +1078,9 @@ cython==0.29.37 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-databricks-sdk==0.103.0 \
-    --hash=sha256:bdc93a2382e5717edd39c2faa92e38606ccc48aead047fe2154243509861eb1a \
-    --hash=sha256:eb6c1cdbe8dfe76590d049cbd03e35c45855d1bbc968d565183fa27b80ac3a76
+databricks-sdk==0.123.0 \
+    --hash=sha256:55ed566c48dcd25d8ea4ffec3f78236f63258078477e440529389c4bee95d80f \
+    --hash=sha256:787068ccf1c537736bc6387486c15d2ac02937c876c980b5b2b43230a98e4d35
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
@@ -1188,6 +1188,10 @@ et-xmlfile==2.0.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   openpyxl
+etils==1.14.0 \
+    --hash=sha256:8136e7f4c4173cd0af0ca5481c4475152f0b8686192951eefa60ee8711e1ede4 \
+    --hash=sha256:b5df7341f54dbe1405a4450b2741207b4a8c279780402b45f87202b94dfc52b4
+    # via -r python/requirements/ml/dl-gpu-requirements.txt
 everett==3.1.0 \
     --hash=sha256:46175da5bcb06c193aa129e59714bca981344ff067c3a8bc2e625bc0b3dc01f6 \
     --hash=sha256:db13891b849e45e54faea93ee79881d12458c5378f5b9b7f806eeff03ce1de3c
@@ -1835,9 +1839,7 @@ grpcio==1.75.0 \
 grpcio-status==1.75.0 ; python_full_version < '3.14' \
     --hash=sha256:69d5b91be1b8b926f086c1c483519a968c14640773a0ccdd6c04282515dbedf7 \
     --hash=sha256:de62557ef97b7e19c3ce6da19793a12c5f6c1fbbb918d233d9671aba9d9e1d78
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/test-requirements.txt
+    # via -r python/requirements/test-requirements.txt
 grpcio-tools==1.75.0 ; python_full_version < '3.14' \
     --hash=sha256:05087b1879b3f32a2182f1365e34233236c22e1a1e8cc448b5d29ea58d661846 \
     --hash=sha256:08cc1b8a1364a5b8f975e6a7273684d13630caab76c209a201464ad05f826eb9 \
@@ -1890,9 +1892,7 @@ grpcio-tools==1.75.0 ; python_full_version < '3.14' \
     --hash=sha256:ebdac7cc820459874f3b19eddddae19c0c7e7cdf228aee8e7567cec1fddb2ae3 \
     --hash=sha256:edefbb90bb7ddc4eadac3463d5f7084e1d43b1d713254f668dd55c25db5b5ef2 \
     --hash=sha256:fd038847974aeb883ee0f3b5b535d85618ad32789c15c9bf24af6c12a44f67f1
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/test-requirements.txt
+    # via -r python/requirements/test-requirements.txt
 gunicorn==25.3.0 ; sys_platform != 'win32' \
     --hash=sha256:cacea387dab08cd6776501621c295a904fe8e3b7aae9a1a3cbb26f4e7ed54660 \
     --hash=sha256:f74e1b2f9f76f6cd1ca01198968bd2dd65830edc24b6e8e4d78de8320e2fe889
@@ -3562,7 +3562,6 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   accelerate
     #   contourpy
@@ -3771,7 +3770,6 @@ opentelemetry-api==1.39.0 \
     --hash=sha256:3c3b3ca5c5687b1b5b37e5c5027ff68eacea8675241b29f13110a8ffbb8f0459 \
     --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
@@ -3786,45 +3784,39 @@ opentelemetry-exporter-otlp-proto-common==1.39.0 \
     --hash=sha256:3d77be7c4bdf90f1a76666c934368b8abed730b5c6f0547a2ec57feb115849ac \
     --hash=sha256:a135fceed1a6d767f75be65bd2845da344dd8b9258eeed6bc48509d02b184409
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-exporter-otlp-proto-grpc==1.39.0 \
     --hash=sha256:758641278050de9bb895738f35ff8840e4a47685b7e6ef4a201fe83196ba7a05 \
     --hash=sha256:7e7bb3f436006836c0e0a42ac619097746ad5553ad7128a5bd4d3e727f37fc06
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/test-requirements.txt
+    # via -r python/requirements/test-requirements.txt
 opentelemetry-exporter-prometheus==0.60b0 \
     --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
     --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   ray
 opentelemetry-instrumentation==0.60b0 \
     --hash=sha256:4e9fec930f283a2677a2217754b40aaf9ef76edae40499c165bc7f1d15366a74 \
     --hash=sha256:aaafa1483543a402819f1bdfb06af721c87d60dd109501f9997332862a35c76a
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-asgi==0.60b0 \
     --hash=sha256:928731218050089dca69f0fe980b8bfe109f384be8b89802d7337372ddb67b91 \
     --hash=sha256:9d76a541269452c718a0384478f3291feb650c5a3f29e578fdc6613ea3729cf3
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-fastapi==0.60b0 \
     --hash=sha256:415c6602db01ee339276ea4cabe3e80177c9e955631c087f2ef60a75e31bfaee \
     --hash=sha256:5d34d67eb634a08bfe9e530680d6177521cd9da79285144e6d5a8f42683ed1b3
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/test-requirements.txt
+    # via -r python/requirements/test-requirements.txt
 opentelemetry-proto==1.39.0 \
     --hash=sha256:1e086552ac79acb501485ff0ce75533f70f3382d43d0a30728eeee594f7bf818 \
     --hash=sha256:c1fa48678ad1a1624258698e59be73f990b7fc1f39e73e16a9d08eef65dd838c
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
@@ -3835,7 +3827,6 @@ opentelemetry-sdk==1.39.0 \
     --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
     --hash=sha256:c22204f12a0529e07aa4d985f1bca9d6b0e7b29fe7f03e923548ae52e0e15dde
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
@@ -3846,7 +3837,6 @@ opentelemetry-semantic-conventions==0.60b0 \
     --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
     --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
@@ -3856,7 +3846,7 @@ opentelemetry-util-http==0.60b0 \
     --hash=sha256:4f366f1a48adb74ffa6f80aee26f96882e767e01b03cd1cfb948b6e1020341fe \
     --hash=sha256:e42b7bb49bba43b6f34390327d97e5016eb1c47949ceaf37c4795472a4e3a82d
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
 opt-einsum==3.4.0 \
@@ -4100,9 +4090,9 @@ ormsgpack==1.12.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
-packaging==26.1 \
-    --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
-    --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
+packaging==25.0 \
+    --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
+    --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   accelerate
@@ -4547,7 +4537,6 @@ protobuf==6.33.6 \
     --hash=sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593 \
     --hash=sha256:f443a394af5ed23672bc6c486be138628fbe5c651ccbc536873d7da23d1868cf
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   databricks-sdk
     #   google-api-core
@@ -6172,7 +6161,7 @@ taskiq-dependencies==1.5.7 \
 tensorboard==2.20.0 \
     --hash=sha256:9dc9f978cb84c0723acf9a345d96c184f0293d18f166bb8d59ee098e6cfaaba6
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/dl-gpu-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   tensorflow
 tensorboard-data-server==0.7.2 \
@@ -6240,7 +6229,6 @@ tensorflow==2.20.0 \
     --hash=sha256:dd71a7e7c3270239f4185915e8f2c5d39608c5e18973d6e1d101b153993841eb \
     --hash=sha256:e5f169f8f5130ab255bbe854c5f0ae152e93d3d1ac44f42cb1866003b81a5357
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/dl-gpu-requirements.txt
     #   tf-keras
 tensorflow-probability==0.24.0 \
@@ -6270,9 +6258,7 @@ textual==4.0.0 ; sys_platform != 'win32' \
 tf-keras==2.20.0 \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/dl-gpu-requirements.txt
+    # via -r python/requirements/ml/dl-gpu-requirements.txt
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
     --hash=sha256:a335baacfaa4400ae1f0d8e3a58d6674d2f8828e3716bb2802c44955ad391380
@@ -6539,6 +6525,7 @@ urllib3==1.26.20 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   botocore
     #   comet-ml
+    #   databricks-sdk
     #   docker
     #   dulwich
     #   kubernetes
@@ -6645,17 +6632,17 @@ virtualenv==21.2.4 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   ray
-wandb==0.26.0 \
-    --hash=sha256:0356853895b53fe110e2ed17a1d49c15405498f08e5fbc339deab384f2df45f1 \
-    --hash=sha256:1ece94a2a5eda1d0e3a2d8a2fd28aa0187705d6efa5ac4c0b8680083583b7ec1 \
-    --hash=sha256:21a8346434fd30e1bc13a26b226fc29b6f33a1cb346d610cbcb4040c3b0e1f63 \
-    --hash=sha256:28a14ffc014e523498d077dfde12839b7be586ca8c3190e72e7167c1aea6ee4c \
-    --hash=sha256:362828d48d21dd4877e28fdce40421ebdfc16d1fe0b59e8371b12d75bbc3f1e7 \
-    --hash=sha256:3eb88fb556a64bf4492cf571bb851d47871901c096f0540d841ccb50f5cbeb66 \
-    --hash=sha256:92f6f303fe2af50e3f711833a835150f9b4d8082874bfd9868cf15491ea2947e \
-    --hash=sha256:99bd11974e9005d3a3f82e1fabfc4909ffa1fdede23a8839f5fbaea2f5be9033 \
-    --hash=sha256:a17aae051a31831388cff880251c1b5bc38fbf6a283a0ee7c543709e8e9633d1 \
-    --hash=sha256:fb9a63babeee044fecf65a4675f7dfb0efaea4986e498a3bc8f948558af877e7
+wandb==0.24.2 \
+    --hash=sha256:33cba098d95fd46720cc9023bd23e4a38e9b11836a836b4a57b8d41cff8985f2 \
+    --hash=sha256:38661c666e70d7e1f460fc0a0edab8a393eaaa5f8773c17be534961a7022779d \
+    --hash=sha256:5e6c0ad176792c7c3d1620a2ad65bd9a5f3886c69362af540d3667bfc97b67fb \
+    --hash=sha256:656a4272000999569eb8e0773f1259403bc6bd3e7d1c7d2238d3e359874da9c4 \
+    --hash=sha256:70db8680e8d7edb5bd60dfb7f31aeb5af30b31ad72498c47e1aba7471c337bb2 \
+    --hash=sha256:755b8a92edd28e15c052dc2bdc4652e26bce379fa7745360249cbfc589ff5f53 \
+    --hash=sha256:85861f9b3e54a07b84bade0aa5f4caa156028ab959351d98816a45e3b1411d35 \
+    --hash=sha256:968b5b91d0a164dfb2f8c604cdf69e6fb09de6596b85b9f9d3c916b71ae86198 \
+    --hash=sha256:a78ac1fa116b196cd33250b3d80f4a5c05c141ad949175515c007ec9826e49a6 \
+    --hash=sha256:b42614b99f8b9af69f88c15a84283a973c8cd5750e9c4752aa3ce21f13dbac9a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
