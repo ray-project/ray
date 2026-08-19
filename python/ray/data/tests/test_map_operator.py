@@ -4,11 +4,13 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
 )
@@ -24,9 +26,9 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.stats import Timer
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import (
     DataContext,
 )
@@ -350,6 +352,40 @@ def test_map_operator_output_block_size_options(
         output_block_size_option=output_block_size_option,
         expected_blocks=expected_blocks,
     )
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pa.table({"value": range(100)}),
+        pd.DataFrame({"value": range(100)}),
+    ],
+    ids=["arrow", "pandas"],
+)
+def test_row_sized_output_builds_buffer_once(monkeypatch, block):
+    original_build = DelegatingBlockBuilder.build
+    build_calls = 0
+
+    def build(builder):
+        nonlocal build_calls
+        build_calls += 1
+        return original_build(builder)
+
+    monkeypatch.setattr(DelegatingBlockBuilder, "build", build)
+
+    buffer = BlockOutputBuffer(OutputBlockSizeOption.of(target_num_rows_per_block=1))
+    buffer.add_block(block)
+    buffer.finalize()
+    output = list(buffer.iter_ready_blocks())
+
+    assert build_calls == 1
+    assert len(output) == 100
+    assert all(BlockAccessor.for_block(block).num_rows() == 1 for block in output)
+    assert [
+        row["value"]
+        for block in output
+        for row in BlockAccessor.for_block(block).iter_rows(public_row_format=False)
+    ] == list(range(100))
 
 
 @pytest.mark.parametrize("preserve_order", [False, True])

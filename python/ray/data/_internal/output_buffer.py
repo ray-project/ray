@@ -90,6 +90,8 @@ class BlockOutputBuffer:
         self._buffer = DelegatingBlockBuilder()
         self._finalized = False
         self._has_yielded_blocks = False
+        self._row_slicing_accessor: Optional[BlockAccessor] = None
+        self._row_slicing_offset = 0
 
     def add(self, item: Any) -> None:
         """Add a single item to this output buffer."""
@@ -150,6 +152,12 @@ class BlockOutputBuffer:
     def has_next(self) -> bool:
         """Returns true when a complete output block is produced."""
 
+        if self._uses_row_slicing():
+            num_rows = self._pending_slice_num_rows() + self._buffer.num_rows()
+            if self._finalized:
+                return not self._has_yielded_blocks or num_rows > 0
+            return num_rows > self._max_num_rows_per_block()
+
         # TODO remove emitting empty blocks
         if self._finalized:
             return not self._has_yielded_blocks or self._buffer.num_rows() > 0
@@ -164,6 +172,58 @@ class BlockOutputBuffer:
             return self._buffer.num_rows() > 0
 
         return self._exceeded_buffer_row_limit() or self._exceeded_buffer_size_limit()
+
+    def _uses_row_slicing(self) -> bool:
+        return (
+            self._max_num_rows_per_block() is not None
+            and self._max_bytes_per_block() is None
+        )
+
+    def _pending_slice_num_rows(self) -> int:
+        if self._row_slicing_accessor is None:
+            return 0
+        return self._row_slicing_accessor.num_rows() - self._row_slicing_offset
+
+    def _take_pending_slice(self, num_rows: int) -> Block:
+        accessor = self._row_slicing_accessor
+        assert accessor is not None
+
+        start = self._row_slicing_offset
+        end = start + num_rows
+        if start == 0 and end == accessor.num_rows():
+            block = accessor.to_block()
+        else:
+            block = accessor.slice(start, end, copy=False)
+
+        if end == accessor.num_rows():
+            self._row_slicing_accessor = None
+            self._row_slicing_offset = 0
+        else:
+            self._row_slicing_offset = end
+
+        return block
+
+    def _next_row_sized_block(self) -> Block:
+        target_num_rows = self._max_num_rows_per_block()
+        assert target_num_rows is not None
+
+        pending_rows = self._pending_slice_num_rows()
+        if 0 < pending_rows < target_num_rows and self._buffer.num_rows() > 0:
+            builder = DelegatingBlockBuilder()
+            builder.add_block(self._take_pending_slice(pending_rows))
+            builder.add_block(self._buffer.build())
+            self._buffer = DelegatingBlockBuilder()
+            self._row_slicing_accessor = BlockAccessor.for_block(builder.build())
+        elif pending_rows == 0:
+            block = self._buffer.build()
+            self._buffer = DelegatingBlockBuilder()
+            self._row_slicing_accessor = BlockAccessor.for_block(block)
+
+        block = self._take_pending_slice(
+            min(target_num_rows, self._pending_slice_num_rows())
+        )
+        self._has_yielded_blocks = True
+        return block
 
     def _exceeded_block_size_slice_limit(self, block: BlockAccessor) -> bool:
         # Slice a block to respect the target max block size. We only do this if we are
@@ -187,6 +247,9 @@ class BlockOutputBuffer:
     def next(self) -> Block:
         """Returns the next complete output block."""
         assert self.has_next()
+
+        if self._uses_row_slicing():
+            return self._next_row_sized_block()
 
         block = self._buffer.build()
 
