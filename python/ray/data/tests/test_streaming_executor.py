@@ -2164,6 +2164,45 @@ class TestDataOpTask:
         assert bp_time == pytest.approx(4.0)
 
 
+class TestOpTaskCancel:
+    def test_forwards_force_for_normal_task(self, ray_start_regular_shared):
+        @ray.remote
+        def f():
+            return 1
+
+        ref = f.remote()
+        task = MetadataOpTask(0, ref, lambda: None)
+
+        # Temporary replace ray.cancel with MagicMock to verify that the correct arguments are passed.
+        with patch.object(ray, "cancel") as mock_cancel:
+            task._cancel(force=True)
+
+        # Normal tasks should forward the force argument to ray.cancel.
+        mock_cancel.assert_called_once_with(ref, recursive=True, force=True)
+
+    def test_falls_back_when_force_is_rejected(self, ray_start_regular_shared):
+        @ray.remote
+        class Actor:
+            def f(self):
+                return 1
+
+        # Create an empty actor task.
+        ref = Actor.remote().f.remote()
+        task = MetadataOpTask(0, ref, lambda: None)
+
+        # Temporary replace ray.cancel with a simplified version that
+        # raises an exception when force=True is passed.
+        def reject_actor(waitable, *, recursive, force):
+            if force:
+                raise ValueError("force=True is not supported for actor tasks.")
+
+        with patch.object(ray, "cancel", side_effect=reject_actor) as mock_cancel:
+            task._cancel(force=True)
+
+        # Actor tasks should cancel without force.
+        mock_cancel.assert_any_call(ref, recursive=True, force=False)
+
+
 def test_streaming_executor_logs_relevant_env_vars(
     monkeypatch, caplog, propagate_logs, ray_start_regular_shared
 ):
