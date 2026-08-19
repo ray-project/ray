@@ -40,33 +40,30 @@ def merge_instantaneous_total_arrays(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Columnar form of merge_instantaneous_total. `offsets` is CSR: source i is
     ts[offsets[i]:offsets[i+1]]. Returns (merged_ts, merged_total) float64 arrays."""
-    active = [
-        (offsets[i], offsets[i + 1])
-        for i in range(len(offsets) - 1)
-        if offsets[i + 1] > offsets[i]
-    ]
-    if not active:
+    starts, ends = offsets[:-1], offsets[1:]
+    nonempty = ends > starts
+    n_active = int(nonempty.sum())
+    if n_active == 0:
         return np.zeros(0), np.zeros(0)
-    if len(active) == 1:
+    if n_active == 1:
         # Pass through unrounded: the object path returns the lone series as-is.
-        a, b = active[0]
-        return ts[a:b].astype(float), val[a:b].astype(float)
+        i = int(np.argmax(nonempty))
+        return ts[starts[i] : ends[i]].astype(float), val[starts[i] : ends[i]].astype(
+            float
+        )
 
-    ev_ts, ev_d = [], []
-    for a, b in active:
-        sv = val[a:b]
-        # LOCF change-detect on RAW points (baseline 0), rounding only after: the
-        # kernel change-detects before rounding, so a v->w->v inside one 10ms bucket
-        # still emits an event there. Collapsing first would net it to zero and drop it.
-        prev = np.concatenate(([0.0], sv[:-1]))
-        delta = sv - prev
-        changed = delta != 0
-        ev_ts.append(_round_10ms(ts[a:b])[changed])
-        ev_d.append(delta[changed])
-    all_ts = np.concatenate(ev_ts)
-    all_d = np.concatenate(ev_d)
-    uts, inv = np.unique(all_ts, return_inverse=True)  # groups equal ts
-    summed = np.bincount(inv, weights=all_d, minlength=len(uts))
+    # One pass over the flat arrays -- sources are already contiguous, so a per-source
+    # loop costs dispatch overhead linear in source count. LOCF change-detect on RAW
+    # values (baseline 0), rounding only after, exactly as the kernel orders it: a
+    # v->w->v inside one 10ms bucket must still emit an event there.
+    prev = np.empty_like(val, dtype=np.float64)
+    prev[1:] = val[:-1]
+    prev[0] = 0.0
+    prev[starts[nonempty]] = 0.0
+    delta = val - prev
+    changed = delta != 0
+    uts, inv = np.unique(_round_10ms(ts)[changed], return_inverse=True)
+    summed = np.bincount(inv, weights=delta[changed], minlength=len(uts))
     return uts, np.cumsum(summed)
 
 
@@ -121,16 +118,13 @@ def merge_and_aggregate_arrays(
     if last_window_s <= 0:
         last_window_s = 1e-3
     window_start = None
-    n_active = int(np.sum(np.diff(offsets) > 0))
-    if n_active > 1:
+    starts = offsets[:-1]
+    nonempty = offsets[1:] > starts
+    if int(nonempty.sum()) > 1:
         # Unrounded, matching the object path: the bound is compared against merged
         # timestamps that ARE rounded, and rounding it too can shift which points fall
         # inside the window.
-        aligned = max(
-            float(ts[offsets[i]])
-            for i in range(len(offsets) - 1)
-            if offsets[i + 1] > offsets[i]
-        )
+        aligned = float(ts[starts[nonempty]].max())
         if aligned <= mts[-1]:
             window_start = max(aligned, mts[0])
     return aggregate_arrays(mts, mtot, agg_function, window_start, last_window_s)
