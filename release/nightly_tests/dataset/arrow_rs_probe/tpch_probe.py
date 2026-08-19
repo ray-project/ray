@@ -82,17 +82,23 @@ def run_cell(query, strategy, reader, sf, outdir, dry_run):
     env["RAY_DATA_USE_ARROW_RS_PARQUET_READER"] = "1" if reader == "rs" else "0"
     env["TEST_OUTPUT_JSON"] = os.path.join(outdir, f"{tag}.benchmark.json")
     cmd = [sys.executable, "-c", SNIPPET, query, str(sf), "1" if dry_run else "0"]
+    log_path = os.path.join(outdir, f"{tag}.log")
+    if not dry_run:
+        # A q9 cell at sf10 runs for MINUTES; stream the query's own output to
+        # the log live (stdout+stderr interleaved) so `tail -f` shows progress —
+        # the buffered version looked like a hang.
+        print(f"    -> {tag} running (tail -f {log_path})", flush=True)
     t0 = time.perf_counter()
-    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
-    with open(os.path.join(outdir, f"{tag}.log"), "w") as fh:
+    with open(log_path, "w") as fh:
         fh.write(f"# strategy={strategy} reader={reader} sf={sf}\n")
-        fh.write(proc.stdout + "\n# ---- STDERR ----\n" + proc.stderr)
-    line = next(
-        (ln for ln in proc.stdout.splitlines() if ln.startswith("CELL_JSON ")), None
-    )
+        fh.flush()
+        proc = subprocess.run(cmd, env=env, stdout=fh, stderr=subprocess.STDOUT)
+    with open(log_path) as fh:
+        out = fh.read()
+    line = next((ln for ln in out.splitlines() if ln.startswith("CELL_JSON ")), None)
     if line is None:
         print(f"    !! {tag} FAILED rc={proc.returncode} (see {tag}.log)", flush=True)
-        print("       " + proc.stderr.strip()[-400:], flush=True)
+        print("       " + out.strip()[-400:], flush=True)
         return None
     rec = json.loads(line[len("CELL_JSON ") :])
     rec["wall_incl_startup_s"] = round(time.perf_counter() - t0, 1)
