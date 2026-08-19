@@ -86,6 +86,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 # Field ID for the fabricated stub field, see ``_get_empty_projection_schema``.
 # Iceberg matches columns by ID, so this must not be a real column's: colliding
 # with a non-boolean column raises ``ResolveError``, and with a boolean column
@@ -251,6 +252,7 @@ def _get_read_task(
     limit: Optional[int],
     schema: "Schema",
     empty_projection: bool = False,
+    read_file_tasks_sequentially: bool = True,
 ) -> Iterable[Block]:
     # Determine the PyIceberg version to handle backward compatibility
     import pyiceberg
@@ -258,24 +260,43 @@ def _get_read_task(
     def _generate_tables() -> Iterable[pa.Table]:
         if version.parse(pyiceberg.__version__) >= version.parse("0.9.0"):
             # Modern implementation using ArrowScan (PyIceberg 0.9.0+)
-            from pyiceberg.io.pyarrow import ArrowScan
+            from pyiceberg.io.pyarrow import ArrowScan, schema_to_pyarrow
 
-            # Initialize scanner with Iceberg metadata and query parameters
-            scanner = ArrowScan(
-                table_metadata=table_metadata,
-                io=table_io,
-                row_filter=row_filter,
-                projected_schema=schema,
-                case_sensitive=case_sensitive,
-                limit=limit,
-            )
+            def _create_scanner(scan_limit: Optional[int]) -> ArrowScan:
+                return ArrowScan(
+                    table_metadata=table_metadata,
+                    io=table_io,
+                    row_filter=row_filter,
+                    projected_schema=schema,
+                    case_sensitive=case_sensitive,
+                    limit=scan_limit,
+                )
 
-            # Convert scanned data to Arrow Table format
-            result_table = scanner.to_table(tasks=tasks)
+            if not read_file_tasks_sequentially:
+                result_table = _create_scanner(limit).to_table(tasks=tasks)
+                for batch in result_table.to_batches():
+                    yield pa.Table.from_batches([batch])
+                return
 
-            # Stream results as RecordBatches for memory efficiency
-            for batch in result_table.to_batches():
-                yield pa.Table.from_batches([batch])
+            target_schema = schema_to_pyarrow(schema, include_field_ids=False)
+            rows_remaining = limit
+            scanner = _create_scanner(None) if rows_remaining is None else None
+            for task in tasks:
+                if rows_remaining is not None and rows_remaining <= 0:
+                    break
+
+                # Scan one file at a time. ArrowScan.to_record_batches() materializes
+                # all batches for each FileScanTask in its thread pool, so passing the
+                # full task chunk can retain several files before yielding any output.
+                # Singleton calls can reread delete files shared by multiple data
+                # files, but avoid relying on PyIceberg's private scan APIs.
+                if rows_remaining is not None:
+                    scanner = _create_scanner(rows_remaining)
+                assert scanner is not None
+                for batch in scanner.to_record_batches(tasks=(task,)):
+                    if rows_remaining is not None:
+                        rows_remaining -= len(batch)
+                    yield pa.Table.from_batches([batch.cast(target_schema)])
 
         else:
             # Legacy implementation using project_table (PyIceberg <0.9.0)
@@ -528,6 +549,10 @@ class IcebergDatasource(Datasource):
         from pyiceberg.io import pyarrow as pyi_pa_io
         from pyiceberg.manifest import DataFileContent
 
+        from ray.data.context import DataContext
+
+        data_context = data_context or DataContext.get_current()
+
         # Get the PyIceberg scan
         data_scan = self._get_data_scan()
         # Get the plan files in this query
@@ -599,6 +624,9 @@ class IcebergDatasource(Datasource):
             limit=limit,
             schema=projected_schema,
             empty_projection=empty_projection,
+            read_file_tasks_sequentially=(
+                data_context.iceberg_config.read_file_tasks_sequentially
+            ),
         )
 
         read_tasks = []

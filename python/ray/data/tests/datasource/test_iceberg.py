@@ -22,7 +22,10 @@ from pyiceberg.transforms import IdentityTransform
 import ray
 from ray.data import read_iceberg
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+from ray.data._internal.datasource.iceberg_datasource import (
+    IcebergDatasource,
+    _get_read_task,
+)
 from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
@@ -204,6 +207,161 @@ def test_get_read_tasks():
     read_tasks = iceberg_ds.get_read_tasks(5)
     assert len(read_tasks) == 5
     assert all(len(rt.metadata.input_files) == 2 for rt in read_tasks)
+
+
+def test_get_read_task_streams_files_and_preserves_limit(monkeypatch):
+    from pyiceberg.io import pyarrow as pyi_pa_io
+
+    batches = {
+        "file-1": pa.record_batch({"value": [1, 2, 3, 4]}),
+        "file-2": pa.record_batch({"value": [5, 6, 7, 8]}),
+    }
+    scanned_files = []
+    scanner_limits = []
+
+    class FakeArrowScan:
+        def __init__(self, **kwargs):
+            self._limit = kwargs["limit"]
+            scanner_limits.append(self._limit)
+
+        def to_record_batches(self, tasks):
+            (task,) = tasks
+            scanned_files.append(task)
+            batch = batches[task]
+            if self._limit is not None:
+                batch = batch.slice(0, self._limit)
+            yield batch
+
+    monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+
+    schema = pyi_schema.Schema(
+        pyi_types.NestedField(
+            field_id=1,
+            name="value",
+            field_type=pyi_types.LongType(),
+            required=False,
+        )
+    )
+
+    tables = iter(
+        _get_read_task(
+            tasks=("file-1", "file-2"),
+            table_io=object(),
+            table_metadata=object(),
+            row_filter=object(),
+            case_sensitive=True,
+            limit=5,
+            schema=schema,
+        )
+    )
+
+    assert next(tables).column("value").to_pylist() == [1, 2, 3, 4]
+    assert scanned_files == ["file-1"]
+    assert scanner_limits == [5]
+
+    assert next(tables).column("value").to_pylist() == [5]
+    assert scanned_files == ["file-1", "file-2"]
+    assert scanner_limits == [5, 1]
+    with pytest.raises(StopIteration):
+        next(tables)
+
+
+def test_get_read_tasks_can_disable_bounded_memory(monkeypatch):
+    from pyiceberg.io import pyarrow as pyi_pa_io
+
+    from ray.data.context import DataContext
+
+    scanned_task_counts = []
+
+    class FakeArrowScan:
+        def __init__(self, **kwargs):
+            pass
+
+        def to_table(self, tasks):
+            scanned_task_counts.append(len(tuple(tasks)))
+            return pa.table({"value": [1]})
+
+    monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+
+    data_context = DataContext()
+    data_context.iceberg_config.read_file_tasks_sequentially = False
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    expected_task_count = len(iceberg_ds.plan_files)
+
+    read_task = iceberg_ds.get_read_tasks(1, data_context=data_context)[0]
+
+    assert [table.to_pydict() for table in read_task()] == [{"value": [1]}]
+    assert scanned_task_counts == [expected_task_count]
+
+
+def test_get_read_task_normalizes_batch_schemas(monkeypatch):
+    from pyiceberg.io import pyarrow as pyi_pa_io
+
+    batches = {
+        "small-offsets": pa.record_batch(
+            {
+                "string": pa.array(["a"], type=pa.string()),
+                "list": pa.array([["b"]], type=pa.list_(pa.string())),
+            }
+        ),
+        "large-offsets": pa.record_batch(
+            {
+                "string": pa.array(["c"], type=pa.large_string()),
+                "list": pa.array([["d"]], type=pa.large_list(pa.large_string())),
+            }
+        ),
+    }
+
+    class FakeArrowScan:
+        def __init__(self, **kwargs):
+            pass
+
+        def to_record_batches(self, tasks):
+            (task,) = tasks
+            yield batches[task]
+
+    monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+
+    schema = pyi_schema.Schema(
+        pyi_types.NestedField(
+            field_id=1,
+            name="string",
+            field_type=pyi_types.StringType(),
+            required=False,
+        ),
+        pyi_types.NestedField(
+            field_id=2,
+            name="list",
+            field_type=pyi_types.ListType(
+                element_id=3,
+                element=pyi_types.StringType(),
+                element_required=False,
+            ),
+            required=False,
+        ),
+    )
+    expected_schema = pyi_pa_io.schema_to_pyarrow(schema, include_field_ids=False)
+
+    tables = list(
+        _get_read_task(
+            tasks=("small-offsets", "large-offsets"),
+            table_io=object(),
+            table_metadata=object(),
+            row_filter=object(),
+            case_sensitive=True,
+            limit=None,
+            schema=schema,
+        )
+    )
+
+    assert [table.schema for table in tables] == [expected_schema, expected_schema]
+    assert [table.to_pydict() for table in tables] == [
+        {"string": ["a"], "list": [["b"]]},
+        {"string": ["c"], "list": [["d"]]},
+    ]
 
 
 @pytest.mark.skipif(
@@ -567,7 +725,7 @@ def test_read_basic():
     table: pa.Table = pa.concat_tables((ray.get(ref) for ref in ray_ds.to_arrow_refs()))
 
     expected_schema = pa.schema(
-        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.string())]
+        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.large_string())]
     )
     assert table.schema.equals(expected_schema)
 
