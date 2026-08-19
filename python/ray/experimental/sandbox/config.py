@@ -53,14 +53,18 @@ class SandboxConfig:
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        workdir: Default working directory inside the sandbox. Note that the
-            working directory is the only writable path in the sandbox. If not provided,
-            the container's WORKDIR is used.
+        workdir: Default working directory inside the sandbox. By default, the
+            working directory is the only writable path in the sandbox (unless
+            ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode (default: True).
         network: Network mode for runsc ("none", "host", "sandbox") (default: "none").
-        readonly: If True, mount container image rootfs in read-only mode (default: True).
+        readonly: If True (default), mount container image rootfs in read-only mode
+            such that only ``workdir`` is writable. If False, the entire root filesystem
+            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
+            filesystem, ensuring multiple sandboxes running the same container image do
+            not interfere with each other or modify the base image.
     """
 
     image: str
