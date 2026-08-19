@@ -64,25 +64,21 @@ def create(
             working directory is the only writable path in the sandbox (unless
             ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
         mount_workdir: Whether to bind-mount a host scratch directory at
-            ``workdir`` (shadows image content there). None (default) derives
-            it from ``readonly``: mounted only when the rootfs is readonly.
-        ttl_seconds: Optional automatic cleanup time-to-live in seconds,
-            measured wall-clock from creation (not idle time): a sandbox that
-            is mid-command when the TTL fires is still deleted. None (default)
-            disables it; values <= 0 also mean no TTL.
+            ``workdir`` (shadows image content there). None (default): only
+            when ``readonly=True``.
+        ttl_seconds: Optional time-to-live in seconds, wall-clock from
+            creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode ("none", "public", "host", "sandbox"); see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`. "public"
-            is the recommended internet-access mode: host egress with a
-            synthetic resolv.conf, inheriting nothing from the host resolver.
+            is the recommended internet-access mode.
         dns: Optional nameserver IPs for the generated /etc/resolv.conf
-            (public resolvers by default for network="public"; overrides the
-            host file for network="host").
-        capabilities: Optional additional Linux capabilities granted to the
-            container process, unioned on top of the runtime defaults. Use
+            (public resolvers by default for "public").
+        capabilities: Linux capabilities, written exactly (None keeps the
+            runtime default; ``[]`` means none). Use
             :data:`~ray.experimental.sandbox.config.DOCKER_DEFAULT_CAPABILITIES`
-            to match how Docker runs images.
+            for Docker parity.
         resources: Custom logical resource requirements.
         readonly: If True (default), mount container image rootfs in read-only mode
             such that only ``workdir`` is writable. If False, the entire root filesystem

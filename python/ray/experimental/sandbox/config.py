@@ -2,27 +2,19 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Union
 
-# Sandbox network modes. "none", "host", and "sandbox" map directly to
-# runsc's --network flag; "public" runs with host egress (--network=host)
-# but a synthetic, portable /etc/resolv.conf instead of the host's.
+# Sandbox network modes. All but "public" map directly to runsc --network;
+# "public" is host egress plus a generated, host-independent resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 
 # Default resolvers for network="public" (Google and Cloudflare public DNS).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
 
-# Docker's default Linux capability set, as documented at
-# https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities
-# and defined canonically in
-# https://github.com/moby/moby/blob/master/oci/caps/defaults.go
-# The runtime's own default (whatever ``runsc spec`` emits — see
-# https://github.com/google/gvisor/blob/master/runsc/cmd/spec.go) is far
-# narrower, and container images are
-# overwhelmingly built and tested against Docker, so they can break in ways
-# that look like image bugs without these: ``apt-get`` forks its download
-# methods as the ``_apt`` user (needs CAP_SETUID and CAP_SETGID) and ``tar``
-# extracting as root restores the archived owner uid/gid (needs CAP_CHOWN),
-# both fatally. Pass ``capabilities=DOCKER_DEFAULT_CAPABILITIES`` to run an
-# image the way Docker would.
+# Docker's default capability set (see
+# https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities,
+# canonical list: https://github.com/moby/moby/blob/master/oci/caps/defaults.go).
+# The runtime default (what ``runsc spec`` emits) is far narrower and breaks
+# common images: apt-get needs CAP_SETUID/CAP_SETGID, tar-as-root needs
+# CAP_CHOWN. Pass this list to run images the way Docker does.
 DOCKER_DEFAULT_CAPABILITIES = [
     "CAP_AUDIT_WRITE",
     "CAP_CHOWN",
@@ -94,53 +86,32 @@ class SandboxConfig:
         workdir: Default working directory inside the sandbox. By default, the
             working directory is the only writable path in the sandbox (unless
             ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
-        mount_workdir: Whether to bind-mount a host-backed scratch directory
-            at ``workdir``. The bind exists to give a *readonly* rootfs one
-            writable path, and it shadows any content the image ships at that
-            path — so None (default) derives it from ``readonly``: mounted
-            when the rootfs is readonly, otherwise left unmounted so the
-            image's own WORKDIR content stays visible (writes then go to the
-            per-sandbox overlay). Pass True/False to force either behavior.
-        ttl_seconds: Optional automatic cleanup time-to-live in seconds,
-            measured wall-clock from creation (not idle time): a sandbox that
-            is mid-command when the TTL fires is still deleted. None (default)
-            disables it; values <= 0 also mean no TTL.
+        mount_workdir: Whether to bind-mount a host scratch directory at
+            ``workdir``. None (default) mounts it only when ``readonly=True``
+            (its purpose is giving a readonly rootfs one writable path); the
+            mount shadows any image content at that path.
+        ttl_seconds: Optional time-to-live in seconds, measured wall-clock
+            from creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode (default: True).
-        network: Network mode (default: "none").
-            "none" gives no network access. "public" (recommended for
-            internet access) shares the host network namespace for egress but
-            uses a synthetic /etc/resolv.conf built from ``dns`` — nothing
-            about the host's resolver configuration is inherited, so the
-            config stays portable and does not leak host search domains or
-            internal resolver addresses. "host" is the power mode: full host
-            network identity including the host's own /etc/resolv.conf
-            bind-mounted read-only — strictly more permissive than "public"
-            (the sandbox can reach internal networks the node can reach).
-            "sandbox" uses gVisor's netstack and requires rootless=False.
-        dns: Optional list of nameserver IPs written to a generated
-            /etc/resolv.conf bind-mounted read-only into the sandbox
-            (mirroring ``docker --dns``). Defaults to
-            :data:`DEFAULT_PUBLIC_DNS` for network="public"; for
-            network="host" it overrides the host's file. Only valid with
-            "public" or "host". Locked-down VPCs that block public DNS can
-            pass their internal resolver IPs here.
-        capabilities: Linux capabilities granted to the container process.
-            None (default) keeps the runtime's default set (what ``runsc
-            spec`` emits). Otherwise the bounding, effective, and permitted
-            sets are set to exactly this list — so ``[]`` runs the sandbox
-            with no capabilities at all, and
-            :data:`DOCKER_DEFAULT_CAPABILITIES` (a superset of the runtime
-            defaults) matches how Docker runs images. The inheritable and
-            ambient sets are left untouched, matching modern Docker, which
-            stopped setting inheritable capabilities (CVE-2022-24769).
-        shell: Shell used to run *string* commands (list commands are run
-            argv-style and bypass it). None (default) auto-detects at sandbox
-            creation: /bin/bash when the image has it, else /bin/sh. Agent-
-            and user-supplied commands overwhelmingly assume bash, and on
-            Debian-family images /bin/sh is dash, which fails bashisms
-            ([[ ]], pipefail, arrays) with diagnostics that never say "you
-            are not in bash".
+        network: Network mode (default: "none" — no network access).
+            "public" (recommended for internet access) gives host egress with
+            a generated /etc/resolv.conf from ``dns``, inheriting nothing
+            from the host resolver. "host" gives full host network identity,
+            including the host's resolv.conf and internal networks.
+            "sandbox" uses gVisor's netstack and requires ``rootless=False``.
+        dns: Nameserver IPs for a generated /etc/resolv.conf, mounted
+            read-only (like ``docker --dns``); useful when public DNS is
+            blocked. Defaults to :data:`DEFAULT_PUBLIC_DNS` for "public";
+            overrides the host file for "host". Only valid with those modes.
+        capabilities: Linux capabilities for the container process. None
+            (default) keeps the runtime default (what ``runsc spec`` emits);
+            otherwise the bounding/effective/permitted sets are written
+            exactly, so ``[]`` means no capabilities. Inheritable and ambient
+            stay untouched, matching modern Docker (CVE-2022-24769).
+        shell: Shell for *string* commands (list commands bypass it). None
+            (default) auto-detects at creation: /bin/bash when the image has
+            it, else /bin/sh (dash on Debian images, which breaks bashisms).
         readonly: If True (default), mount container image rootfs in read-only mode
             such that only ``workdir`` is writable. If False, the entire root filesystem
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
@@ -176,8 +147,7 @@ class SandboxConfig:
                 f"Expected one of {VALID_NETWORK_MODES}."
             )
         if self.network == "sandbox" and self.rootless:
-            # runsc rejects this at container start, after the image pull and
-            # bundle build, with an error naming a flag the user never set.
+            # runsc only rejects this at container start, after the pull.
             raise ValueError(
                 "network='sandbox' requires rootless=False; runsc does not "
                 "support the sandbox netstack in rootless mode. Use "
@@ -194,9 +164,8 @@ class SandboxConfig:
     def effective_mount_workdir(self) -> bool:
         """Whether to bind a scratch directory over the container cwd.
 
-        The bind exists to give a readonly rootfs one writable path, so it is
-        only needed when the rootfs is readonly. Mounting it on a writable
-        rootfs buys nothing and hides whatever the image ships at its WORKDIR.
+        Only a readonly rootfs needs it (one writable path); on a writable
+        rootfs it would just shadow the image's WORKDIR content.
         """
         if self.mount_workdir is None:
             return self.readonly

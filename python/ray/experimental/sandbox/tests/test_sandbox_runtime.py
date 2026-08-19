@@ -1,9 +1,8 @@
 """SandboxRuntime-layer tests with fake manager/backend (no runsc needed).
 
-The mount_workdir plumbing bug (the field was declared on ``create()`` but
-never forwarded into the ``SandboxConfig``) survived a green suite because
-every test exercised ``create_oci_spec`` directly. These tests pin the layer
-that bug lived in: config fields must actually reach the backend.
+These pin that ``create()`` arguments actually reach the backend's
+``SandboxConfig`` — the layer where a declared-but-unforwarded field once
+shipped behind a green suite.
 """
 
 import sys

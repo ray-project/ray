@@ -96,9 +96,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         )
         run_args = self._runsc_base_args(config)
         if config.network:
-            # "public" is host egress with a synthetic resolv.conf; the
-            # resolver part is handled in the OCI bundle, runsc just sees
-            # host networking.
+            # "public" = host egress + generated resolv.conf (handled in the
+            # OCI bundle); runsc itself just sees host networking.
             runsc_network = "host" if config.network == "public" else config.network
             run_args.extend(["--network", runsc_network])
         overlay_dir = os.path.join(root_dir, "overlay")
@@ -178,13 +177,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return sandbox_id
 
     def _detect_shell(self, sandbox_id: str, config: SandboxConfig) -> str:
-        """Resolve the shell used for string commands, once per sandbox.
+        """Resolve the shell for string commands, once per sandbox.
 
-        String commands overwhelmingly assume bash, and /bin/sh is dash on
-        Debian-family images, which fails bashisms with unhelpful errors. Use
-        the configured shell when given, otherwise probe for /bin/bash (a
-        single argv exec, so this costs one runsc round-trip at creation, not
-        per command) and fall back to /bin/sh.
+        Uses the configured shell when given; otherwise probes for /bin/bash
+        (one argv exec at creation, not per command) and falls back to
+        /bin/sh, since string commands overwhelmingly assume bash.
         """
         if config.shell is not None:
             return config.shell
