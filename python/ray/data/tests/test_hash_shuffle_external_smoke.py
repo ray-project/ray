@@ -41,6 +41,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.stats import Timer
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
+from ray.data.tests.conftest import noop_counter
 from ray.data.tests.util import run_op_tasks_sync
 
 # --- helpers -----------------------------------------------------------------
@@ -142,6 +143,31 @@ def ray_init_shutdown():
         ray.init(num_cpus=4, include_dashboard=False, ignore_reinit_error=True)
     yield
     # Leave Ray up; multiple tests in this file reuse it.
+
+
+@pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
+def test_shuffle_input_batch_bytes_controls_map_task_batching(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    batch_bytes,
+    expected_num_tasks,
+):
+    """batch_bytes=0 submits one map task per input bundle; a large value
+    buffers all input into a single map task, flushed when input ends."""
+    restore_data_context.shuffle_input_batch_bytes = batch_bytes
+    op = ExternalHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=2,
+        partition_fn=_make_hash_partition_fn(["id"], 2),
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    for bundle in make_ref_bundles([[0], [1]]):
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+
+    assert len(op.get_active_tasks()) == expected_num_tasks
 
 
 @pytest.mark.parametrize("num_blocks,rows,num_parts", [(4, 250, 4), (8, 100, 3)])

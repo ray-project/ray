@@ -256,6 +256,7 @@ def test_external_flag_off_keeps_object_store_path(
     raise so any construction of the external op fails the test immediately.
     """
     from unittest import mock
+
     from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
         ExternalHashShuffleMapOp,
     )
