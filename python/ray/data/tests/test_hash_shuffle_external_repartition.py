@@ -8,7 +8,9 @@ import glob
 import os
 import tempfile
 import time
+from typing import cast
 
+import pyarrow as pa
 import pytest
 
 import ray
@@ -141,7 +143,7 @@ def test_external_more_partitions_than_keys_emits_empty_blocks(
     schemas = []
     for ref_bundle in out.iter_internal_ref_bundles():
         for block_ref in ref_bundle.block_refs:
-            block = ray.get(block_ref)
+            block = cast(pa.Table, ray.get(block_ref))
             rows_per_block.append(block.num_rows)
             schemas.append(block.schema)
 
@@ -166,7 +168,7 @@ def test_external_repartition_empty_dataset(
     assert out.count() == 0
     assert out.num_blocks() == 4
     rows_per_block = [
-        ray.get(block_ref).num_rows
+        cast(pa.Table, ray.get(block_ref)).num_rows
         for ref_bundle in out.iter_internal_ref_bundles()
         for block_ref in ref_bundle.block_refs
     ]
@@ -181,8 +183,6 @@ def test_external_repartition_preserves_null_typed_rows(
     """A null-typed column has rows with ``tbl.nbytes == 0``. Empty-gating
     by bytes would drop the partition; gating by ``num_rows`` must keep them.
     """
-    import pyarrow as pa
-
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.use_external_hash_shuffle = True
@@ -211,7 +211,7 @@ def test_external_repartition_with_sort_produces_sorted_partitions(
 
     for ref_bundle in out.iter_internal_ref_bundles():
         for block_ref in ref_bundle.block_refs:
-            ids = ray.get(block_ref)["id"].to_pylist()
+            ids = cast(pa.Table, ray.get(block_ref))["id"].to_pylist()
             assert ids == sorted(ids)
 
 
