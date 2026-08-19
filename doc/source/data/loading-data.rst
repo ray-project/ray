@@ -330,10 +330,13 @@ API. For example:
 
     ds = ray.data.read_parquet("hdfs://hostname:8020/path/to/data")
 
-PyArrow HDFS embeds a Java Virtual Machine (JVM) in the Python process. On Linux, its
-signal handling can conflict with Ray and cause ``SIGSEGV``, ``SIGABRT``, or
-``hs_err_pid*.log`` errors. See :ref:`troubleshoot-pyarrow-hdfs-jvm-crashes` for the
-preferred HotSpot signal-chaining configuration and fallback.
+.. warning::
+
+    PyArrow HDFS embeds a Java Virtual Machine (JVM) in the Python process. On Linux,
+    its signal handling can conflict with Ray and cause the process to exit with
+    ``SIGSEGV`` or ``SIGABRT`` and create an ``hs_err_pid*.log`` file. See
+    :ref:`troubleshoot-pyarrow-hdfs-jvm-crashes` for the HotSpot signal-chaining
+    configuration and the last-resort fallback.
 
 Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~
