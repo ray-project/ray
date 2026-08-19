@@ -404,8 +404,9 @@ def test_create_oci_spec_tolerates_non_dict_namespace_entries(tmp_path):
     assert spec["linux"]["namespaces"] == ["pid", None]
 
 
-def test_create_oci_spec_mount_workdir_toggle(tmp_path):
-    """mount_workdir=False must not shadow image content at the workdir."""
+def test_create_oci_spec_workdir_path_drives_the_scratch_mount(tmp_path):
+    """The scratch bind exists iff a workdir_path is given; the process cwd
+    is independent of it."""
     mgr = _StubImageManager(tmp_path)
     workdir_path = str(tmp_path / "scratch")
     os.makedirs(workdir_path, exist_ok=True)
@@ -422,11 +423,9 @@ def test_create_oci_spec_mount_workdir_toggle(tmp_path):
         image="fake:latest",
         base_spec=_sample_base_spec(),
         container_cwd="/app",
-        workdir_path=workdir_path,
-        mount_workdir=False,
+        workdir_path=None,
     )
     assert not any(m["destination"] == "/app" for m in unmounted["mounts"])
-    # The process cwd is still the requested workdir.
     assert unmounted["process"]["cwd"] == "/app"
 
 

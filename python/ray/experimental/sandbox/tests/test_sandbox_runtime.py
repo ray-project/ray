@@ -59,7 +59,6 @@ def test_create_forwards_config_fields_to_backend():
         memory="1Gi",
         env={"A": "1"},
         workdir="/app",
-        mount_workdir=False,
         network="host",
         dns=["10.0.0.2"],
         capabilities=["CAP_CHOWN"],
@@ -72,8 +71,6 @@ def test_create_forwards_config_fields_to_backend():
     assert config.cpu == 2.0
     assert config.env == {"A": "1"}
     assert config.workdir == "/app"
-    # The regression this file exists for: the field must reach the config.
-    assert config.mount_workdir is False
     assert config.network == "host"
     assert config.dns == ["10.0.0.2"]
     assert config.capabilities == ["CAP_CHOWN"]

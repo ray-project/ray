@@ -19,12 +19,10 @@ class Sandbox:
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        workdir: Default working directory inside the sandbox. By default, the
-            working directory is the only writable path in the sandbox (unless
-            ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
-        mount_workdir: Whether to bind-mount a host scratch directory at
-            ``workdir`` (shadows image content there). None (default): only
-            when ``readonly=True``.
+        workdir: Working directory for commands; None uses the image's
+            WORKDIR. On a readonly rootfs an explicit workdir is also the
+            sandbox's only writable path; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         ttl_seconds: Optional time-to-live in seconds, wall-clock from
             creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -52,7 +50,6 @@ class Sandbox:
         memory: Optional[Union[str, int, float]] = None,
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
-        mount_workdir: Optional[bool] = None,
         ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
@@ -82,7 +79,6 @@ class Sandbox:
             memory=memory,
             env=env,
             workdir=workdir,
-            mount_workdir=mount_workdir,
             ttl_seconds=ttl_seconds,
             timeout_seconds=timeout_seconds,
             rootless=rootless,

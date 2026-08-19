@@ -244,5 +244,66 @@ def test_string_exec_shell_configuration():
         runtime.delete(instance_id)
 
 
+def test_workdir_writability_matrix():
+    """readonly=True + workdir=None -> nothing writable; explicit workdir is
+    the only writable path; readonly=False -> everything writable."""
+    runtime = SandboxRuntime()
+
+    # Default (readonly=True, workdir=None): the rootfs is not writable.
+    # (Standard tmpfs mounts like /tmp are, as in any container runtime.)
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        assert runtime.exec(instance_id, "touch /probe").exit_code != 0
+        assert runtime.exec(instance_id, "touch /etc/probe").exit_code != 0
+    finally:
+        runtime.delete(instance_id)
+
+    # readonly=True, explicit workdir: it is the only writable path.
+    instance_id = runtime.create(
+        image="busybox:latest", workdir="/data", shell="/bin/sh"
+    )
+    try:
+        assert runtime.exec(instance_id, "touch /data/probe").exit_code == 0
+        assert runtime.exec(instance_id, "touch /etc/probe").exit_code != 0
+        assert runtime.exec(instance_id, "pwd").stdout.strip() == "/data"
+    finally:
+        runtime.delete(instance_id)
+
+    # readonly=False: everything is writable, with or without a workdir.
+    instance_id = runtime.create(
+        image="busybox:latest", readonly=False, shell="/bin/sh"
+    )
+    try:
+        assert runtime.exec(instance_id, "touch /etc/probe").exit_code == 0
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_image_workdir_sets_cwd_without_becoming_writable():
+    """The image's own WORKDIR is inherited as the process cwd only — its
+    content stays visible and it is never silently made writable."""
+    runtime = SandboxRuntime()
+    # golang:alpine sets WORKDIR /go and ships /go/bin and /go/src.
+    instance_id = runtime.create(image="golang:1.22-alpine", shell="/bin/sh")
+    try:
+        assert runtime.exec(instance_id, "pwd").stdout.strip() == "/go"
+        listing = runtime.exec(instance_id, "ls /go").stdout
+        assert "bin" in listing and "src" in listing
+        # Inherited WORKDIR is not a scratch mount: still readonly.
+        assert runtime.exec(instance_id, "touch /go/probe").exit_code != 0
+    finally:
+        runtime.delete(instance_id)
+
+    # With a writable rootfs the same path is writable and unshadowed.
+    instance_id = runtime.create(
+        image="golang:1.22-alpine", readonly=False, shell="/bin/sh"
+    )
+    try:
+        assert "bin" in runtime.exec(instance_id, "ls /go").stdout
+        assert runtime.exec(instance_id, "touch /go/probe").exit_code == 0
+    finally:
+        runtime.delete(instance_id)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

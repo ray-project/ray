@@ -83,13 +83,12 @@ class SandboxConfig:
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        workdir: Default working directory inside the sandbox. By default, the
-            working directory is the only writable path in the sandbox (unless
-            ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
-        mount_workdir: Whether to bind-mount a host scratch directory at
-            ``workdir``. None (default) mounts it only when ``readonly=True``
-            (its purpose is giving a readonly rootfs one writable path); the
-            mount shadows any image content at that path.
+        workdir: Working directory for commands (the process cwd). None
+            (default) uses the image's WORKDIR, or "/" if the image sets
+            none. On a readonly rootfs, an *explicitly* passed workdir is
+            also bind-mounted as the sandbox's only writable path
+            (host-backed scratch); an inherited image WORKDIR is never
+            silently made writable.
         ttl_seconds: Optional time-to-live in seconds, measured wall-clock
             from creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
@@ -112,11 +111,13 @@ class SandboxConfig:
         shell: Shell for *string* commands (list commands bypass it).
             Defaults to "/bin/bash", which string commands overwhelmingly
             assume; set to "/bin/sh" for images without bash.
-        readonly: If True (default), mount container image rootfs in read-only mode
-            such that only ``workdir`` is writable. If False, the entire root filesystem
-            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
-            filesystem, ensuring multiple sandboxes running the same container image do
-            not interfere with each other or modify the base image.
+        readonly: If True (default), the rootfs is read-only and only an
+            explicitly passed ``workdir`` is writable — with no workdir,
+            nothing on the rootfs is (safe by default; standard tmpfs mounts
+            such as /tmp remain writable). If False, the entire rootfs is
+            writable through the per-sandbox copy-on-write overlay: image
+            content stays visible, sandboxes don't interfere with each
+            other, and the base image is never modified.
     """
 
     image: str
@@ -124,7 +125,6 @@ class SandboxConfig:
     memory: Union[str, int, float] = 0
     env: Dict[str, str] = field(default_factory=dict)
     workdir: Optional[str] = None
-    mount_workdir: Optional[bool] = None
     ttl_seconds: Optional[int] = None
     timeout_seconds: float = 30.0
     rootless: bool = True
@@ -159,17 +159,6 @@ class SandboxConfig:
                 "dns is only valid with network='public' or network='host'; "
                 f"network={self.network!r} does not mount a resolv.conf."
             )
-
-    @property
-    def effective_mount_workdir(self) -> bool:
-        """Whether to bind a scratch directory over the container cwd.
-
-        Only a readonly rootfs needs it (one writable path); on a writable
-        rootfs it would just shadow the image's WORKDIR content.
-        """
-        if self.mount_workdir is None:
-            return self.readonly
-        return self.mount_workdir
 
 
 GVisorSandboxConfig = SandboxConfig

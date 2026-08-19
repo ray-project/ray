@@ -138,7 +138,6 @@ class BaseImageManager(ABC):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         resolv_conf_source: Optional[str] = None,
-        mount_workdir: bool = True,
         base_spec: Optional[Dict[str, Any]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
@@ -147,7 +146,9 @@ class BaseImageManager(ABC):
         Args:
             image: Container image name or tar path.
             container_cwd: Working directory inside the container.
-            workdir_path: Host path to bind mount into container_cwd.
+            workdir_path: Optional host directory to bind-mount read-write
+                at container_cwd — the single writable path on a readonly
+                rootfs. None mounts nothing.
             env_dict: Optional environment variables dictionary overriding image envs.
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
@@ -158,9 +159,6 @@ class BaseImageManager(ABC):
                 spec's empty network namespace.
             resolv_conf_source: Optional file to bind-mount read-only at
                 /etc/resolv.conf.
-            mount_workdir: If True (default), bind-mount ``workdir_path`` at
-                the container cwd (shadowing image content there). False
-                leaves the image filesystem untouched.
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
@@ -183,14 +181,14 @@ class BaseImageManager(ABC):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
-        mount_workdir: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
         Args:
             root_dir: Host directory for the container bundle.
-            workdir_path: Host directory for the sandbox working directory.
+            workdir_path: Optional host directory bind-mounted read-write at
+                container_cwd (see create_oci_spec). None mounts nothing.
             container_cwd: Working directory inside container.
             image: Container image name or tar path.
             env_dict: Environment variables dictionary.
@@ -201,8 +199,6 @@ class BaseImageManager(ABC):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
-            mount_workdir: Whether to bind-mount workdir_path at the container
-                cwd (see create_oci_spec).
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -333,7 +329,6 @@ class ImageManager(BaseImageManager):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         resolv_conf_source: Optional[str] = None,
-        mount_workdir: bool = True,
         base_spec: Optional[Dict[str, Any]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
@@ -342,7 +337,9 @@ class ImageManager(BaseImageManager):
         Args:
             image: Container image name or tar path.
             container_cwd: Working directory inside the container.
-            workdir_path: Host path to bind mount into container_cwd.
+            workdir_path: Optional host directory to bind-mount read-write
+                at container_cwd — the single writable path on a readonly
+                rootfs. None mounts nothing.
             env_dict: Optional environment variables dictionary overriding image envs.
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
@@ -353,9 +350,6 @@ class ImageManager(BaseImageManager):
                 spec's empty network namespace.
             resolv_conf_source: Optional file to bind-mount read-only at
                 /etc/resolv.conf.
-            mount_workdir: If True (default), bind-mount ``workdir_path`` at
-                the container cwd (shadowing image content there). False
-                leaves the image filesystem untouched.
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
@@ -408,7 +402,7 @@ class ImageManager(BaseImageManager):
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
 
-        if workdir_path and mount_workdir:
+        if workdir_path:
             default_binds = [
                 (container_cwd, workdir_path),
             ]
@@ -498,14 +492,14 @@ class ImageManager(BaseImageManager):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
-        mount_workdir: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
 
         Args:
             root_dir: Host directory for the container bundle.
-            workdir_path: Host directory for the sandbox working directory.
+            workdir_path: Optional host directory bind-mounted read-write at
+                container_cwd (see create_oci_spec). None mounts nothing.
             container_cwd: Working directory inside container.
             image: Container image name or tar path.
             env_dict: Environment variables dictionary.
@@ -516,8 +510,6 @@ class ImageManager(BaseImageManager):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
-            mount_workdir: Whether to bind-mount workdir_path at the container
-                cwd (see create_oci_spec).
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -552,7 +544,6 @@ class ImageManager(BaseImageManager):
             capabilities=capabilities,
             network=network,
             resolv_conf_source=resolv_conf_source,
-            mount_workdir=mount_workdir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 

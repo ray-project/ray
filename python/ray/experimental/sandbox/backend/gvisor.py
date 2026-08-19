@@ -57,22 +57,29 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._image_manager.pull_image(
                 config.image, timeout_seconds=config.timeout_seconds
             )
-            if not config.workdir:
-                config.workdir = self._image_manager.get_workdir(config.image)
-                if not config.workdir:
-                    config.workdir = "/"
-
-            workdir_path = os.path.abspath(
-                os.path.join(root_dir, config.workdir.lstrip("/"))
+            # The process cwd: an explicit workdir, else the image's WORKDIR.
+            container_cwd = (
+                config.workdir or self._image_manager.get_workdir(config.image) or "/"
             )
-            if not (
-                workdir_path == os.path.abspath(root_dir)
-                or workdir_path.startswith(os.path.abspath(root_dir) + os.sep)
-            ):
-                raise SandboxCreationError(
-                    f"Invalid workdir '{config.workdir}': Path traversal detected."
+
+            # A host-backed scratch directory exists only for an *explicitly*
+            # requested workdir on a readonly rootfs — the sandbox's single
+            # writable path there. A writable rootfs needs none (the overlay
+            # covers writes), and an inherited image WORKDIR is never
+            # silently made writable.
+            workdir_path = None
+            if config.workdir and config.readonly:
+                workdir_path = os.path.abspath(
+                    os.path.join(root_dir, config.workdir.lstrip("/"))
                 )
-            os.makedirs(workdir_path, mode=0o777, exist_ok=True)
+                if not (
+                    workdir_path == os.path.abspath(root_dir)
+                    or workdir_path.startswith(os.path.abspath(root_dir) + os.sep)
+                ):
+                    raise SandboxCreationError(
+                        f"Invalid workdir '{config.workdir}': Path traversal detected."
+                    )
+                os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
@@ -82,7 +89,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
             workdir_path=workdir_path,
-            container_cwd=config.workdir,
+            container_cwd=container_cwd,
             image=config.image,
             env_dict=config.env,
             cpu=config.cpu,
@@ -91,7 +98,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             capabilities=config.capabilities,
             network=config.network,
             dns=config.dns,
-            mount_workdir=config.effective_mount_workdir,
             _oci_spec_transform_fn=config._oci_spec_transform_fn,
         )
         run_args = self._runsc_base_args(config)
@@ -166,6 +172,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
             "workdir": workdir_path,
+            "cwd": container_cwd,
             "config": config,
             "proc": proc,
             "stderr_file": stderr_file,
@@ -225,7 +232,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if env:
             exec_env.update(env)
 
-        exec_cwd = cwd or config.workdir
+        exec_cwd = cwd or meta["cwd"]
 
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
@@ -278,7 +285,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig = meta["config"]
 
         runsc_args = self._runsc_base_args(config)
-        exec_cwd = config.workdir
+        exec_cwd = meta["cwd"]
         runsc_args.extend(
             [
                 "exec",
@@ -313,7 +320,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig = meta["config"]
 
         runsc_args = self._runsc_base_args(config)
-        exec_cwd = config.workdir
+        exec_cwd = meta["cwd"]
         runsc_args.extend(["exec", "-cwd", exec_cwd, sandbox_id, "cat", "--", path])
 
         proc = subprocess.Popen(
@@ -376,7 +383,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
-        mount_workdir: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
@@ -391,6 +397,5 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             capabilities=capabilities,
             network=network,
             dns=dns,
-            mount_workdir=mount_workdir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
