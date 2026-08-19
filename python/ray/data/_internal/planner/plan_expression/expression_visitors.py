@@ -15,6 +15,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnnestExpr,
     UUIDExpr,
     _CallableClassUDF,
     _ExprVisitor,
@@ -30,6 +31,7 @@ from ray.data.util.expression_utils import (
     _star_fingerprint_key,
     _udf_fingerprint_key,
     _unary_fingerprint_key,
+    _unnest_fingerprint_key,
     _uuid_fingerprint_key,
 )
 
@@ -108,6 +110,10 @@ class _ExprVisitorBase(_ExprVisitor[None]):
     def visit_uuid(self, expr: "UUIDExpr") -> None:
         """Visit a uuid expression (no columns to collect)."""
         pass
+
+    def visit_unnest(self, expr: "UnnestExpr") -> None:
+        """Default implementation: recursively visit the inner expression."""
+        self.visit(expr.inner)
 
 
 class _ColumnReferenceCollector(_ExprVisitorBase):
@@ -220,6 +226,9 @@ class _IdempotencyVisitor(_ExprVisitor[bool]):
         return all(arg.is_idempotent() for arg in expr.args) and all(
             value.is_idempotent() for value in expr.kwargs.values()
         )
+
+    def visit_unnest(self, expr: "UnnestExpr") -> bool:
+        return expr.inner.is_idempotent()
 
 
 # Stateless singleton: ``Expr.is_idempotent`` reuses this rather than allocating a
@@ -425,6 +434,18 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         return expr
 
+    def visit_unnest(self, expr: "UnnestExpr") -> Expr:
+        """Visit an unnest expression and rewrite its inner expression.
+
+        Args:
+            expr: The unnest expression.
+
+        Returns:
+            A new UnnestExpr with the rewritten inner expression.
+        """
+        new_inner = self.visit(expr.inner)
+        return UnnestExpr(inner=new_inner)
+
 
 def _is_col_expr(expr: Expr) -> bool:
     return isinstance(expr, ColumnExpr) or (
@@ -567,6 +588,13 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_uuid(self, expr: "UUIDExpr") -> str:
         return self._make_tree_lines("UUID()", expr=expr)
 
+    def visit_unnest(self, expr: "UnnestExpr") -> str:
+        return self._make_tree_lines(
+            "UNNEST",
+            children=[("inner", expr.inner)],
+            expr=expr,
+        )
+
 
 class _InlineExprReprVisitor(_ExprVisitor[str]):
     """Visitor that generates concise inline string representations of expressions.
@@ -670,6 +698,11 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
         """Visit a uuid expression and return its inline representation."""
         return "uuid()"
 
+    def visit_unnest(self, expr: "UnnestExpr") -> str:
+        """Visit an unnest expression and return its inline representation."""
+        inner_str = self.visit(expr.inner)
+        return f"unnest({inner_str})"
+
 
 class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
     """Visitor that computes a hashable structural fingerprint for an expression.
@@ -725,6 +758,9 @@ class _StructuralFingerprintVisitor(_ExprVisitor[Hashable]):
 
     def visit_uuid(self, expr: UUIDExpr) -> Hashable:
         return _uuid_fingerprint_key(expr)
+
+    def visit_unnest(self, expr: "UnnestExpr") -> Hashable:
+        return _unnest_fingerprint_key(self.visit(expr.inner))
 
 
 @dataclass(frozen=True)
@@ -818,6 +854,12 @@ class _StructuralFingerprintOccurrenceCollector(_ExprVisitor[Hashable]):
 
     def visit_uuid(self, expr: UUIDExpr) -> Hashable:
         return self._record(expr, _uuid_fingerprint_key(expr))
+
+    def visit_unnest(self, expr: "UnnestExpr") -> Hashable:
+        return self._record(
+            expr,
+            _unnest_fingerprint_key(self._visit_child(expr.inner)),
+        )
 
 
 def get_column_references(expr: Expr) -> List[str]:

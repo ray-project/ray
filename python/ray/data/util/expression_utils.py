@@ -262,3 +262,7 @@ def _random_fingerprint_key(expr: "RandomExpr") -> Hashable:
 
 def _uuid_fingerprint_key(expr: "UUIDExpr") -> Hashable:
     return ("uuid", _data_type_key(expr))
+
+
+def _unnest_fingerprint_key(inner_key: Hashable) -> Hashable:
+    return ("unnest", inner_key)

@@ -29,6 +29,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnnestExpr,
     UUIDExpr,
 )
 from ray.util import log_once
@@ -239,6 +240,14 @@ class _IcebergExpressionVisitor(
         """UUID expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "UUID expressions cannot be converted to Iceberg filter expressions."
+        )
+
+    def visit_unnest(
+        self, expr: "UnnestExpr"
+    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+        """Unnest expressions cannot be converted to Iceberg expressions."""
+        raise TypeError(
+            "Unnest expressions cannot be converted to Iceberg filter expressions."
         )
 
 
