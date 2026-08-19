@@ -398,7 +398,10 @@ class ExternalHashShuffleMapOp(
             return
 
         # One Ray object shared across all N wrappers.
-        self._shared_handles_ref = ray.put(self._completed_handle_refs)  # pyrefly: ignore[bad-assignment]
+        # pyrefly: ignore[bad-assignment]
+        self._shared_handles_ref = ray.put(
+            self._completed_handle_refs
+        )
 
         partition_bytes = self.get_partition_bytes()
         for partition_id in range(self._num_partitions):
@@ -495,6 +498,7 @@ class ExternalHashShuffleMapOp(
         seen_nodes: set = set()
         for ref in self._completed_handle_refs:
             try:
+                # pyrefly: ignore[no-matching-overload]
                 handle = ray.get(ref)
             except Exception:
                 continue

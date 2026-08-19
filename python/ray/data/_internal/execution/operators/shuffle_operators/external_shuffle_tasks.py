@@ -198,9 +198,7 @@ def _external_shuffle_map_task(
         "total_bytes": final_size_on_close,
         "compression": compression,
         # Dense [num_partitions] row counts; empty-gating uses this, not nbytes.
-        "num_rows": _counts_to_array(
-            writer.rows_per_partition, num_partitions
-        ),
+        "num_rows": _counts_to_array(writer.rows_per_partition, num_partitions),
         # Dense [num_partitions] decoded tbl.nbytes; reduce memory estimates.
         "decoded_bytes": _counts_to_array(
             writer.decoded_bytes_per_partition, num_partitions
