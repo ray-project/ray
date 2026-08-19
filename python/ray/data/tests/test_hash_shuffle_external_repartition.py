@@ -46,6 +46,34 @@ def _assert_no_leftover_shuffle_dirs():
 # --- Correctness -------------------------------------------------------------
 
 
+def test_external_sort_reduce_uses_higher_multiplier(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    disable_fallback_to_object_extension,
+):
+    """Sorted external reduces request 3x, matching object-store ShuffleReduceOp."""
+    from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+        SHUFFLE_PEAK_MEMORY_MULTIPLIER,
+    )
+    from ray.data._internal.logical.optimizers import get_execution_plan
+
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_external_hash_shuffle = True
+
+    sorted_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"], sort=True)._logical_plan
+    )[0].dag
+    assert sorted_dag._peak_memory_multiplier == 3
+    sorted_dag.input_dependencies[0]._partition_bytes[0] = 100
+    assert sorted_dag.incremental_resource_usage().memory == 300
+
+    plain_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"])._logical_plan
+    )[0].dag
+    assert plain_dag._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
+
+
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
 def test_external_repartition_keys_preserves_rows(
     ray_start_regular_shared_2_cpus,

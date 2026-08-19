@@ -399,6 +399,7 @@ class FuseOperators(Rule):
                 reduce_fn=up_op._reduce_fn,
                 disallow_block_splitting=up_op._disallow_block_splitting,
                 reduce_ray_remote_args=up_op._reduce_ray_remote_args,
+                peak_memory_multiplier=up_op._peak_memory_multiplier,
                 name=name,
                 fused_output_map_transformer=down_op.get_map_transformer(),
                 fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),

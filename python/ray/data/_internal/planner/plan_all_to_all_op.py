@@ -135,13 +135,12 @@ def _plan_hash_shuffle_repartition_v2(
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=True,
+        peak_memory_multiplier=peak_memory_multiplier,
         name=(
             f"{prefix}Reduce(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
-    if reduce_cls is ShuffleReduceOp:
-        reduce_kwargs["peak_memory_multiplier"] = peak_memory_multiplier
     reduce_op = reduce_cls(map_op, data_context, **reduce_kwargs)
     return reduce_op
 
