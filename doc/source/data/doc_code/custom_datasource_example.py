@@ -25,18 +25,15 @@ class ImageDatasource(FileBasedDatasource):
         import io
         import numpy as np
         from PIL import Image
-        from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+        from ray.data.block import BlockAccessor
 
         data = f.readall()
         image = Image.open(io.BytesIO(data))
         image = image.convert(self.mode)
 
         # Each block contains one row
-        builder = DelegatingBlockBuilder()
         array = np.asarray(image)
-        item = {"image": array}
-        builder.add(item)
-        yield builder.build()
+        yield BlockAccessor.batch_to_block({"image": np.array([array])})
 # __read_stream_end__
 
 # __read_datasource_start__

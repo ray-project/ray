@@ -110,7 +110,6 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
     import numpy as np
     from ray.data.aggregate import AggregateFnV2
-    from ray.data._internal.util import is_null
     from ray.data.block import Block, BlockAccessor, AggType, U
     import pyarrow.compute as pc
     from typing import List, Optional
@@ -143,7 +142,7 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
             sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
 
-            if is_null(sum_):
+            if sum_ is None or (isinstance(sum_, float) and np.isnan(sum_)):
                 # In case of ignore_nulls=False and column containing 'null'
                 # return as is (to prevent unnecessary type conversions, when, for ex,
                 # using Pandas and returning None)
