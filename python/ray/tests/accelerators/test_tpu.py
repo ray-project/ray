@@ -360,14 +360,14 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
         if len(tpu_chips) == 1:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+                == tpu.TPU_CHIPS_PER_PROCESS_BOUNDS[1]
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
         elif len(tpu_chips) == 2:
             assert (
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
-                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+                == tpu.TPU_CHIPS_PER_PROCESS_BOUNDS[2]
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
@@ -610,6 +610,32 @@ def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
     """
     with pytest.raises(ValueError, match="out of bounds"):
         tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+
+
+@pytest.mark.parametrize(
+    "input_endpoint, expected_host",
+    [
+        ("10.0.0.1", "10.0.0.1"),
+        ("10.0.0.1:8471", "10.0.0.1"),
+        ("http://10.0.0.1:8471", "10.0.0.1"),
+        ("https://10.0.0.1:8471/path", "10.0.0.1"),
+        ("node-0.cluster.local", "node-0.cluster.local"),
+        ("node-0.cluster.local:8471", "node-0.cluster.local"),
+        ("2001:db8::1", "2001:db8::1"),
+        ("2001:db8:85a3::8a2e:370:7334", "2001:db8:85a3::8a2e:370:7334"),
+        ("[2001:db8::1]:8471", "2001:db8::1"),
+        ("[2001:db8::1]", "2001:db8::1"),
+        ("http://[2001:db8::1]:8471", "2001:db8::1"),
+        ("fe80::1ff:fe23:4567:890a", "fe80::1ff:fe23:4567:890a"),
+        ("::1", "::1"),
+        ("[::1]:8080", "::1"),
+        ("", ""),
+        ("   ", ""),
+        (None, ""),
+    ],
+)
+def test_strip_endpoint_port(input_endpoint, expected_host):
+    assert tpu._strip_endpoint_port(input_endpoint) == expected_host
 
 
 if __name__ == "__main__":

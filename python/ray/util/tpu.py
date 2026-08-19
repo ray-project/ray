@@ -5,7 +5,7 @@ import math
 import os
 import threading
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
@@ -24,6 +24,7 @@ from ray._private.accelerators.tpu import (
     _get_physical_worker_id_from_coords,
     _get_worker_dims_for_topology,
     _parse_topology_dims,
+    _strip_endpoint_port,
     get_chips_per_host,
     get_jax_chips_per_process_bounds,
     get_jax_process_bounds,
@@ -316,7 +317,8 @@ def get_jax_env_vars(
 
     Args:
         worker_hostnames: Comma-separated string or list of host IP addresses or DNS hostnames.
-            If port numbers are included (e.g. "10.0.0.1:8471"), they will be stripped.
+            If port numbers (e.g. "10.0.0.1:8471" or "[2001:db8::1]:8471") or URI schemes are
+            included, they are automatically stripped to conform to LibTPU requirements.
         worker_id: Optional integer or string ID of the worker (0-indexed).
         process_bounds: Optional process bounds string (e.g. "1,2,1") for subslice execution.
         chips_per_process_bounds: Optional chips per process bounds string (e.g. "2,2,1").
@@ -329,13 +331,7 @@ def get_jax_env_vars(
     else:
         raw_list = [str(h).strip() for h in worker_hostnames if str(h).strip()]
 
-    # Strip port if host is formatted as host:port
-    clean_hosts = []
-    for h in raw_list:
-        if ":" in h:
-            clean_hosts.append(h.split(":")[0])
-        else:
-            clean_hosts.append(h)
+    clean_hosts = [_strip_endpoint_port(h) for h in raw_list if _strip_endpoint_port(h)]
 
     env_vars = {
         TPU_WORKER_HOSTNAMES_ENV_VAR: ",".join(clean_hosts),
@@ -552,38 +548,59 @@ def get_num_tpu_slices(
     )
 
 
+def _get_pg_bundle_node_ips(
+    pg: Optional[PlacementGroup],
+    bundle_indices: Sequence[int],
+    nodes: Optional[List[Dict[str, Any]]] = None,
+) -> List[Optional[str]]:
+    """Look up the NodeManagerAddress (IP) for multiple bundles of a placement group.
+
+    Performs a single placement_group_table lookup and resolves all bundle indices
+    against node addresses in O(1) time per bundle.
+
+    Returns None for any unplaced, unscheduled, or unresolvable bundle.
+    """
+    if pg is None or not ray.is_initialized():
+        return [None] * len(bundle_indices)
+    try:
+        table = placement_group_table(pg)
+        if not table:
+            return [None] * len(bundle_indices)
+        bundles_to_node_id = table.get("bundles_to_node_id", {})
+        if not bundles_to_node_id:
+            return [None] * len(bundle_indices)
+
+        node_list = nodes if nodes is not None else ray.nodes()
+        node_id_to_ip = {
+            node["NodeID"]: node.get("NodeManagerAddress")
+            for node in node_list
+            if node.get("NodeID")
+        }
+
+        return [
+            node_id_to_ip.get(bundles_to_node_id.get(idx)) for idx in bundle_indices
+        ]
+    except Exception as e:
+        logger.debug(
+            "Failed to resolve bundle node IPs for placement group %s: %s",
+            pg,
+            e,
+        )
+        return [None] * len(bundle_indices)
+
+
 def _get_pg_bundle_node_ip(
     pg: Optional[PlacementGroup],
     bundle_idx: int = 0,
     nodes: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[str]:
-    """Look up the NodeManagerAddress (IP) of a placement group bundle.
+    """Look up the NodeManagerAddress (IP) of a single placement group bundle.
 
     Returns None if Ray is uninitialized, the placement group is unplaced,
     or the bundle's node cannot be found. Does not raise.
     """
-    if pg is None or not ray.is_initialized():
-        return None
-    try:
-        table = placement_group_table(pg)
-        if not table:
-            return None
-        bundles_to_node_id = table.get("bundles_to_node_id", {})
-        node_id = bundles_to_node_id.get(bundle_idx)
-        if not node_id:
-            return None
-        node_list = nodes if nodes is not None else ray.nodes()
-        for node in node_list:
-            if node.get("NodeID") == node_id:
-                return node.get("NodeManagerAddress")
-    except Exception as e:
-        logger.debug(
-            "Failed to resolve bundle %s node IP for placement group %s: %s",
-            bundle_idx,
-            pg,
-            e,
-        )
-    return None
+    ips = _get_pg_bundle_node_ips(pg, range(bundle_idx, bundle_idx + 1), nodes=nodes)
+    return ips[0] if ips else None
 
 
 @PublicAPI(stability="alpha")
@@ -1178,21 +1195,21 @@ class SlicePlacementGroup:
             if not self._managed_pgs or slice_index >= len(self._managed_pgs):
                 return [None] * bundles_per_slice
             pg = self._managed_pgs[slice_index]
-            if pg is None:
-                return [None] * bundles_per_slice
-            return [
-                _get_pg_bundle_node_ip(pg, i, nodes=nodes)
-                for i in range(bundles_per_slice)
-            ]
+            return _get_pg_bundle_node_ips(
+                pg,
+                range(bundles_per_slice),
+                nodes=nodes,
+            )
         else:
             if not self._managed_pgs or self._managed_pgs[0] is None:
                 return [None] * bundles_per_slice
             pg = self._managed_pgs[0]
             start = slice_index * bundles_per_slice
-            return [
-                _get_pg_bundle_node_ip(pg, start + i, nodes=nodes)
-                for i in range(bundles_per_slice)
-            ]
+            return _get_pg_bundle_node_ips(
+                pg,
+                range(start, start + bundles_per_slice),
+                nodes=nodes,
+            )
 
     @property
     def worker_addrs(self) -> List[Optional[str]]:
@@ -2496,10 +2513,11 @@ class SubslicePlacementGroup:
         if self._placement_group is None:
             return [None] * self._num_hosts
         nodes = ray.nodes() if ray.is_initialized() else []
-        return [
-            _get_pg_bundle_node_ip(self._placement_group, i, nodes=nodes)
-            for i in range(self._num_hosts)
-        ]
+        return _get_pg_bundle_node_ips(
+            self._placement_group,
+            range(self._num_hosts),
+            nodes=nodes,
+        )
 
     @PublicAPI(stability="alpha")
     def get_jax_env_vars(
@@ -2526,8 +2544,8 @@ class SubslicePlacementGroup:
                 # Extract host IPs from slicebuilder address:port list
                 clean = []
                 for a in self._slicebuilder_addresses:
-                    h = a.split(":")[0] if ":" in a else a
-                    if h not in clean:
+                    h = _strip_endpoint_port(a)
+                    if h and h not in clean:
                         clean.append(h)
                 worker_hostnames = clean
             else:
@@ -2721,7 +2739,7 @@ def _build_subslice_pg(
     lifetime: Optional[str],
     tpu_resource_per_chip: Optional[int] = None,
     accelerator_version: Optional[str] = None,
-    host_addresses_by_worker_id: Optional[Dict[Union[int, str], List[str]]] = None,
+    host_addresses_by_worker_id: Optional[Dict[str, List[str]]] = None,
 ) -> SubslicePlacementGroup:
     """Create a Ray placement group for the selected subslice workers and
     return a :class:`SubslicePlacementGroup` handle.
@@ -2745,9 +2763,9 @@ def _build_subslice_pg(
         addrs: List[str] = []
         complete = True
         for wid in worker_ids:
-            host_addrs = host_addresses_by_worker_id.get(
-                wid
-            ) or host_addresses_by_worker_id.get(str(wid))
+            if not isinstance(wid, str):
+                wid = str(wid)
+            host_addrs = host_addresses_by_worker_id.get(wid)
             if not host_addrs:
                 complete = False
                 break
@@ -2758,7 +2776,9 @@ def _build_subslice_pg(
     bundle_label_selectors = [
         {
             ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
-            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: wid,
+            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: (
+                str(wid) if not isinstance(wid, str) else wid
+            ),
         }
         for wid in worker_ids
     ]

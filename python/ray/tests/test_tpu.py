@@ -3712,61 +3712,106 @@ def test_subslice_placement_group_addresses_and_jax_env():
     assert env_discovery["TPU_WORKER_HOSTNAMES"] == "10.0.0.2,10.0.0.3"
 
 
-def test_get_jax_process_bounds():
+@pytest.mark.parametrize(
+    "topology, expected_bounds",
+    [
+        ("2x2", "1,1,1"),
+        ("2x4", "1,2,1"),
+        ("4x4", "2,2,1"),
+        ("4x8", "2,4,1"),
+        ("8x8", "4,4,1"),
+        ("8x16", "4,8,1"),
+        ("16x16", "8,8,1"),
+        ("2x2x1", "1,1,1"),
+        ("2x2x2", "1,1,2"),
+        ("2x2x4", "1,1,4"),
+        ("2x4x4", "1,2,4"),
+        ("4x4x4", "2,2,4"),
+    ],
+)
+def test_get_jax_process_bounds(topology, expected_bounds):
     """Test get_jax_process_bounds calculation from 2D and 3D topologies."""
-    # 2D topologies: (y, x) -> y,x,1
-    assert get_jax_process_bounds("2x2") == "1,1,1"
-    assert get_jax_process_bounds("2x4") == "1,2,1"
-    assert get_jax_process_bounds("4x4") == "2,2,1"
-    assert get_jax_process_bounds("4x8") == "2,4,1"
-    assert get_jax_process_bounds("8x8") == "4,4,1"
-    assert get_jax_process_bounds("8x16") == "4,8,1"
-    assert get_jax_process_bounds("16x16") == "8,8,1"
-
-    # 3D topologies: (z, y, x) -> z,y,x
-    assert get_jax_process_bounds("2x2x1") == "1,1,1"
-    assert get_jax_process_bounds("2x2x2") == "1,1,2"
-    assert get_jax_process_bounds("2x2x4") == "1,1,4"
-    assert get_jax_process_bounds("2x4x4") == "1,2,4"
-    assert get_jax_process_bounds("4x4x4") == "2,2,4"
+    assert get_jax_process_bounds(topology) == expected_bounds
 
 
-def test_get_jax_chips_per_process_bounds():
+@pytest.mark.parametrize(
+    "chips_per_host, expected_bounds",
+    [
+        (8, "2,4,1"),
+        (4, "2,2,1"),
+        (2, "1,2,1"),
+        (1, "1,1,1"),
+        (16, "16,1,1"),
+    ],
+)
+def test_get_jax_chips_per_process_bounds(chips_per_host, expected_bounds):
     """Test get_jax_chips_per_process_bounds formatting for chip counts."""
-    assert get_jax_chips_per_process_bounds(8) == "2,4,1"
-    assert get_jax_chips_per_process_bounds(4) == "2,2,1"
-    assert get_jax_chips_per_process_bounds(2) == "1,2,1"
-    assert get_jax_chips_per_process_bounds(1) == "1,1,1"
-    assert get_jax_chips_per_process_bounds(16) == "16,1,1"
+    assert get_jax_chips_per_process_bounds(chips_per_host) == expected_bounds
 
 
-def test_get_jax_env_vars_free_function():
+@pytest.mark.parametrize(
+    "worker_hostnames, worker_id, kwargs, expected_env",
+    [
+        # Standard IPv4 with ports
+        (
+            ["10.0.0.1:8471", "10.0.0.2:8471"],
+            0,
+            {},
+            {"TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2", "TPU_WORKER_ID": "0"},
+        ),
+        # Comma-separated string with whitespace
+        (
+            "10.0.0.1, 10.0.0.2",
+            1,
+            {},
+            {"TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2", "TPU_WORKER_ID": "1"},
+        ),
+        # Process bounds and chips per process bounds
+        (
+            ["10.0.0.1:8471", "10.0.0.2:8471"],
+            0,
+            {"process_bounds": "1,2,1", "chips_per_process_bounds": "2,2,1"},
+            {
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
+                "TPU_WORKER_ID": "0",
+                "TPU_PROCESS_BOUNDS": "1,2,1",
+                "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
+            },
+        ),
+        # Bare IPv6 addresses (preserve all colons)
+        (
+            ["2001:db8::1", "2001:db8::2"],
+            0,
+            {},
+            {"TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2", "TPU_WORKER_ID": "0"},
+        ),
+        # Bracketed IPv6 with ports
+        (
+            ["[2001:db8::1]:8471", "[2001:db8::2]:8471"],
+            0,
+            {},
+            {"TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2", "TPU_WORKER_ID": "0"},
+        ),
+        # URIs with schemes and DNS hostnames
+        (
+            "http://node-0.cluster.local:8471, https://node-1.cluster.local:8471",
+            0,
+            {},
+            {
+                "TPU_WORKER_HOSTNAMES": "node-0.cluster.local,node-1.cluster.local",
+                "TPU_WORKER_ID": "0",
+            },
+        ),
+    ],
+)
+def test_get_jax_env_vars_free_function(
+    worker_hostnames, worker_id, kwargs, expected_env
+):
     """Test get_jax_env_vars free function parsing, port stripping, and worker ID."""
-    hosts = ["10.0.0.1:8471", "10.0.0.2:8471"]
-    env_0 = get_jax_env_vars(worker_hostnames=hosts, worker_id=0)
-    assert env_0 == {
-        "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
-        "TPU_WORKER_ID": "0",
-    }
-
-    env_str = get_jax_env_vars("10.0.0.1, 10.0.0.2", worker_id=1)
-    assert env_str == {
-        "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
-        "TPU_WORKER_ID": "1",
-    }
-
-    env_sub = get_jax_env_vars(
-        worker_hostnames=hosts,
-        worker_id=0,
-        process_bounds="1,2,1",
-        chips_per_process_bounds="2,2,1",
+    assert (
+        get_jax_env_vars(worker_hostnames, worker_id=worker_id, **kwargs)
+        == expected_env
     )
-    assert env_sub == {
-        "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
-        "TPU_WORKER_ID": "0",
-        "TPU_PROCESS_BOUNDS": "1,2,1",
-        "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
-    }
 
 
 if __name__ == "__main__":

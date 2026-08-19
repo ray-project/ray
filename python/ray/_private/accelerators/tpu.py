@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import requests
 
 import ray
+from ray._common.network_utils import parse_address
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
 from ray.util.placement_group import (
@@ -34,14 +35,12 @@ TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_PROCESS_BOUNDS"
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
-TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG = "1,1,1"
-TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
 
-# Mapping of chips-per-host to LibTPU 3D coordinate bounding boxes (X,Y,Z).
-_JAX_CHIPS_PER_PROCESS_BOUNDS: Dict[int, str] = {
-    1: TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG,
-    2: TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+# Mapping of chips per host/process to LibTPU 3D coordinate bounding boxes (X,Y,Z).
+TPU_CHIPS_PER_PROCESS_BOUNDS: Dict[int, str] = {
+    1: "1,1,1",
+    2: "1,2,1",
     4: "2,2,1",
     8: "2,4,1",
 }
@@ -191,7 +190,7 @@ def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
 
 
 def normalize_torchtpu_topology(topology: str, tpu_resource_per_chip: int = 1) -> str:
-    """Normalizes TPU topology strings for PyTorch/XLA (e.g. '4x4' -> '4,4,1'; '2x2x4' -> '2,2,4,2')."""
+    """Normalizes TPU topology strings for PyTorch/XLA (e.g. '4x4' -> '4,4,1'; '2x2x4' with tpu_resource_per_chip=2 -> '2,2,4,2')."""
     if tpu_resource_per_chip <= 0:
         raise ValueError("tpu_resource_per_chip must be positive")
 
@@ -286,7 +285,24 @@ def get_jax_chips_per_process_bounds(
     accelerator_version: Optional[str] = None,
 ) -> str:
     """Returns the JAX/libtpu chips-per-process bounds string (e.g. '2,2,1' for 4 chips)."""
-    return _JAX_CHIPS_PER_PROCESS_BOUNDS.get(chips_per_host, f"{chips_per_host},1,1")
+    return TPU_CHIPS_PER_PROCESS_BOUNDS.get(chips_per_host, f"{chips_per_host},1,1")
+
+
+def _strip_endpoint_port(endpoint: Optional[str]) -> str:
+    """Strips port and URI scheme from an endpoint (IPv4, IPv6, hostname, or URL)."""
+    if not endpoint:
+        return ""
+    s = endpoint.strip()
+    if not s:
+        return ""
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    if "/" in s:
+        s = s.split("/", 1)[0]
+    parsed = parse_address(s)
+    if parsed is not None:
+        return parsed[0]
+    return s.strip("[]")
 
 
 def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
@@ -881,15 +897,10 @@ class TPUAcceleratorManager(AcceleratorManager):
         os.environ[
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_tpu_chips])
-        if num_visible_tpu_chips == 1:
+        if num_visible_tpu_chips in (1, 2):
             os.environ[
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
-            os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif num_visible_tpu_chips == 2:
-            os.environ[
-                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+            ] = TPU_CHIPS_PER_PROCESS_BOUNDS[num_visible_tpu_chips]
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
 
     @staticmethod
