@@ -1,6 +1,7 @@
+import math
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -23,9 +24,9 @@ HIGH_MEMORY_PERIODIC_WARNING = """
 Operator '{op_name}' uses {memory_per_task} of memory per task on average, but Ray
 only requests {initial_memory_request} per task at the start of the pipeline.
 
-To avoid out-of-memory errors, consider setting `memory={memory_per_task}` in the
-appropriate function or method call. (This might be unnecessary if the number of
-concurrent tasks is low.)
+To avoid out-of-memory errors, consider setting `memory={recommended_memory_bytes}`
+({recommended_memory}) in the appropriate function or method call. (This might be
+unnecessary if the number of concurrent tasks is low.)
 
 To change the frequency of this warning, set
 `DataContext.get_current().issue_detectors_config.high_memory_detector_config.detection_time_interval_s`,
@@ -89,7 +90,7 @@ class HighMemoryIssueDetector(IssueDetector):
                 if op in self._completion_checked_operators:
                     continue
                 self._completion_checked_operators.add(op)
-                issue = self._detect_completed_operator(op, memory_request)
+                issue = self._detect_issue_on_operator_completion(op, memory_request)
                 if issue is not None:
                     issues.append(issue)
                 continue
@@ -105,10 +106,15 @@ class HighMemoryIssueDetector(IssueDetector):
                 op.metrics.average_max_uss_per_task > initial_memory_request
                 and op.metrics.average_max_uss_per_task >= safe_memory_per_task
             ):
+                recommended_memory = _get_recommended_memory(
+                    op.metrics.average_max_uss_per_task
+                )
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
                     memory_per_task=memory_string(op.metrics.average_max_uss_per_task),
                     initial_memory_request=memory_string(initial_memory_request),
+                    recommended_memory=memory_string(recommended_memory),
+                    recommended_memory_bytes=recommended_memory,
                     detection_time_interval_s=self.detection_time_interval_s(),
                 )
                 issues.append(
@@ -122,7 +128,7 @@ class HighMemoryIssueDetector(IssueDetector):
 
         return issues
 
-    def _detect_completed_operator(
+    def _detect_issue_on_operator_completion(
         self, op: MapOperator, memory_request: Optional[int]
     ) -> Optional[Issue]:
         if memory_request is None:
@@ -133,14 +139,10 @@ class HighMemoryIssueDetector(IssueDetector):
             return None
 
         max_uss_bytes = int(max_uss_bytes)
-        # Require the configured memory to be at least 1.25x the observed max USS.
-        if 5 * max_uss_bytes <= 4 * memory_request:
+        recommended_memory = _get_recommended_memory(max_uss_bytes)
+        if recommended_memory <= memory_request:
             return None
 
-        # Round up to the nearest whole byte.
-        recommended_memory, remainder = divmod(5 * max_uss_bytes, 4)
-        if remainder:
-            recommended_memory += 1
         memory_configuration = (
             f"The configured logical memory was {memory_string(memory_request)}."
         )
@@ -160,6 +162,12 @@ class HighMemoryIssueDetector(IssueDetector):
 
     def detection_time_interval_s(self) -> float:
         return self._detector_cfg.detection_time_interval_s
+
+
+def _get_recommended_memory(memory_usage: Union[int, float]) -> int:
+    if isinstance(memory_usage, int):
+        return (5 * memory_usage + 3) // 4
+    return math.ceil(5 * memory_usage / 4)
 
 
 def _format_message(message: str) -> str:
