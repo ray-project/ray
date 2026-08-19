@@ -1,9 +1,15 @@
+import json
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from string import Template
 from typing import Any, Dict, List, Optional
 
+import jsonschema
 import yaml
+
+_SCHEMA_PATH = Path(__file__).parent / "depsets.schema.json"
+_operation_validators: Dict[str, jsonschema.Draft202012Validator] = {}
 
 
 @dataclass
@@ -26,6 +32,54 @@ class Depset:
     depsets: Optional[List[str]] = None
     pre_hooks: Optional[List[str]] = None
     include_setuptools: Optional[bool] = False
+
+
+def _get_operation_validators() -> Dict[str, jsonschema.Draft202012Validator]:
+    """Load per-operation validators from depsets.schema.json, once."""
+    if not _operation_validators:
+        with open(_SCHEMA_PATH, "r") as f:
+            schema = json.load(f)
+        for operation in schema["$defs"]["depset"]["properties"]["operation"]["enum"]:
+            # Validate directly against the operation's branch so errors point
+            # at the offending field instead of a generic oneOf mismatch.
+            _operation_validators[operation] = jsonschema.Draft202012Validator(
+                {"$defs": schema["$defs"], "$ref": f"#/$defs/{operation}"}
+            )
+    return _operation_validators
+
+
+def _format_schema_error(error: jsonschema.exceptions.ValidationError) -> str:
+    if error.validator == "anyOf":
+        options = sorted(
+            req
+            for option in error.validator_value
+            for req in option.get("required", [])
+        )
+        message = f"must set at least one of: {', '.join(options)}"
+    else:
+        message = error.message
+    if error.json_path != "$":
+        return f"{error.json_path}: {message}"
+    return message
+
+
+def validate_depset(depset: dict, config_name: str) -> None:
+    """Validate a raw depset dict against the schema for its operation."""
+    name = depset.get("name", "<unnamed>")
+    operation = depset.get("operation")
+    validators = _get_operation_validators()
+    if operation not in validators:
+        raise ValueError(
+            f"Invalid operation: {operation} for depset {name} in config {config_name}"
+        )
+    errors = sorted(
+        validators[operation].iter_errors(depset), key=lambda e: e.json_path
+    )
+    if errors:
+        details = "\n".join(f"  {_format_schema_error(e)}" for e in errors)
+        raise ValueError(
+            f"Invalid {operation} depset {name} in config {config_name}:\n{details}"
+        )
 
 
 def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
@@ -70,6 +124,7 @@ class Config:
         raw_depsets = data.get("depsets", [])
         depsets = []
         for depset in raw_depsets:
+            validate_depset(depset, config_name)
             build_arg_set_keys = depset.get("build_arg_sets", [])
             if build_arg_set_keys:
                 # Expand the depset for each build arg set

@@ -4,7 +4,9 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 py_library(
     name = "workspace",
     srcs = ["workspace.py"],
+    data = ["depsets.schema.json"],
     deps = [
+        ci_require("jsonschema"),
         ci_require("pyyaml"),
     ],
 )
