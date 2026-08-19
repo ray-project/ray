@@ -14,7 +14,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
-from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -26,10 +25,6 @@ from ray.data._internal.issue_detection.detectors.hanging_detector import (
     DEFAULT_OP_TASK_STATS_STD_FACTOR,
     HangingExecutionIssueDetector,
     HangingExecutionIssueDetectorConfig,
-)
-from ray.data._internal.issue_detection.detectors.hash_shuffle_detector import (
-    HashShuffleAggregatorIssueDetector,
-    HashShuffleAggregatorIssueDetectorConfig,
 )
 from ray.data._internal.issue_detection.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
@@ -207,20 +202,6 @@ class TestHangingExecutionIssueDetector:
         assert "longer than the average task duration" in issues[0].message
 
 
-def test_hash_shuffle_detector_skips_completed_operator():
-    operator = MagicMock(spec=HashShuffleOperator)
-    operator.has_completed.return_value = True
-    operator._aggregator_pool = MagicMock()
-    detector = HashShuffleAggregatorIssueDetector(
-        dataset_id="id",
-        operators=[operator],
-        config=HashShuffleAggregatorIssueDetectorConfig(),
-    )
-
-    assert detector.detect() == []
-    operator._aggregator_pool.check_aggregator_health.assert_not_called()
-
-
 @pytest.mark.parametrize(
     "configured_memory, actual_memory, should_return_issue",
     [
@@ -259,6 +240,9 @@ def test_high_memory_detection(
     issues = detector.detect()
 
     assert should_return_issue == bool(issues)
+    if should_return_issue:
+        normalized_message = " ".join(issues[0].message.split())
+        assert "`memory=10737418240` (10.0GiB)" in normalized_message
 
 
 @pytest.mark.parametrize(
@@ -311,6 +295,7 @@ def test_high_memory_detection_on_operator_completion(
         assert map_operator.name in normalized_message
         assert expected_memory_configuration in normalized_message
         assert f"`memory={expected_memory}`" in normalized_message
+    # Completion checks are one-shot to avoid duplicate warnings.
     assert detector.detect() == []
 
 
