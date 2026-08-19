@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/scheduling/label_selector.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/util/container_util.h"
@@ -161,7 +162,22 @@ void JobInfoAccessor::AsyncGetNextJobID(const rpc::ItemCallback<JobID> &callback
       });
 }
 
-NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
+// This default constructor is only used in unit tests, where a NodeInfoAccessor
+// needs to be created without a backing GcsClient. client_impl_ is set to
+// nullptr so that dereferencing it is a well-defined crash rather than
+// undefined behavior if a method that uses it is called in this state.
+NodeInfoAccessor::NodeInfoAccessor()
+    : client_impl_(nullptr),
+      is_gcs_leader_(!RayConfig::instance().ENABLE_GCS_LEADER_ELECTION()) {}
+
+// is_gcs_leader_ is seeded from ENABLE_GCS_LEADER_ELECTION: when leader election is
+// disabled (the default), the client always assumes it is talking to the leader, so
+// is_gcs_leader_ starts as true and legacy behavior is preserved. When leader
+// election is enabled, it starts as false and is updated once the first
+// CheckAlive reply reports the actual leadership status.
+NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl),
+      is_gcs_leader_(!RayConfig::instance().ENABLE_GCS_LEADER_ELECTION()) {}
 
 void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
                                     const rpc::StatusCallback &callback) {
@@ -226,8 +242,12 @@ void NodeInfoAccessor::AsyncCheckAlive(const std::vector<NodeID> &node_ids,
   size_t num_raylets = node_ids.size();
   client_impl_->GetGcsRpcClient().CheckAlive(
       std::move(request),
-      [num_raylets, callback](const Status &status, rpc::CheckAliveReply &&reply) {
+      [this, num_raylets, callback](const Status &status, rpc::CheckAliveReply &&reply) {
         if (status.ok()) {
+          // If is_leader is absent, the reply came from a GCS that predates this
+          // field (e.g. during a rolling upgrade); treat that as the legacy
+          // always-leader behavior rather than a demotion to passive.
+          is_gcs_leader_.store(reply.has_is_leader() ? reply.is_leader() : true);
           RAY_CHECK_EQ(static_cast<size_t>(reply.raylet_alive().size()), num_raylets);
           std::vector<bool> is_alive;
           is_alive.reserve(num_raylets);
@@ -420,6 +440,8 @@ bool NodeInfoAccessor::IsNodeAlive(const NodeID &node_id) const {
   return node_iter != node_cache_address_and_liveness_.end() &&
          node_iter->second.state() == rpc::GcsNodeInfo::ALIVE;
 }
+
+bool NodeInfoAccessor::IsGcsLeader() const { return is_gcs_leader_.load(); }
 
 void NodeInfoAccessor::HandleNotification(rpc::GcsNodeAddressAndLiveness &&node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
