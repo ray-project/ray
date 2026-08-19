@@ -113,9 +113,11 @@ rpc::ReportGeneratorItemReturnsRequest GetIntermediateTaskReturn(
     const ObjectID &generator_id,
     const ObjectID &dynamic_return_id,
     std::shared_ptr<Buffer> data,
-    bool set_in_plasma) {
+    bool set_in_plasma,
+    NodeID node_id = NodeID::FromRandom()) {
   rpc::ReportGeneratorItemReturnsRequest request;
   rpc::Address addr;
+  addr.set_node_id(node_id.Binary());
   request.mutable_worker_addr()->CopyFrom(addr);
   request.set_item_index(idx);
   request.set_generator_id(generator_id.Binary());
@@ -4003,8 +4005,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedFreesUnconsumedPlasmaRet
       generator_id,
       /*dynamic_return_id*/ plasma_return_id,
       /*data*/ data,
-      /*set_in_plasma*/ true);
-  req.mutable_worker_addr()->set_node_id(executor_node_id.Binary());
+      /*set_in_plasma*/ true,
+      /*node_id*/ executor_node_id);
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status) {}));
   ASSERT_EQ(freed_objects_.size(), 1);
@@ -4020,8 +4022,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedFreesUnconsumedPlasmaRet
       generator_id,
       /*dynamic_return_id*/ inlined_return_id,
       /*data*/ data,
-      /*set_in_plasma*/ false);
-  req.mutable_worker_addr()->set_node_id(executor_node_id.Binary());
+      /*set_in_plasma*/ false,
+      /*node_id*/ executor_node_id);
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(
       req, /*execution_signal_callback*/ [](Status) {}));
   ASSERT_EQ(freed_objects_.size(), 1);
@@ -4064,8 +4066,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedReconstructionRetryNotFr
         generator_id,
         /*dynamic_return_id*/ ObjectID::FromIndex(spec.TaskId(), 2 + i),
         /*data*/ data,
-        /*set_in_plasma*/ true);
-    req.mutable_worker_addr()->set_node_id(executor_node_id.Binary());
+        /*set_in_plasma*/ true,
+        /*node_id*/ executor_node_id);
     ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
         req, /*execution_signal_callback*/ [](Status) {}));
   }
@@ -4095,8 +4097,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedReconstructionRetryNotFr
       generator_id,
       /*dynamic_return_id*/ consumed_return_id,
       /*data*/ data,
-      /*set_in_plasma*/ true);
-  req.mutable_worker_addr()->set_node_id(executor_node_id.Binary());
+      /*set_in_plasma*/ true,
+      /*node_id*/ executor_node_id);
   manager_.HandleReportGeneratorItemReturns(req,
                                             /*execution_signal_callback*/ [](Status) {});
   ASSERT_TRUE(freed_objects_.empty());
@@ -4111,8 +4113,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCallerDeletedReconstructionRetryNotFr
       generator_id,
       /*dynamic_return_id*/ unconsumed_return_id,
       /*data*/ data,
-      /*set_in_plasma*/ true);
-  req.mutable_worker_addr()->set_node_id(executor_node_id.Binary());
+      /*set_in_plasma*/ true,
+      /*node_id*/ executor_node_id);
   manager_.HandleReportGeneratorItemReturns(req,
                                             /*execution_signal_callback*/ [](Status) {});
   ASSERT_EQ(freed_objects_.size(), 1);
@@ -4750,9 +4752,10 @@ TEST_F(TaskManagerLineageTest,
     return ObjectID::FromIndex(spec.TaskId(), stream_index + 2);
   };
   // Report one yield of two objects starting at stream index `base`.
+  const NodeID executor_node_id = NodeID::FromRandom();
   auto report_yield = [&](int64_t base, const ExecutionSignalCallback &signal) {
     rpc::ReportGeneratorItemReturnsRequest req;
-    req.mutable_worker_addr()->CopyFrom(rpc::Address());
+    req.mutable_worker_addr()->set_node_id(executor_node_id.Binary());
     req.set_item_index(base);
     req.set_generator_id(generator_id.Binary());
     for (int64_t i = 0; i < 2; i++) {
