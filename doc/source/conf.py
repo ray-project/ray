@@ -852,7 +852,9 @@ intersphinx_mapping = {
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
-    "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
+    # pytorch_lightning is intentionally absent. As of 2026-08-19 lightning.ai
+    # serves its single-page app shell for every docs path, so objects.inv
+    # returns HTML and intersphinx fails the -W build. No mirror is reachable.
     "scipy": (
         "https://docs.scipy.org/doc/scipy/",
         "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
