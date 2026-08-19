@@ -170,7 +170,7 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         _shutdown_ops(reduce_op, map_op, upstream)
 
 
-def test_external_more_partitions_than_keys_empty_fast_path(ray_init_shutdown):
+def test_empty_partition_fast_path(ray_init_shutdown):
     """Few distinct keys into many partitions: empty wrappers skip remote reduce.
 
     Mirrors v2 ``test_more_partitions_than_keys_emits_empty_blocks`` at the
@@ -220,7 +220,7 @@ def test_external_more_partitions_than_keys_empty_fast_path(ray_init_shutdown):
         _shutdown_ops(reduce_op, map_op, upstream)
 
 
-def test_external_null_typed_rows_not_gated_as_empty(ray_init_shutdown):
+def test_null_typed_not_gated_as_empty(ray_init_shutdown):
     """Null-typed rows have ``tbl.nbytes == 0`` but must not take empty fast path.
 
     Gating on ``size_bytes`` would drop them; gating on ``num_rows`` keeps them.
@@ -258,7 +258,7 @@ def test_external_null_typed_rows_not_gated_as_empty(ray_init_shutdown):
         _shutdown_ops(reduce_op, map_op, upstream)
 
 
-def test_external_fused_map_runs_on_empty_partitions(ray_init_shutdown):
+def test_fused_map_on_empty_partitions(ray_init_shutdown):
     """With a fused downstream map, empty partitions must not take the fast path.
 
     The operator empty fast path is skipped so the fused map still runs (e.g.
