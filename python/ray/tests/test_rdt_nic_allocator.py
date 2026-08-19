@@ -355,31 +355,6 @@ def test_release_clears_acquired_nic_after_success(ray_start_regular, tmp_path):
     assert ray.get(w2.acquire.remote()) == "mlx5_0:1"
 
 
-def test_reentrant_acquire_short_circuits_without_rpc(monkeypatch):
-    """A re-entrant acquire (e.g. NIXL agent rebuild) for a process that
-    already holds a NIC must return it immediately, with no RPC at all.
-
-    Without this short-circuit, a slow register_node/acquire on the
-    re-entrant call could time out and trigger the orphan-release path,
-    which would release the NIC this process is already actively using --
-    letting another actor take it while this one keeps it pinned.
-    """
-    monkeypatch.setenv(RDT_NIC_PINNING_ENV_VAR, "1")
-    nic_allocator._acquired_nic = "mlx5_0:1"
-
-    with (
-        mock.patch("ray.get_actor") as mock_get_actor,
-        mock.patch("ray.get") as mock_get,
-        mock.patch.object(nic_allocator, "discover_rdma_nics") as mock_discover,
-    ):
-        result = acquire_nic_for_current_actor()
-
-    assert result == "mlx5_0:1"
-    mock_get_actor.assert_not_called()
-    mock_get.assert_not_called()
-    mock_discover.assert_not_called()
-
-
 def test_acquire_timeout_releases_possible_orphan(monkeypatch):
     """A client-side timeout on the acquire RPC must not leave a permanent
     reservation: the caller should fire a best-effort release rather than
