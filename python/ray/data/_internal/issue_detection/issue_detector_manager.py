@@ -43,7 +43,7 @@ class IssueDetectorManager:
         # consumer thread that checks the set of detected issues on shutdown (in the usage callback).
         self._detected_issues_lock = threading.Lock()
 
-    def invoke_detectors(self) -> None:
+    def invoke_detectors(self, force: bool = False) -> None:
         curr_time = time.perf_counter()
         issues = []
         for detector in self._issue_detectors:
@@ -51,7 +51,8 @@ class IssueDetectorManager:
                 continue
 
             if (
-                curr_time - self._last_detection_times[detector]
+                force
+                or curr_time - self._last_detection_times[detector]
                 > detector.detection_time_interval_s()
             ):
                 issues.extend(detector.detect())
@@ -59,24 +60,6 @@ class IssueDetectorManager:
                 self._last_detection_times[detector] = time.perf_counter()
 
         self._report_issues(issues)
-
-    def invoke_detectors_on_execution_end(self) -> None:
-        issues = []
-        for detector in self._issue_detectors:
-            if detector.detection_time_interval_s() == -1:
-                continue
-            issues.extend(detector.detect_on_execution_end())
-
-        # Final detectors don't re-evaluate hanging issues, so preserve their state.
-        hanging_metrics = {
-            operator: operator.metrics._issue_detector_hanging
-            for operator in self.executor._topology
-        }
-        try:
-            self._report_issues(issues)
-        finally:
-            for operator, value in hanging_metrics.items():
-                operator.metrics._issue_detector_hanging = value
 
     def _report_issues(self, issues: List[Issue]) -> None:
         operators: Dict[str, "PhysicalOperator"] = {}
