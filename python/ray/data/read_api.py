@@ -1562,6 +1562,7 @@ def read_parquet(
         The tradeoff is that you might see a performance regression if Ray needs to
         restart more workers.
     """
+    print("JAY_RELEASE_TEST_PR_MARKER: read_parquet started", flush=True)
     _validate_shuffle_arg(shuffle)
 
     if catalog is not None:
