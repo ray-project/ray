@@ -1093,6 +1093,7 @@ class TestGangSchedulingConfig:
 
     def test_gang_scheduling_config_scale_to_zero(self):
         """Test that min_replicas=0 works with gang_scheduling_config."""
+
         @serve.deployment(
             num_replicas="auto",
             gang_scheduling_config=GangSchedulingConfig(gang_size=3),
