@@ -85,8 +85,7 @@ class SandboxRuntime:
                 (public resolvers by default for "public").
             capabilities: Linux capabilities, written exactly (None keeps
                 the runtime default; ``[]`` means none). Use
-                :data:`~ray.experimental.sandbox.config.DOCKER_DEFAULT_CAPABILITIES`
-                for Docker parity.
+                ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
             readonly: If True (default), mount container image rootfs in read-only mode
                 such that only ``workdir`` is writable. If False, the entire root filesystem
                 is writable. Writes are isolated within a per-sandbox copy-on-write overlay

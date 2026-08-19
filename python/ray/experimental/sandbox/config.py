@@ -101,7 +101,7 @@ class SandboxConfig:
             "sandbox" uses gVisor's netstack and requires ``rootless=False``.
         dns: Nameserver IPs for a generated /etc/resolv.conf, mounted
             read-only (like ``docker --dns``); useful when public DNS is
-            blocked. Defaults to :data:`DEFAULT_PUBLIC_DNS` for "public";
+            blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public";
             overrides the host file for "host". Only valid with those modes.
         capabilities: Linux capabilities for the container process. None
             (default) keeps the runtime default (what ``runsc spec`` emits);
