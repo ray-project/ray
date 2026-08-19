@@ -139,6 +139,9 @@ class Sandbox:
             timeout: Maximum execution time in seconds.
             cwd: Working directory inside the sandbox for command execution.
             env: Environment variables to set for the command.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured or detected default (bash when the image
+                has it, else sh). List commands bypass the shell.
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.

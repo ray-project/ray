@@ -73,9 +73,10 @@ class SandboxRuntime:
             workdir: Default working directory inside the sandbox. By default, the
                 working directory is the only writable path in the sandbox (unless
                 ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
-        mount_workdir: Whether to bind-mount a host scratch directory at
-            ``workdir`` (shadows image content there). None (default) derives
-            it from ``readonly``: mounted only when the rootfs is readonly.
+            mount_workdir: Whether to bind-mount a host scratch directory at
+                ``workdir`` (shadows image content there). None (default)
+                derives it from ``readonly``: mounted only when the rootfs is
+                readonly.
             ttl_seconds: Optional automatic cleanup time-to-live in seconds,
                 measured wall-clock from creation (not idle time): a sandbox that
                 is mid-command when the TTL fires is still deleted. None (default)
@@ -162,6 +163,9 @@ class SandboxRuntime:
             timeout: Maximum execution time in seconds.
             cwd: Working directory inside the sandbox for command execution.
             env: Environment variables to set for the command.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured or detected default (bash when the image
+                has it, else sh). List commands bypass the shell.
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -192,6 +196,9 @@ class SandboxRuntime:
             timeout: Maximum execution time in seconds.
             cwd: Working directory inside the sandbox for command execution.
             env: Environment variables to set for the command.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured or detected default (bash when the image
+                has it, else sh). List commands bypass the shell.
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.

@@ -273,6 +273,7 @@ def create_app(
             "workdir": request.workdir,
             "ttl_seconds": effective_ttl,
             "network": request.network,
+            "dns": request.dns,
             "rootless": request.rootless,
             "readonly": request.readonly,
             "capabilities": capabilities,

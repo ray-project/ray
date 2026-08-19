@@ -85,7 +85,15 @@ class CreateSandboxRequest(BaseModel):
             "TTL (subject to the server's max_ttl_seconds cap)."
         ),
     )
-    network: Literal["none", "host", "sandbox"] = "none"
+    network: Literal["none", "public", "host", "sandbox"] = "none"
+    dns: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Nameserver IPs for a generated /etc/resolv.conf (mirroring "
+            "docker --dns). Defaults to public resolvers for network="
+            "'public'; overrides the host file for network='host'."
+        ),
+    )
     rootless: bool = True
     readonly: bool = True
     resources: Optional[ResourceSpec] = None

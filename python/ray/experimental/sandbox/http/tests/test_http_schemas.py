@@ -41,6 +41,7 @@ EXPECTED_MODEL_FIELDS = {
         "image_pull_timeout_seconds",
         "start_timeout_seconds",
         "client_token",
+        "dns",
     },
     "ResourceSpec": {
         "cpu_request",

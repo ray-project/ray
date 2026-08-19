@@ -13,6 +13,7 @@ from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxNotFoundError,
 )
+from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():

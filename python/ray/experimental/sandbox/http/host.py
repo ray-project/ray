@@ -225,6 +225,7 @@ class SandboxHost:
                 timeout_seconds=float(self._spec.get("start_timeout_seconds", 60.0)),
                 rootless=bool(self._spec.get("rootless", True)),
                 network=self._spec.get("network", "none"),
+                dns=self._spec.get("dns"),
                 capabilities=capabilities,
                 readonly=bool(self._spec.get("readonly", True)),
             )
