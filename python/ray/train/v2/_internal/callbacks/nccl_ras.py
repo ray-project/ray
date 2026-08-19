@@ -729,8 +729,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 last_failure_reason = result.get("reason")
                 last_failure_stderr = result.get("stderr", None)
                 logger.debug(
-                    "`ncclras` on worker %s returned no data. Reason: %s, stderr: %s",
-                    "Trying the next worker.",
+                    "`ncclras` on worker %s returned no data. "
+                    "Reason: %s, stderr: %s. Trying the next worker.",
                     worker,
                     last_failure_reason,
                     last_failure_stderr,
@@ -773,7 +773,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         else:
             logger.info(
                 "`ncclras` (%s) returned no usable data from any of "
-                "%d worker(s) this poll (last reason: %s, last stderr: %s). Will retry next poll.",
+                "%d worker(s) this poll (last reason: %s, last stderr: %s). "
+                "Will retry next poll.",
                 ras_format,
                 len(workers),
                 last_failure_reason,
