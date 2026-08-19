@@ -67,6 +67,26 @@ build:
     # than "NNNN added") and stale-artifact pruning lands for PRs that rename
     # or delete sources. The rtd and rtd-fallback Makefile targets and
     # doc/load_doc_cache.py stay in the tree for that re-enable.
+    # Raise pip's retry budget for the dependency install below.
+    # files.pythonhosted.org has been returning intermittent 502s
+    # (https://github.com/pypi/support/issues/11895), and one failed wheel fetch
+    # fails the whole docs build. pip defaults to 5 retries with exponential
+    # backoff, which gives up in about 8 seconds of sleeping.
+    #
+    # Written as a config file rather than PIP_RETRIES because the install step
+    # is python.install below, run by Read the Docs rather than by us, and each
+    # job command runs in its own shell so an export here would not reach it.
+    # pip reads this path on every invocation in the build, including that one.
+    #
+    # Only the retry count is raised. The observed failures are immediate 502
+    # responses rather than hangs, so a larger timeout would only lengthen the
+    # worst case without making a fetch more likely to succeed.
+    pre_install:
+      - mkdir -p ~/.config/pip
+      - |
+        echo "[global]" > ~/.config/pip/pip.conf
+        echo "retries = 10" >> ~/.config/pip/pip.conf
+        cat ~/.config/pip/pip.conf
     build:
       html:
         - |
