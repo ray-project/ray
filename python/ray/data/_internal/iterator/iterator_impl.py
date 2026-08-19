@@ -35,6 +35,9 @@ class DataIteratorImpl(DataIterator):
         ) = self._base_dataset._execute_to_iterator()
         return ref_bundles_iterator, stats, executor
 
+    def count(self) -> int:
+        return self._base_dataset.count()
+
     def stats(self) -> str:
         return self._base_dataset.stats()
 
