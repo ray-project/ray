@@ -129,7 +129,22 @@ DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
     "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
-DEFAULT_SHUFFLE_COMPRESSION = os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", "zstd")
+# Deprecated alias of the `RAY_DATA_SHUFFLE_COMPRESSION` env var
+_DEPRECATED_SHUFFLE_COMPRESSION_ENV_VAR = "RAY_DATA_HASH_SHUFFLE_COMPRESSION"
+
+
+def _deduce_default_shuffle_compression() -> str:
+    legacy_codec = os.environ.get(_DEPRECATED_SHUFFLE_COMPRESSION_ENV_VAR)
+    if legacy_codec is not None:
+        logger.warning(
+            f"{_DEPRECATED_SHUFFLE_COMPRESSION_ENV_VAR} is deprecated, please use "
+            f"RAY_DATA_SHUFFLE_COMPRESSION to configure shuffle compression codec"
+        )
+
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+
+
+DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
 
 DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_BATCH_SIZE", 16
@@ -751,8 +766,9 @@ class DataContext:
             See :class:`DeltaConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
-        shuffle_compression: Codec used to compress hash-shuffle
-            intermediate shards: "none", "lz4", or "zstd" (default "zstd").
+        shuffle_compression: Codec used to compress shuffle intermediate
+            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            alias: ``hash_shuffle_compression``.
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
         hash_shuffle_reduce_get_timeout_s: Timeout in seconds, for the
@@ -861,7 +877,7 @@ class DataContext:
     # provided explicitly)
     default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
-    # Codec for hash-shuffle intermediate shards ("none", "lz4", or "zstd").
+    # Codec for shuffle intermediate shards ("none", "lz4", or "zstd").
     shuffle_compression: str = DEFAULT_SHUFFLE_COMPRESSION
 
     # Shard refs each reduce task dereferences per ray.get() call.
@@ -1258,6 +1274,31 @@ class DataContext:
         # NOTE: Coercing to the enum resolves deprecated aliases (like
         #       `hash_shuffle_v2`) to their current strategy
         self._shuffle_strategy = ShuffleStrategy(value)
+
+    # NOTE: `hash_shuffle_compression` is a deprecated alias of
+    #       `shuffle_compression` (compression isn't specific to hash-shuffle),
+    #       kept as a property (rather than a field) so that reads and writes
+    #       both go through the current setting.
+    @property
+    def hash_shuffle_compression(self) -> str:
+        self._warn_hash_shuffle_compression_deprecated()
+
+        return self.shuffle_compression
+
+    @hash_shuffle_compression.setter
+    def hash_shuffle_compression(self, value: str) -> None:
+        self._warn_hash_shuffle_compression_deprecated()
+
+        self.shuffle_compression = value
+
+    @staticmethod
+    def _warn_hash_shuffle_compression_deprecated() -> None:
+        warnings.warn(
+            "`hash_shuffle_compression` is deprecated, please configure "
+            "`shuffle_compression` instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
 
     @property
     def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:
