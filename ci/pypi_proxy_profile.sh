@@ -108,7 +108,8 @@ _rayci_pypi_index_setup() {
   }
   _rayci_bazel_downloader_config
 
-  if [[ ! -x /opt/pypiproxy/bin/python ]]; then
+  local prefix="${RAYCI_PYPI_PROXY_PREFIX:-/opt/pypiproxy}"
+  if [[ ! -x "${prefix}/bin/python" ]]; then
     export RAYCI_PYPI_INDEX_MODE="pypi"
     echo "pypi index: byte cache reachable but this image carries no proxy; resolving from public PyPI" >&2
     return 0
@@ -127,8 +128,15 @@ _rayci_pypi_index_setup() {
   # start. Sharing a namespace would also share ports with the tests, which is its
   # own hazard. This address works unchanged from here and from any container on the
   # same bridge.
-  local host
-  host="$(hostname -i 2>/dev/null | awk '{print $1}')"
+  # RAYCI_PYPI_PROXY_HOST lets a caller name the address instead. Steps that run
+  # directly on an agent rather than in a container -- macOS, and the Windows host --
+  # set it, because `hostname -i` is a Linux-only spelling and because there is no
+  # nested container that needs to reach this: loopback is both correct and, for pip
+  # and uv, exempt from the plain-HTTP refusal below.
+  local host="${RAYCI_PYPI_PROXY_HOST:-}"
+  if [[ -z "${host}" ]]; then
+    host="$(hostname -i 2>/dev/null | awk '{print $1}')"
+  fi
   if [[ -z "${host}" ]]; then
     export RAYCI_PYPI_INDEX_MODE="pypi"
     echo "pypi index: could not determine this container's address; resolving from public PyPI" >&2
@@ -136,11 +144,17 @@ _rayci_pypi_index_setup() {
   fi
   local url="http://${host}:${port}"
 
-  # setsid gives the proxy its own session: `bash -i` enables job control, so a
-  # plain background job shares the step shell's process group and would be
-  # signalled along with it.
-  MIRROR_URL="${mirror}" setsid /opt/pypiproxy/bin/python \
-    /opt/pypiproxy/pypi_index_proxy.py "${port}" >"${log}" 2>&1 &
+  # The proxy needs its own session: `bash -i` enables job control, so a plain
+  # background job shares the step shell's process group and would be signalled along
+  # with it. setsid is util-linux and absent on macOS, where nohup plus a subshell
+  # achieves the same detachment.
+  if command -v setsid >/dev/null 2>&1; then
+    MIRROR_URL="${mirror}" setsid "${prefix}/bin/python" \
+      "${prefix}/pypi_index_proxy.py" "${port}" >"${log}" 2>&1 &
+  else
+    ( MIRROR_URL="${mirror}" nohup "${prefix}/bin/python" \
+        "${prefix}/pypi_index_proxy.py" "${port}" >"${log}" 2>&1 & )
+  fi
 
   local _
   for _ in $(seq 1 60); do
