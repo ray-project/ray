@@ -3,6 +3,8 @@ from functools import lru_cache
 from inspect import signature
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from packaging.version import InvalidVersion, Version
+
 _NAMESPACE_CACHE_SIZE = int(os.environ.get("LANCE_RAY_NAMESPACE_CACHE_SIZE", "16"))
 
 
@@ -79,7 +81,23 @@ def get_lance_namespace_kwargs(
     if namespace is None:
         return {}
 
-    if "namespace_client" in signature(target).parameters:
+    try:
+        has_namespace_client = "namespace_client" in signature(target).parameters
+    except (TypeError, ValueError):
+        docstring = getattr(target, "__doc__", "") or ""
+        if "namespace_client" in docstring:
+            has_namespace_client = True
+        elif "storage_options_provider" in docstring:
+            has_namespace_client = False
+        else:
+            import lance
+
+            try:
+                has_namespace_client = Version(lance.__version__) >= Version("6.0.0")
+            except (InvalidVersion, TypeError):
+                has_namespace_client = False
+
+    if has_namespace_client:
         return {"namespace_client": namespace, "table_id": table_id}
 
     return {
