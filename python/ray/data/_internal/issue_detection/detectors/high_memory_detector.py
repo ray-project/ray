@@ -2,10 +2,7 @@ import textwrap
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List
 
-from ray.data._internal.execution.operators.map_operator import (
-    MapOperator,
-    get_safe_default_logical_memory,
-)
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
@@ -21,7 +18,7 @@ if TYPE_CHECKING:
 
 HIGH_MEMORY_PERIODIC_WARNING = """
 Operator '{op_name}' uses {memory_per_task} of memory per task on average, but Ray only
-requests {memory_request} per task.
+requests {memory_request} per task on average.
 
 To avoid out-of-memory errors, consider setting `memory={memory_per_task}` in the
 appropriate function or method call. (This might be unnecessary if the number of
@@ -74,20 +71,23 @@ class HighMemoryIssueDetector(IssueDetector):
             if not isinstance(op, MapOperator):
                 continue
 
-            if op.metrics.average_max_uss_per_task is None:
+            memory_per_task = op.metrics.average_max_uss_per_task
+            memory_request = op.metrics.average_memory_request_per_task
+            safe_memory_per_task = op.metrics.average_safe_memory_per_task
+            if (
+                memory_per_task is None
+                or memory_request is None
+                or safe_memory_per_task is None
+            ):
                 continue
 
-            remote_args = op._get_dynamic_ray_remote_args()
-            memory_request = remote_args.get("memory") or 0
-            safe_memory_per_task = get_safe_default_logical_memory(remote_args)
-
             if (
-                op.metrics.average_max_uss_per_task > memory_request
-                and op.metrics.average_max_uss_per_task >= safe_memory_per_task
+                memory_per_task > memory_request
+                and memory_per_task >= safe_memory_per_task
             ):
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
-                    memory_per_task=memory_string(op.metrics.average_max_uss_per_task),
+                    memory_per_task=memory_string(memory_per_task),
                     memory_request=memory_string(memory_request),
                     detection_time_interval_s=self.detection_time_interval_s(),
                 )

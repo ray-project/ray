@@ -606,6 +606,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self,
         gen: ObjectRefGenerator,
         inputs: RefBundle,
+        ray_remote_args: Dict[str, Any],
         task_done_callback: Optional[Callable[[], None]] = None,
     ):
         """Submit a new data-handling task."""
@@ -674,7 +675,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             operator_name=self.name,
         )
         self._metrics.on_task_submitted(
-            task_index, inputs, task_id=data_task.get_task_id()
+            task_index,
+            inputs,
+            task_id=data_task.get_task_id(),
+            memory_request=ray_remote_args.get("memory") or 0,
+            safe_memory_per_task=get_safe_default_logical_memory(ray_remote_args),
         )
         self._data_tasks[task_index] = data_task
 

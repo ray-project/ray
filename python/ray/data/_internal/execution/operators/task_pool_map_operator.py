@@ -203,7 +203,12 @@ class TaskPoolMapOperator(MapOperator):
                 logical_usage
             )
 
-        self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
+        self._submit_data_task(
+            gen,
+            bundle,
+            dynamic_ray_remote_args,
+            task_done_callback=task_done_callback,
+        )
 
     def progress_str(self) -> str:
         return ""

@@ -477,8 +477,16 @@ class ActorPoolMapOperator(MapOperator):
 
             from functools import partial
 
+            actor_resources = self._actor_pool.get_actor_resource_usage(actor)
+            ray_remote_args = {
+                "num_cpus": actor_resources.cpu,
+                "memory": actor_resources.memory,
+            }
             self._submit_data_task(
-                gen, bundle, partial(_task_done_callback, actor_to_return=actor)
+                gen,
+                bundle,
+                ray_remote_args,
+                partial(_task_done_callback, actor_to_return=actor),
             )
 
             num_submitted_tasks += 1
@@ -946,6 +954,9 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def get_actor_location(self, actor: ActorHandle) -> NodeIdStr:
         return self._running_actors[actor].actor_location
+
+    def get_actor_resource_usage(self, actor: ActorHandle) -> ExecutionResources:
+        return self._actor_resource_usage[actor]
 
     @override
     def shutdown(self, force: bool = False):

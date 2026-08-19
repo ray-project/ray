@@ -712,6 +712,47 @@ def test_operator_metrics():
 
 
 @pytest.mark.parametrize(
+    "compute_strategy",
+    [TaskPoolStrategy(), ActorPoolStrategy(size=1)],
+)
+def test_map_operator_tracks_actual_memory_request(
+    ray_start_regular_shared,
+    compute_strategy,
+):
+    ctx = DataContext.get_current()
+    input_op = InputDataBuffer(ctx, make_ref_bundles([[1]]))
+    requested_memory = 1000
+    callback_calls = 0
+
+    def ray_remote_args_fn():
+        nonlocal callback_calls
+        callback_calls += 1
+        return {"memory": requested_memory}
+
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op=input_op,
+        data_context=ctx,
+        compute_strategy=compute_strategy,
+        ray_remote_args_fn=ray_remote_args_fn,
+    )
+
+    op.start(ExecutionOptions(), noop_counter())
+    if isinstance(compute_strategy, ActorPoolStrategy):
+        run_op_tasks_sync(op, only_existing=True)
+
+    assert op.can_add_input()
+    op.add_input(input_op.get_next(), 0)
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+
+    assert callback_calls == 1
+    assert op.metrics.average_memory_request_per_task == requested_memory
+    assert op.metrics.average_safe_memory_per_task is not None
+    op.shutdown(timer=Timer())
+
+
+@pytest.mark.parametrize(
     "ray_remote_args", [{}, {"num_cpus": 0}, {"num_cpus": 0.5}, {"num_cpus": 1}]
 )
 @pytest.mark.parametrize(

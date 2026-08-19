@@ -143,6 +143,8 @@ class RunningTaskInfo:
     cum_block_gen_time_s: float
     cum_block_ser_time_s: float
     task_id: ray.TaskID
+    memory_request: Optional[float] = None
+    safe_memory_per_task: Optional[float] = None
     # Node IDs derived from the input blocks' exec_stats at task submission time.
     # Used to determine cache hits: if the task's first output block was produced
     # on a node that already held an input block, it's a "cache hit" (the task
@@ -576,6 +578,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
         self._op_task_duration_stats = DistributionTracker()
         self._max_uss_bytes = DistributionTracker()
+        self._memory_request_bytes = DistributionTracker()
+        self._safe_memory_per_task_bytes = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -914,6 +918,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
         return self.max_uss_bytes.mean
 
+    @property
+    def average_memory_request_per_task(self) -> Optional[float]:
+        """Average memory requested by tasks with a USS sample."""
+        if self._memory_request_bytes.num_samples == 0:
+            return None
+        return self._memory_request_bytes.mean
+
+    @property
+    def average_safe_memory_per_task(self) -> Optional[float]:
+        """Average safe memory threshold for tasks with a USS sample."""
+        if self._safe_memory_per_task_bytes.num_samples == 0:
+            return None
+        return self._safe_memory_per_task_bytes.mean
+
     @metric_property(
         description="Indicates if the operator is hanging.",
         metrics_group=MetricsGroup.MISC,
@@ -1001,6 +1019,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_index: int,
         inputs: RefBundle,
         task_id: Optional[ray.TaskID] = None,
+        memory_request: Optional[float] = None,
+        safe_memory_per_task: Optional[float] = None,
     ):
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
@@ -1020,6 +1040,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             cum_block_gen_time_s=0,
             cum_block_ser_time_s=0,
             task_id=ray.TaskID.nil() if task_id is None else task_id,
+            memory_request=memory_request,
+            safe_memory_per_task=safe_memory_per_task,
             input_node_ids=input_node_ids,
         )
 
@@ -1164,6 +1186,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         if task_exec_stats is not None and task_exec_stats.max_uss_bytes is not None:
             self._max_uss_bytes.add_sample(task_exec_stats.max_uss_bytes)
+            if task_info.memory_request is not None:
+                assert task_info.safe_memory_per_task is not None
+                self._memory_request_bytes.add_sample(task_info.memory_request)
+                self._safe_memory_per_task_bytes.add_sample(
+                    task_info.safe_memory_per_task
+                )
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s

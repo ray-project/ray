@@ -22,11 +22,18 @@ def test_average_max_uss_per_task():
     op.data_context.enable_get_object_locations_for_metrics = False
     metrics = OpRuntimeMetrics(op)
     assert metrics.average_max_uss_per_task is None
+    assert metrics.average_memory_request_per_task is None
+    assert metrics.average_safe_memory_per_task is None
 
     input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
     # Submit and finish first task with USS of 100 bytes.
-    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_submitted(
+        0,
+        input_bundle,
+        memory_request=1000,
+        safe_memory_per_task=2000,
+    )
     metrics.on_task_finished(
         0,
         None,
@@ -34,9 +41,16 @@ def test_average_max_uss_per_task():
         TaskExecDriverStats(task_output_backpressure_s=0),
     )
     assert metrics.average_max_uss_per_task == 100
+    assert metrics.average_memory_request_per_task == 1000
+    assert metrics.average_safe_memory_per_task == 2000
 
     # Submit and finish second task with USS of 300 bytes.
-    metrics.on_task_submitted(1, input_bundle)
+    metrics.on_task_submitted(
+        1,
+        input_bundle,
+        memory_request=3000,
+        safe_memory_per_task=4000,
+    )
     metrics.on_task_finished(
         1,
         None,
@@ -44,6 +58,8 @@ def test_average_max_uss_per_task():
         TaskExecDriverStats(task_output_backpressure_s=0),
     )
     assert metrics.average_max_uss_per_task == 200  # (100 + 300) / 2
+    assert metrics.average_memory_request_per_task == 2000
+    assert metrics.average_safe_memory_per_task == 3000
 
 
 def test_task_completion_time_histogram():

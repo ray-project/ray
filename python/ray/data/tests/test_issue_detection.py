@@ -226,7 +226,11 @@ def test_high_memory_detection(
         data_context=ctx,
         ray_remote_args={"memory": configured_memory},
     )
-    map_operator._metrics = MagicMock(average_max_uss_per_task=actual_memory)
+    map_operator._metrics = MagicMock(
+        average_max_uss_per_task=actual_memory,
+        average_memory_request_per_task=configured_memory or 0,
+        average_safe_memory_per_task=3 * GiB,
+    )
     topology = {input_data_buffer: MagicMock(), map_operator: MagicMock()}
 
     operators = list(topology.keys())
@@ -240,11 +244,12 @@ def test_high_memory_detection(
 
     assert should_return_issue == bool(issues)
 
-def test_high_memory_detection_uses_current_dynamic_memory_request(
+
+def test_high_memory_detection_uses_recorded_dynamic_memory_request(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    dynamic_memory_request = 1 * GiB
+    ray_remote_args_fn = MagicMock(return_value={"memory": 10 * GiB})
 
     input_data_buffer = InputDataBuffer(ctx, input_data=[])
     map_operator = MapOperator.create(
@@ -252,9 +257,13 @@ def test_high_memory_detection_uses_current_dynamic_memory_request(
         input_op=input_data_buffer,
         data_context=ctx,
         ray_remote_args={"memory": 1 * GiB},
-        ray_remote_args_fn=lambda: {"memory": dynamic_memory_request},
+        ray_remote_args_fn=ray_remote_args_fn,
     )
-    map_operator._metrics = MagicMock(average_max_uss_per_task=8 * GiB)
+    map_operator._metrics = MagicMock(
+        average_max_uss_per_task=8 * GiB,
+        average_memory_request_per_task=1 * GiB,
+        average_safe_memory_per_task=3 * GiB,
+    )
     detector = HighMemoryIssueDetector(
         dataset_id="id",
         operators=[input_data_buffer, map_operator],
@@ -262,9 +271,11 @@ def test_high_memory_detection_uses_current_dynamic_memory_request(
     )
 
     assert len(detector.detect()) == 1
-    dynamic_memory_request = 10 * GiB
+    ray_remote_args_fn.assert_not_called()
+    map_operator.metrics.average_memory_request_per_task = 10 * GiB
 
     assert not detector.detect()
+    ray_remote_args_fn.assert_not_called()
 
 
 if __name__ == "__main__":
