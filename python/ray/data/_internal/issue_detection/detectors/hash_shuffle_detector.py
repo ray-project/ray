@@ -71,6 +71,8 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
         for op in self._operators:
             if not isinstance(op, HashShuffleOperator):
                 continue
+            if op._shutdown or op.has_completed():
+                continue
 
             # Skip if operator doesn't have aggregator pool yet
             if op._aggregator_pool is None:

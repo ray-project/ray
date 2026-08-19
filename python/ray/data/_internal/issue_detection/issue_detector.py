@@ -38,10 +38,6 @@ class IssueDetector(ABC):
     def detect(self) -> List[Issue]:
         pass
 
-    def detect_on_execution_end(self) -> List[Issue]:
-        """Detect issues using final metrics after successful execution."""
-        return []
-
     @abstractmethod
     def detection_time_interval_s(self) -> float:
         """Time interval between detections, or -1 if not enabled."""

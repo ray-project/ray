@@ -1,6 +1,6 @@
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -55,14 +55,14 @@ class HighMemoryIssueDetector(IssueDetector):
     ):
         self._dataset_id = dataset_id
         self._detector_cfg = config
-        self._operators = operators
+        self._completion_checked_operators: Set[MapOperator] = set()
 
-        self._initial_memory_requests: Dict[MapOperator, int] = {}
+        self._initial_memory_requests: Dict[MapOperator, Optional[int]] = {}
         for op in operators:
             if isinstance(op, MapOperator):
-                self._initial_memory_requests[op] = (
-                    op._get_dynamic_ray_remote_args().get("memory") or 0
-                )
+                self._initial_memory_requests[
+                    op
+                ] = op._get_dynamic_ray_remote_args().get("memory")
 
     @classmethod
     def from_executor(cls, executor: "StreamingExecutor") -> "HighMemoryIssueDetector":
@@ -84,8 +84,14 @@ class HighMemoryIssueDetector(IssueDetector):
 
     def detect(self) -> List[Issue]:
         issues = []
-        for op in self._operators:
-            if not isinstance(op, MapOperator):
+        for op, memory_request in self._initial_memory_requests.items():
+            if op._shutdown or op.has_completed():
+                if op in self._completion_checked_operators:
+                    continue
+                self._completion_checked_operators.add(op)
+                issue = self._detect_completed_operator(op, memory_request)
+                if issue is not None:
+                    issues.append(issue)
                 continue
 
             if op.metrics.average_max_uss_per_task is None:
@@ -93,17 +99,16 @@ class HighMemoryIssueDetector(IssueDetector):
 
             remote_args = op._get_dynamic_ray_remote_args()
             safe_memory_per_task = get_safe_default_logical_memory(remote_args)
+            initial_memory_request = memory_request or 0
 
             if (
-                op.metrics.average_max_uss_per_task > self._initial_memory_requests[op]
+                op.metrics.average_max_uss_per_task > initial_memory_request
                 and op.metrics.average_max_uss_per_task >= safe_memory_per_task
             ):
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
                     memory_per_task=memory_string(op.metrics.average_max_uss_per_task),
-                    initial_memory_request=memory_string(
-                        self._initial_memory_requests[op]
-                    ),
+                    initial_memory_request=memory_string(initial_memory_request),
                     detection_time_interval_s=self.detection_time_interval_s(),
                 )
                 issues.append(
@@ -117,45 +122,41 @@ class HighMemoryIssueDetector(IssueDetector):
 
         return issues
 
-    def detect_on_execution_end(self) -> List[Issue]:
-        issues = []
-        for op, memory_request in self._initial_memory_requests.items():
-            max_uss_bytes = op.metrics.max_uss_bytes.max
-            if max_uss_bytes is None:
-                continue
+    def _detect_completed_operator(
+        self, op: MapOperator, memory_request: Optional[int]
+    ) -> Optional[Issue]:
+        if memory_request is None:
+            return None
 
-            max_uss_bytes = int(max_uss_bytes)
-            # Require the configured memory to be at least 1.25x the observed max USS.
-            if 5 * max_uss_bytes <= 4 * memory_request:
-                continue
+        max_uss_bytes = op.metrics.max_uss_bytes.max
+        if max_uss_bytes is None:
+            return None
 
-            # Round up to the nearest whole byte.
-            recommended_memory, remainder = divmod(5 * max_uss_bytes, 4)
-            if remainder:
-                recommended_memory += 1
-            if memory_request:
-                memory_configuration = (
-                    f"The configured logical memory was "
-                    f"{memory_string(memory_request)}."
-                )
-            else:
-                memory_configuration = "No logical memory was configured."
-            message = HIGH_MEMORY_FINAL_WARNING.format(
-                op_name=op.name,
-                max_memory=memory_string(max_uss_bytes),
-                memory_configuration=memory_configuration,
-                recommended_memory=memory_string(recommended_memory),
-                recommended_memory_bytes=recommended_memory,
-            )
-            issues.append(
-                Issue(
-                    dataset_name=self._dataset_id,
-                    operator_id=op.id,
-                    issue_type=IssueType.HIGH_MEMORY,
-                    message=_format_message(message),
-                )
-            )
-        return issues
+        max_uss_bytes = int(max_uss_bytes)
+        # Require the configured memory to be at least 1.25x the observed max USS.
+        if 5 * max_uss_bytes <= 4 * memory_request:
+            return None
+
+        # Round up to the nearest whole byte.
+        recommended_memory, remainder = divmod(5 * max_uss_bytes, 4)
+        if remainder:
+            recommended_memory += 1
+        memory_configuration = (
+            f"The configured logical memory was {memory_string(memory_request)}."
+        )
+        message = HIGH_MEMORY_FINAL_WARNING.format(
+            op_name=op.name,
+            max_memory=memory_string(max_uss_bytes),
+            memory_configuration=memory_configuration,
+            recommended_memory=memory_string(recommended_memory),
+            recommended_memory_bytes=recommended_memory,
+        )
+        return Issue(
+            dataset_name=self._dataset_id,
+            operator_id=op.id,
+            issue_type=IssueType.HIGH_MEMORY,
+            message=_format_message(message),
+        )
 
     def detection_time_interval_s(self) -> float:
         return self._detector_cfg.detection_time_interval_s
