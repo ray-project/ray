@@ -79,5 +79,37 @@ def test_create_forwards_config_fields_to_backend():
     assert config.readonly is False
 
 
+def test_ttl_is_enforced_by_the_runtime():
+    runtime = _fake_runtime()
+    instance_id = runtime.create(image="fake:latest", ttl_seconds=1)
+    assert runtime._backend.deleted == []
+    deadline = time.monotonic() + 5
+    while not runtime._backend.deleted and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert runtime._backend.deleted == [instance_id]
+    # The timer is gone after firing (delete popped it).
+    assert instance_id not in runtime._ttl_timers
+
+
+def test_delete_cancels_the_ttl_timer():
+    runtime = _fake_runtime()
+    instance_id = runtime.create(image="fake:latest", ttl_seconds=3600)
+    timer = runtime._ttl_timers[instance_id]
+    runtime.delete(instance_id)
+    assert instance_id not in runtime._ttl_timers
+    # cancel() sets the finished event; the thread itself may take a beat to
+    # exit, so assert the deterministic signal rather than thread liveness.
+    assert timer.finished.is_set()
+    assert runtime._backend.deleted == [instance_id]
+
+
+def test_no_ttl_by_default():
+    runtime = _fake_runtime()
+    instance_id = runtime.create(image="fake:latest")
+    assert instance_id not in runtime._ttl_timers
+    (config,) = runtime._backend.configs
+    assert config.ttl_seconds is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

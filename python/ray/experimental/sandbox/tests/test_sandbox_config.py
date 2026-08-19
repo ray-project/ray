@@ -15,7 +15,7 @@ def test_default_sandbox_config():
     assert config.cpu == 0.0
     assert config.memory == 0
     assert config.workdir is None
-    assert config.ttl_seconds == 3600
+    assert config.ttl_seconds is None
     assert config.rootless is True
     assert config.network == "none"
     assert config.readonly is True

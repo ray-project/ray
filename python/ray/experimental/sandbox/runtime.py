@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
@@ -19,6 +20,7 @@ class SandboxRuntime:
     def __init__(self):
         self._image_manager = ImageManager()
         self._backend = GVisorSandboxBackend(image_manager=self._image_manager)
+        self._ttl_timers: Dict[str, threading.Timer] = {}
 
     @property
     def image_manager(self) -> ImageManager:
@@ -50,7 +52,7 @@ class SandboxRuntime:
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
         mount_workdir: bool = True,
-        ttl_seconds: Optional[int] = 3600,
+        ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
@@ -74,7 +76,11 @@ class SandboxRuntime:
             directory at ``workdir``, shadowing any image content there. Set
             False to leave the image's filesystem (e.g. its own WORKDIR
             content) untouched; combine with ``readonly=False`` to write.
-            ttl_seconds: Optional automatic cleanup time-to-live in seconds.
+            ttl_seconds: Optional automatic cleanup time-to-live in seconds,
+                measured wall-clock from creation (not idle time): a sandbox that
+                is mid-command when the TTL fires is still deleted. None (default)
+                disables it; values <= 0 also mean no TTL. Enforced by this
+                runtime with a daemon timer that deletes the sandbox.
             timeout_seconds: Timeout in seconds for sandbox creation.
             rootless: If True, run gVisor in rootless mode.
             network: Network mode for runsc ("none", "host", "sandbox"). With
@@ -119,7 +125,20 @@ class SandboxRuntime:
             **kwargs,
         )
         self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)
-        return self._backend.create_sandbox(cfg)
+        instance_id = self._backend.create_sandbox(cfg)
+        if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
+            timer = threading.Timer(cfg.ttl_seconds, self._expire, args=(instance_id,))
+            timer.daemon = True
+            self._ttl_timers[instance_id] = timer
+            timer.start()
+        return instance_id
+
+    def _expire(self, instance_id: str) -> None:
+        """TTL callback: best-effort delete (the sandbox may already be gone)."""
+        try:
+            self.delete(instance_id)
+        except Exception:
+            pass
 
     def exec(
         self,
@@ -248,6 +267,9 @@ class SandboxRuntime:
         Args:
             instance_id: Unique identifier of the sandbox instance.
         """
+        timer = self._ttl_timers.pop(instance_id, None)
+        if timer is not None:
+            timer.cancel()
         self._backend.delete_sandbox(instance_id)
 
     def terminate(self, instance_id: str) -> None:

@@ -37,7 +37,7 @@ def create(
     env: Optional[Dict[str, str]] = None,
     workdir: Optional[str] = None,
     mount_workdir: bool = True,
-    ttl_seconds: Optional[int] = 3600,
+    ttl_seconds: Optional[int] = None,
     timeout_seconds: float = 30.0,
     rootless: bool = True,
     network: str = "none",
@@ -65,7 +65,10 @@ def create(
             directory at ``workdir``, shadowing any image content there. Set
             False to leave the image's filesystem (e.g. its own WORKDIR
             content) untouched; combine with ``readonly=False`` to write.
-        ttl_seconds: Optional automatic cleanup time-to-live in seconds.
+        ttl_seconds: Optional automatic cleanup time-to-live in seconds,
+            measured wall-clock from creation (not idle time): a sandbox that
+            is mid-command when the TTL fires is still deleted. None (default)
+            disables it; values <= 0 also mean no TTL.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
         network: Network mode for runsc ("none", "host", "sandbox"). With
