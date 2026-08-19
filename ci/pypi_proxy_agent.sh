@@ -112,18 +112,24 @@ _rayci_agent_pypi_proxy() {
   export RULES_PYTHON_PIP_ISOLATED=0
   echo "pypi index: agent proxy over the mirror -> ${PIP_INDEX_URL}"
 
-  # The address a docker build reaches the agent on. Best effort: without it, image builds
-  # simply keep resolving from PyPI, which is today's behaviour.
-  local gateway=""
-  if command -v docker >/dev/null 2>&1; then
-    gateway="$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || true)"
-  fi
-  if [[ -n "${gateway}" ]]; then
-    export RAYCI_IMAGE_PIP_INDEX_URL="http://${gateway}:${port}/simple"
-    echo "pypi index: image builds -> ${RAYCI_IMAGE_PIP_INDEX_URL}"
-  else
-    echo "pypi index: no docker bridge gateway found; image builds stay on PyPI" >&2
-  fi
+  # RAYCI_IMAGE_PIP_INDEX_URL is deliberately NOT exported here.
+  #
+  # It was, and it broke every wheel build on master: postmerge 19281 failed
+  # `wanda: wheel py3.{10,11,12,13}` where 19280 passed, on the commit that added this
+  # hook. pip inside the image build was pointed at the agent's bridge gateway, could not
+  # reach it, and reported "Could not find a version that satisfies the requirement
+  # cython==3.0.12 (from versions: none)" -- no 502, no origin fetch, nothing.
+  #
+  # Two things made that worse than a no-op. The gateway address is not the one a build
+  # can reach: premerge 72149 measured a docker build reaching a *step container* on the
+  # bridge (172.16.0.2), which is a different hop from reaching the *host* at the bridge
+  # gateway, and the two were conflated. And the fail-open does not extend into an image
+  # build: ray-wheel.Dockerfile reads ${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple},
+  # so an absent value falls back to PyPI while a present-but-unreachable one fails hard.
+  #
+  # Restoring it needs the address a docker build can actually reach, verified from inside
+  # a build on the agent that will run it, rather than inferred from `docker network
+  # inspect bridge`.
 }
 
 _rayci_agent_pypi_proxy
