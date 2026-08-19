@@ -1,5 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
-load("//bazel:python.bzl", "doctest", "py_test_module_list")
+load("@rules_python//python:defs.bzl", "py_library")
+load(":test.bzl", "doctest", "py_test", "py_test_module_list")
 
 # Export pytest plugin so it can be used in the documentation tests.
 exports_files(
@@ -1086,7 +1086,7 @@ py_test(
 
 py_test(
     name = "test_predicate_pushdown",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_predicate_pushdown.py"],
     tags = [
         "exclusive",
