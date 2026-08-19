@@ -203,21 +203,32 @@ class TestHangingExecutionIssueDetector:
 
 
 @pytest.mark.parametrize(
-    "configured_memory, actual_memory, should_return_issue",
+    "configured_memory, dynamic_memory_request, actual_memory, should_return_issue",
     [
         # User has appropriately configured memory, so no issue.
-        (8 * GiB, 8 * GiB, False),
+        (8 * GiB, None, 8 * GiB, False),
         # User hasn't configured memory correctly and memory use is high, so issue.
-        (None, 8 * GiB, True),
-        (1 * GiB, 8 * GiB, True),
+        (None, None, 8 * GiB, True),
+        (1 * GiB, None, 8 * GiB, True),
+        # Existing workers retain the request used when they were launched.
+        (1 * GiB, 10 * GiB, 8 * GiB, True),
         # User hasn't configured memory correctly but memory use is low, so no issue.
-        (None, 1 * GiB, False),
+        (None, None, 1 * GiB, False),
     ],
 )
 def test_high_memory_detection(
-    configured_memory, actual_memory, should_return_issue, restore_data_context
+    configured_memory,
+    dynamic_memory_request,
+    actual_memory,
+    should_return_issue,
+    restore_data_context,
 ):
     ctx = DataContext.get_current()
+    ray_remote_args_fn = (
+        MagicMock(return_value={"memory": dynamic_memory_request})
+        if dynamic_memory_request is not None
+        else None
+    )
 
     input_data_buffer = InputDataBuffer(ctx, input_data=[])
     map_operator = MapOperator.create(
@@ -225,8 +236,13 @@ def test_high_memory_detection(
         input_op=input_data_buffer,
         data_context=ctx,
         ray_remote_args={"memory": configured_memory},
+        ray_remote_args_fn=ray_remote_args_fn,
     )
-    map_operator._metrics = MagicMock(average_max_uss_per_task=actual_memory)
+    map_operator._metrics = MagicMock(
+        average_max_uss_per_task=actual_memory,
+        average_memory_request_per_task=configured_memory or 0,
+        average_safe_memory_per_task=2.5 * GiB,
+    )
     topology = {input_data_buffer: MagicMock(), map_operator: MagicMock()}
 
     operators = list(topology.keys())
@@ -239,6 +255,9 @@ def test_high_memory_detection(
     issues = detector.detect()
 
     assert should_return_issue == bool(issues)
+    if ray_remote_args_fn is not None:
+        assert "requested 1.0GiB per task on average" in issues[0].message
+        ray_remote_args_fn.assert_not_called()
 
 
 if __name__ == "__main__":

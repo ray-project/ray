@@ -607,6 +607,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        memory_request_bytes: Optional[float] = None,
+        safe_memory_bytes: Optional[int] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -674,7 +676,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             operator_name=self.name,
         )
         self._metrics.on_task_submitted(
-            task_index, inputs, task_id=data_task.get_task_id()
+            task_index,
+            inputs,
+            task_id=data_task.get_task_id(),
+            memory_request_bytes=memory_request_bytes,
+            safe_memory_bytes=safe_memory_bytes,
         )
         self._data_tasks[task_index] = data_task
 

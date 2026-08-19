@@ -58,6 +58,7 @@ from ray.data._internal.execution.node_trackers.actor_location import (
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
+    get_safe_default_logical_memory,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string, merge_label_selector
@@ -451,6 +452,11 @@ class ActorPoolMapOperator(MapOperator):
             self._metrics.on_input_dequeued(bundle, input_index=0)
             input_blocks = [entry.ref for entry in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
+            actor_resources = self._actor_pool.get_actor_resource_usage(actor)
+            memory_request_bytes = actor_resources.memory
+            safe_memory_bytes = get_safe_default_logical_memory(
+                {"num_cpus": actor_resources.cpu}
+            )
 
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
@@ -478,7 +484,11 @@ class ActorPoolMapOperator(MapOperator):
             from functools import partial
 
             self._submit_data_task(
-                gen, bundle, partial(_task_done_callback, actor_to_return=actor)
+                gen,
+                bundle,
+                partial(_task_done_callback, actor_to_return=actor),
+                memory_request_bytes=memory_request_bytes,
+                safe_memory_bytes=safe_memory_bytes,
             )
 
             num_submitted_tasks += 1
@@ -1074,6 +1084,9 @@ class _ActorPool(AutoscalingActorPool):
                 node_heap[actor] = rank
 
     # === End of overriding methods of AutoscalingActorPool ===
+
+    def get_actor_resource_usage(self, actor: ActorHandle) -> ExecutionResources:
+        return self._actor_resource_usage[actor]
 
     def _get_actor_logical_id(self, actor: ActorHandle) -> LogicalActorId:
         return self._actor_to_logical_id[actor]

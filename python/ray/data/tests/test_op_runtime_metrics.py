@@ -6,9 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    OpRuntimeMetrics,
-)
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
 )
@@ -22,11 +20,18 @@ def test_average_max_uss_per_task():
     op.data_context.enable_get_object_locations_for_metrics = False
     metrics = OpRuntimeMetrics(op)
     assert metrics.average_max_uss_per_task is None
+    assert metrics.average_memory_request_per_task is None
+    assert metrics.average_safe_memory_per_task is None
 
     input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
     # Submit and finish first task with USS of 100 bytes.
-    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_submitted(
+        0,
+        input_bundle,
+        memory_request_bytes=100,
+        safe_memory_bytes=200,
+    )
     metrics.on_task_finished(
         0,
         None,
@@ -34,9 +39,16 @@ def test_average_max_uss_per_task():
         TaskExecDriverStats(task_output_backpressure_s=0),
     )
     assert metrics.average_max_uss_per_task == 100
+    assert metrics.average_memory_request_per_task == 100
+    assert metrics.average_safe_memory_per_task == 200
 
     # Submit and finish second task with USS of 300 bytes.
-    metrics.on_task_submitted(1, input_bundle)
+    metrics.on_task_submitted(
+        1,
+        input_bundle,
+        memory_request_bytes=500,
+        safe_memory_bytes=600,
+    )
     metrics.on_task_finished(
         1,
         None,
@@ -44,6 +56,26 @@ def test_average_max_uss_per_task():
         TaskExecDriverStats(task_output_backpressure_s=0),
     )
     assert metrics.average_max_uss_per_task == 200  # (100 + 300) / 2
+    assert metrics.average_memory_request_per_task == 300
+    assert metrics.average_safe_memory_per_task == 400
+
+    # A task without a USS sample doesn't affect any of the paired averages.
+    metrics.on_task_submitted(
+        2,
+        input_bundle,
+        memory_request_bytes=900,
+        safe_memory_bytes=1000,
+    )
+    metrics.on_task_finished(
+        2,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+
+    assert metrics.average_max_uss_per_task == 200
+    assert metrics.average_memory_request_per_task == 300
+    assert metrics.average_safe_memory_per_task == 400
 
 
 def test_task_completion_time_histogram():
