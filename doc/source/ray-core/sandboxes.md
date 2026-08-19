@@ -193,7 +193,7 @@ For advanced workloads, you might need to configure low-level runtime options su
 The `_oci_spec_transform_fn` callable receives the fully generated OCI specification dictionary. It can mutate the dictionary in place or return a modified one. Common use cases include the following:
 
 * **Host mounts**: Mount host directories, read-only datasets, or model weights into the sandbox container.
-* **Namespace or mount details** that the first-class options don't cover. Note that internet access, DNS, and additional Linux capabilities no longer need this hook — use `network=`, `dns=`, and `capabilities=` (see [Networking and DNS](#networking-and-dns)). The hook is still the way to *remove* even the runtime's default capabilities (erase the sets under `spec["process"]["capabilities"]`).
+* **Namespace or mount details** that the first-class options don't cover. Internet access, DNS, and Linux capabilities no longer need this hook — use `network=`, `dns=`, and `capabilities=` (including `capabilities=[]` to run with none at all; see [Networking and DNS](#networking-and-dns)). The hook remains for advanced network or capability configurations beyond those options.
 
 ```python
 import ray
