@@ -98,6 +98,9 @@ class LineageTracker:
             f"Registering task submission for task {data_task_id} with dependencies {dependencies}"
         )
         if data_task_id in self._data_task_id_to_task_node:
+            logger.debug(
+                f"Repeated submission of data task ID {data_task_id} with dependencies {dependencies}"
+            )
             return
 
         # construct child to parent edge.
