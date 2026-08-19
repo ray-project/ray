@@ -22,6 +22,9 @@ ENV RAY_BUILD_ENV=ubuntu22.04_forge
 
 RUN \
   --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
+  --mount=type=bind,source=ci/pypi_index_proxy.py,target=pypi_index_proxy.py \
+  --mount=type=bind,source=ci/pypi_proxy_profile.sh,target=pypi_proxy_profile.sh \
+  --mount=type=bind,source=ci/install_pypi_proxy.sh,target=install_pypi_proxy.sh \
 <<EOF
 #!/bin/bash
 
@@ -93,6 +96,19 @@ ln -s "$UV_PYTHON_BIN" /usr/local/bin/python
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
 uv pip install --system pip==25.0 cffi==1.16.0
+
+# The PyPI index proxy (ci/pypi_index_proxy.py), used when the CI package mirror is
+# reachable but only serves the path-prefixed byte cache: PyPI's own index pages name
+# files.pythonhosted.org for the artifacts, so an index URL alone reroutes the
+# metadata request and leaves the download on the origin. The proxy rewrites those
+# URLs. ci/pypi_proxy_profile.sh decides whether it is needed and starts it.
+#
+# It needs Python >=3.11 (asgi-cross-origin-protection) while this image's default
+# interpreter is deliberately 3.10 above and symlinked as python/python3, so install
+# a second interpreter for the proxy alone and keep it in its own venv. Nothing else
+# resolves through /opt/pypiproxy and the default python is left untouched.
+uv python install --install-dir /usr/local/python 3.12
+bash install_pypi_proxy.sh "$(uv python find --no-project 3.12)"
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
