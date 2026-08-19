@@ -1239,14 +1239,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
-  // Detect a streaming generator replay that produced a different number of
-  // objects than the first attempt, and fail before any return object is
-  // written to the store below — otherwise downstream consumers could observe
-  // the inconsistent objects before the failure propagates. Skipped on
-  // application-error completions, which already route through the failure
-  // path.
-  if (!is_application_error &&
-      FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
+  // Fail inconsistent streaming-generator replays before completion bookkeeping.
+  if (FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
     return;
   }
 
@@ -1416,66 +1410,30 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   // If it is a streaming generator, mark the end of stream since the task is finished.
   // We handle this logic here because the lock shouldn't be held while calling
-  // HandleTaskReturn.
-  if (spec.IsStreamingGenerator()) {
+  // HandleTaskReturn. On re-execution the EOF was already pinned by the first
+  // successful attempt; stream values are rematerialized only via intermediate
+  // generator reports (retries must be reproducible). Do not copy
+  // return_objects(0) onto stream refs on app-error replay: for streaming
+  // generators the static return is intentionally serialized None.
+  if (spec.IsStreamingGenerator() && first_execution) {
     const ObjectID generator_id =
         ObjectID::FromBinary(reply.return_objects(0).object_id());
-    if (first_execution) {
-      const int streaming_generator_return_count =
-          reply.streaming_generator_return_ids_size();
-      if (is_application_error && streaming_generator_return_count == 0 &&
-          !reply.return_objects(0).in_plasma()) {
-        // A failure before the generator executor starts (for example, a
-        // failed by-reference dependency) has no streamed error item. Copy the
-        // generator completion error to EOF-region refs so an eagerly peeked
-        // ref surfaces the same serialized RayTaskError as gen.completed().
-        const rpc::ReturnObject &task_error = reply.return_objects(0);
-        MarkEndOfStream(generator_id,
-                        streaming_generator_return_count,
-                        rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                        /*error_info=*/std::nullopt,
-                        task_error);
-      } else {
-        MarkEndOfStream(generator_id, streaming_generator_return_count);
-      }
+    const int streaming_generator_return_count =
+        reply.streaming_generator_return_ids_size();
+    if (is_application_error && streaming_generator_return_count == 0 &&
+        !reply.return_objects(0).in_plasma()) {
+      // A failure before the generator executor starts (for example, a
+      // failed by-reference dependency) has no streamed error item. Copy the
+      // generator completion error to EOF-region refs so an eagerly peeked
+      // ref surfaces the same serialized RayTaskError as gen.completed().
+      const rpc::ReturnObject &task_error = reply.return_objects(0);
+      MarkEndOfStream(generator_id,
+                      streaming_generator_return_count,
+                      rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                      /*error_info=*/std::nullopt,
+                      task_error);
     } else {
-      // The end of the stream should already have been marked on the first
-      // successful execution.
-      if (is_application_error) {
-        // It means the task was re-executed but failed with an application
-        // error. In this case, we should fail the rest of known streaming
-        // generator returns with the same error.
-        RAY_LOG(DEBUG) << "Streaming generator task " << spec.TaskId()
-                       << " failed with application error, failing "
-                       << spec.NumStreamingGeneratorReturns() << " return objects.";
-        RAY_CHECK_EQ(reply.return_objects_size(), 1);
-        for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
-          const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-          RAY_CHECK_EQ(reply.return_objects_size(), 1);
-          const auto &return_object = reply.return_objects(0);
-          StatusOr<bool> res =
-              HandleTaskReturn(generator_return_id,
-                               return_object,
-                               NodeID::FromBinary(worker_addr.node_id()),
-                               store_in_plasma_ids.contains(generator_return_id));
-          if (!res.ok()) {
-            RAY_LOG(WARNING).WithField(generator_return_id)
-                << "Failed to handle generator return during app error propagation: "
-                << res.status();
-            Status st = res.status();
-            rpc::ErrorType err_type = MapPlasmaPutStatusToErrorType(st);
-            rpc::RayErrorInfo err_info;
-            err_info.set_error_message(st.ToString());
-            FailOrRetryPendingTask(spec.TaskId(),
-                                   err_type,
-                                   &st,
-                                   /*ray_error_info=*/&err_info,
-                                   /*mark_task_object_failed=*/true,
-                                   /*fail_immediately=*/true);
-            return;
-          }
-        }
-      }
+      MarkEndOfStream(generator_id, streaming_generator_return_count);
     }
   }
 
