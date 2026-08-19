@@ -85,7 +85,7 @@ class HighMemoryIssueDetector(IssueDetector):
     def detect(self) -> List[Issue]:
         issues = []
         for op, memory_request in self._initial_memory_requests.items():
-            if op._shutdown or op.has_completed():
+            if op.has_completed():
                 if op in self._completion_checked_operators:
                     continue
                 self._completion_checked_operators.add(op)
