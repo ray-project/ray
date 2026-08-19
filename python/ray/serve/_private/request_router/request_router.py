@@ -504,6 +504,9 @@ class RequestRouter(ABC):
         # Throttle state for router queue length gauge updates.
         # Maps replica_id -> last update timestamp to avoid excessive metric updates.
         self._queue_len_gauge_last_update: Dict[ReplicaID, float] = {}
+        # The event loop only keeps weak references to tasks, so the background
+        # cache-population probes below need a strong reference until they finish.
+        self._probe_tasks: Set[asyncio.Task] = set()
 
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
@@ -917,7 +920,11 @@ class RequestRouter(ABC):
             if replica_id not in new_replica_id_set:
                 del self._queue_len_gauge_last_update[replica_id]
         # Populate cache for new replicas
-        self._event_loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
+        probe_task = self._event_loop.create_task(
+            self._probe_queue_lens(replicas_to_ping, 0)
+        )
+        self._probe_tasks.add(probe_task)
+        probe_task.add_done_callback(self._probe_tasks.discard)
         self._replicas_updated_event.set()
         self._maybe_start_routing_tasks()
 
@@ -1075,9 +1082,11 @@ class RequestRouter(ABC):
         elif len(not_in_cache) > 0:
             # If there are replicas without a valid cache entry, probe them in the
             # background to populate the cache.
-            self._event_loop.create_task(
+            probe_task = self._event_loop.create_task(
                 self._probe_queue_lens(not_in_cache, backoff_index)
             )
+            self._probe_tasks.add(probe_task)
+            probe_task.add_done_callback(self._probe_tasks.discard)
 
         # `self._replicas` may have been updated since the candidates were chosen.
         # In that case, return `None` so a new one is selected.

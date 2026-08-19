@@ -393,6 +393,12 @@ class ReplicaMetricsManager:
         self._max_ongoing_requests = max_ongoing_requests
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
+        # The event loop only keeps weak references to tasks, so these
+        # long-lived reporters need a strong reference to survive. Same as
+        # Router._cached_metrics_task in router.py.
+        self._cached_metrics_task: Optional[asyncio.Task] = None
+        self._max_processing_latency_task: Optional[asyncio.Task] = None
+        self._utilization_task: Optional[asyncio.Task] = None
 
         # Cache user_callable_wrapper initialization state to avoid repeated runtime checks
         self._custom_metrics_enabled = False
@@ -454,7 +460,9 @@ class ReplicaMetricsManager:
         )
         if self._cached_metrics_enabled:
             self._cached_latencies: DefaultDict[str, Deque[float]] = defaultdict(deque)
-            self._event_loop.create_task(self._report_cached_metrics_forever())
+            self._cached_metrics_task = self._event_loop.create_task(
+                self._report_cached_metrics_forever()
+            )
 
         # Track maximum processing latency over a rolling window.
         self._max_processing_latency_trackers: DefaultDict[
@@ -473,7 +481,9 @@ class ReplicaMetricsManager:
         self._max_processing_latency_report_interval_s = (
             RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S
         )
-        self._event_loop.create_task(self._report_max_processing_latency_forever())
+        self._max_processing_latency_task = self._event_loop.create_task(
+            self._report_max_processing_latency_forever()
+        )
 
         self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
@@ -513,7 +523,9 @@ class ReplicaMetricsManager:
         self._utilization_report_interval_s = (
             RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S
         )
-        self._event_loop.create_task(self._report_utilization_forever())
+        self._utilization_task = self._event_loop.create_task(
+            self._report_utilization_forever()
+        )
 
         self.set_autoscaling_config(autoscaling_config)
 
@@ -665,6 +677,20 @@ class ReplicaMetricsManager:
 
     async def shutdown(self):
         """Stop periodic background tasks."""
+
+        reporters = [
+            task
+            for task in (
+                self._cached_metrics_task,
+                self._max_processing_latency_task,
+                self._utilization_task,
+            )
+            if task is not None
+        ]
+        for task in reporters:
+            task.cancel()
+        if reporters:
+            await asyncio.gather(*reporters, return_exceptions=True)
 
         await self._metrics_pusher.graceful_shutdown()
 
