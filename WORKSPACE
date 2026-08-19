@@ -70,6 +70,14 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 pip_parse(
     name = "py_deps_py310",
     python_interpreter_target = python310,
+    # TEMPORARY, REVERT BEFORE MERGE. rules_python runs whl_library's pip with
+    # quiet = True, so a fetch that succeeds prints nothing and every index URL
+    # ever seen in a CI log came from a failure path. That makes "no PyPI URLs in
+    # the log" unreadable as evidence: it looks identical whether CodeArtifact
+    # served the wheels or PyPI served them without incident. Turning it off makes
+    # pip print the index it actually resolved from, which is the only positive
+    # confirmation available short of instrumenting the fetch.
+    quiet = False,
     requirements_lock = "//release:requirements_py310.txt",
 )
 
