@@ -1,4 +1,9 @@
-import { Checkbox, FormControlLabel, LinearProgress } from "@mui/material";
+import {
+  Alert,
+  Checkbox,
+  FormControlLabel,
+  LinearProgress,
+} from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
 import {
@@ -38,6 +43,8 @@ export const JobProgressBar = ({
     isLoading: progressLoading,
     driverExists,
     totalTasks,
+    totalTaskAttempts,
+    numAfterTruncation,
     latestFetchTimestamp: progressTimestamp,
   } = useJobProgress(jobId, advancedProgressBarExpanded);
   const {
@@ -45,6 +52,8 @@ export const JobProgressBar = ({
     isLoading: progressGroupsLoading,
     total,
     totalTasks: advancedTotalTasks,
+    totalTaskAttempts: advancedTotalTaskAttempts,
+    numAfterTruncation: advancedNumAfterTruncation,
     latestFetchTimestamp: totalTimestamp,
   } = useJobProgressByLineage(
     advancedProgressBarRendered ? jobId : undefined,
@@ -66,12 +75,33 @@ export const JobProgressBar = ({
   const { status } = job;
   // Use whichever data was received the most recently
   // Note these values may disagree in some way. It might better to consistently use one endpoint.
-  const [totalProgress, finalTotalTasks] =
+  const progressSource =
     total === undefined ||
     advancedTotalTasks === undefined ||
     progressTimestamp > totalTimestamp
-      ? [progress, totalTasks]
-      : [total, advancedTotalTasks];
+      ? {
+          totalProgress: progress,
+          finalTotalTasks: totalTasks,
+          finalTotalTaskAttempts: totalTaskAttempts,
+          finalNumAfterTruncation: numAfterTruncation,
+        }
+      : {
+          totalProgress: total,
+          finalTotalTasks: advancedTotalTasks,
+          finalTotalTaskAttempts: advancedTotalTaskAttempts,
+          finalNumAfterTruncation: advancedNumAfterTruncation,
+        };
+  const {
+    totalProgress,
+    finalTotalTasks,
+    finalTotalTaskAttempts,
+    finalNumAfterTruncation,
+  } = progressSource;
+
+  const hasTruncatedTaskData =
+    typeof finalTotalTaskAttempts === "number" &&
+    typeof finalNumAfterTruncation === "number" &&
+    finalTotalTaskAttempts > finalNumAfterTruncation;
 
   return (
     <div>
@@ -100,6 +130,16 @@ export const JobProgressBar = ({
           />
         }
       />
+      {hasTruncatedTaskData && (
+        <Alert severity="warning" sx={{ marginTop: 1 }}>
+          Task progress may be incomplete because Ray retrieved{" "}
+          {finalNumAfterTruncation.toLocaleString()} of{" "}
+          {finalTotalTaskAttempts.toLocaleString()} task entries from the state
+          backend. The remaining{" "}
+          {(finalTotalTaskAttempts - finalNumAfterTruncation).toLocaleString()}{" "}
+          task entries were truncated to avoid oversized payloads.
+        </Alert>
+      )}
       {advancedProgressBarExpanded && (
         <AdvancedProgressBar
           sx={{ marginTop: 0.5 }}
