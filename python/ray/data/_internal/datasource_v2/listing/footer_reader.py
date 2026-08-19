@@ -87,11 +87,6 @@ class FooterReader:
     is a streaming generator that yields ``FileChunks`` in small batches as their
     footers land, so the driver does far fewer object-store fetches than one per
     file.
-
-    Kept as a plain class (the actor is created via the functional
-    ``ray.remote(FooterReader)`` form below) so callers can type actor handles as
-    ``ActorProxy[FooterReader]`` -- see Ray's type-hint docs
-    (https://docs.ray.io/en/latest/ray-core/type-hint.html).
     """
 
     def __init__(
@@ -133,25 +128,33 @@ class FooterReader:
             if filter_expr is not None
             else set()
         )
-        # Projection pushdown: when set, row-group byte sizes are accounted over
-        # only these top-level columns, since the reader will only fetch those.
-        self.projected_cols: set[str] | None = (
-            set(projected_cols) if projected_cols is not None else None
+        # Top-level columns a read task will decode, which row-group byte sizes
+        # are accounted over. The scanner is handed the projection alone, but it
+        # still decodes every predicate column to evaluate the filter, so the
+        # union is what a task fetches. Sizing on the
+        # projection alone lets a large non-projected filter column overfill read
+        # tasks, the failure this path exists to prevent. ``None`` means "all
+        # columns", which already covers both.
+        self.read_columns: set[str] | None = (
+            set(projected_cols) | self.filter_columns
+            if projected_cols is not None
+            else None
         )
         # Reused across files; make_fragment is what lets us apply
         # split_by_row_group.
         self.file_format = pds.ParquetFileFormat()
 
-    def _projected_leaf_indices(self, row_group: RowGroupMetaData) -> list[int] | None:
-        # Map the requested top-level column names to Parquet leaf-column indices
-        # (a nested field expands to several leaves, e.g. "a.b.list.element").
-        # Returns None to signal "all columns" so callers can take the cheap path.
-        if self.projected_cols is None:
+    def _read_leaf_indices(self, row_group: RowGroupMetaData) -> list[int] | None:
+        # Map the top-level column names a read task decodes to Parquet
+        # leaf-column indices (a nested field expands to several leaves, e.g.
+        # "a.b.list.element"). Returns None to signal "all columns" so callers
+        # can take the cheap path.
+        if self.read_columns is None:
             return None
         indices = [
             j
             for j in range(row_group.num_columns)
-            if _leaf_matches(row_group.column(j).path_in_schema, self.projected_cols)
+            if _leaf_matches(row_group.column(j).path_in_schema, self.read_columns)
         ]
 
         return indices or None
@@ -164,7 +167,7 @@ class FooterReader:
         fully_matched: bool = False,
     ) -> RowGroupInfo:
         # Sum per-column sizes on both paths -- with a projection, only the
-        # projected leaves, so bin packing reflects the bytes the reader will
+        # leaves the reader decodes, so bin packing reflects the bytes it will
         # actually pull. Deliberately not ``row_group.total_byte_size``, which
         # is one cheap accessor but can report the *compressed* size for some
         # files (apache/arrow#48138); undersizing bins here overfills read
@@ -180,7 +183,7 @@ class FooterReader:
 
     def _locate_filter_columns(self, schema: ParquetSchema) -> _FilterLeaves:
         # Resolve the predicate's column names to Parquet leaf-column indices,
-        # the same mapping ``_projected_leaf_indices`` does for the projection.
+        # the same mapping ``_read_leaf_indices`` does for the read columns.
         # Called once per file so the per-row-group null check below is an
         # index lookup instead of another scan over every leaf. Leaf order is
         # the schema's, so these index a row group's columns just as well.
@@ -268,9 +271,7 @@ class FooterReader:
         # (and caches it on the fragment). It raises on a truncated, non-Parquet,
         # or since-deleted file -- terminal conditions that must fail the read
         # rather than silently drop the file's rows, since the reader would fail
-        # on the same file anyway. Transient remote-storage errors are the
-        # exception and get retried, matching what the read side does per
-        # fragment; a failed attempt caches nothing, so retrying re-reads.
+        # on the same file anyway.
         metadata = call_with_retry(
             lambda: fragment.metadata,
             description=f"read Parquet footer for {path}",
@@ -278,11 +279,11 @@ class FooterReader:
         )
         # Both column look-ups are schema-derived, and a Parquet file has a
         # single schema, so resolve them once rather than rescanning every leaf
-        # for each group. The projection reads leaf paths off row group 0, which
-        # a file with no row groups has none of; it projects nothing either way.
+        # for each group. The read-column lookup reads leaf paths off row group 0,
+        # which a file with no row groups has none of; it sizes nothing either way.
         filter_leaves = self._locate_filter_columns(metadata.schema)
         leaf_indices = (
-            self._projected_leaf_indices(metadata.row_group(0))
+            self._read_leaf_indices(metadata.row_group(0))
             if metadata.num_row_groups
             else None
         )
@@ -401,7 +402,4 @@ class FooterReader:
         )
 
 
-# The Ray actor class. Built via the functional ``ray.remote(...)`` form (rather
-# than the ``@ray.remote`` decorator) so ``FooterReader`` stays a plain class and
-# actor handles can be typed ``ActorProxy[FooterReader]``.
 FooterReaderActor = ray.remote(FooterReader)

@@ -148,6 +148,31 @@ class TestReadAndChunk:
             rg.num_rows for rg in full.row_groups
         ]
 
+    def test_filter_columns_outside_the_projection_are_accounted(self, four_row_groups):
+        # The scanner is handed the projection alone, but it still decodes every
+        # predicate column to evaluate the filter -- so a column the predicate
+        # reads and the projection drops is bytes the read task really fetches.
+        # Sizing without it undercounts, and a large non-projected filter column
+        # would then overfill read tasks.
+        path, size = four_row_groups
+        # Matches every row, so no group is pruned and the three readers below
+        # produce the same groups -- only their sizes differ.
+        predicate = col("pad") != "y"
+
+        def sizes(**kwargs):
+            reader = _reader(**kwargs)
+            return [
+                rg.uncompressed_size
+                for rg in reader._read_and_chunk(path, size).row_groups
+            ]
+
+        filtered = sizes(projected_cols=["id"], filter_expr=predicate)
+        union = sizes(projected_cols=["id", "pad"], filter_expr=predicate)
+        projection_only = sizes(projected_cols=["id"])
+
+        assert filtered == union
+        assert all(a > b for a, b in zip(filtered, projection_only))
+
     def test_coalescing_merges_contiguous_groups(self, four_row_groups):
         path, size = four_row_groups
 
@@ -541,23 +566,37 @@ class TestMissingFilterColumnsSkipPruning:
         assert not any(rg.fully_matched for rg in chunks.row_groups)
 
 
-class TestProjectedLeafIndices:
+class TestReadLeafIndices:
     def test_none_when_no_projection(self, four_row_groups):
         path, _ = four_row_groups
         row_group = pq.ParquetFile(path).metadata.row_group(0)
 
         # ``None`` signals "all columns" so callers can take the cheap path.
-        assert _reader()._projected_leaf_indices(row_group) is None
+        assert _reader()._read_leaf_indices(row_group) is None
 
     def test_selects_only_projected_leaves(self, four_row_groups):
         path, _ = four_row_groups
         row_group = pq.ParquetFile(path).metadata.row_group(0)
 
-        indices = _reader(projected_cols=["id"])._projected_leaf_indices(row_group)
+        indices = _reader(projected_cols=["id"])._read_leaf_indices(row_group)
 
         assert indices is not None
         paths = [row_group.column(j).path_in_schema for j in indices]
         assert paths == ["id"]
+
+    def test_includes_filter_leaves_outside_the_projection(self, four_row_groups):
+        # The scanner is handed the projection alone but still decodes ``pad`` to
+        # evaluate the filter, so ``pad``'s bytes belong in the row group's size.
+        path, _ = four_row_groups
+        row_group = pq.ParquetFile(path).metadata.row_group(0)
+
+        indices = _reader(
+            projected_cols=["id"], filter_expr=col("pad") != "y"
+        )._read_leaf_indices(row_group)
+
+        assert indices is not None
+        paths = [row_group.column(j).path_in_schema for j in indices]
+        assert sorted(paths) == ["id", "pad"]
 
     def test_none_when_projection_matches_no_leaf(self, four_row_groups):
         # Reachable under schema evolution: the projection names a column this
@@ -567,10 +606,7 @@ class TestProjectedLeafIndices:
         path, _ = four_row_groups
         row_group = pq.ParquetFile(path).metadata.row_group(0)
 
-        assert (
-            _reader(projected_cols=["absent"])._projected_leaf_indices(row_group)
-            is None
-        )
+        assert _reader(projected_cols=["absent"])._read_leaf_indices(row_group) is None
 
     def test_projection_matching_no_leaf_sizes_all_columns(self, four_row_groups):
         path, size = four_row_groups
@@ -593,7 +629,7 @@ class TestProjectedLeafIndices:
         path, _ = _write(tmp_path / "nested.parquet", table, row_group_size=2)
         row_group = pq.ParquetFile(path).metadata.row_group(0)
 
-        indices = _reader(projected_cols=["outer"])._projected_leaf_indices(row_group)
+        indices = _reader(projected_cols=["outer"])._read_leaf_indices(row_group)
 
         assert indices is not None
         paths = [row_group.column(j).path_in_schema for j in indices]
