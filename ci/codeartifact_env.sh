@@ -94,19 +94,22 @@ _rayci_codeartifact_setup() {
   # is silently discarded and the repository rule resolves from PyPI while
   # looking configured.
   #
-  # UV_INDEX_URL is set for the same reason but has the opposite precedence to
-  # pip: it overrides the --index-url embedded on line 1 of the deplock files,
-  # so uv installs are redirected as well.
+  # UV_INDEX_URL is deliberately NOT set. It would work -- uv overrides the
+  # --index-url embedded in the deplock files, unlike pip -- but it also reaches
+  # the uv that Ray spawns for uv-based runtime environments, and those
+  # subprocesses do not carry the credential. They then hit an authenticated
+  # index anonymously: //python/ray/tests:test_runtime_env_uv{,_run} produced 80
+  # 401s and timed out at 915s. Redirecting uv needs the credential to follow it
+  # into the runtime env first, which is its own change. Absent the variable, uv
+  # follows the index pinned in each lock file, as it does today.
   cat > "${env_file}" <<EOF
 PIP_INDEX_URL=${index}
-UV_INDEX_URL=${index}
 RULES_PYTHON_PIP_ISOLATED=0
 EOF
   chmod 644 "${env_file}"
 
   # Also export on the agent, for the few steps that run outside a container.
   export PIP_INDEX_URL="${index}"
-  export UV_INDEX_URL="${index}"
   export RULES_PYTHON_PIP_ISOLATED=0
   export NETRC="${netrc_file}"
 
