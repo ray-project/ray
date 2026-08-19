@@ -97,6 +97,14 @@ DEFAULT_USE_ARROW_RS_PARQUET_READER = env_bool(
     True,
 )
 
+# With the arrow-rs reader: set glibc's M_TRIM_THRESHOLD to 0 (via mallopt) in
+# each worker process on first native read, so freed decode heap returns to
+# the OS immediately instead of accumulating as idle-worker USS under task
+# churn (measured +492 MiB over ~100 tasks on fused read->write; the trim
+# lever removed it entirely — arrow_rs_docs findings M48). Linux/glibc only;
+# a no-op elsewhere. Default False until the lever's wall cost is certified.
+DEFAULT_ARROW_RS_MALLOC_TRIM = env_bool("RAY_DATA_ARROW_RS_MALLOC_TRIM", False)
+
 # Default target chunk size for ``ParquetFileChunker``. ``None`` means the chunker
 # uses its built-in default (currently 1 GiB).
 DEFAULT_PARQUET_CHUNKER_TARGET_CHUNK_SIZE: Optional[int] = None
@@ -919,6 +927,7 @@ class DataContext:
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
     use_arrow_rs_parquet_reader: bool = DEFAULT_USE_ARROW_RS_PARQUET_READER
+    arrow_rs_malloc_trim: bool = DEFAULT_ARROW_RS_MALLOC_TRIM
     # Target chunk size in bytes for ``ParquetFileChunker``. When ``None``, the
     # chunker uses its built-in default (currently 1 GiB).
     parquet_chunker_target_chunk_size: Optional[

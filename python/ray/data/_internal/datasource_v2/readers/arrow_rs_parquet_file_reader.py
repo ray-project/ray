@@ -149,6 +149,59 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# One mallopt attempt per worker process (see _maybe_enable_malloc_trim).
+_MALLOC_TRIM_ATTEMPTED = False
+
+
+def _maybe_enable_malloc_trim() -> None:
+    """Ask glibc to return freed pages eagerly (``M_TRIM_THRESHOLD = 0``).
+
+    Why (findings M48): under task churn on fused read→write shapes, glibc
+    retains the reader's freed decode heap — worker idle USS climbed +492 MiB
+    over ~100 tasks in the soak, converting a per-task memory win into the
+    release suite's measured loss as workers age. Capping arenas barely helped
+    (the long-time suspect), but ``MALLOC_TRIM_THRESHOLD_=0`` removed the climb
+    entirely (idle floor 969 → 154 MiB, 0.08× PyArrow's). ``mallopt`` is the
+    runtime equivalent of that env var and reaches already-started Ray workers,
+    where an env only reaches processes started after it is set.
+
+    Gated by ``DataContext.arrow_rs_malloc_trim``
+    (env ``RAY_DATA_ARROW_RS_MALLOC_TRIM``), default off until the trim arm's
+    wall cost is certified (trim-on-every-free is a syscall-per-large-free
+    trade). Linux/glibc only; everywhere else this is a silent no-op.
+    """
+    global _MALLOC_TRIM_ATTEMPTED
+    if _MALLOC_TRIM_ATTEMPTED:
+        return
+    from ray.data.context import DataContext
+
+    if not DataContext.get_current().arrow_rs_malloc_trim:
+        return
+    # Only mark attempted once the knob is on: a driver-side reader construction
+    # before the context propagates must not burn the one attempt.
+    _MALLOC_TRIM_ATTEMPTED = True
+    import sys
+
+    if sys.platform != "linux":
+        return
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        M_TRIM_THRESHOLD = -1  # glibc malloc.h
+        if libc.mallopt(M_TRIM_THRESHOLD, 0) != 1:
+            logger.warning(
+                "mallopt(M_TRIM_THRESHOLD, 0) rejected; retention "
+                "lever inactive in this worker"
+            )
+    except Exception:
+        logger.warning(
+            "arrow_rs_malloc_trim requested but mallopt unavailable "
+            "(non-glibc libc?); continuing without it",
+            exc_info=True,
+        )
+
+
 # Set the first time this worker actually decodes a fragment natively, so the
 # "native decode ACTIVE" confirmation is emitted once per worker process rather
 # than once per fragment (which would flood the logs).
@@ -940,6 +993,9 @@ class ArrowRsParquetFileReader(ParquetFileReader):
         """
         if len(input_split) == 0:
             return
+
+        # Worker-process allocator lever (no-op unless the knob is on).
+        _maybe_enable_malloc_trim()
 
         # Reader-wide ineligibility: unsupported filesystem, or a Parquet-format
         # kwarg outside the native allowlist (anything not perf-only, not
