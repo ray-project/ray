@@ -332,22 +332,35 @@ def test_create_oci_spec_default_capabilities_untouched(tmp_path):
     assert spec["process"]["capabilities"] == {"bounding": ["CAP_KILL"]}
 
 
-def test_create_oci_spec_host_network_drops_empty_netns(tmp_path):
+def test_create_oci_spec_host_side_networking_drops_empty_netns(tmp_path):
     mgr = _StubImageManager(tmp_path)
-    spec = mgr.create_oci_spec(
-        image="fake:latest", base_spec=_sample_base_spec(), network="host"
-    )
-    assert {"type": "network"} not in spec["linux"]["namespaces"]
-    assert {"type": "pid"} in spec["linux"]["namespaces"]
+    for mode in ("host", "public"):
+        spec = mgr.create_oci_spec(
+            image="fake:latest", base_spec=_sample_base_spec(), network=mode
+        )
+        assert {"type": "network"} not in spec["linux"]["namespaces"]
+        assert {"type": "pid"} in spec["linux"]["namespaces"]
 
-    # Host networking gets the host's resolver, like Docker.
-    if os.path.exists("/etc/resolv.conf"):
-        resolv_mounts = [
-            m for m in spec["mounts"] if m["destination"] == "/etc/resolv.conf"
-        ]
-        assert len(resolv_mounts) == 1
-        assert resolv_mounts[0]["source"] == "/etc/resolv.conf"
-        assert "ro" in resolv_mounts[0]["options"]
+
+def test_create_oci_spec_mounts_resolv_conf_source(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    source = tmp_path / "resolv.conf"
+    source.write_text("nameserver 8.8.8.8\n")
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        network="public",
+        resolv_conf_source=str(source),
+    )
+    (mount,) = [m for m in spec["mounts"] if m["destination"] == "/etc/resolv.conf"]
+    assert mount["source"] == str(source)
+    assert "ro" in mount["options"]
+
+    # No source, no mount.
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=_sample_base_spec(), network="public"
+    )
+    assert not any(m["destination"] == "/etc/resolv.conf" for m in spec["mounts"])
 
 
 def test_create_oci_spec_host_network_keeps_pathed_netns(tmp_path):
@@ -433,6 +446,61 @@ def test_create_oci_spec_non_host_network_untouched(tmp_path):
         )
         assert {"type": "network"} in spec["linux"]["namespaces"]
         assert all(m["destination"] != "/etc/resolv.conf" for m in spec["mounts"])
+
+
+class _SpecCapturingManager(_StubImageManager):
+    """Captures create_oci_spec kwargs so prepare_oci_bundle's resolv policy
+    is testable without runsc."""
+
+    def __init__(self, tmp_path):
+        super().__init__(tmp_path)
+        self.spec_kwargs = None
+
+    def create_oci_spec(self, image, **kwargs):
+        self.spec_kwargs = kwargs
+        return {}
+
+
+def _prepare(mgr, root_dir, **kwargs):
+    mgr.prepare_oci_bundle(
+        root_dir=str(root_dir),
+        workdir_path=str(root_dir),
+        container_cwd="/",
+        image="fake:latest",
+        **kwargs,
+    )
+    return mgr.spec_kwargs["resolv_conf_source"]
+
+
+def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path):
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="public")
+    assert source == os.path.join(str(tmp_path), "resolv.conf")
+    content = open(source, encoding="utf-8").read()
+    assert content == "nameserver 8.8.8.8\nnameserver 1.1.1.1\n"
+
+
+def test_prepare_oci_bundle_dns_overrides_for_public_and_host(tmp_path):
+    for network in ("public", "host"):
+        mgr = _SpecCapturingManager(tmp_path)
+        source = _prepare(mgr, tmp_path, network=network, dns=["10.0.0.2"])
+        content = open(source, encoding="utf-8").read()
+        assert content == "nameserver 10.0.0.2\n"
+
+
+def test_prepare_oci_bundle_host_uses_host_resolv(tmp_path):
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="host")
+    if os.path.exists("/etc/resolv.conf"):
+        assert source == "/etc/resolv.conf"
+    else:
+        assert source is None
+
+
+def test_prepare_oci_bundle_no_resolv_without_host_side_networking(tmp_path):
+    for network in ("none", "sandbox"):
+        mgr = _SpecCapturingManager(tmp_path)
+        assert _prepare(mgr, tmp_path, network=network) is None
 
 
 if __name__ == "__main__":

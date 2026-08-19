@@ -56,6 +56,7 @@ class SandboxRuntime:
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
+        dns: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
@@ -82,10 +83,14 @@ class SandboxRuntime:
                 runtime with a daemon timer that deletes the sandbox.
             timeout_seconds: Timeout in seconds for sandbox creation.
             rootless: If True, run gVisor in rootless mode.
-            network: Network mode for runsc ("none", "host", "sandbox"). With
-                "host", the container shares the host network namespace and the
-                host's /etc/resolv.conf is bind-mounted read-only (mirroring
-                Docker) so DNS resolution works out of the box.
+            network: Network mode ("none", "public", "host", "sandbox");
+                see :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+                "public" is the recommended internet-access mode: host egress
+                with a synthetic resolv.conf, inheriting nothing from the
+                host's resolver configuration.
+            dns: Optional nameserver IPs for a generated /etc/resolv.conf
+                (mirroring ``docker --dns``). Defaults to public resolvers for
+                network="public"; overrides the host file for network="host".
             capabilities: Optional additional Linux capabilities (e.g.
                 "CAP_CHOWN") granted to the container process, unioned into the
                 bounding/effective/inheritable/permitted sets on top of the
@@ -117,6 +122,7 @@ class SandboxRuntime:
             timeout_seconds=timeout_seconds,
             rootless=rootless,
             network=network,
+            dns=dns,
             capabilities=capabilities,
             readonly=readonly,
             _oci_spec_transform_fn=_oci_spec_transform_fn,

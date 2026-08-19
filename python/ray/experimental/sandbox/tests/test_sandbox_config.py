@@ -63,7 +63,7 @@ def test_invalid_network_mode_rejected():
     with pytest.raises(ValueError, match="network mode"):
         SandboxConfig(image="python:3.10-slim", network="bridge")
 
-    for mode in ("none", "host"):
+    for mode in ("none", "public", "host"):
         assert SandboxConfig(image="python:3.10-slim", network=mode).network == mode
     # "sandbox" additionally requires rootless=False (see the test below).
     config = SandboxConfig(image="python:3.10-slim", network="sandbox", rootless=False)
@@ -85,6 +85,23 @@ def test_effective_mount_workdir_derives_from_readonly():
         ).effective_mount_workdir
         is True
     )
+
+
+def test_dns_only_valid_with_host_side_networking():
+    for mode in ("public", "host"):
+        config = SandboxConfig(image="python:3.10-slim", network=mode, dns=["10.0.0.2"])
+        assert config.dns == ["10.0.0.2"]
+
+    with pytest.raises(ValueError, match="dns"):
+        SandboxConfig(image="python:3.10-slim", dns=["8.8.8.8"])
+
+    with pytest.raises(ValueError, match="dns"):
+        SandboxConfig(
+            image="python:3.10-slim",
+            network="sandbox",
+            rootless=False,
+            dns=["8.8.8.8"],
+        )
 
 
 def test_sandbox_network_requires_rootful():

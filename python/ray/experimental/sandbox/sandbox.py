@@ -31,9 +31,13 @@ class Sandbox:
             disables it; values <= 0 also mean no TTL.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
-        network: Network mode for runsc ("none", "host", "sandbox"). With
-            "host", the host's /etc/resolv.conf is bind-mounted read-only so
-            DNS resolution works out of the box.
+        network: Network mode ("none", "public", "host", "sandbox"); see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`. "public"
+            is the recommended internet-access mode: host egress with a
+            synthetic resolv.conf, inheriting nothing from the host resolver.
+        dns: Optional nameserver IPs for the generated /etc/resolv.conf
+            (public resolvers by default for network="public"; overrides the
+            host file for network="host").
         capabilities: Optional additional Linux capabilities granted to the
             container process (see
             :data:`~ray.experimental.sandbox.config.DOCKER_DEFAULT_CAPABILITIES`).
@@ -57,6 +61,7 @@ class Sandbox:
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
+        dns: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         **kwargs,
@@ -86,6 +91,7 @@ class Sandbox:
             timeout_seconds=timeout_seconds,
             rootless=rootless,
             network=network,
+            dns=dns,
             capabilities=capabilities,
             readonly=readonly,
             **kwargs,

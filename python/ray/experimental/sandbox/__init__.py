@@ -9,6 +9,7 @@ from ray.experimental.sandbox.backend.base import (
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
+    DEFAULT_PUBLIC_DNS,
     DOCKER_DEFAULT_CAPABILITIES,
     parse_memory_bytes,
 )
@@ -41,6 +42,7 @@ def create(
     timeout_seconds: float = 30.0,
     rootless: bool = True,
     network: str = "none",
+    dns: Optional[List[str]] = None,
     capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
     readonly: bool = True,
@@ -70,9 +72,13 @@ def create(
             disables it; values <= 0 also mean no TTL.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
-        network: Network mode for runsc ("none", "host", "sandbox"). With
-            "host", the host's /etc/resolv.conf is bind-mounted read-only so
-            DNS resolution works out of the box.
+        network: Network mode ("none", "public", "host", "sandbox"); see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`. "public"
+            is the recommended internet-access mode: host egress with a
+            synthetic resolv.conf, inheriting nothing from the host resolver.
+        dns: Optional nameserver IPs for the generated /etc/resolv.conf
+            (public resolvers by default for network="public"; overrides the
+            host file for network="host").
         capabilities: Optional additional Linux capabilities granted to the
             container process, unioned on top of the runtime defaults. Use
             :data:`~ray.experimental.sandbox.config.DOCKER_DEFAULT_CAPABILITIES`
@@ -110,6 +116,7 @@ def create(
         timeout_seconds=timeout_seconds,
         rootless=rootless,
         network=network,
+        dns=dns,
         capabilities=capabilities,
         readonly=readonly,
         **kwargs,
@@ -118,6 +125,7 @@ def create(
 
 __all__ = [
     "create",
+    "DEFAULT_PUBLIC_DNS",
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",
     "SandboxRuntime",

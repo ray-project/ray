@@ -90,12 +90,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             readonly=config.readonly,
             capabilities=config.capabilities,
             network=config.network,
+            dns=config.dns,
             mount_workdir=config.effective_mount_workdir,
             _oci_spec_transform_fn=config._oci_spec_transform_fn,
         )
         run_args = self._runsc_base_args(config)
         if config.network:
-            run_args.extend(["--network", config.network])
+            # "public" is host egress with a synthetic resolv.conf; the
+            # resolver part is handled in the OCI bundle, runsc just sees
+            # host networking.
+            runsc_network = "host" if config.network == "public" else config.network
+            run_args.extend(["--network", runsc_network])
         overlay_dir = os.path.join(root_dir, "overlay")
         os.makedirs(overlay_dir, mode=0o777, exist_ok=True)
         run_args.append(f"--overlay2=root:dir={overlay_dir}")
@@ -369,6 +374,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
+        dns: Optional[List[str]] = None,
         mount_workdir: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
@@ -383,6 +389,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             readonly=readonly,
             capabilities=capabilities,
             network=network,
+            dns=dns,
             mount_workdir=mount_workdir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )

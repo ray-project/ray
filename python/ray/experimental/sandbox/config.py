@@ -2,8 +2,13 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Union
 
-# Network modes accepted by runsc.
-VALID_NETWORK_MODES = ("none", "host", "sandbox")
+# Sandbox network modes. "none", "host", and "sandbox" map directly to
+# runsc's --network flag; "public" runs with host egress (--network=host)
+# but a synthetic, portable /etc/resolv.conf instead of the host's.
+VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
+
+# Default resolvers for network="public" (Google and Cloudflare public DNS).
+DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
 
 # Docker's default Linux capability set, as documented at
 # https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities
@@ -102,10 +107,24 @@ class SandboxConfig:
             disables it; values <= 0 also mean no TTL.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode (default: True).
-        network: Network mode for runsc ("none", "host", "sandbox") (default: "none").
-            With "host", the container shares the host network namespace and the
-            host's /etc/resolv.conf is bind-mounted read-only into the container
-            (mirroring Docker) so DNS resolution works out of the box.
+        network: Network mode (default: "none").
+            "none" gives no network access. "public" (recommended for
+            internet access) shares the host network namespace for egress but
+            uses a synthetic /etc/resolv.conf built from ``dns`` — nothing
+            about the host's resolver configuration is inherited, so the
+            config stays portable and does not leak host search domains or
+            internal resolver addresses. "host" is the power mode: full host
+            network identity including the host's own /etc/resolv.conf
+            bind-mounted read-only — strictly more permissive than "public"
+            (the sandbox can reach internal networks the node can reach).
+            "sandbox" uses gVisor's netstack and requires rootless=False.
+        dns: Optional list of nameserver IPs written to a generated
+            /etc/resolv.conf bind-mounted read-only into the sandbox
+            (mirroring ``docker --dns``). Defaults to
+            :data:`DEFAULT_PUBLIC_DNS` for network="public"; for
+            network="host" it overrides the host's file. Only valid with
+            "public" or "host". Locked-down VPCs that block public DNS can
+            pass their internal resolver IPs here.
         capabilities: Optional list of additional Linux capabilities (e.g.
             "CAP_CHOWN") granted to the container process. They are unioned into
             the bounding, effective, inheritable, and permitted sets on top of
@@ -133,6 +152,7 @@ class SandboxConfig:
     timeout_seconds: float = 30.0
     rootless: bool = True
     network: str = "none"
+    dns: Optional[List[str]] = None
     capabilities: Optional[List[str]] = None
     readonly: bool = True
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
@@ -154,7 +174,13 @@ class SandboxConfig:
             raise ValueError(
                 "network='sandbox' requires rootless=False; runsc does not "
                 "support the sandbox netstack in rootless mode. Use "
-                "network='host' for a rootless sandbox with network access."
+                "network='public' or network='host' for a rootless sandbox "
+                "with network access."
+            )
+        if self.dns is not None and self.network not in ("public", "host"):
+            raise ValueError(
+                "dns is only valid with network='public' or network='host'; "
+                f"network={self.network!r} does not mount a resolv.conf."
             )
 
     @property
