@@ -969,7 +969,7 @@ class TestScaleDeploymentEndpoint:
             json={"target_num_replicas": 2},
             timeout=30,
         )
-        assert error_response.status_code == 400
+        assert error_response.status_code == 404
         assert "not found" in error_response.json()["error"].lower()
 
         error_response = requests.post(
