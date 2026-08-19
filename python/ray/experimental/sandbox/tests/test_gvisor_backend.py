@@ -198,20 +198,25 @@ def test_gvisor_backend_readonly_rootfs():
         backend.delete_sandbox(sandbox_id)
 
 
-def test_gvisor_backend_ignore_cgroups_flag():
+def test_gvisor_backend_create_with_cgroup_limits():
+    """Create a sandbox with CPU/memory limits using nested cgroups."""
     backend = GVisorSandboxBackend()
-    cfg_default = GVisorSandboxConfig(image="busybox:latest")
-    orig_env = os.environ.pop("RAY_SANDBOX_IGNORE_CGROUPS", None)
-    try:
-        args_default = backend._runsc_base_args(cfg_default)
-        assert "--ignore-cgroups" not in args_default
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        workdir="/workspace",
+        cpu=0.5,
+        memory="128Mi",
+    )
+    assert "--ignore-cgroups" not in backend._runsc_base_args(cfg)
 
-        cfg_ignored = GVisorSandboxConfig(image="busybox:latest", _ignore_cgroups=True)
-        args_ignored = backend._runsc_base_args(cfg_ignored)
-        assert "--ignore-cgroups" in args_ignored
+    sandbox_id = backend.create_sandbox(cfg)
+    try:
+        assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
+        res = backend.exec_command(sandbox_id, "echo nested-cgroup-ok")
+        assert res.exit_code == 0
+        assert "nested-cgroup-ok" in res.stdout
     finally:
-        if orig_env is not None:
-            os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
+        backend.delete_sandbox(sandbox_id)
 
 
 if __name__ == "__main__":

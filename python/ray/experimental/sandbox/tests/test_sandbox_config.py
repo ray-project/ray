@@ -19,7 +19,6 @@ def test_default_sandbox_config():
     assert config.rootless is True
     assert config.network == "none"
     assert config.readonly is True
-    assert config._ignore_cgroups is False
 
     # SandboxConfig requires image
     with pytest.raises(TypeError):
@@ -39,14 +38,12 @@ def test_gvisor_sandbox_config():
         memory="4Gi",
         env={"TEST_VAR": "value"},
         readonly=False,
-        _ignore_cgroups=True,
     )
     assert config.image == "ubuntu:22.04"
     assert config.cpu == 2.0
     assert config.memory == "4Gi"
     assert config.env == {"TEST_VAR": "value"}
     assert config.readonly is False
-    assert config._ignore_cgroups is True
 
 
 def test_parse_memory_bytes():
