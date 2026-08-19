@@ -46,6 +46,9 @@ from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_t
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     extract_partition_id,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    _SHUFFLE_REDUCE_RUNTIME_ENV,
+)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
@@ -134,6 +137,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         remote_args: Dict[str, Any] = {
             "num_cpus": self._DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS,
             "scheduling_strategy": "SPREAD",
+            "runtime_env": _SHUFFLE_REDUCE_RUNTIME_ENV,
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
