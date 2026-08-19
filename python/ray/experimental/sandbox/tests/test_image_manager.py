@@ -361,6 +361,22 @@ def test_create_oci_spec_host_network_keeps_pathed_netns(tmp_path):
     ]
 
 
+def test_create_oci_spec_tolerates_null_sections_in_base_spec(tmp_path):
+    """A caller-supplied base_spec may carry null capabilities/linux keys."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["process"]["capabilities"] = None
+    base["linux"] = None
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=base,
+        capabilities=["CAP_CHOWN"],
+        network="host",
+    )
+    assert "CAP_CHOWN" in spec["process"]["capabilities"]["bounding"]
+    assert isinstance(spec["linux"], dict)
+
+
 def test_create_oci_spec_non_host_network_untouched(tmp_path):
     mgr = _StubImageManager(tmp_path)
     for mode in ("none", "sandbox"):

@@ -375,7 +375,12 @@ class ImageManager(BaseImageManager):
         spec["process"]["env"] = envs
 
         if capabilities:
-            caps = spec["process"].setdefault("capabilities", {})
+            # Defensive against caller-supplied base_spec: the key may exist
+            # with a null value, which setdefault would hand straight back.
+            caps = spec["process"].get("capabilities")
+            if not isinstance(caps, dict):
+                caps = {}
+                spec["process"]["capabilities"] = caps
             for cap_set in _OCI_CAPABILITY_SETS:
                 # Union rather than replace, so anything the runtime default
                 # grants survives.
@@ -410,12 +415,17 @@ class ImageManager(BaseImageManager):
             # --network=host: the sandbox comes up with no route off the
             # host. Dropping the entry lets the container inherit the netns
             # runsc was launched in, which is what host networking means.
-            namespaces = spec.setdefault("linux", {}).get("namespaces", [])
-            spec["linux"]["namespaces"] = [
-                ns
-                for ns in namespaces
-                if not (ns.get("type") == "network" and not ns.get("path"))
-            ]
+            linux_spec = spec.get("linux")
+            if not isinstance(linux_spec, dict):
+                linux_spec = {}
+                spec["linux"] = linux_spec
+            namespaces = linux_spec.get("namespaces")
+            if isinstance(namespaces, list):
+                linux_spec["namespaces"] = [
+                    ns
+                    for ns in namespaces
+                    if not (ns.get("type") == "network" and not ns.get("path"))
+                ]
             # Host networking shares the host's network stack but not its
             # resolver configuration, and most images ship an empty
             # /etc/resolv.conf because container engines inject one at run

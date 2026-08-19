@@ -5,8 +5,13 @@ from typing import Callable, Dict, List, Optional, Union
 # Network modes accepted by runsc.
 VALID_NETWORK_MODES = ("none", "host", "sandbox")
 
-# Docker's default Linux capability set. The runtime's own default (whatever
-# ``runsc spec`` emits) is far narrower, and container images are
+# Docker's default Linux capability set, as documented at
+# https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities
+# and defined canonically in
+# https://github.com/moby/moby/blob/master/oci/caps/defaults.go
+# The runtime's own default (whatever ``runsc spec`` emits — see
+# https://github.com/google/gvisor/blob/master/runsc/cmd/spec.go — which is
+# minimal but somewhat arbitrary) is far narrower, and container images are
 # overwhelmingly built and tested against Docker, so they can break in ways
 # that look like image bugs without these: ``apt-get`` forks its download
 # methods as the ``_apt`` user (needs CAP_SETUID and CAP_SETGID) and ``tar``
@@ -96,7 +101,11 @@ class SandboxConfig:
             the bounding, effective, inheritable, and permitted sets on top of
             the runtime defaults; the ambient set is deliberately left alone.
             Use :data:`DOCKER_DEFAULT_CAPABILITIES` to match how Docker runs
-            images. None (default) keeps the runtime's minimal defaults.
+            images. None (default) keeps the runtime's defaults — the set that
+            ``runsc spec`` emits, which is minimal but somewhat arbitrary. This
+            option only ever adds capabilities; to remove even the runtime
+            defaults (run with no capabilities at all), erase the sets with
+            ``_oci_spec_transform_fn``.
         readonly: If True (default), mount container image rootfs in read-only mode
             such that only ``workdir`` is writable. If False, the entire root filesystem
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
