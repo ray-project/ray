@@ -16,10 +16,17 @@ from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, parse_memory_byt
 
 logger = logging.getLogger(__name__)
 
-# The OCI capability sets a container process starts with. "ambient" is
-# deliberately excluded: these are the sets Docker populates, and ambient
-# capabilities would additionally survive into non-root execve'd children.
-_OCI_CAPABILITY_SETS = ("bounding", "effective", "inheritable", "permitted")
+# The OCI capability sets this manager writes when `capabilities` is given
+# (see the process.capabilities schema:
+# https://github.com/opencontainers/runtime-spec/blob/main/config.md#linux-process).
+# These are the sets modern Docker populates
+# (https://github.com/moby/moby/blob/master/oci/defaults.go): "inheritable"
+# is deliberately excluded because Docker stopped setting it for
+# CVE-2022-24769
+# (https://github.com/moby/moby/security/advisories/GHSA-2mm7-x5h6-5pvq),
+# and "ambient" because ambient capabilities would additionally survive into
+# non-root execve'd children.
+_OCI_CAPABILITY_SETS = ("bounding", "effective", "permitted")
 
 _RESOLV_CONF = "/etc/resolv.conf"
 
@@ -150,8 +157,10 @@ class BaseImageManager(ABC):
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
             readonly: Whether rootfs is mounted read-only.
-            capabilities: Optional additional Linux capabilities unioned into the
-                bounding/effective/inheritable/permitted sets (ambient untouched).
+            capabilities: Linux capabilities for the container process. None
+                keeps the runtime default; otherwise the bounding, effective,
+                and permitted sets are set to exactly this list (inheritable
+                and ambient untouched, matching modern Docker).
             network: Sandbox network mode; "host" and "public" drop the
                 spec's empty network namespace so host-side networking works.
             resolv_conf_source: Optional file to bind-mount read-only at
@@ -348,8 +357,10 @@ class ImageManager(BaseImageManager):
             cpu: CPU core allocation.
             memory: Memory allocation specifier.
             readonly: Whether rootfs is mounted read-only.
-            capabilities: Optional additional Linux capabilities unioned into the
-                bounding/effective/inheritable/permitted sets (ambient untouched).
+            capabilities: Linux capabilities for the container process. None
+                keeps the runtime default; otherwise the bounding, effective,
+                and permitted sets are set to exactly this list (inheritable
+                and ambient untouched, matching modern Docker).
             network: Sandbox network mode; "host" and "public" drop the
                 spec's empty network namespace so host-side networking works.
             resolv_conf_source: Optional file to bind-mount read-only at
@@ -396,7 +407,7 @@ class ImageManager(BaseImageManager):
                 envs.append(f"{k}={v}")
         spec["process"]["env"] = envs
 
-        if capabilities:
+        if capabilities is not None:
             # Defensive against caller-supplied base_spec: the key may exist
             # with a null value, which setdefault would hand straight back.
             caps = spec["process"].get("capabilities")
@@ -404,13 +415,10 @@ class ImageManager(BaseImageManager):
                 caps = {}
                 spec["process"]["capabilities"] = caps
             for cap_set in _OCI_CAPABILITY_SETS:
-                # Union rather than replace, so anything the runtime default
-                # grants survives. Each set may also exist with a null value
-                # in a caller-supplied base_spec.
-                current = caps.get(cap_set)
-                if not isinstance(current, list):
-                    current = []
-                caps[cap_set] = list(dict.fromkeys([*current, *capabilities]))
+                # Set exactly (not union): [] therefore runs with no
+                # capabilities, and DOCKER_DEFAULT_CAPABILITIES — a superset
+                # of the runtime defaults — reproduces Docker's behavior.
+                caps[cap_set] = list(dict.fromkeys(capabilities))
 
         # Set up default mounts
         mounts = spec.get("mounts", [])

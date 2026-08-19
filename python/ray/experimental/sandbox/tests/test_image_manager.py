@@ -309,21 +309,30 @@ def _sample_base_spec():
     }
 
 
-def test_create_oci_spec_unions_capabilities(tmp_path):
+def test_create_oci_spec_sets_capabilities_exactly(tmp_path):
     mgr = _StubImageManager(tmp_path)
     spec = mgr.create_oci_spec(
         image="fake:latest",
         base_spec=_sample_base_spec(),
         capabilities=["CAP_CHOWN", "CAP_SETUID"],
     )
-    for cap_set in ("bounding", "effective", "inheritable", "permitted"):
-        caps = spec["process"]["capabilities"][cap_set]
-        assert "CAP_CHOWN" in caps
-        assert "CAP_SETUID" in caps
-    # Anything the runtime default grants survives the union.
-    assert "CAP_KILL" in spec["process"]["capabilities"]["bounding"]
-    # The ambient set is deliberately left alone.
+    for cap_set in ("bounding", "effective", "permitted"):
+        assert spec["process"]["capabilities"][cap_set] == [
+            "CAP_CHOWN",
+            "CAP_SETUID",
+        ]
+    # Inheritable and ambient are left alone (modern Docker behavior).
+    assert "inheritable" not in spec["process"]["capabilities"]
     assert "ambient" not in spec["process"]["capabilities"]
+
+
+def test_create_oci_spec_empty_capabilities_remove_all(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=_sample_base_spec(), capabilities=[]
+    )
+    for cap_set in ("bounding", "effective", "permitted"):
+        assert spec["process"]["capabilities"][cap_set] == []
 
 
 def test_create_oci_spec_default_capabilities_untouched(tmp_path):
@@ -383,8 +392,7 @@ def test_create_oci_spec_tolerates_null_capability_set(tmp_path):
         image="fake:latest", base_spec=base, capabilities=["CAP_CHOWN"]
     )
     assert spec["process"]["capabilities"]["effective"] == ["CAP_CHOWN"]
-    assert "CAP_KILL" in spec["process"]["capabilities"]["bounding"]
-    assert "CAP_CHOWN" in spec["process"]["capabilities"]["bounding"]
+    assert spec["process"]["capabilities"]["bounding"] == ["CAP_CHOWN"]
 
 
 def test_create_oci_spec_tolerates_non_dict_namespace_entries(tmp_path):

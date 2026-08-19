@@ -15,8 +15,8 @@ DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
 # and defined canonically in
 # https://github.com/moby/moby/blob/master/oci/caps/defaults.go
 # The runtime's own default (whatever ``runsc spec`` emits — see
-# https://github.com/google/gvisor/blob/master/runsc/cmd/spec.go — which is
-# minimal but somewhat arbitrary) is far narrower, and container images are
+# https://github.com/google/gvisor/blob/master/runsc/cmd/spec.go) is far
+# narrower, and container images are
 # overwhelmingly built and tested against Docker, so they can break in ways
 # that look like image bugs without these: ``apt-get`` forks its download
 # methods as the ``_apt`` user (needs CAP_SETUID and CAP_SETGID) and ``tar``
@@ -125,16 +125,15 @@ class SandboxConfig:
             network="host" it overrides the host's file. Only valid with
             "public" or "host". Locked-down VPCs that block public DNS can
             pass their internal resolver IPs here.
-        capabilities: Optional list of additional Linux capabilities (e.g.
-            "CAP_CHOWN") granted to the container process. They are unioned into
-            the bounding, effective, inheritable, and permitted sets on top of
-            the runtime defaults; the ambient set is deliberately left alone.
-            Use :data:`DOCKER_DEFAULT_CAPABILITIES` to match how Docker runs
-            images. None (default) keeps the runtime's defaults — the set that
-            ``runsc spec`` emits, which is minimal but somewhat arbitrary. This
-            option only ever adds capabilities; to remove even the runtime
-            defaults (run with no capabilities at all), erase the sets with
-            ``_oci_spec_transform_fn``.
+        capabilities: Linux capabilities granted to the container process.
+            None (default) keeps the runtime's default set (what ``runsc
+            spec`` emits). Otherwise the bounding, effective, and permitted
+            sets are set to exactly this list — so ``[]`` runs the sandbox
+            with no capabilities at all, and
+            :data:`DOCKER_DEFAULT_CAPABILITIES` (a superset of the runtime
+            defaults) matches how Docker runs images. The inheritable and
+            ambient sets are left untouched, matching modern Docker, which
+            stopped setting inheritable capabilities (CVE-2022-24769).
         shell: Shell used to run *string* commands (list commands are run
             argv-style and bypass it). None (default) auto-detects at sandbox
             creation: /bin/bash when the image has it, else /bin/sh. Agent-
