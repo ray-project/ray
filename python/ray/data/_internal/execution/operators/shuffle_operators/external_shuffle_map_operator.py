@@ -399,9 +399,7 @@ class ExternalHashShuffleMapOp(
 
         # One Ray object shared across all N wrappers.
         # pyrefly: ignore[bad-assignment]
-        self._shared_handles_ref = ray.put(
-            self._completed_handle_refs
-        )
+        self._shared_handles_ref = ray.put(self._completed_handle_refs)
 
         partition_bytes = self.get_partition_bytes()
         for partition_id in range(self._num_partitions):
