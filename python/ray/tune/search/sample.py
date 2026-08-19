@@ -580,7 +580,11 @@ class Quantized(Sampler):
 
         if not isinstance(quantized, np.ndarray):
             return domain.cast(quantized)
-        return list(quantized)
+        # Cast here too. The scalar branch one line up already does, so an
+        # Integer domain returned a Python int from `sample()` and a list of
+        # numpy floats from `sample(size=n)`. Without the `q == 1` short circuit
+        # above, `qrandint(lo, hi, 1)` would have joined the second group.
+        return [domain.cast(x) for x in quantized]
 
 
 @PublicAPI

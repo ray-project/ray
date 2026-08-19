@@ -464,11 +464,34 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(all(float(s).is_integer() for s in samples))
         self.assertTrue(all(1 <= s <= 100 for s in samples))
 
-        # Integer domains are unchanged: at `q=1` the grid is every integer, so
-        # the same values come out of either path.
+        # Integer domains draw the same values: at `q=1` the grid is every
+        # integer, so the same numbers come out of either path.
         samples = tune.qrandint(1, 10, 1).sample(size=1000, random_state=random_state)
         self.assertTrue(all(float(s).is_integer() for s in samples))
         self.assertTrue(all(1 <= s <= 10 for s in samples))
+
+    def testQuantizedSampleRespectsDomainType(self):
+        # `Quantized.sample` cast the scalar branch and not the array one, so an
+        # Integer domain gave a Python `int` from `sample()` and numpy floats
+        # from `sample(size=n)`. Dropping the `q == 1` short circuit would have
+        # moved `qrandint(lo, hi, 1)` onto the uncast path, so both branches now
+        # cast and the two agree for every `q`.
+        random_state = np.random.RandomState(1000)
+
+        for q in (1, 2):
+            scalar = tune.qrandint(1, 10, q).sample(random_state=random_state)
+            self.assertIsInstance(scalar, int, msg=f"qrandint scalar, q={q}")
+            array = tune.qrandint(1, 10, q).sample(size=10, random_state=random_state)
+            self.assertTrue(
+                all(isinstance(s, int) for s in array), msg=f"qrandint array, q={q}"
+            )
+
+            scalar = tune.quniform(-10, 10, q).sample(random_state=random_state)
+            self.assertIsInstance(scalar, float, msg=f"quniform scalar, q={q}")
+            array = tune.quniform(-10, 10, q).sample(size=10, random_state=random_state)
+            self.assertTrue(
+                all(isinstance(s, float) for s in array), msg=f"quniform array, q={q}"
+            )
 
     def testCategoricalDtype(self):
         dist = tune.choice([1.0, "str"])
