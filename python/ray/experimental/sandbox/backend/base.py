@@ -98,7 +98,7 @@ class BaseSandboxBackend(ABC):
             cwd: Optional working directory override.
             env: Optional additional environment variables.
             shell: Optional shell for string commands, overriding the
-                sandbox's default (detected bash, else sh).
+                sandbox's configured shell (default /bin/bash).
 
         Returns:
             An ExecResult instance containing stdout, stderr, and exit code.

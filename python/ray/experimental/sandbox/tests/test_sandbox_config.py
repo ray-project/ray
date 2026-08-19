@@ -19,6 +19,7 @@ def test_default_sandbox_config():
     assert config.rootless is True
     assert config.network == "none"
     assert config.readonly is True
+    assert config.shell == "/bin/bash"
     assert config._ignore_cgroups is False
 
     # SandboxConfig requires image

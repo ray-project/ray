@@ -171,29 +171,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
         }
-        self._sandbox_metadata[sandbox_id]["shell"] = self._detect_shell(
-            sandbox_id, config
-        )
         return sandbox_id
-
-    def _detect_shell(self, sandbox_id: str, config: SandboxConfig) -> str:
-        """Resolve the shell for string commands, once per sandbox.
-
-        Uses the configured shell when given; otherwise probes for /bin/bash
-        (one argv exec at creation, not per command) and falls back to
-        /bin/sh, since string commands overwhelmingly assume bash.
-        """
-        if config.shell is not None:
-            return config.shell
-        try:
-            probe = self.exec_command(
-                sandbox_id, ["/bin/bash", "-c", "true"], timeout=10
-            )
-            if probe.exit_code == 0:
-                return "/bin/bash"
-        except Exception:
-            pass
-        return "/bin/sh"
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
@@ -258,7 +236,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if isinstance(command, list):
             runsc_args.extend([sandbox_id] + command)
         else:
-            exec_shell = shell or meta.get("shell") or "/bin/sh"
+            exec_shell = shell or config.shell
             runsc_args.extend([sandbox_id, exec_shell, "-c", command])
 
         start_time = time.time()

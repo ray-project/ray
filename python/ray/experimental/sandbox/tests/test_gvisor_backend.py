@@ -20,6 +20,7 @@ def test_gvisor_backend_local_lifecycle_and_file_ops():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
         cpu=1.0,
         memory="512Mi",
@@ -55,7 +56,7 @@ def test_gvisor_backend_not_found():
 def test_create_sandbox_helper():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
-    sb = create("busybox:latest", workdir="/workspace")
+    sb = create("busybox:latest", workdir="/workspace", shell="/bin/sh")
     assert isinstance(sb, ActorHandle)
     res = ray.get(sb.exec.remote("echo 'Process isolation'"))
     assert res.exit_code == 0
@@ -68,6 +69,7 @@ def test_gvisor_backend_container_image_support():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
     )
     sandbox_id = backend.create_sandbox(config)
@@ -116,11 +118,13 @@ def test_gvisor_backend_container_image_overlay_isolation():
     backend = GVisorSandboxBackend()
     cfg1 = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
         readonly=False,
     )
     cfg2 = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
         readonly=False,
     )
@@ -160,6 +164,7 @@ def test_gvisor_backend_container_image_overlay_isolation():
     # A newly created SB3 should not see /overlay_test.txt
     cfg3 = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
         readonly=False,
     )
@@ -176,6 +181,7 @@ def test_gvisor_backend_readonly_rootfs():
     # Default is readonly=True
     cfg = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
     )
     assert cfg.readonly is True
@@ -201,13 +207,15 @@ def test_gvisor_backend_readonly_rootfs():
 
 def test_gvisor_backend_ignore_cgroups_flag():
     backend = GVisorSandboxBackend()
-    cfg_default = GVisorSandboxConfig(image="busybox:latest")
+    cfg_default = GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
     orig_env = os.environ.pop("RAY_SANDBOX_IGNORE_CGROUPS", None)
     try:
         args_default = backend._runsc_base_args(cfg_default)
         assert "--ignore-cgroups" not in args_default
 
-        cfg_ignored = GVisorSandboxConfig(image="busybox:latest", _ignore_cgroups=True)
+        cfg_ignored = GVisorSandboxConfig(
+            image="busybox:latest", shell="/bin/sh", _ignore_cgroups=True
+        )
         args_ignored = backend._runsc_base_args(cfg_ignored)
         assert "--ignore-cgroups" in args_ignored
     finally:
@@ -215,27 +223,23 @@ def test_gvisor_backend_ignore_cgroups_flag():
             os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
 
 
-def test_string_exec_shell_detection():
-    """String commands use the detected shell (bash if present, else sh)."""
+def test_string_exec_shell_configuration():
+    """String commands run under config.shell (default /bin/bash) with a
+    per-exec override; there is no auto-detection."""
+    # busybox has /bin/sh but no /bin/bash: with the deterministic bash
+    # default a string exec fails loudly instead of degrading to sh, so this
+    # image configures the shell explicitly.
     runtime = SandboxRuntime()
-    # busybox has /bin/sh but no /bin/bash.
-    instance_id = runtime.create(image="busybox:latest", readonly=False)
-    try:
-        meta = runtime.backend._sandbox_metadata[instance_id]
-        assert meta["shell"] == "/bin/sh"
-        result = runtime.exec(instance_id, "echo hello-$0")
-        assert result.exit_code == 0
-        assert "hello-" in result.stdout
-    finally:
-        runtime.delete(instance_id)
-
-    # An explicit config shell wins over detection.
     instance_id = runtime.create(
         image="busybox:latest", readonly=False, shell="/bin/sh"
     )
     try:
-        meta = runtime.backend._sandbox_metadata[instance_id]
-        assert meta["shell"] == "/bin/sh"
+        result = runtime.exec(instance_id, "echo hello-$0")
+        assert result.exit_code == 0
+        assert "hello-" in result.stdout
+        # Per-exec override beats the configured shell.
+        result = runtime.exec(instance_id, "echo again", shell="/bin/sh")
+        assert result.exit_code == 0
     finally:
         runtime.delete(instance_id)
 

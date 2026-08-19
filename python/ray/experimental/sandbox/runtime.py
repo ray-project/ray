@@ -156,7 +156,7 @@ class SandboxRuntime:
             cwd: Working directory inside the sandbox for command execution.
             env: Environment variables to set for the command.
             shell: Optional shell for string commands, overriding the
-                sandbox's default (detected bash, else sh).
+                sandbox's configured shell (default /bin/bash).
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -188,7 +188,7 @@ class SandboxRuntime:
             cwd: Working directory inside the sandbox for command execution.
             env: Environment variables to set for the command.
             shell: Optional shell for string commands, overriding the
-                sandbox's default (detected bash, else sh).
+                sandbox's configured shell (default /bin/bash).
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.

@@ -112,6 +112,7 @@ def test_no_ttl_by_default():
     assert instance_id not in runtime._ttl_timers
     (config,) = runtime._backend.configs
     assert config.ttl_seconds is None
+    assert config.shell == "/bin/bash"
 
 
 if __name__ == "__main__":

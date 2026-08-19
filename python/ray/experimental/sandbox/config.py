@@ -109,9 +109,9 @@ class SandboxConfig:
             otherwise the bounding/effective/permitted sets are written
             exactly, so ``[]`` means no capabilities. Inheritable and ambient
             stay untouched, matching modern Docker (CVE-2022-24769).
-        shell: Shell for *string* commands (list commands bypass it). None
-            (default) auto-detects at creation: /bin/bash when the image has
-            it, else /bin/sh (dash on Debian images, which breaks bashisms).
+        shell: Shell for *string* commands (list commands bypass it).
+            Defaults to "/bin/bash", which string commands overwhelmingly
+            assume; set to "/bin/sh" for images without bash.
         readonly: If True (default), mount container image rootfs in read-only mode
             such that only ``workdir`` is writable. If False, the entire root filesystem
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
@@ -131,7 +131,7 @@ class SandboxConfig:
     network: str = "none"
     dns: Optional[List[str]] = None
     capabilities: Optional[List[str]] = None
-    shell: Optional[str] = None
+    shell: str = "/bin/bash"
     readonly: bool = True
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
