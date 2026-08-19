@@ -43,6 +43,19 @@ _rayci_agent_pypi_proxy() {
     return 0
   fi
 
+  # Bazel runs on the agent too, and its downloader is a separate mechanism from pip's
+  # index: rules_python declares its bootstrap wheels as http_archive with literal
+  # files.pythonhosted.org URLs, which no index setting reaches. The images have had this
+  # since #65599 and the agent had nothing, so release 104848's init step still fetched
+  # tomli-2.0.1 from the origin. Done here, before the proxy, because it needs only the
+  # mirror -- and the probe above has just established that.
+  # shellcheck source=ci/bazel_mirror_downloader.sh
+  if source "${repo_root}/ci/bazel_mirror_downloader.sh" 2>/dev/null; then
+    rayci_bazel_downloader_config "${mirror}"
+  else
+    echo "pypi index: no bazel downloader helper in this checkout; bazel stays on the origin" >&2
+  fi
+
   # Validate rather than test for a directory: a half-finished install from an interrupted
   # job would otherwise look complete and fail later, inside pip.
   if ! "${prefix}/bin/python" -c 'import niquests, starlette, uvicorn' 2>/dev/null; then

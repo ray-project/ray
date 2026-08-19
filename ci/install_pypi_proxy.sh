@@ -47,6 +47,10 @@ fi
 "$PREFIX"/bin/pip install --no-cache-dir "${deps[@]}"
 
 cp pypi_index_proxy.py "$PREFIX"/pypi_index_proxy.py
+# The bazel downloader helper travels with the proxy, because the profile.d hook that
+# calls it is installed into the image and cannot reach a checkout that does not exist
+# yet at shell start.
+cp bazel_mirror_downloader.sh "$PREFIX"/bazel_mirror_downloader.sh
 
 if [[ "${RAYCI_PYPI_PROXY_SKIP_PROFILE:-0}" != "1" ]]; then
   # Sourced automatically: CI steps run under `bash -elic`, a login shell. The zz-
