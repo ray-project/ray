@@ -130,6 +130,12 @@ def test_none_file_extensions_disables_filtering(tmp_path):
     assert datasource.file_extensions is None
 
 
+def test_default_file_extensions_filters_for_parquet(tmp_path):
+    datasource = ParquetDatasourceV2([str(tmp_path)])
+
+    assert datasource.file_extensions == ["parquet"]
+
+
 def test_infer_schema_with_include_row_hash(tmp_path):
     file_path = tmp_path / "data.parquet"
     _write_parquet(str(file_path), pa.table({"a": [1, 2]}))
