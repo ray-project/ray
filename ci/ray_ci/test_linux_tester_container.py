@@ -180,6 +180,8 @@ def test_ray_installation() -> None:
             "BUILD_TYPE=debug",
             "--build-arg",
             "BUILDKITE_CACHE_READONLY=",
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_INDEX_URL=",
             "-f",
             "ci/ray_ci/tests.env.Dockerfile",
             "/ray",
