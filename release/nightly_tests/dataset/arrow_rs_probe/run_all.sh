@@ -83,6 +83,16 @@ fi
 source "$SCRIPT_DIR/env.sh"
 export RAY_ADDRESS=local
 
+# grpcio: needed by benchmark.py (tpch stage) AND read_probe's spilled_gb
+# capture (release stage) — ray[data] doesn't ship it and an already-set-up
+# box skips setup.sh. Missing it is SILENT in the release stage (spill column
+# reads None/'—'), which is exactly what happened on the first box run, so
+# top it up before any stage runs.
+python -c "import grpc" >/dev/null 2>&1 || {
+  say "installing missing grpcio (spill capture + benchmark.py dependency)"
+  uv pip install --python "$(command -v python)" grpcio
+}
+
 if has_stage fixtures; then
   say "stage: fixtures (root=$FIXTURES_ROOT scale=$FIXTURE_SCALE, all shapes)"
   python "$SCRIPT_DIR/gen_local_fixtures.py" --root "$FIXTURES_ROOT" \
@@ -108,12 +118,6 @@ fi
 
 if has_stage tpch; then
   say "stage: tpch suspects (sf=$TPCH_SF — q9 spill T27, q20 shuffle_v2 M46)"
-  # benchmark.py:12 imports grpc unconditionally; ray[data] doesn't ship it and
-  # an already-set-up box skips setup.sh, so top it up here (cheap, idempotent).
-  python -c "import grpc" >/dev/null 2>&1 || {
-    say "installing missing grpcio (benchmark.py dependency)"
-    uv pip install --python "$(command -v python)" grpcio
-  }
   python "$SCRIPT_DIR/tpch_probe.py" \
     --outdir "$RUN_DIR/tpch" --sf "$TPCH_SF" \
     ${TPCH_QUERIES:+--queries "$TPCH_QUERIES"} \
