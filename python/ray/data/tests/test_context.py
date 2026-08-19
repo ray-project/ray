@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.data.context import ShuffleStrategy
+from ray.data.context import ShuffleStrategy, _deduce_default_shuffle_compression
 from ray.util.annotations import RayDeprecationWarning
 
 
@@ -67,37 +67,27 @@ def test_hash_shuffle_v2_strategy_alias():
         ShuffleStrategy("not_a_shuffle_strategy")
 
 
-def test_hash_shuffle_compression_alias():
+def test_hash_shuffle_compression_alias(monkeypatch):
     """`hash_shuffle_compression` remains a deprecated alias of
     `shuffle_compression`."""
 
     ctx = ray.data.DataContext()
 
-    # Writes through the alias configure the current setting ...
-    with pytest.warns(DeprecationWarning, match="hash_shuffle_compression"):
+    with pytest.warns(DeprecationWarning, match="hash_shuffle_compression") as record:
         ctx.hash_shuffle_compression = "lz4"
     assert ctx.shuffle_compression == "lz4"
+    # Warning has to be blamed on the caller, otherwise Python's default
+    # filters drop it (`pytest.warns` alone passes at any `stacklevel`)
+    assert record[0].filename == __file__
 
-    # ... and reads through it observe the current setting
     ctx.shuffle_compression = "zstd"
-    with pytest.warns(DeprecationWarning, match="hash_shuffle_compression"):
+    with pytest.warns(DeprecationWarning, match="hash_shuffle_compression") as record:
         assert ctx.hash_shuffle_compression == "zstd"
+    assert record[0].filename == __file__
 
-
-def test_deprecated_shuffle_compression_env_var(monkeypatch):
-    """`RAY_DATA_HASH_SHUFFLE_COMPRESSION` remains a deprecated alias of
-    `RAY_DATA_SHUFFLE_COMPRESSION`."""
-
-    from ray.data.context import _deduce_default_shuffle_compression
-
-    monkeypatch.delenv("RAY_DATA_SHUFFLE_COMPRESSION", raising=False)
-    monkeypatch.delenv("RAY_DATA_HASH_SHUFFLE_COMPRESSION", raising=False)
-    assert _deduce_default_shuffle_compression() == "zstd"
-
+    # Deprecated env var is still honored, but the current one wins
     monkeypatch.setenv("RAY_DATA_HASH_SHUFFLE_COMPRESSION", "lz4")
     assert _deduce_default_shuffle_compression() == "lz4"
-
-    # Current env var takes precedence over the deprecated one
     monkeypatch.setenv("RAY_DATA_SHUFFLE_COMPRESSION", "none")
     assert _deduce_default_shuffle_compression() == "none"
 

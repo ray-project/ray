@@ -129,16 +129,13 @@ DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
     "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
-# Deprecated alias of the `RAY_DATA_SHUFFLE_COMPRESSION` env var
-_DEPRECATED_SHUFFLE_COMPRESSION_ENV_VAR = "RAY_DATA_HASH_SHUFFLE_COMPRESSION"
-
 
 def _deduce_default_shuffle_compression() -> str:
-    legacy_codec = os.environ.get(_DEPRECATED_SHUFFLE_COMPRESSION_ENV_VAR)
+    legacy_codec = os.environ.get("RAY_DATA_HASH_SHUFFLE_COMPRESSION")
     if legacy_codec is not None:
         logger.warning(
-            f"{_DEPRECATED_SHUFFLE_COMPRESSION_ENV_VAR} is deprecated, please use "
-            f"RAY_DATA_SHUFFLE_COMPRESSION to configure shuffle compression codec"
+            "RAY_DATA_HASH_SHUFFLE_COMPRESSION is deprecated, please use "
+            "RAY_DATA_SHUFFLE_COMPRESSION instead"
         )
 
     return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
@@ -1275,29 +1272,30 @@ class DataContext:
         #       `hash_shuffle_v2`) to their current strategy
         self._shuffle_strategy = ShuffleStrategy(value)
 
-    # NOTE: `hash_shuffle_compression` is a deprecated alias of
-    #       `shuffle_compression` (compression isn't specific to hash-shuffle),
-    #       kept as a property (rather than a field) so that reads and writes
-    #       both go through the current setting.
+    # Deprecated alias of `shuffle_compression`
     @property
     def hash_shuffle_compression(self) -> str:
-        self._warn_hash_shuffle_compression_deprecated()
+        self._warn_hash_shuffle_compression_deprecated(stacklevel=3)
 
         return self.shuffle_compression
 
     @hash_shuffle_compression.setter
     def hash_shuffle_compression(self, value: str) -> None:
-        self._warn_hash_shuffle_compression_deprecated()
+        # NOTE: One frame deeper than the getter -- assignment routes through
+        #       `DataContext.__setattr__`
+        self._warn_hash_shuffle_compression_deprecated(stacklevel=4)
 
         self.shuffle_compression = value
 
     @staticmethod
-    def _warn_hash_shuffle_compression_deprecated() -> None:
+    def _warn_hash_shuffle_compression_deprecated(*, stacklevel: int) -> None:
+        # NOTE: `stacklevel` has to resolve to the caller, otherwise Python's
+        #       default filters drop the warning as library-internal
         warnings.warn(
             "`hash_shuffle_compression` is deprecated, please configure "
             "`shuffle_compression` instead.",
             DeprecationWarning,
-            stacklevel=3,
+            stacklevel=stacklevel,
         )
 
     @property
