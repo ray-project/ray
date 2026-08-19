@@ -776,6 +776,34 @@ py_test(
 )
 
 py_test(
+    name = "test_hash_shuffle_external_runtime",
+    size = "small",
+    srcs = ["tests/test_hash_shuffle_external_runtime.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hash_shuffle_external_smoke",
+    size = "medium",
+    srcs = ["tests/test_hash_shuffle_external_smoke.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
