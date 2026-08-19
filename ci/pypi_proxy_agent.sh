@@ -13,7 +13,7 @@
 #   PIP_INDEX_URL              127.0.0.1 -- for pip and uv running on the agent itself.
 #                              Loopback, so pip and uv accept it over plain HTTP with no
 #                              trusted-host handling.
-#   RAYCI_IMAGE_PIP_INDEX_URL  the docker bridge gateway -- for docker builds, which have
+#   RAYCI_IMAGE_PIP_INDEX_URL  rayci.localhost -- for docker builds, which have
 #                              their own loopback and reach the agent here. wanda resolves
 #                              build args from its own process environment, so exporting
 #                              this is what lets an image build use the mirror.
@@ -112,17 +112,29 @@ _rayci_agent_pypi_proxy() {
   export RULES_PYTHON_PIP_ISOLATED=0
   echo "pypi index: agent proxy over the mirror -> ${PIP_INDEX_URL}"
 
-  # The address a docker build reaches the agent on. Best effort: without it, image builds
-  # simply keep resolving from PyPI, which is today's behaviour.
-  local gateway=""
-  if command -v docker >/dev/null 2>&1; then
-    gateway="$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || true)"
+  # The address an image build reaches this proxy on. A name, not an address: wanda
+  # passes --add-host rayci.localhost:host-gateway, and docker resolves host-gateway
+  # itself. Inferring the address instead is what broke every wheel build on master
+  # (postmerge 19281 against 19280) -- the bridge gateway was read from `docker network
+  # inspect bridge`, the build could not reach it, and ray-wheel.Dockerfile reads
+  # ${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}, so a present-but-unreachable
+  # value fails the build outright where an absent one falls back to PyPI.
+  #
+  # Gated on the pinned rayci version rather than on merge order. wanda only passes that
+  # flag from the version below, and exporting against an older wanda reproduces exactly
+  # the failure above: a name that does not resolve inside the build. The gate lets this
+  # land before, after, or with the .rayciversion bump.
+  local min_rayci="0.47.0"
+  local pinned=""
+  if [[ -f "${repo_root}/.rayciversion" ]]; then
+    pinned="$(tr -d '[:space:]' <"${repo_root}/.rayciversion")"
   fi
-  if [[ -n "${gateway}" ]]; then
-    export RAYCI_IMAGE_PIP_INDEX_URL="http://${gateway}:${port}/simple"
+  if [[ -n "${pinned}" ]] &&
+    [[ "$(printf '%s\n%s\n' "${min_rayci}" "${pinned}" | sort -V | head -1)" == "${min_rayci}" ]]; then
+    export RAYCI_IMAGE_PIP_INDEX_URL="http://rayci.localhost:${port}/simple"
     echo "pypi index: image builds -> ${RAYCI_IMAGE_PIP_INDEX_URL}"
   else
-    echo "pypi index: no docker bridge gateway found; image builds stay on PyPI" >&2
+    echo "pypi index: rayci ${pinned:-<unknown>} predates the --add-host support in ${min_rayci}; image builds stay on PyPI" >&2
   fi
 }
 
