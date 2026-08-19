@@ -89,13 +89,13 @@ class SandboxConfig:
         workdir: Default working directory inside the sandbox. By default, the
             working directory is the only writable path in the sandbox (unless
             ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
-        mount_workdir: If True (default), bind-mount a host-backed scratch
-            directory at ``workdir`` — the historical behavior that makes the
-            working directory writable on a readonly rootfs. Note this mount
-            *shadows* any content the image ships at that path. Set False to
-            leave the image's filesystem untouched (e.g. so an image's own
-            WORKDIR content stays visible); combine with ``readonly=False``
-            if the sandbox needs to write there.
+        mount_workdir: Whether to bind-mount a host-backed scratch directory
+            at ``workdir``. The bind exists to give a *readonly* rootfs one
+            writable path, and it shadows any content the image ships at that
+            path — so None (default) derives it from ``readonly``: mounted
+            when the rootfs is readonly, otherwise left unmounted so the
+            image's own WORKDIR content stays visible (writes then go to the
+            per-sandbox overlay). Pass True/False to force either behavior.
         ttl_seconds: Optional automatic cleanup time-to-live in seconds,
             measured wall-clock from creation (not idle time): a sandbox that
             is mid-command when the TTL fires is still deleted. None (default)
@@ -128,7 +128,7 @@ class SandboxConfig:
     memory: Union[str, int, float] = 0
     env: Dict[str, str] = field(default_factory=dict)
     workdir: Optional[str] = None
-    mount_workdir: bool = True
+    mount_workdir: Optional[bool] = None
     ttl_seconds: Optional[int] = None
     timeout_seconds: float = 30.0
     rootless: bool = True
@@ -156,6 +156,18 @@ class SandboxConfig:
                 "support the sandbox netstack in rootless mode. Use "
                 "network='host' for a rootless sandbox with network access."
             )
+
+    @property
+    def effective_mount_workdir(self) -> bool:
+        """Whether to bind a scratch directory over the container cwd.
+
+        The bind exists to give a readonly rootfs one writable path, so it is
+        only needed when the rootfs is readonly. Mounting it on a writable
+        rootfs buys nothing and hides whatever the image ships at its WORKDIR.
+        """
+        if self.mount_workdir is None:
+            return self.readonly
+        return self.mount_workdir
 
 
 GVisorSandboxConfig = SandboxConfig

@@ -51,7 +51,7 @@ class SandboxRuntime:
         memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
-        mount_workdir: bool = True,
+        mount_workdir: Optional[bool] = None,
         ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
@@ -72,10 +72,9 @@ class SandboxRuntime:
             workdir: Default working directory inside the sandbox. By default, the
                 working directory is the only writable path in the sandbox (unless
                 ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
-        mount_workdir: If True (default), bind-mount a host-backed scratch
-            directory at ``workdir``, shadowing any image content there. Set
-            False to leave the image's filesystem (e.g. its own WORKDIR
-            content) untouched; combine with ``readonly=False`` to write.
+        mount_workdir: Whether to bind-mount a host scratch directory at
+            ``workdir`` (shadows image content there). None (default) derives
+            it from ``readonly``: mounted only when the rootfs is readonly.
             ttl_seconds: Optional automatic cleanup time-to-live in seconds,
                 measured wall-clock from creation (not idle time): a sandbox that
                 is mid-command when the TTL fires is still deleted. None (default)

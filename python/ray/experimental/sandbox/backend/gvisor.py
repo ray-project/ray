@@ -90,7 +90,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             readonly=config.readonly,
             capabilities=config.capabilities,
             network=config.network,
-            mount_workdir=config.mount_workdir,
+            mount_workdir=config.effective_mount_workdir,
             _oci_spec_transform_fn=config._oci_spec_transform_fn,
         )
         run_args = self._runsc_base_args(config)

@@ -70,6 +70,23 @@ def test_invalid_network_mode_rejected():
     assert config.network == "sandbox"
 
 
+def test_effective_mount_workdir_derives_from_readonly():
+    # Default (None): mount only when the rootfs is readonly — the bind's
+    # sole purpose is giving a readonly rootfs one writable path.
+    assert SandboxConfig(image="x").effective_mount_workdir is True
+    assert SandboxConfig(image="x", readonly=False).effective_mount_workdir is False
+    # Explicit values force either behavior regardless of readonly.
+    assert (
+        SandboxConfig(image="x", mount_workdir=False).effective_mount_workdir is False
+    )
+    assert (
+        SandboxConfig(
+            image="x", readonly=False, mount_workdir=True
+        ).effective_mount_workdir
+        is True
+    )
+
+
 def test_sandbox_network_requires_rootful():
     with pytest.raises(ValueError, match="rootless"):
         SandboxConfig(image="python:3.10-slim", network="sandbox")
