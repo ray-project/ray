@@ -93,7 +93,9 @@ def get_lance_namespace_kwargs(
             import lance
 
             try:
-                has_namespace_client = Version(lance.__version__) >= Version("6.0.0")
+                has_namespace_client = Version(
+                    getattr(lance, "__version__", "")
+                ) >= Version("6.0.0")
             except (InvalidVersion, TypeError):
                 has_namespace_client = False
 
