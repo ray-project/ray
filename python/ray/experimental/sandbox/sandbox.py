@@ -130,6 +130,7 @@ class Sandbox:
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command inside the sandbox.
 
@@ -143,7 +144,7 @@ class Sandbox:
             ExecResult containing exit code, stdout, and stderr.
         """
         return self.runtime.exec(
-            self.instance_id, command, timeout=timeout, cwd=cwd, env=env
+            self.instance_id, command, timeout=timeout, cwd=cwd, env=env, shell=shell
         )
 
     def upload_file(self, local_path: str, remote_path: str) -> None:

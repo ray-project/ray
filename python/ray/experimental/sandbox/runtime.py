@@ -152,6 +152,7 @@ class SandboxRuntime:
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox.
 
@@ -171,6 +172,7 @@ class SandboxRuntime:
             timeout=timeout,
             cwd=cwd,
             env=env,
+            shell=shell,
         )
 
     async def exec_async(
@@ -180,6 +182,7 @@ class SandboxRuntime:
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox asynchronously.
 
@@ -200,6 +203,7 @@ class SandboxRuntime:
             timeout=timeout,
             cwd=cwd,
             env=env,
+            shell=shell,
         )
 
     def upload_file(self, instance_id: str, local_path: str, remote_path: str) -> None:

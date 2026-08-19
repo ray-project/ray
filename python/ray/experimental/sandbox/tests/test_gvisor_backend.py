@@ -214,5 +214,30 @@ def test_gvisor_backend_ignore_cgroups_flag():
             os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
 
 
+def test_string_exec_shell_detection():
+    """String commands use the detected shell (bash if present, else sh)."""
+    runtime = SandboxRuntime()
+    # busybox has /bin/sh but no /bin/bash.
+    instance_id = runtime.create(image="busybox:latest", readonly=False)
+    try:
+        meta = runtime.backend._sandbox_metadata[instance_id]
+        assert meta["shell"] == "/bin/sh"
+        result = runtime.exec(instance_id, "echo hello-$0")
+        assert result.exit_code == 0
+        assert "hello-" in result.stdout
+    finally:
+        runtime.delete(instance_id)
+
+    # An explicit config shell wins over detection.
+    instance_id = runtime.create(
+        image="busybox:latest", readonly=False, shell="/bin/sh"
+    )
+    try:
+        meta = runtime.backend._sandbox_metadata[instance_id]
+        assert meta["shell"] == "/bin/sh"
+    finally:
+        runtime.delete(instance_id)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

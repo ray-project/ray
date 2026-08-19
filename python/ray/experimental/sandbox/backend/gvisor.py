@@ -172,7 +172,31 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
         }
+        self._sandbox_metadata[sandbox_id]["shell"] = self._detect_shell(
+            sandbox_id, config
+        )
         return sandbox_id
+
+    def _detect_shell(self, sandbox_id: str, config: SandboxConfig) -> str:
+        """Resolve the shell used for string commands, once per sandbox.
+
+        String commands overwhelmingly assume bash, and /bin/sh is dash on
+        Debian-family images, which fails bashisms with unhelpful errors. Use
+        the configured shell when given, otherwise probe for /bin/bash (a
+        single argv exec, so this costs one runsc round-trip at creation, not
+        per command) and fall back to /bin/sh.
+        """
+        if config.shell is not None:
+            return config.shell
+        try:
+            probe = self.exec_command(
+                sandbox_id, ["/bin/bash", "-c", "true"], timeout=10
+            )
+            if probe.exit_code == 0:
+                return "/bin/bash"
+        except Exception:
+            pass
+        return "/bin/sh"
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
@@ -216,6 +240,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
@@ -236,7 +261,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if isinstance(command, list):
             runsc_args.extend([sandbox_id] + command)
         else:
-            runsc_args.extend([sandbox_id, "/bin/sh", "-c", command])
+            exec_shell = shell or meta.get("shell") or "/bin/sh"
+            runsc_args.extend([sandbox_id, exec_shell, "-c", command])
 
         start_time = time.time()
 

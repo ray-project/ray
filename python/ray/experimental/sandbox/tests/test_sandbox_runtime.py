@@ -66,6 +66,7 @@ def test_create_forwards_config_fields_to_backend():
         capabilities=["CAP_CHOWN"],
         rootless=True,
         readonly=False,
+        shell="/bin/bash",
     )
     (config,) = runtime._backend.configs
     assert config.image == "fake:latest"
@@ -79,6 +80,7 @@ def test_create_forwards_config_fields_to_backend():
     assert config.capabilities == ["CAP_CHOWN"]
     assert config.rootless is True
     assert config.readonly is False
+    assert config.shell == "/bin/bash"
 
 
 def test_ttl_is_enforced_by_the_runtime():

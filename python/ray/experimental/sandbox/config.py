@@ -135,6 +135,13 @@ class SandboxConfig:
             option only ever adds capabilities; to remove even the runtime
             defaults (run with no capabilities at all), erase the sets with
             ``_oci_spec_transform_fn``.
+        shell: Shell used to run *string* commands (list commands are run
+            argv-style and bypass it). None (default) auto-detects at sandbox
+            creation: /bin/bash when the image has it, else /bin/sh. Agent-
+            and user-supplied commands overwhelmingly assume bash, and on
+            Debian-family images /bin/sh is dash, which fails bashisms
+            ([[ ]], pipefail, arrays) with diagnostics that never say "you
+            are not in bash".
         readonly: If True (default), mount container image rootfs in read-only mode
             such that only ``workdir`` is writable. If False, the entire root filesystem
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
@@ -154,6 +161,7 @@ class SandboxConfig:
     network: str = "none"
     dns: Optional[List[str]] = None
     capabilities: Optional[List[str]] = None
+    shell: Optional[str] = None
     readonly: bool = True
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
