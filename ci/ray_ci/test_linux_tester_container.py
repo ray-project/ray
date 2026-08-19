@@ -179,7 +179,12 @@ def test_ray_installation() -> None:
         "subprocess.check_call", side_effect=_mock_subprocess
     ), mock.patch.dict(
         os.environ,
-        {"RAYCI_IMAGE_PIP_INDEX_URL": "", "PIP_INDEX_URL": ""},
+        {
+            "RAYCI_IMAGE_PIP_INDEX_URL": "",
+            "PIP_INDEX_URL": "",
+            "RAYCI_IMAGE_PIP_TRUSTED_HOST": "",
+            "PIP_TRUSTED_HOST": "",
+        },
     ):
         LinuxTesterContainer("team", build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:team"
@@ -198,6 +203,8 @@ def test_ray_installation() -> None:
             "BUILDKITE_CACHE_READONLY=",
             "--build-arg",
             "RAYCI_IMAGE_PIP_INDEX_URL=",
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_TRUSTED_HOST=",
             "-f",
             "ci/ray_ci/tests.env.Dockerfile",
             "/ray",

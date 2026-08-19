@@ -55,6 +55,16 @@ def build_anyscale_custom_byod_image(
                 "RAYCI_IMAGE_PIP_INDEX_URL", os.environ.get("PIP_INDEX_URL", "")
             ),
         ]
+        # The index alone is not enough: pip trusts only loopback over plain HTTP, and
+        # this one is not loopback, so an untrusted host is dropped in silence and the
+        # build fails on "from versions: none" instead (release 104844).
+        docker_build_cmd += [
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_TRUSTED_HOST="
+            + os.environ.get(
+                "RAYCI_IMAGE_PIP_TRUSTED_HOST", os.environ.get("PIP_TRUSTED_HOST", "")
+            ),
+        ]
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"

@@ -8,4 +8,5 @@ build_args:
   - RAYCI_DISABLE_JAVA
   - HOSTTYPE
   - RAYCI_IMAGE_PIP_INDEX_URL
+  - RAYCI_IMAGE_PIP_TRUSTED_HOST
 dockerfile: ci/docker/manylinux.Dockerfile

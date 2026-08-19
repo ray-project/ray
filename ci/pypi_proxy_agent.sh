@@ -132,6 +132,12 @@ _rayci_agent_pypi_proxy() {
   if [[ -n "${pinned}" ]] &&
     [[ "$(printf '%s\n%s\n' "${min_rayci}" "${pinned}" | sort -V | head -1)" == "${min_rayci}" ]]; then
     export RAYCI_IMAGE_PIP_INDEX_URL="http://rayci.localhost:${port}/simple"
+    # Named as trusted, because that name is not loopback. pip exempts loopback from its
+    # plain-HTTP refusal and nothing else, and the refusal is silent -- release 104844
+    # dropped the index and failed on `cython==3.0.12 (from versions: none)` with the
+    # --add-host flag present and the proxy healthy. The agent's own pip needs no
+    # equivalent: 127.0.0.1 above is covered by that exemption.
+    export RAYCI_IMAGE_PIP_TRUSTED_HOST="rayci.localhost"
     echo "pypi index: image builds -> ${RAYCI_IMAGE_PIP_INDEX_URL}"
   else
     echo "pypi index: rayci ${pinned:-<unknown>} predates the --add-host support in ${min_rayci}; image builds stay on PyPI" >&2

@@ -15,5 +15,6 @@ build_args:
   - BASE_IMAGE=nvidia/cuda:13.0.0-cudnn-devel-ubuntu22.04
   - CUDA_VERSION=13.0.0
   - RAYCI_IMAGE_PIP_INDEX_URL
+  - RAYCI_IMAGE_PIP_TRUSTED_HOST
 tags:
   - cr.ray.io/rayproject/oss-ci-base_cu130-py$PYTHON

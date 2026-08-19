@@ -56,6 +56,13 @@ class LinuxContainer(Container):
         image_index_url = os.environ.get(
             "RAYCI_IMAGE_PIP_INDEX_URL", os.environ.get("PIP_INDEX_URL", "")
         )
+        # pip drops a plain-HTTP index whose host it does not trust, and says nothing
+        # about it beyond "from versions: none" -- so the host travels with the index.
+        # Loopback is the one host pip exempts, and neither address here is loopback:
+        # the step's own proxy is on the bridge, and the agent's is a name.
+        image_trusted_host = os.environ.get(
+            "RAYCI_IMAGE_PIP_TRUSTED_HOST", os.environ.get("PIP_TRUSTED_HOST", "")
+        )
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
@@ -74,6 +81,8 @@ class LinuxContainer(Container):
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
             "--build-arg",
             f"RAYCI_IMAGE_PIP_INDEX_URL={image_index_url}",
+            "--build-arg",
+            f"RAYCI_IMAGE_PIP_TRUSTED_HOST={image_trusted_host}",
         ]
 
         if not build_type or build_type in (
