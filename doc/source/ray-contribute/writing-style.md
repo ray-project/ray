@@ -158,8 +158,8 @@ Outside code, spell out a symbol that stands in for a word.
 
 This rule is about a symbol doing a word's job. It isn't about arithmetic. Keep the symbol when it expresses a calculation, a pair of dimensions, or an established shorthand, where spelling it out is longer and harder to read:
 
-- `4 × 0.5 GPU = 2 GPUs`, and `tensor_parallel_size × pipeline_parallel_size`
-- `384×384` for a resolution, and `4 rows × 23 columns` for a shape
+- `4 × 0.5 GPU = 2 GPUs` and `tensor_parallel_size × pipeline_parallel_size`
+- `384×384` for a resolution and `4 rows × 23 columns` for a shape
 - `8xH100` or `4xL4` for an accelerator count
 
 ### Don't write "etc." after "such as," "for example," or "including"
