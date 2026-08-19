@@ -43,6 +43,18 @@ def build_anyscale_custom_byod_image(
         docker_build_cmd = "docker build --progress=plain .".split()
         docker_build_cmd += ["--build-arg", f"BASE_IMAGE={base_image}"]
         docker_build_cmd += ["-t", image]
+        # This build runs inside a forge step on the release stack, so the step's
+        # index is a live rewriting proxy and a RUN step can reach it (premerge
+        # 72149). Without this the ARG in byod.Dockerfile has no value to take.
+        # Appended after -t so the argument prefix stays stable for callers and
+        # tests that match on it.
+        docker_build_cmd += [
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_INDEX_URL="
+            + os.environ.get(
+                "RAYCI_IMAGE_PIP_INDEX_URL", os.environ.get("PIP_INDEX_URL", "")
+            ),
+        ]
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
