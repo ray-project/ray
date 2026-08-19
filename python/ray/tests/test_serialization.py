@@ -879,5 +879,81 @@ def test_streaming_generator_replay_inconsistent_error_deserialization(monkeypat
     assert expected_message in str(result)
 
 
+def test_runtime_env_setup_failed_error_deserialization(monkeypatch):
+    """RUNTIME_ENV_SETUP_FAILED must carry the agent's structured context onto the
+    exception, not only the flattened message it has always carried.
+    """
+    from ray._private.serialization import SerializationContext
+    from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
+    from ray.exceptions import RuntimeEnvSetupError
+
+    # Bypass __init__ — it registers reducers that expect a connected worker.
+    ctx = SerializationContext.__new__(SerializationContext)
+
+    fake_error_info = RayErrorInfo()
+    fake_error_info.error_type = ErrorType.RUNTIME_ENV_SETUP_FAILED
+    setup_failure = fake_error_info.runtime_env_setup_failed_error
+    setup_failure.error_message = "pip install failed"
+    setup_failure.plugin = "pip"
+    setup_failure.phase = "install"
+    setup_failure.installer_exit_code = 1
+    setup_failure.attempts.add(attempt=1, exit_code=1)
+    monkeypatch.setattr(
+        ctx, "_deserialize_error_info", lambda data, fields: fake_error_info
+    )
+
+    result = ctx._deserialize_object(
+        data=b"",  # content irrelevant — _deserialize_error_info is mocked
+        metadata=str(ErrorType.Value("RUNTIME_ENV_SETUP_FAILED")).encode(),
+        object_ref=None,
+        out_of_band_tensors=None,
+    )
+
+    assert isinstance(result, RuntimeEnvSetupError)
+    assert "pip install failed" in str(result)
+    assert result.setup_failure.plugin == "pip"
+    assert result.setup_failure.phase == "install"
+    assert result.setup_failure.installer_exit_code == 1
+    assert len(result.setup_failure.attempts) == 1
+    # A detached copy, not the sub-message view: the RayErrorInfo it was read from
+    # belongs to the caller and may be reused or cleared, while this exception is
+    # pickled by RayError.to_bytes and outlives it.
+    assert result.setup_failure is not fake_error_info.runtime_env_setup_failed_error
+
+
+def test_worker_startup_failed_stays_ray_system_error(monkeypatch):
+    """WORKER_STARTUP_FAILED keeps raising RaySystemError.
+
+    This is a guard on something NOT changing. The GCS now records a worker that
+    started but never registered as its own branch of the actor's death cause,
+    which is a genuinely different failure from the cluster being unable to place
+    the actor at all. It would be reasonable to surface that difference here as a
+    distinct exception type -- and doing so would change the type an existing
+    caller receives, for a path whose frequency is unmeasured. So the
+    caller-visible type is deliberately left alone, and this pins it.
+    """
+    from ray._private.serialization import SerializationContext
+    from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
+    from ray.exceptions import RaySystemError
+
+    ctx = SerializationContext.__new__(SerializationContext)
+    metadata = str(ErrorType.Value("WORKER_STARTUP_FAILED")).encode()
+
+    error_info = RayErrorInfo()
+    error_info.error_type = ErrorType.WORKER_STARTUP_FAILED
+    error_info.error_message = "Worker startup failed."
+    monkeypatch.setattr(ctx, "_deserialize_error_info", lambda data, fields: error_info)
+
+    result = ctx._deserialize_object(
+        data=b"",
+        metadata=metadata,
+        object_ref=None,
+        out_of_band_tensors=None,
+    )
+
+    assert type(result) is RaySystemError
+    assert "Worker startup failed." in str(result)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

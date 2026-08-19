@@ -519,9 +519,13 @@ class SerializationContext:
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 # TODO(sang): Assert instead once actor also reports error messages.
                 error_msg = ""
+                setup_failure = None
                 if error_info.HasField("runtime_env_setup_failed_error"):
-                    error_msg = error_info.runtime_env_setup_failed_error.error_message
-                return RuntimeEnvSetupError(error_message=error_msg)
+                    setup_failure = error_info.runtime_env_setup_failed_error
+                    error_msg = setup_failure.error_message
+                return RuntimeEnvSetupError(
+                    error_message=error_msg, setup_failure=setup_failure
+                )
             elif error_type == ErrorType.Value("TASK_PLACEMENT_GROUP_REMOVED"):
                 return TaskPlacementGroupRemoved()
             elif error_type == ErrorType.Value("ACTOR_PLACEMENT_GROUP_REMOVED"):

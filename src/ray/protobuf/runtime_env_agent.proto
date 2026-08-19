@@ -16,6 +16,7 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/runtime_env_common.proto";
 import "src/ray/protobuf/public/runtime_environment.proto";
 
@@ -44,6 +45,11 @@ message GetOrCreateRuntimeEnvReply {
   /// Json serialized [RuntimeEnvContext].
   /// For details, checkeout "//python/ray/_private/runtime_env/context.py".
   string serialized_runtime_env_context = 3;
+  /// Structured detail about the setup failure: which plugin and phase failed,
+  /// the package it failed on, the installer's exit code, and one entry per
+  /// setup attempt. error_message above stays as-is for compatibility; this is
+  /// the same message that is carried up into JobFailureInfo.
+  optional RuntimeEnvFailedContext setup_failure = 4;
 }
 
 message DeleteRuntimeEnvIfPossibleRequest {

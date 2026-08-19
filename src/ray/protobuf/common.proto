@@ -371,6 +371,11 @@ message ActorDeathCause {
     ActorDiedErrorContext actor_died_error_context = 3;
     ActorUnschedulableContext actor_unschedulable_context = 4;
     OomContext oom_context = 5;
+    // Indicates that this actor is marked as DEAD because its worker process
+    // crashed or hung before completing registration. Distinct from
+    // actor_unschedulable_context, which means the cluster could not place the
+    // actor at all.
+    WorkerBootstrapContext worker_bootstrap_context = 6;
   }
 }
 // ---Actor death contexts start----
@@ -378,8 +383,54 @@ message ActorDeathCause {
 // Note: RuntimeEnvFailedContext is used in the export API and state API so it is public.
 // Any modifications must be backward compatible.
 message RuntimeEnvFailedContext {
-  // TODO(sang,lixin) Get this error message from agent.
+  // At most the final line of the installer's own output, credential-redacted
+  // and hard-capped at 200 characters.
+  //
+  // Deliberately not the full text. This field travels off the node to a
+  // consumer with no offload path of its own, and the full text is already
+  // reachable three other ways -- the log file that stderr_ref names down to
+  // cmd[N], the error-event feed, and the job's own message. One line is enough
+  // to tell two failures apart at a glance; anything more is a second copy of
+  // customer content on the one path that cannot store it.
   string error_message = 1;
+  // Which runtime env plugin failed, e.g. "uv", "pip", "conda", "working_dir",
+  // "container". Raw plugin name rather than an enum so a new plugin is a new
+  // value, not a schema change.
+  optional string plugin = 2;
+  // Which step of that plugin failed, named after the call site that raised,
+  // e.g. "create_venv", "install_pip", "install", "dependency_check",
+  // "image_pull", "conda_env_create", or "timeout". These are the boundaries
+  // the agent can actually observe: pip and uv resolve, download and install
+  // inside a single subprocess, so a finer split would have to be parsed back
+  // out of installer output.
+  optional string phase = 3;
+  // The specific requirement that failed, e.g. "torch==2.9.1", when the plugin
+  // can attribute the failure to one.
+  optional string failed_package = 4;
+  // Exit code of the installer process (uv, pip, ...), when one ran.
+  optional int32 installer_exit_code = 5;
+  // Reference to the captured installer output. The installer runs with stderr
+  // redirected into stdout, so what is stored behind this reference is a single
+  // merged stream rather than stderr alone.
+  optional string stderr_ref = 6;
+  // One entry per setup attempt. Today only the last attempt survives, so a
+  // failure that succeeded on retry is indistinguishable from one that never
+  // did.
+  repeated RuntimeEnvSetupAttempt attempts = 7;
+}
+
+// One runtime env setup attempt. Retries are kept because the interesting case
+// is a failure that recurs, not the last one to be tried.
+message RuntimeEnvSetupAttempt {
+  // 1-based attempt number.
+  int32 attempt = 1;
+  optional int32 exit_code = 2;
+  // Same rule as RuntimeEnvFailedContext.error_message: one redacted line, 200
+  // characters. Present per attempt only because attempts can genuinely fail for
+  // different reasons -- a network timeout then a resolution conflict -- which
+  // the exit code alone does not distinguish.
+  optional string error_message = 3;
+  optional uint64 duration_ms = 4;
 }
 
 // Note: ActorUnschedulableContext is used in the export API and state API so it is
@@ -437,7 +488,145 @@ message OomContext {
   bool fail_immediately = 2;
 }
 
+// A worker that died before completing registration. Distinct from
+// ActorUnschedulableContext, which this path currently borrows and which makes
+// a broken bootstrap script read as a capacity problem.
+// Note: WorkerBootstrapContext is used in the export API and state API so it is
+// public. Any modifications must be backward compatible.
+message WorkerBootstrapContext {
+  // Ray-generated text, not customer output.
+  //
+  // Only this field is declared. The raylet's channel for a cancelled lease is a
+  // flat string, so per-worker detail (attempt count, worker id, exit code,
+  // output location) has no producer on this path and would be permanently null:
+  // a declared field is a promise, and consumers reason from absence. The
+  // worker's own bytes are interleaved into raylet.err with every other
+  // concurrently starting worker anyway, so there is no per-worker tail to point
+  // at. Adding any of it later means adding a field, which is the honest signal
+  // that a producer now exists.
+  string error_message = 1;
+}
+
 // ---Actor death contexts end----
+
+// ---Job failure info start----
+
+// Structured detail about why a job failed. Attached to the job record
+// (JobsAPIInfo) and to per-transition job export events.
+//
+// Shaped after ActorDeathCause above: a discriminator plus a oneof of
+// per-stage contexts, reusing the context messages that already exist rather
+// than introducing a parallel vocabulary.
+//
+// Note: this is served by the state and export APIs, so it is public. Any
+// modification must be backward compatible.
+message JobFailureInfo {
+  // Where in the job lifecycle the failure happened. Selects which context
+  // below is set.
+  enum Stage {
+    // UNSPECIFIED is also what a reader sees when the whole failure_info is
+    // absent, because this field has no presence. Check for failure_info itself
+    // before reading a stage from it: "no evidence was reported" and "evidence
+    // arrived with no stage" are different claims and this value cannot tell
+    // them apart.
+    UNSPECIFIED = 0;
+    // 1 was SUBMISSION. Nothing ever set it -- a job that fails before the
+    // manager takes it does not reach any of these writers at all, so the stage
+    // it would have described is precisely the case that produces no record.
+    // Left unused so restoring it is a pure addition.
+    RUNTIME_ENV_SETUP = 2;
+    // 3 was WORKER_BOOTSTRAP, and 6 in the oneof below was its context. A worker
+    // that started but never registered is recorded in the actor's death cause as
+    // ActorDeathCause.worker_bootstrap_context, but it is not attributed as its
+    // own job stage, because reaching this layer with it would mean giving the
+    // caller a different exception type than it gets today.
+    //
+    // TODO: restore 3 and 6 together, once the lease-cancellation path has a
+    // measured frequency to justify changing a stable public exception type. Both
+    // numbers are deliberately left unused so that restoring them is a pure
+    // addition.
+    SUPERVISOR_START = 4;
+    DRIVER_RUN = 5;
+  }
+
+  Stage stage = 1;
+
+  // How the driver process ended. Note that this does not separate a kernel OOM
+  // kill from `kill -9`: the entrypoint runs under a shell, so a signal to the
+  // Python process arrives here as a positive 128+N and the two are
+  // indistinguishable at this layer. Naming which one it was requires a
+  // node-level termination reason, which this process cannot observe, so no
+  // field for it is declared here.
+  optional int32 driver_exit_code = 2;
+
+  oneof context {
+    RuntimeEnvFailedContext runtime_env = 5;
+    SupervisorDeathContext supervisor = 7;
+    DriverRunContext driver_run = 10;
+  }
+
+  // Reference to the captured log excerpt for this failure.
+  optional string log_excerpt_ref = 9;
+
+  // Ray-internal infra signal found in the GCS for this job, annotating the
+  // stage above rather than replacing it.
+  optional InfraCauseContext infra_cause = 11;
+}
+
+// Death of the job supervisor actor, as data rather than as its string form.
+message SupervisorDeathContext {
+  // One redacted line, 200 characters, per the rule on
+  // RuntimeEnvFailedContext.error_message. The supervisor's death text can
+  // include a traceback from the job's own creation task, which is customer
+  // content; death_cause below carries the part that is not.
+  string error_message = 1;
+  // The structured death cause rather than str() of it, so that an OOM kill or a
+  // node death stays a distinguishable branch instead of collapsing into text.
+  optional ActorDeathCause death_cause = 2;
+  // Exception class observed on the supervisor path, e.g. "ActorDiedError".
+  optional string exception_class = 3;
+}
+
+// The entrypoint ran and did not succeed. This is the most common failure
+// stage, and today it carries only a generic message.
+message DriverRunContext {
+  string error_message = 1;
+  // Exception class of the final traceback, e.g. "ModuleNotFoundError", or of
+  // the start-time exception when the entrypoint never began executing.
+  // Not every class ends in Error or Exception, so this is the class as
+  // reported rather than a matched pattern.
+  optional string exception_class = 2;
+  // True when the entrypoint failed to start at all, as opposed to running and
+  // then exiting non-zero. Distinguishes ENTRYPOINT_START_FAILED from
+  // DRIVER_EXITED_NONZERO downstream.
+  optional bool failed_to_start = 3;
+}
+
+// An infra cause found in the GCS for a job, read from the job's actor and task
+// records. This annotates a stage rather than being one: a driver that exits
+// non-zero because a node it depended on died is still a DRIVER_RUN failure, it
+// is just not the entrypoint's fault.
+message InfraCauseContext {
+  // Reuses the ErrorType vocabulary above rather than minting a parallel enum,
+  // so a cause Ray already names keeps that name here. This field has no
+  // presence and its zero value is WORKER_DIED, so read it only when
+  // infra_cause itself is set.
+  ErrorType error_type = 1;
+  string error_message = 2;
+  // The whole death cause when an actor of this job died, so that e.g. an OOM
+  // kill stays a oneof branch instead of collapsing into error_message.
+  optional ActorDeathCause actor_death_cause = 3;
+  // Set when what was found is a node death, e.g. a spot preemption.
+  optional NodeDeathInfo node_death_info = 4;
+  // The Ray job id the evidence was read under. The job record is keyed by
+  // submission id, so without this there is no way to repeat the lookup.
+  optional bytes ray_job_id = 5;
+  // A bounded sample of the task ids the evidence came from, to follow up on.
+  // Deliberately a sample and not the full set.
+  repeated string sample_task_ids = 6;
+}
+
+// ---Job failure info end----
 
 message ActorUnavailableContext {
   optional bytes actor_id = 1;

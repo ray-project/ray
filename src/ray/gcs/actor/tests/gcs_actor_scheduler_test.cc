@@ -139,7 +139,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor,
                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-               const std::string &scheduling_failure_message) {
+               const std::string &scheduling_failure_message,
+               const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure) {
           failure_actors_.emplace_back(std::move(actor));
         },
         /*schedule_success_handler=*/

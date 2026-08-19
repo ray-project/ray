@@ -14,8 +14,12 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.utils import (
+    MAX_SUMMARY_LINE_CHARS,
     SubprocessCalledProcessError,
     check_output_cmd,
+    redact_url_credentials,
+    sole_requirement,
+    summary_line,
 )
 from ray._private.test_utils import (
     chdir,
@@ -302,6 +306,128 @@ def test_subprocess_error_with_last_n_lines():
     s = "".join([s.strip() for s in exception_str.splitlines()])
     assert "345" in s
     assert "321" in s
+
+
+def test_redact_url_credentials():
+    # Keep the host and path -- they are what makes the message useful, and
+    # neither is a secret. Drop everything between the scheme and the "@".
+    assert (
+        redact_url_credentials("https://__token__:sekrit@example.com/simple")
+        == "https://<redacted>@example.com/simple"
+    )
+    # A bare username is not itself a credential, but it is not worth telling
+    # the two apart to keep it.
+    assert (
+        redact_url_credentials("https://alice@example.com/x")
+        == "https://<redacted>@example.com/x"
+    )
+    # Two indexes in one cmd: both must go, not just the first.
+    both = redact_url_credentials(
+        "--index-url https://a:b@one.example.com/simple "
+        "--extra-index-url https://c:d@two.example.com/simple"
+    )
+    assert "a:b" not in both and "c:d" not in both
+    assert both.count("<redacted>") == 2
+    # An "@" that is not URL userinfo must not trigger a match, or ordinary
+    # requirements and contact addresses would be mangled into nonsense.
+    for unchanged in ("https://pypi.org/simple", "pkg@1.2.3", "maintainer@example.com"):
+        assert redact_url_credentials(unchanged) == unchanged
+    # A VCS requirement carries userinfo in the same position, so it is covered
+    # too -- "git@github.com" is the ssh user, and a PAT sits in the same slot.
+    assert (
+        redact_url_credentials("git+ssh://git@github.com/o/r")
+        == "git+ssh://<redacted>@github.com/o/r"
+    )
+
+
+def test_subprocess_error_redacts_index_credentials():
+    # THE POINT: this message is rendered into the exception text that the
+    # runtime env agent reports as a structured setup failure, so a token
+    # pasted into a runtime env would otherwise be stored by every consumer of
+    # that failure. Both the argv and the installer's echo of it must be clean.
+    cmd = [
+        "pip",
+        "install",
+        "--index-url",
+        "https://u:tok3n@corp.example.com/s",
+        "torch",
+    ]
+    exception = SubprocessCalledProcessError(
+        1,
+        cmd,
+        output="Looking in indexes: https://u:tok3n@corp.example.com/s\nboom",
+        cmd_index=1,
+    )
+    text = str(exception)
+    assert "tok3n" not in text
+    # Still diagnosable: which index, which command, and the installer's own
+    # output all survive.
+    assert "corp.example.com" in text
+    assert "torch" in text
+    assert "boom" in text
+
+
+def test_summary_line():
+    # Nothing in, nothing out -- and None rather than "", so a caller omits the
+    # field instead of reporting a blank one, which would read as a fact.
+    assert summary_line(None) is None
+    assert summary_line("") is None
+    assert summary_line("  \n \n ") is None
+
+    # The last line is taken because every producer on this path puts the
+    # actionable sentence there.
+    assert (
+        summary_line(
+            'Traceback (most recent call last):\n  File "x.py", line 1\n'
+            "ValueError: boom"
+        )
+        == "ValueError: boom"
+    )
+    assert (
+        summary_line("ERROR: No matching distribution found for nope\n\n\n")
+        == "ERROR: No matching distribution found for nope"
+    )
+
+    assert (
+        summary_line("pip install --index-url https://u:sekrit@example.com/s nope")
+        == "pip install --index-url https://<redacted>@example.com/s nope"
+    )
+
+    # 200 characters is the entire budget for customer-origin text on this path.
+    capped = summary_line("x" * 500)
+    assert len(capped) == MAX_SUMMARY_LINE_CHARS
+    assert capped.endswith("...")
+    assert summary_line("y" * 200) == "y" * 200
+    assert len(summary_line("y" * 201)) == MAX_SUMMARY_LINE_CHARS
+
+
+def test_summary_line_redacts_before_truncating():
+    # ORDER MATTERS: redact first, then cap. Reversed, a credential sitting past
+    # the cap would be cut rather than masked -- which happens to be safe -- but a
+    # credential sitting *before* it would be masked either way, so the reversal
+    # looks harmless in testing and is not. Capping a redacted line can only ever
+    # remove more text, never reveal any.
+    out = summary_line("https://user:verysecrettoken@example.com/s " + "z" * 400)
+    assert "verysecrettoken" not in out
+    assert len(out) == MAX_SUMMARY_LINE_CHARS
+
+
+def test_sole_requirement():
+    assert sole_requirement(None) is None
+    assert sole_requirement([]) is None
+    assert sole_requirement(["nope-xyz==1.0"]) == "nope-xyz==1.0"
+    assert sole_requirement(["  torch==2.9.1 "]) == "torch==2.9.1"
+
+    # A set is excluded: which member failed is stated only in the installer's
+    # own output, and parsing that is the pattern matching this avoids. A wrong
+    # package name is worse than none, because it sends someone to fix the wrong
+    # dependency.
+    assert sole_requirement(["a", "b"]) is None
+    # These expand to a set, so they are not a single requirement either.
+    assert sole_requirement(["-r requirements.txt"]) is None
+    assert sole_requirement(["--requirement reqs.txt"]) is None
+    assert sole_requirement(["--no-deps"]) is None
+    assert sole_requirement(["   "]) is None
 
 
 @pytest.mark.asyncio

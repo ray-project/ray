@@ -63,7 +63,8 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
     // handler.
     schedule_failure_handler_(std::move(actor),
                               rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED,
-                              "No available nodes to schedule the actor");
+                              "No available nodes to schedule the actor",
+                              /*runtime_env_setup_failure=*/nullptr);
     return;
   }
 
@@ -407,7 +408,8 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
     std::shared_ptr<GcsActor> actor,
     const NodeID &node_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-    const std::string &scheduling_failure_message) {
+    const std::string &scheduling_failure_message,
+    const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure) {
   RAY_LOG(INFO)
           .WithField(actor->GetActorID())
           .WithField(actor->GetActorID().JobId())
@@ -415,7 +417,8 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
       << "Lease request was canceled: "
       << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
 
-  schedule_failure_handler_(actor, failure_type, scheduling_failure_message);
+  schedule_failure_handler_(
+      actor, failure_type, scheduling_failure_message, runtime_env_setup_failure);
 }
 
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
@@ -587,11 +590,16 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
 
     if (status.ok()) {
       if (reply.canceled()) {
+        // The context is borrowed from `reply`, which outlives this call: every
+        // hop down to the copy in GcsActorManager runs in this frame.
         HandleRequestWorkerLeaseCanceled(
             actor,
             node_id,
             reply.failure_type(),
-            /*scheduling_failure_message*/ reply.scheduling_failure_message());
+            /*scheduling_failure_message*/ reply.scheduling_failure_message(),
+            /*runtime_env_setup_failure*/ reply.has_runtime_env_setup_failure()
+                ? &reply.runtime_env_setup_failure()
+                : nullptr);
         return;
       }
 

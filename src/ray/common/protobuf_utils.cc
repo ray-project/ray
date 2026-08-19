@@ -112,7 +112,8 @@ const std::string &GetActorDeathCauseString(const rpc::ActorDeathCause &death_ca
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
       {ContextCase::kActorUnschedulableContext, "ActorUnschedulableContext"},
       {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"},
-      {ContextCase::kOomContext, "OOMContext"}};
+      {ContextCase::kOomContext, "OOMContext"},
+      {ContextCase::kWorkerBootstrapContext, "WorkerBootstrapContext"}};
   auto it = death_cause_string.find(death_cause.context_case());
   RAY_CHECK(it != death_cause_string.end())
       << "Given death cause case " << death_cause.context_case() << " doesn't exist.";
@@ -134,6 +135,26 @@ rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     error_info.set_error_type(rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED);
     break;
   case ContextCase::kActorUnschedulableContext:
+    // No CopyFrom: ActorUnschedulableContext holds only error_message, which the
+    // unconditional set_error_message below already carries.
+    error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
+    break;
+  case ContextCase::kWorkerBootstrapContext:
+    // Reported to the caller as ACTOR_UNSCHEDULABLE_ERROR, the same as a genuine
+    // placement failure, so that the exception a Python caller sees is unchanged.
+    //
+    // The GCS still records the two apart in the actor's death cause, which is
+    // what the state and export APIs expose. Only the caller-visible error type is
+    // merged. Separating it here as well would change ActorUnschedulableError --
+    // stable @PublicAPI -- into a new type for anyone calling into an actor whose
+    // worker failed to start.
+    //
+    // TODO: report this as its own error type once there is a count for how often
+    // the lease-cancellation path is actually taken. The evidence for splitting it
+    // is currently qualitative -- the two failures are genuinely different and are
+    // remediated differently -- but nothing persists this path today, so the
+    // frequency is unmeasured, and it is not worth changing a stable public
+    // exception type on a qualitative argument alone.
     error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
     break;
   case ContextCase::kOomContext:
@@ -159,6 +180,8 @@ std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_caus
     return death_cause.actor_died_error_context().error_message();
   } else if (death_cause.context_case() == ContextCase::kOomContext) {
     return death_cause.oom_context().error_message();
+  } else if (death_cause.context_case() == ContextCase::kWorkerBootstrapContext) {
+    return death_cause.worker_bootstrap_context().error_message();
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     return "Death cause not recorded.";

@@ -368,7 +368,15 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                     rpc::RequestWorkerLeaseReply::
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
                   error_type = rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
-                  error_info.mutable_runtime_env_setup_failed_error()->set_error_message(
+                  auto *runtime_env_error =
+                      error_info.mutable_runtime_env_setup_failed_error();
+                  if (reply.has_runtime_env_setup_failure()) {
+                    runtime_env_error->CopyFrom(reply.runtime_env_setup_failure());
+                  }
+                  // Set the message after the CopyFrom, which carries the agent's own
+                  // error_message and would otherwise win. The raylet's message is the
+                  // one this path has always reported, so it stays authoritative.
+                  runtime_env_error->set_error_message(
                       reply.scheduling_failure_message());
                 } else if (reply.failure_type() ==
                            rpc::RequestWorkerLeaseReply::

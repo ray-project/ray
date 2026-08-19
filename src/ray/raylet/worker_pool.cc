@@ -230,7 +230,12 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                            std::shared_ptr<WorkerInterface> worker,
                                            PopWorkerStatus status) {
   RAY_CHECK(callback);
-  auto used = callback(worker, status, /*runtime_env_setup_error_message=*/"");
+  // Never reached with RuntimeEnvCreationFailed (see the RAY_CHECK in
+  // PopWorkerCallbackAsync), so there is no structured failure to forward.
+  auto used = callback(worker,
+                       status,
+                       /*runtime_env_setup_error_message=*/"",
+                       /*runtime_env_setup_failure=*/nullptr);
   if (worker && !used) {
     // The invalid worker not used, restore it to worker pool.
     PushWorker(worker);
@@ -795,7 +800,8 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
         job_id,
         [job_id](bool successful,
                  const std::string &serialized_runtime_env_context,
-                 const std::string &setup_error_message) {
+                 const std::string &setup_error_message,
+                 const rpc::RuntimeEnvFailedContext * /*setup_failure*/) {
           if (successful) {
             RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
                           << ".";
@@ -1156,7 +1162,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 
   if (pop_worker_request) {
-    bool used = pop_worker_request->callback_(worker, PopWorkerStatus::OK, "");
+    bool used = pop_worker_request->callback_(
+        worker, PopWorkerStatus::OK, "", /*runtime_env_setup_failure=*/nullptr);
     if (!used) {
       // Retry PushWorker. Maybe it can be used by other leases.
       // Can we have tail call optimization for this? :)
@@ -1411,24 +1418,31 @@ void WorkerPool::StartNewWorker(
 
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // create runtime env.
-    GetOrCreateRuntimeEnv(
-        serialized_runtime_env,
-        pop_worker_request->runtime_env_info_.runtime_env_config(),
-        pop_worker_request->job_id_,
-        [this, start_worker_process_fn, pop_worker_request](
-            bool successful,
-            const std::string &serialized_runtime_env_context,
-            const std::string &setup_error_message) {
-          if (successful) {
-            start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
-          } else {
-            process_failed_runtime_env_setup_failed_++;
-            pop_worker_request->callback_(
-                nullptr,
-                PopWorkerStatus::RuntimeEnvCreationFailed,
-                /*runtime_env_setup_error_message*/ setup_error_message);
-          }
-        });
+    // This is the only place where the failure status and the agent's structured
+    // detail are both in scope, so it is where the detail joins the pop worker
+    // callback. The callback below runs synchronously inside the agent client's reply
+    // callback, which is what keeps the borrowed `setup_failure` valid all the way
+    // down to the CopyFrom in the local lease manager.
+    GetOrCreateRuntimeEnv(serialized_runtime_env,
+                          pop_worker_request->runtime_env_info_.runtime_env_config(),
+                          pop_worker_request->job_id_,
+                          [this, start_worker_process_fn, pop_worker_request](
+                              bool successful,
+                              const std::string &serialized_runtime_env_context,
+                              const std::string &setup_error_message,
+                              const rpc::RuntimeEnvFailedContext *setup_failure) {
+                            if (successful) {
+                              start_worker_process_fn(pop_worker_request,
+                                                      serialized_runtime_env_context);
+                              return;
+                            }
+                            process_failed_runtime_env_setup_failed_++;
+                            pop_worker_request->callback_(
+                                nullptr,
+                                PopWorkerStatus::RuntimeEnvCreationFailed,
+                                /*runtime_env_setup_error_message*/ setup_error_message,
+                                /*runtime_env_setup_failure*/ setup_failure);
+                          });
   } else {
     start_worker_process_fn(pop_worker_request, "");
   }
@@ -1450,7 +1464,8 @@ void WorkerPool::PopWorker(const LeaseSpecification &lease_spec,
       [this, lease_spec, callback](
           const std::shared_ptr<WorkerInterface> &worker,
           PopWorkerStatus status,
-          const std::string &runtime_env_setup_error_message) -> bool {
+          const std::string &runtime_env_setup_error_message,
+          const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure) -> bool {
         // We got a worker suitable for the lease. Now let's check if the lease is still
         // executable.
         if (worker && finished_jobs_.contains(lease_spec.JobId()) &&
@@ -1464,11 +1479,15 @@ void WorkerPool::PopWorker(const LeaseSpecification &lease_spec,
           // is one time) so it will cause a process leak. Instead we fail the PopWorker
           // and add the worker back to the idle workers so it can be killed later.
           RAY_CHECK(status == PopWorkerStatus::OK);
-          callback(nullptr, PopWorkerStatus::JobFinished, "");
+          callback(nullptr,
+                   PopWorkerStatus::JobFinished,
+                   "",
+                   /*runtime_env_setup_failure=*/nullptr);
           // Not used
           return false;
         }
-        return callback(worker, status, runtime_env_setup_error_message);
+        return callback(
+            worker, status, runtime_env_setup_error_message, runtime_env_setup_failure);
       });
   PopWorker(std::move(pop_worker_request));
 }
@@ -1581,28 +1600,29 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
     }
 
     // Prestart worker with runtime env.
-    GetOrCreateRuntimeEnv(
-        lease_spec.SerializedRuntimeEnv(),
-        lease_spec.RuntimeEnvConfig(),
-        lease_spec.JobId(),
-        [this, lease_spec = lease_spec](bool successful,
-                                        const std::string &serialized_runtime_env_context,
-                                        const std::string &setup_error_message) {
-          if (!successful) {
-            RAY_LOG(ERROR) << "Fails to create or get runtime env "
-                           << setup_error_message;
-            return;
-          }
-          PopWorkerStatus status;
-          StartWorkerProcess(lease_spec.GetLanguage(),
-                             rpc::WorkerType::WORKER,
-                             lease_spec.JobId(),
-                             &status,
-                             /*dynamic_options=*/{},
-                             lease_spec.GetRuntimeEnvHash(),
-                             serialized_runtime_env_context,
-                             lease_spec.RuntimeEnvInfo());
-        });
+    GetOrCreateRuntimeEnv(lease_spec.SerializedRuntimeEnv(),
+                          lease_spec.RuntimeEnvConfig(),
+                          lease_spec.JobId(),
+                          [this, lease_spec = lease_spec](
+                              bool successful,
+                              const std::string &serialized_runtime_env_context,
+                              const std::string &setup_error_message,
+                              const rpc::RuntimeEnvFailedContext * /*setup_failure*/) {
+                            if (!successful) {
+                              RAY_LOG(ERROR) << "Fails to create or get runtime env "
+                                             << setup_error_message;
+                              return;
+                            }
+                            PopWorkerStatus status;
+                            StartWorkerProcess(lease_spec.GetLanguage(),
+                                               rpc::WorkerType::WORKER,
+                                               lease_spec.JobId(),
+                                               &status,
+                                               /*dynamic_options=*/{},
+                                               lease_spec.GetRuntimeEnvHash(),
+                                               serialized_runtime_env_context,
+                                               lease_spec.RuntimeEnvInfo());
+                          });
   }
 }
 
@@ -1879,9 +1899,10 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
       [job_id, serialized_runtime_env, runtime_env_config, callback](
           bool successful,
           const std::string &serialized_runtime_env_context,
-          const std::string &setup_error_message) {
+          const std::string &setup_error_message,
+          const rpc::RuntimeEnvFailedContext *setup_failure) {
         if (successful) {
-          callback(true, serialized_runtime_env_context, "");
+          callback(true, serialized_runtime_env_context, "", /*setup_failure=*/nullptr);
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
                            << ".";
@@ -1889,7 +1910,8 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
                          << serialized_runtime_env;
           callback(/*successful=*/false,
                    /*serialized_runtime_env_context=*/"",
-                   /*setup_error_message=*/setup_error_message);
+                   /*setup_error_message=*/setup_error_message,
+                   /*setup_failure=*/setup_failure);
         }
       });
 }

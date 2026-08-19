@@ -107,4 +107,6 @@ async def create_or_get_virtualenv(path: str, cwd: str, logger: logging.Logger):
             virtualenv_path,
             virtualenv_path,
         )
-    await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
+    await check_output_cmd(
+        create_venv_cmd, logger=logger, cwd=cwd, env=env, phase="create_venv"
+    )

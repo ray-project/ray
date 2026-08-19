@@ -722,12 +722,109 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();
 
+  rpc::RuntimeEnvFailedContext runtime_env_setup_failure;
+  runtime_env_setup_failure.set_error_message("the agent's own message");
+  runtime_env_setup_failure.set_plugin("pip");
+  runtime_env_setup_failure.set_phase("install");
   gcs_actor_manager_->OnActorSchedulingFailed(
       actor,
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
-      "");
+      "the raylet's message",
+      &runtime_env_setup_failure);
   io_service_.run_one();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+
+  const auto &death_cause = actor->GetActorTableData().death_cause();
+  ASSERT_TRUE(death_cause.has_runtime_env_failed_context());
+  ASSERT_EQ(death_cause.runtime_env_failed_context().plugin(), "pip");
+  ASSERT_EQ(death_cause.runtime_env_failed_context().phase(), "install");
+  // The copy of the agent's context brings the agent's error_message with it, so
+  // whichever of the two writes happens last decides what the user reads. This
+  // is the only place that pins it: the actor-level text has to win, and the
+  // raylet's message has to still be inside it.
+  ASSERT_TRUE(absl::StrContains(
+      death_cause.runtime_env_failed_context().error_message(),
+      "Could not create the actor because its associated runtime env failed"));
+  ASSERT_TRUE(absl::StrContains(death_cause.runtime_env_failed_context().error_message(),
+                                "the raylet's message"));
+}
+
+TEST_F(GcsActorManagerTest, TestWorkerStartupFailedIsNotUnschedulable) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> result_actor,
+                         const rpc::PushTaskReply &,
+                         const Status &) {
+        finished_actors.emplace_back(result_actor);
+      }));
+
+  ASSERT_EQ(finished_actors.size(), 0);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.clear();
+
+  gcs_actor_manager_->OnActorSchedulingFailed(
+      actor,
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
+      "Failed to start worker",
+      /*runtime_env_setup_failure=*/nullptr);
+  io_service_.run_one();
+
+  // A worker that never finished registering gets its own context. It used to
+  // share actor_unschedulable_context with genuine capacity failures, which made
+  // a broken bootstrap read as "the cluster could not place this actor".
+  const auto &death_cause = actor->GetActorTableData().death_cause();
+  ASSERT_TRUE(death_cause.has_worker_bootstrap_context());
+  ASSERT_FALSE(death_cause.has_actor_unschedulable_context());
+  ASSERT_TRUE(absl::StrContains(death_cause.worker_bootstrap_context().error_message(),
+                                "worker startup repeatedly failed"));
+  ASSERT_TRUE(absl::StrContains(death_cause.worker_bootstrap_context().error_message(),
+                                "Failed to start worker"));
+}
+
+TEST_F(GcsActorManagerTest, TestUnschedulableKeepsUnschedulableContext) {
+  auto job_id = JobID::FromInt(1);
+  auto registered_actor = RegisterActor(job_id);
+  rpc::CreateActorRequest create_actor_request;
+  create_actor_request.mutable_task_spec()->CopyFrom(
+      registered_actor->GetCreationTaskSpecification().GetMessage());
+
+  std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
+  RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+      create_actor_request,
+      [&finished_actors](std::shared_ptr<gcs::GcsActor> result_actor,
+                         const rpc::PushTaskReply &,
+                         const Status &) {
+        finished_actors.emplace_back(result_actor);
+      }));
+
+  ASSERT_EQ(finished_actors.size(), 0);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  auto actor = mock_actor_scheduler_->actors.back();
+  mock_actor_scheduler_->actors.clear();
+
+  gcs_actor_manager_->OnActorSchedulingFailed(
+      actor,
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+      "The actor is not schedulable",
+      /*runtime_env_setup_failure=*/nullptr);
+  io_service_.run_one();
+
+  // The negative half of the test above: a failure that really is a placement
+  // failure has to keep actor_unschedulable_context. Without this, a later
+  // change that sweeps both cases into the bootstrap context passes every test.
+  const auto &death_cause = actor->GetActorTableData().death_cause();
+  ASSERT_TRUE(death_cause.has_actor_unschedulable_context());
+  ASSERT_FALSE(death_cause.has_worker_bootstrap_context());
+  ASSERT_EQ(death_cause.actor_unschedulable_context().error_message(),
+            "The actor is not schedulable");
 }
 
 TEST_F(GcsActorManagerTest, TestWorkerFailure) {

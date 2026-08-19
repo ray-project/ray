@@ -39,8 +39,19 @@ TEST_F(ProtoSchemaTest, TestActorDeathCauseBackwardCompatibility) {
   actor_death_cause1.mutable_creation_task_failure_context()->CopyFrom(ray_exception);
 
   rpc::RuntimeEnvFailedContext runtime_env_failed_context;
+  rpc::RuntimeEnvSetupAttempt runtime_env_setup_attempt;
   rpc::ActorDeathCause actor_death_cause2;
   runtime_env_failed_context.set_error_message("error message string");
+  runtime_env_failed_context.set_plugin("pip");
+  runtime_env_failed_context.set_phase("install");
+  runtime_env_failed_context.set_failed_package("torch==2.9.1");
+  runtime_env_failed_context.set_installer_exit_code(1);
+  runtime_env_failed_context.set_stderr_ref("stderr reference string");
+  runtime_env_setup_attempt.set_attempt(1);
+  runtime_env_setup_attempt.set_exit_code(1);
+  runtime_env_setup_attempt.set_error_message("error message string");
+  runtime_env_setup_attempt.set_duration_ms(123);
+  runtime_env_failed_context.add_attempts()->CopyFrom(runtime_env_setup_attempt);
   actor_death_cause2.mutable_runtime_env_failed_context()->CopyFrom(
       runtime_env_failed_context);
 
@@ -81,6 +92,15 @@ TEST_F(ProtoSchemaTest, TestActorDeathCauseBackwardCompatibility) {
   oom_context.set_error_message("error message string");
   oom_context.set_fail_immediately(true);
   actor_death_cause5.mutable_oom_context()->CopyFrom(oom_context);
+
+  // Only error_message: the raylet's channel for a cancelled lease is a flat
+  // string, so no other field on this context has a producer. Adding one here
+  // would only assert that a promise we do not keep stays declared.
+  rpc::WorkerBootstrapContext worker_bootstrap_context;
+  rpc::ActorDeathCause actor_death_cause6;
+  worker_bootstrap_context.set_error_message("error message string");
+  actor_death_cause6.mutable_worker_bootstrap_context()->CopyFrom(
+      worker_bootstrap_context);
 }
 
 }  // namespace ray

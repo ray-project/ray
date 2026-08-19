@@ -1599,7 +1599,8 @@ void GcsActorManager::RestartActor(
 void GcsActorManager::OnActorSchedulingFailed(
     std::shared_ptr<GcsActor> actor,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-    const std::string &scheduling_failure_message) {
+    const std::string &scheduling_failure_message,
+    const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure) {
   if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED) {
     // We will attempt to schedule this actor once an eligible node is
     // registered.
@@ -1622,13 +1623,21 @@ void GcsActorManager::OnActorSchedulingFailed(
         scheduling_failure_message);
     death_cause.mutable_actor_unschedulable_context()->set_error_message(error_msg);
     break;
-  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED:
+  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED: {
     error_msg = absl::StrCat(
         "Could not create the actor because its associated runtime env failed to be "
         "created.\n",
         scheduling_failure_message);
-    death_cause.mutable_runtime_env_failed_context()->set_error_message(error_msg);
+    auto *runtime_env_context = death_cause.mutable_runtime_env_failed_context();
+    if (runtime_env_setup_failure != nullptr) {
+      runtime_env_context->CopyFrom(*runtime_env_setup_failure);
+    }
+    // Copy first, then set the message: the copy carries the agent's own
+    // error_message, so setting ours afterwards is what keeps the prefix above.
+    // Swapping these two lines drops it instead.
+    runtime_env_context->set_error_message(error_msg);
     break;
+  }
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE:
     death_cause.mutable_actor_unschedulable_context()->set_error_message(
         scheduling_failure_message);
@@ -1637,7 +1646,12 @@ void GcsActorManager::OnActorSchedulingFailed(
     error_msg = absl::StrCat(
         "Could not create the actor because worker startup repeatedly failed.\n",
         scheduling_failure_message);
-    death_cause.mutable_actor_unschedulable_context()->set_error_message(error_msg);
+    // A worker that never finished starting is not a placement problem, so this
+    // no longer borrows actor_unschedulable_context: the two read the same to a
+    // user but are remediated differently. The genuine capacity cases above keep
+    // that context. The remaining fields of this one stay unset because the only
+    // channel from the raylet for a cancelled lease is the flat message above.
+    death_cause.mutable_worker_bootstrap_context()->set_error_message(error_msg);
     break;
   default:
     RAY_LOG(FATAL) << "Unknown error, failure type "

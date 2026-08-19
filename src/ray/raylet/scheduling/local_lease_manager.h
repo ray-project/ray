@@ -204,7 +204,23 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
                            const std::shared_ptr<internal::Work> &work,
                            bool is_detached_actor,
                            const rpc::Address &owner_address,
-                           const std::string &runtime_env_setup_error_message);
+                           const std::string &runtime_env_setup_error_message,
+                           const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure);
+
+  /// `CancelLeases` with SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED, additionally
+  /// copying the agent's structured failure detail onto each cancelled lease's reply.
+  ///
+  /// Kept off `LocalLeaseManagerInterface` on purpose: the runtime env setup failure
+  /// only ever reaches this class through `PoppedWorkerHandler`, which is private and
+  /// non-virtual, so widening the virtual `CancelLeases` would push a parameter no
+  /// other caller can supply through every implementation and mock of the interface.
+  ///
+  /// \param runtime_env_setup_failure Borrowed from the runtime env agent client's
+  /// reply; may be nullptr. Copied into the replies here, so it does not escape.
+  bool CancelLeasesWithRuntimeEnvSetupFailure(
+      const std::function<bool(const std::shared_ptr<internal::Work> &)> &predicate,
+      const std::string &scheduling_failure_message,
+      const rpc::RuntimeEnvFailedContext *runtime_env_setup_failure);
 
   /// Cancels a lease in leases_to_grant_. Does not remove it from leases_to_grant_.
   void CancelLeaseToGrantWithoutReply(const std::shared_ptr<internal::Work> &work);
