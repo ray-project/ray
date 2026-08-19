@@ -43,24 +43,12 @@ _rayci_pypi_index_setup() {
   resolved="$(getent hosts "${mirror#https://}" 2>/dev/null | awk '{print $1}' | paste -sd, -)"
   echo "pypi index: mirror=${mirror} resolves_to=${resolved:-<unresolved>}"
 
-  local body
-  # 1. Rewriting simple index. Accepted only if the page points at the mirror for
-  #    artifacts; a page that still names files.pythonhosted.org would leave the
-  #    downloads on the origin.
-  if body="$(curl -sf -m 15 -H 'Accept: text/html' "${mirror}/simple/${probe_pkg}/" 2>/dev/null)" \
-    && [[ -n "${body}" ]]; then
-    if grep -qF "${mirror}/files.pythonhosted.org/" <<<"${body}"; then
-      export RAYCI_PYPI_INDEX_MODE="mirror-simple"
-      export PIP_INDEX_URL="${mirror}/simple"
-      export UV_INDEX_URL="${mirror}/simple"
-      export RULES_PYTHON_PIP_ISOLATED=0
-      echo "pypi index: using the mirror's rewriting simple index -> ${PIP_INDEX_URL}"
-      return 0
-    fi
-    echo "pypi index: ${mirror}/simple answers but does not rewrite artifact URLs; trying the byte cache" >&2
-  fi
-
-  # 2. Path-prefixed byte cache, which needs the local rewriting proxy in front.
+  # The mirror is a byte cache, not an index. It parses only /<host>/<path>, so
+  # <mirror>/simple/ reads as a host named "simple"; and it serves cache hits as 303
+  # redirects to presigned S3 URLs, so it never holds a body it could rewrite. There is
+  # therefore no mode where pip points straight at it -- an index has to be put in front.
+  # This probe establishes reachability for everything below, including the bazel
+  # downloader rewrite, which needs only the mirror and not the proxy.
   if ! curl -sf -m 15 -o /dev/null "${mirror}/pypi.org/simple/${probe_pkg}/" 2>/dev/null; then
     export RAYCI_PYPI_INDEX_MODE="pypi"
     echo "pypi index: mirror unreachable from this agent; resolving from public PyPI" >&2
@@ -82,7 +70,7 @@ _rayci_pypi_index_setup() {
   # VPC-internal: a checkout outside CI would rewrite its downloads to a name that does
   # not resolve, turning a working build into a broken one.
   _rayci_bazel_downloader_config() {
-    local cfg="${TMPDIR:-/tmp}/rayci_bazel_downloader.cfg"
+    local cfg="${HOME}/.rayci_bazel_downloader.cfg"
     local rc="${HOME}/.bazelrc"
     local host="${mirror#*://}"
 
@@ -97,12 +85,24 @@ _rayci_pypi_index_setup() {
 
     # The replacement keeps the upstream host as a path segment, which is how the mirror
     # addresses upstreams, and bazel preserves the original https scheme.
-    echo "rewrite files\\.pythonhosted\\.org/(.*) ${host}/files.pythonhosted.org/\$1" >"${cfg}" || return 0
+    # Two rules, and the second is load-bearing. A matching rewrite *replaces* the URL
+    # set rather than adding to it, so the first rule alone would discard the origin --
+    # turning a mirror outage into a hard failure where bazel would otherwise have fallen
+    # back. Verified against bazel 7.5.0: with an unreachable mirror, one rule fails the
+    # build and two rules warn and succeed. Credit to anyscale/rayturbo#4205, which found
+    # this and notes it also discards the fallbacks auto_http_archive builds for the C++
+    # dependencies if the pattern is ever broadened beyond pythonhosted.
+    {
+      echo "rewrite files\\.pythonhosted\\.org/(.*) ${host}/files.pythonhosted.org/\$1"
+      echo "rewrite files\\.pythonhosted\\.org/(.*) files.pythonhosted.org/\$1"
+    } >"${cfg}" || return 0
 
     # Appended once: this file may already carry the bazel cache settings the image
     # wrote, and profile.d can be sourced more than once per job.
     if ! grep -qsF -- "--experimental_downloader_config=${cfg}" "${rc}"; then
-      echo "common --experimental_downloader_config=${cfg}" >>"${rc}" || return 0
+      # Leading newline: the image writes this file, and appending to one that does not
+      # end in a newline would splice this onto the last option rather than adding it.
+      printf '\n%s\n' "common --experimental_downloader_config=${cfg}" >>"${rc}" || return 0
     fi
     echo "pypi index: bazel downloads of files.pythonhosted.org rewritten to ${host}"
   }
