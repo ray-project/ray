@@ -1184,6 +1184,14 @@ def timeline(filename: Optional[str] = None):
             "Ray has not been started yet. Timeline requires Ray to be initialized first."
         )
 
+    logger.warning(
+        "In the near future, ray.timeline() will read task profiling events from the Ray "
+        "dashboard (API server) instead of from GCS. If you have already turned on "
+        "RAY_enable_task_events_to_dashboard_head, ray.timeline() reads from the dashboard "
+        "now. Make sure your Ray cluster is started with the dashboard running if you want "
+        "to use ray.timeline()."
+    )
+
     return state.chrome_tracing_dump(filename=filename)
 
 

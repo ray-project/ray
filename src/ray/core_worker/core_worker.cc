@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <deque>
 #include <future>
 #include <memory>
 #include <string>
@@ -400,7 +401,15 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }),
+      max_free_local_objects_batch_size_(
+          static_cast<size_t>(RayConfig::instance().max_free_local_objects_batch_size())),
       clock_(clock) {
+  RAY_CHECK(RayConfig::instance().max_free_local_objects_batch_size() > 0)
+      << "max_free_local_objects_batch_size must be positive, got "
+      << RayConfig::instance().max_free_local_objects_batch_size();
+  RAY_CHECK(RayConfig::instance().free_local_objects_backlog_warn_objects_per_node() > 0)
+      << "free_local_objects_backlog_warn_objects_per_node must be positive, got "
+      << RayConfig::instance().free_local_objects_backlog_warn_objects_per_node();
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -885,6 +894,7 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
         to_erase.push_back(generator_id);
         // Mark the gen task canceled so the executor loop bails before the
         // next gen.send instead of running another iteration of user code.
+        absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
         canceled_tasks_.insert(generator_id.TaskId());
       }
     }
@@ -1710,48 +1720,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
 
   return Status::OK();
-}
-
-Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
-  absl::flat_hash_map<WorkerID, std::vector<ObjectID>> by_owner;
-  absl::flat_hash_map<WorkerID, rpc::Address> addresses;
-  // Group by owner id.
-  for (const auto &obj_id : object_ids) {
-    auto owner_address = GetOwnerAddressOrDie(obj_id);
-    auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
-    by_owner[worker_id].push_back(obj_id);
-    addresses[worker_id] = owner_address;
-  }
-  // Send a batch delete call per owner id.
-  for (const auto &entry : by_owner) {
-    if (entry.first != worker_context_->GetWorkerID()) {
-      RAY_LOG(INFO).WithField(entry.first)
-          << "Deleting remote objects " << entry.second.size();
-      auto conn = core_worker_client_pool_->GetOrConnect(addresses[entry.first]);
-      rpc::DeleteObjectsRequest request;
-      for (const auto &obj_id : entry.second) {
-        request.add_object_ids(obj_id.Binary());
-      }
-      request.set_local_only(local_only);
-      conn->DeleteObjects(
-          request,
-          [object_ids](const Status &status, const rpc::DeleteObjectsReply &reply) {
-            if (status.ok()) {
-              RAY_LOG(INFO) << "Completed object delete request " << status;
-            } else {
-              RAY_LOG(ERROR) << "Failed to delete objects, status: " << status
-                             << ", object IDs: " << debug_string(object_ids);
-            }
-          });
-    }
-  }
-  // Also try to delete all objects locally.
-  Status status = DeleteImpl(object_ids, local_only);
-  if (status.IsIOError()) {
-    return Status::UnexpectedSystemExit(status.ToString());
-  } else {
-    return status;
-  }
 }
 
 Status CoreWorker::GetLocationFromOwner(
@@ -2658,7 +2626,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
   // Check if the task is canceled on executor side. Check the canceled_tasks_ which is
   // populated when CancelTask RPC is received.
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&canceled_tasks_mutex_);
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
@@ -3186,7 +3154,10 @@ Status CoreWorker::ExecuteTask(
     size_t erased = running_tasks_.erase(task_spec.TaskId());
     RAY_CHECK(erased == 1);
     // Clean up cancellation state for this task
-    canceled_tasks_.erase(task_spec.TaskId());
+    {
+      absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
+      canceled_tasks_.erase(task_spec.TaskId());
+    }
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
@@ -4365,6 +4336,7 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
     requested_task_running = main_thread_task_id_ == task_id;
 
     if (requested_task_running) {
+      absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
       canceled_tasks_.insert(task_id);
     }
   }
@@ -4421,6 +4393,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
         is_running = running_tasks_.find(task_id) != running_tasks_.end();
 
         if (is_running) {
+          absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
           canceled_tasks_.insert(task_id);
         }
       }
@@ -4585,39 +4558,6 @@ void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
     send_reply_callback(
         Status::NotImplemented("GC callback not defined"), nullptr, nullptr);
   }
-}
-
-void CoreWorker::HandleDeleteObjects(rpc::DeleteObjectsRequest request,
-                                     rpc::DeleteObjectsReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
-  std::vector<ObjectID> object_ids;
-  for (const auto &obj_id : request.object_ids()) {
-    object_ids.push_back(ObjectID::FromBinary(obj_id));
-  }
-  auto status = DeleteImpl(object_ids, request.local_only());
-  send_reply_callback(status, nullptr, nullptr);
-}
-
-Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only) {
-  // Release the object from plasma. This does not affect the object's ref
-  // count. If this was called from a non-owning worker, then a warning will be
-  // logged and the object will not get released.
-  reference_counter_->FreePlasmaObjects(object_ids);
-
-  // Store an error in the in-memory store to indicate that the plasma value is
-  // no longer reachable.
-  memory_store_->Delete(object_ids);
-  for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Freeing object";
-    memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED),
-                       object_id,
-                       reference_counter_->HasReference(object_id));
-  }
-
-  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
-  // objects can only be deleted once the ref count goes to 0.
-  absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
-  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
 void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
@@ -5056,16 +4996,86 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
-  rpc::FreeLocalObjectsRequest request;
-  request.add_object_ids(object_id.Binary());
-
+  const size_t warn_backlog = static_cast<size_t>(
+      RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
   for (const auto &node_id : locations) {
-    auto client = GetRayletRpcClient(node_id);
-    if (client == nullptr) {
-      continue;
+    {
+      absl::MutexLock lock(&free_batch_mu_);
+      std::deque<ObjectID> &queue = free_pending_[node_id];
+      queue.push_back(object_id);
+      // Warn on first crossing the threshold, then every 1024 objects. Keep
+      // buffering; never drop.
+      if (queue.size() >= warn_backlog && (queue.size() - warn_backlog) % 1024 == 0) {
+        RAY_LOG(WARNING) << "FreeLocalObjects backlog for node " << node_id << " is "
+                         << queue.size()
+                         << " objects; it is draining slowly or is unreachable.";
+      }
     }
-    client->FreeLocalObjects(request);
+    SendFreeLocalObjectsBatchIfNeeded(node_id);
   }
+}
+
+void CoreWorker::SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id) {
+  rpc::FreeLocalObjectsRequest request;
+  {
+    absl::MutexLock lock(&free_batch_mu_);
+    if (free_in_flight_.contains(node_id)) {
+      // If there's an in-flight request, the queue will be sent once the request
+      // is replied from the raylet.
+      return;
+    }
+    absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
+        free_pending_.find(node_id);
+    if (it == free_pending_.end()) {
+      // No queue for this node; an entry is erased as soon as its queue drains, so
+      // a present entry is always non-empty.
+      return;
+    }
+    std::deque<ObjectID> &queue = it->second;
+    const size_t n = std::min(max_free_local_objects_batch_size_, queue.size());
+    request.mutable_object_ids()->Reserve(static_cast<int>(n));
+    for (size_t i = 0; i < n; i++) {
+      request.add_object_ids(queue.front().Binary());
+      queue.pop_front();
+    }
+    if (queue.empty()) {
+      free_pending_.erase(it);
+    }
+    free_in_flight_.insert(node_id);
+  }
+
+  std::shared_ptr<RayletClientInterface> client = GetRayletRpcClient(node_id);
+  if (client == nullptr) {
+    // Node is gone: clear in-flight and drop its queue so it cannot wedge.
+    absl::MutexLock lock(&free_batch_mu_);
+    free_in_flight_.erase(node_id);
+    free_pending_.erase(node_id);
+    return;
+  }
+  // Safe to capture `this`: the reply runs on io_service_, which is stopped
+  // before the CoreWorker is destroyed during shutdown.
+  client->FreeLocalObjects(
+      request, [this, node_id](const Status &status, const rpc::FreeLocalObjectsReply &) {
+        {
+          absl::MutexLock lock(&free_batch_mu_);
+          free_in_flight_.erase(node_id);
+          if (!status.ok()) {
+            // The retryable client only surfaces an error once the node is dead;
+            // its copies died with it, so drop the queue instead of wedging.
+            absl::flat_hash_map<NodeID, std::deque<ObjectID>>::iterator it =
+                free_pending_.find(node_id);
+            const size_t dropped = (it == free_pending_.end()) ? 0 : it->second.size();
+            if (it != free_pending_.end()) {
+              free_pending_.erase(it);
+            }
+            RAY_LOG(INFO).WithField(node_id)
+                << "FreeLocalObjects RPC failed (" << status << "); dropping " << dropped
+                << " buffered free request(s) for this node, which is likely dead.";
+            return;
+          }
+        }
+        SendFreeLocalObjectsBatchIfNeeded(node_id);
+      });
 }
 
 }  // namespace ray::core

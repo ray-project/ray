@@ -30,6 +30,13 @@ _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
 
+# Deprecated value of ``ShuffleStrategy.SHUFFLE_V2``, still accepted when
+# constructing the enum from a string (i.e. by
+# ``RAY_DATA_DEFAULT_SHUFFLE_STRATEGY`` or when assigning
+# ``DataContext.shuffle_strategy``).
+_DEPRECATED_SHUFFLE_V2_VALUE = "hash_shuffle_v2"
+
+
 @DeveloperAPI(stability="alpha")
 class ShuffleStrategy(str, enum.Enum):
     """Shuffle strategy determines shuffling algorithm employed by operations
@@ -38,8 +45,28 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
-    HASH_SHUFFLE_V2 = "hash_shuffle_v2"
+    SHUFFLE_V2 = "shuffle_v2"
     GPU_SHUFFLE = "gpu_shuffle"
+
+    # Deprecated alias of ``SHUFFLE_V2`` (this strategy is no longer specific
+    # to hash-partitioning). Enum members sharing a value are aliases of each
+    # other, hence this resolves to ``SHUFFLE_V2`` itself and is excluded from
+    # iteration over the strategies.
+    HASH_SHUFFLE_V2 = "shuffle_v2"
+
+    @classmethod
+    def _missing_(cls, value):
+        if value == _DEPRECATED_SHUFFLE_V2_VALUE:
+            warnings.warn(
+                f"`{_DEPRECATED_SHUFFLE_V2_VALUE}` shuffle strategy is deprecated, "
+                f"please use `{cls.SHUFFLE_V2.value}` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+            return cls.SHUFFLE_V2
+
+        return None
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -129,8 +156,6 @@ DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 DEFAULT_USE_POLARS = False
 
 DEFAULT_USE_POLARS_SORT = False
-
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
@@ -520,14 +545,17 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
 
         return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
     else:
-        vs = [s for s in ShuffleStrategy]  # noqa: C416
+        try:
+            # NOTE: This also resolves deprecated aliases (like `hash_shuffle_v2`)
+            #       to their current strategy
+            return ShuffleStrategy(DEFAULT_SHUFFLE_STRATEGY)
+        except ValueError:
+            vs = [s.value for s in ShuffleStrategy]
 
-        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
-            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
-            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
-        )
-
-        return DEFAULT_SHUFFLE_STRATEGY
+            raise ValueError(
+                f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the "
+                f"[{','.join(vs)}] (got {DEFAULT_SHUFFLE_STRATEGY})"
+            ) from None
 
 
 def _default_fixed_shape_tensor_format():
@@ -584,7 +612,6 @@ class DataContext:
         large_args_threshold: Deprecated. Ray Data manages scheduling internally.
         use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
-        eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
@@ -736,7 +763,7 @@ class DataContext:
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
             shuffle input blocks before partitioning. Currently only applies
-            to the ``HASH_SHUFFLE_V2`` shuffle strategy; other shuffle
+            to the ``SHUFFLE_V2`` shuffle strategy; other shuffle
             strategies ignore it. Input blocks are buffered per node and
             processed as a batch once this size is reached; remaining
             buffered blocks are flushed when input is exhausted. Lower values
@@ -847,7 +874,7 @@ class DataContext:
     hash_shuffle_reduce_get_timeout_s: float = DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S
 
     # Target batch size (bytes) for coalescing shuffle input blocks before
-    # partitioning (currently hash_shuffle_v2 only); blocks are buffered per
+    # partitioning (currently shuffle_v2 only); blocks are buffered per
     # node until this size is reached. 0 disables batching.
     shuffle_input_batch_bytes: int = DEFAULT_SHUFFLE_INPUT_BATCH_BYTES
 
@@ -908,7 +935,6 @@ class DataContext:
     use_polars: bool = DEFAULT_USE_POLARS
     use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
     use_legacy_dataset_ids: bool = DEFAULT_USE_LEGACY_DATASET_IDS
-    eager_free: bool = DEFAULT_EAGER_FREE
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
@@ -1230,8 +1256,10 @@ class DataContext:
         return self._shuffle_strategy
 
     @shuffle_strategy.setter
-    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
-        self._shuffle_strategy = value
+    def shuffle_strategy(self, value: Union[ShuffleStrategy, str]) -> None:
+        # NOTE: Coercing to the enum resolves deprecated aliases (like
+        #       `hash_shuffle_v2`) to their current strategy
+        self._shuffle_strategy = ShuffleStrategy(value)
 
     @property
     def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:
