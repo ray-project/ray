@@ -24,6 +24,7 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
+    _truncated_repr,
     infer_compression,
     iterate_with_retry,
     make_async_gen,
@@ -191,8 +192,9 @@ class FileBasedDatasource(Datasource):
 
         if not expanded_paths:
             message = (
-                f"no files found under {paths!r}. Check the path and any "
-                "configured `partition_filter` or `file_extensions` filters."
+                f"No files found under {_truncated_repr(paths)}. Check the path "
+                "and any configured `partition_filter` or `file_extensions` "
+                "filters."
             )
             if ignore_missing_paths:
                 # Paths that do not exist were dropped during listing, so we
