@@ -15,6 +15,7 @@ from ray.data._internal.datasource.lance_datasink import (
     LanceDatasink,
     _write_fragment,
 )
+from ray.data._internal.datasource.lance_utils import get_lance_namespace_kwargs
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -24,6 +25,48 @@ pytestmark = pytest.mark.skipif(
     Version(lance.__version__) <= Version("0.3.19"),
     reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
 )
+
+
+def test_lance_namespace_kwargs_omit_options_for_uri_writes():
+    def write_fragments():
+        pass
+
+    assert get_lance_namespace_kwargs(write_fragments, None, None, None) == {}
+
+
+def test_lance_namespace_kwargs_use_current_api(monkeypatch):
+    namespace = object()
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.lance_utils.get_or_create_namespace",
+        lambda namespace_impl, namespace_properties: namespace,
+    )
+
+    def write_fragments(namespace_client=None, table_id=None):
+        pass
+
+    assert get_lance_namespace_kwargs(
+        write_fragments, "dir", {"path": "/tmp/ns"}, ["db", "table"]
+    ) == {"namespace_client": namespace, "table_id": ["db", "table"]}
+
+
+def test_lance_namespace_kwargs_use_legacy_api(monkeypatch):
+    namespace = object()
+    provider = object()
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.lance_utils.get_or_create_namespace",
+        lambda namespace_impl, namespace_properties: namespace,
+    )
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.lance_utils.create_storage_options_provider",
+        lambda namespace_impl, namespace_properties, table_id: provider,
+    )
+
+    def write_fragments(storage_options_provider=None):
+        pass
+
+    assert get_lance_namespace_kwargs(
+        write_fragments, "dir", {"path": "/tmp/ns"}, ["db", "table"]
+    ) == {"storage_options_provider": provider}
 
 
 def test_read_lance_allows_pickle_object_columns_with_env_var(
