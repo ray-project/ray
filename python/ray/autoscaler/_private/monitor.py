@@ -262,15 +262,22 @@ class Monitor:
         # from "get_cluster_resource_state"
         # ref: https://github.com/ray-project/ray/pull/48519#issuecomment-2481659346
         cluster_resource_state = get_cluster_resource_state(self.gcs_client)
-        ray_node_states = cluster_resource_state.node_states
+        # Dead raylets are included in cluster_resource_state (for v2). Skip
+        # them so they cannot overwrite live LoadMetrics by IP or appear as
+        # active in the readonly provider (ray status).
+        alive_node_states = [
+            node
+            for node in cluster_resource_state.node_states
+            if node.status != NodeStatus.DEAD
+        ]
         ray_nodes_idle_duration_ms_by_id = {
-            node.node_id: node.idle_duration_ms for node in ray_node_states
+            node.node_id: node.idle_duration_ms for node in alive_node_states
         }
 
         # Tell the readonly node provider what nodes to report.
         if self.readonly_config:
             new_nodes = []
-            for msg in list(cluster_resource_state.node_states):
+            for msg in alive_node_states:
                 node_id = msg.node_id.hex()
                 new_nodes.append((node_id, msg.node_ip_address))
             self.autoscaler.provider._set_nodes(new_nodes)
@@ -284,12 +291,7 @@ class Monitor:
         )
 
         mirror_node_types = {}
-        for resource_message in cluster_resource_state.node_states:
-            # Dead raylets still appear in cluster_resource_state with their
-            # last IP. Skip them so they cannot occupy or overwrite that IP
-            # in LoadMetrics after the node is gone.
-            if resource_message.status == NodeStatus.DEAD:
-                continue
+        for resource_message in alive_node_states:
             node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
