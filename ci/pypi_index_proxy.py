@@ -91,13 +91,17 @@ async def simple(request: Request) -> Response:
     body = response.content
     if response.status_code == 200:
         body = body.replace(UPSTREAM_FILES_PREFIX, MIRROR_FILES_PREFIX)
-    content_type = response.headers.get("content-type", "text/html")
+    # `or` rather than a default: covers a header that is present but empty, which a
+    # default does not.
+    content_type = response.headers.get("content-type") or "text/html"
     # Asking for HTML and getting something else means the mirror is holding a
     # representation cached before this pinning landed. Pinning stops new entries going
     # in but cannot evict old ones, since the Accept header is not part of the mirror's
     # cache key -- those have to be deleted from the cache prefix. Say so, because the
     # symptom at the client is the misleading "from versions: none".
-    if response.status_code == 200 and "html" not in content_type:
+    # Lowercased because header values are case-insensitive, and a false positive here
+    # tells the reader to delete cache entries that are in fact fine.
+    if response.status_code == 200 and "html" not in content_type.lower():
         print(
             f"pypi proxy: {upstream} returned {content_type} for an HTML request; "
             "this is a stale mirror cache entry and clients that only read HTML will "
