@@ -260,8 +260,8 @@ class OrcFileChunker(FileChunker):
 
         if target_chunk_size is not None:
             self._target_chunk_size = target_chunk_size
-        elif ctx.parquet_chunker_target_chunk_size is not None:
-            self._target_chunk_size = ctx.parquet_chunker_target_chunk_size
+        elif ctx.orc_chunker_target_chunk_size is not None:
+            self._target_chunk_size = ctx.orc_chunker_target_chunk_size
         else:
             self._target_chunk_size = self._DEFAULT_TARGET_CHUNK_SIZE
 
