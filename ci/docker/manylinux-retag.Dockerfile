@@ -48,7 +48,11 @@ if [[ -z "${PROXY_PYTHON}" ]]; then
 fi
 
 echo "installing the index proxy with ${PROXY_PYTHON}"
-bash install_pypi_proxy.sh "${PROXY_PYTHON}"
+
+# Under sudo because this image, unlike forge, has already switched to USER forge
+# by the time we get here, and the installer writes to /opt/pypiproxy and
+# /etc/profile.d. The base grants forge passwordless sudo for exactly this.
+sudo bash install_pypi_proxy.sh "${PROXY_PYTHON}"
 EOF
 
 # Still keep bazelrc updates to allow BUILDKITE_BAZEL_CACHE_URL to be used.
