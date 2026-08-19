@@ -305,8 +305,19 @@ def acquire_nic_for_current_actor(timeout_s: float = 10.0) -> Optional[str]:
     On a confirmed successful acquire, records the NIC in the process-local
     ``_acquired_nic`` so a later ``release_nic_for_current_actor`` call can
     skip the allocator round trip entirely if this process never held one.
+
+    Re-entrant calls (e.g. the NIXL agent gets rebuilt after already having
+    acquired a NIC) short-circuit on ``_acquired_nic`` before doing any RPC
+    at all. This isn't just an optimization: without it, a slow
+    register_node/acquire on a re-entrant call could time out and trigger
+    the orphan-release path below, which would release a NIC this process
+    is already actively using via UCX_NET_DEVICES -- letting another actor
+    acquire it while this one keeps using it, defeating exclusivity.
     """
     global _acquired_nic
+
+    if _acquired_nic is not None:
+        return _acquired_nic
 
     if not _nic_pinning_enabled():
         return None

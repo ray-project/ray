@@ -162,20 +162,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._memory_pool: Optional[MemoryPoolManager] = None
         # The NIXL backend the agent was actually created with ("UCX" or "LIBFABRIC").
         self._backend: Optional[str] = None
-        # The CUDA stream to synchronize before NIXL memory registration in
-        # extract_tensor_transport_metadata. When None, all streams on each
-        # device are synchronized instead.
-        self._cuda_stream: Optional["torch.cuda.Stream"] = None
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
-
-    def set_cuda_stream(self, stream: Optional["torch.cuda.Stream"]) -> None:
-        """Sets the CUDA stream to synchronize before NIXL memory registration.
-
-        See :func:`ray.experimental.set_nixl_cuda_stream` for details.
-        """
-        self._cuda_stream = stream
 
     @staticmethod
     def is_one_sided() -> bool:
@@ -248,26 +237,6 @@ class NixlTensorTransport(TensorTransportManager):
     def _init_nixl_agent(self):
         """Builds the NIXL agent for the selected backend."""
         backend = self.select_backend()
-        if (
-            backend == "UCX"
-            and "UCX_NET_DEVICES" not in os.environ
-            # Checked as a plain env lookup (matching
-            # rdt_nic_allocator.RDT_NIC_PINNING_ENV_VAR) so that importing
-            # and invoking the allocator -- including the @ray.remote class
-            # definition overhead it triggers -- is fully skipped in the
-            # default case where NIC pinning is disabled.
-            and os.environ.get("RAY_RDT_NIC_PINNING", "0") == "1"
-        ):
-            # Best-effort exclusive NIC pinning. Must run before agent
-            # construction because UCX reads UCX_NET_DEVICES at context
-            # init. A user-provided UCX_NET_DEVICES always wins (checked
-            # above).
-            from ray._private.rdt_nic_allocator import acquire_nic_for_current_actor
-
-            nic = acquire_nic_for_current_actor()
-            if nic is not None:
-                os.environ["UCX_NET_DEVICES"] = nic
-                logger.info("Pinned NIXL/UCX transport to NIC %s", nic)
         agent = self._make_nixl_agent(backend)
         self._backend = backend
         logger.info("Using NIXL backend: %s", backend)
@@ -316,24 +285,8 @@ class NixlTensorTransport(TensorTransportManager):
                 if device.type == "cuda":
                     # We have to synchronize before memory registration to assure the
                     # object has been created because nixl doesn't guarantee it will.
-                    stream = self._cuda_stream
-                    if stream is None:
-                        # No stream set: block on all streams of each device.
-                        for dev in devices:
-                            torch.cuda.synchronize(dev)
-                    else:
-                        # Block only on the user-provided stream.
-                        for dev in devices:
-                            if dev != stream.device:
-                                raise ValueError(
-                                    "Device mismatch between the CUDA stream set via "
-                                    "ray.experimental.set_nixl_cuda_stream and the "
-                                    "tensors in this RDT object: the stream is on "
-                                    f"device {stream.device}, but a tensor is on "
-                                    f"device {dev}. The stream's device must match "
-                                    "the device of every tensor in the object."
-                                )
-                        stream.synchronize()
+                    for dev in devices:
+                        torch.cuda.synchronize(dev)
 
                 nixl_agent = self.get_nixl_agent()
                 # Use the pool only when every tensor lives on the exact same
