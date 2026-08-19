@@ -92,6 +92,7 @@ class _DeploymentHandleBase(Generic[T]):
         )
 
         self._router: Optional[Router] = _router
+        self._create_router: CreateRouterCallable
         if _create_router is None:
             self._create_router = create_router
         else:
@@ -295,7 +296,6 @@ class _DeploymentHandleBase(Generic[T]):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle[T]":
         raise NotImplementedError
@@ -323,7 +323,8 @@ class _DeploymentHandleBase(Generic[T]):
             if self._is_router_running_in_separate_loop:
                 await asyncio.wrap_future(shutdown_future)
             else:
-                await shutdown_future
+                # In same-loop mode the future is an `asyncio.Future`.
+                await cast(asyncio.Future, shutdown_future)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -406,9 +407,12 @@ class _DeploymentResponseBase(Generic[R]):
                 # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
                 # safely from any asyncio loop.
                 # self._replica_result_future is a object of type concurrent.futures.Future
-                self._replica_result = await asyncio.wrap_future(
-                    self._replica_result_future
+                concurrent_future = cast(
+                    "concurrent.futures.Future[ReplicaResult]",
+                    self._replica_result_future,
                 )
+                result: ReplicaResult = await asyncio.wrap_future(concurrent_future)
+                self._replica_result = result
             else:
                 # self._replica_result_future is a object of type asyncio.Future
                 async_future = cast(
@@ -457,6 +461,8 @@ class _DeploymentResponseBase(Generic[R]):
         except RequestCancelledError:
             # request is already cancelled nothing to do here
             return
+        # Populated by `_fetch_future_result_sync()` above.
+        # pyrefly: ignore[missing-attribute]
         self._replica_result.cancel()
 
     @DeveloperAPI
@@ -883,6 +889,8 @@ class DeploymentBroadcastResponse:
                 self._replica_results = self._ensure_scheduled().result(
                     timeout=timeout_s
                 )
+        # Non-None invariant: populated above.
+        assert self._replica_results is not None
         return self._replica_results
 
     async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
@@ -957,8 +965,8 @@ class DeploymentBroadcastResponse:
         )
         futures = [executor.submit(_fetch_one, rr) for rr in replica_results]
 
-        collected = []
-        first_error = None
+        collected: List[Any] = []
+        first_error: Optional[Exception] = None
         for fut in futures:
             try:
                 collected.append(fut.result())
@@ -1082,7 +1090,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _by_reference: Union[bool, DEFAULT] = DEFAULT.VALUE,
         request_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
@@ -1095,7 +1102,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             multiplexed_model_id: The model ID to use for multiplexed model requests.
             session_id: Session identifier used for honoring session stickiness.
             stream: Whether to use streaming for the request.
-            use_new_handle_api: Whether to use the new handle API.
             _prefer_local_routing: Whether to prefer local routing.
             _by_reference: Whether to use by reference.
             request_serialization: Serialization method for RPC requests.
@@ -1104,6 +1110,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             response_serialization: Serialization method for RPC responses.
                 Available options: "cloudpickle", "pickle", "msgpack", "orjson".
                 Defaults to "cloudpickle".
+
+        Returns:
+            A new ``DeploymentHandle`` with the requested options applied.
 
         Example:
 
@@ -1114,12 +1123,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 multiplexed_model_id="model:v1",
             ).remote()
         """
-        if use_new_handle_api is not DEFAULT.VALUE:
-            warnings.warn(
-                "Setting `use_new_handle_api` no longer has any effect. "
-                "This argument will be removed in a future version."
-            )
-
         if _prefer_local_routing is not DEFAULT.VALUE:
             warnings.warn(
                 "Modifying `_prefer_local_routing` with `options()` is "
@@ -1138,7 +1141,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         )
 
     def remote(
-        self, *args, **kwargs
+        self, *args: Any, **kwargs: Any
     ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
         """Issue a remote call to a method of the deployment.
 
@@ -1166,6 +1169,10 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 remote method call.
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
+
+        Returns:
+            A ``DeploymentResponse`` (or ``DeploymentResponseGenerator`` if
+            streaming is enabled) representing the in-flight call.
         """
 
         future, request_metadata = self._remote(args, kwargs)

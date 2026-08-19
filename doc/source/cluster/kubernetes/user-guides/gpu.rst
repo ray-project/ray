@@ -1,3 +1,6 @@
+.. meta::
+   :description: Schedule GPU workloads on KubeRay: request GPUs, GPU autoscaling, override Ray GPU capacity, and use taints and node selectors.
+
 .. _kuberay-gpu:
 
 Using GPUs
@@ -18,17 +21,16 @@ Dependencies for GPU-based machine learning
 ___________________________________________
 
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
-with Ray and certain machine learning libraries.
-For example, the image ``rayproject/ray-ml:2.6.3-gpu`` is ideal for running GPU-based ML workloads with Ray 2.6.3.
-The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed for the Ray Libraries that are used in these docs.
-To add custom dependencies, use one, or both, of the following methods:
+with Ray. For example, the image ``rayproject/ray:2.57.0-gpu`` runs GPU-based workloads with Ray 2.57.0.
+These images don't include machine learning libraries such as TensorFlow and PyTorch, so add the ones
+your workload needs with one, or both, of the following methods:
 
 * Building a docker image using one of the official :ref:`Ray docker images <docker-images>` as base.
 * Using :ref:`Ray Runtime environments <runtime-environments>`.
 
 
-Configuring Ray pods for GPU usage
-__________________________________
+Configuring Pods for GPU usage
+______________________________
 
 Using NVIDIA GPUs requires specifying `nvidia.com/gpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s
 `headGroupSpec` and/or `workerGroupSpecs`.
@@ -48,7 +50,7 @@ to 5 GPU workers.
         ...
         containers:
          - name: ray-node
-           image: rayproject/ray-ml:2.6.3-gpu
+           image: rayproject/ray:2.57.0-gpu
            ...
            resources:
             nvidia.com/gpu: 1 # Optional, included just for documentation.
@@ -60,7 +62,7 @@ to 5 GPU workers.
             memory: 50Gi
             ...
 
-Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instance (1 GPU, 4vCPU, 61Gi RAM).
+Each of the Pods in the group can be scheduled on an AWS `p2.xlarge` instance (1 GPU, 4vCPU, 61Gi RAM).
 
 .. tip::
 
@@ -97,7 +99,7 @@ the Ray scheduler and the Ray autoscaler. In particular, the Ray container's
 
 GPU workload scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~
-After a Ray pod with access to GPU is deployed, it will
+After a Pod with access to GPU is deployed, it will
 be able to execute tasks and actors annotated with gpu requests.
 For example, the decorator `@ray.remote(num_gpus=1)` annotates a task or actor
 requiring 1 GPU.
@@ -108,7 +110,7 @@ GPU autoscaling
 The Ray autoscaler is aware of each Ray worker group's GPU capacity.
 Say we have a RayCluster configured as in the config snippet above:
 
-- There is a worker group of Ray pods with 1 unit of GPU capacity each.
+- There is a worker group of Pods with 1 unit of GPU capacity each.
 - The Ray cluster does not currently have any workers from that group.
 - `maxReplicas` for the group is at least 2.
 
@@ -127,7 +129,7 @@ Then the following Ray program will trigger upscaling of 2 GPU workers.
 
     # Request actor placement.
     gpu_actors = [GPUActor.remote() for _ in range(2)]
-    # The following command will block until two Ray pods with GPU access are scaled
+    # The following command will block until two Pods with GPU access are scaled
     # up and the actors are placed.
     ray.get([actor.say_hello.remote() for actor in gpu_actors])
 
@@ -163,7 +165,7 @@ The GPU workers can then scale down.
 
 Overriding Ray GPU capacity (advanced)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-For specialized use-cases, it is possible to override the Ray pod GPU capacities advertised to Ray.
+For specialized use-cases, it is possible to override the Pod GPU capacities advertised to Ray.
 To do so, set a value for the `num-gpus` key of the head or worker group's `rayStartParams`.
 For example,
 
@@ -174,7 +176,7 @@ For example,
         num-gpus: "2"
 
 The Ray scheduler and autoscaler will then account 2 units of GPU capacity for each
-Ray pod in the group, even if the container limits do not indicate the presence of GPU.
+Pod in the group, even if the container limits do not indicate the presence of GPU.
 
 GPU pod scheduling (advanced)
 _____________________________
@@ -207,12 +209,12 @@ If this admission controller is not enabled for your Kubernetes cluster, you may
    ...
    containers:
    - name: ray-node
-     image: rayproject/ray:nightly-gpu
+     image: rayproject/ray:2.57.0-gpu
      ...
 
 Node selectors and node labels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-To ensure Ray pods are bound to Kubernetes nodes satisfying specific
+To ensure Pods are bound to Kubernetes nodes satisfying specific
 conditions (such as the presence of GPU hardware), you may wish to use
 the `nodeSelector` field of your `workerGroup`'s pod template `spec`.
 See the `Kubernetes docs`_ for more about Pod-to-Node assignment.

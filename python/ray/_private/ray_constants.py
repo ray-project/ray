@@ -29,6 +29,27 @@ RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
 # Filter level under which events will be filtered out, i.e. not printing to driver
 RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
 
+# When `ray start --block` (which becomes PID 1 in a container) receives
+# SIGTERM, the number of seconds to mark the local node as draining and wait
+# before tearing down local processes. This gives drain-aware components (e.g.
+# Ray Serve proxies) time to stop accepting new traffic and finish in-flight
+# requests before the raylet and replicas are killed, avoiding HTTP 500s during
+# RayService upgrades (https://github.com/ray-project/ray/issues/64181).
+# Defaults to 30s; cluster managers (e.g. KubeRay) tune it, typically to just
+# under the pod termination grace period. 0 disables draining (immediate teardown).
+RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S = env_float(
+    "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S", 30.0
+)
+
+# How often (seconds) the SIGTERM drain wait polls for the node having finished
+# draining (the raylet self-terminating once it is draining AND idle) before
+# falling back to RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S as an upper bound. Floored
+# at a small positive value so a misconfigured 0 (or negative) can never turn the
+# wait into a 100% busy-wait.
+RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S = max(
+    env_float("RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S", 0.5), 0.001
+)
+
 # Internal kv keys for storing monitor debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
@@ -69,6 +90,14 @@ DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION > this value.
 DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
     "RAY_DEFAULT_MAX_SYSTEM_RESERVED_MEMORY_BYTES", (10) * (1024**3)
+)
+# The default buffer size between the physical memory limit enforced by resource isolation
+# and the logical memory limit available for scheduling user tasks. This buffer can be tuned
+# to allocate more or less memory room for tolerating passing in the wrong logical memory
+# estimate at the cost of lower memory utilization.
+DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES = env_integer(
+    "RAY_DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES",
+    500 * (1024**2),  # 500MiB
 )
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -271,7 +300,7 @@ LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
-
+RAY_FLUSH_DRIVER_LOGS = env_bool("RAY_FLUSH_DRIVER_LOGS", False)
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 
@@ -380,6 +409,12 @@ MAX_INT64_VALUE = 9223372036854775807
 DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
+
+# Environment variable key for GCS leader election.
+RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR = "RAY_ENABLE_GCS_LEADER_ELECTION"
+
+# Whether to enable active-passive GCS leader election for high availability.
+RAY_ENABLE_GCS_LEADER_ELECTION = env_bool(RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR, False)
 
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
@@ -533,6 +568,22 @@ RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
 
 RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)
 
+# Comma-separated list of event types that are emitted through the Python
+# EventRecorder (One-Event Framework) to the AggregatorAgent.
+# Valid values are the names of EventType entries defined in
+# src/ray/protobuf/public/events_base_event.proto
+# Defaults to PLATFORM_EVENTS if not set.
+RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
+    {
+        t.strip()
+        for t in os.environ.get(
+            "RAY_ENABLE_PYTHON_RAY_EVENT_TYPES", "PLATFORM_EVENT"
+        ).split(",")
+        if t.strip()
+    }
+)
+
+
 # If this flag is set and you run the driver with `uv run`, Ray propagates the `uv run`
 # environment to all workers. Ray does this by setting the `py_executable` to the
 # `uv run`` command line and by propagating the working directory
@@ -547,12 +598,12 @@ RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT"
 # manually set the py_executable in your runtime environment hook.
 RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 
-# Prometheus metric cardinality level setting, either "legacy" or "recommended".
+# Prometheus metric cardinality level setting: "legacy", "recommended", or "low".
 #
-# Legacy: report all metrics to prometheus with the set of labels that are reported by
-#   the component, including WorkerId, (task or actor) Name, etc. This is the default.
-# Recommended: report only the node level metrics to prometheus. This means that the
-#   WorkerId will be removed from all metrics.
+# Legacy: report all metrics to Prometheus with the set of labels that are reported by
+#   the component, including WorkerId, (task or actor) Name, etc.
+# Recommended: report metrics to Prometheus with high-cardinality labels removed.
+#   Currently, WorkerId will be removed from all metrics. This is the default.
 # Low: Same as recommended, but also drop the Name label for tasks and actors.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get(
     "RAY_metric_cardinality_level", "recommended"

@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import sys
+import warnings
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
 
@@ -9,6 +10,7 @@ from ray.data._internal.util import (
     _normalize_paths_to_strings,
     _resolve_custom_scheme,
 )
+from ray.util.annotations import RayDeprecationWarning
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,10 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         path: The path to check.
         extensions: A list of extensions to check against. If `None`, any extension is
             considered valid.
+
+    Returns:
+        ``True`` if ``path`` ends with one of the provided extensions (or
+        ``extensions`` is ``None``), otherwise ``False``.
     """
     assert extensions is None or isinstance(extensions, list), type(extensions)
 
@@ -236,6 +242,70 @@ def _is_filesystem_compatible_with_scheme(
     return fs_type in expected_types
 
 
+_AZURE_BLOB_HTTPS_SUFFIXES = (".blob.core.windows.net", ".dfs.core.windows.net")
+
+
+def _rewrite_azure_blob_https_url(path: str) -> Tuple[str, Optional[str]]:
+    """Rewrite Azure Blob/DFS HTTPS URLs to ``abfs://<container>/<blob>`` form.
+
+    PyArrow's scheme auto-detection only recognises ``abfs://`` / ``abfss://`` for
+    Azure; an ``https://<account>.blob.core.windows.net/<container>/<blob>`` URL
+    falls through to the fsspec HTTP filesystem and fetches anonymously, which
+    fails for private blobs.
+
+    We deliberately avoid emitting the Hadoop-style
+    ``abfs://<container>@<account>.dfs.core.windows.net/<path>`` form. PyArrow's
+    C++ ``AzureOptions::FromUri`` parses it correctly when the resolver builds a
+    filesystem from the URI alone — but ``_resolve_filesystem_and_path`` *skips*
+    that parser whenever a filesystem is already supplied (the common case for
+    ``download(..., filesystem=AzureFileSystem(...))``). In that branch PyArrow
+    strips the scheme and treats the authority as part of the path, so requests
+    land on ``https://<fs.account>.blob.core.windows.net/<cont>@<acct>.dfs.core.windows.net/<blob>``
+    and 404. The bare ``abfs://<container>/<blob>`` form sidesteps this entirely
+    because there is no authority to misinterpret.
+
+    Returns ``(rewritten_path, account_name)``. ``account_name`` is the host
+    prefix extracted from the original URL so the caller can construct an
+    ``AzureFileSystem(account_name=...)`` when the user did not pass an explicit
+    filesystem. ``account_name`` is ``None`` when the path was not rewritten.
+
+    URLs carrying a query string (e.g. a SAS token) are returned unchanged: the
+    SAS already carries auth, and the fsspec HTTP path will fetch them with the
+    signature intact.
+    """
+    if not path.startswith("https://"):
+        return path, None
+
+    parsed = urlparse(path, allow_fragments=False)
+    if parsed.query:
+        return path, None
+
+    # `parsed.hostname` strips explicit port and userinfo (and lower-cases the
+    # host per RFC 3986), so the suffix check works for URLs that include
+    # `:443` or `user:pass@`.
+    host = parsed.hostname
+    if not host:
+        return path, None
+    suffix = next(
+        (s for s in _AZURE_BLOB_HTTPS_SUFFIXES if host.endswith(s)),
+        None,
+    )
+    if suffix is None or len(host) == len(suffix):
+        return path, None
+
+    account = host[: -len(suffix)]
+    object_path = parsed.path.lstrip("/")
+    if "/" not in object_path:
+        # No <container>/<blob> split available — leave it alone.
+        return path, None
+
+    container, blob_path = object_path.split("/", 1)
+    if not container or not blob_path:
+        return path, None
+
+    return f"abfs://{container}/{blob_path}", account
+
+
 def _resolve_single_path_with_fallback(
     path: str,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -259,15 +329,38 @@ def _resolve_single_path_with_fallback(
         ImportError: If required dependencies are missing.
     """
     import pyarrow as pa
+    import pyarrow.fs
     from pyarrow.fs import _resolve_filesystem_and_path
 
     path = _resolve_custom_scheme(path)
+
+    # Only rewrite Azure Blob HTTPS URLs when this PyArrow build actually has
+    # AzureFileSystem support. Otherwise the abfs:// form we would produce
+    # cannot be resolved by PyArrow, and we would block the original https://
+    # URL from falling through to the fsspec HTTP filesystem below.
+    azure_fs_cls = getattr(pyarrow.fs, "AzureFileSystem", None)
+    if azure_fs_cls is not None:
+        path, azure_account = _rewrite_azure_blob_https_url(path)
+    else:
+        azure_account = None
 
     # Validate/wrap filesystem if needed
     try:
         filesystem = _validate_and_wrap_filesystem(filesystem)
     except TypeError as e:
         raise ValueError(f"Invalid filesystem provided: {e}") from e
+
+    # If we rewrote an Azure HTTPS URL and the caller did not supply a
+    # filesystem, build one with the account name we extracted. AzureFileSystem
+    # still resolves credentials (account_key, SAS, default credential chain)
+    # from the environment; supplying a filesystem explicitly to download() with
+    # custom credentials remains the override path for non-default auth.
+    # _resolve_paths_and_filesystem caches the filesystem returned by the first
+    # path and reuses it, so the auto-injected AzureFileSystem is shared across
+    # the rest of the column — multi-account columns are not supported on the
+    # PyArrow path; use obstore for that case.
+    if azure_account is not None and filesystem is None:
+        filesystem = azure_fs_cls(account_name=azure_account)
 
     # Parse scheme to validate filesystem compatibility
     parsed = urlparse(path, allow_fragments=False)
@@ -357,6 +450,13 @@ def _resolve_paths_and_filesystem(
         schemes in a single call is unsupported and may fail when reading.
     """
     paths = _normalize_paths_to_strings(paths)
+    if any(path.lower().startswith("local:") for path in paths):
+        warnings.warn(
+            "`local://` paths in Ray Data are deprecated and will be removed after "
+            "January 2027. Use shared or cloud storage for distributed execution.",
+            RayDeprecationWarning,
+            stacklevel=3,
+        )
 
     # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
     filesystem = _validate_and_wrap_filesystem(filesystem)
@@ -464,6 +564,32 @@ def _unwrap_protocol(path):
         parsed_path = parsed_path[1:]
 
     return netloc + parsed_path + params + query
+
+
+def _filesystem_root_from_uri(uri: str) -> str:
+    """The path form the filesystem backing ``uri`` expects to be given.
+
+    Returns what ``pyarrow.fs.FileSystem.from_uri`` would hand back as its
+    path, without also *building* a filesystem the way ``from_uri`` does. That
+    matters because for an ``s3://`` URI ``from_uri`` resolves the bucket's
+    region against real AWS: it fails outright against any S3-compatible
+    endpoint (MinIO, moto, Ceph) even with ``AWS_ENDPOINT_URL`` set, and costs a
+    network round-trip every time it's called.
+
+    Scheme conventions, matching ``from_uri``:
+
+    * ``s3``/``s3a``/``gs``/``gcs``: ``bucket/key``.
+    * ``abfs``/``abfss``: ``container/key``. The storage account belongs to the
+      ``AzureFileSystem`` object rather than the path, so the
+      ``@account.dfs.core.windows.net`` host is dropped -- leaving it in points
+      writes at a container literally named ``container@account...``.
+    * local paths: unchanged.
+    """
+    parsed = urlparse(uri, allow_fragments=False)
+    if parsed.scheme in ("abfs", "abfss") and "@" in parsed.netloc:
+        container = parsed.netloc.split("@")[0]
+        return f"{container}{parsed.path}"
+    return _unwrap_protocol(uri)
 
 
 def _is_http_url(path) -> bool:

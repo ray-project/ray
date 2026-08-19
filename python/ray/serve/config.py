@@ -4,7 +4,7 @@ import logging
 import warnings
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -42,7 +42,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import validate_ssl_config
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -242,10 +242,10 @@ class RequestRouterConfig(BaseModel):
     request_routing_stats_period_s: PositiveFloat = Field(
         default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
         description=(
-            "Duration between record scheduling stats calls for the replica. "
-            "Defaults to 10s. The health check is by default a no-op Actor call "
-            "to the replica, but you can define your own request scheduling stats "
-            "using the 'record_scheduling_stats' method in your deployment."
+            "Duration between record routing stats calls for the replica. "
+            "Defaults to 10s. Recording routing stats is by default a no-op Actor "
+            "call to the replica, but you can define your own routing stats "
+            "using the 'record_routing_stats' method in your deployment."
         ),
     )
 
@@ -394,6 +394,10 @@ class RequestRouterConfig(BaseModel):
 
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
+
+    def is_default_request_router(self) -> bool:
+        """Whether the configured request router is Serve's default."""
+        return self.request_router_class == DEFAULT_REQUEST_ROUTER_PATH
 
     def get_request_router_class(self) -> Callable:
         """Deserialize the request router from cloudpickled bytes."""
@@ -548,19 +552,108 @@ class AutoscalingPolicy(BaseModel):
         return policy
 
 
+@PublicAPI(stability="alpha")
+class BackpressureConfig(BaseModel):
+    """Config for the HTTP response returned on backpressure rejections.
+
+    When a deployment's ``max_queued_requests`` limit is reached, additional
+    requests are rejected. This class configures the HTTP response for those
+    rejections; requests rejected because the deployment is unavailable
+    (e.g., it failed to deploy) always return 503. The gRPC path is
+    unaffected: backpressure rejections always map to ``RESOURCE_EXHAUSTED``.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import BackpressureConfig
+
+            @serve.deployment(
+                max_queued_requests=64,
+                backpressure_config=BackpressureConfig(
+                    status_code=429,
+                    retry_after_s=5,
+                ),
+            )
+            class Deployment:
+                ...
+
+    Args:
+        status_code: HTTP status code returned for requests rejected due to
+            backpressure. Must be 503 (default) or 429.
+        retry_after_s: If set, rejected HTTP responses include a
+            `Retry-After` header with this value (rounded up to an integer
+            number of seconds). Defaults to None (no header).
+    """
+
+    # Reject unknown keys so typos (e.g. `retry_after` instead of
+    # `retry_after_s`) fail at config parse time instead of being dropped.
+    model_config = ConfigDict(extra="forbid")
+
+    status_code: Literal[503, 429] = 503
+    retry_after_s: Optional[NonNegativeFloat] = Field(default=None, allow_inf_nan=False)
+
+
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
-    """Config for the Serve Autoscaler."""
+    """Config for the Serve Autoscaler.
+
+    This class configures how Ray Serve scales a deployment's replicas up and down
+    in response to traffic. The autoscaler periodically aggregates request metrics
+    over a look-back window, compares them to ``target_ongoing_requests``, and
+    adjusts the replica count between ``min_replicas`` and ``max_replicas``.
+    ``upscale_delay_s`` and ``downscale_delay_s`` control how quickly the autoscaler
+    reacts to traffic changes, while ``upscaling_factor`` and ``downscaling_factor``
+    dampen the magnitude of each scaling decision.
+
+    For an end-to-end guide, see the
+    `Serve autoscaling guide <https://docs.ray.io/en/latest/serve/autoscaling-guide.html>`_
+    and the
+    `advanced autoscaling guide <https://docs.ray.io/en/latest/serve/advanced-guides/advanced-autoscaling.html>`_.
+    """
 
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
     # Publicly exposed options
-    min_replicas: NonNegativeInt = 1
-    initial_replicas: Optional[NonNegativeInt] = None
-    max_replicas: PositiveInt = 1
+    min_replicas: NonNegativeInt = Field(
+        default=1,
+        description=(
+            "The minimum number of replicas for the deployment. Set this to a "
+            "positive value to keep replicas ready for traffic at all times, or "
+            "set it to 0 to allow scaling to zero when there is no traffic. "
+            "Scaling to zero reduces cost but introduces cold-start latency when "
+            "traffic resumes."
+        ),
+    )
+    initial_replicas: Optional[NonNegativeInt] = Field(
+        default=None,
+        description=(
+            "The number of replicas started when the deployment is first deployed. "
+            "If not set, defaults to the value of ``min_replicas``."
+        ),
+    )
+    max_replicas: PositiveInt = Field(
+        default=1,
+        description=(
+            "The maximum number of replicas for the deployment. Must be greater "
+            "than or equal to ``min_replicas``. Ray Serve relies on the Ray "
+            "Autoscaler to add cluster nodes when existing nodes lack the "
+            "resources (CPUs, GPUs, etc.) needed to schedule additional replicas."
+        ),
+    )
 
-    target_ongoing_requests: Optional[PositiveFloat] = DEFAULT_TARGET_ONGOING_REQUESTS
+    target_ongoing_requests: Optional[PositiveFloat] = Field(
+        default=DEFAULT_TARGET_ONGOING_REQUESTS,
+        description=(
+            "The target number of requests being processed and queued per replica. "
+            "Serve scales the replica count up or down to keep each replica close "
+            "to this value. Lower values reduce per-replica load and tail latency "
+            "at the cost of running more replicas; higher values pack more traffic "
+            "onto each replica. Defaults to 2."
+        ),
+    )
 
     metrics_interval_s: PositiveFloat = Field(
         default=DEFAULT_METRICS_INTERVAL_S,
@@ -709,14 +802,6 @@ class AutoscalingConfig(BaseModel):
         return self.target_ongoing_requests
 
 
-# Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
-@Deprecated
-class DeploymentMode(str, Enum):
-    NoServer = "NoServer"
-    HeadOnly = "HeadOnly"
-    EveryNode = "EveryNode"
-
-
 @PublicAPI(stability="stable")
 class ProxyLocation(str, Enum):
     """Config for where to run proxies to receive ingress traffic to the cluster.
@@ -735,44 +820,18 @@ class ProxyLocation(str, Enum):
     EveryNode = "EveryNode"
 
     @classmethod
-    def _to_deployment_mode(
-        cls, proxy_location: Union["ProxyLocation", str]
-    ) -> DeploymentMode:
-        if isinstance(proxy_location, str):
-            proxy_location = ProxyLocation(proxy_location)
-        elif not isinstance(proxy_location, ProxyLocation):
-            raise TypeError(
-                f"Must be a `ProxyLocation` or str, got: {type(proxy_location)}."
-            )
-
-        if proxy_location == ProxyLocation.Disabled:
-            return DeploymentMode.NoServer
-        else:
-            return DeploymentMode(proxy_location.value)
-
-    @classmethod
-    def _from_deployment_mode(
-        cls, deployment_mode: Optional[Union[DeploymentMode, str]]
+    def _normalize(
+        cls, location: Optional[Union["ProxyLocation", str]]
     ) -> Optional["ProxyLocation"]:
-        """Converts DeploymentMode enum into ProxyLocation enum.
-
-        DeploymentMode is a deprecated version of ProxyLocation that's still
-        used internally throughout Serve.
-        """
-
-        if deployment_mode is None:
+        if location is None:
             return None
-        elif isinstance(deployment_mode, str):
-            deployment_mode = DeploymentMode(deployment_mode)
-        elif not isinstance(deployment_mode, DeploymentMode):
-            raise TypeError(
-                f"Must be a `DeploymentMode` or str, got: {type(deployment_mode)}."
-            )
-
-        if deployment_mode == DeploymentMode.NoServer:
-            return ProxyLocation.Disabled
-        else:
-            return ProxyLocation(deployment_mode.value)
+        if isinstance(location, cls):
+            return location
+        if isinstance(location, str):
+            if location in {"Disabled", "NoServer"}:
+                return cls.Disabled
+            return cls(location)
+        raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(location)}.")
 
 
 @PublicAPI(stability="stable")
@@ -797,23 +856,30 @@ class HTTPOptions(BaseModel):
     - ssl_ca_certs: Optional path to CA certificate file for client certificate
       verification.
 
+    - middlewares: [DEPRECATED] A list of Starlette middlewares to apply to the
+      HTTP proxy. Passing a non-empty list raises an error. Use Serve's FastAPI
+      integration to configure middlewares on ingress deployments instead.
     - location: [DEPRECATED: use `proxy_location` field instead] The deployment
       location of HTTP servers:
 
         - "HeadOnly": start one HTTP server on the head node. Serve
           assumes the head node is the node you executed serve.start
-          on. This is the default.
+          on.
         - "EveryNode": start one HTTP server per node.
-        - "NoServer": disable HTTP server.
+        - "Disabled": disable HTTP server.
+
+      This field defaults to None; Serve uses `proxy_location` when location
+      is unset. If `host` is None, Serve disables proxy startup.
 
     - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
-      internal Serve HTTP proxy actor.
+      internal Serve HTTP proxy actor. Passing a non-zero value raises an
+      error.
     """
 
     host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
-    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+    location: Optional[ProxyLocation] = None
     num_cpus: int = 0
     root_url: str = ""
     root_path: str = ""
@@ -826,11 +892,28 @@ class HTTPOptions(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True)
 
+    @field_validator("location", mode="before")
+    @classmethod
+    def normalize_location(cls, v):
+        # Only warn when a real (non-None) location is set. location=None is a
+        # no-op that also arrives via internal model_dump() roundtrips (e.g.
+        # direct-ingress replicas rebuilding HTTPOptions), which must stay quiet.
+        if v is not None:
+            warnings.warn(
+                "`location` in HTTPOptions is deprecated and will be removed in a "
+                "future version. Use the `proxy_location` argument to `serve.start` "
+                "or the top-level `proxy_location` field in the Serve config "
+                "instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return ProxyLocation._normalize(v)
+
     @model_validator(mode="after")
     def location_backfill_no_server(self):
-        if self.host is None or self.location is None:
+        if self.host is None:
             # Use object.__setattr__ since the model may have frozen=True behavior
-            object.__setattr__(self, "location", DeploymentMode.NoServer)
+            object.__setattr__(self, "location", ProxyLocation.Disabled)
         return self
 
     @field_validator("ssl_certfile")
@@ -842,23 +925,24 @@ class HTTPOptions(BaseModel):
 
     @field_validator("middlewares")
     @classmethod
-    def warn_for_middlewares(cls, v):
+    def raise_for_middlewares_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `middlewares` to HTTPOptions is deprecated and will be "
-                "removed in a future version. Consider using the FastAPI integration "
-                "to configure middlewares on your deployments: "
-                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"  # noqa 501
+            raise ValueError(
+                "`middlewares` in HTTPOptions has been removed. Use Serve's "
+                "FastAPI integration to configure middlewares on ingress "
+                "deployments instead: "
+                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"
             )
         return v
 
     @field_validator("num_cpus")
     @classmethod
-    def warn_for_num_cpus(cls, v):
+    def raise_for_num_cpus_assignment(cls, v):
         if v:
-            warnings.warn(
-                "Passing `num_cpus` to HTTPOptions is deprecated and will be "
-                "removed in a future version."
+            raise ValueError(
+                "`num_cpus` in HTTPOptions has been removed. Serve no longer "
+                "supports configuring CPU reservations for HTTP proxy actors "
+                "via HTTPOptions."
             )
         return v
 

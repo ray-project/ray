@@ -430,7 +430,7 @@ def test_http_bad_request(job_sdk_client):
 
 def test_invalid_runtime_env(job_sdk_client):
     client = job_sdk_client
-    with pytest.raises(ValueError, match="Only .zip files supported"):
+    with pytest.raises(ValueError, match="Only .zip, .tar.gz, and .tgz files"):
         client.submit_job(
             entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
         )

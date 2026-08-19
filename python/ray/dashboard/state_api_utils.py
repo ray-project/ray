@@ -202,6 +202,7 @@ def do_filter(
         filters: A list of KV tuple to filter data (key, val). The data is filtered
             if data[key] != val.
         state_dataclass: The state schema.
+        detail: If True, include detail-only columns; otherwise drop them.
 
     Returns:
         A list of filtered state data in dictionary. Each state data's

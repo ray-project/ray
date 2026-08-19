@@ -5,20 +5,20 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import ray._private.ray_constants as ray_constants
+from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    Protocol,
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
-    parse_uri,
     upload_package_if_needed,
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.protocol import Protocol
 from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
@@ -67,8 +67,13 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
-            raise ValueError("Only .zip files supported for remote URIs.")
+        supported_extensions = (".zip", ".tar.gz", ".tgz")
+        if protocol in Protocol.remote_protocols() and not any(
+            path.endswith(ext) for ext in supported_extensions
+        ):
+            raise ValueError(
+                "Only .zip, .tar.gz, and .tgz files supported for remote URIs."
+            )
         return runtime_env
 
     default_excludes = ray_constants.get_runtime_env_default_excludes()
@@ -98,10 +103,15 @@ def upload_working_dir_if_needed(
         )
     except ValueError:  # working_dir is not a directory
         package_path = Path(working_dir)
-        if not package_path.exists() or package_path.suffix != ".zip":
+        supported_local = (
+            package_path.suffix == ".zip"
+            or package_path.suffix == ".tgz"
+            or package_path.name.endswith(".tar.gz")
+        )
+        if not package_path.exists() or not supported_local:
             raise ValueError(
                 f"directory {package_path} must be an existing "
-                "directory or a zip package"
+                "directory or a supported archive (.zip, .tar.gz, .tgz)"
             )
 
         pkg_uri = get_uri_for_package(package_path)
@@ -157,7 +167,6 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
 
 
 class WorkingDirPlugin(RuntimeEnvPlugin):
-
     name = "working_dir"
 
     # Note working_dir is not following the priority order of other plugins. Instead

@@ -2161,5 +2161,27 @@ def test_request_router_backoff_params_custom():
     assert router.max_backoff_s == custom_max_backoff
 
 
+def test_compute_backoff_s_does_not_overflow():
+    """A large attempt must clamp to max_backoff_s, not raise OverflowError.
+
+    initial_backoff_s * (backoff_multiplier ** attempt) overflows once attempt
+    grows large enough (e.g. during a long cold start), which previously crashed
+    the routing loop. See the same guard on _probe_queue_lens for backoff_index.
+    """
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+        initial_backoff_s=0.1,
+        backoff_multiplier=2,
+        max_backoff_s=1.0,
+    )
+
+    assert router._compute_backoff_s(2048) == router.max_backoff_s
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

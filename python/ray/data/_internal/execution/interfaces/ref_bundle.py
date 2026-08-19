@@ -13,7 +13,6 @@ from ray.data.block import (
     Schema,
     _take_first_non_empty_schema,
 )
-from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
@@ -29,6 +28,20 @@ class BlockSlice:
     @property
     def num_rows(self) -> int:
         return self.end_offset - self.start_offset
+
+
+@dataclass(frozen=True, slots=True)
+class BlockEntry:
+    """One block delivery: the ref + the block's measured metadata.
+
+    Used as the element type of ``RefBundle.blocks`` (replaces the legacy
+    ``(ObjectRef, BlockMetadata)`` 2-tuple shape). Naming the fields makes
+    every call site self-describing and reserves room for the bundle entry
+    to grow without disturbing the surrounding shape.
+    """
+
+    ref: ObjectRef[Block]
+    metadata: BlockMetadata
 
 
 @dataclass(frozen=True)
@@ -49,8 +62,11 @@ class RefBundle:
     Ray reference counting to kick in.
     """
 
-    # The size_bytes must be known in the metadata, num_rows is optional.
-    blocks: Tuple[Tuple[ObjectRef[Block], BlockMetadata], ...]
+    # Per-block entries. The size_bytes must be known in the metadata,
+    # num_rows is optional. Legacy ``(ref, metadata)`` 2-tuples are no longer
+    # accepted at construction and must be explicitly wrapped in ``BlockEntry``
+    # (``__post_init__`` rejects anything else with an actionable assertion).
+    blocks: Tuple[BlockEntry, ...]
 
     # The schema of the blocks in this bundle. This is optional, and may be None
     # if blocks are empty.
@@ -89,6 +105,11 @@ class RefBundle:
 
         if not isinstance(self.blocks, tuple):
             object.__setattr__(self, "blocks", tuple(self.blocks))
+        for entry in self.blocks:
+            assert isinstance(entry, BlockEntry), (
+                f"RefBundle.blocks must contain BlockEntry instances; got {type(entry).__name__}. "
+                "Construct entries with `BlockEntry(ref=..., metadata=...)`."
+            )
 
         if self.slices is None:
             object.__setattr__(self, "slices", (None,) * len(self.blocks))
@@ -100,7 +121,7 @@ class RefBundle:
                 self.slices
             ), "Number of blocks and slices must match"
             # Validate slice ranges
-            for (_, metadata), block_slice in zip(self.blocks, self.slices):
+            for entry, block_slice in zip(self.blocks, self.slices):
                 if block_slice is not None:
                     assert (
                         block_slice.start_offset >= 0
@@ -108,30 +129,26 @@ class RefBundle:
                     assert (
                         block_slice.end_offset >= block_slice.start_offset
                     ), f"Slice end_offset must be >= start_offset: [{block_slice.start_offset}, {block_slice.end_offset})"
-                    if metadata.num_rows is not None:
+                    if entry.metadata.num_rows is not None:
                         assert (
-                            block_slice.end_offset <= metadata.num_rows
-                        ), f"Slice range [{block_slice.start_offset}, {block_slice.end_offset}) exceeds block num_rows: {metadata.num_rows}"
+                            block_slice.end_offset <= entry.metadata.num_rows
+                        ), f"Slice range [{block_slice.start_offset}, {block_slice.end_offset}) exceeds block num_rows: {entry.metadata.num_rows}"
 
-        for b in self.blocks:
-            assert isinstance(b, tuple), b
-            assert len(b) == 2, b
-            assert isinstance(b[0], ray.ObjectRef), b[0]
-            assert isinstance(b[1], BlockMetadata), b[1]
-            if b[1].size_bytes is None:
+        for entry in self.blocks:
+            if entry.metadata.size_bytes is None:
                 raise ValueError(
-                    "The size in bytes of the block must be known: {}".format(b)
+                    "The size in bytes of the block must be known: {}".format(entry)
                 )
 
     @property
     def block_refs(self) -> List[ObjectRef[Block]]:
         """List of block references in this bundle."""
-        return [block_ref for block_ref, _ in self.blocks]
+        return [entry.ref for entry in self.blocks]
 
     @property
     def metadata(self) -> List[BlockMetadata]:
         """List of block metadata in this bundle."""
-        return [metadata for _, metadata in self.blocks]
+        return [entry.metadata for entry in self.blocks]
 
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known.
@@ -166,7 +183,8 @@ class RefBundle:
         - Otherwise, uses the full metadata.size_bytes
         """
         total = 0
-        for (_, metadata), block_slice in zip(self.blocks, self.slices):
+        for entry, block_slice in zip(self.blocks, self.slices):
+            metadata = entry.metadata
             if block_slice is None:
                 # Full block
                 total += metadata.size_bytes
@@ -181,18 +199,14 @@ class RefBundle:
                 total += metadata.size_bytes
         return total
 
-    def destroy_if_owned(self) -> int:
-        """Clears the object store memory for these blocks if owned.
+    def destroy_if_owned(self) -> None:
+        """Records that these blocks are no longer needed for memory tracing.
 
-        Returns:
-            The number of bytes freed.
+        Objects are reclaimed by Ray reference counting once no references remain;
+        this only records the deallocation for memory tracing / leak reporting.
         """
-        should_free = self.owns_blocks and DataContext.get_current().eager_free
         for block_ref in self.block_refs:
-            trace_deallocation(
-                block_ref, "RefBundle.destroy_if_owned", free=should_free
-            )
-        return self.size_bytes() if should_free else 0
+            trace_deallocation(block_ref, "RefBundle.destroy_if_owned")
 
     def get_preferred_object_locations(self) -> Dict[NodeIdStr, int]:
         """Returns a mapping of node IDs to total bytes stored on each node.
@@ -266,29 +280,29 @@ class RefBundle:
             else:
                 block_slices.append(block_slice)
 
-        consumed_blocks: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
+        consumed_blocks: List[BlockEntry] = []
         consumed_slices: List[BlockSlice] = []
-        remaining_blocks: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
+        remaining_blocks: List[BlockEntry] = []
         remaining_slices: List[BlockSlice] = []
 
         rows_to_take = needed_rows
 
-        for (block_ref, metadata), block_slice in zip(self.blocks, block_slices):
+        for entry, block_slice in zip(self.blocks, block_slices):
             block_rows = block_slice.num_rows
             if rows_to_take >= block_rows:
-                consumed_blocks.append((block_ref, metadata))
+                consumed_blocks.append(entry)
                 consumed_slices.append(block_slice)
                 rows_to_take -= block_rows
             else:
                 if rows_to_take == 0:
-                    remaining_blocks.append((block_ref, metadata))
+                    remaining_blocks.append(entry)
                     remaining_slices.append(block_slice)
                     continue
                 consume_slice = BlockSlice(
                     start_offset=block_slice.start_offset,
                     end_offset=block_slice.start_offset + rows_to_take,
                 )
-                consumed_blocks.append((block_ref, metadata))
+                consumed_blocks.append(entry)
                 consumed_slices.append(consume_slice)
 
                 leftover_rows = block_rows - rows_to_take
@@ -297,7 +311,7 @@ class RefBundle:
                         start_offset=consume_slice.end_offset,
                         end_offset=block_slice.end_offset,
                     )
-                    remaining_blocks.append((block_ref, metadata))
+                    remaining_blocks.append(entry)
                     remaining_slices.append(remainder_slice)
 
                 rows_to_take = 0
@@ -377,7 +391,7 @@ class RefBundle:
         return hash(
             (
                 # Only hash block refs
-                *[b for b, _ in self.blocks],
+                *[entry.ref for entry in self.blocks],
                 *self.slices,
                 # Check out comment in ``__eq__``
                 id(self.schema),
@@ -399,9 +413,8 @@ class RefBundle:
         ]
 
         # Loop through each block and show details
-        for i, ((block_ref, metadata), block_slice) in enumerate(
-            zip(self.blocks, self.slices)
-        ):
+        for i, (entry, block_slice) in enumerate(zip(self.blocks, self.slices)):
+            metadata = entry.metadata
             row_str = (
                 f"{metadata.num_rows} rows"
                 if metadata.num_rows is not None

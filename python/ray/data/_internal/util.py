@@ -264,6 +264,9 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
     Args:
         cur_pg: The current placement group, if any.
+
+    Returns:
+        The estimated number of available CPU slots usable by this Dataset.
     """
     cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
     cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
@@ -315,7 +318,7 @@ def _warn_on_high_parallelism(requested_parallelism, num_read_tasks):
         )
 
 
-def _check_import(obj, *, module: str, package: str) -> None:
+def _check_import(obj: Any, *, module: str, package: str) -> None:
     """Check if a required dependency is installed.
 
     If `module` can't be imported, this function raises an `ImportError` instructing
@@ -831,15 +834,12 @@ def unify_schemas_with_validation(
     schemas_to_unify: Iterable["Schema"],
 ) -> Optional["Schema"]:
     if schemas_to_unify:
+        import pyarrow as pa
+
         from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
-        # Check valid pyarrow installation before attempting schema unification
-        try:
-            import pyarrow as pa
-        except ImportError:
-            pa = None
         # If the result contains PyArrow schemas, unify them
-        if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
+        if all(isinstance(s, pa.Schema) for s in schemas_to_unify):
             return unify_schemas(schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
@@ -1096,9 +1096,9 @@ def make_async_gen(
 
                         num_workers * buffer_size * 2 (input and output)
 
-    Returns:
-        An generator (iterator) of the elements corresponding to the source
-        elements mapped by provided transformation (while *preserving the ordering*)
+    Yields:
+        U: Elements corresponding to the source elements mapped by the provided
+        transformation (while *preserving the ordering* when requested).
     """
 
     gen_id = random.randint(0, 2**31 - 1)
@@ -1366,7 +1366,7 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
 
         Args:
             fs: The underlying filesystem to wrap
-            context: DataContext for retry settings
+            retryable_errors: Error substrings that should trigger a retry
             max_attempts: Maximum number of retry attempts
             max_backoff_s: Maximum backoff time in seconds
         """
@@ -1571,7 +1571,7 @@ def iterate_with_retry(
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 logger.debug(
                     f"Retrying attempt {attempt + 1} to {description} "
-                    f"after {backoff:.1f}s due to: {e}"
+                    f"after {backoff:.1f}s due to: {error_str}"
                 )
                 time.sleep(backoff)
             else:
@@ -1706,7 +1706,7 @@ class MemoryProfiler:
     """
 
     def __init__(self, poll_interval_s: Optional[float]):
-        """
+        """Initialize the memory profiler.
 
         Args:
             poll_interval_s: The interval to poll the USS of the process. If `None`,

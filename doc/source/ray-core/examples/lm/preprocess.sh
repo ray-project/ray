@@ -11,7 +11,7 @@ unzip wikitext-103-raw-v1.zip
 mkdir -p gpt2_bpe
 wget -O gpt2_bpe/encoder.json https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/encoder.json
 wget -O gpt2_bpe/vocab.bpe https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/vocab.bpe
-wget https://raw.githubusercontent.com/pytorch/fairseq/master/examples/roberta/multiprocessing_bpe_encoder.py
+wget https://raw.githubusercontent.com/facebookresearch/fairseq/master/examples/roberta/multiprocessing_bpe_encoder.py
 for SPLIT in train valid test; do \
     python multiprocessing_bpe_encoder.py \
         --encoder-json gpt2_bpe/encoder.json \

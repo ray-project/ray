@@ -1,0 +1,65 @@
+<!-- Loaded on-demand when Claude works on Ray documentation files. -->
+<!-- Keep under 50 lines. Multi-step procedures → skills. Code style → rules/. -->
+
+# Ray Documentation
+
+Sphinx documentation built by Read the Docs and served at `docs.ray.io`. Build pipeline: `.buildkite/doc.rayci.yml`.
+
+## File format for new pages
+
+Author new files under `doc/source/` as MyST Markdown (`.md`). A lint check rejects newly added `.rst` files. Edits to existing `.rst` files are not flagged. `git mv` is not flagged for any rename, which covers file renames and directory reorganization. This is deliberate, to keep reorganization and agent-driven moves unblocked.
+
+## How CI is configured
+
+`.buildkite/test.rules.txt` maps file-change patterns to tag sets, and tags drive which CI suites run. Documentation routing splits three ways:
+
+- **`doc`** is build and validation infrastructure, not content: `.readthedocs.yaml`, `doc/requirements-doc.txt`, `.buildkite/doc.rayci.yml`, `.vale.ini`/`.vale/`, and the build scripts under `doc/`. Docs-only deplock changes (`python/deplocks/docs/*.lock`, `ci/raydepsets/configs/docs.depsets.yaml`) tag `doc doc_api python_dependencies` to skip the full python-deps test set.
+- **`<lib>_doc`** (`core_doc`, `data_doc`, `ml_doc`, `rllib_doc`, `serve_doc`) routes executable doc assets to that library's `<library>: docs example tests` step, so a one-library doc change runs only that library's examples. Ray Core owns the fallback; `doc/source/llm/` routes to the general `llm` tag instead.
+- **`doc_api`** covers the API reference pages and autodoc machinery. It's the entire trigger for the two API-consistency checks, which carry no `if:` guard, so a surface that stops emitting `doc_api` stops being checked silently.
+
+Prose and images trigger nothing: a change to only `.md`, `.rst`, or image files under `doc/` runs no library test steps. Config assets examples consume (`.yaml`, `.sh`) still route to the owning library, because they can change what a test does. Contributor-facing detail: `doc/source/ray-contribute/ci.md`.
+
+## Scope discipline for PRs
+
+For docs-only fixes, take the lightest path:
+
+- Touch only files under `doc/`. A prose-only change runs no library tests at all, the cheapest path there is.
+- Don't bundle in a non-doc change "while you're at it" — that change pulls its own (often expensive) test set into the PR.
+- The `docs-go` label skips the per-library docs example steps on a content-only PR. It's optional, and applying it takes write access, so suggest it to the reviewer rather than assuming the PR author can add it. A guard step, `lint: validate docs-go scope`, fails unless every changed file is documentation content (under `doc/`, the Vale configuration at `.vale.ini` and `.vale/`, or the API-consistency checker at `ci/ray_ci/doc/`, excluding `BUILD` files everywhere), so the label never skips tests on a library, build, or general CI change. If the guard fails, removing the label isn't enough: push a new commit, because a rebuild replays the old label set.
+- If a docs change requires a non-doc change to land cleanly (e.g., autodoc references a renamed symbol), land them in the larger non-doc PR, not a docs-led PR.
+
+For generated API docs that depend on Python source under `python/ray/...`, expect broader test runs. That's correct, not a misconfiguration.
+
+## DCO sign-off
+
+Every commit on a `ray-project/ray` PR needs a `Signed-off-by:` trailer (Developer Certificate of Origin). Pass `--signoff` to `git commit`, or `git commit --amend --signoff` to fix an unsigned commit. The DCO GitHub check fails the PR otherwise.
+
+## When to revise the test rules
+
+If a docs-only PR hits unnecessarily broad tests, file a `.buildkite/test.rules.txt` PR (precedent: #63132) instead of working around it. Quick check: can the file change any build artifact, runtime behavior, or API surface? If no, it belongs on the prose skip rule or the owning library's `<lib>_doc` tag, not on a library's full test set.
+
+## Cross-references between .md and .rst sources
+
+When linking from .md to a doc whose source is .rst, use the {doc} role, not a bare `[text](path.md)` link: `` {doc}`Ray documentation home page </index>` ``. MyST-Parser 2.0 has a cross-extension resolution bug — a bare `[text](path.md)` link to an .rst source emits `myst.xref_missing`, which `fail_on_warning: true` in `.readthedocs.yaml` turns into a build failure.
+
+## Comparing PR previews against `/en/master` vs `/en/latest`
+
+For regression checks, compare a PR preview against `/en/master` — it's the docs build of the same master state your PR branches from, so byte-level content diffs against master are attributable to the stack. `/en/latest` is the last tagged release and lags master by every unreleased commit, so diffs there mix in upstream feature work and don't isolate regressions. Use `/en/latest` only to inventory net-new content since the last release.
+
+## Editing the docs lockfile
+
+`doc/requirements-doc.txt` is source of truth; `python/deplocks/docs/docbuild_depset_py3.11.lock` is regenerated by raydepsets, and CI's `raydepsets --check` enforces consistency.
+
+- Additive packages or version bumps with unchanged dep trees: hand-edit the package's entry block plus its via comments. Precedent: #63130.
+- Version bumps that change a package's direct deps (gaining or losing requirements): regenerate via `bazelisk run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/docs.depsets.yaml`. Hand-edits miss transitive churn — precedent: #63344 caught a stale `# via pydata-sphinx-theme` line under `packaging` after the theme dropped that dep.
+
+## Anonymizing paths in notebook output cells
+
+`/home/ray` is Ray's runtime home directory in containers and clusters, not a personal-path leak — never anonymize it. Anonymize only real user identifiers: personal home prefixes (`/Users/<name>`, `/home/<person>`) become `~`, and experiment or output dirs that encode a person or the deprecated AIR runtime (e.g. `christy-air`) become a neutral equivalent such as `ray_results`. Precedent: #63464.
+
+## Skills
+
+- `/lint` — run linters on modified files.
+- `/fetch-buildkite-logs` — pull build logs for CI failures.
+
+See top-level `.claude/CLAUDE.md` for the full skill index.

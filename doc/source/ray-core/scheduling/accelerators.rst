@@ -1,3 +1,6 @@
+.. meta::
+   :description: Use accelerators in Ray tasks and actors: start nodes with GPUs, request fractional accelerators, and pin to accelerator types.
+
 .. _gpu-support:
 .. _accelerator-support:
 
@@ -42,6 +45,12 @@ The accelerators natively supported by Ray Core are:
    * - METAX GPU
      - GPU
      - Experimental, supported by the community
+   * - FuriosaAI
+     - FURIOSA
+     - Experimental, supported by the community
+   * - Mobilint MBLT
+     - MBLT
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -76,10 +85,11 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
         .. tip::
 
-            You can set the ``ONEAPI_DEVICE_SELECTOR`` environment variable before starting a Ray node
+            You can set the ``ZE_AFFINITY_MASK`` environment variable before starting a Ray node
             to limit the Intel GPUs that are visible to Ray.
-            For example, ``ONEAPI_DEVICE_SELECTOR=1,3 ray start --head --num-gpus=2``
+            For example, ``ZE_AFFINITY_MASK=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
+            ``ONEAPI_DEVICE_SELECTOR`` is still read as a fallback for backward compatibility.
 
     .. tab-item:: AWS Neuron Core
         :sync: AWS Neuron Core
@@ -141,6 +151,41 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the METAX GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
+            lets Ray only see devices 1 and 3.
+
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        .. tip::
+
+            You can set the ``FURIOSA_DEVICES`` environment variable before starting a Ray node
+            to limit the FuriosaAI NPUs that are visible to Ray, using ``npu:<id>`` tokens.
+            For example, ``FURIOSA_DEVICES=npu:1,npu:3 ray start --head``
+            lets Ray only see devices 1 and 3 (Ray auto-detects the count).
+            Bare integer IDs (e.g., ``FURIOSA_DEVICES=1,3``) are also accepted on read.
+
+        .. note::
+
+            When using the ``furiosa_llm.LLM`` Python API inside a Ray task or actor,
+            pass the assigned devices explicitly; ``LLM(devices=None)`` would
+            allocate all visible NPUs and bypass Ray's per-worker isolation::
+
+                from furiosa_llm import LLM
+                llm = LLM(model_path, devices=os.environ["FURIOSA_DEVICES"])
+
+            ``furiosa-llm`` also accepts the PE-level form ``npu:X:Y``
+            (e.g., ``npu:0:0-3`` for fused PE 0-3 of NPU 0), but Ray currently
+            treats each NPU as a single resource and does not preserve PE
+            ranges through worker scheduling.
+
+    .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        .. tip::
+
+            You can set the ``QBRUNTIME_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            to limit the Mobilint MBLTs that are visible to Ray.
+            For example, ``QBRUNTIME_VISIBLE_DEVICES=1,3 ray start --head --resources='{"MBLT": 2}'``
             lets Ray only see devices 1 and 3.
 .. note::
 
@@ -254,12 +299,12 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             class GPUActor:
                 def ping(self):
                     print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
-                    print("ONEAPI_DEVICE_SELECTOR: {}".format(os.environ["ONEAPI_DEVICE_SELECTOR"]))
+                    print("ZE_AFFINITY_MASK: {}".format(os.environ["ZE_AFFINITY_MASK"]))
 
             @ray.remote(num_gpus=1)
             def gpu_task():
                 print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
-                print("ONEAPI_DEVICE_SELECTOR: {}".format(os.environ["ONEAPI_DEVICE_SELECTOR"]))
+                print("ZE_AFFINITY_MASK: {}".format(os.environ["ZE_AFFINITY_MASK"]))
 
             gpu_actor = GPUActor.remote()
             ray.get(gpu_actor.ping.remote())
@@ -270,9 +315,9 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             :options: +MOCK
 
             (GPUActor pid=52420) GPU IDs: [0]
-            (GPUActor pid=52420) ONEAPI_DEVICE_SELECTOR: 0
+            (GPUActor pid=52420) ZE_AFFINITY_MASK: 0
             (gpu_task pid=51830) GPU IDs: [1]
-            (gpu_task pid=51830) ONEAPI_DEVICE_SELECTOR: 1
+            (gpu_task pid=51830) ZE_AFFINITY_MASK: 1
 
     .. tab-item:: AWS Neuron Core
         :sync: AWS Neuron Core
@@ -508,6 +553,84 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (gpu_task pid=51830) GPU IDs: [1]
             (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"FURIOSA": 2})
+
+            @ray.remote(resources={"FURIOSA": 1})
+            class RNGDActor:
+                def ping(self):
+                    print("RNGD IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["FURIOSA"]))
+                    print("FURIOSA_DEVICES: {}".format(os.environ["FURIOSA_DEVICES"]))
+
+            @ray.remote(resources={"FURIOSA": 1})
+            def rngd_task():
+                print("RNGD IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["FURIOSA"]))
+                print("FURIOSA_DEVICES: {}".format(os.environ["FURIOSA_DEVICES"]))
+
+            rngd_actor = RNGDActor.remote()
+            ray.get(rngd_actor.ping.remote())
+            # The actor uses the first RNGD so the task uses the second one.
+            ray.get(rngd_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (RNGDActor pid=52420) RNGD IDs: ['0']
+            (RNGDActor pid=52420) FURIOSA_DEVICES: npu:0
+            (rngd_task pid=51830) RNGD IDs: ['1']
+            (rngd_task pid=51830) FURIOSA_DEVICES: npu:1
+
+    .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(resources={"MBLT": 2})
+
+            @ray.remote(resources={"MBLT": 1})
+            class MBLTActor:
+                def ping(self):
+                    print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
+                    print("QBRUNTIME_VISIBLE_DEVICES: {}".format(os.environ["QBRUNTIME_VISIBLE_DEVICES"]))
+
+            @ray.remote(resources={"MBLT": 1})
+            def mblt_task():
+                print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
+                print("QBRUNTIME_VISIBLE_DEVICES: {}".format(os.environ["QBRUNTIME_VISIBLE_DEVICES"]))
+
+            mblt_actor = MBLTActor.remote()
+            ray.get(mblt_actor.ping.remote())
+            # The actor uses the first MBLT so the task uses the second one.
+            ray.get(mblt_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (MBLTActor pid=52420) MBLT IDs: [0]
+            (MBLTActor pid=52420) QBRUNTIME_VISIBLE_DEVICES: 0
+            (mblt_task pid=51830) MBLT IDs: [1]
+            (mblt_task pid=51830) QBRUNTIME_VISIBLE_DEVICES: 1
+
 Inside a task or actor, :func:`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a
 list of accelerator IDs that are available to the task or actor.
 Typically, it is not necessary to call ``get_accelerator_ids()`` because Ray
@@ -678,6 +801,16 @@ so multiple tasks and actors can share the same accelerator.
             # and share the same GPU.
             ray.get([f.remote() for _ in range(4)])
 
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        FuriosaAI doesn't support fractional resources.
+
+    .. tab-item:: Mobilint MBLT
+        :sync: Mobilint MBLT
+
+        Mobilint MBLT doesn't support fractional resources.
+
 **Note:** It is the user's responsibility to make sure that the individual tasks
 don't use more than their share of the accelerator memory.
 Pytorch and TensorFlow can be configured to limit its memory usage.
@@ -728,7 +861,7 @@ in the :func:`ray.remote <ray.remote>` decorator.
 
     # By default, ray does not reuse workers for GPU tasks to prevent
     # GPU resource leakage.
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_gpus=1, max_calls=0)
     def leak_gpus():
         import tensorflow as tf
 

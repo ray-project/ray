@@ -375,6 +375,7 @@ class CloudObjectCache:
             fetch_fn: Function to fetch values (can be sync or async)
             missing_expire_seconds: How long to cache missing objects (None for no expiration)
             exists_expire_seconds: How long to cache existing objects (None for no expiration)
+            missing_object_value: Sentinel value used to represent a missing object in the cache.
         """
         self._cache: Dict[str, _CacheEntry] = {}
         self._max_size = max_size
@@ -422,6 +423,9 @@ class CloudObjectCache:
 
     def _check_cache(self, key: str) -> tuple[Any, bool]:
         """Check if key exists in cache and is valid.
+
+        Args:
+            key: The cache key to check.
 
         Returns:
             Tuple of (value, should_fetch)
@@ -517,6 +521,9 @@ def remote_object_cache(
         missing_expire_seconds: How long to cache missing objects
         exists_expire_seconds: How long to cache existing objects
         missing_object_value: Value to use for missing objects
+
+    Returns:
+        A decorator that wraps an async function with cache lookup.
     """
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:

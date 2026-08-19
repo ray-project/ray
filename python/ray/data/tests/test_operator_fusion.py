@@ -21,12 +21,13 @@ from ray.data._internal.logical.operators import (
     MapRows,
     Project,
     Read,
+    Write,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import rows_same
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.expressions import star
 from ray.data.tests.conftest import *  # noqa
@@ -466,7 +467,7 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in stats
     assert "ReadRange->MapBatches(fn)" not in stats
     # Ensure all three operators are also present in usage record
-    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
+    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlocks"])
 
 
 def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
@@ -528,7 +529,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     assert "Operator 1 ReadRange" in ds.stats()
     assert "Operator 2 Repartition" in ds.stats()
     assert "Operator 3 Map(fn)->RandomShuffle" in ds.stats()
-    _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
+    _check_usage_record(["ReadRange", "RandomShuffle", "MapRows"])
 
     ctx.target_max_block_size = old_target_max_block_size
 
@@ -554,6 +555,120 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
         assert "ReadRange->MapBatches(fn)" in ds.stats()
         assert "Repartition" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
+
+
+def test_fuse_map_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+    ds = ray.data.range(100).repartition(4, keys=["id"]).map_batches(lambda b: b)
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == (
+        "HashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
+    )
+    assert dag._fused_output_map_transformer is not None
+
+    assert sorted(extract_values("id", ds.take_all())) == list(range(100))
+
+
+def test_fused_shuffle_reduce_preserves_operator_config(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Fusing a map into ShuffleReduceOp must carry over operator-level config.
+
+    Regression test: the fusion rule rebuilds the reduce op, and used to drop
+    peak_memory_multiplier (resetting the sorted reduce's 3x memory request
+    back to the 2x default) and should_emit_empty_partitions.
+    """
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"], sort=True)
+        .map_batches(lambda b: b)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == (
+        "HashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
+    )
+    assert dag._fused_output_map_transformer is not None
+    assert dag._peak_memory_multiplier == 3
+
+
+def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"])
+        .map_batches(lambda b: b)
+        .limit(10)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "limit=10"
+    map_op = dag.input_dependencies[0]
+    assert map_op.name == "MapBatches(<lambda>)"
+    reduce_op = map_op.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
+
+    assert len(ds.take_all()) == 10
+
+
+def test_concurrency_capped_map_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"])
+        .map_batches(lambda b: b, concurrency=2)
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "MapBatches(<lambda>)"
+    reduce_op = dag.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
+
+
+def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    from ray.data.datasource.datasink import Datasink
+
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+    class _NoopDatasink(Datasink):
+        def write(self, blocks, ctx):
+            for _ in blocks:
+                pass
+            return None
+
+    repartitioned = ray.data.range(100).repartition(4, keys=["id"])
+    write_op = Write(
+        _NoopDatasink(),
+        input_dependencies=[repartitioned._logical_plan.dag],
+    )
+    dag = get_execution_plan(LogicalPlan(write_op, DataContext.get_current()))[0].dag
+
+    # The write stays a separate root op feeding off an un-fused reduce.
+    assert dag.name == "Write"
+    reduce_op = dag.input_dependencies[0]
+    assert reduce_op.name == "HashShuffleReduce(keys=('id',), partitions=4)"
+    assert reduce_op._fused_output_map_transformer is None
 
 
 def test_read_map_batches_operator_fusion_with_sort_operator(
@@ -634,7 +749,7 @@ def test_read_map_chain_operator_fusion_e2e(
         "->MapBatches(<lambda>)->FlatMap(<lambda>):"
     )
     assert name in ds.stats()
-    _check_usage_record(["ReadRange", "Filter", "Map", "MapBatches", "FlatMap"])
+    _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
 
 
 def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):

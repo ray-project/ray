@@ -175,18 +175,21 @@ def prepare_model(
     workers or the device type being used (CPU, GPU).
 
     Args:
-        model (torch.nn.Module): A torch model to prepare.
+        model: A torch model to prepare.
         move_to_device: Either a boolean indiciating whether to move
             the model to the correct device or an actual device to
             move the model to. If set to False, the model needs
             to manually be moved to the correct device.
-        parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
-            in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
-            or neither.
-        parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+        parallel_strategy: Whether to wrap models in
+            ``DistributedDataParallel``, ``FullyShardedDataParallel``,
+            or neither. Must be one of ``"ddp"``, ``"fsdp"``, or ``None``.
+        parallel_strategy_kwargs: Args to pass into
             ``DistributedDataParallel`` or ``FullyShardedDataParallel``
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
+
+    Returns:
+        The prepared model, wrapped according to ``parallel_strategy``.
     """
     if parallel_strategy == "fsdp" and Version(torch.__version__) < Version("1.11.0"):
         raise ImportError(
@@ -300,8 +303,7 @@ def prepare_data_loader(
                 ...
 
     Args:
-        data_loader (torch.utils.data.DataLoader): The DataLoader to
-            prepare.
+        data_loader: The DataLoader to prepare.
         add_dist_sampler: Whether to add a DistributedSampler to
             the provided DataLoader.
         move_to_device: If set, automatically move the data
@@ -312,6 +314,9 @@ def prepare_data_loader(
             training procedure). If device is CPU, it will be disabled
             regardless of the setting. This configuration will be ignored
             if ``move_to_device`` is False.
+
+    Returns:
+        The prepared DataLoader.
     """
     record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_DATALOADER, "1")
 

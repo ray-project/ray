@@ -1,9 +1,15 @@
+---
+myst:
+  html_meta:
+    description: "Monitor Ray Serve LLM deployments with service-level and engine metrics, a Grafana dashboard, and usage data collection."
+---
+
 (observability-guide)=
 # Observability and monitoring
 
 Monitor your LLM deployments with built-in metrics, dashboards, and logging.
 
-Ray Serve LLM provides comprehensive observability with the following features:
+Ray Serve LLM includes the following observability features:
 
 - **Service-level metrics**: Request and token behavior across deployed models.
 - **Engine metrics**: vLLM-specific performance metrics such as TTFT and TPOT.

@@ -1,7 +1,7 @@
 import itertools
 import logging
 from dataclasses import replace
-from typing import Iterable, List, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.memory_tracing import trace_deallocation
@@ -155,7 +155,7 @@ def _drop_empty_block_split(block_split_indices: List[int], num_rows: int) -> Li
 def _split_all_blocks(
     blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
     per_block_split_indices: List[List[int]],
-    owned_by_consumer: bool,
+    label_selector: Optional[Dict[str, str]] = None,
 ) -> Iterable[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Split all the input blocks based on the split indices"""
     split_single_block = cached_remote_fn(_split_single_block)
@@ -177,9 +177,13 @@ def _split_all_blocks(
             all_blocks_split_results[block_id] = [(block_ref, meta)]
         else:
             # otherwise call split remote function.
-            object_refs = split_single_block.options(
-                scheduling_strategy="SPREAD", num_returns=2 + len(block_split_indices)
-            ).remote(
+            options = {
+                "scheduling_strategy": "SPREAD",
+                "num_returns": 2 + len(block_split_indices),
+            }
+            if label_selector:
+                options["label_selector"] = label_selector
+            object_refs = split_single_block.options(**options).remote(
                 block_id,
                 block_ref,
                 meta,
@@ -199,15 +203,10 @@ def _split_all_blocks(
             assert len(meta) == len(block_refs)
             all_blocks_split_results[block_id] = zip(block_refs, meta)
 
-    # We make a copy for the blocks that have been splitted, so the input blocks
-    # can be cleared if they are owned by consumer (consumer-owned blocks will
-    # only be consumed by the owner).
-    if owned_by_consumer:
-        for b in blocks_splitted:
-            trace_deallocation(b, "split._split_all_blocks")
-    else:
-        for b in blocks_splitted:
-            trace_deallocation(b, "split._split_all_blocks", free=False)
+    # Record the deallocation of the original (now split) blocks for memory
+    # tracing. Reclamation is handled by Ray reference counting.
+    for b in blocks_splitted:
+        trace_deallocation(b, "split._split_all_blocks")
 
     return itertools.chain.from_iterable(all_blocks_split_results)
 
@@ -247,17 +246,17 @@ def _generate_global_split_results(
 def _split_at_indices(
     blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
     indices: List[int],
-    owned_by_consumer: bool,
     block_rows: List[int] = None,
+    label_selector: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
     """Split blocks at the provided indices.
 
     Args:
         blocks_with_metadata: Block futures to split, including the associated metadata.
         indices: The (global) indices at which to split the blocks.
-        owned_by_consumer: Whether the provided blocks are owned by the consumer.
         block_rows: The number of rows for each block, in case it has already been
             computed.
+        label_selector: Optional label selector applied to the split remote tasks.
 
     Returns:
         The block split futures and their metadata. If an index split is empty, the
@@ -280,7 +279,9 @@ def _split_at_indices(
     all_blocks_split_results: Iterable[
         Tuple[ObjectRef[Block], BlockMetadata]
     ] = _split_all_blocks(
-        blocks_with_metadata, per_block_split_indices, owned_by_consumer
+        blocks_with_metadata,
+        per_block_split_indices,
+        label_selector=label_selector,
     )
 
     # phase 3: generate the final split.

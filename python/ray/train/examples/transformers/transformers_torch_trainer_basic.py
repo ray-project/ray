@@ -19,7 +19,7 @@ from ray.train.torch import TorchTrainer
 # ====================================================================
 def train_func(config):
     # Datasets
-    dataset = load_dataset("yelp_review_full")
+    dataset = load_dataset("Yelp/yelp_review_full")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
     def tokenize_function(examples):
@@ -45,7 +45,7 @@ def train_func(config):
 
     # Hugging Face Trainer
     training_args = TrainingArguments(
-        output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
+        output_dir="test_trainer", eval_strategy="epoch", report_to="none"
     )
 
     trainer = Trainer(

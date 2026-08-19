@@ -36,7 +36,7 @@ def mock_vllm_wrapper():
                     request_id=0,
                     prompt=row["prompt"],
                     prompt_token_ids=None,
-                    images=[],
+                    multimodal_data=None,
                     params=row["sampling_params"],
                     idx_in_batch=row["__idx_in_batch"],
                 ),
@@ -302,7 +302,6 @@ async def test_vllm_wrapper_forwards_lora_request(task_type):
         idx_in_batch=0,
         prompt="hello",
         prompt_token_ids=None,
-        images=[],
         multimodal_data=None,
         mm_processor_kwargs=None,
         multimodal_uuids=None,
@@ -319,6 +318,36 @@ async def test_vllm_wrapper_forwards_lora_request(task_type):
         else wrapper.engine.encode
     )
     assert expected.call_args.kwargs.get("lora_request") is sentinel_lora
+
+
+def _make_bare_wrapper():
+    """Build a vLLMEngineWrapper without invoking __init__ (which boots vLLM)."""
+    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
+    wrapper.request_id = 0
+    wrapper.idx_in_batch_column = "__idx_in_batch"
+    wrapper.task_type = vLLMTaskType.GENERATE
+    wrapper.model = "test-model"
+    wrapper.lora_lock = asyncio.Lock()
+    wrapper.lora_name_to_request = {}
+    return wrapper
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_uses_explicit_multimodal_data():
+    """Explicit multimodal data is propagated to the engine request."""
+    wrapper = _make_bare_wrapper()
+
+    sentinel_image = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "multimodal_data": {"image": [sentinel_image]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+
+    assert request.multimodal_data == {"image": [sentinel_image]}
 
 
 @pytest.mark.asyncio
@@ -412,9 +441,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     "pooling_params,tokenization_kwargs,expect_same_output",
     [
         ({}, None, True),
-        # Keep to verify backward compatibility
-        ({"truncate_prompt_tokens": 3}, None, False),
-        # Prefer truncation via tokenization_kwargs
+        # Truncation via tokenization_kwargs.
         (None, {"truncation": True, "max_length": 3}, False),
     ],
 )
@@ -473,20 +500,11 @@ async def test_vllm_wrapper_embed_pooling_params(
     wrapper.shutdown()
 
 
-@pytest.mark.parametrize(
-    "pooling_params,tokenization_kwargs",
-    [
-        # Keep to verify backward compatibility
-        ({"truncate_prompt_tokens": -1}, None),
-        # Preferred path: tokenization_kwargs truncation
-        (None, {"truncation": True, "max_length": 2048}),
-    ],
-    ids=["truncate_prompt_tokens_compat", "tokenization_kwargs"],
-)
 @pytest.mark.asyncio
-async def test_vllm_wrapper_embed_long_prompt(
-    model_opt_125m, pooling_params, tokenization_kwargs
-):
+async def test_vllm_wrapper_embed_long_prompt(model_opt_125m):
+    # Preferred path: tokenization_kwargs truncation.
+    pooling_params = None
+    tokenization_kwargs = {"truncation": True, "max_length": 2048}
     # Sufficiently long prompt to trigger truncation to max_model_len
     max_model_len = 2048
     prompt = "Hello! How's the weather?" * 10_000
@@ -572,14 +590,9 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
     wrapper.shutdown()
 
 
-@pytest.mark.parametrize("param_key", ["guided_decoding", "structured_outputs"])
 @pytest.mark.asyncio
-async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
-    """Test the JSON output with xgrammar backend.
-
-    This test verifies both the new structured_outputs API and backward
-    compatibility with the deprecated guided_decoding parameter.
-    """
+async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
+    """Test JSON output with the structured_outputs sampling param."""
 
     class AnswerModel(BaseModel):
         answer: int
@@ -608,7 +621,7 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
             "sampling_params": {
                 "max_tokens": 100,
                 "temperature": 0.7,
-                param_key: {"json": json_schema},
+                "structured_outputs": {"json": json_schema},
             },
         },
     ]

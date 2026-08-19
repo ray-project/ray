@@ -16,6 +16,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -23,6 +24,7 @@
 
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/gcs/store_client/redis_async_context.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/tag_defs.h"
@@ -182,9 +184,9 @@ class RedisContext {
   /// \return CallbackReply(The reply from redis).
   std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
 
-  void ValidateRedisDB();
+  Status ValidateRedisDB();
 
-  bool IsRedisSentinel();
+  StatusOr<bool> IsRedisSentinel();
 
   Status ConnectRedisCluster(const std::string &username,
                              const std::string &password,
@@ -197,6 +199,7 @@ class RedisContext {
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
+  int64_t redis_db_probe_timeout_milliseconds_;
 };
 
 }  // namespace ray::gcs

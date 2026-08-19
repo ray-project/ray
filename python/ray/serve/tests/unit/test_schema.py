@@ -14,6 +14,7 @@ from ray.serve._private.deploy_utils import get_app_code_version
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     DeploymentActorConfig,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
@@ -21,12 +22,14 @@ from ray.serve.config import (
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
+    ControllerHealthMetrics,
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    TracingConfig,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -138,6 +141,10 @@ class TestRayActorOptionsSchema:
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         RayActorOptionsSchema.model_validate(ray_actor_options_schema)
+
+    def test_invalid_label_selector(self):
+        with pytest.raises(ValidationError, match="Invalid label key name"):
+            RayActorOptionsSchema.model_validate({"label_selector": {"-bad-key-": "v"}})
 
     def test_ge_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -301,6 +308,34 @@ class TestDeploymentSchema:
             DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = -100
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+    def test_validate_backpressure_config(self):
+        # Dict inputs are coerced into `BackpressureConfig` so invalid values
+        # fail at config parse time, not at deploy time.
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["backpressure_config"] = {
+            "status_code": 429,
+            "retry_after_s": 7,
+        }
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert isinstance(schema.backpressure_config, BackpressureConfig)
+        assert schema.backpressure_config.status_code == 429
+        assert schema.backpressure_config.retry_after_s == 7
+
+        deployment_schema["backpressure_config"] = {"status_code": 404}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+        deployment_schema["backpressure_config"] = {"retry_after_s": float("inf")}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+        # Unknown keys (e.g. typos) are rejected rather than silently dropped.
+        deployment_schema["backpressure_config"] = {"retry_after": 5}
         with pytest.raises(ValidationError):
             DeploymentSchema.model_validate(deployment_schema)
 
@@ -1454,6 +1489,52 @@ def test_serve_instance_details_is_json_serializable():
     assert "_serialized_policy_def" not in autoscaling_config
 
 
+def test_serve_instance_details_default_controller_health_metrics():
+    """ServeInstanceDetails.controller_health_metrics defaults to a
+    ControllerHealthMetrics instance with zeroed values."""
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+    )
+
+    assert isinstance(details.controller_health_metrics, ControllerHealthMetrics)
+    assert details.controller_health_metrics.timestamp == 0.0
+    assert details.controller_health_metrics.num_control_loops == 0
+    assert details.controller_health_metrics.last_control_loop_time == 0.0
+
+
+def test_serve_instance_details_includes_controller_health_metrics():
+    """When controller_health_metrics is explicitly set, it should appear in the
+    user-facing JSON-serializable representation."""
+    health_metrics = ControllerHealthMetrics(
+        timestamp=1000.0,
+        controller_start_time=900.0,
+        uptime_s=100.0,
+        num_control_loops=50,
+        last_control_loop_time=999.5,
+    )
+    details = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+        controller_health_metrics=health_metrics,
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+
+    assert "controller_health_metrics" in details
+    serialized = details["controller_health_metrics"]
+    assert serialized["timestamp"] == 1000.0
+    assert serialized["controller_start_time"] == 900.0
+    assert serialized["uptime_s"] == 100.0
+    assert serialized["num_control_loops"] == 50
+    assert serialized["last_control_loop_time"] == 999.5
+
+    # Should be JSON serializable end-to-end.
+    json.dumps(details)
+
+
 def test_deployment_info_to_schema_includes_max_replicas_per_node():
     """_deployment_info_to_schema should propagate max_replicas_per_node
     from ReplicaConfig into the resulting DeploymentSchema."""
@@ -1499,6 +1580,60 @@ def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
 
     schema = _deployment_info_to_schema("test_deployment", info)
     assert schema.max_replicas_per_node is DEFAULT.VALUE
+
+
+class TestTracingConfig:
+    """Tests for the TracingConfig schema."""
+
+    def test_default_values(self):
+        """Test that default TracingConfig has sensible defaults."""
+        config = TracingConfig()
+        assert config.enabled is False
+        assert config.exporter_import_path == ""
+        assert config.sampling_ratio == 0.01
+
+    def test_enabled(self):
+        """Test creating an enabled tracing config."""
+        config = TracingConfig(enabled=True)
+        assert config.enabled is True
+
+    def test_disabled(self):
+        """Test creating an explicitly disabled tracing config."""
+        config = TracingConfig(enabled=False)
+        assert config.enabled is False
+
+    def test_custom_exporter(self):
+        """Test setting a custom exporter import path."""
+        config = TracingConfig(
+            enabled=True,
+            exporter_import_path="my.module:custom_exporter",
+            sampling_ratio=0.5,
+        )
+        assert config.exporter_import_path == "my.module:custom_exporter"
+        assert config.sampling_ratio == 0.5
+
+    def test_sampling_ratio_validation(self):
+        """Test that sampling_ratio must be between 0.0 and 1.0."""
+        with pytest.raises(ValidationError):
+            TracingConfig(sampling_ratio=-0.1)
+        with pytest.raises(ValidationError):
+            TracingConfig(sampling_ratio=1.1)
+
+        # Boundary values should work
+        config = TracingConfig(sampling_ratio=0.0)
+        assert config.sampling_ratio == 0.0
+        config = TracingConfig(sampling_ratio=1.0)
+        assert config.sampling_ratio == 1.0
+
+    def test_extra_fields_forbidden(self):
+        """Test that extra fields are not allowed."""
+        with pytest.raises(ValidationError):
+            TracingConfig(enabled=True, unknown_field="value")
+
+    def test_enabled_with_empty_exporter(self):
+        """Test that enabled=True with empty exporter stays empty (no auto-fill)."""
+        config = TracingConfig(enabled=True, exporter_import_path="")
+        assert config.exporter_import_path == ""
 
 
 if __name__ == "__main__":

@@ -1,14 +1,14 @@
-name: "ml$BUILD_VARIANT-py$PYTHON"
+name: "ml$IMAGE_TYPE-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_$BASE_TYPE-py$PYTHON"]
 dockerfile: ci/docker/ml.build.Dockerfile
 srcs:
   - ci/env/install-hdfs.sh
-  - python/deplocks/ci/ml-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
+  - python/deplocks/ci/ml-$IMAGE_TYPE-ci_depset_py$PYTHON.lock
   - python/deplocks/ci/ci_ml_thirdparty_depset_py$PYTHON.lock
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_$BASE_TYPE-py$PYTHON
   - RAYCI_IS_GPU_BUILD
   - PYTHON
-  - BUILD_VARIANT
+  - IMAGE_TYPE
 tags:
-  - cr.ray.io/rayproject/ml$BUILD_VARIANT-py$PYTHON
+  - cr.ray.io/rayproject/ml$IMAGE_TYPE-py$PYTHON

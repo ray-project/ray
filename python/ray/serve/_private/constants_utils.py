@@ -1,6 +1,6 @@
 import os
 import warnings
-from typing import Callable, List, Optional, Type, TypeVar
+from typing import Callable, List, Optional, Type, TypeVar, Union, overload
 
 
 def str_to_list(s: str) -> List[str]:
@@ -103,6 +103,7 @@ def _get_env_value(
     """
     _validate_name(name)
 
+    raw: Union[str, T]
     explicitly_defined_value = os.environ.get(name)
     if explicitly_defined_value is None:
         if default is None:
@@ -110,11 +111,10 @@ def _get_env_value(
         else:
             raw = default
     else:
-        _deprecation_warning(name)
         raw = explicitly_defined_value
 
     try:
-        value = value_type(raw)
+        value = value_type(raw)  # type: ignore[call-arg]
     except ValueError as e:
         raise ValueError(
             f"Environment variable `{name}` value `{raw}` cannot be converted to `{value_type.__name__}`!"
@@ -127,6 +127,16 @@ def _get_env_value(
         )
 
     return value
+
+
+@overload
+def get_env_int(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int(name: str, default: None) -> Optional[int]:
+    ...
 
 
 def get_env_int(name: str, default: Optional[int]) -> Optional[int]:
@@ -145,6 +155,16 @@ def get_env_int(name: str, default: Optional[int]) -> Optional[int]:
     return _get_env_value(name, default, int)
 
 
+@overload
+def get_env_int_positive(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int_positive(name: str, default: None) -> Optional[int]:
+    ...
+
+
 def get_env_int_positive(name: str, default: Optional[int]) -> Optional[int]:
     """Get environment variable as a positive integer.
 
@@ -158,7 +178,24 @@ def get_env_int_positive(name: str, default: Optional[int]) -> Optional[int]:
     Raises:
         ValueError: If the value cannot be converted to an integer or is not positive.
     """
-    return _get_env_value(name, default, int, lambda x: x > 0, "positive")
+    return _get_env_value(
+        name,
+        default,
+        int,
+        # Only called on converted values, never the `None` default.
+        lambda x: x > 0,  # pyrefly: ignore[unsupported-operation]
+        "positive",
+    )
+
+
+@overload
+def get_env_int_non_negative(name: str, default: int) -> int:
+    ...
+
+
+@overload
+def get_env_int_non_negative(name: str, default: None) -> Optional[int]:
+    ...
 
 
 def get_env_int_non_negative(name: str, default: Optional[int]) -> Optional[int]:
@@ -174,7 +211,24 @@ def get_env_int_non_negative(name: str, default: Optional[int]) -> Optional[int]
     Raises:
         ValueError: If the value cannot be converted to an integer or is negative.
     """
-    return _get_env_value(name, default, int, lambda x: x >= 0, "non negative")
+    return _get_env_value(
+        name,
+        default,
+        int,
+        # Only called on converted values, never the `None` default.
+        lambda x: x >= 0,  # pyrefly: ignore[unsupported-operation]
+        "non negative",
+    )
+
+
+@overload
+def get_env_float(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float(name: str, default: None) -> Optional[float]:
+    ...
 
 
 def get_env_float(name: str, default: Optional[float]) -> Optional[float]:
@@ -193,6 +247,16 @@ def get_env_float(name: str, default: Optional[float]) -> Optional[float]:
     return _get_env_value(name, default, float)
 
 
+@overload
+def get_env_float_positive(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float_positive(name: str, default: None) -> Optional[float]:
+    ...
+
+
 def get_env_float_positive(name: str, default: Optional[float]) -> Optional[float]:
     """Get environment variable as a positive float.
 
@@ -206,7 +270,24 @@ def get_env_float_positive(name: str, default: Optional[float]) -> Optional[floa
     Raises:
         ValueError: If the value cannot be converted to a float or is not positive.
     """
-    return _get_env_value(name, default, float, lambda x: x > 0, "positive")
+    return _get_env_value(
+        name,
+        default,
+        float,
+        # Only called on converted values, never the `None` default.
+        lambda x: x > 0,  # pyrefly: ignore[unsupported-operation]
+        "positive",
+    )
+
+
+@overload
+def get_env_float_non_negative(name: str, default: float) -> float:
+    ...
+
+
+@overload
+def get_env_float_non_negative(name: str, default: None) -> Optional[float]:
+    ...
 
 
 def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[float]:
@@ -222,7 +303,24 @@ def get_env_float_non_negative(name: str, default: Optional[float]) -> Optional[
     Raises:
         ValueError: If the value cannot be converted to a float or is negative.
     """
-    return _get_env_value(name, default, float, lambda x: x >= 0, "non negative")
+    return _get_env_value(
+        name,
+        default,
+        float,
+        # Only called on converted values, never the `None` default.
+        lambda x: x >= 0,  # pyrefly: ignore[unsupported-operation]
+        "non negative",
+    )
+
+
+@overload
+def get_env_str(name: str, default: str) -> str:
+    ...
+
+
+@overload
+def get_env_str(name: str, default: None) -> Optional[str]:
+    ...
 
 
 def get_env_str(name: str, default: Optional[str]) -> Optional[str]:
@@ -265,42 +363,11 @@ _fully_deprecated_env_vars = {
 }
 
 
-def _deprecation_warning(name: str) -> None:
-    """Log replacement warning for wrong or legacy environment variables.
-
-    TODO: remove this function for the '3.0.0' release.
-
-    :param name: environment variable name
-    """
-
-    def get_new_name(name: str) -> str:
-        if name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S":
-            return "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S"
-        elif name == "SERVE_REQUEST_PROCESSING_TIMEOUT_S":
-            return "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S"
-        else:
-            return f"{required_prefix}{name}"
-
-    change_version = "3.0.0"
-    required_prefix = "RAY_SERVE_"
-
-    if (
-        name in _wrong_names_white_list
-        or name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S"
-    ):
-        new_name = get_new_name(name)
-        warnings.warn(
-            f"Starting from version `{change_version}` environment variable "
-            f"`{name}` will be deprecated. Please use `{new_name}` instead.",
-            FutureWarning,
-            stacklevel=4,
-        )
-
-
 def warn_if_deprecated_env_var_set(name: str) -> None:
     """Warn if a fully deprecated environment variable is set.
 
-    :param name: environment variable name
+    Args:
+        name: Environment variable name.
     """
     if name in _fully_deprecated_env_vars and os.environ.get(name):
         config_option = _fully_deprecated_env_vars[name]

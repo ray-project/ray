@@ -56,7 +56,9 @@ class FakeWorker : public WorkerInterface {
     RAY_CHECK(granted_lease_.has_value());
     return *granted_lease_;
   }
-  absl::Time GetGrantedLeaseTime() const override { return absl::InfiniteFuture(); }
+  std::optional<absl::Time> GetLastGrantedLeaseTime() const override {
+    return absl::InfiniteFuture();
+  }
   std::optional<bool> GetIsGpu() const override { return std::nullopt; }
   std::optional<bool> GetIsActorWorker() const override { return std::nullopt; }
   std::string IpAddress() const override { return "127.0.0.1"; }
@@ -97,14 +99,13 @@ class FakeWorker : public WorkerInterface {
   const rpc::Address &GetOwnerAddress() const override { return owner_address_; }
   std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
   void SetSavedProcessGroupId(pid_t pgid) override {}
-  void ActorCallArgWaitComplete(int64_t tag) override {}
+  void ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) override {}
   void ClearAllocatedInstances() override {}
   void ClearLifetimeAllocatedInstances() override {}
   const BundleID &GetBundleId() const override { return bundle_id_; }
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
   bool IsRegistered() override { return false; }
   rpc::CoreWorkerClientInterface *rpc_client() override { return nullptr; }
-  bool IsAvailableForScheduling() const override { return true; }
   void SetJobId(const JobID &job_id) override {}
   const ActorID &GetRootDetachedActorId() const override {
     return root_detached_actor_id_;

@@ -128,11 +128,14 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+    // Pin ray events off so WriteActorExportEvent exercises the export-API (file) path
+    // instead of short-circuiting to the RayEventRecorder.
     RayConfig::instance().initialize(
         R"(
 {
   "maximum_gcs_destroyed_actor_cached_count": 10,
-  "enable_export_api_write": true
+  "enable_export_api_write": true,
+  "enable_ray_event": false
 }
   )");
     std::promise<bool> promise;
@@ -152,8 +155,8 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[this]() -> double { return clock_.NowUnixMicros(); },
-        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
+        /*clock=*/clock_,
+        /*subscriber_timeout_ms=*/absl::ToInt64Milliseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(publisher));

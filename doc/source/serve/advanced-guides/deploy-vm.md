@@ -1,10 +1,14 @@
+---
+myst:
+  html_meta:
+    description: "Deploy a Ray Serve application to a VM-based cluster with serve deploy, including targeting a remote cluster."
+---
+
 (serve-in-production-deploying)=
 
 # Deploy on VM
 
-You can deploy your Serve application to production on a Ray cluster using the Ray Serve CLI.
-`serve deploy` takes in a config file path and it deploys that file to a Ray cluster over HTTP.
-This could either be a local, single-node cluster as in this example or a remote, multi-node cluster started with the [Ray Cluster Launcher](cloud-vm-index).
+You can deploy your Serve application to production on a Ray cluster using the Ray Serve CLI. `serve deploy` takes in a config file path and it deploys that file to a Ray cluster over HTTP. This could either be a local, single-node cluster as in this example or a remote, multi-node cluster started with the [Ray Cluster Launcher](cloud-vm-index).
 
 This section should help you:
 

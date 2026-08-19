@@ -250,7 +250,7 @@ def test_map_rows_e2e(ray_start_regular_shared_2_cpus):
     expected = [1, 2, 3, 4, 5]
     actual = sorted(extract_values("id", ds.take_all()))
     assert actual == expected, f"Expected {expected}, but got {actual}"
-    _check_usage_record(["ReadRange", "Map"])
+    _check_usage_record(["ReadRange", "MapRows"])
 
 
 def test_filter_operator(ray_start_regular_shared_2_cpus):

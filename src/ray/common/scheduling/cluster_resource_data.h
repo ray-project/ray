@@ -88,7 +88,11 @@ class ResourceRequest {
   void Clear() { resources_.Clear(); }
 
   bool operator==(const ResourceRequest &other) const {
-    return this->resources_ == other.resources_;
+    // Compare every field: two requests with equal quantities but different
+    // label selectors or object-store-memory flags are not interchangeable.
+    return this->resources_ == other.resources_ &&
+           this->requires_object_store_memory_ == other.requires_object_store_memory_ &&
+           this->label_selector_ == other.label_selector_;
   }
 
   bool operator<=(const ResourceRequest &other) const {
@@ -99,9 +103,7 @@ class ResourceRequest {
     return this->resources_ >= other.resources_;
   }
 
-  bool operator!=(const ResourceRequest &other) const {
-    return this->resources_ != other.resources_;
-  }
+  bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
   ResourceRequest operator+(const ResourceRequest &other) const {
     ResourceRequest res = *this;
@@ -399,7 +401,13 @@ struct Node {
   std::optional<absl::Time> local_view_modified_ts_;
 };
 
-/// \request Conversion result to a ResourceRequest data structure.
+/// Convert a map of resources to a NodeResources data structure.
+///
+/// \param resource_map_total: Total capacities of resources we want to convert.
+/// \param resource_map_available: Available capacities of resources we want to convert.
+/// \param node_labels: Labels for the node.
+///
+/// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,

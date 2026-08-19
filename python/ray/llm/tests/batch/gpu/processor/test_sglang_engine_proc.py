@@ -34,9 +34,9 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         batch_size=64,
         max_concurrent_batches=4,
         max_pending_requests=111,
-        apply_chat_template=True,
-        tokenize=True,
-        detokenize=True,
+        chat_template_stage=True,
+        tokenize_stage=True,
+        detokenize_stage=True,
     )
     processor = ProcessorBuilder.build(config)
     assert processor.list_stage_names() == [
@@ -92,12 +92,10 @@ class TestSGLangEngineProcessorConfig:
 
         with (
             patch(
-                "ray.llm._internal.batch.processor.sglang_engine_proc."
-                "download_model_files",
+                "ray.llm._internal.common.utils.download_utils.download_model_files",
                 return_value="/tmp/fake_model_dir",
             ),
             patch(
-                "ray.llm._internal.batch.processor.sglang_engine_proc."
                 "transformers.AutoConfig.from_pretrained",
                 side_effect=ModuleNotFoundError("custom modeling module missing"),
             ),
@@ -113,8 +111,7 @@ class TestSGLangEngineProcessorConfig:
         )
 
         with patch(
-            "ray.llm._internal.batch.processor.sglang_engine_proc."
-            "download_model_files",
+            "ray.llm._internal.common.utils.download_utils.download_model_files",
             side_effect=RuntimeError("download failed"),
         ):
             processor = build_sglang_engine_processor(config)
