@@ -47,9 +47,15 @@ class LinuxContainer(Container):
         self, build_type: Optional[str] = None, mask: Optional[str] = None
     ) -> List[str]:
         cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
-        # Empty unless CI names an index that a docker build can reach; the
-        # Dockerfile falls back to PyPI on an empty value.
-        image_index_url = os.environ.get("RAYCI_IMAGE_PIP_INDEX_URL", "")
+        # The step's own index, because a docker build can reach it: measured on
+        # premerge 72149, a RUN step reached the job-local proxy on both the BuildKit
+        # and legacy builders with default networking, no --network=host needed.
+        # RAYCI_IMAGE_PIP_INDEX_URL remains an explicit override for a fleet that
+        # needs a different value, or "" to opt out. Unset outside CI, and then the
+        # Dockerfile falls back to PyPI.
+        image_index_url = os.environ.get(
+            "RAYCI_IMAGE_PIP_INDEX_URL", os.environ.get("PIP_INDEX_URL", "")
+        )
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"

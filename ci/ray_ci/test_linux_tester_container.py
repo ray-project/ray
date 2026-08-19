@@ -164,7 +164,15 @@ def test_ray_installation() -> None:
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
         install_ray_cmds.append(inputs)
 
-    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+    # PIP_INDEX_URL is set in every forge step, and install_ray now falls back to
+    # it, so the expected command below depends on the environment unless both
+    # variables are pinned here.
+    with mock.patch(
+        "subprocess.check_call", side_effect=_mock_subprocess
+    ), mock.patch.dict(
+        os.environ,
+        {"RAYCI_IMAGE_PIP_INDEX_URL": "", "PIP_INDEX_URL": ""},
+    ):
         LinuxTesterContainer("team", build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:team"
         assert install_ray_cmds[-1] == [
