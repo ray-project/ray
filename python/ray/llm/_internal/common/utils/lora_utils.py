@@ -8,7 +8,7 @@ download primitives from download_utils.py.
 
 import json
 import os
-import subprocess
+import shutil
 import time
 from functools import wraps
 from typing import Any, Callable, List, Optional, TypeVar, Union
@@ -59,7 +59,7 @@ def clean_model_id(model_id: str) -> str:
 def clear_directory(dir: str) -> None:
     """Clear a directory recursively, ignoring missing directories."""
     try:
-        subprocess.run(f"rm -r {dir}", shell=True, check=False)
+        shutil.rmtree(dir)
     except FileNotFoundError:
         pass
 
