@@ -1,22 +1,29 @@
-/* APIs-tab sidebar loader (Pattern B).
+/* Section-scoped sidebar loader (Pattern B).
  *
- * Fetches the single shared API-nav fragment (_static/api-nav.html), injects it into
- * the #api-nav-mount container, highlights the current page, collapses non-current
- * sections, and resolves the fragment's root-relative links against this page.
- * The fragment is fetched once and reused from the browser cache across pages.
+ * Fetches this section's shared nav fragment (_static/<section>-nav.html), injects it
+ * into the #section-nav-mount container, highlights the current page, collapses
+ * non-current sections, and resolves the fragment's root-relative links against this
+ * page. The fragment is fetched once per section and reused from the browser cache
+ * across pages. Which fragment to load is set server-side per page; see
+ * _ext/api_sidebar.py and _templates/section-sidebar.html.
+ *
+ * The mount arrives with a server-rendered fallback nav (the section's top-level
+ * pages) already in it, so no-JS readers get real navigation. This script only ever
+ * *upgrades* that: on a failed fetch it leaves the fallback alone rather than
+ * replacing it with an error message.
  */
 (function () {
   "use strict";
 
   function init() {
-    var mount = document.getElementById("api-nav-mount");
+    var mount = document.getElementById("section-nav-mount");
     if (!mount) return;
 
-    var navUrl = mount.getAttribute("data-api-nav-url");
+    var navUrl = mount.getAttribute("data-section-nav-url");
     var pagename = mount.getAttribute("data-pagename") || "";
     // Path from this page back to the doc root (e.g. "../../"), derived from the
     // fetch URL so we don't depend on other globals.
-    var root = navUrl.replace(/_static\/api-nav\.html(\?.*)?$/, "");
+    var root = navUrl.replace(/_static\/[^/]+\.html(\?.*)?$/, "");
 
     fetch(navUrl)
       .then(function (resp) {
@@ -25,6 +32,7 @@
       })
       .then(function (html) {
         mount.innerHTML = html;
+        mount.setAttribute("aria-busy", "false");
 
         var links = mount.querySelectorAll("a[href]");
 
@@ -66,8 +74,8 @@
         });
       })
       .catch(function () {
-        mount.innerHTML =
-          '<p class="api-nav-status">API navigation failed to load.</p>';
+        // Keep the server-rendered fallback nav; a shallower sidebar beats none.
+        mount.setAttribute("aria-busy", "false");
       });
   }
 
