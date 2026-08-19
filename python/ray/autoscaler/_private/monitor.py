@@ -42,6 +42,7 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated import gcs_pb2
+from ray.core.generated.autoscaler_pb2 import NodeStatus
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -284,6 +285,11 @@ class Monitor:
 
         mirror_node_types = {}
         for resource_message in cluster_resource_state.node_states:
+            # Dead raylets still appear in cluster_resource_state with their
+            # last IP. Skip them so they cannot occupy or overwrite that IP
+            # in LoadMetrics after the node is gone.
+            if resource_message.status == NodeStatus.DEAD:
+                continue
             node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
