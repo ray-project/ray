@@ -240,8 +240,6 @@ def test_high_memory_detection(
 
     assert should_return_issue == bool(issues)
 
-
-
 def test_high_memory_detection_uses_current_dynamic_memory_request(
     restore_data_context,
 ):
@@ -267,6 +265,8 @@ def test_high_memory_detection_uses_current_dynamic_memory_request(
     dynamic_memory_request = 10 * GiB
 
     assert not detector.detect()
+
+
 if __name__ == "__main__":
     import sys
 
