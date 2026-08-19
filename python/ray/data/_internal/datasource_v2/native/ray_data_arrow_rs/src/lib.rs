@@ -176,6 +176,65 @@ fn byte_budget_rows(
     budget_rows.clamp(MIN_BATCH_ROWS, requested.max(MIN_BATCH_ROWS))
 }
 
+/// Estimate the row group's DECODED (in-memory Arrow) size from the footer
+/// alone. The footer's `total_byte_size` is the *encoded*-uncompressed size:
+/// for dictionary/RLE-encoded columns that is dict values + indices, and the
+/// decoded batch is larger by the expansion ratio — sizing batches by it made
+/// decoded batches ≈ budget × expansion (findings M43/M45/M49: 7.3× overshoot
+/// on 9.4×-dictionary tensor data, 4× on RLE-heavy numerics, on BOTH readers'
+/// estimators).
+///
+/// For fixed-width physical types the decoded size is exactly
+/// `num_values × width`, no decoding needed, so take
+/// `max(encoded, num_values × width)` per column chunk:
+///   - dict/RLE fixed-width (the entire measured loss family — float tensors,
+///     repeated ints): the fixed-width term wins → exact;
+///   - PLAIN fixed-width: encoded ≥ decoded (rep/def levels) → unchanged;
+///   - BYTE_ARRAY (strings/binary): no footer-exact decoded size (a dict
+///     chunk's value lengths aren't recorded), width 0 → encoded fallback,
+///     i.e. exactly today's behavior;
+///   - BOOLEAN: bit-packed on both sides → encoded fallback.
+///
+/// The estimate can only grow, so batches can only shrink vs. the old sizing —
+/// strictly safer against the decode budget.
+fn decoded_estimate_bytes(rgm: &RowGroupMetaData) -> i64 {
+    let mut total: i64 = 0;
+    for col in rgm.columns() {
+        let descr = col.column_descr();
+        let width: i64 = match descr.physical_type() {
+            PhysicalType::INT32 | PhysicalType::FLOAT => 4,
+            PhysicalType::INT64 | PhysicalType::DOUBLE => 8,
+            PhysicalType::INT96 => 12,
+            PhysicalType::FIXED_LEN_BYTE_ARRAY => descr.type_length() as i64,
+            PhysicalType::BOOLEAN | PhysicalType::BYTE_ARRAY => 0,
+        };
+        let mut decoded = col.num_values().saturating_mul(width);
+        // Nested leaves also materialize one i32 offset buffer per repetition
+        // level (~4 B/row/level at the outermost lists; inner fan-out is
+        // ignored, keeping this a floor). Not noise: on a 5000-list-column
+        // schema the offsets alone are ~20 KB/row, and omitting them left
+        // measured batches at 1.5x the budget — exactly on the G1 gate line.
+        if descr.max_rep_level() > 0 {
+            decoded =
+                decoded.saturating_add(4 * rgm.num_rows().max(0) * descr.max_rep_level() as i64);
+        }
+        total = total.saturating_add(col.uncompressed_size().max(decoded));
+    }
+    total
+}
+
+/// [`byte_budget_rows`] with the decoded-aware estimate for a whole row group:
+/// the one batch-sizing entry point for every read path (local sequential,
+/// K-split ranges, S3 windowed units).
+fn group_batch_rows(rgm: &RowGroupMetaData, requested: usize, budget_bytes: u64) -> usize {
+    byte_budget_rows(
+        decoded_estimate_bytes(rgm),
+        rgm.num_rows(),
+        requested,
+        budget_bytes,
+    )
+}
+
 // --------------------------------------------------------------------------- //
 // Row-group statistics pruning (predicate pushdown, part 1)
 // --------------------------------------------------------------------------- //
@@ -596,7 +655,10 @@ async fn load_meta_s3(
 
 /// Pull the fields Python needs out of an already-loaded `ArrowReaderMetadata`.
 /// Local and S3 both funnel through here so the shape is identical.
-fn build_file_metadata(meta: &ArrowReaderMetadata, arrow_schema_skipped: bool) -> ParquetFileMetadata {
+fn build_file_metadata(
+    meta: &ArrowReaderMetadata,
+    arrow_schema_skipped: bool,
+) -> ParquetFileMetadata {
     let md = meta.metadata();
     let n = md.num_row_groups();
     let mut row_group_num_rows = Vec::with_capacity(n);
@@ -679,12 +741,7 @@ impl RowGroupSeqReader {
 
     fn build_group_reader(&self, rg: usize) -> Result<ParquetRecordBatchReader, ParquetError> {
         let rgm = self.meta.metadata().row_group(rg);
-        let eff = byte_budget_rows(
-            rgm.total_byte_size(),
-            rgm.num_rows(),
-            self.batch_clamp,
-            self.budget_bytes,
-        );
+        let eff = group_batch_rows(rgm, self.batch_clamp, self.budget_bytes);
         ParquetRecordBatchReaderBuilder::new_with_metadata(
             File::open(&self.path)?,
             self.meta.clone(),
@@ -901,12 +958,7 @@ fn build_local_reader(
         let rg = selected[0];
         let rgm = meta.metadata().row_group(rg);
         let total_rows = rgm.num_rows().max(0) as usize;
-        let eff = byte_budget_rows(
-            rgm.total_byte_size(),
-            rgm.num_rows(),
-            batch_size,
-            budget_bytes,
-        );
+        let eff = group_batch_rows(rgm, batch_size, budget_bytes);
         Ok(Box::new(ParallelRangeReader::spawn(
             path, meta, mask, schema, rg, total_rows, k, eff,
         )))
@@ -1301,12 +1353,7 @@ fn plan_s3_units(
     let mut units: Vec<UnitFetch> = Vec::new();
     for &(rg, start, len) in subranges {
         let rgm = md.row_group(rg);
-        let batch_rows = byte_budget_rows(
-            rgm.total_byte_size(),
-            rgm.num_rows(),
-            batch_clamp,
-            decode_budget,
-        );
+        let batch_rows = group_batch_rows(rgm, batch_clamp, decode_budget);
         // Never window below the coarsest column's largest page (see
         // max_page_rows): a sub-page window re-decodes that page in every
         // window it overlaps. Wide/short groups (one page per column) collapse
@@ -1379,10 +1426,7 @@ async fn next_unit_stream(
     meta: &ArrowReaderMetadata,
     rg: usize,
     batch_rows: usize,
-) -> Result<
-    parquet::arrow::async_reader::ParquetRecordBatchStream<PrefetchedReader>,
-    ArrowError,
-> {
+) -> Result<parquet::arrow::async_reader::ParquetRecordBatchStream<PrefetchedReader>, ArrowError> {
     let handle = hrx.recv().await.ok_or_else(|| {
         ArrowError::ExternalError(Box::new(ParquetError::General(
             "prefetch: admission loop ended early".to_string(),
@@ -2301,12 +2345,16 @@ mod tests {
         );
         // Interior page of the first chunk: bytes at offsets 10..15 within it.
         assert_eq!(
-            slice_prefetched(&ranges, &data, &(110..115)).unwrap().as_ref(),
+            slice_prefetched(&ranges, &data, &(110..115))
+                .unwrap()
+                .as_ref(),
             &[10, 11, 12, 13, 14]
         );
         // Sub-range of the second chunk.
         assert_eq!(
-            slice_prefetched(&ranges, &data, &(340..350)).unwrap().as_ref(),
+            slice_prefetched(&ranges, &data, &(340..350))
+                .unwrap()
+                .as_ref(),
             &(40..50u8).collect::<Vec<u8>>()[..]
         );
     }
@@ -2346,8 +2394,7 @@ mod tests {
         ]));
         let a = Int64Array::from((0..1000i64).collect::<Vec<_>>());
         let b = StringArray::from((0..1000).map(|i| format!("row-{i}")).collect::<Vec<_>>());
-        let batch =
-            RecordBatch::try_new(schema.clone(), vec![Arc::new(a), Arc::new(b)]).unwrap();
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(a), Arc::new(b)]).unwrap();
         let props = WriterProperties::builder()
             .set_data_page_row_count_limit(100)
             .set_write_batch_size(100)
@@ -2416,9 +2463,7 @@ mod tests {
                 .iter()
                 .map(|r| buf.slice(r.start as usize..r.end as usize))
                 .collect();
-            let permit = rt
-                .block_on(sem.clone().acquire_many_owned(1))
-                .unwrap();
+            let permit = rt.block_on(sem.clone().acquire_many_owned(1)).unwrap();
             let reader = PrefetchedReader {
                 ranges,
                 data,
@@ -2462,14 +2507,79 @@ mod tests {
         // budget must decode ~32-row batches — the old 2048-row floor made this
         // 2048 rows (a 2 GiB batch), silently voiding the knob.
         let mib = 1024 * 1024;
-        assert_eq!(byte_budget_rows(1000 * mib, 1000, 131072, 32 * mib as u64), 32);
+        assert_eq!(
+            byte_budget_rows(1000 * mib, 1000, 131072, 32 * mib as u64),
+            32
+        );
         // 64 KiB/row, 1 MiB budget -> 16 rows... clamped up to the 32-row floor
         // (per-batch overhead guard), the only place the floor still binds.
-        assert_eq!(byte_budget_rows(1000 * 64 * 1024, 1000, 131072, mib as u64), 32);
+        assert_eq!(
+            byte_budget_rows(1000 * 64 * 1024, 1000, 131072, mib as u64),
+            32
+        );
         // Narrow schema: budget_rows huge -> clamped to the caller's ask.
-        assert_eq!(byte_budget_rows(8000, 1000, 131072, 32 * mib as u64), 131072);
+        assert_eq!(
+            byte_budget_rows(8000, 1000, 131072, 32 * mib as u64),
+            131072
+        );
         // Unknown rows -> requested (unchanged behavior).
         assert_eq!(byte_budget_rows(0, 0, 4096, 1), 4096);
+    }
+
+    /// M43/M49: the footer's encoded size understates decoded size by the
+    /// dictionary expansion ratio, so batches sized from it overshot the
+    /// decode budget by that ratio. For fixed-width types the decoded size is
+    /// exactly `num_values * width` from the footer — verify the estimator
+    /// uses it, and that batch sizing shrinks accordingly.
+    #[test]
+    fn decoded_estimate_expands_dict_encoded_fixed_width() {
+        use arrow::array::Float64Array;
+        use arrow::datatypes::{DataType, Field, Schema};
+        use parquet::arrow::arrow_reader::ArrowReaderMetadata;
+        use parquet::arrow::ArrowWriter;
+        use parquet::file::properties::WriterProperties;
+
+        // 100k float64 rows drawn from a 4-value pool: dictionary-encodes to
+        // ~indices (2 bits/row RLE) + a 32-byte dict, so encoded-uncompressed
+        // is tiny while decoded is exactly 800 KB.
+        let rows = 100_000usize;
+        let schema = Arc::new(Schema::new(vec![Field::new("f", DataType::Float64, false)]));
+        let vals = Float64Array::from((0..rows).map(|i| (i % 4) as f64).collect::<Vec<_>>());
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(vals)]).unwrap();
+        let mut buf = Vec::new();
+        let mut w =
+            ArrowWriter::try_new(&mut buf, schema, Some(WriterProperties::builder().build()))
+                .unwrap();
+        w.write(&batch).unwrap();
+        w.close().unwrap();
+        let meta =
+            ArrowReaderMetadata::load(&Bytes::from(buf), reader_options(PageIndexPolicy::Skip))
+                .unwrap();
+        let rgm = meta.metadata().row_group(0);
+
+        let decoded = rows as i64 * 8;
+        assert!(
+            rgm.total_byte_size() < decoded / 4,
+            "fixture not dict-compressed: encoded {} vs decoded {decoded}",
+            rgm.total_byte_size()
+        );
+        assert!(decoded_estimate_bytes(rgm) >= decoded);
+
+        // Budget = 1/10 of decoded -> ~rows/10 per batch. The old encoded-based
+        // sizing would have clamped to `requested` (expansion-sized batches).
+        let eff = group_batch_rows(rgm, 1 << 20, (decoded / 10) as u64);
+        assert!(
+            (rows / 20..=rows / 5).contains(&eff),
+            "eff {eff} not within 2x of rows/10"
+        );
+        assert!(
+            byte_budget_rows(
+                rgm.total_byte_size(),
+                rgm.num_rows(),
+                1 << 20,
+                (decoded / 10) as u64
+            ) > 4 * eff
+        );
     }
 
     #[test]
@@ -2505,8 +2615,7 @@ mod tests {
         let a = Int64Array::from((0..n as i64).collect::<Vec<_>>());
         let payload = "x".repeat(1024);
         let fat = StringArray::from((0..n).map(|_| payload.clone()).collect::<Vec<_>>());
-        let batch =
-            RecordBatch::try_new(schema.clone(), vec![Arc::new(a), Arc::new(fat)]).unwrap();
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(a), Arc::new(fat)]).unwrap();
         let props = WriterProperties::builder()
             .set_data_page_row_count_limit(100)
             .set_write_batch_size(100)
@@ -2531,9 +2640,8 @@ mod tests {
         let meta = tall_fat_col_fixture();
         let mask = ProjectionMask::all();
         let roots = vec![0usize, 1];
-        let (plans, units) = plan_s3_units(
-            &meta, &mask, &roots, &[(0, 0, 2000)], 131072, 2 << 20, 1, 1,
-        );
+        let (plans, units) =
+            plan_s3_units(&meta, &mask, &roots, &[(0, 0, 2000)], 131072, 2 << 20, 1, 1);
         assert_eq!(plans.len(), 1);
         match plans[0].decode {
             RgDecode::Windows(n) => assert!(n > 1, "expected a real split, got {n} window(s)"),
@@ -2544,9 +2652,8 @@ mod tests {
 
         // Escape hatch: windowing explicitly disabled (fetch_window_mb == 0)
         // makes windows inert -> the column-group axis may fire again.
-        let (plans, _units) = plan_s3_units(
-            &meta, &mask, &roots, &[(0, 0, 2000)], 131072, 2 << 20, 0, 1,
-        );
+        let (plans, _units) =
+            plan_s3_units(&meta, &mask, &roots, &[(0, 0, 2000)], 131072, 2 << 20, 0, 1);
         assert!(matches!(plans[0].decode, RgDecode::Hstack(2)));
     }
 
@@ -2558,14 +2665,28 @@ mod tests {
         // Generous column budget -> not wide -> row windows (single window here:
         // the fixture is tiny, so the byte-budget window covers all rows).
         let (plans, units) = plan_s3_units(
-            &meta, &mask, &roots, &[(0, 0, 1000)], 131072, 2 << 20, 16, 1 << 30,
+            &meta,
+            &mask,
+            &roots,
+            &[(0, 0, 1000)],
+            131072,
+            2 << 20,
+            16,
+            1 << 30,
         );
         assert_eq!(plans.len(), 1);
         assert!(matches!(plans[0].decode, RgDecode::Windows(1)));
         assert_eq!(units[0].sel, Some((0, 1000)));
         // 1-byte column budget -> every root its own group -> hstack of 2.
         let (plans, units) = plan_s3_units(
-            &meta, &mask, &roots, &[(0, 0, 1000)], 131072, 2 << 20, 16, 1,
+            &meta,
+            &mask,
+            &roots,
+            &[(0, 0, 1000)],
+            131072,
+            2 << 20,
+            16,
+            1,
         );
         assert!(matches!(plans[0].decode, RgDecode::Hstack(2)));
         assert_eq!(units.len(), 2);
@@ -2573,7 +2694,14 @@ mod tests {
         // A K-split style partial sub-range must NEVER column-window (it is a
         // tall group split by rows), even under a tiny budget.
         let (plans, units) = plan_s3_units(
-            &meta, &mask, &roots, &[(0, 500, 500)], 131072, 2 << 20, 16, 1,
+            &meta,
+            &mask,
+            &roots,
+            &[(0, 500, 500)],
+            131072,
+            2 << 20,
+            16,
+            1,
         );
         assert!(matches!(plans[0].decode, RgDecode::Windows(_)));
         assert_eq!(units[0].sel, Some((500, 500)));
