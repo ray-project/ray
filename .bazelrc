@@ -24,6 +24,19 @@ common --repo_env=PIP_EXTRA_INDEX_URL
 common --repo_env=PIP_TRUSTED_HOST
 common --repo_env=RULES_PYTHON_PIP_ISOLATED
 
+# The same again for test actions, which get a curated environment rather than the
+# client's: --repo_env covers repository rules only. //ci/raydepsets:test_cli shells
+# out to uv, so without these it resolves against PyPI no matter what the step is
+# configured to use, which is how a 502 reached it while every other resolve in the
+# same job went through the mirror. The proxy's address is fixed per image rather
+# than per job, so this does not churn test cache keys; unset in a plain checkout,
+# these forward nothing.
+test --test_env=PIP_INDEX_URL
+test --test_env=PIP_EXTRA_INDEX_URL
+test --test_env=PIP_TRUSTED_HOST
+test --test_env=UV_INDEX_URL
+test --test_env=UV_INSECURE_HOST
+
 ###############################################################################
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
