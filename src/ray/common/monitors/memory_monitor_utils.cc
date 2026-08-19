@@ -14,9 +14,14 @@
 
 #include "ray/common/monitors/memory_monitor_utils.h"
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
+#include <cctype>
+#include <cerrno>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <tuple>
 #include <utility>
 
@@ -379,6 +384,85 @@ int64_t MemoryMonitorUtils::GetLinuxProcessMemoryBytesFromSmap(
   return uss;
 }
 
+int64_t MemoryMonitorUtils::GetMemoryThresholdOrNull(
+    int64_t total_memory_bytes,
+    float usage_threshold,
+    int64_t min_memory_free_bytes,
+    bool resource_isolation_enabled,
+    const CgroupManagerInterface &cgroup_manager) {
+  ValidateMemoryThresholdConfig(usage_threshold, min_memory_free_bytes);
+
+  if (total_memory_bytes == MemoryMonitorInterface::kNull) {
+    return MemoryMonitorInterface::kNull;
+  }
+
+  int64_t threshold_fraction = static_cast<int64_t>(total_memory_bytes * usage_threshold);
+  int64_t resolved_memory_threshold_bytes = threshold_fraction;
+  if (min_memory_free_bytes > MemoryMonitorInterface::kNull) {
+    int64_t threshold_absolute = total_memory_bytes - min_memory_free_bytes;
+    if (threshold_absolute < 0) {
+      RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
+          << "Memory total " << total_memory_bytes
+          << " is smaller than min_memory_free_bytes " << min_memory_free_bytes
+          << "; ignoring the absolute threshold for this runtime decision and using "
+             "the fractional threshold "
+          << threshold_fraction << ".";
+    } else {
+      resolved_memory_threshold_bytes = std::max(threshold_fraction, threshold_absolute);
+    }
+  }
+
+  if (!resource_isolation_enabled) {
+    return resolved_memory_threshold_bytes;
+  }
+
+  StatusOr<std::string> user_slice_upper_bound_bytes_or =
+      cgroup_manager.GetUserCgroupConstraintValue(kCgroupsV2MemoryHighPath);
+  if (!user_slice_upper_bound_bytes_or.ok()) {
+    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
+        << "Failed to read user cgroup memory limit (" << kCgroupsV2MemoryHighPath
+        << ") from " << cgroup_manager.GetUserCgroupPath() << ": "
+        << user_slice_upper_bound_bytes_or.ToString()
+        << ". Skipping this resource-isolation runtime memory decision instead of "
+           "falling back to host-based threshold "
+        << resolved_memory_threshold_bytes << ".";
+    return MemoryMonitorInterface::kNull;
+  }
+
+  const std::string &user_slice_upper_bound_bytes_str =
+      user_slice_upper_bound_bytes_or.value();
+  if (user_slice_upper_bound_bytes_str.empty() ||
+      !std::all_of(user_slice_upper_bound_bytes_str.begin(),
+                   user_slice_upper_bound_bytes_str.end(),
+                   [](unsigned char c) { return std::isdigit(c); })) {
+    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
+        << "User cgroup memory limit is not a valid non-negative integer: \""
+        << user_slice_upper_bound_bytes_str << "\" from "
+        << cgroup_manager.GetUserCgroupPath()
+        << ". Skipping this resource-isolation runtime memory decision instead of "
+           "falling back to host-based threshold "
+        << resolved_memory_threshold_bytes << ".";
+    return MemoryMonitorInterface::kNull;
+  }
+
+  errno = 0;
+  char *parse_end = nullptr;
+  const long long user_slice_upper_bound =
+      std::strtoll(user_slice_upper_bound_bytes_str.c_str(), &parse_end, 10);
+  if (errno == ERANGE || parse_end == nullptr || *parse_end != '\0' ||
+      user_slice_upper_bound > std::numeric_limits<int64_t>::max()) {
+    RAY_LOG_EVERY_MS(WARNING, MemoryMonitorInterface::kLogIntervalMs)
+        << "User cgroup memory limit is outside int64 range: \""
+        << user_slice_upper_bound_bytes_str << "\" from "
+        << cgroup_manager.GetUserCgroupPath()
+        << ". Skipping this resource-isolation runtime memory decision instead of "
+           "falling back to host-based threshold "
+        << resolved_memory_threshold_bytes << ".";
+    return MemoryMonitorInterface::kNull;
+  }
+  return static_cast<int64_t>(user_slice_upper_bound);
+}
+
 int64_t MemoryMonitorUtils::NullableMin(int64_t left, int64_t right) {
   RAY_CHECK_GE(left, MemoryMonitorInterface::kNull);
   RAY_CHECK_GE(right, MemoryMonitorInterface::kNull);
@@ -399,12 +483,7 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
     bool resource_isolation_enabled,
     const CgroupManagerInterface &cgroup_manager) {
   RAY_CHECK_GE(total_memory_bytes, MemoryMonitorInterface::kNull);
-  RAY_CHECK_GE(min_memory_free_bytes, MemoryMonitorInterface::kNull);
-  RAY_CHECK_GE(usage_threshold, 0)
-      << "Invalid configuration: usage_threshold must be >= 0";
-  RAY_CHECK_LE(usage_threshold, 1)
-      << "Invalid configuration: usage_threshold must be <= 1";
-
+  ValidateMemoryThresholdConfig(usage_threshold, min_memory_free_bytes);
   int64_t resolved_memory_threshold_bytes;
   int64_t threshold_fraction = static_cast<int64_t>(total_memory_bytes * usage_threshold);
 
@@ -441,6 +520,17 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
   }
 
   return resolved_memory_threshold_bytes;
+}
+
+void MemoryMonitorUtils::ValidateMemoryThresholdConfig(float usage_threshold,
+                                                       int64_t min_memory_free_bytes) {
+  RAY_CHECK_GE(min_memory_free_bytes, MemoryMonitorInterface::kNull)
+      << "Invalid configuration: min_memory_free_bytes must be >= "
+      << MemoryMonitorInterface::kNull;
+  RAY_CHECK_GE(usage_threshold, 0)
+      << "Invalid configuration: usage_threshold must be >= 0";
+  RAY_CHECK_LE(usage_threshold, 1)
+      << "Invalid configuration: usage_threshold must be <= 1";
 }
 
 StatusSetOr<int64_t, StatusT::NotFound> MemoryMonitorUtils::GetProcessUsedMemoryBytes(
