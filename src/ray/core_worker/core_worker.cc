@@ -894,6 +894,7 @@ void CoreWorker::HandleOwnerDied(const WorkerID &dead_owner) {
         to_erase.push_back(generator_id);
         // Mark the gen task canceled so the executor loop bails before the
         // next gen.send instead of running another iteration of user code.
+        absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
         canceled_tasks_.insert(generator_id.TaskId());
       }
     }
@@ -2625,7 +2626,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 bool CoreWorker::IsTaskCanceled(const TaskID &task_id) const {
   // Check if the task is canceled on executor side. Check the canceled_tasks_ which is
   // populated when CancelTask RPC is received.
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&canceled_tasks_mutex_);
   return canceled_tasks_.find(task_id) != canceled_tasks_.end();
 }
 
@@ -3153,7 +3154,10 @@ Status CoreWorker::ExecuteTask(
     size_t erased = running_tasks_.erase(task_spec.TaskId());
     RAY_CHECK(erased == 1);
     // Clean up cancellation state for this task
-    canceled_tasks_.erase(task_spec.TaskId());
+    {
+      absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
+      canceled_tasks_.erase(task_spec.TaskId());
+    }
     if (task_spec.IsNormalTask()) {
       resource_ids_.clear();
     }
@@ -4331,6 +4335,7 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
     requested_task_running = main_thread_task_id_ == task_id;
 
     if (requested_task_running) {
+      absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
       canceled_tasks_.insert(task_id);
     }
   }
@@ -4387,6 +4392,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
         is_running = running_tasks_.find(task_id) != running_tasks_.end();
 
         if (is_running) {
+          absl::MutexLock canceled_lock(&canceled_tasks_mutex_);
           canceled_tasks_.insert(task_id);
         }
       }

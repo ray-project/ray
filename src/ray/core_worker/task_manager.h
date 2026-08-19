@@ -1001,17 +1001,17 @@ class TaskManager : public TaskManagerInterface {
       ABSL_LOCKS_EXCLUDED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /**
-   * Detect whether a streaming generator replay produced a different number
-   * of objects than the first successful attempt, and if so, fail the task.
-   * Returns true when inconsistency was detected and the task was failed
-   * (caller must not run normal completion logic in that case). Must run
-   * early in CompletePendingTask: before any return object is written to the
-   * store (so downstream consumers cannot observe the inconsistent objects)
-   * and before SetTaskStatus(FINISHED) (FailPendingTask RAY_CHECKs
-   * IsPending()). Whether this is a replay is determined internally from the
-   * task's successful-execution count. The caller must skip this check on
-   * application-error completions, which already route through the failure
-   * path.
+   * Fail a streaming generator task if a replay reports a different object
+   * count than the first successful attempt. Must run before completion
+   * bookkeeping in CompletePendingTask. Runs for both successful and
+   * application-error completions — retries must reproduce the same object
+   * count.
+   *
+   * \param task_id The streaming generator task id.
+   * \param reply Completing attempt; count from
+   *   streaming_generator_return_ids_size().
+   * \return true if the task was failed (skip normal completion); false
+   *   otherwise.
    */
   bool FailStreamingGeneratorReplayIfInconsistent(const TaskID &task_id,
                                                   const rpc::PushTaskReply &reply)
