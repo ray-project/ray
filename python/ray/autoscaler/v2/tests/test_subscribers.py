@@ -349,6 +349,25 @@ class TestCloudInstanceUpdater:
             ids=["c1", "c2"], request_id=mock.ANY
         )
 
+    def test_terminate_instances_with_no_cloud_instance_ids(self):
+        mock_provider = mock.MagicMock()
+        launcher = CloudInstanceUpdater(mock_provider)
+        launcher.notify(
+            [
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-1",
+                    cloud_instance_id="",
+                ),
+                InstanceUpdateEvent(
+                    new_instance_status=Instance.TERMINATING,
+                    instance_id="i-2",
+                ),
+            ]
+        )
+
+        mock_provider.terminate.assert_not_called()
+
     def test_count_stopped_instances_on_terminated(self):
         mock_provider = mock.MagicMock()
         metrics_reporter = AutoscalerMetricsReporter(
