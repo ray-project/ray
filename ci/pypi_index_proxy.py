@@ -46,11 +46,25 @@ import sys
 
 import niquests
 import uvicorn
-from asgi_cross_origin_protection import CrossOriginProtection
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Route
+
+# Optional because it is the one dependency here that requires Python >= 3.11, and the
+# surfaces that need this proxy most are the ones without a modern interpreter: the
+# macOS agents carry 3.9 and 3.10 only, and the Windows agent host 3.8. Everything else
+# it needs supports 3.10. The middleware rejects cross-site state-changing requests via
+# Fetch Metadata, and every route here is a GET, which it always allows -- so where it
+# is absent nothing it would have done is skipped. Images that do have 3.11+ still
+# install it, and then it behaves exactly as before.
+try:
+    from asgi_cross_origin_protection import CrossOriginProtection
+except ImportError:  # pragma: no cover - depends on the interpreter, not the code path
+
+    def CrossOriginProtection(app):
+        return app
+
 
 MIRROR_URL = os.environ.get("MIRROR_URL", "https://mirror.ci.ray.io")
 
