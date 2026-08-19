@@ -13,6 +13,7 @@ RUN \
   --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
   --mount=type=bind,source=ci/pypi_index_proxy.py,target=pypi_index_proxy.py \
   --mount=type=bind,source=ci/pypi_proxy_profile.sh,target=pypi_proxy_profile.sh \
+  --mount=type=bind,source=ci/install_pypi_proxy.sh,target=install_pypi_proxy.sh \
 <<EOF
 #!/bin/bash
 
@@ -96,19 +97,7 @@ uv pip install --system pip==25.0 cffi==1.16.0
 # a second interpreter for the proxy alone and keep it in its own venv. Nothing else
 # resolves through /opt/pypiproxy and the default python is left untouched.
 uv python install --install-dir /usr/local/python 3.12
-PROXY_PYTHON="$(uv python find --no-project 3.12)"
-"$PROXY_PYTHON" -m venv /opt/pypiproxy
-/opt/pypiproxy/bin/pip install --no-cache-dir \
-  "asgi-cross-origin-protection==0.1.1" \
-  "niquests==3.21.0" \
-  "starlette==1.6.0" \
-  "uvicorn==0.52.3"
-cp pypi_index_proxy.py /opt/pypiproxy/pypi_index_proxy.py
-
-# Sourced automatically: steps run under `bash -elic`, a login shell. zz- prefix so
-# it runs after anything else in profile.d that might set HOME or PATH.
-cp pypi_proxy_profile.sh /etc/profile.d/zz-rayci-pypi-proxy.sh
-chmod 0644 /etc/profile.d/zz-rayci-pypi-proxy.sh
+bash install_pypi_proxy.sh "$(uv python find --no-project 3.12)"
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
