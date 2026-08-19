@@ -361,6 +361,32 @@ def test_create_oci_spec_host_network_keeps_pathed_netns(tmp_path):
     ]
 
 
+def test_create_oci_spec_mount_workdir_toggle(tmp_path):
+    """mount_workdir=False must not shadow image content at the workdir."""
+    mgr = _StubImageManager(tmp_path)
+    workdir_path = str(tmp_path / "scratch")
+    os.makedirs(workdir_path, exist_ok=True)
+
+    mounted = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/app",
+        workdir_path=workdir_path,
+    )
+    assert any(m["destination"] == "/app" for m in mounted["mounts"])
+
+    unmounted = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/app",
+        workdir_path=workdir_path,
+        mount_workdir=False,
+    )
+    assert not any(m["destination"] == "/app" for m in unmounted["mounts"])
+    # The process cwd is still the requested workdir.
+    assert unmounted["process"]["cwd"] == "/app"
+
+
 def test_create_oci_spec_tolerates_null_sections_in_base_spec(tmp_path):
     """A caller-supplied base_spec may carry null capabilities/linux keys."""
     mgr = _StubImageManager(tmp_path)

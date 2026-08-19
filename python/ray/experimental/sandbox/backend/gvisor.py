@@ -90,6 +90,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             readonly=config.readonly,
             capabilities=config.capabilities,
             network=config.network,
+            mount_workdir=config.mount_workdir,
             _oci_spec_transform_fn=config._oci_spec_transform_fn,
         )
         run_args = self._runsc_base_args(config)
@@ -368,6 +369,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
+        mount_workdir: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
@@ -381,5 +383,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             readonly=readonly,
             capabilities=capabilities,
             network=network,
+            mount_workdir=mount_workdir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )

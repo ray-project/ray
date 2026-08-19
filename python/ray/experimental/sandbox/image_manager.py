@@ -135,6 +135,7 @@ class BaseImageManager(ABC):
         readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
+        mount_workdir: bool = True,
         base_spec: Optional[Dict[str, Any]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
@@ -153,6 +154,9 @@ class BaseImageManager(ABC):
             network: runsc network mode the sandbox will run with; "host" drops
                 the spec's empty network namespace and bind-mounts the host's
                 resolv.conf so host networking works like Docker's.
+            mount_workdir: If True (default), bind-mount ``workdir_path`` at
+                the container cwd (shadowing image content there). False
+                leaves the image filesystem untouched.
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
@@ -174,6 +178,7 @@ class BaseImageManager(ABC):
         readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
+        mount_workdir: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -189,6 +194,8 @@ class BaseImageManager(ABC):
             readonly: Read-only rootfs flag.
             capabilities: Optional additional Linux capabilities (see create_oci_spec).
             network: runsc network mode the sandbox will run with (see create_oci_spec).
+            mount_workdir: Whether to bind-mount workdir_path at the container
+                cwd (see create_oci_spec).
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -318,6 +325,7 @@ class ImageManager(BaseImageManager):
         readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
+        mount_workdir: bool = True,
         base_spec: Optional[Dict[str, Any]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
@@ -336,6 +344,9 @@ class ImageManager(BaseImageManager):
             network: runsc network mode the sandbox will run with; "host" drops
                 the spec's empty network namespace and bind-mounts the host's
                 resolv.conf so host networking works like Docker's.
+            mount_workdir: If True (default), bind-mount ``workdir_path`` at
+                the container cwd (shadowing image content there). False
+                leaves the image filesystem untouched.
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
@@ -391,7 +402,7 @@ class ImageManager(BaseImageManager):
         mounts = spec.get("mounts", [])
         existing_dests = {m.get("destination") for m in mounts}
 
-        if workdir_path:
+        if workdir_path and mount_workdir:
             default_binds = [
                 (container_cwd, workdir_path),
             ]
@@ -478,6 +489,7 @@ class ImageManager(BaseImageManager):
         readonly: bool = True,
         capabilities: Optional[List[str]] = None,
         network: str = "none",
+        mount_workdir: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -493,6 +505,8 @@ class ImageManager(BaseImageManager):
             readonly: Read-only rootfs flag.
             capabilities: Optional additional Linux capabilities (see create_oci_spec).
             network: runsc network mode the sandbox will run with (see create_oci_spec).
+            mount_workdir: Whether to bind-mount workdir_path at the container
+                cwd (see create_oci_spec).
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -512,6 +526,7 @@ class ImageManager(BaseImageManager):
             readonly=readonly,
             capabilities=capabilities,
             network=network,
+            mount_workdir=mount_workdir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 

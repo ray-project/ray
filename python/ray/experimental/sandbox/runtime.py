@@ -49,6 +49,7 @@ class SandboxRuntime:
         memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
+        mount_workdir: bool = True,
         ttl_seconds: Optional[int] = 3600,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
@@ -69,6 +70,10 @@ class SandboxRuntime:
             workdir: Default working directory inside the sandbox. By default, the
                 working directory is the only writable path in the sandbox (unless
                 ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
+        mount_workdir: If True (default), bind-mount a host-backed scratch
+            directory at ``workdir``, shadowing any image content there. Set
+            False to leave the image's filesystem (e.g. its own WORKDIR
+            content) untouched; combine with ``readonly=False`` to write.
             ttl_seconds: Optional automatic cleanup time-to-live in seconds.
             timeout_seconds: Timeout in seconds for sandbox creation.
             rootless: If True, run gVisor in rootless mode.
