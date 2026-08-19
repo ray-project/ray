@@ -86,6 +86,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 # Field ID for the fabricated stub field, see ``_get_empty_projection_schema``.
 # Iceberg matches columns by ID, so this must not be a real column's: colliding
 # with a non-boolean column raises ``ResolveError``, and with a boolean column
