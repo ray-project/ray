@@ -98,6 +98,14 @@ def test_run_tests_in_docker() -> None:
         )._run_tests_in_docker(["t1", "t2"], [0, 1], "/tmp", ["v=k"], "flag")
         input_str = inputs[-1]
         assert "--env ENV_01 --env ENV_02 --env BUILDKITE" in input_str
+        # The index configuration has to reach the nested container: the bazel
+        # invocation inside it reads the --repo_env passthrough from the repo's
+        # .bazelrc, which only has an effect on variables that container has.
+        assert (
+            "--env PIP_INDEX_URL --env PIP_EXTRA_INDEX_URL --env PIP_TRUSTED_HOST "
+            "--env UV_INDEX_URL --env UV_EXTRA_INDEX_URL --env UV_INSECURE_HOST "
+            "--env RULES_PYTHON_PIP_ISOLATED" in input_str
+        )
         assert "--network host" in input_str
         assert '--gpus "device=0,1"' in input_str
         assert "--volume /tmp:/tmp/bazel_event_logs" in input_str
