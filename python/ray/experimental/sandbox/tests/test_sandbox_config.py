@@ -63,8 +63,19 @@ def test_invalid_network_mode_rejected():
     with pytest.raises(ValueError, match="network mode"):
         SandboxConfig(image="python:3.10-slim", network="bridge")
 
-    for mode in ("none", "host", "sandbox"):
+    for mode in ("none", "host"):
         assert SandboxConfig(image="python:3.10-slim", network=mode).network == mode
+    # "sandbox" additionally requires rootless=False (see the test below).
+    config = SandboxConfig(image="python:3.10-slim", network="sandbox", rootless=False)
+    assert config.network == "sandbox"
+
+
+def test_sandbox_network_requires_rootful():
+    with pytest.raises(ValueError, match="rootless"):
+        SandboxConfig(image="python:3.10-slim", network="sandbox")
+
+    config = SandboxConfig(image="python:3.10-slim", network="sandbox", rootless=False)
+    assert config.network == "sandbox"
 
 
 def test_parse_memory_bytes():

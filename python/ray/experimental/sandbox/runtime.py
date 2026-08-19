@@ -107,6 +107,7 @@ class SandboxRuntime:
             memory=memory,
             env=env or {},
             workdir=workdir,
+            mount_workdir=mount_workdir,
             ttl_seconds=ttl_seconds,
             timeout_seconds=timeout_seconds,
             rootless=rootless,

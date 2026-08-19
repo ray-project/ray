@@ -361,6 +361,28 @@ def test_create_oci_spec_host_network_keeps_pathed_netns(tmp_path):
     ]
 
 
+def test_create_oci_spec_tolerates_null_capability_set(tmp_path):
+    """A base_spec capability *set* (not just the dict) may be null."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["process"]["capabilities"] = {"effective": None, "bounding": ["CAP_KILL"]}
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=base, capabilities=["CAP_CHOWN"]
+    )
+    assert spec["process"]["capabilities"]["effective"] == ["CAP_CHOWN"]
+    assert "CAP_KILL" in spec["process"]["capabilities"]["bounding"]
+    assert "CAP_CHOWN" in spec["process"]["capabilities"]["bounding"]
+
+
+def test_create_oci_spec_tolerates_non_dict_namespace_entries(tmp_path):
+    """Malformed namespace entries are kept for runsc to reject, not dropped."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["linux"]["namespaces"] = [{"type": "network"}, "pid", None]
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=base, network="host")
+    assert spec["linux"]["namespaces"] == ["pid", None]
+
+
 def test_create_oci_spec_mount_workdir_toggle(tmp_path):
     """mount_workdir=False must not shadow image content at the workdir."""
     mgr = _StubImageManager(tmp_path)

@@ -394,9 +394,12 @@ class ImageManager(BaseImageManager):
                 spec["process"]["capabilities"] = caps
             for cap_set in _OCI_CAPABILITY_SETS:
                 # Union rather than replace, so anything the runtime default
-                # grants survives.
-                merged = dict.fromkeys([*caps.get(cap_set, []), *capabilities])
-                caps[cap_set] = list(merged)
+                # grants survives. Each set may also exist with a null value
+                # in a caller-supplied base_spec.
+                current = caps.get(cap_set)
+                if not isinstance(current, list):
+                    current = []
+                caps[cap_set] = list(dict.fromkeys([*current, *capabilities]))
 
         # Set up default mounts
         mounts = spec.get("mounts", [])
@@ -419,6 +422,7 @@ class ImageManager(BaseImageManager):
                             ],
                         }
                     )
+                    existing_dests.add(dest)
         if network == "host":
             # A namespace entry with no "path" means "create a new, empty
             # namespace", and the default spec has one for "network". That
@@ -435,7 +439,11 @@ class ImageManager(BaseImageManager):
                 linux_spec["namespaces"] = [
                     ns
                     for ns in namespaces
-                    if not (ns.get("type") == "network" and not ns.get("path"))
+                    if not (
+                        isinstance(ns, dict)
+                        and ns.get("type") == "network"
+                        and not ns.get("path")
+                    )
                 ]
             # Host networking shares the host's network stack but not its
             # resolver configuration, and most images ship an empty

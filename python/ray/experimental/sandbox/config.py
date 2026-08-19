@@ -145,6 +145,14 @@ class SandboxConfig:
                 f"Invalid network mode '{self.network}'. "
                 f"Expected one of {VALID_NETWORK_MODES}."
             )
+        if self.network == "sandbox" and self.rootless:
+            # runsc rejects this at container start, after the image pull and
+            # bundle build, with an error naming a flag the user never set.
+            raise ValueError(
+                "network='sandbox' requires rootless=False; runsc does not "
+                "support the sandbox netstack in rootless mode. Use "
+                "network='host' for a rootless sandbox with network access."
+            )
 
 
 GVisorSandboxConfig = SandboxConfig

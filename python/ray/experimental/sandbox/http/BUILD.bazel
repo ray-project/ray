@@ -1,0 +1,45 @@
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel:python.bzl", "py_test_module_list")
+
+py_library(
+    name = "sandbox_http_lib",
+    srcs = glob(
+        ["**/*.py"],
+        exclude = ["tests/**/*.py"],
+    ),
+    visibility = [
+        "//python/ray/experimental/sandbox/http:__pkg__",
+        "//python/ray/experimental/sandbox/http:__subpackages__",
+    ],
+    deps = [
+        "//python/ray/experimental/sandbox:sandbox_lib",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"],
+    deps = [
+        "//python/ray/tests:conftest",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    files = glob(
+        ["tests/**/*.py"],
+        exclude = [
+            "tests/conftest.py",
+            "tests/__init__.py",
+        ],
+    ),
+    tags = [
+        "sandbox_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        ":sandbox_http_lib",
+    ],
+)
