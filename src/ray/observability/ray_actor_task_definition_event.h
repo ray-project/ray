@@ -14,8 +14,12 @@
 
 #pragma once
 
+#include <cstdint>
+#include <memory>
 #include <string>
 
+#include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/observability/ray_event.h"
 #include "ray/observability/task_ray_event_interface.h"
 #include "src/ray/protobuf/public/events_actor_task_definition_event.pb.h"
@@ -31,15 +35,17 @@ template class RayEvent<rpc::events::ActorTaskDefinitionEvent>;
  * Like the task definition event, exactly one is produced per attempt, so MergeData must
  * never be called (it RAY_CHECK-fails).
  *
- * TODO(karticam): built EAGERLY like RayTaskDefinitionEvent. Benchmark if this adds
- * latency and then maybe implement lazy serialization (see RayTaskDefinitionEvent; the
- * same follow-up applies there).
+ * Like RayTaskDefinitionEvent, the proto is built when the event is serialized
+ * for export rather than when it is recorded.
  */
 class RayActorTaskDefinitionEvent
     : public RayEvent<rpc::events::ActorTaskDefinitionEvent>,
       public TaskRayEventInterface {
  public:
-  RayActorTaskDefinitionEvent(rpc::events::ActorTaskDefinitionEvent data,
+  RayActorTaskDefinitionEvent(std::shared_ptr<const TaskSpecification> task_spec,
+                              const TaskID &task_id,
+                              const JobID &job_id,
+                              int32_t task_attempt,
                               const std::string &session_name,
                               int64_t timestamp);
 
@@ -50,6 +56,12 @@ class RayActorTaskDefinitionEvent
  protected:
   void MergeData(RayEvent<rpc::events::ActorTaskDefinitionEvent> &&other) override;
   ray::rpc::events::RayEvent SerializeData() && override;
+
+ private:
+  std::shared_ptr<const TaskSpecification> task_spec_;
+  TaskID task_id_;
+  JobID job_id_;
+  int32_t task_attempt_;
 };
 
 }  // namespace observability

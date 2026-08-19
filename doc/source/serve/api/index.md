@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Ray Serve API reference: the Python API for writing and running applications, configs and schemas, request router, CLI, and REST API."
+---
+
 (serve-api)=
 # Ray Serve API
 
@@ -279,7 +285,6 @@ Content-Type: application/json
             "status": "HEALTHY"
         }
     },
-    "deploy_mode": "MULTI_APP",
     "applications": {
         "app1": {
             "name": "app1",

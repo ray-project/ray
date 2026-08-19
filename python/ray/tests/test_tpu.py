@@ -1945,6 +1945,77 @@ def test_subslice_auto_select_skips_busy_first_subslice(mock_4x4_pgs):
     sg.shutdown()
 
 
+def test_subslice_select_specific_index_success(mock_4x4_pgs):
+    """Specifying subslice_index selects that specific subslice even if others are idle."""
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-specific-index"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    # Pre-populate cache so no discovery is needed.
+    ray.util.tpu._tpu_subslice_cache[slice_name] = _SUBSLICE_2X4_LABELS
+
+    # All workers idle.
+    avail = {
+        "node_0": {"TPU": 4},
+        "node_1": {"TPU": 4},
+        "node_2": {"TPU": 4},
+        "node_3": {"TPU": 4},
+    }
+
+    with (
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail,
+        ),
+    ):
+        sg = ray.util.tpu.subslice_placement_group(
+            subslice_topology="2x4",
+            accelerator_version="v6e",
+            chips_per_vm=4,
+            subslice_index=1,
+        )
+
+    assert sg.subslice_index == 1
+    assert sg.num_hosts == 2
+    sg.shutdown()
+
+
+def test_subslice_select_specific_index_busy(mock_4x4_pgs):
+    """Specifying subslice_index fails if that specific subslice is busy, even if others are idle."""
+    mock_head_pg, mock_worker_pg = mock_4x4_pgs
+    slice_name = "test-slice-specific-index-busy"
+    dummy_nodes = _make_dummy_nodes(slice_name, "4x4", 4)
+
+    # Pre-populate cache so no discovery is needed.
+    ray.util.tpu._tpu_subslice_cache[slice_name] = _SUBSLICE_2X4_LABELS
+
+    # Workers 2 and 3 (subslice 1) busy; workers 0 and 1 (subslice 0) idle.
+    avail = {
+        "node_0": {"TPU": 4},
+        "node_1": {"TPU": 4},
+        "node_2": {"TPU": 0},
+        "node_3": {"TPU": 0},
+    }
+
+    with (
+        patch("ray.util.tpu.placement_group", return_value=mock_worker_pg),
+        patch("ray.nodes", return_value=dummy_nodes),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value=avail,
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="No subslice of '2x4' is schedulable"):
+            ray.util.tpu.subslice_placement_group(
+                subslice_topology="2x4",
+                accelerator_version="v6e",
+                chips_per_vm=4,
+                subslice_index=1,
+            )
+
+
 def test_subslice_release_head_pgs_and_shutdown():
     """Test that release_head_pgs and shutdown are idempotent."""
     from ray.util.placement_group import PlacementGroup

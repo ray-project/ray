@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Train a PyTorch model on Fashion MNIST with CPUs on Kubernetes using a RayJob, end to end."
+---
+
 (kuberay-mnist-training-example)=
 
 # Train a PyTorch model on Fashion MNIST with CPUs on Kubernetes
