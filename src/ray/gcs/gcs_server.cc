@@ -205,7 +205,16 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
         "GCSServer.redis_health_check");
 
-    store_client = redis_store_client;
+    // Observe the Redis backend like every other one. The health check above
+    // keeps its own concrete pointer and so bypasses the wrapper, which is
+    // correct: a PING is not a storage operation and should not appear in
+    // gcs_storage_operation_count. Only the Redis backend is gated -- the other
+    // two have always been observed, so there is nothing new to roll back.
+    store_client = MaybeObserve(std::move(redis_store_client),
+                                RayConfig::instance().gcs_redis_storage_metrics_enabled(),
+                                metrics_.storage_operation_latency_in_ms_histogram,
+                                metrics_.storage_operation_count_counter,
+                                clock_);
     break;
   }
 #if defined(__linux__)
@@ -767,11 +776,15 @@ void GcsServer::InitUsageStatsClient() {
 
 void GcsServer::InitKVManager() {
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
-  std::unique_ptr<StoreClient> store_client;
+  std::shared_ptr<StoreClient> store_client;
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    store_client =
-        std::make_unique<RedisStoreClient>(io_context, GetRedisClientOptions(), clock_);
+    store_client = MaybeObserve(
+        std::make_shared<RedisStoreClient>(io_context, GetRedisClientOptions(), clock_),
+        RayConfig::instance().gcs_redis_storage_metrics_enabled(),
+        metrics_.storage_operation_latency_in_ms_histogram,
+        metrics_.storage_operation_count_counter,
+        clock_);
     break;
   case (StorageType::IN_MEMORY):
     store_client = std::make_unique<ObservableStoreClient>(

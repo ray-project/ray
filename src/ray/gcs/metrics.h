@@ -149,22 +149,35 @@ inline ray::stats::Gauge GetGcsActorByStateGaugeMetric() {
   };
 }
 
+// TableName is a bounded internal table name -- see NormalizeTableNameLabel in
+// store_client/table_name_label.h. Keys, internal-KV namespaces and any other
+// user-supplied string are never labels. Note that the tag_keys list below is
+// the tag allowlist on both metric stacks: OpenCensus turns it into the view's
+// column set (metric.cc, RegisterAsView) and OpenTelemetry seeds its attribute
+// map from it and drops anything undeclared (metric.cc, Metric::Record), so a
+// tag recorded without being declared here is exported by neither.
+
 inline ray::stats::Histogram GetGcsStorageOperationLatencyInMsHistogramMetric() {
   return ray::stats::Histogram{
       /*name=*/"gcs_storage_operation_latency_ms",
-      /*description=*/"Time to invoke an operation on Gcs storage",
+      /*description=*/
+      "Time to invoke an operation on GCS storage, broken down by operation and "
+      "by the GCS table it addressed. Recorded when the operation completes.",
       /*unit=*/"",
       /*boundaries=*/{0.1, 1, 10, 100, 1000, 10000},
-      /*tag_keys=*/{"Operation"},
+      /*tag_keys=*/{"Operation", "TableName"},
   };
 }
 
 inline ray::stats::Count GetGcsStorageOperationCountCounterMetric() {
   return ray::stats::Count{
       /*name=*/"gcs_storage_operation_count",
-      /*description=*/"Number of operations invoked on Gcs storage",
+      /*description=*/
+      "Number of operations invoked on GCS storage, broken down by operation and "
+      "by the GCS table it addressed. Recorded when the operation is issued, so "
+      "this leads gcs_storage_operation_latency_ms by the number in flight.",
       /*unit=*/"",
-      /*tag_keys=*/{"Operation"},
+      /*tag_keys=*/{"Operation", "TableName"},
   };
 }
 
