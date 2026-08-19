@@ -129,9 +129,7 @@ DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
     "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 128
 )
 
-DEFAULT_HASH_SHUFFLE_COMPRESSION = os.environ.get(
-    "RAY_DATA_HASH_SHUFFLE_COMPRESSION", "zstd"
-)
+DEFAULT_SHUFFLE_COMPRESSION = os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", "zstd")
 
 DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE = env_integer(
     "RAY_DATA_HASH_SHUFFLE_REDUCE_BATCH_SIZE", 16
@@ -753,7 +751,7 @@ class DataContext:
             See :class:`DeltaConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
-        hash_shuffle_compression: Codec used to compress hash-shuffle
+        shuffle_compression: Codec used to compress hash-shuffle
             intermediate shards: "none", "lz4", or "zstd" (default "zstd").
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
@@ -864,7 +862,7 @@ class DataContext:
     default_hash_shuffle_parallelism: int = DEFAULT_MIN_PARALLELISM
 
     # Codec for hash-shuffle intermediate shards ("none", "lz4", or "zstd").
-    hash_shuffle_compression: str = DEFAULT_HASH_SHUFFLE_COMPRESSION
+    shuffle_compression: str = DEFAULT_SHUFFLE_COMPRESSION
 
     # Shard refs each reduce task dereferences per ray.get() call.
     hash_shuffle_reduce_batch_size: int = DEFAULT_HASH_SHUFFLE_REDUCE_BATCH_SIZE
