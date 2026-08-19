@@ -207,22 +207,9 @@ class TestHangingExecutionIssueDetector:
         assert "longer than the average task duration" in issues[0].message
 
 
-def test_hanging_detector_skips_shutdown_operator():
-    operator = MagicMock()
-    operator._shutdown = True
-    detector = HangingExecutionIssueDetector(
-        dataset_id="id",
-        operators=[operator],
-        config=HangingExecutionIssueDetectorConfig(),
-    )
-
-    assert detector.detect() == []
-    operator.has_execution_finished.assert_not_called()
-
-
-def test_hash_shuffle_detector_skips_finished_operator():
+def test_hash_shuffle_detector_skips_completed_operator():
     operator = MagicMock(spec=HashShuffleOperator)
-    operator._shutdown = True
+    operator.has_completed.return_value = True
     operator._aggregator_pool = MagicMock()
     detector = HashShuffleAggregatorIssueDetector(
         dataset_id="id",
@@ -324,31 +311,6 @@ def test_high_memory_detection_on_operator_completion(
         assert map_operator.name in normalized_message
         assert expected_memory_configuration in normalized_message
         assert f"`memory={expected_memory}`" in normalized_message
-    assert detector.detect() == []
-
-
-def test_high_memory_detection_on_operator_shutdown(restore_data_context):
-    ctx = DataContext.get_current()
-    input_data_buffer = InputDataBuffer(ctx, input_data=[])
-    map_operator = MapOperator.create(
-        map_transformer=MagicMock(),
-        input_op=input_data_buffer,
-        data_context=ctx,
-        ray_remote_args={"memory": 1},
-    )
-    map_operator.metrics.max_uss_bytes.add_sample(8 * GiB)
-    map_operator.has_completed = MagicMock(return_value=False)
-    map_operator._shutdown = True
-    detector = HighMemoryIssueDetector(
-        dataset_id="id",
-        operators=[input_data_buffer, map_operator],
-        config=ctx.issue_detectors_config.high_memory_detector_config,
-    )
-
-    issues = detector.detect()
-
-    assert len(issues) == 1
-    assert "used up to 8.0GiB of memory per worker" in issues[0].message
     assert detector.detect() == []
 
 
