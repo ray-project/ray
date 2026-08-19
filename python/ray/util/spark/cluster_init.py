@@ -60,6 +60,13 @@ RAY_ON_SPARK_START_RAY_PARENT_PID = "RAY_ON_SPARK_START_RAY_PARENT_PID"
 RAY_ENABLE_AUTOSCALER_V2 = "RAY_enable_autoscaler_v2"
 
 
+def _is_autoscaler_v2_enabled(ray_node_custom_env):
+    return ray_node_custom_env.get(RAY_ENABLE_AUTOSCALER_V2, "").lower() in (
+        "true",
+        "1",
+    )
+
+
 def _check_system_environment():
     if os.name != "posix":
         raise RuntimeError("Ray on spark only supports running on POSIX system.")
@@ -1562,7 +1569,7 @@ def _start_ray_worker_nodes(
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
             **ray_node_custom_env,
         }
-        if ray_node_custom_env.get(RAY_ENABLE_AUTOSCALER_V2) == "1":
+        if _is_autoscaler_v2_enabled(ray_node_custom_env):
             ray_worker_node_extra_envs.update(
                 {
                     "RAY_CLOUD_INSTANCE_ID": str(node_id),
@@ -1887,7 +1894,7 @@ class AutoscalingCluster:
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             **ray_node_custom_env,
         }
-        if ray_node_custom_env.get(RAY_ENABLE_AUTOSCALER_V2) == "1":
+        if _is_autoscaler_v2_enabled(ray_node_custom_env):
             extra_env.update(
                 {
                     "RAY_CLOUD_INSTANCE_ID": str(HEAD_NODE_ID),

@@ -1,3 +1,4 @@
+import sys
 import threading
 from unittest import mock
 
@@ -114,8 +115,15 @@ def test_spark_job_server_rejects_duplicate_spark_task_node_id():
         server.server_close()
 
 
-@pytest.mark.parametrize("enable_autoscaler_v2", [False, True])
-def test_autoscaler_head_identity(tmp_path, enable_autoscaler_v2):
+@pytest.mark.parametrize(
+    "autoscaler_v2_env,enabled",
+    [
+        ("0", False),
+        ("1", True),
+        ("true", True),
+    ],
+)
+def test_autoscaler_head_identity(tmp_path, autoscaler_v2_env, enabled):
     cluster = AutoscalingCluster(
         head_resources={
             "CPU": 0,
@@ -144,18 +152,18 @@ def test_autoscaler_head_identity(tmp_path, enable_autoscaler_v2):
             dashboard_options=[],
             head_node_options={},
             collect_log_to_path=None,
-            ray_node_custom_env={
-                "RAY_enable_autoscaler_v2": "1" if enable_autoscaler_v2 else "0"
-            },
+            ray_node_custom_env={"RAY_enable_autoscaler_v2": autoscaler_v2_env},
         )
 
     extra_env = start_head.call_args.kwargs["extra_env"]
-    assert extra_env["RAY_enable_autoscaler_v2"] == (
-        "1" if enable_autoscaler_v2 else "0"
-    )
-    if enable_autoscaler_v2:
+    assert extra_env["RAY_enable_autoscaler_v2"] == autoscaler_v2_env
+    if enabled:
         assert extra_env["RAY_CLOUD_INSTANCE_ID"] == "0"
         assert extra_env["RAY_NODE_TYPE_NAME"] == "ray.head.default"
     else:
         assert "RAY_CLOUD_INSTANCE_ID" not in extra_env
         assert "RAY_NODE_TYPE_NAME" not in extra_env
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
