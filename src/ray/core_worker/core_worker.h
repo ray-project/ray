@@ -2054,7 +2054,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// We have to track this separately because cancellation requests come from submitter
   /// thread than the thread executing the task, so we cannot get the cancellation status
   /// from the thread-local WorkerThreadContext.
-  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
+  ///
+  /// This has its own mutex because IsTaskCanceled() is called from check_signals
+  /// while the process-level core_worker_ lock is held, and taking mutex_ there
+  /// closes a lock-order cycle.
+  mutable absl::Mutex canceled_tasks_mutex_ ABSL_ACQUIRED_AFTER(mutex_);
+  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(canceled_tasks_mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
