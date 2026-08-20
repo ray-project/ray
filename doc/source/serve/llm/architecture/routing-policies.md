@@ -86,7 +86,7 @@ For more details, see {ref}`prefix-aware-routing-guide`.
 
 ### KV-aware routing
 
-The `KVAwareRouter` combines KV cache locality with token load to make routing decisions. Engine replicas publish KV cache events, which the router uses to maintain a global index of the KV cache blocks on each replica. For each request, the router uses KV cache overlap to estimate the remaining prefill work, combines it with each replica’s decode load into a single token load estimate, and routes the request to the replica with the lowest estimated load.
+The `KVAwareRouter` combines KV cache locality with token load to make routing decisions. Engine replicas publish KV cache events, allowing the router to maintain a global view of the KV cache blocks on each replica. For each request, the router estimates the potential uncached prefill work from KV cache overlap, combines it with each replica's active prefill and decode load into single token load estimate. It then routes the request to the replica with the lowest estimated token load.
 
 For more details, see {ref}`kv-aware-routing-guide`.
 

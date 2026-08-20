@@ -24,10 +24,9 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 
 - {doc}`Prefill/decode disaggregation <prefill-decode>`: split prompt processing and token generation onto separate replicas to tune each independently.
 - {doc}`Direct streaming <direct-streaming>`: bypass the ingress when streaming tokens to cut per-token latency.
-- {doc}`Prefix-aware routing <prefix-aware-routing>`: route requests to replicas that already hold a matching prefix to maximize cache hits.
-- {doc}`KV-aware routing <kv-aware-routing>`: route requests to replicas based on KV cache overlap and token load, accounting for uncached prefill tokens and ongoing decode load.
-- {doc}`KV cache offloading <kv-cache-offloading>`: extend KV cache capacity with native vLLM CPU offloading, LMCache, or tiered storage backends and optionally pair it with a router that accounts for KV caches across storage tiers.
-
+- {doc}`Approximate prefix cache aware routing <prefix-aware-routing>`: route requests to replicas that already hold a matching prefix to maximize cache hits.
+- {doc}`Exact KV cache aware routing <kv-aware-routing>`: route requests to replicas based on KV cache overlap and token load, accounting for uncached prefill tokens and ongoing decode load.
+- {doc}`KV cache offloading <kv-cache-offloading>`: extend KV cache capacity with native vLLM CPU offloading, LMCache, or tiered storage backends. Pair it with a router that accounts for KV caches across storage tiers.
 
 ## Choose an engine
 

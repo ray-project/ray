@@ -13,32 +13,32 @@ Route each request to the replica that gives the best balance of KV cache reuse 
 `KVAwareRouter` is in alpha and may change before becoming stable.
 :::
 
-Every replica reports the KV blocks it caches and evicts through vLLM-native KV events. The router keeps a global KV index of those reports, so each routing decision knows which replicas already hold the request's prefix KV caches.
+Each replica reports KV block creation and eviction through vLLM-native KV events. The router uses these events to maintain a global view of KV cache state across replicas, allowing it to identify which replicas already hold KV blocks that overlap with a request’s prefix.
 
-`KVAwareRouter` turns that overlap into a number: how much prefill each candidate remains. It adds the replica's current decode work and routes to the lowest total. This guide calls that total the replica's **token load**.
+`KVAwareRouter` uses this overlap to estimate the request’s remaining prefill work for each replica. It then combines this remaining prefill work with the replica’s active prefill and decode work. We call this combined estimate the replica’s token load. The request is routed to the replica with the lowest estimated token load.
 
 ## When to use KV-aware routing
 
-The best policy depends on the workload. You can configure different routers through the same `request_router_config`.
+The best policy depends on your workload. You can configure different routers through the same `request_router_config`.
 
 | Router | Routes on | Use it when | Cost |
 | --- | --- | --- | --- |
 | `RoundRobinRouter` | Request order | Prompts share little beyond the system prompt, and you want the simplest even spread. | No KV cache awareness. |
-| `ConsistentHashRouter` | Hash of the `x-session-id` header | Clients can supply a session ID, and each session's history is the reusable prefix. | A session with more turns or longer input or output sequences than the rest can saturate its replica. |
-| `PrefixCacheAffinityRouter` | Prompt text, matched against a prefix tree the router maintains | Requests share a long textual prefix. | Approximates engine KV cache state from text, and falls back to power of two choices when queue lengths diverge. |
-| `KVAwareRouter` | Token load: remaining prefill after KV cache overlap, plus decode work | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
+| `ConsistentHashRouter` | Hash of the `x-session-id` header | Clients can provide a session ID and each session’s history forms the reusable prefix. | A session with more turns or longer input or output sequences can saturate its replica. |
+| `PrefixCacheAffinityRouter` | Prompt text matched against a router-maintained prefix tree | Requests frequently share a long textual prefixes. | Approximates engine KV cache state from prompt text and falls back to power of two choices when queue lengths become imbalanced. |
+| `KVAwareRouter` | Token load: the request's remaining prefill work after accounting for KV cache overlap, plus the replica's active prefill and decode work | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
 
 ## Installation
 
-The router scores replicas with the selection service from [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo), which Ray Serve LLM runs in-process inside the ingress replica. Scoring is all it does: Ray Serve manages replica discovery, request orchestration, and request lifecycle. Install it in your cluster environment, either in the image or through the deployment's `runtime_env`:
+The router scores replicas with the selection service from [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo), which Ray Serve LLM runs in-process inside the ingress replica. Scoring is all it does: Ray Serve manages replica discovery, request orchestration, and request lifecycle. Install it in your cluster environment, for example in the image:
 
 ```bash
-pip install "ai-dynamo"
+pip install "ai-dynamo>=1.4.0"
 ```
 
 ## Configuration
 
-`KVAwareRouter` runs inside the `LLMRouter` ingress request router, so it needs the {ref}`direct streaming <direct-streaming-guide>` path. It scores on prompt tokens, so the ingress also needs the request body. Export all three variables before you start Serve:
+`KVAwareRouter` runs inside the `LLMRouter` ingress request router, so it needs the {ref}`direct streaming <direct-streaming-guide>` path. It scores on prompt tokens, so the ingress also needs the request body. Export all three environment variables before you start Serve:
 
 ```bash
 export RAY_SERVE_ENABLE_HA_PROXY=1
@@ -97,42 +97,36 @@ Run `serve run config.yaml`.
 :::
 ::::
 
-Keep three things in mind:
-
-- **Ray Serve LLM handles the rest of the wiring.** It sets up the engine's KV-cache event stream, the per-replica ports those events use, and the process settings that keep KV block hashes consistent across replicas.
-- **Leave `enable_prefix_caching` on.** It's the vLLM default. The engine emits KV-cache events only for the blocks it caches, so with prefix caching off the router has nothing to score.
-- **Offloaded KV cache counts.** Turn on {ref}`KV cache offloading <native-kv-cache-offloading>` and the router tracks the KV cache blocks that spilled to external memory alongside those still resident on GPU.
-
 ### Tuning
 
-Set these in the cluster environment or the deployment's `runtime_env`:
+Set these in the cluster environment:
 
 | Environment variable | Default | Effect |
 | --- | --- | --- |
-| `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` | 1 | Ingress replicas per proxy node. Raise it when ingress tokenization and scoring bound throughput. |
-| `RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS` | 0 | Report decode progress as the engine generates tokens, for more accurate load tracking. Because each replica sends updates to every ingress replica, this can add network overhead at high concurrency. Enable it only when you need it. |
-| `RAY_SERVE_LLM_KV_TOKEN_STAGING_TTL_S` | 60 | How long a replica holds a staged prompt-token payload before dropping it. |
-| `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_ENTRIES` | 8192 | Staged payloads retained per replica. |
-| `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_BYTES` | 1 GiB | Memory a replica devotes to staged payloads. |
+| `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` | 1 | Ingress replicas per proxy node. Raise it when ingress tokenization and request scoring bound throughput. |
+| `RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS` | 0 | Report decode progress as the engine generates tokens, for more accurate load tracking. Because each engine replica sends updates to every ingress replica, this can add network overhead at high concurrency. |
+| `RAY_SERVE_LLM_KV_TOKEN_STAGING_TTL_S` | 60 | How long a replica holds a staged prompt-token payload before eviction. |
+| `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_ENTRIES` | 8192 | Staged payloads retained per engine replica. |
+| `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_BYTES` | 1 GiB | Memory allocated for staged payloads per engine replica. |
 
 Set these as `experimental_configs` keys on the `LLMConfig`:
 
 | `experimental_configs` key | Default | Effect |
 | --- | --- | --- |
-| `KV_INDEXER_THREADS` | 4 | Threads the router uses to ingest KV-cache events. |
+| `KV_INDEXER_THREADS` | 4 | Rust threads the router uses to ingest KV-cache events. |
 | `KV_EVENTS_PORT_BASE` | 5557 | Base port for the engine's KV-cache event socket. Each replica takes the base plus its node-local rank. |
 | `KV_TOKEN_PORT_BASE` | 7557 | Base port for the channel that carries prompt tokens to replicas. |
 
-The router's scoring weights are tunable too. See [Tune the scoring weights](#tune-the-scoring-weights) once you've read how scoring works.
+The router's scoring weights are also configurable. See [Tune the scoring weights](#tune-the-scoring-weights).
 
 ## How it works
 
-Replica selection runs inside the `LLMRouter` ingress replica. Scoring is the one part Dynamo's selection service handles. It runs in-process in the `LLMRouter` replica, holds the global KV cache index and the per-replica load view, and determines which candidate replica should serve the request. Ray Serve manages everything around that:
+Replica selection determines which `LLMServer` engine replica processes each request. This selection logic runs inside the `LLMRouter` ingress replica, with Dynamo’s selection service handling the scoring. The selection service maintains a global KV cache index and a view of the load on each replica, then uses this information to select the best candidate for each request. Ray Serve manages everything around this process:
 
-- **Replica discovery.** Ray Serve tracks which `LLMServer` replicas are running and which are eligible to receive traffic, through the same deployment, autoscaling, and health machinery every Serve app uses. The router scores only the replicas Ray Serve offers it.
-- **Request orchestration.** The ingress receives the request, tokenizes it, asks for a replica, and dispatches the request there.
-- **Request lifecycle.** Engine replicas report prefill completion, decode progress, and completion back to the ingress, which applies them to the load view.
-- **Event transport.** Ray Serve LLM configures each engine's KV cache event stream and its ports, and keeps the ingress replicas in sync with one another.
+- **Replica discovery.** Ray Serve tracks which `LLMServer` replicas are running and which are eligible to receive traffic. The router only scores the available replicas.
+- **Request orchestration.** The ingress receives and tokenizes each request, selects a replica, and dispatches the request to it.
+- **Request lifecycle.** Engine replicas report prefill completion, decode progress, and request completion back to the ingress, which uses these updates to maintain its view of replica token load.
+- **Event transport and synchronization.** KV cache events are broadcast to all ingress replicas, while the ingress replicas synchronize token load updates with one another. This gives each ingress replica a consistent view of KV cache state and token load, enabling them to make consistent routing decisions.
 
 ```{figure} ../images/kv_aware_routing_flow.png
 ---
@@ -143,29 +137,21 @@ How a request flows through a KV-aware deployment.
 ```
 
 1. The client sends a request to HAProxy.
-2. HAProxy forwards the prompt to an `LLMRouter` ingress replica. The router tokenizes it and asks the selection service to score the running `LLMServer` replicas on KV cache overlap and token load.
-3. The router returns the replica it selected.
-4. HAProxy sends the request to that replica.
-5. The replica streams the response back to the client with direct streaming.
-
-### What the router tracks
-
-Each engine replica reports every KV block it caches and evicts. The selection service folds those reports into one global index, so at any moment it knows which replicas hold which KV caches, including KV caches that spilled to the CPU tier when you enable KV cache offloading.
-
-The index follows the replica set. A new replica becomes scorable once it reports in, and a replica that leaves has its blocks and its in-flight requests dropped. An ingress replica that restarts rebuilds its index from the engines rather than routing against an empty one.
+1. HAProxy forwards the prompt to an `LLMRouter` ingress replica. The router tokenizes it and asks the selection service to score the running `LLMServer` replicas on KV cache overlap and token load.
+1. The router returns the replica it selected.
+1. HAProxy sends the request to that replica.
+1. The replica streams the response back to the client with direct streaming.
 
 ### How a replica is chosen
 
-Token load estimates how much work each engine is carrying. It combines the two phases of LLM inference: compute-bound prefill and memory-bound decode. The selection service estimates this load for each candidate replica in KV blocks, and the router sends the request to the replica with the lowest load:
+Token load estimates how much work remains on each engine replica. It captures the two main phases of LLM inference: compute-bound prefill and memory-bound decode. For each candidate replica, the selection service estimates token load in KV blocks, and the router sends the request to the replica with the lowest estimated load.
 
-- **Remaining prefill tokens**, the compute-bound term. The engine reuses any matching KV cache and computes only the remaining input tokens. This term includes those remaining tokens and the prefill already queued on the replica, with credit for cached blocks. GPU-resident blocks receive full credit, while CPU-offloaded blocks receive less because they must be reloaded.
-- **Decode tokens**, the memory-bound term. After prefill, each decode step reads the KV cache accumulated so far. This term captures the KV blocks used by active decoding requests, weighted by their estimated remaining output based on `max_tokens`.
-
-The router is more likely to select a replica with a long KV cache match, but cache locality isn't the only factor. A CPU-resident match provides less benefit than a GPU-resident one, and a busy replica can lose to a less loaded replica with a shorter match.
+- **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded blocks receive less because they must first be loaded back to the GPU.
+- **Decode load**, the memory-bound term. During decoding, each step accesses the KV cache accumulated by active requests. This term captures the KV blocks associated with ongoing decode work, weighted by the estimated remaining output based on `max_tokens`.
 
 ### Tune the scoring weights
 
-The selection service reads its weights from `DYN_*` environment variables, which you set in the `LLMConfig`'s `runtime_env`. Ray Serve LLM passes them to the ingress replica where scoring runs:
+The selection service exposes several scoring weights that you can tune to match the characteristics of your workload. These weights are configured through DYN_* environment variables in the `LLMConfig` `runtime_env`. Ray Serve LLM passes them to the ingress replicas where scoring runs:
 
 ```python
 llm_config = LLMConfig(
@@ -177,24 +163,26 @@ llm_config = LLMConfig(
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `DYN_ROUTER_PREFILL_LOAD_SCALE` | 1.0 | Weight of the whole prefill term against decode load. Raise it for prefill-heavy traffic, and lower it for decode-heavy traffic. |
-| `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT` | 1.0 | Credit a GPU-resident cache hit earns against the prefill term. Raise it above 1.0 when cache hit rate matters more than even load. Set it to 0.0 to ignore KV cache overlap entirely and route on load alone. |
-| `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT_DECAY` | 0.0, off | Fades cache credit as a replica's prefill backlog grows past the least-loaded candidate. Raise it when one replica keeps winning on cache affinity while others sit idle. |
-| `DYN_ROUTER_DECODE_ACTIVE_REQUEST_WEIGHT` | 0.0, off | Charge per request a replica is already serving. Raise it when many small requests concentrate on one replica. |
+| `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT` | 1.0 | Controls how much GPU-resident KV cache overlap reduces the prefill cost. Increase it when KV cache reuse is more important, or set it to 0.0 to ignore KV cache overlap and route based on load alone. |
+| `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT_DECAY` | 0.0, off | Reduces the benefit of KV cache overlap as a replica’s prefill backlog grows relative to the least-loaded candidate. Increase it when cache affinity repeatedly favors a busy replica while others remain underutilized. |
+| `DYN_ROUTER_DECODE_ACTIVE_REQUEST_WEIGHT` | 0.0, off | Adds a cost for each request a replica is already serving. Increase it when many small requests tend to concentrate on the same replica. |
 
 For the full set of selection-service settings, see NVIDIA's [standalone selection service](https://docs.nvidia.com/dynamo/knowledge-base/modular-components/router/standalone-selection) documentation.
 
 ### Tokenization at the ingress
 
-The router scores on token ids, so it tokenizes every request at the ingress, using the same renderer and chat template as the engine. That has two consequences worth planning for:
+The router scores requests using token IDs, so each request is tokenized at the ingress using the same renderer and chat template as the engine. This has two implications:
 
-- Tokenizing is real CPU work on the ingress, and it's the main reason to add ingress replicas.
-- The ingress hands the tokens it produced to the chosen replica, so the engine doesn't tokenize the same prompt twice. The tokens travel on their own channel and arrive before the HTTP request does, so the replica holds them, or *stages* them, until the matching request shows up. Delivery is best effort: if a payload never arrives or has already expired, the engine tokenizes the prompt itself. The `RAY_SERVE_LLM_KV_TOKEN_STAGING_*` variables bound how long and how much each replica stages.
+- **Tokenization adds CPU overhead at the ingress.** This is the primary reason to scale the number of ingress replicas.
+
+- **Tokenization is not repeated at the engine.** The ingress sends the tokenized prompt to the selected engine replica, avoiding duplicate tokenization. The tokens are sent over a separate channel and may arrive before the corresponding HTTP request, so the engine replica temporarily **stages** them until the request arrives. Delivery is best effort: if the token payload is missing or has expired, the engine simply tokenizes the prompt again. The `RAY_SERVE_LLM_KV_TOKEN_STAGING_*` variables control how long and how much token data each engine replica can stage.
+
 
 ### Scaling the ingress tier
 
 Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` when tokenizing and scoring at the ingress bound throughput. Two per node is usually enough, though the right number depends on your traffic.
 
-Ray Serve LLM keeps every ingress replica's view of cache and load in sync, so adding replicas doesn't cost routing quality. Those views are eventually consistent: replicas broadcast their bookings and the engines' reports in the background, so one can score against a slightly stale view for a moment before it catches up.
+Ray Serve LLM keeps the KV cache and token load views synchronized across ingress replicas. These views are **eventually consistent**: token load and engine updates are propagated in the background, so an ingress replica may briefly make routing decisions based on a slightly stale KV cache or token load view.
 
 ## Limitations
 
