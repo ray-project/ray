@@ -367,6 +367,7 @@
 
 # Keyed repartition of TPC-H lineitem (not groupby). SHUFFLE_V2 in-memory vs
 # external file-transport. Manual: trigger via buildkite/release filter.
+# Compute: 32x m5.2xlarge workers (see fixed_size_all_to_all_compute_m5_2xlarge.yaml).
 - name: "repartition_lineitem_{{shuffle}}"
   python: "3.10"
   frequency: manual
@@ -382,7 +383,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
-    cluster_compute: fixed_size_all_to_all_compute.yaml
+    cluster_compute: fixed_size_all_to_all_compute_m5_2xlarge.yaml
 
   run:
     timeout: 7200
