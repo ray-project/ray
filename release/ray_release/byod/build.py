@@ -43,6 +43,17 @@ def build_anyscale_custom_byod_image(
         docker_build_cmd = "docker build --progress=plain .".split()
         docker_build_cmd += ["--build-arg", f"BASE_IMAGE={base_image}"]
         docker_build_cmd += ["-t", image]
+        # Give the build the same name for the agent that wanda gives every image build
+        # it starts (ray-project/rayci#501). This is a plain docker build rather than a
+        # wanda one, so it inherits none of that, and the index below is a name the
+        # build has no way to resolve on its own: release 104848 failed
+        # hello_world_custom_byod.{aws,gce} with "failed to lookup address information:
+        # No address associated with hostname". uv resolves these depsets and errors out
+        # where pip would have fallen back, so the whole image build fails.
+        #
+        # Unconditional, matching wanda: docker resolves host-gateway itself, and one
+        # extra hosts entry is inert for a build that never uses the name.
+        docker_build_cmd += ["--add-host", "rayci.localhost:host-gateway"]
         # This build runs inside a forge step on the release stack, so the step's
         # index is a live rewriting proxy and a RUN step can reach it (premerge
         # 72149). Without this the ARG in byod.Dockerfile has no value to take.
