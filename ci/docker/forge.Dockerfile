@@ -14,6 +14,7 @@ RUN \
   --mount=type=bind,source=ci/pypi_index_proxy.py,target=pypi_index_proxy.py \
   --mount=type=bind,source=ci/pypi_proxy_profile.sh,target=pypi_proxy_profile.sh \
   --mount=type=bind,source=ci/install_pypi_proxy.sh,target=install_pypi_proxy.sh \
+  --mount=type=bind,source=ci/bazel_mirror_downloader.sh,target=bazel_mirror_downloader.sh \
 <<EOF
 #!/bin/bash
 
