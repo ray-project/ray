@@ -9,19 +9,24 @@ have access to the ray_release package.
 import argparse
 import json
 import logging
+import math
 import multiprocessing
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TypedDict
 from urllib.parse import urlparse
 
 AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
+
+# Prometheus metric type for idle worker evictions. We expect Ray to kill idle workers
+# under memory pressure, so we exclude them from the OOM check.
+IDLE_WORKER_EVICTION_METRIC_TYPE = "MemoryManager.IdleWorkerEviction.Total"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -31,6 +36,20 @@ formatter = logging.Formatter(
 )
 handler.setFormatter(formatter)
 logger.addHandler(handler)
+
+
+class PrometheusSeries(TypedDict):
+    """A single time series from a Prometheus query result.
+
+    Attributes:
+        metric: The series' label set, e.g. ``{"Type": ..., "Name": ...}``. Empty
+            when the query aggregated the labels away.
+        values: ``[timestamp, value]`` samples over the queried range. Prometheus
+            renders the values as strings.
+    """
+
+    metric: dict[str, str]
+    values: list[list]
 
 
 def exponential_backoff_retry(
@@ -312,11 +331,13 @@ def run_oom_check():
     return_code = 0
     if _metric_unavailable("OOM check", metrics, "worker_oom_kills"):
         return_code = 1
-    elif metrics["worker_oom_kills"]:
-        logger.error(
-            f"Test failed: OOM worker kills detected. Details: {metrics['worker_oom_kills']}"
-        )
-        return_code = 1
+    else:
+        worker_oom_kills = _filter_idle_worker_kills(metrics["worker_oom_kills"])
+        if worker_oom_kills:
+            logger.error(
+                f"Test failed: OOM worker kills detected. Details: {worker_oom_kills}"
+            )
+            return_code = 1
 
     if _metric_unavailable("OOM check", metrics, "unexpected_worker_failures"):
         return_code = 1
@@ -328,6 +349,19 @@ def run_oom_check():
         )
         return_code = 1
     return return_code
+
+
+def _filter_idle_worker_kills(worker_oom_kills: list) -> list:
+    """Drop idle-worker evictions from the worker OOM kill series.
+
+    Idle-worker evictions are expected behavior, so we exclude them and only keep task
+    and actor kills.
+    """
+    return [
+        series
+        for series in worker_oom_kills
+        if series.get("metric", {}).get("Type") != IDLE_WORKER_EVICTION_METRIC_TYPE
+    ]
 
 
 def run_spilling_check():
@@ -345,6 +379,68 @@ def run_spilling_check():
         )
         return_code = 1
     return return_code
+
+
+def run_obj_store_util_check(max_percent: str):
+    """Fail if peak object store utilization exceeded ``max_percent`` percent."""
+    check_name = "Object store utilization check"
+    env_var = "RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT"
+
+    try:
+        threshold = float(max_percent)
+    except ValueError:
+        logger.error(f"{check_name}: {env_var!r} isn't a number: {max_percent!r}.")
+        return 1
+
+    if threshold < 0:
+        logger.info(f"{check_name} skipped: {env_var} is {max_percent}.")
+        return 0
+
+    metrics = _load_metrics_for_check(check_name, env_var)
+    if metrics is None:
+        return 1
+    if _metric_unavailable(check_name, metrics, "object_store_util_percent"):
+        return 1
+
+    peak_percent = _peak_metric_value(metrics["object_store_util_percent"])
+    if peak_percent is None:
+        logger.error(
+            f"{check_name}: 'object_store_util_percent' contains no samples, likely "
+            "a collection issue."
+        )
+        return 0
+
+    if peak_percent > threshold:
+        logger.error(
+            f"Test failed: peak object store utilization {peak_percent:.1f}% exceeded "
+            f"the {threshold:.1f}% limit set by {env_var}."
+        )
+        return 1
+
+    logger.info(
+        f"{check_name} passed: peak object store utilization {peak_percent:.1f}% "
+        f"is within the {threshold:.1f}% limit."
+    )
+    return 0
+
+
+def _peak_metric_value(series: list[PrometheusSeries]) -> float | None:
+    """Return the largest sample across a Prometheus query result.
+
+    Args:
+        series: One entry per label set the query returned, each holding that
+            series' samples over the queried range.
+
+    Returns:
+        The largest value, or ``None`` if there aren't any valid values.
+    """
+    values = [
+        float(value)
+        for entry in series
+        for _, value in entry.get("values", [])
+        if not math.isnan(float(value))
+    ]
+    return max(values) if values else None
 
 
 def run_dead_node_check():
@@ -472,6 +568,14 @@ def main(
         # Fail if any object-store spilling occurred
         if return_code == 0 and test_fail_on_spilling:
             return_code = run_spilling_check()
+
+        max_obj_store_util_percent = os.environ.get(
+            "RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT"
+        )
+
+        # Fail if the object store filled up beyond the configured limit.
+        if return_code == 0 and max_obj_store_util_percent:
+            return_code = run_obj_store_util_check(max_obj_store_util_percent)
 
         uploaded_artifact = run_storage_cp(
             artifact_path,

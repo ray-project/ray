@@ -106,6 +106,11 @@ class LogicalOperator(Operator, ABC):
         args["_name"] = self.name
         # Preserve legacy export shape even though output deps are no longer tracked.
         args["_output_dependencies"] = []
+        # Do not include input dependencies, since we only want to export this
+        # operator-specific args. Adding input_dependencies isn't wrong, but can
+        # lead to slow recursive calls with `sanitize_for_struct`, since logical
+        # operators are dataclasses.
+        args["_input_dependencies"] = []
         return args
 
     def infer_schema(self) -> Optional["Schema"]:

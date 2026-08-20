@@ -69,7 +69,7 @@ class ReportHead(SubprocessModule):
         # will be hang when the ray.state is connected and the GCS is exit.
         # Please refer to: https://github.com/ray-project/ray/issues/16328
         self.service_discovery = PrometheusServiceDiscoveryWriter(
-            self.gcs_address, self.temp_dir
+            self.gcs_address, self.temp_dir, self.session_dir
         )
         self._state_api = None
         self._executor = ThreadPoolExecutor(
@@ -876,8 +876,7 @@ class ReportHead(SubprocessModule):
             if "node_id" not in req.query:
                 raise aiohttp.web.HTTPBadRequest(
                     text=(
-                        "Failed to execute task profiling: "
-                        "task's node id is required"
+                        "Failed to execute task profiling: task's node id is required"
                     )
                 )
 
@@ -1088,7 +1087,10 @@ class ReportHead(SubprocessModule):
     async def run(self):
         await super().run()
         self._state_api_data_source_client = StateDataSourceClient(
-            self.aiogrpc_gcs_channel, self.gcs_client
+            self.aiogrpc_gcs_channel,
+            self.gcs_client,
+            dashboard_socket_dir=self._config.socket_dir,
+            dashboard_session_name=self._config.session_name,
         )
         # Set up the state API in order to fetch task information.
         # This is only used to get task info. If we have Task APIs in GcsClient we can

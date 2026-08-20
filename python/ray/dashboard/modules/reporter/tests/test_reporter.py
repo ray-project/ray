@@ -53,6 +53,7 @@ STATS_TEMPLATE = {
     "cpu": 57.4,
     "cpus": (8, 4),
     "mem": (17179869184, 5723353088, 66.7, 9234341888),
+    "swap": None,
     "shm": 456,
     "workers": [
         {
@@ -425,6 +426,26 @@ def test_report_stats(tmp_path):
     assert len(cgroup_total) == 1
     assert cgroup_total[0].value == 10737418240
 
+    # Swap gauges must NOT be emitted when swap_total == 0 (e.g. flag off, or
+    # no swap on the host). Otherwise dashboards see a constant-zero series.
+    assert not any(r.gauge.name == "node_swap_used" for r in records)
+    assert not any(r.gauge.name == "node_swap_total" for r in records)
+    assert not any(r.gauge.name == "node_swap_utilization" for r in records)
+
+    # When swap is reported (flag on + cgroup-aware lookup returned non-zero),
+    # all three swap gauges are emitted as a unit.
+    stats["swap"] = (2 * 1024**3, 512 * 1024**2, 25.0)
+    records = agent._to_records(stats, cluster_stats)
+    swap_used = [r for r in records if r.gauge.name == "node_swap_used"]
+    swap_total = [r for r in records if r.gauge.name == "node_swap_total"]
+    swap_util = [r for r in records if r.gauge.name == "node_swap_utilization"]
+    assert len(swap_used) == 1 and swap_used[0].value == 512 * 1024**2
+    assert len(swap_total) == 1 and swap_total[0].value == 2 * 1024**3
+    assert len(swap_util) == 1 and swap_util[0].value == 25.0
+    # Restore swap to None (the off/unreadable state) so the downstream
+    # record-count assertions still hold.
+    stats["swap"] = None
+
     # Test stats without raylets
     stats["raylet"] = None
     records = agent._to_records(stats, cluster_stats)
@@ -464,6 +485,35 @@ def test_report_stats(tmp_path):
     stats_payload = agent._generate_stats_payload(stats)
     assert stats_payload is not None
     assert isinstance(stats_payload, str)
+
+
+def test_generate_stats_payload_normalizes_none_process_cmdline(tmp_path):
+    from ray._common.pydantic_compat import PYDANTIC_INSTALLED
+
+    if not PYDANTIC_INSTALLED:
+        pytest.skip("Pydantic is not installed")
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["workers"][0]["cmdline"] = None
+    stats["raylet"]["cmdline"] = None
+    stats["agent"]["cmdline"] = None
+    stats["gcs"]["cmdline"] = None
+    stats["cmdline"] = None
+
+    stats_payload = json.loads(agent._generate_stats_payload(stats))
+
+    assert stats_payload["workers"][0]["cmdline"] == []
+    assert stats_payload["raylet"]["cmdline"] == []
+    assert stats_payload["agent"]["cmdline"] == []
+    assert stats_payload["gcs"]["cmdline"] == []
+    assert stats_payload["cmdline"] == []
 
 
 def test_report_stats_gpu(tmp_path):
@@ -519,7 +569,7 @@ def test_report_stats_gpu(tmp_path):
         {
             "index": 3,
             "name": "NVIDIA A10G",
-            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b399",
             "utilization_gpu": 3,
             "memory_used": 3,
             "memory_total": GPU_MEMORY,
@@ -555,6 +605,7 @@ def test_report_stats_gpu(tmp_path):
                 # The tag value must be string for prometheus.
                 "GpuIndex": str(index),
                 "GpuDeviceName": "NVIDIA A10G",
+                "GpuUuid": f"GPU-36e1567d-37ed-051e-f8ff-df807517b39{6 + index}",
                 "RayNodeType": "head",
                 "IsHeadNode": "true",
             }
@@ -633,10 +684,12 @@ def test_report_stats_gpu_power_and_temperature(tmp_path):
     assert temp_by_index["0"] == 65
     assert temp_by_index["1"] == 72
 
-    # Tags should include GpuIndex and GpuDeviceName
+    # Tags should include GpuIndex, GpuDeviceName and GpuUuid
+    expected_uuids = {"0": "GPU-aaa", "1": "GPU-bbb"}
     for r in power_records + temp_records:
         assert "GpuIndex" in r.tags
         assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
+        assert r.tags.get("GpuUuid") == expected_uuids[r.tags["GpuIndex"]]
 
 
 def test_report_stats_gpu_without_power_temperature(tmp_path):

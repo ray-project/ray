@@ -180,6 +180,82 @@ class ObjectRefGenerator:
         self.worker.check_connected()
         return self.worker.core_worker.peek_next_object_id_binary(self._generator_ref)
 
+    def _stream_exhausted(self) -> bool:
+        """Whether the stream's end-of-stream marker has been reached and all
+        yielded refs consumed.
+
+        Non-blocking, in-memory check (unlike ``is_finished``, this does not
+        ``ray.get`` the generator return object). When True, the only thing
+        left is the end-of-stream ``ray.get`` of the return object that
+        ``_next_sync`` performs to surface ``StopIteration`` / task errors.
+        """
+        self.worker.check_connected()
+        return self.worker.core_worker.is_object_ref_stream_finished(
+            self._generator_ref
+        )
+
+    def _get_next_ref_n(self, num_refs: int) -> list["ray.ObjectRef"]:
+        """Return the next num_refs references from a generator without consuming them.
+
+        The returned refs are not consumed; wait for the last one to become ready
+        before calling ``_consume_next_ref_n`` to advance the stream.
+
+        If ``num_refs`` overshoots the end of the stream, the extra refs are
+        positions the generator will never produce. ``ray.get`` on such a ref
+        raises ``ObjectRefStreamEndOfStreamError`` when the stream ended cleanly.
+        If the stream is ended by owner-side task termination before those
+        positions can be produced -- for example task cancellation, actor death,
+        or worker death -- the ref surfaces that terminal error instead. Python
+        generator application exceptions are normally reported as a stream item;
+        positions after that reported exception may still be clean
+        end-of-stream. A task that fails before the generator executor starts,
+        such as one with a failed by-reference dependency, has no streamed
+        exception item; its EOF-region refs preserve the serialized error from
+        the generator completion object instead.
+
+        Args:
+            num_refs: The number of references to return, starting from the
+                current head of the stream. Must be positive.
+
+        Returns:
+            A list of exactly num_refs ObjectRefs corresponding to the next
+            results in the stream, starting from the current head.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return [
+            ref
+            for ref, _ in core_worker.peek_object_ref_stream_n(
+                self._generator_ref, num_refs
+            )
+        ]
+
+    def _consume_next_ref_n(self, num_refs: int) -> None:
+        """Consume (advance) the next num_refs references from a generator.
+
+        The caller must have waited for the last requested ref to become ready
+        (see ``_get_next_ref_n``); otherwise this raises ``ValueError`` instead
+        of silently advancing past unwritten objects.
+
+        If the requested range crosses the end of the stream, EOF/error refs in
+        the range are also consumed so a later peek starts after this returned
+        batch.
+
+        Args:
+            num_refs: The number of references to consume, starting from the
+                current head of the stream. Must be positive.
+        """
+        if num_refs <= 0:
+            raise ValueError("num_refs must be positive")
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        try:
+            core_worker.try_read_next_object_ref_stream_n(self._generator_ref, num_refs)
+        except ObjectRefStreamEndOfStreamError:
+            return
+
     def _next_sync(self, timeout_s: Optional[int | float] = None) -> "ray.ObjectRef":
         """Waits for timeout_s and returns the object ref if available.
 

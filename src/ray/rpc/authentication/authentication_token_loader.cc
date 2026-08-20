@@ -28,14 +28,7 @@
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
-#ifndef _WINDOWS_
-#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
-                             // headers you need manually.
-                             // (https://stackoverflow.com/a/8294669)
-#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
-#endif
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
-#endif
 #endif
 
 namespace ray {

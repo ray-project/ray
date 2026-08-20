@@ -134,6 +134,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsChannelError()
         c_bool IsChannelTimeoutError()
         c_bool IsUnauthenticated()
+        c_bool IsGcsPassive()
 
         c_string ToString()
         c_string CodeAsString()
@@ -423,7 +424,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool enable_task_events,
             const unordered_map[c_string, c_string] &labels,
             CLabelSelector label_selector,
-            c_vector[CFallbackOption] fallback_strategy)
+            c_vector[CFallbackOption] fallback_strategy,
+            int64_t actor_generator_backpressure_num_objects)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -435,6 +437,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
+            const unordered_map[c_string, CPlacementStrategy] &topology_strategy,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
@@ -516,6 +519,8 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             optional[CGcsNodeState] state_filter,
             const c_vector[CNodeSelector] &node_selectors,
             optional[int64_t] limit) const
+
+        c_bool IsGcsLeader() const
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(

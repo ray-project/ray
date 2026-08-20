@@ -67,6 +67,11 @@ DEFAULT_ENABLE_PREEMPTION_WATCHER: bool = True
 PREEMPTION_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_PREEMPTION_POLL_INTERVAL_S"
 DEFAULT_PREEMPTION_POLL_INTERVAL_S: float = 5.0
 
+# Fallback grace window the controller waits in PreemptingState when Ray Core
+# reports no reclaim deadline (deadline unknown). Only used as a default when
+# the deadline is unknown; a reported deadline is always respected as-is.
+DEFAULT_PREEMPTION_DEADLINE_S: float = 120.0
+
 # Environment variable to enable the print function patching.
 ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
 DEFAULT_ENABLE_PRINT_PATCH = True

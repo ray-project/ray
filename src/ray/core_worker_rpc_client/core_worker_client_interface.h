@@ -69,6 +69,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       ReportGeneratorItemReturnsRequest &&request,
       const ClientCallback<ReportGeneratorItemReturnsReply> &callback) = 0;
 
+  virtual void UpdateGeneratorBackpressureConsumed(
+      UpdateGeneratorBackpressureConsumedRequest &&request,
+      const ClientCallback<UpdateGeneratorBackpressureConsumedReply> &callback) = 0;
+
   // Lifecycle / control RPCs
   virtual void KillActor(const KillActorRequest &request,
                          const ClientCallback<KillActorReply> &callback) = 0;
@@ -90,9 +94,6 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
 
   virtual void LocalGC(const LocalGCRequest &request,
                        const ClientCallback<LocalGCReply> &callback) = 0;
-
-  virtual void DeleteObjects(const DeleteObjectsRequest &request,
-                             const ClientCallback<DeleteObjectsReply> &callback) = 0;
 
   virtual void SpillObjects(const SpillObjectsRequest &request,
                             const ClientCallback<SpillObjectsReply> &callback) = 0;

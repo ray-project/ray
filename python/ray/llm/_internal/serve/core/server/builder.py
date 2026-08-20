@@ -79,7 +79,7 @@ def build_llm_deployment(
         DEFAULT_DEPLOYMENT_OPTIONS, deployment_options
     )
 
-    _maybe_setup_kv_aware_routing(deployment_options)
+    _maybe_setup_kv_aware_routing(deployment_options, llm_config)
 
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))

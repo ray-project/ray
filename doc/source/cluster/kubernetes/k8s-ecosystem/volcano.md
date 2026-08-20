@@ -1,7 +1,13 @@
+---
+myst:
+  html_meta:
+    description: "Integrate KubeRay with Volcano for gang scheduling, job queues, and fair-share policies across RayCluster and RayJob."
+---
+
 (kuberay-volcano)=
 # KubeRay integration with Volcano
 
-[Volcano](https://github.com/volcano-sh/volcano) is a batch scheduling system built on Kubernetes, providing gang scheduling, job queues, fair scheduling policies, and network topology-aware scheduling. KubeRay integrates natively with Volcano for RayCluster, RayJob, and RayService, enabling more efficient scheduling of Ray pods in multi-tenant Kubernetes environments.
+[Volcano](https://github.com/volcano-sh/volcano) is a batch scheduling system built on Kubernetes, providing gang scheduling, job queues, fair scheduling policies, and network topology-aware scheduling. KubeRay integrates natively with Volcano for RayCluster, RayJob, and RayService, enabling more efficient scheduling of Ray head and worker Pods in multi-tenant Kubernetes environments.
 
 This guide covers [setup instructions](#setup), [configuration options](#step-4-install-a-raycluster-with-the-volcano-scheduler), and [examples](#example) demonstrating gang scheduling for both RayCluster and RayJob.
 
@@ -16,8 +22,7 @@ kind create cluster
 
 ### Step 2: Install Volcano
 
-You need to successfully install Volcano on your Kubernetes cluster before enabling Volcano integration with KubeRay.
-See [Quick Start Guide](https://github.com/volcano-sh/volcano#quick-start-guide) for Volcano installation instructions.
+You need to successfully install Volcano on your Kubernetes cluster before enabling Volcano integration with KubeRay. See [Quick Start Guide](https://github.com/volcano-sh/volcano#quick-start-guide) for Volcano installation instructions.
 
 ### Step 3: Install the KubeRay Operator with batch scheduling
 
@@ -25,9 +30,7 @@ Deploy the KubeRay Operator with the `--batch-scheduler=volcano` flag to enable 
 
 When installing KubeRay Operator using Helm, you should use one of these two options:
 
-* Set `batchScheduler.name` to `volcano` in your
-[`values.yaml`](https://github.com/ray-project/kuberay/blob/753dc05dbed5f6fe61db3a43b34a1b350f26324c/helm-chart/kuberay-operator/values.yaml#L48)
-file:
+* Set `batchScheduler.name` to `volcano` in your [`values.yaml`](https://github.com/ray-project/kuberay/blob/753dc05dbed5f6fe61db3a43b34a1b350f26324c/helm-chart/kuberay-operator/values.yaml#L48) file:
 ```shell
 # values.yaml file
 batchScheduler:

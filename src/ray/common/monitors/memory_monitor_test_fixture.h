@@ -1,0 +1,164 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <sys/types.h>
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "gtest/gtest.h"
+#include "ray/common/cgroup2/cgroup_test_utils.h"
+
+namespace ray {
+
+/**
+ * @brief Test utility base class providing memory usage mocking functionality
+ * for memory monitor tests.
+ *
+ * This class manages the lifecycle of temporary directories and files
+ * created during tests, ensuring they are cleaned up when the test ends.
+ */
+class MemoryMonitorTestFixture : public ::testing::Test {
+ public:
+  /// Destroys the mock directories in reverse order of creation.
+  ~MemoryMonitorTestFixture() override {
+    mock_cgroup_files_.clear();
+    while (!mock_cgroup_dirs_.empty()) {
+      mock_cgroup_dirs_.pop_back();
+    }
+    mock_proc_files_.clear();
+    while (!mock_proc_dirs_.empty()) {
+      mock_proc_dirs_.pop_back();
+    }
+  }
+
+  MemoryMonitorTestFixture() = default;
+  MemoryMonitorTestFixture(const MemoryMonitorTestFixture &) = delete;
+  MemoryMonitorTestFixture &operator=(const MemoryMonitorTestFixture &) = delete;
+  MemoryMonitorTestFixture(MemoryMonitorTestFixture &&) = delete;
+  MemoryMonitorTestFixture &operator=(MemoryMonitorTestFixture &&) = delete;
+
+ protected:
+  /**
+   * @brief Creates a mock /proc-style memory usage file for a given process.
+   *
+   * Creates a temporary directory with the structure `<dir>/<pid>/smaps_rollup`
+   * and writes a mock smaps_rollup file with the given usage value.
+   * The temporary directory and file are cleaned up automatically by their
+   * destructors when the test ends.
+   *
+   * @param pid The process ID to create usage info for.
+   * @param usage_kb The memory usage value in kB to write.
+   * @return The path to the created mock proc directory.
+   */
+  std::string MockProcMemoryUsage(pid_t pid, const std::string &usage_kb);
+
+  /**
+   * @brief Sets up a mock cgroup v2 directory for emulating memory usage and populates
+   * the files with the provided mock memory values.
+   *
+   * @param total_bytes The value to write to memory.max (total memory limit).
+   * @param current_bytes The value to write to memory.current (current usage).
+   * @param anon_memory_bytes The anon to write to memory.stat (anonymous memory usage).
+   * @param shmem_memory_bytes The shmem to write to memory.stat (shared memory usage).
+   * @param inactive_file_bytes The inactive_file value in memory.stat.
+   * @param active_file_bytes The active_file value in memory.stat.
+   * @param swapcached_bytes The swapcached value in memory.stat. Pass
+   *        std::nullopt to omit the line (kernels < 5.12 don't publish it).
+   * @return The path to the created mock cgroup directory.
+   */
+  std::string MockCgroupv2MemoryUsage(
+      int64_t total_bytes,
+      int64_t current_bytes,
+      std::optional<int64_t> anon_memory_bytes,
+      std::optional<int64_t> shmem_memory_bytes,
+      int64_t inactive_file_bytes,
+      int64_t active_file_bytes,
+      std::optional<int64_t> swapcached_bytes = std::nullopt);
+
+  /**
+   * @brief Sets up a mock cgroup v1 directory for emulating memory usage and populates
+   * the files with the provided mock memory values.
+   *
+   * @param total_bytes The value to write to memory/memory.limit_in_bytes.
+   * @param current_bytes The value to write to memory/memory.usage_in_bytes.
+   * @param inactive_file_bytes The total_inactive_file value in memory/memory.stat.
+   * @param active_file_bytes The total_active_file value in memory/memory.stat.
+   * @return The path to the created mock cgroup root directory.
+   */
+  std::string MockCgroupv1MemoryUsage(int64_t total_bytes,
+                                      int64_t current_bytes,
+                                      int64_t inactive_file_bytes,
+                                      int64_t active_file_bytes);
+
+  /**
+   * @brief Writes a synthetic /proc/meminfo file into a temp directory. All
+   * sizes are in kB to match the kernel's format. SwapTotal/SwapFree are
+   * optional — pass std::nullopt to omit the lines (simulates a no-swap host).
+   *
+   * @return The temp directory path (suitable to pass as `proc_dir`).
+   */
+  std::string MockProcMeminfo(int64_t mem_total_kb,
+                              int64_t mem_available_kb,
+                              std::optional<int64_t> swap_total_kb,
+                              std::optional<int64_t> swap_free_kb);
+
+  /**
+   * @brief Adds cgroup v2 memory.swap.{max,current} files inside an existing
+   * cgroup mock directory created by MockCgroupv2MemoryUsage.
+   *
+   * @param cgroup_path The cgroup directory returned by MockCgroupv2MemoryUsage.
+   * @param swap_max_bytes Value to write to memory.swap.max. Pass std::nullopt
+   *        to write the literal "max" (unlimited).
+   * @param swap_current_bytes Value to write to memory.swap.current.
+   */
+  void MockCgroupv2Swap(const std::string &cgroup_path,
+                        std::optional<int64_t> swap_max_bytes,
+                        int64_t swap_current_bytes);
+
+  /**
+   * @brief String-valued overload for memory.swap.max. Use when the test needs
+   * to inject content that std::stoll rejects (overflow sentinels like
+   * "18446744073709551615", garbage, empty) — std::optional<int64_t> can't
+   * express those.
+   */
+  void MockCgroupv2Swap(const std::string &cgroup_path,
+                        const std::string &swap_max_str,
+                        int64_t swap_current_bytes);
+
+  /**
+   * @brief Adds cgroup v1 memsw files inside an existing cgroup mock directory
+   * created by MockCgroupv1MemoryUsage. Mirrors MockCgroupv2Swap for cgroup v1.
+   *
+   * @param cgroup_path The cgroup directory returned by MockCgroupv1MemoryUsage.
+   * @param memsw_limit_bytes Value to write to memory/memory.memsw.limit_in_bytes.
+   * @param memsw_usage_bytes Value to write to memory/memory.memsw.usage_in_bytes.
+   */
+  void MockCgroupv1Memsw(const std::string &cgroup_path,
+                         int64_t memsw_limit_bytes,
+                         int64_t memsw_usage_bytes);
+
+ private:
+  std::vector<std::unique_ptr<TempDirectory>> mock_proc_dirs_;
+  std::vector<std::unique_ptr<TempFile>> mock_proc_files_;
+  std::vector<std::unique_ptr<TempDirectory>> mock_cgroup_dirs_;
+  std::vector<std::unique_ptr<TempFile>> mock_cgroup_files_;
+};
+
+}  // namespace ray

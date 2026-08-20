@@ -132,6 +132,56 @@ def _validate_fusion(
     return is_valid, missing_columns
 
 
+def _would_duplicate_nonidempotent_expr(
+    upstream_project: Project,
+    downstream_project: Project,
+    upstream_column_defs: Dict[str, Expr],
+) -> bool:
+    """Return ``True`` if fusing would materialize a non-idempotent column >1 time.
+
+    Fusion inlines each upstream output column definition into every downstream
+    reference. For a non-idempotent definition (random/uuid/monotonically_increasing_id)
+    this changes its evaluation count, so we block the fusion and let the upstream
+    evaluate it exactly once.
+
+    Materialization count for an upstream column post-fusion is its downstream reference
+    multiplicity, plus one if it survives as a passthrough (the composition/star case).
+    """
+    nonidem_cols = {
+        name
+        for name, def_expr in upstream_column_defs.items()
+        if not def_expr.is_idempotent()
+    }
+    if not nonidem_cols:
+        return False
+
+    # Downstream reference multiplicity (counts ``x + x`` as 2).
+    counter = _ColumnReferenceCollector()
+    # Note: We ignore _common_sub_exprs field as CSE rule is applied post-optimization.
+    # If order is to be changed, we also need to invoke the _ColumnReferenceCollector
+    # on _common_sub_exprs.
+    for e in _filter_out_star(downstream_project.exprs):
+        counter.visit(e)
+    ref_counts = counter.get_counts()
+
+    # In the composition (downstream-star) case the upstream column also survives in
+    # the fused output unless downstream renames it away, adding one materialization.
+    passthrough: Set[str] = set()
+    if downstream_project.has_star_expr():
+        renamed_away = _extract_input_columns_renaming_mapping(downstream_project.exprs)
+        passthrough = {
+            e.name
+            for e in upstream_project.exprs
+            if not isinstance(e, StarExpr) and e.name not in renamed_away
+        }
+
+    for name in nonidem_cols:
+        total = ref_counts.get(name, 0) + (1 if name in passthrough else 0)
+        if total > 1:
+            return True
+    return False
+
+
 def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project:
     """
     Attempt to merge two consecutive Project operations into one.
@@ -142,20 +192,13 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
     # This ensures with_column respects resource boundaries like map_batches does
     from ray.data._internal.logical.rules.operator_fusion import (
         FuseOperators,
-        are_remote_args_compatible,
+        are_op_remote_args_compatible,
     )
 
-    # Check if remote args (num_cpus, num_gpus, etc.) are compatible
-    if not are_remote_args_compatible(
-        upstream_project.ray_remote_args or {},
-        downstream_project.ray_remote_args or {},
-    ):
+    # Check if remote args (num_cpus, num_gpus, etc.) are compatible and that
+    # neither op specifies a `ray_remote_args_fn`.
+    if not are_op_remote_args_compatible(upstream_project, downstream_project):
         # Resources don't match - cannot fuse
-        return downstream_project
-
-    # Do not fuse if either op specifies a `ray_remote_args_fn`,
-    # since it is not known whether the generated args will be compatible.
-    if upstream_project.ray_remote_args_fn or downstream_project.ray_remote_args_fn:
         return downstream_project
 
     # Check if compute strategies are compatible
@@ -192,6 +235,15 @@ def _try_fuse(upstream_project: Project, downstream_project: Project) -> Project
             f"Column(s) {sorted(missing_columns)} not found. "
             f"Available columns: {sorted(upstream_output_cols) if not upstream_has_star else 'all columns (has star)'}"
         )
+
+    if _would_duplicate_nonidempotent_expr(
+        upstream_project, downstream_project, upstream_column_defs
+    ):
+        # Fusing would inline a non-idempotent expression (random/uuid/
+        # monotonically_increasing_id) into multiple references, changing its
+        # evaluation count. Leave the two Projects unfused so the upstream evaluates
+        # it exactly once and downstream reads the materialized column.
+        return downstream_project
 
     # Following invariants are upheld for each ``Project`` logical op:
     #

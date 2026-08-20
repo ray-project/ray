@@ -88,8 +88,8 @@ def crop_image(row):
 def run_pipeline():
     # These are best practices we recommend to avoid OOMs, though they're opt-in and
     # not enabled by default.
-    ray.data.DataContext.isolate_read_workers = True
-    ray.data.DataContext.default_map_logical_memory_enabled = True
+    ray.data.DataContext.get_current().isolate_read_workers = True
+    ray.data.DataContext.get_current().default_map_logical_memory_enabled = True
 
     ds = ray.data.read_videos(INPUT_PATH)
     ds = ds.map(resize_frame)

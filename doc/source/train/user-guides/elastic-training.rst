@@ -1,3 +1,6 @@
+.. meta::
+   :description: Elastic training that adapts to changing resource availability, continuing through node preemption and scaling up as new nodes join.
+
 .. _train-elastic-training:
 
 Elastic training
@@ -139,7 +142,7 @@ For elastic training to scale up when more resources become available, the clust
                   spec:
                     containers:
                       - name: ray-worker
-                        image: rayproject/ray:latest
+                        image: rayproject/ray:2.56.1
 
         .. note::
 

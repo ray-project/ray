@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run a Ray job on Kubernetes with RayJob, which creates a RayCluster on demand and can delete it once the job finishes."
+---
+
 (kuberay-rayjob-quickstart)=
 
 # RayJob Quickstart
@@ -31,8 +37,7 @@ To understand the following content better, you should understand the difference
   * `clusterSelector` - Use existing **RayCluster** custom resources to run the Ray job instead of creating a new one. See [ray-job.use-existing-raycluster.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.use-existing-raycluster.yaml) for example configurations.
 * Ray job configuration
   * `entrypoint` - The submitter runs `ray job submit --address ... --submission-id ... -- $entrypoint` to submit a Ray job to the RayCluster.
-  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string.
-  Example:
+  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string. Example:
 
     ```yaml
     spec:
@@ -54,14 +59,15 @@ To understand the following content better, you should understand the difference
     * `K8sJobMode`: The KubeRay operator creates a submitter Kubernetes Job to submit the Ray job.
     * `HTTPMode`: The KubeRay operator sends a request to the RayCluster to create a Ray job.
     * `InteractiveMode`: The KubeRay operator waits for the user to submit a job to the RayCluster. This mode is currently in alpha and the [KubeRay kubectl plugin](kubectl-plugin) relies on it.
-    * `SidecarMode`: The KubeRay operator injects a container into the Ray head Pod to submit the Ray job. This mode does not support `clusterSelector`, `submitterPodTemplate`, and `submitterConfig`, and requires the head Pod's restart policy to be `Never`.
+    * `SidecarMode`: The KubeRay operator injects a container into the Ray head Pod to submit the Ray job. This mode does not support `clusterSelector` and `submitterPodTemplate`, and requires the head Pod's restart policy to be `Never`. When the `SidecarSubmitterRestart` feature gate is enabled **(requires KubeRay v1.7+, Ray v2.54.0+, and Kubernetes v1.35+)**, `submitterConfig.backoffLimit` is used to cap the submitter sidecar's restart count.
   * `submitterPodTemplate` (Optional): Defines the Pod template for the submitter Kubernetes Job. This field is only effective when `submissionMode` is "K8sJobMode".
     * `RAY_DASHBOARD_ADDRESS` - The KubeRay operator injects this environment variable to the submitter Pod. The value is `$HEAD_SERVICE:$DASHBOARD_PORT`.
     * `RAY_JOB_SUBMISSION_ID` - The KubeRay operator injects this environment variable to the submitter Pod. The value is the `RayJob.Status.JobId` of the RayJob.
     * Example: `ray job submit --address=http://$RAY_DASHBOARD_ADDRESS --submission-id=$RAY_JOB_SUBMISSION_ID ...`
     * See [ray-job.sample.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.sample.yaml) for more details.
-  * `submitterConfig` (Optional): Additional configurations for the submitter Kubernetes Job.
-    * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter Job as failed. The default value is 2.
+  * `submitterConfig` (Optional): Additional configurations for the submitter. Used in `K8sJobMode` (always). `SidecarMode` also honors `backoffLimit` internally when `SidecarSubmitterRestart` is enabled, but the field currently can't be set via the RayJob custom resource for `SidecarMode`. See {ref}`kuberay-rayjob-sidecar-submitter-restart`.
+    * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter as failed. The default value is 2.
+  * `SidecarSubmitterRestart` (alpha in v1.7, disabled by default): Lets the submitter container restart in place on transient failures, independent of the head Pod's pod-level `restartPolicy: Never`. Requires Kubernetes v1.35+ and Ray v2.54.0+. See {ref}`kuberay-rayjob-sidecar-submitter-restart` for the full walkthrough, restart/reattach behavior, and version-skew caveats.
 * Automatic resource cleanup
   * `preRunningDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Running` within `preRunningDeadlineSeconds` seconds, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed` with reason `PreRunningDeadlineExceeded`. The default value is 0 (no pre-running deadline is enforced).
   * `shutdownAfterJobFinishes` (Optional): Determines whether to recycle the RayCluster after the Ray job finishes. The default value is false.
@@ -79,7 +85,7 @@ To understand the following content better, you should understand the difference
       * See [ray-job.deletion-rules.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.deletion-rules.yaml) for example configurations.
     * **Legacy** (Deprecated): Define both `onSuccess` and `onFailure` policies. This approach is deprecated and will be removed in v1.6.0. Migration to `deletionRules` is strongly encouraged.
       * Legacy mode can be combined with `shutdownAfterJobFinishes` and the global `ttlSecondsAfterFinished`.
-    * For detailed API specifications, see the [KubeRay API Reference](https://ray-project.github.io/kuberay/reference/api/).
+    * For detailed API specifications, see the {ref}`KubeRay CRD API reference <kuberay-crd-api-reference>`.
 
 
 ## Example: Run a simple Ray job with RayJob
@@ -137,9 +143,7 @@ kubectl get rayjobs.ray.io rayjob-sample -o jsonpath='{.status.jobDeploymentStat
 # [Expected output]: "Complete"
 ```
 
-The KubeRay operator creates a RayCluster custom resource based on the `rayClusterSpec` and a submitter Kubernetes Job to submit a Ray job to the RayCluster.
-In this example, the `entrypoint` is `python /home/ray/samples/sample_code.py`, and `sample_code.py` is a Python script stored in a Kubernetes ConfigMap mounted to the head Pod of the RayCluster.
-Because the default value of `shutdownAfterJobFinishes` is false, the KubeRay operator doesn't delete the RayCluster or the submitter when the Ray job finishes.
+The KubeRay operator creates a RayCluster custom resource based on the `rayClusterSpec` and a submitter Kubernetes Job to submit a Ray job to the RayCluster. In this example, the `entrypoint` is `python /home/ray/samples/sample_code.py`, and `sample_code.py` is a Python script stored in a Kubernetes ConfigMap mounted to the head Pod of the RayCluster. Because the default value of `shutdownAfterJobFinishes` is false, the KubeRay operator doesn't delete the RayCluster or the submitter when the Ray job finishes.
 
 ## Step 5: Check the output of the Ray job
 
@@ -173,10 +177,7 @@ kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/r
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
 
-The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
-Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job isn't deleted
-because it contains the ray job logs and doesn't use any cluster resources once completed. In addition, the RayJob cleans up the submitter job
-when the RayJob is eventually deleted due to its owner reference back to the RayJob.
+The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`. Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job isn't deleted because it contains the ray job logs and doesn't use any cluster resources once completed. In addition, the RayJob cleans up the submitter job when the RayJob is eventually deleted due to its owner reference back to the RayJob.
 
 ## Step 8: Check the RayJob status
 

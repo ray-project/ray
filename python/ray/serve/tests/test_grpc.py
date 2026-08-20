@@ -28,7 +28,7 @@ from ray.serve._private.test_utils import (
 from ray.serve.config import gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
-from ray.serve.tests.test_config_files.grpc_deployment import g, g2
+from ray.serve.tests.test_config_files.grpc_deployment import g, g2, multiplexed_g
 
 
 def test_serving_grpc_requests(ray_cluster):
@@ -64,6 +64,10 @@ def test_serving_grpc_requests(ray_cluster):
 
     serve.run(g)
 
+    # Get the ingress address dynamically
+    grpc_url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(grpc_url)
+
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, [app_name])
 
@@ -76,16 +80,43 @@ def test_serving_grpc_requests(ray_cluster):
     # Ensures another custom defined method is responding correctly.
     ping_grpc_another_method(channel, app_name)
 
-    # Ensures model multiplexing is responding correctly.
-    ping_grpc_model_multiplexing(channel, app_name)
-
     # Ensure Streaming method is responding correctly.
     ping_grpc_streaming(channel, app_name)
 
     serve.run(g2)
 
     # Ensure model composition is responding correctly.
+    grpc_url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(grpc_url)
     ping_fruit_stand(channel, app_name)
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    reason="Model multiplexing is not supported on the ingress deployment when "
+    "direct ingress / HAProxy is enabled (the multiplexed model ID is not "
+    "propagated to the replica).",
+)
+def test_grpc_model_multiplexing(ray_cluster):
+    """Model multiplexing over gRPC routes requests to the correct model."""
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=9000,
+            grpc_servicer_functions=[
+                "ray.serve.generated.serve_pb2_grpc."
+                "add_UserDefinedServiceServicer_to_server",
+            ],
+        ),
+    )
+
+    serve.run(multiplexed_g)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    ping_grpc_model_multiplexing(channel, "default")
 
 
 def test_serve_start_dictionary_grpc_options(ray_cluster):
@@ -242,10 +273,6 @@ def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
     When the request timed out, gRPC proxy should return timeout response for both
     unary and streaming request.
     """
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
-    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -309,10 +336,6 @@ def test_grpc_request_internal_error(ray_instance, ray_shutdown, streaming: bool
     When the request error out, gRPC proxy should return INTERNAL status and the error
     message in the response for both unary and streaming request.
     """
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
-    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -361,10 +384,6 @@ async def test_grpc_request_cancellation(ray_instance, ray_shutdown, streaming: 
 
     When the request is canceled, gRPC proxy should cancel the underlying task.
     """
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
-    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -427,10 +446,6 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
     When the deployment sets code, details, and trailing metadata in the gRPC context,
     the response will reflect those values.
     """
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
-    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -498,10 +513,6 @@ def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: boo
     When the deployment sets a status code on the gRPC context and then raises an
     exception, the user-defined status code should be preserved in the response.
     """
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
-    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -564,9 +575,6 @@ def test_exception_without_grpc_context_code(
     When the deployment raises an exception without setting a status code on the
     gRPC context, the response should be INTERNAL error.
     """
-    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -629,10 +637,6 @@ def test_using_grpc_context_bad_function_signature(
     When the deployment sets code, details, and trailing metadata in the gRPC context,
     the response will reflect those values.
     """
-    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
-    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -798,7 +802,8 @@ def test_grpc_client_streaming(ray_instance, ray_shutdown):
 
     serve.run(ClientStreamingService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # Create a generator of requests
@@ -819,9 +824,6 @@ def test_grpc_unary_not_found(ray_instance, ray_shutdown):
     cause serialization errors. This verifies unary_unary returns empty bytes
     and the client receives a clean gRPC error.
     """
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -838,7 +840,8 @@ def test_grpc_unary_not_found(ray_instance, ray_shutdown):
     serve.run(g, name="app1", route_prefix="/app1")
     serve.run(g, name="app2", route_prefix="/app2")
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name="app1", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -860,9 +863,6 @@ def test_grpc_client_streaming_not_found(ray_instance, ray_shutdown):
     cause serialization errors. This verifies stream_unary returns empty bytes
     and the client receives a clean gRPC error.
     """
-    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip()
-
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -886,7 +886,8 @@ def test_grpc_client_streaming_not_found(ray_instance, ray_shutdown):
     serve.run(ClientStreamingService.bind(), name="app1", route_prefix="/app1")
     serve.run(ClientStreamingService.bind(), name="app2", route_prefix="/app2")
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name="app1", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     def request_generator():
@@ -933,7 +934,8 @@ def test_grpc_bidirectional_streaming(ray_instance, ray_shutdown):
 
     serve.run(BidiStreamingService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # Create a generator of requests
@@ -995,7 +997,8 @@ def test_grpc_client_streaming_with_grpc_context(ray_instance, ray_shutdown):
 
     serve.run(ClientStreamingWithContext.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     def request_generator():
@@ -1052,7 +1055,8 @@ def test_grpc_bidirectional_streaming_with_grpc_context(ray_instance, ray_shutdo
 
     serve.run(BidiStreamingWithContext.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     def request_generator():
@@ -1100,7 +1104,8 @@ def test_grpc_streaming_internal_error(ray_instance, ray_shutdown, streaming_typ
 
     serve.run(ErrorStreamingService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     def request_generator():
@@ -1159,7 +1164,8 @@ def test_grpc_streaming_timeout(ray_instance, ray_shutdown, streaming_type: str)
 
     serve.run(SlowStreamingService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     def request_generator():
@@ -1213,7 +1219,8 @@ def test_grpc_client_streaming_empty_stream(ray_instance, ray_shutdown):
 
     serve.run(EmptyStreamService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # Empty generator - sends no messages
@@ -1254,7 +1261,8 @@ def test_grpc_bidi_streaming_empty_stream(ray_instance, ray_shutdown):
 
     serve.run(EmptyBidiService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # Empty generator - sends no messages
@@ -1311,7 +1319,8 @@ async def test_grpc_streaming_cancellation(
 
     serve.run(CancellableStreamingService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     def request_generator():
@@ -1383,7 +1392,8 @@ def test_grpc_streaming_context_with_exception(
 
     serve.run(ContextExceptionService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     def request_generator():
@@ -1450,7 +1460,8 @@ def test_grpc_streaming_backpressure(ray_instance, ray_shutdown, streaming_type:
 
     serve.run(SlowConsumerService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # Fast producer - sends messages as quickly as possible
@@ -1518,7 +1529,8 @@ def test_grpc_streaming_client_error_mid_stream(
 
     serve.run(ErrorMidStreamService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # Generator that sends some messages then raises an error
@@ -1578,7 +1590,8 @@ def test_grpc_streaming_client_closes_channel_mid_stream(ray_instance, ray_shutd
 
     serve.run(ChannelCloseService.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
 
     # Generator that waits for signal before sending more messages

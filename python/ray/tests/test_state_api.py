@@ -82,6 +82,8 @@ from ray.util.state.common import (
     RuntimeEnvState,
     StateResource,
     StateSchema,
+    TaskState,
+    filter_fields,
     state_column,
 )
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
@@ -120,7 +122,13 @@ def state_source_client(gcs_address):
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
     gcs_client = GcsClient(address=gcs_address)
-    client = StateDataSourceClient(gcs_channel=gcs_channel, gcs_client=gcs_client)
+    node = ray._private.worker.global_worker.node
+    client = StateDataSourceClient(
+        gcs_channel=gcs_channel,
+        gcs_client=gcs_client,
+        dashboard_socket_dir=os.path.join(node.get_session_dir_path(), "sockets"),
+        dashboard_session_name=node.session_name,
+    )
     return client
 
 
@@ -141,8 +149,8 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
 def generate_pg_data(
     id,
     name="abc",
-    label_domain_key="",
-    label_domain_assignments=None,
+    topology_strategy=None,
+    topology_assignments=None,
 ):
     return PlacementGroupTableData(
         placement_group_id=id,
@@ -150,8 +158,8 @@ def generate_pg_data(
         name=name,
         creator_job_dead=True,
         creator_actor_dead=False,
-        label_domain_key=label_domain_key,
-        label_domain_assignments=label_domain_assignments or {},
+        topology_strategy=topology_strategy or {},
+        topology_assignments=topology_assignments or {},
     )
 
 
@@ -321,6 +329,15 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # localhost string
     _, gcs_port = parse_address(gcs_address)
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
+
+
+def test_filter_fields_preserves_schema_column_order():
+    """filter_fields must emit columns in StateSchema order, not set order."""
+    data = {col: None for col in reversed(TaskState.list_columns(detail=True))}
+
+    for detail in (True, False):
+        expected = TaskState.list_columns(detail=detail)
+        assert list(filter_fields(data, TaskState, detail=detail).keys()) == expected
 
 
 def test_state_schema():
@@ -1379,7 +1396,10 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     # Set environment
     with monkeypatch.context() as m:
         m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", "3")
-        # These make list_nodes, list_workers, list_actors never return in 20secs
+        # Pin the read path to GCS so list_tasks stays a delayable GCS
+        # GetTaskEvents query.
+        m.setenv("RAY_enable_task_events_to_dashboard_head", "0")
+        # These make list_tasks, list_workers, list_actors never return in 20secs
         m.setenv(
             "RAY_testing_asio_delay_us",
             (

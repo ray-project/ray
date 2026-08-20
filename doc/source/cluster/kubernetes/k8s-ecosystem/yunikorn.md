@@ -1,10 +1,16 @@
+---
+myst:
+  html_meta:
+    description: "Integrate KubeRay with Apache YuniKorn for fine-grained multi-tenant resource sharing and gang scheduling."
+---
+
 (kuberay-yunikorn)=
 
 # KubeRay integration with Apache YuniKorn
 
 [Apache YuniKorn](https://yunikorn.apache.org/) is a light-weight, universal resource scheduler for container orchestrator systems. It performs fine-grained resource sharing for various workloads efficiently on a large scale, multi-tenant, and cloud-native environment. YuniKorn brings a unified, cross-platform, scheduling experience for mixed workloads that consist of stateless batch workloads and stateful services.
 
-KubeRay's Apache YuniKorn integration enables more efficient scheduling of Ray Pods in multi-tenant Kubernetes environments.
+KubeRay's Apache YuniKorn integration enables more efficient scheduling of Ray head and worker Pods in multi-tenant Kubernetes environments.
 
 :::{note}
 
@@ -21,8 +27,7 @@ kind create cluster
 
 ## Step 2: Install Apache YuniKorn
 
-You need to successfully install Apache YuniKorn on your Kubernetes cluster before enabling Apache YuniKorn integration with KubeRay.
-See [Get Started](https://yunikorn.apache.org/docs/) for Apache YuniKorn installation instructions.
+You need to successfully install Apache YuniKorn on your Kubernetes cluster before enabling Apache YuniKorn integration with KubeRay. See [Get Started](https://yunikorn.apache.org/docs/) for Apache YuniKorn installation instructions.
 
 ## Step 3: Install the KubeRay operator with Apache YuniKorn support
 
