@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+from types import ModuleType
 
 import pytest
 
@@ -134,6 +135,131 @@ def test_intentional_duplicate_passes(monkeypatch):
         autoclass_entries=["MockClass", "mock_w00t"],
         intentional_duplicate_apis={_CANONICAL_W00T},
     )
+
+
+# --- Unwalked-subpackage coverage guard --------------------------------------
+
+_PKG = "ci.ray_ci.doc.mock"
+
+
+def test_unwalked_violations_covered_is_ignored():
+    # A child reached by some walk is covered, regardless of its API surface.
+    assert (
+        cmd._unwalked_violations(
+            {"ray.data.foo": (True, True)},
+            covered={"ray.data.foo"},
+            allowlist=set(),
+        )
+        == []
+    )
+
+
+def test_unwalked_violations_allowlisted_is_ignored():
+    # Neither an unimportable nor an annotated-but-unwalked child fails when it is on
+    # the reviewed allowlist.
+    assert (
+        cmd._unwalked_violations(
+            {"ray.pkg.unimportable": (False, False), "ray.pkg.annotated": (True, True)},
+            covered=set(),
+            allowlist={"ray.pkg.unimportable", "ray.pkg.annotated"},
+        )
+        == []
+    )
+
+
+def test_unwalked_violations_annotated_not_walked_fails():
+    # Imports fine, exposes public API, but no walk reaches it -> coverage hole.
+    assert cmd._unwalked_violations(
+        {"ray.pkg.annotated": (True, True)},
+        covered=set(),
+        allowlist=set(),
+    ) == [("ray.pkg.annotated", "annotated-not-walked")]
+
+
+def test_unwalked_violations_import_error_fails():
+    # Cannot be imported here, so its surface cannot be verified -> must be explicit.
+    assert cmd._unwalked_violations(
+        {"ray.pkg.unimportable": (False, False)},
+        covered=set(),
+        allowlist=set(),
+    ) == [("ray.pkg.unimportable", "unverifiable-import-error")]
+
+
+def test_unwalked_violations_importable_without_api_is_ignored():
+    # A plain (unannotated) module that nobody walks is not a coverage hole.
+    assert (
+        cmd._unwalked_violations(
+            {"ray.data.util": (True, False)},
+            covered=set(),
+            allowlist=set(),
+        )
+        == []
+    )
+
+
+def test_unwalked_violations_are_sorted():
+    result = cmd._unwalked_violations(
+        {
+            "ray.z.mod": (True, True),
+            "ray.a.mod": (False, False),
+        },
+        covered=set(),
+        allowlist=set(),
+    )
+    assert result == [
+        ("ray.a.mod", "unverifiable-import-error"),
+        ("ray.z.mod", "annotated-not-walked"),
+    ]
+
+
+def test_immediate_child_modules_lists_submodules():
+    children = cmd._immediate_child_modules(_PKG)
+    assert f"{_PKG}.mock_module" in children
+
+
+def test_immediate_child_modules_of_plain_module_is_empty():
+    # mock_module is a module, not a package: it has no submodules to enumerate.
+    assert cmd._immediate_child_modules(f"{_PKG}.mock_module") == []
+
+
+def test_import_status_detects_public_api():
+    # mock_module defines @PublicAPI classes/functions in its own namespace.
+    assert cmd._import_status(f"{_PKG}.mock_module") == (True, True)
+
+
+def test_import_status_ignores_inherited_api_annotations(monkeypatch):
+    module_name = "fake_inherited_annotation_module"
+    module = ModuleType(module_name)
+    inherited_annotation = type("InheritedAnnotation", (MockClass,), {})
+    inherited_annotation.__module__ = module_name
+    module.InheritedAnnotation = inherited_annotation
+    monkeypatch.setitem(sys.modules, module_name, module)
+
+    assert cmd._import_status(module_name) == (True, False)
+
+
+def test_import_status_unimportable_module():
+    assert cmd._import_status(f"{_PKG}.does_not_exist") == (False, False)
+
+
+def test_import_status_survives_exploding_lazy_attribute(monkeypatch):
+    # A module that imports fine but whose attribute access triggers a heavy optional
+    # import (the PEP 562 __getattr__ pattern) must not crash the check: the bad
+    # attribute is skipped, the safe one is still inspected.
+    class _Exploding:
+        __name__ = "fake_exploding_module"
+
+        def __dir__(self):
+            return ["boom", "safe"]
+
+        @property
+        def boom(self):
+            raise ModuleNotFoundError("No module named 'transformers'")
+
+        safe = 123
+
+    monkeypatch.setitem(sys.modules, "fake_exploding_module", _Exploding())
+    assert cmd._import_status("fake_exploding_module") == (True, False)
 
 
 if __name__ == "__main__":

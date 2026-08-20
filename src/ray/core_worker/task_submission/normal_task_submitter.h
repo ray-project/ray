@@ -189,10 +189,10 @@ class NormalTaskSubmitter {
                                 const rpc::Address *raylet_address = nullptr)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Cancel a pending worker lease and retry until the cancellation succeeds
-  /// (i.e., the raylet drops the request). This should be called when there
-  /// are no more tasks queued with the given scheduling key and there is an
-  /// in-flight lease request for that key.
+  /// Cancel a pending worker lease. This should be called when there are no
+  /// more tasks queued with the given scheduling key and there is an in-flight
+  /// lease request for that key. The raylet tombstones the cancellation so the
+  /// caller does not need to retry.
   void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

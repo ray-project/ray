@@ -225,7 +225,13 @@ class RayletClientInterface {
       const rpc::CancelLocalTaskRequest &request,
       const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) = 0;
 
-  virtual void FreeLocalObjects(const rpc::FreeLocalObjectsRequest &request) = 0;
+  /// Free objects from the raylet's local object store.
+  /// \param request The objects to free.
+  /// \param callback If set, invoked on the caller's io_service when the reply
+  /// (or a channel-health failure) arrives.
+  virtual void FreeLocalObjects(
+      const rpc::FreeLocalObjectsRequest &request,
+      const rpc::ClientCallback<rpc::FreeLocalObjectsReply> &callback = {}) = 0;
 
   virtual ~RayletClientInterface() = default;
 };

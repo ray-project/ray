@@ -556,7 +556,9 @@ void GcsServer::InitGcsResourceLoadPuller() {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext()),
+      // See https://github.com/ray-project/ray/pull/65271 for why the GCS
+      // resource view does not need the periodic reset that raylets run.
+      /*periodical_runner=*/nullptr,
       scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
@@ -891,8 +893,12 @@ void GcsServer::InitRuntimeEnvManager() {
 }
 
 void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
-  gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
-      *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
+  gcs_worker_manager_ =
+      std::make_unique<GcsWorkerManager>(*gcs_table_storage_,
+                                         io_context_provider_.GetDefaultIOContext(),
+                                         *gcs_publisher_,
+                                         *ray_event_recorder_,
+                                         config_.session_name);
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
       *gcs_worker_manager_,
