@@ -100,7 +100,7 @@ def _max_throughput_from_resources(
             getattr(resource_requirements[op], resource_name) / rates[op]
             for op in rates
         )
-        if resource_cost_per_unit_throughput > 0:
+        if resource_cost_per_unit_throughput > 0 and resource_limit is not None:
             max_throughput = min(
                 max_throughput, resource_limit / resource_cost_per_unit_throughput
             )
