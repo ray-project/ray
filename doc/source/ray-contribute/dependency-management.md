@@ -78,6 +78,8 @@ Every `compile` call inherits this default set of `uv pip compile` flags:
 --unsafe-package setuptools     (unless include_setuptools: true)
 ```
 
+`--emit-index-url` is what records the `--extra-index-url` entries a depset resolves against — PyTorch, libtpu — inside the lock, so an install can still find artifacts that are not on PyPI. The primary `--index-url` it also emits is dropped again before the lock is written: a requirements file's index URL overrides both `PIP_INDEX_URL` and a `--index-url` on the command line, so leaving it in would pin every install to whichever index compiled the lock. Without it, pip and uv fall back to PyPI unless the environment says otherwise.
+
 `--generate-hashes` is why locks are SHA256-pinned. `--no-strip-markers` preserves `python_version` markers so a single lock can be a constraint at multiple `--python-version` targets. `--index-strategy unsafe-best-match` is the same flag you'd pass when reproducing CI's install resolution locally (see [Diagnosing dependency conflicts](#diagnosing-dependency-conflicts)).
 
 Before each `compile` runs, raydepsets executes any declared **pre-hooks**. The common one is `ci/raydepsets/pre_hooks/remove-compiled-headers.sh`, which copies `requirements_compiled*.txt` to `/tmp/ray-deps/` after stripping `--extra-index-url` / `--find-links` lines, so the file is a clean version constraint and GPU index URLs don't leak into CPU locks.
