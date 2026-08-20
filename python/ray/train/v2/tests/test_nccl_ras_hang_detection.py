@@ -8,6 +8,7 @@ stacks + raise :class:`NCCLHangError`.
 """
 import os
 import shutil
+from typing import Any, Dict, Iterator
 
 import pytest
 import torch
@@ -40,6 +41,13 @@ RAS_ENV = {
     "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S": "4",
 }
 
+
+# The apt (`libnccl2`) copy of NCCL, which ships the `ncclras` client. Debug
+# shim: hardcoded to the x86_64 Debian/Ubuntu location used by the CI GPU image.
+# remove when torch 2.11 is merged
+SYSTEM_LIBNCCL_PATH = "/usr/lib/x86_64-linux-gnu/libnccl.so.2"
+
+
 # Step at which each scenario diverges, and a short loop so the non-hanging
 # cases finish quickly. The hanging cases block in NCCL well before STEPS.
 HANG_STEP = 3
@@ -48,18 +56,46 @@ STEP_SLEEP_S = 1.0
 
 
 @pytest.fixture(scope="module", autouse=True)
-def nccl_ras_env():
+def nccl_ras_env() -> Iterator[Dict[str, Any]]:
     """Speed up hang detection for this module only, then restore.
 
     These knobs are read by ``NCCLRASCallback`` on the driver (the callback is
     registered by default), so they only need to be present in this process.
     Only keys not already set by the caller are added (and only those removed),
     preserving any explicit override.
+
+    We need users to have both nccl 2.28.7 on the GPU process and the pytorch
+    pip install. Until torch>=2.11 is installed then we need to force torch to
+    use the apt install nccl version. The yielded ``runtime_env`` preloads the
+    system NCCL in the workers instead (2.x is ABI-stable, so a newer library
+    under an older ``torch`` is fine).
+
+    TODO(torch>=2.11): drop the ``LD_PRELOAD`` handling. ``torch<=2.10`` pins
+    ``nvidia-nccl-cu12==2.27.5``; ``torch==2.11.0+cu128`` pins
+    ``nvidia-nccl-cu12==2.28.9``, which supports the JSON format natively.
+
+    Yields:
+        Dict[str, Any]: The ``runtime_env`` for this module's ``ray.init``
+        calls. Empty when the system NCCL is absent, so the wheel's copy is
+        used as-is.
     """
     added = {k: v for k, v in RAS_ENV.items() if k not in os.environ}
     os.environ.update(added)
+
+    if not os.path.exists(SYSTEM_LIBNCCL_PATH):
+        runtime_env = {}
+    else:
+        # Preserve any caller-supplied LD_PRELOAD; runtime_env env vars replace
+        # rather than extend the worker's environment.
+        preload = [
+            entry
+            for entry in (os.environ.get("LD_PRELOAD"), SYSTEM_LIBNCCL_PATH)
+            if entry
+        ]
+        runtime_env = {"env_vars": {"LD_PRELOAD": " ".join(preload)}}
+
     try:
-        yield
+        yield runtime_env
     finally:
         for key in added:
             os.environ.pop(key, None)
@@ -222,15 +258,15 @@ def run_train_fn(train_func, num_workers, tensor_shape=64 * 1024 * 1024):
 
 
 @pytest.fixture
-def ray_start_4_cpus_2_gpus():
-    ray.init(num_cpus=4, num_gpus=2)
+def ray_start_4_cpus_2_gpus(nccl_ras_env):
+    ray.init(num_cpus=4, num_gpus=2, runtime_env=nccl_ras_env)
     yield
     ray.shutdown()
 
 
 @pytest.fixture
-def ray_start_4_cpus_4_gpus():
-    ray.init(num_cpus=4, num_gpus=4)
+def ray_start_4_cpus_4_gpus(nccl_ras_env):
+    ray.init(num_cpus=4, num_gpus=4, runtime_env=nccl_ras_env)
     yield
     ray.shutdown()
 
