@@ -87,7 +87,7 @@ def test_scale_up(ray_cluster):
     client = serve.context._connect()
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
-    client._wait_for_application_running("default")
+    client._wait_for_application_running("default", timeout_s=WAIT_TIMEOUT_S)
     pids1 = get_pids(1, deployment_name="pid", app_name="default")
 
     app_config["deployments"][0]["num_replicas"] = 3
@@ -110,7 +110,7 @@ def test_scale_up(ray_cluster):
     # Add a node with another CPU, the final replica should get placed
     # and the deploy goal should be done.
     cluster.add_node(num_cpus=1)
-    client._wait_for_application_running("default")
+    client._wait_for_application_running("default", timeout_s=WAIT_TIMEOUT_S)
     pids3 = get_pids(3, deployment_name="pid", app_name="default")
     assert pids2.issubset(pids3)
 
