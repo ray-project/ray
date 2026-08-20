@@ -119,6 +119,22 @@ build:
     # build is the one worth measuring. rc carries the make exit status
     # through so a real Sphinx failure still fails the build.
     #
+    # Temporary, for this PR only: the html job runs the full build twice,
+    # once at the default -j auto and once at SPHINX_JOBS=2, to measure what
+    # the lower job count costs in wall clock. Both arms are full clean
+    # builds, since SPHINXOPTS carries -a -E, so neither reuses the other
+    # environment.
+    #
+    # Both arms run inside one job on purpose. html job times for the same
+    # build at -j auto range from 368 to 562 seconds across recent master
+    # builds, so between-build comparison cannot resolve the effect. Running
+    # both arms on one builder cancels that variance. The remaining confound
+    # is order, since the second arm starts with a warm page cache, so the
+    # arms get reversed on a following run.
+    #
+    # memory.peak is reset between arms where the kernel allows it, to get a
+    # per-arm peak rather than a high-water mark across both.
+    #
     # Remove this wrapper once the numbers are captured and the follow-up
     # fix lands.
     build:
@@ -131,13 +147,26 @@ build:
           grep -E "MemTotal|MemAvailable" /proc/meminfo || true
           cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "no cgroup v2 memory.max"
           cat /sys/fs/cgroup/memory.high 2>/dev/null || echo "no cgroup v2 memory.high"
-          rc=0
-          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" || rc=$?
-          echo "=== builder peak, sphinx exit $rc ==="
+          echo "=== ARM A jobs=auto start epoch ==="
+          date +%s
+          echo 0 > /sys/fs/cgroup/memory.peak 2>/dev/null || echo "peak not resettable"
+          rca=0
+          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" || rca=$?
+          echo "=== ARM A jobs=auto end epoch, exit $rca ==="
+          date +%s
+          cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo "no cgroup v2 memory.peak"
+          cat /sys/fs/cgroup/memory.events 2>/dev/null || echo "no cgroup v2 memory.events"
+          echo "=== ARM B jobs=2 start epoch ==="
+          date +%s
+          echo 0 > /sys/fs/cgroup/memory.peak 2>/dev/null || echo "peak not resettable"
+          rcb=0
+          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" SPHINX_JOBS=2 || rcb=$?
+          echo "=== ARM B jobs=2 end epoch, exit $rcb ==="
+          date +%s
           cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo "no cgroup v2 memory.peak"
           cat /sys/fs/cgroup/memory.events 2>/dev/null || echo "no cgroup v2 memory.events"
           grep -E "MemAvailable" /proc/meminfo || true
-          exit $rc
+          exit $rca
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
