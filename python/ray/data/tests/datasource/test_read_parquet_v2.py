@@ -485,6 +485,37 @@ def test_count_matches_rows(
     assert ray.data.read_parquet(str(tmp_path)).count() == num_files * rows_per_file
 
 
+def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx, monkeypatch):
+    """The rebuilt indexer must keep ``skip_paths``, or the skipped file's rows
+    are counted even though reading the dataset excludes them."""
+    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
+    a = tmp_path / "a.parquet"
+    b = tmp_path / "b.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+    _write(b, pa.table({"a": [3, 4, 5]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([str(a), str(b)], skip_paths=[str(b)])
+
+    assert ds.count() == 2
+
+
+def test_count_pushdown_skip_paths_tolerates_missing_path(
+    tmp_path, restore_ctx, monkeypatch
+):
+    """``skip_paths`` drops a named path before the existence check, so a
+    skipped-but-missing path must not fail a pushed-down ``count()``."""
+    monkeypatch.setenv("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", "1")
+    a = tmp_path / "a.parquet"
+    _write(a, pa.table({"a": [1, 2]}))
+    missing = str(tmp_path / "gone.parquet")
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet([str(a), missing], skip_paths=[missing])
+
+    assert ds.count() == 2
+
+
 if __name__ == "__main__":
     import sys
 

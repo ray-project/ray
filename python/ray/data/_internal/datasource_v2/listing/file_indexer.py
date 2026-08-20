@@ -186,9 +186,15 @@ class NonSamplingFileIndexer(FileIndexer):
         duplicate that IO and emit a path more than once. So this deliberately
         returns a base ``NonSamplingFileIndexer`` rather than ``type(self)``,
         carrying over only the traversal settings.
+
+        ``skip_paths`` is part of that traversal config and must carry over:
+        dropping it would let excluded files back into the listing, inflating a
+        pushed-down ``count()`` and turning a skipped-but-missing path into a
+        ``FileNotFoundError``.
         """
         return NonSamplingFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
+            skip_paths=self._skip_paths,
             num_workers=self._num_workers,
             max_paths_per_output=self._max_paths_per_output,
             file_chunker=WholeFileChunker(),

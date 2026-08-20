@@ -451,6 +451,36 @@ class TestAsWholeFileIndexer:
         # Guards against regressing to in-place mutation of the caller's indexer.
         assert isinstance(source.file_chunker, LineDelimitedFileChunker)
 
+    def test_carries_over_skip_paths(self, tmp_path):
+        """A dropped ``skip_paths`` would let excluded files back into the
+        listing, inflating a pushed-down ``count()``."""
+        kept = tmp_path / "kept.csv"
+        skipped = tmp_path / "skipped.csv"
+        kept.write_bytes(b"x" * 10)
+        skipped.write_bytes(b"x" * 20)
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(skipped)}
+        )
+
+        downgraded = source.as_whole_file_indexer()
+
+        assert downgraded._skip_paths == frozenset({str(skipped)})
+        assert _list_all(downgraded, [str(tmp_path)]) == [(str(kept), 10)]
+
+    def test_carried_skip_paths_still_tolerate_missing_path(self, tmp_path):
+        """``skip_paths`` drops a named path whether or not it exists, so a
+        skip-only missing path must not raise once carried over."""
+        kept = tmp_path / "kept.csv"
+        kept.write_bytes(b"x" * 10)
+        missing = str(tmp_path / "gone.csv")
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={missing}
+        )
+
+        downgraded = source.as_whole_file_indexer()
+
+        assert _list_all(downgraded, [str(kept), missing]) == [(str(kept), 10)]
+
 
 if __name__ == "__main__":
     import sys

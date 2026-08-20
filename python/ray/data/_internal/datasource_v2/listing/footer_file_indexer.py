@@ -181,7 +181,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             self._io_concurrency,
         )
         try:
-            yield from self._read_footers(actors, file_infos, limit)
+            yield from self._read_footers(
+                actors, file_infos, limit, preserve_order=preserve_order
+            )
         finally:
             for actor in actors:
                 # ``ActorProxy`` is ``ActorHandle | type[T]``; kill wants a handle.
@@ -193,6 +195,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         actors: List["ActorProxy[FooterReader]"],
         file_infos: "Iterable[FileInfo]",
         limit: Optional[int],
+        *,
+        preserve_order: bool = False,
     ) -> Iterator[FileManifest]:
         # Bound the number of in-flight footer batches so listing stays roughly
         # demand-driven (matters under a limit) and memory stays flat.
@@ -215,6 +219,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             gen: ray.ObjectRefGenerator = actor.read_footers.remote(
                 batch,
                 result_batch_size=self._result_batch_size,  # pyrefly: ignore[unexpected-keyword]
+                preserve_order=preserve_order,  # pyrefly: ignore[unexpected-keyword]
             )
             pending.append(gen)
             batch_no += 1
