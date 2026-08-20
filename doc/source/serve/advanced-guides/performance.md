@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Tune Ray Serve performance: debug the request path, use async methods, set end-to-end request timeouts, and configure locality-based routing."
+---
+
 (serve-perf-tuning)=
 # Performance Tuning
 
