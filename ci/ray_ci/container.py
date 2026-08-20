@@ -45,6 +45,17 @@ _DOCKER_ENV = [
     "BUILDKITE_PULL_REQUEST",
     "BUILDKITE_BAZEL_CACHE_URL",
     "BUILDKITE_CACHE_READONLY",
+    # Package index configuration, so a nested container resolves from the same
+    # index as the step that started it; see the --repo_env passthrough in
+    # .bazelrc. Docker passes nothing through for a variable that is unset, which
+    # is the case in a plain checkout, and then pip and uv resolve from PyPI.
+    "PIP_INDEX_URL",
+    "PIP_EXTRA_INDEX_URL",
+    "PIP_TRUSTED_HOST",
+    "UV_INDEX_URL",
+    "UV_EXTRA_INDEX_URL",
+    "UV_INSECURE_HOST",
+    "RULES_PYTHON_PIP_ISOLATED",
 ]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "")
 
