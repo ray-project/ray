@@ -93,17 +93,19 @@ The resulting output follows:
 (MyActor(index=1) pid=482119) hello there
 ```
 
-
 ### Disabling the worker log prefix
 
-Set the environment variable ``RAY_DISABLE_WORKER_LOG_PREFIX=1`` before calling `ray.init` to stop Ray from adding the ``(Task or Actor repr, process ID, IP address)`` prefix to worker stdout/stderr lines forwarded to the driver, while continuing to forward the logs. This is useful for structured logging (for example, newline-delimited JSON) when you want to collect logs from the driver's stdout/stderr rather than from the per-worker log files under the {ref}`logging directory <logging-directory>` -- the prefix otherwise turns each structured log line into invalid JSON.
+Set the environment variable `RAY_DISABLE_WORKER_LOG_PREFIX=1` before starting your driver process (for example, `RAY_DISABLE_WORKER_LOG_PREFIX=1 python driver.py`) to
+stop Ray from adding the `(Task or Actor repr, process ID, IP address)` prefix to worker stdout/stderr lines forwarded to the driver, while continuing to forward the
+logs. This is useful for structured logging (for example, newline-delimited JSON) when you want to collect logs from the driver's stdout/stderr rather than from the
+per-worker log files under the {ref}`logging directory <logging-directory>` the prefix otherwise turns each structured log line into invalid JSON.
 
-If you enable this option, also consider setting ``RAY_DEDUP_LOGS=0``. By default, Ray {ref}`deduplicates repeated log messages <log-deduplication>` and annotates them with a ``[repeated Nx across cluster]`` suffix, which breaks structured, line-oriented log formats.
+If your goal is structured logging, also consider setting `RAY_DEDUP_LOGS=0`. By default, Ray {ref}`deduplicates repeated log messages <log-deduplication>` and
+annotates them with a `[repeated Nx across cluster]` suffix, which breaks structured, line-oriented log formats.
 
 :::{note}
-Disabling the worker log prefix removes the only signal in the forwarded stream that identifies which Task, Actor, or process emitted a given line. If you still need that attribution, add it to your own log records -- for example using {py:obj}`ray.runtime_context.get_runtime_context`'s {py:obj}`~ray.runtime_context.RuntimeContext.get_actor_id` or {py:obj}`~ray.runtime_context.RuntimeContext.get_task_id` -- before disabling the prefix.
+Disabling the worker log prefix removes the only signal in the forwarded stream that identifies which Task, Actor, or process emitted a given line.
 :::
-
 
 ### Coloring Actor log prefixes
 By default, Ray prints Actor log prefixes in light blue. Turn color logging off by setting the environment variable ``RAY_COLOR_PREFIX=0``
