@@ -51,7 +51,7 @@ Prefix-aware routing <prefix-aware-routing>
 Direct streaming <direct-streaming>
 vLLM compatibility <vllm-compatibility>
 Custom vLLM models <custom-vllm>
-TPU serving <tpu>
 SGLang integration <sglang>
+TPU serving <tpu>
 Observability and monitoring <observability>
 ```
