@@ -98,11 +98,7 @@ vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
-# vLLM picks the HTTP status from the exception type, but ``AsyncLLM.generate``
-# re-raises anything but a ``VLLMClientError`` as ``EngineGenerateError``, so bad
-# requests lose their 4xx type and are served as 500s.
-# TODO (jeffreywang): Remove this and the ``EngineGenerateError`` handling below
-# once vLLM's grammar validators raise ``VLLMClientError`` (vllm-project/vllm#52394).
+# TODO(jeffreywang): Remove this in vLLM 0.28.0 (#52394).
 def _unwrap_client_error(exc: BaseException) -> BaseException:
     if isinstance(exc, EngineGenerateError) and isinstance(
         exc.__cause__, (ValueError, VLLMClientError)
@@ -112,7 +108,6 @@ def _unwrap_client_error(exc: BaseException) -> BaseException:
 
 
 async def _unwrapping_vllm_error_handler(request: Request, exc: Exception):
-    """Applies the same unwrapping on the direct-streaming path."""
     return await vllm_error_handler(request, _unwrap_client_error(exc))
 
 
@@ -378,9 +373,10 @@ class VLLMEngine(LLMEngine):
             self._vllm_args,
             supported_tasks=supported_tasks,
         )
-        # Overrides vLLM's own handler; the direct-streaming path never reaches
-        # _make_error_response.
         app.add_exception_handler(VLLMError, _unwrapping_vllm_error_handler)
+        # Apply Ray's replacement handler when FastAPI builds the ASGI stack.
+        # TODO(jeffreywang): Remove this when we upgrade vLLM to 0.28.0 (https://github.com/vllm-project/vllm/pull/52394).
+        app.middleware_stack = None
         # On an engine error, vLLM's handler reads state.server -- the uvicorn.Server
         # its own launcher sets -- and flips should_exit on it, which is what makes
         # uvicorn stop serving and the process exit. Ray runs no uvicorn loop to
