@@ -50,7 +50,17 @@ cp pypi_index_proxy.py "$PREFIX"/pypi_index_proxy.py
 # The bazel downloader helper travels with the proxy, because the profile.d hook that
 # calls it is installed into the image and cannot reach a checkout that does not exist
 # yet at shell start.
-cp bazel_mirror_downloader.sh "$PREFIX"/bazel_mirror_downloader.sh
+#
+# Conditional, because the callers do not all hand this script the same files. An image
+# build sees only what its wanda spec lists in srcs, and a spec that predates this file
+# would otherwise fail the whole build on a missing cp. The hook that reads it already
+# reports when it finds nothing and leaves bazel on the origin.
+if [[ -f bazel_mirror_downloader.sh ]]; then
+  cp bazel_mirror_downloader.sh "$PREFIX"/bazel_mirror_downloader.sh
+else
+  echo "install_pypi_proxy: no bazel_mirror_downloader.sh in this context;" \
+    "bazel downloads will stay on the origin in images built from it" >&2
+fi
 
 if [[ "${RAYCI_PYPI_PROXY_SKIP_PROFILE:-0}" != "1" ]]; then
   # Sourced automatically: CI steps run under `bash -elic`, a login shell. The zz-
