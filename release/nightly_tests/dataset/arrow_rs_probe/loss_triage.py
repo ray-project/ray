@@ -143,7 +143,8 @@ def _batch_size(md, knobs):
 
 
 def _pa_batches(path, batch_size, use_threads=True):
-    # use_threads=False gives the single-thread CPU-cost baseline — the fair
+    # use_threads=False gives the single-thread CPU-cost baseline (the pa1
+    # standalone cell) — the fair
     # comparison against the crate's K=1 decode and the in-Ray regime, where
     # parallelism comes from tasks and M35 measured wall R 0.81-1.00 vs the
     # 1.16-1.54 threaded-standalone artifact. Default True is kept for this
@@ -282,8 +283,11 @@ def run_case(a):
     for path in task_files:
         md = pq.read_metadata(path)
         bs = _batch_size(md, knobs)
-        if a.reader == "pa":
-            it = _pa_batches(path, bs)
+        if a.reader in ("pa", "pa1"):
+            # pa1 = use_threads=False: the single-core kernel baseline, so the
+            # standalone triple reads as  pa (8t) / pa1 (1t) / rs (1 core) —
+            # rs-vs-pa1 is kernel-vs-kernel, pa-vs-pa1 is pure thread speedup.
+            it = _pa_batches(path, bs, use_threads=(a.reader == "pa"))
         else:
             it = _rs_batches(path, bs, knobs, realign_fields)
         rows += _consume(it, mode, out_path)
@@ -402,7 +406,7 @@ def main():
 
     c = sub.add_parser("case", help="internal: one standalone case (fresh process)")
     c.add_argument("--shape", choices=list(SHAPE_BINS), required=True)
-    c.add_argument("--reader", choices=["pa", "rs"], required=True)
+    c.add_argument("--reader", choices=["pa", "pa1", "rs"], required=True)
     c.add_argument("--path", required=True)
     c.add_argument("--tasks", type=int, default=24)
     c.add_argument("--workdir", default="/tmp")
@@ -479,7 +483,7 @@ def main():
             cells = {}
 
             if part == "standalone":
-                for reader in ("pa", "rs"):
+                for reader in ("pa", "pa1", "rs"):
                     cells[reader] = run_standalone_cell(
                         outdir,
                         f"{shape}.standalone.{reader}",
@@ -544,6 +548,9 @@ def main():
             mem_r = ratio(_num(rs_res, "peak_rss_mib"), _num(pa_res, "peak_rss_mib"))
             task_r = ratio(_num(rs_res, "end_rss_mib"), _num(pa_res, "end_rss_mib"))
             ar_r = None
+            kern_r = ratio(
+                _num(rs_res, "wall_s"), _num(cells.get("pa1") or {}, "wall_s")
+            )
         else:
             wall_r = ratio(_num(rs_res, "wall_s"), _num(pa_res, "wall_s"))
             mem_r = ratio(
@@ -553,14 +560,18 @@ def main():
                 _num(rs_res, "read_avg_max_uss_gb"), _num(pa_res, "read_avg_max_uss_gb")
             )
             ar_r = ratio(_num(ar_res, "peak_uss_gb"), _num(pa_res, "peak_uss_gb"))
+            kern_r = None
         fmt = lambda v: f"{v:.2f}" if v is not None else "—"  # noqa: E731
         sp_t, sp_b = _num(rs_res, "spilled_gb"), _num(pa_res, "spilled_gb")
         spill = (
             f"{sp_t:.1f}/{sp_b:.1f}" if sp_t is not None and sp_b is not None else "—"
         )
+        suffix = ""
+        if "standalone" in key and kern_r is not None:
+            suffix = f"  wall R vs pa-1t: {kern_r:.2f}"
         print(
             f"{key:<26} {fmt(wall_r):>8} {fmt(mem_r):>11} {fmt(task_r):>11} "
-            f"{fmt(ar_r):>13} {spill:>13}"
+            f"{fmt(ar_r):>13} {spill:>13}" + suffix
         )
     print(
         "\nRead it as: loss in standalone => decoder; only in ray_local => Ray worker/\n"
