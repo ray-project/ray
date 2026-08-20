@@ -390,6 +390,7 @@
     script: >
       python bench_shuffle.py --shuffle {{shuffle}}
       --data-size-gb 512 --num-partitions 500 --target-cpu 256
+      --write-parquet
 
 ###############
 # Join tests
