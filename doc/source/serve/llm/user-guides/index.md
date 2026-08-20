@@ -50,10 +50,10 @@ Cross-node parallelism <cross-node-parallelism>
 Data parallel attention <data-parallel-attention>
 Fractional GPU serving <fractional-gpu>
 Prefill/decode disaggregation <prefill-decode>
-KV cache offloading <kv-cache-offloading>
+Direct streaming <direct-streaming>
 Prefix-aware routing <prefix-aware-routing>
 KV-aware routing <kv-aware-routing>
-Direct streaming <direct-streaming>
+KV cache offloading <kv-cache-offloading>
 vLLM compatibility <vllm-compatibility>
 Custom vLLM models <custom-vllm>
 SGLang integration <sglang>

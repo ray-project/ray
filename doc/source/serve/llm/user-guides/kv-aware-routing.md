@@ -13,7 +13,7 @@ Route each request to the replica that gives the best balance of KV cache reuse 
 `KVAwareRouter` is in alpha and may change before becoming stable.
 :::
 
-Every replica reports the KV blocks it caches and evicts via vLLM-native KV events, and the router keeps a global KV index of those reports, so each routing decision knows which replicas already hold the request's prefix KV caches.
+Every replica reports the KV blocks it caches and evicts through vLLM-native KV events. The router keeps a global KV index of those reports, so each routing decision knows which replicas already hold the request's prefix KV caches.
 
 `KVAwareRouter` turns that overlap into a number: how much prefill each candidate remains. It adds the replica's current decode work and routes to the lowest total. This guide calls that total the replica's **token load**.
 
@@ -24,7 +24,7 @@ The best policy depends on the workload. You can configure different routers thr
 | Router | Routes on | Use it when | Cost |
 | --- | --- | --- | --- |
 | `RoundRobinRouter` | Request order | Prompts share little beyond the system prompt, and you want the simplest even spread. | No KV cache awareness. |
-| `ConsistentHashRouter` | Hash of the `x-session-id` header | Clients can supply a session id, and each session's history is the reusable prefix. | A session with more turns or longer input/output sequences than the rest can saturate its replica. |
+| `ConsistentHashRouter` | Hash of the `x-session-id` header | Clients can supply a session ID, and each session's history is the reusable prefix. | A session with more turns or longer input or output sequences than the rest can saturate its replica. |
 | `PrefixCacheAffinityRouter` | Prompt text, matched against a prefix tree the router maintains | Requests share a long textual prefix. | Approximates engine KV cache state from text, and falls back to power of two choices when queue lengths diverge. |
 | `KVAwareRouter` | Token load: remaining prefill after KV cache overlap, plus decode work | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
 
@@ -97,7 +97,7 @@ Run `serve run config.yaml`.
 :::
 ::::
 
-A few things to keep in mind:
+Keep three things in mind:
 
 - **Ray Serve LLM handles the rest of the wiring.** It sets up the engine's KV-cache event stream, the per-replica ports those events use, and the process settings that keep KV block hashes consistent across replicas.
 - **Leave `enable_prefix_caching` on.** It's the vLLM default. The engine emits KV-cache events only for the blocks it caches, so with prefix caching off the router has nothing to score.
@@ -110,7 +110,7 @@ Set these in the cluster environment or the deployment's `runtime_env`:
 | Environment variable | Default | Effect |
 | --- | --- | --- |
 | `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` | 1 | Ingress replicas per proxy node. Raise it when ingress tokenization and scoring bound throughput. |
-| `RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS` | 0 | Report decode progress as tokens are generated for more accurate load tracking. Because updates are sent to every ingress replica, this can add network overhead at high concurrency. Enable only when needed. |
+| `RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS` | 0 | Report decode progress as the engine generates tokens, for more accurate load tracking. Because each replica sends updates to every ingress replica, this can add network overhead at high concurrency. Enable it only when you need it. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_TTL_S` | 60 | How long a replica holds a staged prompt-token payload before dropping it. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_ENTRIES` | 8192 | Staged payloads retained per replica. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_BYTES` | 1 GiB | Memory a replica devotes to staged payloads. |
@@ -161,7 +161,7 @@ Token load estimates how much work each engine is carrying. It combines the two 
 - **Remaining prefill tokens**, the compute-bound term. The engine reuses any matching KV cache and computes only the remaining input tokens. This term includes those remaining tokens and the prefill already queued on the replica, with credit for cached blocks. GPU-resident blocks receive full credit, while CPU-offloaded blocks receive less because they must be reloaded.
 - **Decode tokens**, the memory-bound term. After prefill, each decode step reads the KV cache accumulated so far. This term captures the KV blocks used by active decoding requests, weighted by their estimated remaining output based on `max_tokens`.
 
-A replica with a long KV cache match is more likely to be selected, but cache locality is not the only factor. A CPU-resident match provides less benefit than a GPU-resident one, and a busy replica can lose to a less loaded replica with a shorter match.
+The router is more likely to select a replica with a long KV cache match, but cache locality isn't the only factor. A CPU-resident match provides less benefit than a GPU-resident one, and a busy replica can lose to a less loaded replica with a shorter match.
 
 ### Tune the scoring weights
 
@@ -192,15 +192,15 @@ The router scores on token ids, so it tokenizes every request at the ingress, us
 
 ### Scaling the ingress tier
 
-Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` when tokenizing and scoring at the ingress bounds throughput. Two per node is usually enough, though the right number depends on your traffic.
+Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` when tokenizing and scoring at the ingress bound throughput. Two per node is usually enough, though the right number depends on your traffic.
 
 Ray Serve LLM keeps every ingress replica's view of cache and load in sync, so adding replicas doesn't cost routing quality. Those views are eventually consistent: replicas broadcast their bookings and the engines' reports in the background, so one can score against a slightly stale view for a moment before it catches up.
 
 ## Limitations
 
 - **Direct streaming only.** `KVAwareRouter` inherits direct streaming's constraints, including one model per application and no LoRA- or multiplex-aware routing. See {ref}`direct-streaming-limitations`.
-- **No data parallel deployments.** The router does not yet score individual data-parallel ranks. Support is planned.
-- **No prefill-decode disaggregation.** The router does not yet support disaggregated prefill and decode. Support is planned.
+- **No data-parallel deployments.** The router doesn't yet score individual data-parallel ranks. Support is planned.
+- **No prefill-decode disaggregation.** The router doesn't yet support disaggregated prefill and decode. Support is planned.
 
 ## See also
 

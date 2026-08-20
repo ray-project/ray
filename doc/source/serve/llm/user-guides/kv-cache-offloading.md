@@ -10,20 +10,20 @@ myst:
 Extend KV cache capacity by offloading to CPU memory or local disk for larger batch sizes and reduced GPU memory pressure.
 
 :::{note}
-KV cache offloading is a vLLM feature. Ray Serve LLM builds on it by optionally enabling KV-aware routing across GPU and offloaded KV cache tiers. This guide covers vLLM’s native CPU backend, the LMCache integration, and composing multiple backends with MultiConnector.
+KV cache offloading is a vLLM feature. Ray Serve LLM builds on it by optionally enabling KV-aware routing across GPU and offloaded KV cache tiers. This guide covers vLLM's native CPU backend, the LMCache integration, and composing multiple backends with MultiConnector.
 :::
 
 
 Benefits of KV cache offloading:
 
 - **Increased capacity**: Store more KV caches by using CPU RAM or local storage instead of relying solely on GPU memory.
-- **Cache reuse across requests**: Save and reuse previously computed KV caches for repeated or similar prompts, reducing prefill computation and improve TTFT.
+- **Cache reuse across requests**: Save and reuse previously computed KV caches for repeated or similar prompts, reducing prefill computation and improving TTFT.
 - **Flexible storage backends**: Choose from multiple storage options including local CPU, disk, or distributed systems.
 
 KV cache offloading matters most when there is GPU memory pressure:
 
-- **Long-running services**: multi-turn conversations and agent sessions return after a pause, by which point the GPU has evicted their history and the engine recomputes the entire prefill. A CPU tier carries that history across the gap.
-- **Long context at high concurrency**: a handful of long prompts fills the GPU block pool on its own, so even prefixes that concurrent requests share get evicted before the next request can reuse them.
+- **Long-running services**: Multi-turn conversations and agent sessions return after a pause, by which point the GPU has evicted their history and the engine recomputes the entire prefill. A CPU tier carries that history across the gap.
+- **Long context at high concurrency**: A handful of long prompts fills the GPU block pool on its own, so even prefixes that concurrent requests share get evicted before the next request can reuse them.
 
 ## Choose a backend
 
@@ -40,7 +40,7 @@ All three backends extend KV cache capacity, but their integration with Ray Serv
 (native-kv-cache-offloading)=
 ## Offload to CPU memory with native vLLM offloading
 
-vLLM's native backend moves evicted KV blocks to CPU memory instead of discarding them, allowing them to be reloaded on a later cache hit.
+vLLM's native backend moves evicted KV blocks to CPU memory instead of discarding them, then reloads them on a later cache hit.
 
 Enable it with two `engine_kwargs`:
 
@@ -106,7 +106,7 @@ serve run config.yaml
 
 ### Combine offloading with a request router
 
-Offloading pays off under any request router. Wherever a request lands, that replica can reload a matching prefix from its CPU tier instead of recomputing the prefill, so a router that already sends related requests to the same replica simply gets more reuse out of the larger cache.
+Offloading pays off under any request router. Wherever a request lands, that replica can reload a matching prefix from its CPU tier instead of recomputing the prefill, so a router that already sends related requests to the same replica gets more reuse out of the larger cache.
 
 `KVAwareRouter` is the only router with visibility into the offloaded tier. It tracks which replica holds a prefix in CPU memory and credits that match less than a GPU-resident one, so the reload's transfer cost is part of the routing decision. Every other router scores replicas without knowing the prefix exists off-GPU.
 
@@ -129,7 +129,7 @@ The KV Cache Offload / Reload row expanded. Every panel breaks down by `LLMServe
 | Store / Reload Throughput | `ray_vllm_kv_offload_store_bytes_total`, `ray_vllm_kv_offload_load_bytes_total` | GPU-to-CPU and CPU-to-GPU data rates. Store traffic without reloads suggests offloaded blocks aren't being reused. |
 | Store and Reload Operations/s | `ray_vllm_kv_offload_store_size_count`, `ray_vllm_kv_offload_load_size_count` | Transfer operations per second. Compare with throughput to identify many small transfers. |
 | Store / Reload Bandwidth | Bytes over transfer time | Effective transfer bandwidth. Helps distinguish low traffic from slow transfers. |
-| CPU Capacity Pinned by Transfers | `ray_vllm_kv_offload_cpu_cache_usage_perc` and its read and write splits | CPU cache capacity pinned by in-flight transfers. Sustained values near 100% may cause dropped transfers; consider increasing `kv_offloading_size`. |
+| CPU Capacity Pinned by Transfers | `ray_vllm_kv_offload_cpu_cache_usage_perc` and its read and write splits | CPU cache capacity pinned by in-flight transfers. Sustained values near 100% can cause dropped transfers. Raise `kv_offloading_size`. |
 | External Prefix Hit Rate | `ray_vllm_external_prefix_cache_hits_total` over `..._queries_total` | Share of prefix lookups served from the offloaded tier. |
 | Overall Prefix Hit Rate | GPU and external hits over `ray_vllm_prefix_cache_queries_total` | Combined hit rate versus GPU-only. The gap shows the additional reuse from offloading. |
 | Lookup Delay P90 | `ray_vllm_kv_offload_lookup_sync_delay_seconds` | P90 lookup latency before prefill. Monitor alongside TTFT when tuning the offloading buffer. |
