@@ -3164,7 +3164,7 @@ def read_webdataset(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
-    ray_remote_args: Dict[str, Any] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     decoder: Optional[Union[bool, str, callable, list]] = True,
