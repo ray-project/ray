@@ -179,9 +179,8 @@ def debug_nccl_provenance() -> str:
     # Which libnccl.so.* the process has actually mapped.
     try:
         maps = Path("/proc/self/maps").read_text()
-        lines.append(
-            f"mapped libnccl: {sorted(set(re.findall(r'/\S*libnccl\S*', maps)))}"
-        )
+        mapped = sorted(set(re.findall(r"/\S*libnccl\S*", maps)))
+        lines.append(f"mapped libnccl: {mapped}")
     except Exception as e:  # noqa: BLE001
         lines.append(f"/proc/self/maps unavailable: {type(e).__name__}: {e}")
 
