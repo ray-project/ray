@@ -105,11 +105,14 @@ build:
     #
     # The worker count matters as much as the memory ceiling. Sphinx resolves
     # -j auto through multiprocessing.cpu_count, which reports the logical
-    # CPUs on the host and is neither affinity- nor cgroup-aware, while nproc
-    # reports the affinity mask. If those two disagree, Sphinx forks more
-    # write workers than the container has CPUs to run them on, and each one
-    # carries its own copy of the environment. Print all three so the numbers
-    # can be compared rather than assumed.
+    # CPUs installed on the host and is neither affinity- nor cgroup-aware.
+    # nproc reports the affinity mask instead, and nproc --all reports what
+    # multiprocessing sees. If those two disagree, Sphinx forks more write
+    # workers than the container has CPUs to run them on, and each one
+    # carries its own copy of the environment, so print both rather than
+    # assuming they agree. Reported via nproc rather than a python -c one
+    # liner because the job runner strips single quotes from arguments,
+    # which silently turns quoted labels into bare names.
     #
     # The diagnostics run around the build rather than in a post_build job
     # because post_build is skipped when the build fails, and the failing
@@ -122,8 +125,9 @@ build:
       html:
         - |
           echo "=== builder capacity ==="
+          echo "cpus in affinity mask, then cpus installed on the host:"
           nproc || true
-          python -c "import os, multiprocessing; print('os.cpu_count', os.cpu_count()); print('sched_getaffinity', len(os.sched_getaffinity(0))); print('multiprocessing.cpu_count', multiprocessing.cpu_count())" || true
+          nproc --all || true
           grep -E "MemTotal|MemAvailable" /proc/meminfo || true
           cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "no cgroup v2 memory.max"
           cat /sys/fs/cgroup/memory.high 2>/dev/null || echo "no cgroup v2 memory.high"
