@@ -1,3 +1,6 @@
+.. meta::
+   :description: Anti-pattern: redefining the same remote function or actor class in a loop re-exports it each time, adding overhead.
+
 Anti-pattern: Redefining the same remote function or class harms performance
 ============================================================================
 

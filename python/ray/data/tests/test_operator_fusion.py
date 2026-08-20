@@ -584,7 +584,7 @@ def test_fuse_map_into_shuffle_reduce(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     ds = ray.data.range(100).repartition(4, keys=["id"]).map_batches(lambda b: b)
     dag = get_execution_plan(ds._logical_plan)[0].dag
@@ -630,7 +630,7 @@ def test_fused_shuffle_reduce_preserves_operator_config(
     back to the 2x default) and should_emit_empty_partitions.
     """
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     ds = (
         ray.data.range(100)
@@ -650,7 +650,7 @@ def test_map_not_fused_into_shuffle_reduce_with_downstream_limit(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     ds = (
         ray.data.range(100)
@@ -674,7 +674,7 @@ def test_concurrency_capped_map_not_fused_into_shuffle_reduce(
     ray_start_regular_shared_2_cpus, restore_data_context
 ):
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     ds = (
         ray.data.range(100)
@@ -695,7 +695,7 @@ def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
     from ray.data.datasource.datasink import Datasink
 
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     class _NoopDatasink(Datasink):
         def write(self, blocks, ctx):

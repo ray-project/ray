@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Ray on Slurm: sbatch directives, obtaining the head node IP, starting Ray across allocated nodes, and networking caveats.
+
 .. _ray-slurm-deploy:
 
 Deploying on Slurm

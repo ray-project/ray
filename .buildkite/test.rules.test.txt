@@ -1,7 +1,12 @@
-# Test cases for Ray CI test rules
-# Based on ci/pipeline/test_conditional_testing.py _TESTS_YAML
+# Unit tests for test.rules.txt
 #
-# Format: file: tag1 tag2 tag3
+# Format: file_path: tag1 tag2 tag3
+#
+# Run by `rayci test-rules`, which pairs each *.rules.txt in this directory
+# with its *.rules.test.txt companion by name. Each rules file is evaluated on
+# its own, so the tags expected below are the ones test.rules.txt emits by
+# itself; the "always lint" that always.rules.txt contributes to every real
+# build is covered by always.rules.test.txt instead.
 
 # === CI/Pipeline ===
 
@@ -96,6 +101,8 @@ doc/source/ray-observability/example.py: core_doc
 # The four ray-core notebooks whose targets are tagged team:ml route to ml_doc,
 # because the core step filters targets by team and would not execute them.
 doc/source/ray-core/examples/plot_hyperparameter.ipynb: ml_doc
+doc/source/ray-core/examples/batch_prediction.ipynb: ml_doc
+doc/source/ray-core/examples/plot_parameter_server.ipynb: ml_doc
 doc/source/ray-core/examples/plot_pong_example.ipynb: ml_doc
 # highly_parallel.ipynb is the exception: the ml docs example step excludes its
 # tag, so no step runs it. It routes to the build instead.
@@ -126,21 +133,40 @@ doc/source/data/images/dataset-arch.png:
 doc/source/train/images/overview.jpg:
 doc/source/tune/images/tune-flow.gif:
 # Config and script assets a doc example consumes can change what the test
-# does, so under a library doc dir they keep routing to that library. Under an
-# unowned dir they still fall through to the trailing `doc/` skip, because the
-# catch-all matches only .py, .ipynb, and BUILD.bazel. That is unchanged from
-# before this rework, and none of those assets is a bazel test dep today.
+# does, so under a library doc dir they keep routing to that library.
 doc/source/serve/doc_code/config.yaml: serve_doc
-doc/source/cluster/doc_code/slurm-basic.sh:
+# Under an unowned dir the asset is not a test input at all -- no bazel target
+# covers doc/source/cluster/doc_code/ -- but a rendered page literalincludes it,
+# so it routes to the build. This asserts the whole directory lands on `doc`
+# regardless of extension: the .sh here and the .py sibling below must agree,
+# since it is the include that matters, not whether the catch-all's .py/.ipynb
+# patterns happen to reach the file.
+doc/source/cluster/doc_code/slurm-basic.sh: doc
+doc/source/cluster/doc_code/slurm-launch.py: doc
+doc/source/ray-contribute/doc_code/example_module.py: doc
+# Starter templates and the authoring boilerplate are excluded from the Sphinx
+# build and back no bazel target, so they emit nothing at all. 05 is the lone
+# exception: a rendered Train page literalincludes its sources, so those route
+# to the build like any other include input.
+doc/source/templates/01_batch_inference/start.ipynb:
+doc/source/templates/03_serving_stable_diffusion/app.py:
+doc/source/templates/04_finetuning_llms_with_deepspeed/utils.py:
+doc/source/_templates/template.ipynb:
+doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py: doc
+# The leading prose-and-image skip still wins inside a `doc`-routed directory,
+# so an image or README under 05 emits nothing. Locks in that the new rule did
+# not accidentally reorder past that skip.
+doc/source/templates/05_dreambooth_finetuning/dreambooth/images/lego-car/1.jpg:
+doc/source/templates/05_dreambooth_finetuning/README.md:
 # Documentation validation infra stays on the `doc` tag. The Sphinx config, the
 # modules it imports, the in-repo build extensions, and the doc-build helper
 # scripts build the docs, so they route to the `doc` build and validation only,
 # never to a library's doctest or example execution.
 .readthedocs.yaml: doc
-doc/source/data/api/api.rst: doc_api
+doc/source/data/api/api.md: doc_api
 doc/source/serve/api/index.md: doc_api
-doc/source/ray-core/api/index.rst: doc_api
-doc/source/train/api/api.rst: doc_api
+doc/source/ray-core/api/index.md: doc_api
+doc/source/train/api/api.md: doc_api
 doc/source/tune/api/api.rst: doc_api
 doc/source/rllib/package_ref/index.rst: doc_api
 doc/source/ray-observability/reference/api.rst: doc_api
@@ -157,7 +183,10 @@ doc/source/_ext/llms_txt.py: doc doc_api
 doc/source/custom_directives.py: doc doc_api
 doc/source/api_autogen.py: doc doc_api
 doc/source/api_mock_imports.py: doc doc_api
-.buildkite/doc.rayci.yml: doc doc_api
+# doc.rayci.yml declares the redirect-validation step as well as the two API
+# checks, so it emits doc_redirects on top of doc and doc_api. An edit to a step
+# definition has to be able to select the step it edits.
+.buildkite/doc.rayci.yml: doc doc_api doc_redirects
 # api_sidebar.py sits under doc/source/_ext/ but carries `tools` on top of the
 # dir rule's tags, because //ci/pipeline:test_doc_api_rules_sync is a ci_unit
 # target and ci_unit is selected by `tools`. This case is what keeps the drift
@@ -190,8 +219,13 @@ doc/source/llms_txt_summary.txt: doc
 # The shared notebook runner stays on the catch-all core step by design; see
 # the comment on the catch-all rule in test.rules.txt.
 doc/test_myst_doc.py: core_doc
-python/deplocks/docs/docbuild_depset_py3.10.lock: doc doc_api python_dependencies
+python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api python_dependencies
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api python_dependencies
+# Redirect YAML selects the dedicated lightweight check and nothing else: no
+# docbuild, no API checks, no per-team doc tests. The README beside it is prose
+# and stays unrouted, which is what the second case locks in.
+doc/redirects/current.yaml: doc_redirects
+doc/redirects/README.md:
 
 # === Release ===
 

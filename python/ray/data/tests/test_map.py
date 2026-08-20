@@ -5,7 +5,8 @@ import os
 import random
 import threading
 import time
-from typing import Iterable, Iterator, List, Literal, Optional
+import warnings
+from typing import Callable, Iterable, Iterator, List, Literal, Optional
 from unittest.mock import Mock
 
 import numpy as np
@@ -34,6 +35,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col
@@ -74,6 +76,72 @@ def test_ray_remote_args_fn_deprecation_warning(shutdown_only):
         ds.flat_map(lambda row: [row], ray_remote_args_fn=ray_remote_args_fn)
     with pytest.warns(RayDeprecationWarning, match="ray_remote_args_fn"):
         ds.filter(expr=col("id") >= 0, ray_remote_args_fn=ray_remote_args_fn)
+
+
+@pytest.mark.parametrize(
+    "transform_fn",
+    [
+        lambda ds: ds.map(lambda row: row, scheduling_strategy="SPREAD"),
+        lambda ds: ds.map_batches(lambda batch: batch, scheduling_strategy="SPREAD"),
+        lambda ds: ds.flat_map(lambda row: [row], scheduling_strategy="SPREAD"),
+        lambda ds: ds.with_column("copy", col("id"), scheduling_strategy="SPREAD"),
+        lambda ds: ds.with_columns({"copy": col("id")}, scheduling_strategy="SPREAD"),
+        lambda ds: ds.filter(expr=col("id") >= 0, scheduling_strategy="SPREAD"),
+        lambda ds: ds.add_column(
+            "copy", lambda batch: batch["id"], scheduling_strategy="SPREAD"
+        ),
+        lambda ds: ds.drop_columns(["id"], scheduling_strategy="SPREAD"),
+        lambda ds: ds.select_columns(["id"], scheduling_strategy="SPREAD"),
+        lambda ds: ds.rename_columns({"id": "renamed"}, scheduling_strategy="SPREAD"),
+    ],
+    ids=[
+        "map",
+        "map_batches",
+        "flat_map",
+        "with_column",
+        "with_columns",
+        "filter",
+        "add_column",
+        "drop_columns",
+        "select_columns",
+        "rename_columns",
+    ],
+)
+def test_transform_ray_remote_args_deprecation_warning(
+    shutdown_only, transform_fn: Callable[[Dataset], Dataset]
+):
+    ds = ray.data.range(1)
+
+    with pytest.warns(
+        RayDeprecationWarning, match="ray_remote_args"
+    ) as warning_records:
+        transform_fn(ds)
+
+    # Each API call should produce only one warning, even if it calls another
+    # Dataset method.
+    assert len(warning_records) == 1
+    # The warning should point to the public API caller, not a Dataset method.
+    assert warning_records[0].filename == __file__
+
+
+@pytest.mark.parametrize(
+    "transform_fn",
+    [
+        lambda ds, **opts: ds.with_column("copy", col("id"), **opts),
+        lambda ds, **opts: ds.add_column("copy", lambda b: b["id"], **opts),
+        lambda ds, **opts: ds.drop_columns(["id"], **opts),
+    ],
+    ids=["with_column", "add_column", "drop_columns"],
+)
+def test_column_named_remote_args_no_warning(
+    shutdown_only, transform_fn: Callable[..., Dataset]
+):
+    """Check that named parameters don't warn when column APIs pass them along."""
+    ds = ray.data.range(1)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RayDeprecationWarning)
+        transform_fn(ds, num_cpus=0, num_gpus=0, memory=1)
 
 
 def test_invalid_max_tasks_in_flight_raises_error():

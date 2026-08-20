@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Advanced Ray Serve autoscaling: tune autoscaling_config for steady state and limits, control reaction to traffic, and scale composed models."
+---
+
 (serve-advanced-autoscaling)=
 
 # Advanced Ray Serve Autoscaling
