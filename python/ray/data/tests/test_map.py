@@ -1,7 +1,9 @@
 import asyncio
+import concurrent.futures
 import logging
 import math
 import os
+import queue
 import random
 import threading
 import time
@@ -24,6 +26,10 @@ from ray._common.test_utils import (
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -32,6 +38,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
+from ray.data._internal.util import get_compute_strategy
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -1201,6 +1208,127 @@ def test_async_map_batches(
 
 
 @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+@pytest.mark.parametrize("concurrency", [None, 2])
+def test_async_map_batches_task_pool(
+    ray_start_regular_shared,
+    udf_kind,
+    concurrency,
+    target_max_block_size_infinite_or_default,
+):
+    if udf_kind == "async_gen":
+
+        async def async_udf(batch, increment, *, multiplier):
+            await asyncio.sleep(0.01)
+            yield {"id": (batch["id"] + increment) * multiplier}
+
+    elif udf_kind == "coroutine":
+
+        async def async_udf(batch, increment, *, multiplier):
+            await asyncio.sleep(0.01)
+            return {"id": (batch["id"] + increment) * multiplier}
+
+    else:
+        pytest.fail(f"Unknown udf_kind: {udf_kind}")
+
+    assert isinstance(
+        get_compute_strategy(async_udf, concurrency=concurrency), TaskPoolStrategy
+    )
+
+    output = (
+        ray.data.range(8, override_num_blocks=4)
+        .map_batches(
+            async_udf,
+            batch_size=1,
+            fn_args=(1,),
+            fn_kwargs={"multiplier": 2},
+            concurrency=concurrency,
+        )
+        .take_all()
+    )
+
+    assert sorted(row["id"] for row in output) == list(range(2, 18, 2))
+
+
+def test_async_map_batches_task_pool_fusion(
+    ray_start_regular_shared, target_max_block_size_infinite_or_default
+):
+    async def add_one(batch):
+        await asyncio.sleep(0.01)
+        return {"id": batch["id"] + 1}
+
+    async def double(batch):
+        await asyncio.sleep(0.01)
+        yield {"id": batch["id"] * 2}
+
+    output = (
+        ray.data.range(4, override_num_blocks=2)
+        .map_batches(add_one, batch_size=1)
+        .map_batches(double, batch_size=1)
+        .take_all()
+    )
+
+    assert sorted(row["id"] for row in output) == [2, 4, 6, 8]
+
+
+@pytest.mark.timeout(30)
+def test_async_map_batches_task_pool_fused_with_actor_pool(
+    shutdown_only, target_max_block_size_infinite_or_default
+):
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    async def add_one(batch):
+        return {"id": batch["id"] + 1}
+
+    class AsyncActor:
+        async def __call__(self, batch):
+            return {"id": batch["id"] * 2}
+
+    ds = (
+        ray.data.range(4, override_num_blocks=2)
+        .map_batches(add_one, batch_size=1)
+        .map_batches(
+            AsyncActor,
+            batch_size=1,
+            compute=ActorPoolStrategy(size=1),
+        )
+    )
+
+    physical_plan, _ = get_execution_plan(ds._logical_plan)
+    assert isinstance(physical_plan.dag, ActorPoolMapOperator)
+    assert "->" in physical_plan.dag.name
+    assert sorted(row["id"] for row in ds.take_all()) == [2, 4, 6, 8]
+
+
+@pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
+def test_async_map_batches_task_pool_exception(
+    ray_start_regular_shared,
+    udf_kind,
+    target_max_block_size_infinite_or_default,
+):
+    if udf_kind == "async_gen":
+
+        async def failing_udf(batch):
+            raise ValueError("expected async UDF error")
+            yield batch
+
+    elif udf_kind == "coroutine":
+
+        async def failing_udf(batch):
+            raise ValueError("expected async UDF error")
+
+    else:
+        pytest.fail(f"Unknown udf_kind: {udf_kind}")
+
+    with pytest.raises(RayTaskError, match="expected async UDF error"):
+        (
+            ray.data.range(1, override_num_blocks=1)
+            .map_batches(failing_udf)
+            .materialize()
+        )
+
+
+@pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
 def test_async_flat_map(
     shutdown_only, udf_kind, target_max_block_size_infinite_or_default
 ):
@@ -1299,6 +1427,273 @@ class TestGenerateTransformFnForAsyncMap:
         task_context = Mock()
         assert list(transform_fn([], task_context)) == []
         validate_fn.assert_not_called()
+
+    def test_task_pool_event_loop_cleanup(
+        self, monkeypatch, target_max_block_size_infinite_or_default
+    ):
+        """Test that task-pool event loops finalize unfinished async work."""
+        monkeypatch.setattr(ray.data, "_map_actor_context", None)
+        cleanup = {"task": False, "async_gen": False}
+        retained_generators = []
+
+        async def pending_task():
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cleanup["task"] = True
+
+        async def pending_generator():
+            try:
+                yield
+            finally:
+                cleanup["async_gen"] = True
+
+        async def async_fn(item):
+            asyncio.create_task(pending_task())
+            await asyncio.sleep(0)
+            generator = pending_generator()
+            await generator.__anext__()
+            retained_generators.append(generator)
+            return item
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn,
+            Mock(),
+            max_concurrency=1,
+            use_actor_pool_event_loop=False,
+        )
+
+        assert list(transform_fn([1], Mock())) == [1]
+        assert cleanup == {"task": True, "async_gen": True}
+
+    @pytest.mark.timeout(10)
+    def test_task_pool_event_loop_cleanup_on_early_exit(
+        self, monkeypatch, caplog, target_max_block_size_infinite_or_default
+    ):
+        """Early consumer exit interrupts queue backpressure and closes the loop."""
+        import ray.data._internal.planner.plan_udf_map_op as plan_udf_map_op
+
+        monkeypatch.setattr(ray.data, "_map_actor_context", None)
+        blocked_put = threading.Event()
+        output_queues = []
+        loop_threads = []
+        loops = []
+        real_interruptible_queue = plan_udf_map_op._InterruptibleQueue
+        real_thread = threading.Thread
+        real_new_event_loop = asyncio.new_event_loop
+
+        class TrackingQueue(real_interruptible_queue):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._blocked_puts = 0
+                output_queues.append(self)
+
+            def put(self, item, block=True, timeout=None):
+                if block and timeout is None and self.full():
+                    self._blocked_puts += 1
+                    if self._blocked_puts == 2:
+                        blocked_put.set()
+                return super().put(item, block=block, timeout=timeout)
+
+        def track_thread(*args, **kwargs):
+            thread = real_thread(*args, **kwargs)
+            loop_threads.append(thread)
+            return thread
+
+        def track_loop():
+            loop = real_new_event_loop()
+            loops.append(loop)
+            return loop
+
+        monkeypatch.setattr(plan_udf_map_op, "_InterruptibleQueue", TrackingQueue)
+        monkeypatch.setattr(plan_udf_map_op, "Thread", track_thread)
+        monkeypatch.setattr(plan_udf_map_op.asyncio, "new_event_loop", track_loop)
+
+        async def async_fn(item):
+            return item
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn,
+            Mock(),
+            max_concurrency=1,
+            use_actor_pool_event_loop=False,
+        )
+        output_iter = transform_fn(range(3), Mock())
+        assert next(output_iter) == 0
+        assert blocked_put.wait(timeout=2)
+
+        close_finished = threading.Event()
+
+        def close_output_iter():
+            try:
+                output_iter.close()
+            finally:
+                close_finished.set()
+
+        close_thread = real_thread(target=close_output_iter)
+        close_thread.start()
+        closed_without_rescue = close_finished.wait(timeout=2)
+
+        if not closed_without_rescue:
+            # Keep a failing baseline from leaking its blocked producer thread.
+            while not close_finished.wait(timeout=0.05):
+                for output_queue in output_queues:
+                    try:
+                        output_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+
+        close_thread.join(timeout=2)
+        assert closed_without_rescue
+        assert not close_thread.is_alive()
+        assert len(loop_threads) == 1
+        assert not loop_threads[0].is_alive()
+        assert len(loops) == 1
+        assert loops[0].is_closed()
+        assert "Timed out while cleaning up" not in caplog.text
+
+    @pytest.mark.timeout(10)
+    def test_task_pool_early_exit_retrieves_queued_udf_errors(
+        self, monkeypatch, target_max_block_size_infinite_or_default
+    ):
+        """Early exit retrieves errors from completed tasks awaiting reordering."""
+        import gc
+
+        import ray.data._internal.planner.plan_udf_map_op as plan_udf_map_op
+
+        monkeypatch.setattr(ray.data, "_map_actor_context", None)
+        queued_failure = threading.Event()
+        loop_errors = []
+        loop_threads = []
+        loops = []
+        real_asyncio_queue = asyncio.Queue
+        real_thread = threading.Thread
+        real_new_event_loop = asyncio.new_event_loop
+
+        class TrackingAsyncQueue(real_asyncio_queue):
+            async def get(self):
+                item = await super().get()
+                if isinstance(item, tuple) and len(item) == 2 and item[1] == 2:
+                    queued_failure.set()
+                return item
+
+        def track_thread(*args, **kwargs):
+            thread = real_thread(*args, **kwargs)
+            loop_threads.append(thread)
+            return thread
+
+        def track_loop():
+            loop = real_new_event_loop()
+            loops.append(loop)
+
+            def handle_loop_error(_, context):
+                loop_errors.append(context)
+
+            loop.set_exception_handler(handle_loop_error)
+            return loop
+
+        monkeypatch.setattr(plan_udf_map_op.asyncio, "Queue", TrackingAsyncQueue)
+        monkeypatch.setattr(plan_udf_map_op, "Thread", track_thread)
+        monkeypatch.setattr(plan_udf_map_op.asyncio, "new_event_loop", track_loop)
+
+        async def async_fn(item):
+            if item == 1:
+                await asyncio.Future()
+            if item == 2:
+                raise ValueError("queued failure")
+            return item
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn,
+            Mock(),
+            max_concurrency=3,
+            use_actor_pool_event_loop=False,
+        )
+        output_iter = transform_fn(range(3), Mock())
+        assert next(output_iter) == 0
+        assert queued_failure.wait(timeout=2)
+        output_iter.close()
+        gc.collect()
+
+        assert len(loop_threads) == 1
+        assert not loop_threads[0].is_alive()
+        assert len(loops) == 1
+        assert loops[0].is_closed()
+        assert not [
+            context
+            for context in loop_errors
+            if context.get("message") == "Task exception was never retrieved"
+        ]
+
+    @pytest.mark.timeout(10)
+    def test_task_pool_async_transform_owns_loop_when_called_from_actor_loop(
+        self,
+        monkeypatch,
+        mock_actor_async_ctx,
+        target_max_block_size_infinite_or_default,
+    ):
+        """A fused task-pool transform must not reuse its caller's actor loop."""
+        import ray.data._internal.planner.plan_udf_map_op as plan_udf_map_op
+
+        output_queues = []
+        loop_threads = []
+        loops = []
+        real_interruptible_queue = plan_udf_map_op._InterruptibleQueue
+        real_thread = threading.Thread
+        real_new_event_loop = asyncio.new_event_loop
+
+        class TrackingQueue(real_interruptible_queue):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                output_queues.append(self)
+
+        def track_thread(*args, **kwargs):
+            thread = real_thread(*args, **kwargs)
+            loop_threads.append(thread)
+            return thread
+
+        def track_loop():
+            loop = real_new_event_loop()
+            loops.append(loop)
+            return loop
+
+        monkeypatch.setattr(plan_udf_map_op, "_InterruptibleQueue", TrackingQueue)
+        monkeypatch.setattr(plan_udf_map_op, "Thread", track_thread)
+        monkeypatch.setattr(plan_udf_map_op.asyncio, "new_event_loop", track_loop)
+
+        async def async_fn(item):
+            return item + 1
+
+        transform_fn = _generate_transform_fn_for_async_map(
+            async_fn,
+            Mock(),
+            max_concurrency=2,
+            use_actor_pool_event_loop=False,
+        )
+
+        async def pull_fused_upstream():
+            return list(transform_fn([1], Mock()))
+
+        result_future = asyncio.run_coroutine_threadsafe(
+            pull_fused_upstream(), mock_actor_async_ctx.udf_map_asyncio_loop
+        )
+        completed_without_rescue = True
+        try:
+            result = result_future.result(timeout=2)
+        except concurrent.futures.TimeoutError:
+            completed_without_rescue = False
+            assert len(output_queues) == 1
+            output_queues[0].put(RuntimeError("release blocked actor loop"))
+            with pytest.raises(RuntimeError, match="release blocked actor loop"):
+                result_future.result(timeout=2)
+            result = None
+
+        assert completed_without_rescue
+        assert result == [2]
+        assert len(loop_threads) == 1
+        assert not loop_threads[0].is_alive()
+        assert len(loops) == 1
+        assert loops[0].is_closed()
 
     @pytest.mark.parametrize("udf_kind", ["coroutine", "async_gen"])
     def test_basic_async_processing(

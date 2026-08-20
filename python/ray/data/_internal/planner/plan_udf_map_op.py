@@ -2,9 +2,8 @@ import asyncio
 import collections
 import inspect
 import logging
-import queue
 from dataclasses import dataclass
-from threading import Thread
+from threading import Event, Thread
 from types import GeneratorType
 from typing import (
     TYPE_CHECKING,
@@ -15,6 +14,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Set,
     Tuple,
     TypeVar,
 )
@@ -53,7 +53,7 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.util import _truncated_repr
+from ray.data._internal.util import _InterruptibleQueue, _truncated_repr
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -309,7 +309,9 @@ def plan_udf_map_op(
 
     if isinstance(op, MapBatches):
         transform_fn = BatchMapTransformFn(
-            _generate_transform_fn_for_map_batches(fn),
+            _generate_transform_fn_for_map_batches(
+                fn, use_actor_pool_event_loop=udf_is_callable_class
+            ),
             batch_size=op.batch_size,
             batch_format=op.batch_format,
             zero_copy_batch=op.zero_copy_batch,
@@ -319,9 +321,13 @@ def plan_udf_map_op(
 
     else:
         if isinstance(op, MapRows):
-            udf_fn = _generate_transform_fn_for_map_rows(fn)
+            udf_fn = _generate_transform_fn_for_map_rows(
+                fn, use_actor_pool_event_loop=udf_is_callable_class
+            )
         elif isinstance(op, FlatMap):
-            udf_fn = _generate_transform_fn_for_flat_map(fn)
+            udf_fn = _generate_transform_fn_for_flat_map(
+                fn, use_actor_pool_event_loop=udf_is_callable_class
+            )
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -463,11 +469,30 @@ def _get_udf(
 
     else:
 
-        def _wrapped_udf_map_fn(item: Any) -> Any:
-            try:
-                return udf(item, *fn_args, **fn_kwargs)
-            except Exception as e:
-                _try_wrap_udf_exception(e)
+        if inspect.iscoroutinefunction(udf):
+
+            async def _wrapped_udf_map_fn(item: Any) -> Any:
+                try:
+                    return await udf(item, *fn_args, **fn_kwargs)
+                except Exception as e:
+                    _try_wrap_udf_exception(e)
+
+        elif inspect.isasyncgenfunction(udf):
+
+            async def _wrapped_udf_map_fn(item: Any) -> Any:
+                try:
+                    async for res in udf(item, *fn_args, **fn_kwargs):
+                        yield res
+                except Exception as e:
+                    _try_wrap_udf_exception(e, item)
+
+        else:
+
+            def _wrapped_udf_map_fn(item: Any) -> Any:
+                try:
+                    return udf(item, *fn_args, **fn_kwargs)
+                except Exception as e:
+                    _try_wrap_udf_exception(e)
 
         def init_fn():
             pass
@@ -621,6 +646,8 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
 
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
+    *,
+    use_actor_pool_event_loop: bool,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
 
     if _is_async_udf(fn):
@@ -628,6 +655,7 @@ def _generate_transform_fn_for_map_batches(
             fn,
             _validate_batch_output,
             max_concurrency=DEFAULT_ASYNC_BATCH_UDF_MAX_CONCURRENCY,
+            use_actor_pool_event_loop=use_actor_pool_event_loop,
         )
 
     else:
@@ -700,6 +728,8 @@ def _validate_row_output(item):
 
 def _generate_transform_fn_for_map_rows(
     fn: UserDefinedFunction,
+    *,
+    use_actor_pool_event_loop: bool,
 ) -> MapTransformCallable[Row, Row]:
 
     if _is_async_udf(fn):
@@ -708,6 +738,7 @@ def _generate_transform_fn_for_map_rows(
             _validate_row_output,
             # NOTE: UDF concurrency is limited
             max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY,
+            use_actor_pool_event_loop=use_actor_pool_event_loop,
         )
 
     else:
@@ -723,6 +754,8 @@ def _generate_transform_fn_for_map_rows(
 
 def _generate_transform_fn_for_flat_map(
     fn: UserDefinedFunction,
+    *,
+    use_actor_pool_event_loop: bool,
 ) -> MapTransformCallable[Row, Iterable[Row]]:
     if _is_async_udf(fn):
         # UDF is a callable class with async generator `__call__` method.
@@ -731,6 +764,7 @@ def _generate_transform_fn_for_flat_map(
             _validate_row_output,
             max_concurrency=DEFAULT_ASYNC_ROW_UDF_MAX_CONCURRENCY,
             is_flat_map=True,
+            use_actor_pool_event_loop=use_actor_pool_event_loop,
         )
 
     else:
@@ -778,6 +812,7 @@ def _generate_transform_fn_for_async_map(
     *,
     max_concurrency: int,
     is_flat_map: bool = False,
+    use_actor_pool_event_loop: bool = True,
 ) -> MapTransformCallable:
     assert max_concurrency > 0, "Max concurrency must be positive"
 
@@ -833,7 +868,11 @@ def _generate_transform_fn_for_async_map(
     #     reporting stage is throttled (and output queue doesn't grow unbounded) in case
     #     when consumer (Ray task itself) isn't able to keep up
     #
-    async def _execute_transform(it: Iterator[T], output_queue: queue.Queue) -> None:
+    async def _execute_transform(
+        it: Iterator[T],
+        output_queue: _InterruptibleQueue,
+        consumer_closed: Event,
+    ) -> None:
         loop = asyncio.get_running_loop()
 
         # NOTE: Individual tasks could complete in arbitrary order.
@@ -842,6 +881,8 @@ def _generate_transform_fn_for_async_map(
         #       to keep the output ordering the same as that one of the input
         #       iterator.
         completed_tasks_queue = asyncio.Queue(maxsize=max_concurrency)
+        unreported_tasks: Set[asyncio.Task] = set()
+
         # NOTE: This method is nested to support Python 3.9 where we only can
         #       init `asyncio.Queue` inside the async function
         async def _reorder() -> None:
@@ -867,7 +908,11 @@ def _generate_transform_fn_for_async_map(
                         #       therefore serving as back-pressure for scheduling tasks
                         #       preventing it from scheduling new tasks.
                         # NOTE: This will block the whole event-loop not just this task
-                        output_queue.put(await next_task)
+                        try:
+                            items = await next_task
+                        finally:
+                            unreported_tasks.discard(next_task)
+                        output_queue.put(items)
 
                         next_idx += 1
 
@@ -877,9 +922,12 @@ def _generate_transform_fn_for_async_map(
                 sentinel = _SENTINEL
 
             except BaseException as e:
+                if isinstance(e, InterruptedError) and consumer_closed.is_set():
+                    return
                 sentinel = e
             finally:
-                output_queue.put(sentinel)
+                if not consumer_closed.is_set():
+                    output_queue.put(sentinel)
 
         # NOTE: Reordering is an async process. Keep a strong reference to
         # the created task: ``loop.create_task`` only registers a weak
@@ -894,6 +942,16 @@ def _generate_transform_fn_for_async_map(
         sentinel = _SENTINEL
         enumerated_it = enumerate(it)
 
+        async def _cancel_unreported_tasks() -> None:
+            tasks = list(unreported_tasks)
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            unreported_tasks.clear()
+            cur_task_map.clear()
+
         try:
             while True:
                 while len(cur_task_map) < max_concurrency and not consumed:
@@ -902,6 +960,7 @@ def _generate_transform_fn_for_async_map(
                         # Launch async task while keeping track of its
                         # index in the enumerated sequence
                         task = loop.create_task(_apply_udf(item))
+                        unreported_tasks.add(task)
                         cur_task_map[task] = idx
                     except StopIteration:
                         consumed = True
@@ -927,44 +986,111 @@ def _generate_transform_fn_for_async_map(
                     cur_task_map.pop(task)
 
         except BaseException as e:
-            for cur_task in cur_task_map:
-                if not cur_task.done():
-                    cur_task.cancel()
-
+            await _cancel_unreported_tasks()
+            if consumer_closed.is_set():
+                raise
             sentinel = e
         finally:
-            assert len(cur_task_map) == 0, f"{cur_task_map}"
-            await completed_tasks_queue.put((sentinel, None))
-            # Wait for the reorder task to finish draining ``completed_tasks_queue``
-            # and pushing remaining results to the output queue. This both keeps a
-            # strong reference to the task alive until completion (preventing GC)
-            # and surfaces any unexpected exception raised inside ``_reorder``.
-            await reorder_task
+            if consumer_closed.is_set():
+                await _cancel_unreported_tasks()
+                reorder_task.cancel()
+                await asyncio.gather(reorder_task, return_exceptions=True)
+            else:
+                assert len(cur_task_map) == 0, f"{cur_task_map}"
+                try:
+                    await completed_tasks_queue.put((sentinel, None))
+                    # Wait for the reorder task to finish draining
+                    # ``completed_tasks_queue`` and pushing remaining results to the
+                    # output queue. This both keeps a strong reference to the task alive
+                    # until completion (preventing GC) and surfaces any unexpected
+                    # exception raised inside ``_reorder``.
+                    await reorder_task
+                finally:
+                    await _cancel_unreported_tasks()
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
-        output_queue = queue.Queue(maxsize=max_concurrency)
+        consumer_closed = Event()
+        output_queue = _InterruptibleQueue(max_concurrency, consumer_closed)
+        local_async_thread = None
 
-        loop = ray.data._map_actor_context.udf_map_asyncio_loop
+        if use_actor_pool_event_loop:
+            actor_context = ray.data._map_actor_context
+            assert actor_context is not None
+            assert actor_context.udf_map_asyncio_loop is not None
+            loop = actor_context.udf_map_asyncio_loop
+        else:
+            # A task-pool transform owns its loop even when fusion places it in an
+            # actor worker that also has an actor-owned async UDF loop. Reusing the
+            # actor loop would deadlock when the downstream transform pulls this
+            # iterator from that same loop thread.
+            loop = asyncio.new_event_loop()
 
-        asyncio.run_coroutine_threadsafe(
-            _execute_transform(iter(batch_iter), output_queue), loop
+            def run_loop():
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_forever()
+                finally:
+                    try:
+                        # Match asyncio.run() cleanup so unfinished user tasks,
+                        # async generators, and default-executor work are finalized.
+                        pending_tasks = asyncio.all_tasks(loop)
+                        for task in pending_tasks:
+                            task.cancel()
+                        loop.run_until_complete(
+                            asyncio.gather(*pending_tasks, return_exceptions=True)
+                        )
+                        loop.run_until_complete(loop.shutdown_asyncgens())
+                        loop.run_until_complete(loop.shutdown_default_executor())
+                    finally:
+                        asyncio.set_event_loop(None)
+                        loop.close()
+
+            local_async_thread = Thread(target=run_loop, daemon=True)
+            local_async_thread.start()
+
+        assert loop is not None
+
+        transform_future = asyncio.run_coroutine_threadsafe(
+            _execute_transform(iter(batch_iter), output_queue, consumer_closed), loop
         )
 
-        while True:
-            items = output_queue.get()
-            if items is _SENTINEL:
-                break
-            elif isinstance(items, Exception):
-                raise items
-            else:
-                # NOTE: Sequences from individual UDFs are combined into a single
-                #       sequence here, as compared to letting individual UDFs to
-                #       add into the output queue to guarantee *deterministic* ordering
-                #       (necessary for Ray Data to be able to guarantee task retries
-                #       producing the same results)
-                for item in items:
-                    validate_fn(item)
-                    yield item
+        completed = False
+        try:
+            while True:
+                items = output_queue.get()
+                if items is _SENTINEL:
+                    completed = True
+                    break
+                elif isinstance(items, Exception):
+                    raise items
+                else:
+                    # NOTE: Sequences from individual UDFs are combined into a single
+                    #       sequence here, as compared to letting individual UDFs to
+                    #       add into the output queue to guarantee *deterministic* ordering
+                    #       (necessary for Ray Data to be able to guarantee task retries
+                    #       producing the same results)
+                    for item in items:
+                        validate_fn(item)
+                        yield item
+        finally:
+            if not completed:
+                # Interrupt a producer blocked by output backpressure before asking
+                # the event loop to cancel the transform.
+                consumer_closed.set()
+                transform_future.cancel()
+
+            if local_async_thread is not None:
+                try:
+                    if completed:
+                        transform_future.result()
+                finally:
+                    loop.call_soon_threadsafe(loop.stop)
+                    local_async_thread.join(timeout=5.0)
+                    if local_async_thread.is_alive():
+                        logger.warning(
+                            "Timed out while cleaning up an async task-pool UDF "
+                            "event loop."
+                        )
 
     return _transform
 
