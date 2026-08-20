@@ -67,7 +67,7 @@ def test_sort_shuffle_map_samples_all_inputs_then_replays_buffered_inputs(
         num_partitions=2,
         sort_key=SortKey("id"),
     )
-    monkeypatch.setattr(op, "_get_available_parallelism", lambda: 3)
+    monkeypatch.setattr(op, "_get_max_num_sampling_tasks_in_flight", lambda: 3)
     op.start(ExecutionOptions(), noop_counter())
 
     assert op.throttling_disabled()
@@ -88,22 +88,12 @@ def test_sort_shuffle_map_samples_all_inputs_then_replays_buffered_inputs(
     assert op.metrics.obj_store_mem_internal_inqueue == sum(
         bundle.size_bytes() for bundle in bundles
     )
-    total_input_bytes = op.internal_input_queue_num_bytes()
     op.all_inputs_done()
     assert len(op.get_active_tasks()) == 3
     run_op_tasks_sync(op)
 
     assert op.boundaries is not None
     assert not op.throttling_disabled()
-    target_num_map_tasks = 3 * op._TARGET_MAP_TASKS_PER_CPU
-    expected_batch_bytes = max(
-        1,
-        (total_input_bytes + target_num_map_tasks - 1) // target_num_map_tasks,
-    )
-    assert op._input_batch_bytes == min(
-        ctx.shuffle_input_batch_bytes,
-        expected_batch_bytes,
-    )
     assert len(op.boundaries) == 1
     assert op.internal_input_queue_num_blocks() == 0
     assert op.internal_input_queue_num_bytes() == 0
@@ -140,7 +130,7 @@ def test_sort_shuffle_map_bounds_sampling_tasks(
         num_partitions=2,
         sort_key=SortKey("id"),
     )
-    monkeypatch.setattr(op, "_get_available_parallelism", lambda: 2)
+    monkeypatch.setattr(op, "_get_max_num_sampling_tasks_in_flight", lambda: 2)
     op.start(ExecutionOptions(), noop_counter())
 
     for bundle in bundles:
@@ -242,7 +232,6 @@ def test_sort_shuffle_map_user_boundaries_skip_sampling(
 
     assert op.boundaries == [(2,)]
     assert not op.throttling_disabled()
-    assert op._input_batch_bytes == ctx.shuffle_input_batch_bytes
     assert len(op.get_active_tasks()) == 1
 
     op.all_inputs_done()

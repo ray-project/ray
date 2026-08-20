@@ -49,8 +49,6 @@ class SortShuffleMapOp(ShuffleMapOp):
     User-provided boundaries bypass the sampling phase.
     """
 
-    _TARGET_MAP_TASKS_PER_CPU = 2
-
     def __init__(
         self,
         input_op: PhysicalOperator,
@@ -134,9 +132,7 @@ class SortShuffleMapOp(ShuffleMapOp):
         self._metrics.on_input_queued(refs, input_index=input_index)
         self._pending_sample_block_refs.extend(refs.block_refs)
 
-    def _get_available_parallelism(self) -> int:
-        # The estimate accounts for the current placement group when Dataset
-        # execution is colocated with one.
+    def _get_max_num_sampling_tasks_in_flight(self) -> int:
         return max(1, _estimate_available_parallelism())
 
     def _start_sampling(self) -> None:
@@ -154,7 +150,9 @@ class SortShuffleMapOp(ShuffleMapOp):
             1,
             int(self._num_partitions * 10 / self._num_sample_tasks_total),
         )
-        self._max_num_sampling_tasks_in_flight = self._get_available_parallelism()
+        self._max_num_sampling_tasks_in_flight = (
+            self._get_max_num_sampling_tasks_in_flight()
+        )
         if self._sample_bar is not None:
             self._sample_bar.update(
                 total=self._num_sample_tasks_total * self._num_samples_per_block
@@ -214,27 +212,6 @@ class SortShuffleMapOp(ShuffleMapOp):
             )
             self._set_boundaries(boundaries)
 
-    def _configure_map_input_batch_bytes(self) -> None:
-        if self._input_batch_bytes <= 0:
-            return
-
-        total_input_bytes = self._buffered_bundles.estimate_size_bytes()
-        if total_input_bytes <= 0:
-            return
-
-        target_num_tasks = max(
-            1,
-            self._get_available_parallelism() * self._TARGET_MAP_TASKS_PER_CPU,
-        )
-        parallel_batch_bytes = max(
-            1,
-            (total_input_bytes + target_num_tasks - 1) // target_num_tasks,
-        )
-        self._input_batch_bytes = min(
-            self._input_batch_bytes,
-            parallel_batch_bytes,
-        )
-
     def _set_boundaries(self, boundaries: List) -> None:
         # The shared V1 sampling helper represents an empty dataset with bare
         # ``None`` boundaries. Range partitioning expects each boundary to be a
@@ -249,7 +226,6 @@ class SortShuffleMapOp(ShuffleMapOp):
         self._partition_fn = make_range_partition_fn(
             boundaries, self._sort_key, self.data_context
         )
-        self._configure_map_input_batch_bytes()
         while self._buffered_bundles.has_next():
             bundle = self._buffered_bundles.get_next()
             self._metrics.on_input_dequeued(bundle, input_index=0)
