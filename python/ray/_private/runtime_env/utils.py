@@ -129,9 +129,7 @@ async def check_output_cmd(
             #    the child through its SIGCHLD handler / subprocess watcher.
             cancelled_during_cleanup = False
             try:
-                await asyncio.shield(
-                    asyncio.wait_for(proc.wait(), timeout=10)
-                )
+                await asyncio.shield(asyncio.wait_for(proc.wait(), timeout=10))
             except asyncio.CancelledError:
                 # A cancellation was delivered while we were awaiting the
                 # shielded reap (e.g. the outer task was cancelled *after*
