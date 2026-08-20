@@ -9,5 +9,7 @@ srcs:
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - PYTHON
+  - RAYCI_IMAGE_PIP_INDEX_URL
+  - RAYCI_IMAGE_PIP_TRUSTED_HOST
 tags:
   - cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON
