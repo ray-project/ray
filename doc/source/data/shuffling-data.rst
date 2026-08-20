@@ -231,14 +231,14 @@ Example of hash shuffling based on column `id`:
 
 .. tip::
 
-    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a new shuffle backend,
+    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.HASH_SHUFFLE_V2``) is a new shuffle backend,
     currently in Alpha, that provides an updated hash-shuffle implementation:
 
     .. code-block:: python
 
         from ray.data.context import DataContext, ShuffleStrategy
 
-        DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+        DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
     See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available knobs.
 

@@ -111,7 +111,7 @@ in Alpha), is the intended replacement for the classical :ref:`hash-shuffling <h
 Shuffle v2
 ~~~~~~~~~~
 
-.. note:: Shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is currently in **Alpha**.
+.. note:: Shuffle v2 (``ShuffleStrategy.HASH_SHUFFLE_V2``) is currently in **Alpha**.
 
 Shuffle v2 is a new shuffle backend intended to replace the other shuffle backends. Today it
 provides an updated hash-shuffle implementation. Unlike the aggregator-actor model used by the previous
@@ -142,7 +142,7 @@ application:
 
 .. code-block:: bash
 
-    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY="shuffle_v2"
+    RAY_DATA_DEFAULT_SHUFFLE_STRATEGY="hash_shuffle_v2"
 
 To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
 
@@ -150,7 +150,7 @@ To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
 
     from ray.data.context import DataContext, ShuffleStrategy
 
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
 
 .. _tuning-shuffle-v2:
 
@@ -161,7 +161,7 @@ Shuffle v2 provides the following knobs:
 
 **Input batch size** (``DataContext.shuffle_input_batch_bytes``, environment variable
 ``RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES``, default 1 GiB). This setting only applies to the
-``SHUFFLE_V2`` strategy.
+``HASH_SHUFFLE_V2`` strategy.
 
 Shuffle v2 buffers input blocks from the same node until their combined size reaches this
 threshold, then partitions that batch as a unit. This controls the trade-off between shuffle
