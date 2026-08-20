@@ -417,6 +417,10 @@ class IcebergConfig:
         catalog_retried_errors: A list of substrings of error messages that
             should trigger a retry for Iceberg catalog operations. Includes common
             HTTP error codes and connection errors.
+        read_file_tasks_sequentially: Whether each Ray read task processes files
+            one at a time. Defaults to ``True`` to limit memory use. Set to
+            ``False`` for higher throughput when a task has many small files and
+            their combined input comfortably fits in memory.
     """
 
     write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
@@ -426,6 +430,7 @@ class IcebergConfig:
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
     )
+    read_file_tasks_sequentially: bool = True
 
 
 @DeveloperAPI
