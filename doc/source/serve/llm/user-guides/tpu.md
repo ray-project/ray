@@ -7,11 +7,7 @@ myst:
 (serve-llm-tpu)=
 # TPU serving
 
-Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes the TPU variant of vLLM from `tpu-inference`. For Kubernetes setup, see {doc}`Use TPUs with KubeRay </cluster/kubernetes/user-guides/tpu>`.
-
-:::{note}
-TPU support in Ray Serve LLM is topology-aware when you set `accelerator_config={"kind": "tpu", "topology": ...}`. Without a topology, Ray Serve LLM falls back to a regular placement group with per-chip `{"TPU": 1}` bundles.
-:::
+Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices, where a TPU slice is a group of interconnected TPU chips. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes the TPU variant of vLLM from `tpu-inference`. For Kubernetes setup, see {doc}`Use TPUs with KubeRay </cluster/kubernetes/user-guides/tpu>`.
 
 ## Topology and placement
 
@@ -44,21 +40,24 @@ The model still spans all 16 chips because `tensor_parallel_size=16`. The bundle
 ---
 width: 100%
 name: ray-serve-llm-tpu-placement
+alt: One Ray Serve LLM replica spanning a v6e 4x4 TPU slice, with one placement group bundle per TPU host and four TPU chips reserved in each bundle.
 ---
 Topology-aware TPU placement for one Ray Serve LLM replica.
 ```
+
+:::{note}
+TPU support in Ray Serve LLM is topology-aware when you set `accelerator_config={"kind": "tpu", "topology": ...}`. Without a topology, Ray Serve LLM falls back to a regular placement group with per-chip `{"TPU": 1}` bundles.
+:::
 
 ## `SlicePlacementGroup`
 
 For topology-aware TPU configs, Ray Serve LLM creates a {class}`~ray.util.tpu.SlicePlacementGroup` instead of a plain placement group. `SlicePlacementGroup` reserves a matching TPU slice, reads its `ray.io/tpu-slice-name` label, and creates the worker placement group with a per-bundle label selector that pins all bundles to that same physical slice.
 
-This makes the TPU slice an atomic scheduling unit. A replica reserves the complete slice it needs, or it waits. The placement group doesn't span unrelated slices.
-
-Ray Serve LLM defers this placement group creation until the `LLMServer` replica starts. The server stores the resulting placement group in the vLLM parallel config, and passes it to the TPU vLLM executor.
+This makes the TPU slice an atomic scheduling unit. A replica reserves the complete slice it needs, and the placement group doesn't span unrelated slices.
 
 ## How the TPU vLLM executor uses the bundles
 
-The `tpu-inference` Ray executor checks `parallel_config.placement_group`. When Ray Serve LLM already provided one, the executor reuses it instead of creating its own.
+The `tpu-inference` [Ray executor](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/executors/ray_distributed_executor_v2.py) checks `parallel_config.placement_group`. When Ray Serve LLM already provided one, the executor reuses it instead of creating its own.
 
 The executor then does the following:
 
@@ -70,7 +69,7 @@ With the default topology-aware bundles, one vLLM worker actor maps to one TPU h
 
 ## Example
 
-Build the image from the vLLM TPU base image and install a Ray wheel that includes TPU topology support. Install the `ray[llm]` extra without dependencies so pip doesn't replace the base image's TPU vLLM stack with upstream vLLM.
+Build the image from the vLLM TPU base image and install a Ray wheel that includes TPU topology support.
 
 ::::{tab-set}
 
