@@ -127,11 +127,27 @@ async def check_output_cmd(
             #    the agent forever; if wait times out we fall back to detaching
             #    via `_transport.close()` which asks asyncio to eventually reap
             #    the child through its SIGCHLD handler / subprocess watcher.
+            cancelled_during_cleanup = False
             try:
                 await asyncio.shield(
                     asyncio.wait_for(proc.wait(), timeout=10)
                 )
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except asyncio.CancelledError:
+                # A cancellation was delivered while we were awaiting the
+                # shielded reap (e.g. the outer task was cancelled *after*
+                # communicate() already succeeded). We must NOT silently
+                # swallow this cancellation: after best-effort cleanup, we
+                # re-raise it below so the caller observes the cancel.
+                cancelled_during_cleanup = True
+                # Best-effort: let the asyncio child watcher reap it in the
+                # background so we don't leak a zombie.
+                transport = getattr(proc, "_transport", None)
+                if transport is not None:
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
+            except asyncio.TimeoutError:
                 # Best-effort: let the asyncio child watcher reap it in the
                 # background so we don't leak a zombie.
                 transport = getattr(proc, "_transport", None)
@@ -142,3 +158,8 @@ async def check_output_cmd(
                         pass
             except ProcessLookupError:
                 pass
+
+            if cancelled_during_cleanup:
+                # Propagate the cancellation that arrived during cleanup so
+                # that it isn't accidentally swallowed by the finally block.
+                raise asyncio.CancelledError()

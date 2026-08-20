@@ -448,26 +448,54 @@ async def test_check_output_cmd_no_zombie_after_cancel():
 
     sleep_cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
 
-    task = asyncio.ensure_future(
-        check_output_cmd(sleep_cmd, logger=_NullLogger())
-    )
-    await asyncio.sleep(0.1)
-    task.cancel()
-    with pytest.raises((asyncio.CancelledError, RuntimeError)):
-        await task
+    # Capture the PID of the exact subprocess that ``check_output_cmd``
+    # spawns. Using ``os.waitpid(-1, ...)`` here would non-deterministically
+    # reap ANY un-reaped child of the current process (including ones
+    # created by unrelated tests or pytest workers), causing flaky failures
+    # and cross-test pollution. We wrap ``asyncio.create_subprocess_exec``
+    # so we can watch only the PID we actually care about.
+    spawned_pids = []
+    real_create_subprocess_exec = asyncio.create_subprocess_exec
+
+    async def _capturing_create_subprocess_exec(*args, **kwargs):
+        proc = await real_create_subprocess_exec(*args, **kwargs)
+        spawned_pids.append(proc.pid)
+        return proc
+
+    with mock.patch(
+        "ray._private.runtime_env.utils.asyncio.create_subprocess_exec",
+        side_effect=_capturing_create_subprocess_exec,
+    ):
+        task = asyncio.ensure_future(
+            check_output_cmd(sleep_cmd, logger=_NullLogger())
+        )
+        await asyncio.sleep(0.1)
+        task.cancel()
+        with pytest.raises((asyncio.CancelledError, RuntimeError)):
+            await task
+
+    assert spawned_pids, "check_output_cmd did not spawn any subprocess."
+    target_pid = spawned_pids[0]
 
     # Give the child watcher a moment to reap.
     for _ in range(20):
         await asyncio.sleep(0.05)
 
-    # Non-blocking check for any un-reaped child of this process.
+    # Non-blocking check for our specific child only. If the fix works,
+    # the process has already been reaped (either by our shielded
+    # ``proc.wait()`` or by the asyncio child watcher after
+    # ``_transport.close()``) and ``waitpid`` will raise
+    # ``ChildProcessError``.
+    reaped_pid = 0
+    reaped_status = 0
     try:
-        pid, status = os.waitpid(-1, os.WNOHANG)
+        reaped_pid, reaped_status = os.waitpid(target_pid, os.WNOHANG)
     except ChildProcessError:
-        pid, status = 0, 0
+        # Already reaped by the asyncio child watcher — expected & good.
+        pass
 
-    assert pid == 0, (
-        f"Found un-reaped child pid={pid}, status={status}. "
+    assert reaped_pid == 0, (
+        f"Found un-reaped child pid={reaped_pid}, status={reaped_status}. "
         "This indicates a zombie process leak in check_output_cmd()."
     )
 
