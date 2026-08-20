@@ -11,7 +11,7 @@ Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices
 
 ## Topology and placement
 
-A TPU topology describes the chip grid in one physical TPU slice. For example, a v6e `4x4` slice has 16 chips. Multi-host slices spread those chips across multiple TPU hosts connected by the TPU interconnect. For v6e `4x4`, that usually means four hosts with four chips each.
+A TPU topology describes the chip grid in one physical TPU slice. For example, a v6e `4x4` slice has 16 chips. Multi-host slices spread those chips across multiple TPU hosts connected by the TPU interconnect. For v6e `4x4`, that usually means four hosts with four chips each. For visualization, check out [TPU Topology Visualizer](https://tpu-visualizer.uc.r.appspot.com/).
 
 Ray Serve LLM uses `tensor_parallel_size * pipeline_parallel_size` as the number of TPU chips that one model replica requests. When you also set a TPU topology, Ray Serve LLM computes the number of chips per host and creates one placement group bundle per TPU host:
 
