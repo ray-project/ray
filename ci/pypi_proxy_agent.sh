@@ -13,7 +13,7 @@
 #   PIP_INDEX_URL              127.0.0.1 -- for pip and uv running on the agent itself.
 #                              Loopback, so pip and uv accept it over plain HTTP with no
 #                              trusted-host handling.
-#   RAYCI_IMAGE_PIP_INDEX_URL  the docker bridge gateway -- for docker builds, which have
+#   RAYCI_IMAGE_PIP_INDEX_URL  rayci.localhost -- for docker builds, which have
 #                              their own loopback and reach the agent here. wanda resolves
 #                              build args from its own process environment, so exporting
 #                              this is what lets an image build use the mirror.
@@ -112,24 +112,36 @@ _rayci_agent_pypi_proxy() {
   export RULES_PYTHON_PIP_ISOLATED=0
   echo "pypi index: agent proxy over the mirror -> ${PIP_INDEX_URL}"
 
-  # RAYCI_IMAGE_PIP_INDEX_URL is deliberately NOT exported here.
+  # The address an image build reaches this proxy on. A name, not an address: wanda
+  # passes --add-host rayci.localhost:host-gateway, and docker resolves host-gateway
+  # itself. Inferring the address instead is what broke every wheel build on master
+  # (postmerge 19281 against 19280) -- the bridge gateway was read from `docker network
+  # inspect bridge`, the build could not reach it, and ray-wheel.Dockerfile reads
+  # ${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}, so a present-but-unreachable
+  # value fails the build outright where an absent one falls back to PyPI.
   #
-  # It was, and it broke every wheel build on master: postmerge 19281 failed
-  # `wanda: wheel py3.{10,11,12,13}` where 19280 passed, on the commit that added this
-  # hook. pip inside the image build was pointed at the agent's bridge gateway, could not
-  # reach it, and reported "Could not find a version that satisfies the requirement
-  # cython==3.0.12 (from versions: none)" -- no 502, no origin fetch, nothing.
-  #
-  # Two things made that worse than a no-op. The gateway address is not the one a build
-  # can reach: premerge 72149 measured a docker build reaching a *step container* on the
-  # bridge (172.16.0.2), which is a different hop from reaching the *host* at the bridge
-  # gateway, and the two were conflated. And the fail-open does not extend into an image
-  # build: ray-wheel.Dockerfile reads ${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple},
-  # so an absent value falls back to PyPI while a present-but-unreachable one fails hard.
-  #
-  # Restoring it needs the address a docker build can actually reach, verified from inside
-  # a build on the agent that will run it, rather than inferred from `docker network
-  # inspect bridge`.
+  # Gated on the pinned rayci version rather than on merge order. wanda only passes that
+  # flag from the version below, and exporting against an older wanda reproduces exactly
+  # the failure above: a name that does not resolve inside the build. The gate lets this
+  # land before, after, or with the .rayciversion bump.
+  local min_rayci="0.47.0"
+  local pinned=""
+  if [[ -f "${repo_root}/.rayciversion" ]]; then
+    pinned="$(tr -d '[:space:]' <"${repo_root}/.rayciversion")"
+  fi
+  if [[ -n "${pinned}" ]] &&
+    [[ "$(printf '%s\n%s\n' "${min_rayci}" "${pinned}" | sort -V | head -1)" == "${min_rayci}" ]]; then
+    export RAYCI_IMAGE_PIP_INDEX_URL="http://rayci.localhost:${port}/simple"
+    # Named as trusted, because that name is not loopback. pip exempts loopback from its
+    # plain-HTTP refusal and nothing else, and the refusal is silent -- release 104844
+    # dropped the index and failed on `cython==3.0.12 (from versions: none)` with the
+    # --add-host flag present and the proxy healthy. The agent's own pip needs no
+    # equivalent: 127.0.0.1 above is covered by that exemption.
+    export RAYCI_IMAGE_PIP_TRUSTED_HOST="rayci.localhost"
+    echo "pypi index: image builds -> ${RAYCI_IMAGE_PIP_INDEX_URL}"
+  else
+    echo "pypi index: rayci ${pinned:-<unknown>} predates the --add-host support in ${min_rayci}; image builds stay on PyPI" >&2
+  fi
 }
 
 _rayci_agent_pypi_proxy

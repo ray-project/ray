@@ -43,6 +43,28 @@ def build_anyscale_custom_byod_image(
         docker_build_cmd = "docker build --progress=plain .".split()
         docker_build_cmd += ["--build-arg", f"BASE_IMAGE={base_image}"]
         docker_build_cmd += ["-t", image]
+        # This build runs inside a forge step on the release stack, so the step's
+        # index is a live rewriting proxy and a RUN step can reach it (premerge
+        # 72149). Without this the ARG in byod.Dockerfile has no value to take.
+        # Appended after -t so the argument prefix stays stable for callers and
+        # tests that match on it.
+        docker_build_cmd += [
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_INDEX_URL="
+            + os.environ.get(
+                "RAYCI_IMAGE_PIP_INDEX_URL", os.environ.get("PIP_INDEX_URL", "")
+            ),
+        ]
+        # The index alone is not enough: pip trusts only loopback over plain HTTP, and
+        # this one is not loopback, so an untrusted host is dropped in silence and the
+        # build fails on "from versions: none" instead (release 104844).
+        docker_build_cmd += [
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_TRUSTED_HOST="
+            + os.environ.get(
+                "RAYCI_IMAGE_PIP_TRUSTED_HOST", os.environ.get("PIP_TRUSTED_HOST", "")
+            ),
+        ]
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
