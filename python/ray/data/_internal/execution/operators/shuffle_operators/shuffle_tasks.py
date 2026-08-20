@@ -150,11 +150,6 @@ def _shuffle_map_task(
         if not tables:
             partition_bufs.append(empty_shard)
             continue
-        # Upstream blocks can have compatible but non-identical schemas. For
-        # example, an aggregate block containing only null values can infer a
-        # null column while another block infers the finalized numeric type.
-        # Preserve the raw-concat fast path for identical schemas while allowing
-        # Ray's Arrow helper to promote compatible types when needed.
         merged = (
             transform_pyarrow.concat(
                 tables,
