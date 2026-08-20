@@ -21,8 +21,10 @@ Usage:
   # both back-to-back (prints two RESULT lines for easy diff)
   python bench_shuffle.py --shuffle both --data-size-gb 100 --num-partitions 100
 
-  # release-test style: materialize only (no local parquet write)
-  python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 500
+  # release-test style: stream out with write_parquet (matches prior Anyscale runs;
+  # materialize() of 512GB OOMs/spills hard on m5.2xlarge object stores)
+  python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 500 \\
+      --write-parquet
 
   # with timeline dump + per-run stats
   RAY_DATA_SHUFFLE_PROFILE=1 \\
