@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 
@@ -57,6 +58,40 @@ async def test_by_reference_false_raises_error(serve_instance):
         await response._to_object_ref()
 
     await signal.send.remote()
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(60)
+async def test_to_object_ref_resolves_before_completion_when_rejection_disabled(
+    serve_instance,
+):
+    """With `enable_strict_max_ongoing_requests=False`, `_to_object_ref()`
+    resolves once the request is scheduled instead of blocking until the
+    replica finishes computing, restoring the pre-2.10 behavior.
+
+    Regression test for https://github.com/ray-project/ray/issues/46893.
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment(enable_strict_max_ongoing_requests=False)
+    async def f():
+        # Block so the request is scheduled but not yet complete.
+        await signal.wait.remote()
+        return "hi"
+
+    h = serve.run(f.bind())
+
+    response = h.remote()
+    # The replica is blocked on the signal (the request has NOT completed), but
+    # the object ref must still resolve because the non-rejection path returns
+    # it at scheduling time. Under strict rejection this call would block until
+    # `signal.send` is called and would time out here.
+    obj_ref = await asyncio.wait_for(response._to_object_ref(), timeout=10)
+    assert isinstance(obj_ref, ray.ObjectRef)
+
+    # Let the computation finish and confirm the result still flows through.
+    await signal.send.remote()
+    assert await response == "hi"
 
 
 @pytest.mark.parametrize("inner_by_reference", [True, False])

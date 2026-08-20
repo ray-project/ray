@@ -918,6 +918,68 @@ class TestAssignRequest:
 
     @pytest.mark.parametrize(
         "setup_router",
+        [{"enable_strict_max_ongoing_requests": True, "enable_queue_len_cache": True}],
+        indirect=True,
+    )
+    async def test_update_deployment_config_sets_strict_rejection_flag(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+    ):
+        """The deployment config long poll toggles the per-deployment strict
+        rejection flag. See issue #46893."""
+        router, _ = setup_router
+
+        # Defaults to True before any config arrives.
+        assert router._deployment_enable_strict_max_ongoing_requests is True
+
+        router.update_deployment_config(
+            DeploymentConfig(enable_strict_max_ongoing_requests=False)
+        )
+        assert router._deployment_enable_strict_max_ongoing_requests is False
+
+        router.update_deployment_config(
+            DeploymentConfig(enable_strict_max_ongoing_requests=True)
+        )
+        assert router._deployment_enable_strict_max_ongoing_requests is True
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_strict_max_ongoing_requests": True, "enable_queue_len_cache": True}],
+        indirect=True,
+    )
+    async def test_deployment_opt_out_skips_rejection_for_unary(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+    ):
+        """When a deployment opts out of strict rejection, unary calls skip the
+        accept/reject streaming handshake and get a plain (non-generator)
+        result, so `_to_object_ref()` resolves at scheduling time rather than
+        blocking until completion. See issue #46893."""
+        router, fake_request_router = setup_router
+
+        # Deployment opts out of strict in-flight rejection.
+        router._deployment_enable_strict_max_ongoing_requests = False
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(
+            r1_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=True, num_ongoing_requests=10
+            ),
+        )
+        fake_request_router.set_replica_to_return(replica)
+
+        replica_result = await router.assign_request(
+            dummy_request_metadata(is_streaming=False)
+        )
+        # Non-rejection path: unary result is not a generator.
+        assert not replica_result._is_generator_object
+        assert replica._requests_sent[-1]["with_rejection"] is False
+
+    @pytest.mark.parametrize(
+        "setup_router",
         [
             {
                 "enable_strict_max_ongoing_requests": True,

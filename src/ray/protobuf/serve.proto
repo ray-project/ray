@@ -255,6 +255,16 @@ message DeploymentConfig {
   // older controller during a rolling upgrade) falls back to the Python-side
   // defaults.
   BackpressureConfig backpressure_config = 24;
+
+  // Whether the router enforces strict in-flight rejection of requests that
+  // would exceed `max_ongoing_requests`. Declared `optional` so that unset
+  // (e.g. from an older controller during a rolling upgrade) is
+  // distinguishable from an explicit value; when unset the Python side falls
+  // back to the default (True). When False, the router skips the
+  // accept/reject streaming handshake for unary calls, restoring pre-2.10
+  // `_to_object_ref()` behavior (resolves at scheduling time) at the cost of
+  // softer backpressure (the queue-length cache becomes the only guard).
+  optional bool enable_strict_max_ongoing_requests = 25;
 }
 
 // Configuration of the HTTP response returned when a request is rejected due
