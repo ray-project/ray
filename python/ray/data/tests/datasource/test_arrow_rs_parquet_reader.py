@@ -1516,6 +1516,60 @@ def test_cloudpickle_tensor_metadata_native_parity(tmp_path, monkeypatch):
     assert isinstance(rs.schema.field("t").type, pa.ExtensionType)
 
 
+def test_cloudpickle_tensor_ffi_relabel_fast_path(tmp_path, monkeypatch):
+    """M53: for a skipped-embedded-schema tensor file the reader hands the crate
+    the extension's *storage* schema (``with_schema_override``, so the decode
+    emits large_list offsets directly) and re-types each batch with a zero-copy
+    C-Data-Interface relabel instead of a per-batch ``Table.cast`` (~2-4 ms vs
+    ~40 ms at 5000 columns). Asserts the fast path actually engages, that the
+    ``RAY_DATA_ARROW_RS_FFI_RELABEL=0`` kill switch restores the cast path, and
+    that both are byte-identical to PyArrow."""
+    import ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader as m
+    import ray.data._internal.tensor_extensions.arrow as tx
+    from ray.data.extensions import ArrowTensorArray
+
+    monkeypatch.setattr(
+        tx,
+        "ARROW_EXTENSION_SERIALIZATION_FORMAT",
+        tx._SerializationFormat.CLOUDPICKLE,
+    )
+    n = 200
+    tens = ArrowTensorArray.from_numpy(
+        np.arange(4 * n, dtype=np.float32).reshape(n, 2, 2)
+    )
+    path = tmp_path / "cp_tensor.parquet"
+    pq.write_table(
+        pa.table({"id": pa.array(np.arange(n, dtype=np.int64)), "t": tens}),
+        str(path),
+        write_page_index=True,
+        row_group_size=50,
+    )
+    monkeypatch.setattr(tx, "_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA", True)
+
+    relabels = {"n": 0}
+    orig_relabel = m._ffi_relabel_batch
+
+    def counting_relabel(batch, schema):
+        relabels["n"] += 1
+        return orig_relabel(batch, schema)
+
+    monkeypatch.setattr(m, "_ffi_relabel_batch", counting_relabel)
+
+    rs, pa_tbl, native_decodes = _read_both_in_process([path], monkeypatch)
+    assert native_decodes > 0
+    assert relabels["n"] > 0, "FFI relabel fast path did not engage"
+    assert rs.equals(pa_tbl)
+    assert isinstance(rs.schema.field("t").type, pa.ExtensionType)
+
+    # Kill switch: the cast path still runs and produces the same bytes.
+    relabels["n"] = 0
+    monkeypatch.setenv("RAY_DATA_ARROW_RS_FFI_RELABEL", "0")
+    rs2, pa_tbl2, _ = _read_both_in_process([path], monkeypatch)
+    assert relabels["n"] == 0
+    assert rs2.equals(pa_tbl2)
+    assert rs2.equals(rs)
+
+
 def test_arrow_rs_supported_gate(tmp_path):
     """Unit-check the fallback gate: local flat AND struct/list = supported;
     empty projection / unknown-not-on-disk column (no unified schema to

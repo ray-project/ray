@@ -85,7 +85,7 @@ use parquet::file::statistics::Statistics;
 use parquet::schema::types::ColumnDescriptor;
 
 use arrow::array::{ArrayRef, RecordBatch};
-use arrow::datatypes::SchemaRef;
+use arrow::datatypes::{Schema, SchemaRef};
 use arrow::error::ArrowError;
 use arrow::ffi::FFI_ArrowSchema;
 use arrow::ffi_stream::FFI_ArrowArrayStream;
@@ -2045,6 +2045,50 @@ impl NativeParquetFile {
         build_file_metadata(&self.meta, self.arrow_schema_skipped)
     }
 
+    /// Replace this handle's Arrow output schema with a caller-supplied one
+    /// (an Arrow C schema capsule, i.e. `pa.Schema.__arrow_c_schema__()`),
+    /// rebuilding the reader metadata against the already-parsed footer —
+    /// zero additional I/O on either transport.
+    ///
+    /// Purpose (findings M52): when the embedded arrow schema was skipped
+    /// (non-UTF8 extension metadata, `arrow_schema_skipped`), the inferred
+    /// storage types can differ from the extension types' storage
+    /// (`list<element>` vs `large_list<item>`), forcing the Python reader
+    /// into a per-batch per-column `Table.cast` (~7 µs/col/batch). Supplying
+    /// the exact storage schema here makes the crate decode directly into
+    /// those types, so Python re-attaches the extension labels with one
+    /// zero-copy C-interface import per batch instead.
+    ///
+    /// The supplied schema must be plain storage types with no binary field
+    /// metadata (the cloudpickle label bytes stay in Python — Rust never
+    /// holds them). parquet-rs validates the schema against the parquet
+    /// footer and errors on any mismatch, in which case the caller keeps
+    /// today's cast path; `self.meta` is only replaced on success.
+    fn with_schema_override(&mut self, schema_capsule: Bound<'_, PyCapsule>) -> PyResult<()> {
+        let valid_name = schema_capsule
+            .name()
+            .map_err(to_py)?
+            .map(|n| n.to_bytes() == b"arrow_schema")
+            .unwrap_or(false);
+        if !valid_name {
+            return Err(PyRuntimeError::new_err(
+                "with_schema_override expects an 'arrow_schema' PyCapsule \
+                 (pa.Schema.__arrow_c_schema__())",
+            ));
+        }
+        let ptr = schema_capsule.pointer() as *const FFI_ArrowSchema;
+        if ptr.is_null() {
+            return Err(PyRuntimeError::new_err("null arrow_schema capsule"));
+        }
+        // Borrowed read of the C struct: the capsule keeps ownership and will
+        // run its own release callback; try_from copies into Rust types.
+        let schema = Schema::try_from(unsafe { &*ptr }).map_err(to_py)?;
+        let options = ArrowReaderOptions::new().with_schema(Arc::new(schema));
+        self.meta = ArrowReaderMetadata::try_new(Arc::clone(self.meta.metadata()), options)
+            .map_err(to_py)?;
+        Ok(())
+    }
+
     /// Decode row groups through the held footer + client. Argument semantics
     /// are identical to `read_row_groups` / `read_row_groups_s3`; the S3-only
     /// knobs (`fetch_window_mb`, `column_fetch_mb`, `prefetch_budget_mb`) are
@@ -2580,6 +2624,111 @@ mod tests {
                 (decoded / 10) as u64
             ) > 4 * eff
         );
+    }
+
+    /// M53: the schema-override path (`with_schema_override`) relies on two
+    /// parquet-rs behaviors — (1) a supplied schema may widen a list column to
+    /// `LargeList` (i64 offsets) and the decode honors it, and (2) the supplied
+    /// schema's nested field names must match the parquet-inferred ones
+    /// (`element`), which is why the override keeps the crate's names and the
+    /// Python side relabels afterwards (names live in the schema, not the
+    /// buffers). If a parquet upgrade changes either, this fails loudly.
+    #[test]
+    fn schema_override_widens_list_to_large_list() {
+        use arrow::array::{Array, Float32Array, LargeListArray, ListArray};
+        use arrow::buffer::OffsetBuffer;
+        use arrow::datatypes::{DataType, Field, Schema};
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+        use parquet::arrow::ArrowWriter;
+        use parquet::file::properties::WriterProperties;
+
+        // A list<element: float32> column — the parquet-inferred storage of a
+        // Ray tensor column whose embedded arrow schema was skipped.
+        let child = Arc::new(Field::new("element", DataType::Float32, true));
+        let values = Float32Array::from((0..40).map(|i| i as f32).collect::<Vec<_>>());
+        let offsets = OffsetBuffer::from_lengths(std::iter::repeat(4).take(10));
+        let list = ListArray::new(child.clone(), offsets, Arc::new(values), None);
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "t",
+            DataType::List(child.clone()),
+            false,
+        )]));
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(list)]).unwrap();
+        let mut buf = Vec::new();
+        let mut w =
+            ArrowWriter::try_new(&mut buf, schema, Some(WriterProperties::builder().build()))
+                .unwrap();
+        w.write(&batch).unwrap();
+        w.close().unwrap();
+        let bytes = Bytes::from(buf);
+
+        // Load like the tensor path does: embedded arrow schema skipped.
+        let meta = ArrowReaderMetadata::load(
+            &bytes,
+            reader_options(PageIndexPolicy::Skip).with_skip_arrow_metadata(true),
+        )
+        .unwrap();
+        assert_eq!(
+            meta.schema().field(0).data_type(),
+            &DataType::List(child.clone())
+        );
+
+        // (1) Supplied storage schema: same layout, i64 offsets, crate's child
+        // name. Decode must emit LargeList with the values intact.
+        let big = Schema::new(vec![Field::new(
+            "t",
+            DataType::LargeList(child.clone()),
+            false,
+        )]);
+        let meta2 = ArrowReaderMetadata::try_new(
+            Arc::clone(meta.metadata()),
+            ArrowReaderOptions::new().with_schema(Arc::new(big)),
+        )
+        .unwrap();
+        let reader = ParquetRecordBatchReaderBuilder::new_with_metadata(bytes.clone(), meta2)
+            .build()
+            .unwrap();
+        let out: Vec<RecordBatch> = reader.map(|b| b.unwrap()).collect();
+        assert_eq!(
+            out[0].schema().field(0).data_type(),
+            &DataType::LargeList(child.clone())
+        );
+        let ll = out[0]
+            .column(0)
+            .as_any()
+            .downcast_ref::<LargeListArray>()
+            .unwrap();
+        assert_eq!(ll.len(), 10);
+        let vals = ll.values().as_any().downcast_ref::<Float32Array>().unwrap();
+        assert_eq!(vals.len(), 40);
+        assert_eq!(vals.value(7), 7.0);
+
+        // (2) A child field name differing from the inferred one ("item", the
+        // pyarrow extension-storage name) is rejected at some stage of the
+        // decode — the exact stage moved across parquet versions, so accept
+        // any of try_new / build / first-batch failing.
+        let renamed = Arc::new(Field::new("item", DataType::Float32, true));
+        let bad = Schema::new(vec![Field::new("t", DataType::LargeList(renamed), false)]);
+        let failed = ArrowReaderMetadata::try_new(
+            Arc::clone(meta.metadata()),
+            ArrowReaderOptions::new().with_schema(Arc::new(bad)),
+        )
+        .map(|m| {
+            ParquetRecordBatchReaderBuilder::new_with_metadata(bytes.clone(), m)
+                .build()
+                .map(|r| {
+                    r.collect::<Vec<_>>()
+                        .into_iter()
+                        .collect::<Result<Vec<_>, _>>()
+                })
+        });
+        let ok = match failed {
+            Err(_) => true,
+            Ok(Err(_)) => true,
+            Ok(Ok(Err(_))) => true,
+            Ok(Ok(Ok(_))) => false,
+        };
+        assert!(ok, "child-name mismatch unexpectedly accepted");
     }
 
     #[test]

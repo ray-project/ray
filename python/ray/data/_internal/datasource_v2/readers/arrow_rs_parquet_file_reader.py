@@ -819,6 +819,236 @@ def _reconcile_to_expected(table: pa.Table, expected_schema: pa.Schema) -> pa.Ta
     return _cast_table_to(table, target_fields)
 
 
+def _widen_storage_type(
+    inferred: pa.DataType, storage: pa.DataType
+) -> Optional[pa.DataType]:
+    """Adopt ``storage``'s container *kinds* while keeping ``inferred``'s nested
+    field names. parquet-rs validates a supplied schema's nested field names
+    against its own inference (list child name ``element``), while a pyarrow
+    extension's storage type uses pyarrow's (``item``) — so the schema handed
+    to ``with_schema_override`` must carry the crate's names with the storage's
+    layout (e.g. ``list`` → ``large_list``, i.e. i32 → i64 offsets). Names live
+    in the schema, not the buffers, so the later relabel supplies the
+    extension's own names over the same buffers. Any mismatch beyond container
+    kind returns ``None`` (no override, today's cast path)."""
+    if inferred.equals(storage):
+        return storage
+    inferred_listish = pa.types.is_list(inferred) or pa.types.is_large_list(inferred)
+    storage_listish = pa.types.is_list(storage) or pa.types.is_large_list(storage)
+    if inferred_listish and storage_listish:
+        child = _widen_storage_type(inferred.value_type, storage.value_type)
+        if child is None:
+            return None
+        child_field = inferred.value_field
+        make = pa.large_list if pa.types.is_large_list(storage) else pa.list_
+        return make(pa.field(child_field.name, child, nullable=child_field.nullable))
+    if pa.types.is_fixed_size_list(inferred) and pa.types.is_fixed_size_list(storage):
+        if inferred.list_size != storage.list_size:
+            return None
+        child = _widen_storage_type(inferred.value_type, storage.value_type)
+        if child is None:
+            return None
+        child_field = inferred.value_field
+        return pa.list_(
+            pa.field(child_field.name, child, nullable=child_field.nullable),
+            storage.list_size,
+        )
+    if pa.types.is_struct(inferred) and pa.types.is_struct(storage):
+        if inferred.num_fields != storage.num_fields:
+            return None
+        children = []
+        for i in range(inferred.num_fields):
+            child_field = inferred.field(i)
+            child = _widen_storage_type(child_field.type, storage.field(i).type)
+            if child is None:
+                return None
+            children.append(
+                pa.field(child_field.name, child, nullable=child_field.nullable)
+            )
+        return pa.struct(children)
+    return None
+
+
+def _storage_override_schema(
+    inferred: pa.Schema, target: pa.Schema
+) -> Optional[pa.Schema]:
+    """Build the storage-typed schema handed to the crate's
+    ``with_schema_override`` when the embedded arrow schema was skipped: for
+    every column the pyarrow footer types as an extension, the extension's
+    *storage* layout (via :func:`_widen_storage_type`); everything else the
+    crate's own inference, metadata-stripped (``Field`` metadata is UTF-8-only
+    on the Rust side — the whole reason the embedded schema was skipped).
+    Returns ``None`` when there is nothing to change or a storage type can't
+    be reconciled (caller keeps today's cast path)."""
+    fields, changed = [], False
+    for i in range(len(inferred)):
+        field = inferred.field(i)
+        target_idx = target.get_field_index(field.name)
+        target_type = target.field(target_idx).type if target_idx != -1 else None
+        if target_type is not None and _is_extension_type(target_type):
+            storage = getattr(target_type, "storage_type", None)
+            if storage is None:
+                return None
+            widened = _widen_storage_type(field.type, storage)
+            if widened is None:
+                return None
+            if not widened.equals(field.type):
+                changed = True
+            fields.append(pa.field(field.name, widened, nullable=field.nullable))
+        else:
+            fields.append(pa.field(field.name, field.type, nullable=field.nullable))
+    if not changed:
+        return None
+    return pa.schema(fields)
+
+
+def _storage_layout_matches(actual: pa.DataType, storage: pa.DataType) -> bool:
+    """True when ``actual`` (the crate's decoded type) and ``storage`` (an
+    extension type's storage) share the same physical buffer layout, ignoring
+    nested field *names* — names live in the schema, not the buffers, and the
+    C-import relabel supplies the target's names."""
+    if actual.equals(storage):
+        return True
+    if pa.types.is_large_list(actual) and pa.types.is_large_list(storage):
+        return _storage_layout_matches(actual.value_type, storage.value_type)
+    if pa.types.is_list(actual) and pa.types.is_list(storage):
+        return _storage_layout_matches(actual.value_type, storage.value_type)
+    if pa.types.is_fixed_size_list(actual) and pa.types.is_fixed_size_list(storage):
+        return actual.list_size == storage.list_size and _storage_layout_matches(
+            actual.value_type, storage.value_type
+        )
+    if pa.types.is_struct(actual) and pa.types.is_struct(storage):
+        if actual.num_fields != storage.num_fields:
+            return False
+        return all(
+            _storage_layout_matches(actual.field(i).type, storage.field(i).type)
+            for i in range(actual.num_fields)
+        )
+    return False
+
+
+def _ffi_relabel_enabled() -> bool:
+    """Kill switch for the zero-copy relabel fast path (M53)."""
+    return os.environ.get("RAY_DATA_ARROW_RS_FFI_RELABEL", "1") != "0"
+
+
+_PYCAPSULE_GET_POINTER = None
+
+
+def _ffi_relabel_batch(batch: pa.RecordBatch, schema: pa.Schema) -> pa.RecordBatch:
+    """Zero-copy re-type of a decoded batch: export via the Arrow C Data
+    Interface, re-import against a prebuilt target ``schema`` object. Same
+    buffers, new labels — this is how the storage → extension realign avoids
+    both the per-batch ``Table.cast`` (~40 ms at 5000 columns) *and* pyarrow's
+    per-batch re-deserialization of pickled extension type params (the capsule
+    schema route pays that; a schema *object* import does not — measured
+    2-4 ms/batch, bit-identical, M53). Only valid when the target schema's
+    layout matches the batch's buffers exactly (:func:`_storage_layout_matches`
+    per column) — the import validates structure, not values."""
+    global _PYCAPSULE_GET_POINTER
+    if _PYCAPSULE_GET_POINTER is None:
+        import ctypes
+
+        fn = ctypes.pythonapi.PyCapsule_GetPointer
+        fn.restype = ctypes.c_void_p
+        fn.argtypes = [ctypes.py_object, ctypes.c_char_p]
+        _PYCAPSULE_GET_POINTER = fn
+    _, array_capsule = batch.__arrow_c_array__()
+    addr = _PYCAPSULE_GET_POINTER(array_capsule, b"arrow_array")
+    if not addr:
+        raise RuntimeError("null arrow_array capsule")
+    # _import_from_c MOVES the C struct (nulls its release callback), so the
+    # capsule's own destructor no-ops — but the capsule must stay alive until
+    # the import returns or it releases the arrays first (measured: it does).
+    imported = pa.RecordBatch._import_from_c(addr, schema)
+    del array_capsule
+    return imported
+
+
+def _plan_batch_relabel(
+    stream_schema: pa.Schema,
+    alignment: Optional[_ColumnAlignment],
+    expected_schema: Optional[pa.Schema],
+) -> Optional[Tuple[pa.Schema, Optional[_ColumnAlignment], bool]]:
+    """Decide once per stream whether the storage → extension realign can run
+    as a single zero-copy C-import relabel per batch instead of per-batch
+    casts. Returns ``(relabel_schema, residual_alignment, skip_reconcile)`` or
+    ``None`` to keep the cast path unchanged.
+
+    Applies when every extension-typed realign target's storage layout
+    structurally matches what the crate decoded (true after
+    ``with_schema_override``; false without it, where list offsets still
+    differ and the cast path must widen them). Non-extension casts (INT96
+    units, dictionary_columns, type drift), null-fill and reordering stay in
+    ``residual_alignment`` and run on the relabeled table as before.
+    ``skip_reconcile`` is ``True`` when the relabel alone already lands every
+    column on ``expected_schema``'s type, making the per-fragment
+    :func:`_reconcile_to_expected` pass redundant."""
+    if not hasattr(pa.RecordBatch, "_import_from_c"):
+        return None
+    # Final extension-typed targets per stream column (first occurrence),
+    # from the alignment casts (planned path) and/or expected_schema (the
+    # per-fragment path) — mirroring _apply_column_alignment /
+    # _reconcile_to_expected's get_field_index semantics.
+    ext_targets: Dict[str, pa.DataType] = {}
+    if alignment is not None:
+        for name, target, truncate in alignment.casts:
+            if not truncate and _is_extension_type(target):
+                ext_targets.setdefault(name, target)
+    if expected_schema is not None:
+        seen = set()
+        for field in stream_schema:
+            if field.name in seen:
+                continue
+            seen.add(field.name)
+            exp_idx = expected_schema.get_field_index(field.name)
+            if exp_idx == -1:
+                continue
+            exp_type = expected_schema.field(exp_idx).type
+            if exp_type != field.type and _is_extension_type(exp_type):
+                if ext_targets.setdefault(field.name, exp_type) != exp_type:
+                    return None  # alignment and expected disagree — stay safe
+    if not ext_targets:
+        return None
+
+    fields, covered, seen = [], set(), set()
+    for field in stream_schema:
+        target = ext_targets.get(field.name) if field.name not in seen else None
+        seen.add(field.name)
+        if target is None:
+            fields.append(field)
+            continue
+        storage = getattr(target, "storage_type", None)
+        if storage is None or not _storage_layout_matches(field.type, storage):
+            return None
+        fields.append(pa.field(field.name, target, nullable=field.nullable))
+        covered.add(field.name)
+    relabel_schema = pa.schema(fields)
+
+    residual = alignment
+    if alignment is not None:
+        residual_casts = tuple(c for c in alignment.casts if c[0] not in covered)
+        residual = _ColumnAlignment(
+            alignment.null_fill, residual_casts, alignment.order
+        )
+        if residual.is_noop:
+            residual = None
+
+    skip_reconcile = False
+    if expected_schema is not None and (residual is None or not residual.casts):
+        skip_reconcile = True
+        seen = set()
+        for field in relabel_schema:
+            if field.name in seen:
+                continue
+            seen.add(field.name)
+            exp_idx = expected_schema.get_field_index(field.name)
+            if exp_idx != -1 and expected_schema.field(exp_idx).type != field.type:
+                skip_reconcile = False
+                break
+    return relabel_schema, residual, skip_reconcile
+
+
 class _NativeParquetFragment(NamedTuple):
     """A native (pyarrow-free) unit of work for one file's row-group slice.
 
@@ -1144,6 +1374,22 @@ class ArrowRsParquetFileReader(ParquetFileReader):
             target_override = self._read_pyarrow_footer_schema(path)
             if target_override is None:
                 return None
+            # M53: hand the crate the exact storage schema (extension storage
+            # layout, crate's own nested field names) so it decodes e.g.
+            # large_list offsets directly — turning the per-batch storage →
+            # extension realign from a Table.cast into a zero-copy relabel
+            # (_plan_batch_relabel). Zero IO: the footer is already parsed.
+            # Any rejection (older crate module, unsupported shape) keeps
+            # today's cast path unchanged.
+            override = _storage_override_schema(pa.schema(md), target_override)
+            if override is not None:
+                try:
+                    handle.with_schema_override(override.__arrow_c_schema__())
+                    md = handle.metadata()
+                except Exception as e:  # noqa: BLE001 - override is optional
+                    logger.debug(
+                        "arrow-rs schema override rejected for %s: %s", path, e
+                    )
         return (
             handle,
             pa.schema(md),
@@ -1994,15 +2240,45 @@ class ArrowRsParquetFileReader(ParquetFileReader):
 
         record_batch_reader = pa.RecordBatchReader.from_stream(reader)
 
+        # M53 fast path: when the only type realign is storage → extension
+        # labels over layout-identical buffers (true after the crate schema
+        # override in _open_native_file), relabel each batch through the C
+        # Data Interface (~2-4 ms at 5000 columns) instead of casting (~40 ms).
+        # Any per-batch relabel failure downgrades the rest of the stream to
+        # the cast path — both produce bit-identical tables.
+        relabel_schema: Optional[pa.Schema] = None
+        residual_alignment = alignment
+        skip_reconcile = False
+        if _ffi_relabel_enabled():
+            relabel_plan = _plan_batch_relabel(
+                record_batch_reader.schema, alignment, expected_schema
+            )
+            if relabel_plan is not None:
+                relabel_schema, residual_alignment, skip_reconcile = relabel_plan
+
         # Yield each budget-sized batch straight through. The read op's
         # BlockOutputBuffer coalesces to target_max_block_size downstream (same
         # as the PyArrow path) — accumulating a full block here too would just
         # stack a second block-sized buffer on top of it. See module docstring.
         pickle_checked = False
         for batch in record_batch_reader:
-            table = pa.Table.from_batches([batch], schema=record_batch_reader.schema)
-            table = _apply_column_alignment(table, alignment)
-            if expected_schema is not None:
+            if relabel_schema is not None:
+                try:
+                    batch = _ffi_relabel_batch(batch, relabel_schema)
+                except Exception as e:  # noqa: BLE001 - cast path still correct
+                    logger.debug("arrow-rs FFI relabel failed, cast fallback: %s", e)
+                    relabel_schema = None
+                    residual_alignment = alignment
+                    skip_reconcile = False
+            if relabel_schema is not None:
+                table = pa.Table.from_batches([batch])
+                table = _apply_column_alignment(table, residual_alignment)
+            else:
+                table = pa.Table.from_batches(
+                    [batch], schema=record_batch_reader.schema
+                )
+                table = _apply_column_alignment(table, alignment)
+            if expected_schema is not None and not skip_reconcile:
                 table = _reconcile_to_expected(table, expected_schema)
             # Same opt-in gate as the pyarrow path: unpickling an
             # ArrowPythonObjectType column executes arbitrary code, so serving
