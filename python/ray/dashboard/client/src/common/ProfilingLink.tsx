@@ -36,10 +36,12 @@ export type ProfilingDefaults = {
   maxDuration: number;
   cpuFormat: string;
   memoryFormat: string;
-  // Whether py-spy `--native` takes effect on this platform (Linux-only). Not a
-  // configurable default -- reported by the backend so the CPU/stack-trace
-  // dialogs can disable the Native checkbox off-Linux, where it is a silent
-  // no-op. memray (memory) native is cross-platform and is unaffected.
+  // Whether py-spy `--native` takes effect on the dashboard head's platform
+  // (Linux-only). Not a configurable default -- reported by the backend so the
+  // CPU/stack-trace dialogs can warn that Native may be a silent no-op. It is
+  // only a hint: py-spy applies `--native` on the node it profiles, which need
+  // not share the head's platform. memray (memory) native is cross-platform and
+  // is unaffected.
   pyspyNativeSupported: boolean;
 };
 
@@ -145,8 +147,6 @@ type ProfilingFlag = {
   label: string;
   help: string;
   initial: boolean;
-  // When true, the checkbox is rendered read-only (e.g. py-spy native off-Linux).
-  disabled: boolean;
 };
 
 // Optional numeric "duration" field.
@@ -223,8 +223,11 @@ export const ProfilingParamsDialog = ({
       durationValue < 1 ||
       durationValue > duration.max);
 
+  // The trigger stays inline: call sites separate the profiling actions with
+  // `<br />`, so a block-level wrapper here would add a blank row per action.
+  // `Dialog` renders through a portal, so it needs no wrapper element.
   return (
-    <div>
+    <React.Fragment>
       <Link
         onClick={handleOpen}
         aria-label={dialogTitle}
@@ -281,7 +284,6 @@ export const ProfilingParamsDialog = ({
                 control={
                   <Checkbox
                     checked={flagValues[flag.key]}
-                    disabled={flag.disabled}
                     onChange={(e) =>
                       setFlagValues((prev) => ({
                         ...prev,
@@ -337,7 +339,7 @@ export const ProfilingParamsDialog = ({
           </Button>
         </Box>
       </Dialog>
-    </div>
+    </React.Fragment>
   );
 };
 
@@ -385,25 +387,37 @@ const CPU_FORMAT_OPTIONS = [
   { value: "speedscope", label: "Speedscope" },
 ];
 
-const flag = (
-  key: string,
-  label: string,
-  help: string,
-  initial: boolean,
-  disabled = false,
-) => ({
+const flag = (key: string, label: string, help: string, initial: boolean) => ({
   key,
   label,
   help,
   initial,
-  disabled,
 });
 
 const NATIVE_HELP =
   "Include native (C/C++) stack frames. Adds significant profiling overhead " +
   "and is only supported on Linux.";
+const NATIVE_HELP_OFF_LINUX =
+  NATIVE_HELP +
+  " This dashboard isn't running on Linux, so the flag is a no-op unless the " +
+  "profiled node is.";
+
 const SUBPROCESSES_HELP = "Also profile child processes of the target process.";
 const IDLE_HELP = "Include off-CPU (sleeping) threads in the profile.";
+
+// py-spy decides whether to pass `--native` on the node it profiles, which is
+// not necessarily the node serving the dashboard. `pyspyNativeSupported`
+// reports the dashboard head's platform, so it can only be a hint -- surface it
+// as help text rather than forcing the checkbox off, which would override an
+// operator-configured RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT on a cluster whose
+// workers do run Linux.
+const nativeFlag = (defaults: ProfilingDefaults) =>
+  flag(
+    "native",
+    "Native",
+    defaults.pyspyNativeSupported ? NATIVE_HELP : NATIVE_HELP_OFF_LINUX,
+    defaults.native,
+  );
 
 // Serialize a set of boolean flags into `&name=1|0` query fragments.
 const flagQuery = (flags: Record<string, boolean>): string =>
@@ -412,13 +426,7 @@ const flagQuery = (flags: Record<string, boolean>): string =>
     .join("");
 
 const stackTraceFlags = (defaults: ProfilingDefaults) => [
-  flag(
-    "native",
-    "Native",
-    NATIVE_HELP,
-    defaults.native && defaults.pyspyNativeSupported,
-    !defaults.pyspyNativeSupported,
-  ),
+  nativeFlag(defaults),
   flag(
     "subprocesses",
     "Subprocesses",
@@ -428,13 +436,7 @@ const stackTraceFlags = (defaults: ProfilingDefaults) => [
 ];
 
 const cpuProfileFlags = (defaults: ProfilingDefaults) => [
-  flag(
-    "native",
-    "Native",
-    NATIVE_HELP,
-    defaults.native && defaults.pyspyNativeSupported,
-    !defaults.pyspyNativeSupported,
-  ),
+  nativeFlag(defaults),
   flag("idle", "Idle", IDLE_HELP, defaults.idle),
   flag(
     "subprocesses",

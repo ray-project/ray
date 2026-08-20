@@ -207,9 +207,12 @@ class ReportHead(SubprocessModule):
                 "cpu_format": RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT,
                 "memory_format": RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT,
                 # py-spy only appends --native on Linux (see profile_manager),
-                # so the UI can disable the Native checkbox for the CPU/stack-
-                # trace dialogs off-Linux where it would be a silent no-op.
-                # memray native is cross-platform, so its checkbox is unaffected.
+                # so the UI warns that Native may be a silent no-op when the
+                # dashboard head is off-Linux. This is only a hint: py-spy runs
+                # on the profiled node, which need not share the head's
+                # platform, so the UI must not force the flag off on the
+                # strength of it. memray native is cross-platform, so its
+                # checkbox is unaffected.
                 "pyspy_native_supported": sys.platform == "linux",
             },
         )

@@ -180,22 +180,36 @@ describe("CpuStackTraceLink (worker)", () => {
     expect(href).not.toContain("native=0");
   });
 
-  it("disables and forces off Native when py-spy native is unsupported", async () => {
-    // Non-Linux dashboard: the native default is on, but py-spy drops --native
-    // off-Linux, so the checkbox is disabled and the URL must not request native.
+  it("keeps Native usable when the dashboard head is not Linux", async () => {
+    // `pyspyNativeSupported` reflects the head's platform, but py-spy applies
+    // --native on the profiled node. So the checkbox stays enabled and the
+    // operator default survives -- forcing native=0 here would block native
+    // profiling on Linux workers driven from a non-Linux head.
     mockProfiling(true, { native: true, pyspyNativeSupported: false });
     const user = userEvent.setup();
     render(<CpuStackTraceLink {...props} />, { wrapper: TEST_APP_WRAPPER });
 
     await user.click(await screen.findByLabelText(/Stack Trace Config/));
 
-    expect(screen.getByRole("checkbox", { name: /Native/ })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /Native/ })).toBeEnabled();
     const href = (await screen.findByText(/Get stack trace/)).getAttribute(
       "href",
     );
     expect(href).toBe(
-      `worker/traceback?pid=1234&node_id=node-abc&native=0&subprocesses=0`,
+      `worker/traceback?pid=1234&node_id=node-abc&native=1&subprocesses=0`,
     );
+  });
+
+  it("renders the trigger inline, with no block-level wrapper", async () => {
+    // Call sites separate the profiling actions with `<br />`, so a block-level
+    // wrapper around the trigger would add a blank row per action.
+    mockProfiling(true);
+    const { container } = render(<CpuStackTraceLink {...props} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    const trigger = await screen.findByLabelText(/Stack Trace Config/);
+    expect(container.firstChild).toBe(trigger);
   });
 
   it("shows a disabled label when profiling is off", async () => {
