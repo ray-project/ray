@@ -45,7 +45,7 @@ vLLM's native backend moves evicted KV blocks to CPU memory instead of discardin
 Enable it with two `engine_kwargs`:
 
 - **`kv_offloading_size`**: CPU KV cache capacity per replica, in GiB. With tensor parallelism, this is the total across all TP ranks. Offloading is disabled unless you set this value.
-- **`kv_offloading_backend`**: Set to `"native"` for vLLM's built-in CPU offloading. Setting it to `"lmcache"` uses `LMCacheMPConnector` instead, where LMCache manages the capacity and `kv_offloading_size` doesn't apply. See {ref}`lmcache-kv-offloading` for direct LMCache configuration.
+- **`kv_offloading_backend`**: Set to `"native"` for vLLM's built-in CPU offloading. Setting it to `"lmcache"` uses `LMCacheMPConnector` instead, where LMCache manages the capacity. See {ref}`lmcache-kv-offloading` for direct LMCache configuration.
 
 Native offloading builds on Automatic Prefix Caching, so keep `enable_prefix_caching` set to `True`. For the full set of connector options, including multi-tier configurations that extend beyond CPU memory to disk or object storage, see the vLLM [KV offloading usage guide](https://docs.vllm.ai/en/stable/features/kv_offloading_usage/).
 
