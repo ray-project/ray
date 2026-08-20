@@ -103,6 +103,14 @@ build:
     # every doc build and might buy nothing, since the right cap depends on
     # how many CPUs the builder has in the first place.
     #
+    # The worker count matters as much as the memory ceiling. Sphinx resolves
+    # -j auto through multiprocessing.cpu_count, which reports the logical
+    # CPUs on the host and is neither affinity- nor cgroup-aware, while nproc
+    # reports the affinity mask. If those two disagree, Sphinx forks more
+    # write workers than the container has CPUs to run them on, and each one
+    # carries its own copy of the environment. Print all three so the numbers
+    # can be compared rather than assumed.
+    #
     # The diagnostics run around the build rather than in a post_build job
     # because post_build is skipped when the build fails, and the failing
     # build is the one worth measuring. rc carries the make exit status
@@ -115,6 +123,7 @@ build:
         - |
           echo "=== builder capacity ==="
           nproc || true
+          python -c "import os, multiprocessing; print('os.cpu_count', os.cpu_count()); print('sched_getaffinity', len(os.sched_getaffinity(0))); print('multiprocessing.cpu_count', multiprocessing.cpu_count())" || true
           grep -E "MemTotal|MemAvailable" /proc/meminfo || true
           cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "no cgroup v2 memory.max"
           cat /sys/fs/cgroup/memory.high 2>/dev/null || echo "no cgroup v2 memory.high"
