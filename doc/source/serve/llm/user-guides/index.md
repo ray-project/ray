@@ -35,6 +35,7 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 
 ## Operate in production
 
+- {doc}`Governance middleware <governance>`: inspect or block OpenAI-compatible traffic with `LLMMiddleware` on `GovernanceIngress`.
 - {doc}`Observability and monitoring <observability>`: engine and request metrics, Grafana dashboards, and Prometheus integration.
 
 ```{toctree}
@@ -54,5 +55,6 @@ Direct streaming <direct-streaming>
 vLLM compatibility <vllm-compatibility>
 Custom vLLM models <custom-vllm>
 SGLang integration <sglang>
+Governance middleware <governance>
 Observability and monitoring <observability>
 ```

@@ -715,6 +715,43 @@ class FakeLoraModelLoader(LoraModelLoader):
         )
 
 
+class PiiChatMockEngine(MockVLLMEngine):
+    """Return an email in the assistant message for governance response-scan tests."""
+
+    async def chat(
+        self,
+        request: ChatCompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
+        if request.stream:
+            async for item in super().chat(request, raw_request_info):
+                yield item
+            return
+        if not self.started:
+            raise RuntimeError("Engine not started")
+        yield ChatCompletionResponse(
+            id="chatcmpl-pii",
+            object="chat.completion",
+            created=1,
+            model=request.model or self.llm_config.model_id,
+            choices=[
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Reach me at leak@example.com",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            usage={
+                "prompt_tokens": 1,
+                "completion_tokens": 8,
+                "total_tokens": 9,
+            },
+        )
+
+
 class PGCreationMockEngine(MockVLLMEngine):
     """
     A wrapper around the mock engine that forces it to create the placement

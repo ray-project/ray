@@ -48,6 +48,7 @@ Once it is running, query it with any OpenAI client at `http://localhost:8000/v1
 - **New here?** Start with the {doc}`Quickstart <quick-start>` to deploy and query a model.
 - **Configuring a deployment?** The {doc}`Configuration reference <user-guides/configuration>` explains every `LLMConfig` field.
 - **Scaling up?** The {doc}`User guides <user-guides/index>` cover parallelism, routing, caching, LoRA, and observability.
+- **Inspecting or blocking requests?** The {doc}`Governance middleware <user-guides/governance>` guide shows how to plug `LLMMiddleware` into `build_openai_app`.
 - **Want the internals?** The {doc}`Architecture <architecture/index>` docs explain components, request flow, and serving patterns.
 - **Deploying a specific model?** The {doc}`Examples <examples>` walk through small, medium, large, vision, and reasoning models end to end.
 - **Hitting an issue?** Check {doc}`Troubleshooting <troubleshooting>` and {doc}`Benchmarks <benchmarks>`.
