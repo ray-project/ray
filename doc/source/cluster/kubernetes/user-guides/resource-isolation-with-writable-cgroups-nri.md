@@ -4,16 +4,27 @@ Ray's [resource isolation](https://docs.ray.io/en/latest/ray-core/resource-isola
 feature (introduced in 2.51.0, enhanced in 2.56.0) uses cgroups v2 to reserve
 CPU and memory for Ray's system processes (the raylet, GCS server, dashboard
 agent, etc.), preventing user tasks from starving them. To set up its cgroup
-hierarchy, Ray needs read-write access to `/sys/fs/cgroup` inside the
-container. Kubernetes mounts this filesystem read-only by default.
+hierarchy, Ray needs read-write access to `/sys/fs/cgroup` inside the container.
+The container runtime mounts this cgroup hierarchy read-only by default.
 
 Running Ray in a privileged container would grant write access, but privileged
-containers are broadly overprivileged and should not be used for this purpose.
-Instead, this guide uses an [NRI](https://github.com/containerd/nri) plugin
-to selectively flip the cgroup mount from `ro` to `rw` for annotated pods,
-combined with the `nsdelegate` mount option on the node's root cgroup to
-enforce a kernel-level security boundary. The result is that Ray containers
-can create and manage sub-cgroups, but cannot modify their own resource limits.
+containers have broadly overgranted capabilities and it would be insecure to use
+them for this purpose. Instead, this guide uses an
+[NRI](https://github.com/containerd/nri) plugin to selectively modify
+`CreateContainer` requests to use an `rw` cgroup mount instead of the default
+`ro`, but only when a specific well-known pod annotation is present.
+
+With the containerd runtime, by default each pod has its own cgroup namespace.
+This means that each pod has its own set of cgroup root directories, and a
+process running within a cgroup namespace can have no knowledge of cgroups
+higher up in the cgroup hierarchy. As an additional security measure, the
+`nsdelegate` mount option should be used when mounting the root-level (or
+system-level) cgroup hierarchy. Please note that the `nsdelegate` mount option
+is ignored in all cgroup namespaces other than the outermost (i.e. the one that
+is mounted upon booting a machine); that is, we need `nsdelegate` not on the
+pod's cgroup mount but on the root cgroup mount. `nsdelegate` enforces a
+kernel-level security boundary, with the result that Ray containers can create
+and manage sub-cgroups, but cannot modify their own resource limits.
 
 :::{note}
 All commands and expected outputs were validated on Azure Kubernetes Service
@@ -33,11 +44,11 @@ start](#quick-start-non-production).
 Two things are needed to give an unprivileged Ray container writable cgroups
 safely:
 
-1. An **NRI plugin** that intercepts `CreateContainer` events from the
-   container runtime. When the plugin sees the annotation
-   `writable-cgroups.nri.io/enable: "true"` on a pod (or container), it
-   replaces the `ro` option on the cgroup mount with `rw`. Pods without the
-   annotation are left alone.
+1. An **NRI plugin** that intercepts `CreateContainer` events from the container
+   runtime. When the plugin sees the annotation `writable-cgroups.nri.io/enable:
+   "true"` (or a user-defined custom annotation) on a pod, it replaces the `ro`
+   option on the cgroup mount with `rw`. Pods without the annotation are left
+   alone.
 
 2. The **`nsdelegate` mount option** on the node's root cgroup filesystem.
    `nsdelegate` instructs the kernel to enforce cgroup namespace delegation
