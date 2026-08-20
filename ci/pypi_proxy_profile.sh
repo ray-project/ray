@@ -7,18 +7,16 @@
 # wiring. The variables it exports are the ones .bazelrc forwards to repository
 # rules and ci/ray_ci/container.py forwards into nested containers.
 #
-# Which index to use is decided by probing, not by assuming, because the mirror
-# serves two different shapes and only one of them is usable directly:
+# Which index to use is decided by probing, not by assuming. The mirror is a byte
+# cache and not an index -- it parses only /<host>/<path>, and serves cache hits as
+# 303 redirects to presigned S3 URLs, so it never holds a body it could rewrite --
+# so there is no mode where pip points straight at it, and two outcomes:
 #
-#   1. A rewriting simple index at /simple. Its pages already point at the mirror
-#      for the artifacts, so pip can use it as-is. Nothing local runs and nested
-#      containers reach it by hostname.
-#   2. A path-prefixed byte cache at /pypi.org/simple. Those pages are PyPI's own,
-#      so their bodies still point at files.pythonhosted.org and using them as an
-#      index leaves every wheel download on the origin that returns the 502s. In
-#      that case start ci/pypi_index_proxy.py, which fetches those pages and
-#      rewrites the file URLs in them.
-#   3. Neither reachable: export nothing and let the retry settings carry the job.
+#   1. Mirror reachable and this image carries the proxy: start
+#      ci/pypi_index_proxy.py, which reads PyPI's index pages through the mirror and
+#      rewrites the file URLs in them, and point pip and uv at that.
+#   2. Mirror unreachable, or reachable but no proxy in this image: export nothing
+#      and let the retry settings carry the job.
 #
 # Fail-open is load-bearing, and it is why the probe hits the mirror rather than
 # only the local process: a healthy proxy in front of an unreachable mirror answers
@@ -54,59 +52,33 @@ _rayci_pypi_index_setup() {
     echo "pypi index: mirror unreachable from this agent; resolving from public PyPI" >&2
     return 0
   fi
-  # Bazel's own downloader is a separate problem from pip's index, and needs a separate
-  # answer. rules_python declares its bootstrap wheels as http_archive with literal
-  # files.pythonhosted.org URLs, and http_archive never consults PIP_INDEX_URL -- so no
-  # index setting reaches them. That is what failed microcheck 52470 and the docs-example
-  # jobs on postmerge 19272: bazel's Java downloader taking a 502 on click-8.0.1, during
-  # repository mapping, which takes the whole analysis phase with it.
+  # Bazel's own downloader is a separate problem from pip's index and gets its own
+  # answer, in ci/bazel_mirror_downloader.sh. Called here rather than after the proxy
+  # starts because it needs only the mirror: an image carrying no proxy still gets its
+  # bazel downloads mirrored.
   #
-  # --experimental_downloader_config rewrites download URLs before they are fetched, so
-  # those archives come from the mirror instead. It needs only the mirror, not the local
-  # proxy, which is why it is set up here rather than after the proxy starts: an image
-  # with no proxy still gets its bazel downloads mirrored.
-  #
-  # Written per job rather than committed to .bazelrc because the hostname is
-  # VPC-internal: a checkout outside CI would rewrite its downloads to a name that does
-  # not resolve, turning a working build into a broken one.
-  _rayci_bazel_downloader_config() {
-    local cfg="${HOME}/.rayci_bazel_downloader.cfg"
-    local rc="${HOME}/.bazelrc"
-    local host="${mirror#*://}"
-
-    # Bazel preserves the original scheme when it rewrites, and every URL rewritten here
-    # is https. A mirror reachable only over http would therefore be addressed as https
-    # and fail in a way that looks like a broken mirror rather than a misconfiguration,
-    # so leave bazel alone in that case.
-    if [[ "${mirror}" != https://* ]]; then
-      echo "pypi index: mirror is not https, leaving bazel downloads on the origin" >&2
-      return 0
-    fi
-
-    # The replacement keeps the upstream host as a path segment, which is how the mirror
-    # addresses upstreams, and bazel preserves the original https scheme.
-    # Two rules, and the second is load-bearing. A matching rewrite *replaces* the URL
-    # set rather than adding to it, so the first rule alone would discard the origin --
-    # turning a mirror outage into a hard failure where bazel would otherwise have fallen
-    # back. Verified against bazel 7.5.0: with an unreachable mirror, one rule fails the
-    # build and two rules warn and succeed. Credit to anyscale/rayturbo#4205, which found
-    # this and notes it also discards the fallbacks auto_http_archive builds for the C++
-    # dependencies if the pattern is ever broadened beyond pythonhosted.
-    {
-      echo "rewrite files\\.pythonhosted\\.org/(.*) ${host}/files.pythonhosted.org/\$1"
-      echo "rewrite files\\.pythonhosted\\.org/(.*) files.pythonhosted.org/\$1"
-    } >"${cfg}" || return 0
-
-    # Appended once: this file may already carry the bazel cache settings the image
-    # wrote, and profile.d can be sourced more than once per job.
-    if ! grep -qsF -- "--experimental_downloader_config=${cfg}" "${rc}"; then
-      # Leading newline: the image writes this file, and appending to one that does not
-      # end in a newline would splice this onto the last option rather than adding it.
-      printf '\n%s\n' "common --experimental_downloader_config=${cfg}" >>"${rc}" || return 0
-    fi
-    echo "pypi index: bazel downloads of files.pythonhosted.org rewritten to ${host}"
+  # Found rather than assumed, because this file is installed into the image as
+  # /etc/profile.d/zz-rayci-pypi-proxy.sh and runs at shell start, when the only copy it
+  # can count on is the one install_pypi_proxy.sh put beside the proxy. The checkout
+  # paths cover images that carry no proxy.
+  _rayci_source_bazel_downloader() {
+    local candidate
+    for candidate in \
+      "${RAYCI_BAZEL_DOWNLOADER_LIB:-}" \
+      "${RAYCI_PYPI_PROXY_PREFIX:-/opt/pypiproxy}/bazel_mirror_downloader.sh" \
+      "${RAYCI_CHECKOUT_DIR:+${RAYCI_CHECKOUT_DIR}/ci/bazel_mirror_downloader.sh}" \
+      "./ci/bazel_mirror_downloader.sh"; do
+      [[ -n "${candidate}" && -f "${candidate}" ]] || continue
+      # shellcheck source=ci/bazel_mirror_downloader.sh
+      source "${candidate}" && return 0
+    done
+    return 1
   }
-  _rayci_bazel_downloader_config
+  if _rayci_source_bazel_downloader; then
+    rayci_bazel_downloader_config "${mirror}"
+  else
+    echo "pypi index: no bazel downloader helper found; bazel downloads stay on the origin" >&2
+  fi
 
   local prefix="${RAYCI_PYPI_PROXY_PREFIX:-/opt/pypiproxy}"
   if [[ ! -x "${prefix}/bin/python" ]]; then

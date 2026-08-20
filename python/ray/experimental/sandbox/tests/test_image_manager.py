@@ -280,5 +280,235 @@ def test_custom_image_manager_subclass(tmp_path):
     assert ("another-image", 120.0) in custom_mgr.pull_calls
 
 
+class _StubImageManager(ImageManager):
+    """ImageManager that skips pulling so spec construction is testable offline."""
+
+    def __init__(self, tmp_path):
+        super().__init__(images_dir=str(tmp_path))
+        self._fake_image_dir = str(tmp_path)
+
+    def pull_image(self, image, timeout_seconds=120.0):
+        return self._fake_image_dir
+
+    def get_image_config(self, image):
+        return {}
+
+
+def _sample_base_spec():
+    return {
+        "process": {"capabilities": {"bounding": ["CAP_KILL"]}},
+        "root": {},
+        "mounts": [],
+        "linux": {
+            "namespaces": [
+                {"type": "pid"},
+                {"type": "network"},
+                {"type": "mount"},
+            ]
+        },
+    }
+
+
+def test_create_oci_spec_sets_capabilities_exactly(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        capabilities=["CAP_CHOWN", "CAP_SETUID"],
+    )
+    for cap_set in ("bounding", "effective", "permitted"):
+        assert spec["process"]["capabilities"][cap_set] == [
+            "CAP_CHOWN",
+            "CAP_SETUID",
+        ]
+    # Inheritable and ambient are left alone (modern Docker behavior).
+    assert "inheritable" not in spec["process"]["capabilities"]
+    assert "ambient" not in spec["process"]["capabilities"]
+
+
+def test_create_oci_spec_empty_capabilities_remove_all(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=_sample_base_spec(), capabilities=[]
+    )
+    for cap_set in ("bounding", "effective", "permitted"):
+        assert spec["process"]["capabilities"][cap_set] == []
+
+
+def test_create_oci_spec_default_capabilities_untouched(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=_sample_base_spec())
+    assert spec["process"]["capabilities"] == {"bounding": ["CAP_KILL"]}
+
+
+def test_create_oci_spec_host_side_networking_drops_empty_netns(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    for mode in ("host", "public"):
+        spec = mgr.create_oci_spec(
+            image="fake:latest", base_spec=_sample_base_spec(), network=mode
+        )
+        assert {"type": "network"} not in spec["linux"]["namespaces"]
+        assert {"type": "pid"} in spec["linux"]["namespaces"]
+
+
+def test_create_oci_spec_mounts_resolv_conf_source(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    source = tmp_path / "resolv.conf"
+    source.write_text("nameserver 8.8.8.8\n")
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        network="public",
+        resolv_conf_source=str(source),
+    )
+    (mount,) = [m for m in spec["mounts"] if m["destination"] == "/etc/resolv.conf"]
+    assert mount["source"] == str(source)
+    assert "ro" in mount["options"]
+
+    # No source, no mount.
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=_sample_base_spec(), network="public"
+    )
+    assert not any(m["destination"] == "/etc/resolv.conf" for m in spec["mounts"])
+
+
+def test_create_oci_spec_host_network_keeps_pathed_netns(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["linux"]["namespaces"] = [{"type": "network", "path": "/proc/1/ns/net"}]
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=base, network="host")
+    # A *pathed* network namespace is somebody's explicit choice; keep it.
+    assert spec["linux"]["namespaces"] == [
+        {"type": "network", "path": "/proc/1/ns/net"}
+    ]
+
+
+def test_create_oci_spec_tolerates_null_capability_set(tmp_path):
+    """A base_spec capability *set* (not just the dict) may be null."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["process"]["capabilities"] = {"effective": None, "bounding": ["CAP_KILL"]}
+    spec = mgr.create_oci_spec(
+        image="fake:latest", base_spec=base, capabilities=["CAP_CHOWN"]
+    )
+    assert spec["process"]["capabilities"]["effective"] == ["CAP_CHOWN"]
+    assert spec["process"]["capabilities"]["bounding"] == ["CAP_CHOWN"]
+
+
+def test_create_oci_spec_tolerates_non_dict_namespace_entries(tmp_path):
+    """Malformed namespace entries are kept for runsc to reject, not dropped."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["linux"]["namespaces"] = [{"type": "network"}, "pid", None]
+    spec = mgr.create_oci_spec(image="fake:latest", base_spec=base, network="host")
+    assert spec["linux"]["namespaces"] == ["pid", None]
+
+
+def test_create_oci_spec_workdir_path_drives_the_scratch_mount(tmp_path):
+    """The scratch bind exists iff a workdir_path is given; the process cwd
+    is independent of it."""
+    mgr = _StubImageManager(tmp_path)
+    workdir_path = str(tmp_path / "scratch")
+    os.makedirs(workdir_path, exist_ok=True)
+
+    mounted = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/app",
+        workdir_path=workdir_path,
+    )
+    assert any(m["destination"] == "/app" for m in mounted["mounts"])
+
+    unmounted = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/app",
+        workdir_path=None,
+    )
+    assert not any(m["destination"] == "/app" for m in unmounted["mounts"])
+    assert unmounted["process"]["cwd"] == "/app"
+
+
+def test_create_oci_spec_tolerates_null_sections_in_base_spec(tmp_path):
+    """A caller-supplied base_spec may carry null capabilities/linux keys."""
+    mgr = _StubImageManager(tmp_path)
+    base = _sample_base_spec()
+    base["process"]["capabilities"] = None
+    base["linux"] = None
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=base,
+        capabilities=["CAP_CHOWN"],
+        network="host",
+    )
+    assert "CAP_CHOWN" in spec["process"]["capabilities"]["bounding"]
+    assert isinstance(spec["linux"], dict)
+
+
+def test_create_oci_spec_non_host_network_untouched(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    for mode in ("none", "sandbox"):
+        spec = mgr.create_oci_spec(
+            image="fake:latest", base_spec=_sample_base_spec(), network=mode
+        )
+        assert {"type": "network"} in spec["linux"]["namespaces"]
+        assert all(m["destination"] != "/etc/resolv.conf" for m in spec["mounts"])
+
+
+class _SpecCapturingManager(_StubImageManager):
+    """Captures create_oci_spec kwargs so prepare_oci_bundle's resolv policy
+    is testable without runsc."""
+
+    def __init__(self, tmp_path):
+        super().__init__(tmp_path)
+        self.spec_kwargs = None
+
+    def create_oci_spec(self, image, **kwargs):
+        self.spec_kwargs = kwargs
+        return {}
+
+
+def _prepare(mgr, root_dir, **kwargs):
+    mgr.prepare_oci_bundle(
+        root_dir=str(root_dir),
+        workdir_path=str(root_dir),
+        container_cwd="/",
+        image="fake:latest",
+        **kwargs,
+    )
+    return mgr.spec_kwargs["resolv_conf_source"]
+
+
+def test_prepare_oci_bundle_public_generates_default_resolv(tmp_path):
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="public")
+    assert source == os.path.join(str(tmp_path), "resolv.conf")
+    content = open(source, encoding="utf-8").read()
+    assert content == "nameserver 8.8.8.8\nnameserver 1.1.1.1\n"
+
+
+def test_prepare_oci_bundle_dns_overrides_for_public_and_host(tmp_path):
+    for network in ("public", "host"):
+        mgr = _SpecCapturingManager(tmp_path)
+        source = _prepare(mgr, tmp_path, network=network, dns=["10.0.0.2"])
+        content = open(source, encoding="utf-8").read()
+        assert content == "nameserver 10.0.0.2\n"
+
+
+def test_prepare_oci_bundle_host_uses_host_resolv(tmp_path):
+    mgr = _SpecCapturingManager(tmp_path)
+    source = _prepare(mgr, tmp_path, network="host")
+    if os.path.exists("/etc/resolv.conf"):
+        assert source == "/etc/resolv.conf"
+    else:
+        assert source is None
+
+
+def test_prepare_oci_bundle_no_resolv_without_host_side_networking(tmp_path):
+    for network in ("none", "sandbox"):
+        mgr = _SpecCapturingManager(tmp_path)
+        assert _prepare(mgr, tmp_path, network=network) is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
