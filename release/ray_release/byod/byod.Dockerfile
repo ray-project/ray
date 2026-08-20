@@ -47,7 +47,6 @@ APT_PKGS=(
     libjemalloc-dev
     libosmesa6-dev
     lsb-release
-    patchelf
 )
 
 sudo apt-get update -y
