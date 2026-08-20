@@ -17,7 +17,7 @@ llm_config = LLMConfig(
     engine_kwargs=dict(
         tensor_parallel_size=16,
         max_model_len=8192,
-        max_num_batched_tokens=4096,
+        max_num_batched_tokens=8192,
         distributed_executor_backend="ray",
     ),
 )
