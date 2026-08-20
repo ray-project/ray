@@ -46,6 +46,10 @@ export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
+:::{note}
+With body forwarding enabled, `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` sets HAProxy's request-buffer cap (256 KiB by default). HAProxy sends only a prefix of larger bodies to the router. Raise it when `serve_haproxy_ingress_router_truncations_total` shows that this truncation is affecting body-aware routing; a larger buffer increases HAProxy memory use and can delay routing and TTFT.
+:::
+
 Then select the router through `request_router_config`:
 
 ::::{tab-set}
