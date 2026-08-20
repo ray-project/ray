@@ -84,7 +84,7 @@ kubectl get raycluster
 # NAME                                 DESIRED WORKERS   AVAILABLE WORKERS   CPUS    MEMORY   GPUS   STATUS   AGE
 # rayservice-sample-raycluster-fj2gp   1                 1                   2500m   4Gi      0      ready    75s
 
-# Step 4.3: List all Ray Pods in the `default` namespace.
+# Step 4.3: List the RayCluster's Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
