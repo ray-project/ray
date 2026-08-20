@@ -398,6 +398,8 @@ autogen_files = AUTOGEN_FILES
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
+    # Committed intersphinx inventory snapshots + refresh tooling, not docs.
+    "_intersphinx/**",
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
@@ -818,18 +820,30 @@ for mock_target in autodoc_mock_imports:
 # is specified in the `intersphinx_mapping` - for example, types annotations
 # that are defined in dependencies can link to their respective documentation.
 #
-# Each value is (base_url, inventory_url). A None inventory falls back to
-# <base_url>objects.inv. A few projects (pandas, scipy, tensorflow) pin an
+# `_intersphinx_targets` is the source of truth: name -> (base_url, inventory).
+# `base_url` is where generated cross-reference links point. `inventory` is the
+# upstream objects.inv used to *resolve* those references at build time; None
+# means the Sphinx default of <base_url>objects.inv. A few projects pin an
 # explicit inventory URL because their hosted objects.inv is unreliable; the
 # ray-project/*/releases/.../object-mirror-* URLs are stable mirrors we control.
 #
+# To avoid fetching two dozen inventories over the network on every build (slow,
+# and occasionally flaky via the GitHub release-asset redirects), we commit a
+# snapshot of each under doc/source/_intersphinx/ and prefer it. The
+# `intersphinx_mapping` built below lists the local snapshot first and the
+# upstream location second; Sphinx uses the first that loads, so a present
+# snapshot means no network fetch, and a missing one degrades to the old remote
+# behavior (an info message, not a build-breaking warning). Refresh snapshots
+# with `python doc/source/_intersphinx/refresh.py` (see that directory's README).
+#
 # Maintenance note: the build log emits "intersphinx inventory has moved: A -> B"
-# when A returns a redirect. Only chase it when B is another documentation URL
-# (the project relocated). Do NOT copy B when it points at a signed, expiring
+# when A returns a redirect (only when fetching remotely, i.e. on refresh or
+# fallback). Only chase it when B is another documentation URL (the project
+# relocated). Do NOT copy B when it points at a signed, expiring
 # release-assets.githubusercontent.com URL - that's just GitHub's normal redirect
 # for a releases/download/ asset, and the github.com/.../releases/download/ URL
 # is the stable one to keep.
-intersphinx_mapping = {
+_intersphinx_targets = {
     "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
     "composer": ("https://docs.mosaicml.com/en/latest/", None),
     "dask": ("https://docs.dask.org/en/stable/", None),
@@ -868,6 +882,13 @@ intersphinx_mapping = {
     ),
     "torchvision": ("https://docs.pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
+}
+
+# Prefer the committed local snapshot, falling back to the upstream inventory
+# (or the <base_url>objects.inv default when None) if a snapshot is missing.
+intersphinx_mapping = {
+    name: (base_url, (f"_intersphinx/{name}.inv", inventory))
+    for name, (base_url, inventory) in _intersphinx_targets.items()
 }
 
 intersphinx_timeout = 15
