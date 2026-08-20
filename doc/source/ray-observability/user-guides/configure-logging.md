@@ -100,8 +100,10 @@ stop Ray from adding the `(Task or Actor repr, process ID, IP address)` prefix t
 logs. This is useful for structured logging (for example, newline-delimited JSON) when you want to collect logs from the driver's stdout/stderr rather than from the
 per-worker log files under the {ref}`logging directory <logging-directory>` the prefix otherwise turns each structured log line into invalid JSON.
 
-If your goal is structured logging, also consider setting `RAY_DEDUP_LOGS=0`. By default, Ray {ref}`deduplicates repeated log messages <log-deduplication>` and
-annotates them with a `[repeated Nx across cluster]` suffix, which breaks structured, line-oriented log formats.
+If you are disabling the worker log prefix specifically to avoid interference with structured logging, also consider setting `RAY_DEDUP_LOGS=0`. By default, Ray
+{ref}`deduplicates repeated log messages <log-deduplication>` and annotates them with a `[repeated Nx across cluster]` suffix, which breaks structured, line-oriented
+log formats. This is not a general recommendation for everyone who sets `RAY_DISABLE_WORKER_LOG_PREFIX=1` , it only applies if structured logging is the
+reason you're disabling the prefix.
 
 :::{note}
 Disabling the worker log prefix removes the only signal in the forwarded stream that identifies which Task, Actor, or process emitted a given line.
