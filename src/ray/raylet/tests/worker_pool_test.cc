@@ -34,6 +34,7 @@
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
+#include "ray/common/monitors/cpu_monitor_utils.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/runtime_env_agent_client.h"
@@ -198,6 +199,7 @@ class WorkerPoolMock : public WorkerPool {
         static_cast<pid_t>(Process::PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_pid_ = pid;
     worker_commands_by_proc_[pid] = worker_command_args;
+    worker_envs_by_proc_[pid] = env;
     worker_ids_by_proc_[pid] = worker_id;
     return std::make_unique<Process>(pid);
   }
@@ -213,6 +215,10 @@ class WorkerPoolMock : public WorkerPool {
 
   const std::vector<std::string> &GetWorkerCommand(const ProcessInterface &proc) {
     return worker_commands_by_proc_[proc.GetId()];
+  }
+
+  const ProcessEnvironment &GetWorkerEnv(const ProcessInterface &proc) {
+    return worker_envs_by_proc_[proc.GetId()];
   }
 
   int NumWorkersStarting() const {
@@ -410,6 +416,8 @@ class WorkerPoolMock : public WorkerPool {
   pid_t last_worker_pid_;
   // The worker commands by process.
   absl::flat_hash_map<pid_t, std::vector<std::string>> worker_commands_by_proc_;
+  // The worker environments by process.
+  absl::flat_hash_map<pid_t, ProcessEnvironment> worker_envs_by_proc_;
   // Maps process to the WorkerID assigned when the process was started.
   absl::flat_hash_map<pid_t, WorkerID> worker_ids_by_proc_;
   absl::flat_hash_map<pid_t, std::vector<std::string>> pushedProcesses_;
@@ -831,6 +839,88 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
   expected_command.push_back("MainClass");
   expected_command.push_back("--language=JAVA");
   ASSERT_EQ(real_command, expected_command);
+  worker_pool_->HandleJobFinished(job_id);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerGrpcInternalThreadsEnvVar) {
+  // Clear any mock limit before starting.
+  CpuMonitorUtils::ClearMockCpuLimit();
+
+  JobID job_id = JobID::FromInt(12345);
+  rpc::JobConfig job_config = rpc::JobConfig();
+  worker_pool_->HandleJobStarted(job_id, job_config);
+
+  // Scenario (a): User hasn't set an explicit override (worker_num_grpc_internal_threads
+  // <= 0). No cgroup limit exists (or is simulated), so it should fallback to physical
+  // cores.
+  {
+    int64_t expected_limit = CpuMonitorUtils::GetCpuLimit();
+    ASSERT_GT(expected_limit, 0);
+
+    LeaseSpecification lease_spec =
+        ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_id);
+    ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec), nullptr);
+    const ProcessEnvironment &env =
+        worker_pool_->GetWorkerEnv(*worker_pool_->LastStartedWorkerProcess());
+
+    auto it = env.find(kEnvVarKeyGrpcThreadCount);
+    ASSERT_NE(it, env.end());
+    ASSERT_EQ(it->second, std::to_string(expected_limit));
+  }
+
+  // Scenario (b): Simulated/mocked cgroup CPU limit.
+  {
+    class MockCpuLimitGuard {
+     public:
+      explicit MockCpuLimitGuard(int64_t limit) {
+        CpuMonitorUtils::SetMockCpuLimit(limit);
+      }
+      ~MockCpuLimitGuard() { CpuMonitorUtils::ClearMockCpuLimit(); }
+    };
+    MockCpuLimitGuard cpu_limit_guard(4);
+
+    LeaseSpecification lease_spec =
+        ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_id);
+    ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec), nullptr);
+    const ProcessEnvironment &env =
+        worker_pool_->GetWorkerEnv(*worker_pool_->LastStartedWorkerProcess());
+
+    auto it = env.find(kEnvVarKeyGrpcThreadCount);
+    ASSERT_NE(it, env.end());
+    ASSERT_EQ(it->second, std::to_string(4));
+  }
+
+  // Scenario (c): Explicit user override is set.
+  {
+    class RayConfigRestoreGuard {
+     public:
+      explicit RayConfigRestoreGuard(int64_t original_val)
+          : original_val_(original_val) {}
+      ~RayConfigRestoreGuard() {
+        RayConfig::instance().initialize(R"({"worker_num_grpc_internal_threads": )" +
+                                         std::to_string(original_val_) + R"(})");
+      }
+
+     private:
+      int64_t original_val_;
+    };
+
+    int64_t user_override = 5;
+    int64_t original_value = RayConfig::instance().worker_num_grpc_internal_threads();
+    RayConfigRestoreGuard config_guard(original_value);
+    RayConfig::instance().initialize(R"({"worker_num_grpc_internal_threads": 5})");
+
+    LeaseSpecification lease_spec =
+        ExampleLeaseSpec(ActorID::Nil(), Language::PYTHON, job_id);
+    ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec), nullptr);
+    const ProcessEnvironment &env =
+        worker_pool_->GetWorkerEnv(*worker_pool_->LastStartedWorkerProcess());
+
+    auto it = env.find(kEnvVarKeyGrpcThreadCount);
+    ASSERT_NE(it, env.end());
+    ASSERT_EQ(it->second, std::to_string(user_override));
+  }
+
   worker_pool_->HandleJobFinished(job_id);
 }
 
