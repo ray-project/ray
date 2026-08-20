@@ -1603,20 +1603,22 @@ def clean_token_sources(cleanup_auth_token_env):
     yield
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def _isolate_token_auth_state():
-    """Isolate token-authentication state across tests.
+    """Isolate token-authentication state across test sessions (bazel targets).
 
     A local cluster enables token auth by default and writes a token to
-    ``~/.ray/auth_token``, and ``ray.init`` sets ``RAY_AUTH_MODE`` in the
-    environment. Both persist and, without isolation, leak into later tests (and,
-    under ``bazel test`` where HOME is unset, across test targets sharing one
-    home), enabling auth on a cluster whose other processes can't authenticate.
-    Give each test a clean slate and put the original state back afterward, so a
-    developer's existing ``~/.ray/auth_token`` is never modified by a test run.
+    ``~/.ray/auth_token``. Under ``bazel test`` HOME is unset, so every target
+    resolves the same home, and a token left by one target would enable auth on a
+    later target's cluster whose other processes can't authenticate.
+
+    Clear a leftover token once at session start so each target starts clean, and
+    restore the original at session end so a developer's existing
+    ``~/.ray/auth_token`` is never modified by a test run. This is session-scoped
+    on purpose: removing the token between tests would break module- or
+    session-scoped cluster fixtures that keep an authenticated cluster alive
+    across tests.
     """
-    keys = ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
-    saved_env = {k: os.environ.get(k) for k in keys}
     default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
     original_token = None
     if os.path.exists(default_token):
@@ -1634,11 +1636,6 @@ def _isolate_token_auth_state():
             os.makedirs(os.path.dirname(default_token), exist_ok=True)
             with open(default_token, "w") as f:
                 f.write(original_token)
-        for key, value in saved_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
         reset_auth_token_state()
 
     if ray.is_initialized():
