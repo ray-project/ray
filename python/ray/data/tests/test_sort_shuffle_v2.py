@@ -57,6 +57,7 @@ def test_get_boundaries_from_empty_samples():
 
 def test_sort_shuffle_map_samples_all_inputs_then_replays_buffered_inputs(
     ray_start_regular_shared_2_cpus,
+    monkeypatch,
 ):
     ctx = DataContext.get_current()
     bundles = make_ref_bundles([[9, 8], [1, 2], [6, 5]])
@@ -66,6 +67,7 @@ def test_sort_shuffle_map_samples_all_inputs_then_replays_buffered_inputs(
         num_partitions=2,
         sort_key=SortKey("id"),
     )
+    monkeypatch.setattr(op, "_get_max_num_sampling_tasks_in_flight", lambda: 3)
     op.start(ExecutionOptions(), noop_counter())
 
     op.add_input(bundles[0], 0)
@@ -111,6 +113,45 @@ def test_sort_shuffle_map_samples_all_inputs_then_replays_buffered_inputs(
     assert partition_ids == [0, 1]
     assert sorted(row for rows in partition_rows for row in rows) == [1, 2, 5, 6, 8, 9]
     assert max(partition_rows[0]) <= min(partition_rows[1])
+    assert op.has_completed()
+
+
+def test_sort_shuffle_map_bounds_sampling_tasks(
+    ray_start_regular_shared_2_cpus,
+    monkeypatch,
+):
+    ctx = DataContext.get_current()
+    bundles = make_ref_bundles([[i] for i in range(5)])
+    op = SortShuffleMapOp(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        sort_key=SortKey("id"),
+    )
+    monkeypatch.setattr(op, "_get_max_num_sampling_tasks_in_flight", lambda: 2)
+    op.start(ExecutionOptions(), noop_counter())
+
+    for bundle in bundles:
+        op.add_input(bundle, 0)
+    op.all_inputs_done()
+
+    assert len(op.get_active_tasks()) == 2
+    assert len(op._pending_sample_block_refs) == 3
+    assert op.progress_str().startswith("sample: 0/5")
+
+    # Completing the first window submits only enough tasks to refill it.
+    run_op_tasks_sync(op, only_existing=True)
+    assert len(op.get_active_tasks()) == 2
+    assert len(op._pending_sample_block_refs) == 1
+    assert op.progress_str().startswith("sample: 2/5")
+
+    run_op_tasks_sync(op)
+    assert not op._pending_sample_block_refs
+    assert op.boundaries is not None
+    assert op.progress_str().startswith("sample: 5/5")
+
+    while op.has_next():
+        op.get_next().destroy_if_owned()
     assert op.has_completed()
 
 

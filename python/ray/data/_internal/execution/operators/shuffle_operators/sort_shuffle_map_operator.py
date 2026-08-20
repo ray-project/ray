@@ -1,6 +1,7 @@
 import functools
 import typing
-from typing import Any, Dict, List, Optional
+from collections import deque
+from typing import Any, Deque, Dict, List, Optional
 
 import ray
 from ray.data._internal.execution.bundle_queue import (
@@ -26,6 +27,7 @@ from ray.data._internal.planner.exchange.sort_task_spec import (
     _sample_block,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import _estimate_available_parallelism
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -38,10 +40,11 @@ class SortShuffleMapOp(ShuffleMapOp):
     """Shuffle-v2 map phase with range-boundary sampling.
 
     Before boundaries are known, all input bundles are retained by the driver.
-    Once all inputs arrive, every block is sampled in parallel so the resulting
-    range boundaries represent the entire dataset. After sampling finishes, the
-    buffered bundles are replayed into ``ShuffleMapOp`` with a
-    local-sort/range-partition function.
+    Once all inputs arrive, every block is sampled with bounded task concurrency
+    so the resulting range boundaries represent the entire dataset without
+    flooding Ray Core with pending tasks. After sampling finishes, the buffered
+    bundles are replayed into ``ShuffleMapOp`` with a local-sort/range-partition
+    function.
 
     User-provided boundaries bypass the sampling phase.
     """
@@ -62,9 +65,12 @@ class SortShuffleMapOp(ShuffleMapOp):
 
         self._sort_key = sort_key
         self._buffered_bundles = FIFOBundleQueue()
-        self._sample_block_refs: List[ObjectRef[Block]] = []
+        self._pending_sample_block_refs: Deque[ObjectRef[Block]] = deque()
         self._sample_tasks: Dict[int, MetadataOpTask] = {}
         self._sample_results: List[Block] = []
+        self._num_sample_tasks_total = 0
+        self._num_samples_per_block: Optional[int] = None
+        self._max_num_sampling_tasks_in_flight: Optional[int] = None
         self._next_sample_task_idx = 0
         self._sampling_started = False
         self._sample_resource_usage = ExecutionResources.zero()
@@ -121,7 +127,14 @@ class SortShuffleMapOp(ShuffleMapOp):
 
         self._buffered_bundles.add(refs)
         self._metrics.on_input_queued(refs, input_index=input_index)
-        self._sample_block_refs.extend(refs.block_refs)
+        self._pending_sample_block_refs.extend(refs.block_refs)
+
+    def _get_max_num_sampling_tasks_in_flight(self) -> int:
+        # Sampling tasks each require one CPU. Keep at most one task submitted per
+        # available CPU so datasets with many blocks don't flood Ray Core with an
+        # unbounded number of pending tasks. The estimate also accounts for the
+        # current placement group when Dataset execution is colocated with one.
+        return max(1, _estimate_available_parallelism())
 
     def _start_sampling(self) -> None:
         if self._sampling_started or self._boundaries is not None:
@@ -129,25 +142,47 @@ class SortShuffleMapOp(ShuffleMapOp):
         assert self._inputs_complete
         self._sampling_started = True
 
-        if not self._sample_block_refs:
+        if not self._pending_sample_block_refs:
             self._set_boundaries([None] * (self._num_partitions - 1))
             return
 
         # Match sort V1's 10 samples-per-output-partition budget while ensuring
         # that every non-empty block contributes at least one sample.
-        n_samples = max(
-            1, int(self._num_partitions * 10 / len(self._sample_block_refs))
+        self._num_sample_tasks_total = len(self._pending_sample_block_refs)
+        self._num_samples_per_block = max(
+            1,
+            int(self._num_partitions * 10 / self._num_sample_tasks_total),
         )
+        self._max_num_sampling_tasks_in_flight = (
+            self._get_max_num_sampling_tasks_in_flight()
+        )
+        if self._sample_bar is not None:
+            self._sample_bar.update(
+                total=self._num_sample_tasks_total * self._num_samples_per_block
+            )
+        self._submit_available_sample_tasks()
+
+    def _submit_available_sample_tasks(self) -> None:
+        assert self._sampling_started
+        assert self._num_samples_per_block is not None
+        assert self._max_num_sampling_tasks_in_flight is not None
+
         sample_block = cached_remote_fn(_sample_block)
         label_selector = self.data_context.execution_options.label_selector
         if label_selector:
             sample_block = sample_block.options(label_selector=label_selector)
 
         resources = ExecutionResources(cpu=1)
-        for block_ref in self._sample_block_refs:
+        while (
+            self._pending_sample_block_refs
+            and len(self._sample_tasks) < self._max_num_sampling_tasks_in_flight
+        ):
+            block_ref = self._pending_sample_block_refs.popleft()
             task_idx = self._next_sample_task_idx
             self._next_sample_task_idx += 1
-            sample_ref = sample_block.remote(block_ref, n_samples, self._sort_key)
+            sample_ref = sample_block.remote(
+                block_ref, self._num_samples_per_block, self._sort_key
+            )
             self._sample_tasks[task_idx] = MetadataOpTask(
                 task_index=task_idx,
                 object_ref=sample_ref,
@@ -157,9 +192,6 @@ class SortShuffleMapOp(ShuffleMapOp):
                 task_resource_bundle=resources,
             )
             self._sample_resource_usage = self._sample_resource_usage.add(resources)
-
-        if self._sample_bar is not None:
-            self._sample_bar.update(total=len(self._sample_block_refs) * n_samples)
 
     def _handle_sample_done(self, task_idx: int) -> None:
         task = self._sample_tasks.pop(task_idx)
@@ -174,7 +206,8 @@ class SortShuffleMapOp(ShuffleMapOp):
                 increment=BlockAccessor.for_block(sample).num_rows()
             )
 
-        if not self._sample_tasks:
+        self._submit_available_sample_tasks()
+        if not self._pending_sample_block_refs and not self._sample_tasks:
             boundaries = SortTaskSpec.get_boundaries_from_samples(
                 self._sample_results,
                 self._sort_key,
@@ -191,7 +224,7 @@ class SortShuffleMapOp(ShuffleMapOp):
             (None,) if boundary is None else boundary for boundary in boundaries
         ]
         self._boundaries = boundaries
-        self._sample_block_refs.clear()
+        self._pending_sample_block_refs.clear()
         self._sample_results.clear()
         self._partition_fn = make_range_partition_fn(
             boundaries, self._sort_key, self.data_context
@@ -216,13 +249,19 @@ class SortShuffleMapOp(ShuffleMapOp):
         return [*self._sample_tasks.values(), *super().get_active_tasks()]
 
     def has_execution_finished(self) -> bool:
-        if self._sample_tasks or self._buffered_bundles or self._boundaries is None:
+        if (
+            self._pending_sample_block_refs
+            or self._sample_tasks
+            or self._buffered_bundles
+            or self._boundaries is None
+        ):
             return False
         return super().has_execution_finished()
 
     def has_completed(self) -> bool:
         return (
-            not self._sample_tasks
+            not self._pending_sample_block_refs
+            and not self._sample_tasks
             and not self._buffered_bundles
             and self._boundaries is not None
             and super().has_completed()
@@ -233,7 +272,7 @@ class SortShuffleMapOp(ShuffleMapOp):
 
     def progress_str(self) -> str:
         sample_done = self._next_sample_task_idx - len(self._sample_tasks)
-        sample_progress = f"sample: {sample_done}/{self._next_sample_task_idx}"
+        sample_progress = f"sample: {sample_done}/{self._num_sample_tasks_total}"
         return f"{sample_progress}, {super().progress_str()}"
 
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
@@ -251,5 +290,5 @@ class SortShuffleMapOp(ShuffleMapOp):
         for bundle in self._buffered_bundles:
             bundle.destroy_if_owned()
         self._buffered_bundles.clear()
-        self._sample_block_refs.clear()
+        self._pending_sample_block_refs.clear()
         self._sample_results.clear()
