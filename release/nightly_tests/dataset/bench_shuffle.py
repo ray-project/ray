@@ -21,6 +21,9 @@ Usage:
   # both back-to-back (prints two RESULT lines for easy diff)
   python bench_shuffle.py --shuffle both --data-size-gb 100 --num-partitions 100
 
+  # release-test style: materialize only (no local parquet write)
+  python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 500
+
   # with timeline dump + per-run stats
   RAY_DATA_SHUFFLE_PROFILE=1 \\
   python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 512 \\
@@ -37,6 +40,7 @@ import time
 from datetime import datetime
 
 import ray
+from benchmark import Benchmark
 from ray.data.context import DataContext, ShuffleStrategy
 
 KEY_COLUMNS = ["column00"]  # l_orderkey
@@ -87,24 +91,30 @@ def run_one(
     shuffle: str,
     output_path: str,
     dump_stats: bool,
+    write_parquet: bool,
 ) -> dict:
     sf = pick_sf(data_size_gb)
     target_rows = int(data_size_gb * 1024**3 / APPROX_BYTES_PER_ROW)
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{sf}/lineitem"
-    shutil.rmtree(output_path, ignore_errors=True)
+    if write_parquet:
+        shutil.rmtree(output_path, ignore_errors=True)
 
+    configure_shuffle(DataContext.get_current(), shuffle)
     ds = ray.data.read_parquet(path).limit(target_rows)
-    configure_shuffle(ds.context, shuffle)
     repartitioned = ds.repartition(num_partitions, keys=KEY_COLUMNS)
 
+    sink = "write" if write_parquet else "materialize"
     print(
         f"  [{shuffle}] read(sf{sf}, limit {target_rows:,}) "
-        f"+ shuffle -> {num_partitions} partitions + write ... ",
+        f"+ shuffle -> {num_partitions} partitions + {sink} ... ",
         end="",
         flush=True,
     )
     start = time.perf_counter()
-    repartitioned.write_parquet(output_path)
+    if write_parquet:
+        repartitioned.write_parquet(output_path)
+    else:
+        repartitioned.materialize()
     elapsed = time.perf_counter() - start
     print(f"{elapsed:.1f}s ({target_rows:,} rows, {data_size_gb} GB)", flush=True)
 
@@ -115,7 +125,8 @@ def run_one(
 
     del repartitioned, ds
     gc.collect()
-    shutil.rmtree(output_path, ignore_errors=True)
+    if write_parquet:
+        shutil.rmtree(output_path, ignore_errors=True)
     wait_for_object_store_to_drain()
 
     gbps = data_size_gb / elapsed if elapsed > 0 else 0.0
@@ -215,13 +226,20 @@ def main() -> None:
     p.add_argument(
         "--stats", action="store_true", help="Print ds.stats() after each run."
     )
+    p.add_argument(
+        "--write-parquet",
+        action="store_true",
+        help="Write shuffled output to --output-path. Default is materialize() "
+        "(used by the release test so shuffle is not mixed with local disk I/O).",
+    )
     args = p.parse_args()
 
     forwarded = {
         k: os.environ[k] for k in _WORKER_ENV_VARS_TO_FORWARD if k in os.environ
     }
-    runtime_env = {"env_vars": forwarded} if forwarded else None
-    ray.init(address="auto", runtime_env=runtime_env)
+    if not ray.is_initialized():
+        runtime_env = {"env_vars": forwarded} if forwarded else None
+        ray.init(address="auto", runtime_env=runtime_env)
 
     ctx = DataContext.get_current()
     ctx.use_datasource_v2 = True
@@ -237,17 +255,37 @@ def main() -> None:
         flush=True,
     )
 
+    benchmark = Benchmark()
     results = []
     for s in shuffles:
         t0 = time.time()
         bench_start = time.time()
-        r = run_one(
-            data_size_gb=args.data_size_gb,
-            num_partitions=args.num_partitions,
-            shuffle=s,
-            output_path=args.output_path,
-            dump_stats=args.stats,
-        )
+
+        def _case(shuffle=s):
+            return run_one(
+                data_size_gb=args.data_size_gb,
+                num_partitions=args.num_partitions,
+                shuffle=shuffle,
+                output_path=args.output_path,
+                dump_stats=args.stats,
+                write_parquet=args.write_parquet,
+            )
+
+        benchmark.run_fn(s, _case)
+        r = {
+            k: v
+            for k, v in benchmark.result[s].items()
+            if k
+            in (
+                "shuffle",
+                "data_size_gb",
+                "num_partitions",
+                "sf",
+                "rows",
+                "elapsed_s",
+                "throughput_gbps",
+            )
+        }
 
         if args.timeline_out:
             tl_path = f"{args.timeline_out}.{s}.json"
@@ -286,6 +324,7 @@ def main() -> None:
             json.dump(slim, f, indent=2)
         print(f"RESULTS_JSON {args.result_json}", flush=True)
 
+    benchmark.write_result()
     print("DONE", flush=True)
 
 

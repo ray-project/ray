@@ -365,6 +365,31 @@
       python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
+# Keyed repartition of TPC-H lineitem (not groupby). SHUFFLE_V2 in-memory vs
+# external file-transport. Manual: trigger via buildkite/release filter.
+- name: "repartition_lineitem_{{shuffle}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle: [in-memory, external]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_max_direct_call_object_size=8192
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python bench_shuffle.py --shuffle {{shuffle}}
+      --data-size-gb 512 --num-partitions 500 --target-cpu 256
+
 ###############
 # Join tests
 ###############
