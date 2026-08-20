@@ -46,11 +46,25 @@ import sys
 
 import niquests
 import uvicorn
-from asgi_cross_origin_protection import CrossOriginProtection
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Route
+
+# Optional because it is the one dependency here that requires Python >= 3.11, and the
+# surfaces that need this proxy most are the ones without a modern interpreter: the
+# macOS agents carry 3.9 and 3.10 only, and the Windows agent host 3.8. Everything else
+# it needs supports 3.10. The middleware rejects cross-site state-changing requests via
+# Fetch Metadata, and every route here is a GET, which it always allows -- so where it
+# is absent nothing it would have done is skipped. Images that do have 3.11+ still
+# install it, and then it behaves exactly as before.
+try:
+    from asgi_cross_origin_protection import CrossOriginProtection
+except ImportError:  # pragma: no cover - depends on the interpreter, not the code path
+
+    def CrossOriginProtection(app):
+        return app
+
 
 MIRROR_URL = os.environ.get("MIRROR_URL", "https://mirror.ci.ray.io")
 
@@ -69,12 +83,21 @@ client = niquests.AsyncSession()
 
 async def simple(request: Request) -> Response:
     upstream = f"{MIRROR_URL}/pypi.org/simple/{request.path_params['path']}"
-    headers = {}
-    # Content negotiation happens on this header: pip/uv choose between the
-    # HTML and PEP 691 JSON index representations with it.
-    accept = request.headers.get("accept")
-    if accept:
-        headers["Accept"] = accept
+    # Always ask upstream for HTML, ignoring what the client negotiated. The mirror
+    # caches /simple/ keyed on the URL alone with no Vary, so whichever
+    # representation is fetched first is what every later client gets. Forwarding the
+    # client's Accept therefore poisons the entry: uv asks for PEP 691 JSON, the
+    # mirror stores JSON, and then whl_library's pip -- which supports only
+    # text/html -- skips the page and reports "from versions: none". Seen on
+    # postmerge 19272:
+    #
+    #   WARNING: Skipping page .../simple/exceptiongroup/ because the GET request got
+    #   Content-Type: application/vnd.pypi.simple.v1+json. The only supported
+    #   Content-Type is text/html
+    #
+    # HTML rather than JSON because it is the representation every client here
+    # understands: that pip cannot read JSON at all, while uv reads both.
+    headers = {"Accept": "text/html"}
     try:
         response = await client.get(upstream, headers=headers, timeout=60)
     except niquests.exceptions.RequestException as e:
@@ -82,11 +105,24 @@ async def simple(request: Request) -> Response:
     body = response.content
     if response.status_code == 200:
         body = body.replace(UPSTREAM_FILES_PREFIX, MIRROR_FILES_PREFIX)
-    return Response(
-        body,
-        status_code=response.status_code,
-        media_type=response.headers.get("content-type", "text/html"),
-    )
+    # `or` rather than a default: covers a header that is present but empty, which a
+    # default does not.
+    content_type = response.headers.get("content-type") or "text/html"
+    # Asking for HTML and getting something else means the mirror is holding a
+    # representation cached before this pinning landed. Pinning stops new entries going
+    # in but cannot evict old ones, since the Accept header is not part of the mirror's
+    # cache key -- those have to be deleted from the cache prefix. Say so, because the
+    # symptom at the client is the misleading "from versions: none".
+    # Lowercased because header values are case-insensitive, and a false positive here
+    # tells the reader to delete cache entries that are in fact fine.
+    if response.status_code == 200 and "html" not in content_type.lower():
+        print(
+            f"pypi proxy: {upstream} returned {content_type} for an HTML request; "
+            "this is a stale mirror cache entry and clients that only read HTML will "
+            "skip it. Delete the cache/pypi.org/simple/ prefix to clear it.",
+            flush=True,
+        )
+    return Response(body, status_code=response.status_code, media_type=content_type)
 
 
 async def healthz(_request: Request) -> Response:
