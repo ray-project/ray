@@ -161,7 +161,7 @@ pip's backtracking resolver has a hardcoded round limit. When two requirements c
 Re-run the same resolution with uv, which has no such limit and prints the actual conflict. Below is an example of how uv can uncover dependency problems.
 
 ```bash
-# Resolve only, install nothing — surfaces the true error
+# Resolve only, install nothing. Surfaces the true error.
 uv pip install --dry-run "ax-platform==1.2.1" "jaxtyping<0.3.8"
 ```
 
