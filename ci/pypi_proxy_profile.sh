@@ -7,18 +7,16 @@
 # wiring. The variables it exports are the ones .bazelrc forwards to repository
 # rules and ci/ray_ci/container.py forwards into nested containers.
 #
-# Which index to use is decided by probing, not by assuming, because the mirror
-# serves two different shapes and only one of them is usable directly:
+# Which index to use is decided by probing, not by assuming. The mirror is a byte
+# cache and not an index -- it parses only /<host>/<path>, and serves cache hits as
+# 303 redirects to presigned S3 URLs, so it never holds a body it could rewrite --
+# so there is no mode where pip points straight at it, and two outcomes:
 #
-#   1. A rewriting simple index at /simple. Its pages already point at the mirror
-#      for the artifacts, so pip can use it as-is. Nothing local runs and nested
-#      containers reach it by hostname.
-#   2. A path-prefixed byte cache at /pypi.org/simple. Those pages are PyPI's own,
-#      so their bodies still point at files.pythonhosted.org and using them as an
-#      index leaves every wheel download on the origin that returns the 502s. In
-#      that case start ci/pypi_index_proxy.py, which fetches those pages and
-#      rewrites the file URLs in them.
-#   3. Neither reachable: export nothing and let the retry settings carry the job.
+#   1. Mirror reachable and this image carries the proxy: start
+#      ci/pypi_index_proxy.py, which reads PyPI's index pages through the mirror and
+#      rewrites the file URLs in them, and point pip and uv at that.
+#   2. Mirror unreachable, or reachable but no proxy in this image: export nothing
+#      and let the retry settings carry the job.
 #
 # Fail-open is load-bearing, and it is why the probe hits the mirror rather than
 # only the local process: a healthy proxy in front of an unreachable mirror answers
@@ -43,30 +41,47 @@ _rayci_pypi_index_setup() {
   resolved="$(getent hosts "${mirror#https://}" 2>/dev/null | awk '{print $1}' | paste -sd, -)"
   echo "pypi index: mirror=${mirror} resolves_to=${resolved:-<unresolved>}"
 
-  local body
-  # 1. Rewriting simple index. Accepted only if the page points at the mirror for
-  #    artifacts; a page that still names files.pythonhosted.org would leave the
-  #    downloads on the origin.
-  if body="$(curl -sf -m 15 -H 'Accept: text/html' "${mirror}/simple/${probe_pkg}/" 2>/dev/null)" \
-    && [[ -n "${body}" ]]; then
-    if grep -qF "${mirror}/files.pythonhosted.org/" <<<"${body}"; then
-      export RAYCI_PYPI_INDEX_MODE="mirror-simple"
-      export PIP_INDEX_URL="${mirror}/simple"
-      export UV_INDEX_URL="${mirror}/simple"
-      export RULES_PYTHON_PIP_ISOLATED=0
-      echo "pypi index: using the mirror's rewriting simple index -> ${PIP_INDEX_URL}"
-      return 0
-    fi
-    echo "pypi index: ${mirror}/simple answers but does not rewrite artifact URLs; trying the byte cache" >&2
-  fi
-
-  # 2. Path-prefixed byte cache, which needs the local rewriting proxy in front.
+  # The mirror is a byte cache, not an index. It parses only /<host>/<path>, so
+  # <mirror>/simple/ reads as a host named "simple"; and it serves cache hits as 303
+  # redirects to presigned S3 URLs, so it never holds a body it could rewrite. There is
+  # therefore no mode where pip points straight at it -- an index has to be put in front.
+  # This probe establishes reachability for everything below, including the bazel
+  # downloader rewrite, which needs only the mirror and not the proxy.
   if ! curl -sf -m 15 -o /dev/null "${mirror}/pypi.org/simple/${probe_pkg}/" 2>/dev/null; then
     export RAYCI_PYPI_INDEX_MODE="pypi"
     echo "pypi index: mirror unreachable from this agent; resolving from public PyPI" >&2
     return 0
   fi
-  if [[ ! -x /opt/pypiproxy/bin/python ]]; then
+  # Bazel's own downloader is a separate problem from pip's index and gets its own
+  # answer, in ci/bazel_mirror_downloader.sh. Called here rather than after the proxy
+  # starts because it needs only the mirror: an image carrying no proxy still gets its
+  # bazel downloads mirrored.
+  #
+  # Found rather than assumed, because this file is installed into the image as
+  # /etc/profile.d/zz-rayci-pypi-proxy.sh and runs at shell start, when the only copy it
+  # can count on is the one install_pypi_proxy.sh put beside the proxy. The checkout
+  # paths cover images that carry no proxy.
+  _rayci_source_bazel_downloader() {
+    local candidate
+    for candidate in \
+      "${RAYCI_BAZEL_DOWNLOADER_LIB:-}" \
+      "${RAYCI_PYPI_PROXY_PREFIX:-/opt/pypiproxy}/bazel_mirror_downloader.sh" \
+      "${RAYCI_CHECKOUT_DIR:+${RAYCI_CHECKOUT_DIR}/ci/bazel_mirror_downloader.sh}" \
+      "./ci/bazel_mirror_downloader.sh"; do
+      [[ -n "${candidate}" && -f "${candidate}" ]] || continue
+      # shellcheck source=ci/bazel_mirror_downloader.sh
+      source "${candidate}" && return 0
+    done
+    return 1
+  }
+  if _rayci_source_bazel_downloader; then
+    rayci_bazel_downloader_config "${mirror}"
+  else
+    echo "pypi index: no bazel downloader helper found; bazel downloads stay on the origin" >&2
+  fi
+
+  local prefix="${RAYCI_PYPI_PROXY_PREFIX:-/opt/pypiproxy}"
+  if [[ ! -x "${prefix}/bin/python" ]]; then
     export RAYCI_PYPI_INDEX_MODE="pypi"
     echo "pypi index: byte cache reachable but this image carries no proxy; resolving from public PyPI" >&2
     return 0
@@ -85,8 +100,15 @@ _rayci_pypi_index_setup() {
   # start. Sharing a namespace would also share ports with the tests, which is its
   # own hazard. This address works unchanged from here and from any container on the
   # same bridge.
-  local host
-  host="$(hostname -i 2>/dev/null | awk '{print $1}')"
+  # RAYCI_PYPI_PROXY_HOST lets a caller name the address instead. Steps that run
+  # directly on an agent rather than in a container -- macOS, and the Windows host --
+  # set it, because `hostname -i` is a Linux-only spelling and because there is no
+  # nested container that needs to reach this: loopback is both correct and, for pip
+  # and uv, exempt from the plain-HTTP refusal below.
+  local host="${RAYCI_PYPI_PROXY_HOST:-}"
+  if [[ -z "${host}" ]]; then
+    host="$(hostname -i 2>/dev/null | awk '{print $1}')"
+  fi
   if [[ -z "${host}" ]]; then
     export RAYCI_PYPI_INDEX_MODE="pypi"
     echo "pypi index: could not determine this container's address; resolving from public PyPI" >&2
@@ -94,11 +116,17 @@ _rayci_pypi_index_setup() {
   fi
   local url="http://${host}:${port}"
 
-  # setsid gives the proxy its own session: `bash -i` enables job control, so a
-  # plain background job shares the step shell's process group and would be
-  # signalled along with it.
-  MIRROR_URL="${mirror}" setsid /opt/pypiproxy/bin/python \
-    /opt/pypiproxy/pypi_index_proxy.py "${port}" >"${log}" 2>&1 &
+  # The proxy needs its own session: `bash -i` enables job control, so a plain
+  # background job shares the step shell's process group and would be signalled along
+  # with it. setsid is util-linux and absent on macOS, where nohup plus a subshell
+  # achieves the same detachment.
+  if command -v setsid >/dev/null 2>&1; then
+    MIRROR_URL="${mirror}" setsid "${prefix}/bin/python" \
+      "${prefix}/pypi_index_proxy.py" "${port}" >"${log}" 2>&1 &
+  else
+    ( MIRROR_URL="${mirror}" nohup "${prefix}/bin/python" \
+        "${prefix}/pypi_index_proxy.py" "${port}" >"${log}" 2>&1 & )
+  fi
 
   local _
   for _ in $(seq 1 60); do
