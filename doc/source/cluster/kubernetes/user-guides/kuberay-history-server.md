@@ -245,7 +245,7 @@ Configure the collector sidecar container with the following environment variabl
   - Yes (all nodes)
   - Object storage bucket or container name. For other cloud providers, use `S3_BUCKET` or `AZURE_STORAGE_CONTAINER`.
 * - `STORAGE_BACKEND`
-  - `--runtime-class-name`
+  - `--storage-backend`
   - Yes (all nodes)
   - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`). The `--runtime-class-name` flag is specific to the collector storage backend.
 * - `RAY_ROLE`
@@ -287,7 +287,7 @@ Configure the collector sidecar container with the following environment variabl
 * - `EVENTS_PORT`
   - `--events-port`
   - No
-  - Event server listening port matching the Ray container export address (defaults to `8080`). The example manifest sets this to `8084`.
+  - Event server listening port matching the Ray container export address (defaults to `8084`).
 :::
 
 :::{important}
