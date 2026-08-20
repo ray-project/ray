@@ -87,10 +87,44 @@ build:
         echo "[global]" > ~/.config/pip/pip.conf
         echo "retries = 10" >> ~/.config/pip/pip.conf
         cat ~/.config/pip/pip.conf
+    # Wrap the Sphinx build in builder resource diagnostics.
+    #
+    # Sphinx builds the docs with -j auto, so it forks one write worker per
+    # CPU. When a worker dies the parent only reports EOFError from
+    # multiprocessing/connection.py, with no indication of which document or
+    # why, and the reported document varies from build to build. Five builds
+    # in the last two days failed that way, including one on master, so the
+    # cause is the builder rather than any one PR.
+    #
+    # The likely mechanism is the kernel OOM-killing a write worker, but
+    # confirming that needs the builder's CPU count, its cgroup memory
+    # ceiling, the peak the build actually reached, and the cgroup OOM
+    # counters. Capping -j without those numbers would cost wall-clock on
+    # every doc build and might buy nothing, since the right cap depends on
+    # how many CPUs the builder has in the first place.
+    #
+    # The diagnostics run around the build rather than in a post_build job
+    # because post_build is skipped when the build fails, and the failing
+    # build is the one worth measuring. rc carries the make exit status
+    # through so a real Sphinx failure still fails the build.
+    #
+    # Remove this wrapper once the numbers are captured and the follow-up
+    # fix lands.
     build:
       html:
         - |
-          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
+          echo "=== builder capacity ==="
+          nproc || true
+          grep -E "MemTotal|MemAvailable" /proc/meminfo || true
+          cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "no cgroup v2 memory.max"
+          cat /sys/fs/cgroup/memory.high 2>/dev/null || echo "no cgroup v2 memory.high"
+          rc=0
+          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" || rc=$?
+          echo "=== builder peak, sphinx exit $rc ==="
+          cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo "no cgroup v2 memory.peak"
+          cat /sys/fs/cgroup/memory.events 2>/dev/null || echo "no cgroup v2 memory.events"
+          grep -E "MemAvailable" /proc/meminfo || true
+          exit $rc
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
