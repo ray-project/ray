@@ -1,0 +1,293 @@
+"""One-knob benchmark: SHUFFLE_V2 in-memory vs external (file-transport).
+
+The only mandatory difference between the two variants is which
+``DataContext`` flag gets flipped -- everything else (read, limit,
+repartition, write, stats collection) is shared.
+
+  in-memory -> shuffle_strategy = SHUFFLE_V2,
+               use_external_hash_shuffle = False
+               (map outputs via Ray object store; spills to disk when full)
+  external  -> shuffle_strategy = SHUFFLE_V2,
+               use_external_hash_shuffle = True
+               (file-transport; local disk + Flight; object store carries
+                small handles only)
+
+Optional timeline dump is gated behind a CLI flag and off by default.
+
+Usage:
+  # quick: one shot, just print the wall-clock
+  python bench_shuffle.py --shuffle external --data-size-gb 100 --num-partitions 100
+
+  # both back-to-back (prints two RESULT lines for easy diff)
+  python bench_shuffle.py --shuffle both --data-size-gb 100 --num-partitions 100
+
+  # with timeline dump + per-run stats
+  RAY_DATA_SHUFFLE_PROFILE=1 \\
+  python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 512 \\
+      --timeline-out /tmp/external.json --stats
+"""
+
+import argparse
+import gc
+import json
+import os
+import shutil
+import sys
+import time
+from datetime import datetime
+
+import ray
+from ray.data.context import DataContext, ShuffleStrategy
+
+KEY_COLUMNS = ["column00"]  # l_orderkey
+APPROX_BYTES_PER_ROW = 145
+
+# Env vars that the driver should forward to workers (Anyscale workspace
+# attaches to a running cluster, so driver-side os.environ doesn't
+# propagate by default). Anything read at module-import time on a worker
+# (e.g. RAY_DATA_SHUFFLE_PROFILE) must go here.
+_WORKER_ENV_VARS_TO_FORWARD = ("RAY_DATA_SHUFFLE_PROFILE",)
+
+
+def pick_sf(data_size_gb: int) -> int:
+    if data_size_gb <= 70:
+        return 100
+    if data_size_gb <= 700:
+        return 1000
+    return 10000
+
+
+def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
+    deadline = time.perf_counter() + timeout_s
+    while time.perf_counter() < deadline:
+        mem = ray.cluster_resources().get("object_store_memory", 1)
+        avail = ray.available_resources().get("object_store_memory", 0)
+        used_pct = (1 - avail / mem) * 100 if mem > 0 else 0
+        if used_pct < threshold_pct:
+            return
+        print(f"    draining object store ({used_pct:.0f}% used)...", flush=True)
+        time.sleep(poll_s)
+    print(f"    object store drain timed out after {timeout_s}s", flush=True)
+
+
+def configure_shuffle(ctx, shuffle: str) -> None:
+    """Flip the one knob that distinguishes in-memory from external.
+
+    Both keep ``SHUFFLE_V2``; ``use_external_hash_shuffle`` selects the
+    transport (object-store vs on-disk / Flight).
+    """
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_external_hash_shuffle = shuffle == "external"
+
+
+def run_one(
+    *,
+    data_size_gb: int,
+    num_partitions: int,
+    shuffle: str,
+    output_path: str,
+    dump_stats: bool,
+) -> dict:
+    sf = pick_sf(data_size_gb)
+    target_rows = int(data_size_gb * 1024**3 / APPROX_BYTES_PER_ROW)
+    path = f"s3://ray-benchmark-data/tpch/parquet/sf{sf}/lineitem"
+    shutil.rmtree(output_path, ignore_errors=True)
+
+    ds = ray.data.read_parquet(path).limit(target_rows)
+    configure_shuffle(ds.context, shuffle)
+    repartitioned = ds.repartition(num_partitions, keys=KEY_COLUMNS)
+
+    print(
+        f"  [{shuffle}] read(sf{sf}, limit {target_rows:,}) "
+        f"+ shuffle -> {num_partitions} partitions + write ... ",
+        end="",
+        flush=True,
+    )
+    start = time.perf_counter()
+    repartitioned.write_parquet(output_path)
+    elapsed = time.perf_counter() - start
+    print(f"{elapsed:.1f}s ({target_rows:,} rows, {data_size_gb} GB)", flush=True)
+
+    stats_str = None
+    if dump_stats:
+        stats_str = repartitioned.stats()
+        print("\n===== ds.stats() =====\n" + stats_str + "\n", flush=True)
+
+    del repartitioned, ds
+    gc.collect()
+    shutil.rmtree(output_path, ignore_errors=True)
+    wait_for_object_store_to_drain()
+
+    gbps = data_size_gb / elapsed if elapsed > 0 else 0.0
+    return {
+        "shuffle": shuffle,
+        "data_size_gb": data_size_gb,
+        "num_partitions": num_partitions,
+        "sf": sf,
+        "rows": target_rows,
+        "elapsed_s": elapsed,
+        "throughput_gbps": gbps,
+        "stats": stats_str,
+    }
+
+
+def _wait_for_fleet(target_cpu: int, timeout_s: int = 1200) -> None:
+    print(f"Waiting for {target_cpu} CPU to come online ...", flush=True)
+    deadline = time.perf_counter() + timeout_s
+    while time.perf_counter() < deadline:
+        cur = ray.cluster_resources().get("CPU", 0)
+        if cur >= target_cpu:
+            break
+        time.sleep(10)
+    final = ray.cluster_resources().get("CPU", 0)
+    print(f"Fleet ready: {final:.0f} CPU", flush=True)
+
+
+def _print_cluster_summary(data_size_gb: int) -> None:
+    c = ray.cluster_resources()
+    cpu = c.get("CPU", 0)
+    mem_gb = c.get("memory", 0) / 1e9
+    obj_gb = c.get("object_store_memory", 0) / 1e9
+    nodes = len([n for n in ray.nodes() if n.get("Alive")])
+    in_core = obj_gb / 3 if obj_gb > 0 else 0
+    ratio = data_size_gb / in_core if in_core > 0 else float("inf")
+    zone = "SPILL/OOC" if ratio > 1 else "in-core"
+    print(
+        f"Cluster: {nodes} nodes, {cpu:.0f} CPU, "
+        f"{mem_gb:.0f} GB mem, {obj_gb:.0f} GB obj store",
+        flush=True,
+    )
+    print(
+        f"In-core limit (obj/3) ~= {in_core:.0f} GB; "
+        f"test {data_size_gb} GB => {ratio:.1f}x ({zone})",
+        flush=True,
+    )
+
+
+def _print_result_line(r: dict) -> None:
+    print(
+        f"\nRESULT shuffle={r['shuffle']} "
+        f"size={r['data_size_gb']}GB "
+        f"parts={r['num_partitions']} "
+        f"rows={r['rows']:,} "
+        f"wall={r['elapsed_s']:.1f}s "
+        f"throughput={r['throughput_gbps']:.2f}GB/s",
+        flush=True,
+    )
+
+
+def main() -> None:
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--shuffle",
+        choices=["in-memory", "external", "both"],
+        default="external",
+        help="Pick one transport, or 'both' to run in-memory then external "
+        "back-to-back for direct comparison.",
+    )
+    p.add_argument("--data-size-gb", type=int, required=True)
+    p.add_argument("--num-partitions", type=int, required=True)
+    p.add_argument(
+        "--target-cpu",
+        type=int,
+        default=256,
+        help="Wait for this many CPU before starting. Default 256.",
+    )
+    p.add_argument(
+        "--output-path",
+        type=str,
+        default="/tmp/shuffle_output",
+        help="Local sink directory for write_parquet.",
+    )
+    p.add_argument(
+        "--timeline-out",
+        type=str,
+        default=None,
+        help="If set, dump ray.timeline() (Chrome trace) "
+        "after each run as <path>.<shuffle>.json.",
+    )
+    p.add_argument(
+        "--result-json",
+        type=str,
+        default=None,
+        help="If set, dump all RESULT dicts as a JSON array to this path.",
+    )
+    p.add_argument(
+        "--stats", action="store_true", help="Print ds.stats() after each run."
+    )
+    args = p.parse_args()
+
+    forwarded = {
+        k: os.environ[k] for k in _WORKER_ENV_VARS_TO_FORWARD if k in os.environ
+    }
+    runtime_env = {"env_vars": forwarded} if forwarded else None
+    ray.init(address="auto", runtime_env=runtime_env)
+
+    ctx = DataContext.get_current()
+    ctx.use_datasource_v2 = True
+
+    _wait_for_fleet(args.target_cpu)
+    _print_cluster_summary(args.data_size_gb)
+
+    shuffles = (
+        ["in-memory", "external"] if args.shuffle == "both" else [args.shuffle]
+    )
+    print(
+        f"Running: {', '.join(shuffles)} ({args.num_partitions} partitions)\n",
+        flush=True,
+    )
+
+    results = []
+    for s in shuffles:
+        t0 = time.time()
+        bench_start = time.time()
+        r = run_one(
+            data_size_gb=args.data_size_gb,
+            num_partitions=args.num_partitions,
+            shuffle=s,
+            output_path=args.output_path,
+            dump_stats=args.stats,
+        )
+
+        if args.timeline_out:
+            tl_path = f"{args.timeline_out}.{s}.json"
+            try:
+                ray.timeline(filename=tl_path)
+                print(
+                    f"TIMELINE {tl_path} " f"(bench_start_ts={bench_start:.3f})",
+                    flush=True,
+                )
+            except Exception as e:
+                print(f"timeline dump failed: {e}", flush=True)
+
+        _print_result_line(r)
+        print(
+            f"(wall-clock total incl. setup: {time.time()-t0:.1f}s)  "
+            f"{datetime.now().isoformat()}",
+            flush=True,
+        )
+        results.append(r)
+
+    if args.shuffle == "both" and len(results) == 2:
+        in_memory_t = results[0]["elapsed_s"]
+        external_t = results[1]["elapsed_s"]
+        speedup = in_memory_t / external_t if external_t > 0 else float("inf")
+        print(
+            f"\nSPEEDUP external vs in-memory: {speedup:.2f}x  "
+            f"(in-memory={in_memory_t:.1f}s, external={external_t:.1f}s)",
+            flush=True,
+        )
+
+    if args.result_json:
+        # Strip stats text from JSON output (too verbose for an aggregate dump);
+        # individual stats already went to stdout if --stats was set.
+        slim = [{k: v for k, v in r.items() if k != "stats"} for r in results]
+        with open(args.result_json, "w") as f:
+            json.dump(slim, f, indent=2)
+        print(f"RESULTS_JSON {args.result_json}", flush=True)
+
+    print("DONE", flush=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
