@@ -30,7 +30,7 @@ The best policy depends on your workload. You can configure different routers th
 
 ## Installation
 
-The router scores replicas with the selection service from [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo), which Ray Serve LLM runs in-process inside the ingress replica. Scoring is all it does: Ray Serve manages replica discovery, request orchestration, and request lifecycle. Install it in your cluster environment, for example in the image:
+The router scores replicas with the selection service from [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo), which Ray Serve LLM runs in-process inside the ingress replica. The selection service is responsible for request scoring, while Ray Serve manages replica discovery, request orchestration, request lifecycle, and KV event transport and synchronization. Install it in your cluster environment, for example in the image:
 
 ```bash
 pip install "ai-dynamo>=1.4.0"
