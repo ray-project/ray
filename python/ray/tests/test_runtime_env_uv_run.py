@@ -318,6 +318,36 @@ def test_uv_run_runtime_env_hook():
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+def test_uv_run_runtime_env_hook_option_with_equals(monkeypatch):
+    # Arguments of the command written as "--option=value" must not cut the
+    # 'uv run' arguments short, see
+    # https://github.com/ray-project/ray/issues/62650. Ray Client passes all of
+    # the arguments of its server in this form.
+    from ray._private.runtime_env import uv_runtime_env_hook
+
+    monkeypatch.setattr(
+        uv_runtime_env_hook,
+        "_get_uv_run_cmdline",
+        lambda: [
+            "uv",
+            "run",
+            "--no-project",
+            "-m",
+            "ray.util.client.server",
+            "--address=127.0.0.1:6379",
+            "--mode=specific-server",
+        ],
+    )
+    monkeypatch.setenv("UV_PYTHON", sys.executable)
+
+    runtime_env = uv_runtime_env_hook.hook({})
+
+    assert runtime_env["py_executable"] == (
+        f"uv run --no-project --python {sys.executable} python"
+    )
+
+
 def test_uv_run_parser():
     from ray._private.runtime_env.uv_runtime_env_hook import (
         _create_uv_run_parser,
@@ -366,6 +396,40 @@ def test_uv_run_parser():
     assert options.extras == ["vllm"]
     assert options.module == "my_module.submodule"
     assert command == ["--model", "Qwen/Qwen3-32B"]
+
+    # The same arguments written as "--option=value". optparse consumes the
+    # "value" half of the argument before it reports the option as unknown, so
+    # the command used to come back with "--model" and "Qwen/Qwen3-32B" as two
+    # separate entries and the caller then cut the 'uv run' arguments one
+    # argument short (https://github.com/ray-project/ray/issues/62650).
+    options, command = _parse_args(
+        parser,
+        [
+            "--isolated",
+            "--extra=vllm",
+            "-m",
+            "my_module.submodule",
+            "--model=Qwen/Qwen3-32B",
+        ],
+    )
+    assert options.isolated
+    assert options.extras == ["vllm"]
+    assert options.module == "my_module.submodule"
+    assert command == ["--model=Qwen/Qwen3-32B"]
+
+    # An unknown option in "--option=value" form right after 'uv run'.
+    options, command = _parse_args(parser, ["--model=Qwen/Qwen3-32B", "script.py"])
+    assert command == ["--model=Qwen/Qwen3-32B", "script.py"]
+
+    # An unknown option in "--option=value" form with an empty value.
+    options, command = _parse_args(parser, ["--no-dev", "--model="])
+    assert options.no_dev
+    assert command == ["--model="]
+
+    # An unknown option whose value itself looks like "--option=value".
+    options, command = _parse_args(parser, ["--no-dev", "--model", "--model=x"])
+    assert options.no_dev
+    assert command == ["--model", "--model=x"]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
