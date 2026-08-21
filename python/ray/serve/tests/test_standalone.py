@@ -709,14 +709,11 @@ def test_serve_start_proxy_location(ray_shutdown, options):
 
 def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     """Tracing config passed to ``serve.start()`` reaches the controller and is
-    applied to replicas (the imperative flow).
+    applied to both replicas and proxies (the imperative flow).
 
-    Verifies that the controller stores the config and that, after a request,
-    a tracing span file is produced for the replica -- proving the config
-    propagated from serve.start() through the controller to the replica.
-
-    Note: proxy tracing is not wired via this path (proxies start before the
-    controller is queryable); that is handled separately via long poll.
+    Verifies the controller stores the config and that, after a request, tracing
+    span files are produced for the replica (which pulls the config at init) and
+    the proxy (which receives it via the GLOBAL_TRACING_CONFIG long poll).
     """
     tracing_config = TracingConfig(enabled=True, sampling_ratio=1.0)
     serve.start(
@@ -742,15 +739,43 @@ def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     url = get_application_url("HTTP")
     assert httpx.post(f"{url}/").text == "hello"
 
-    serve.shutdown()
-
-    # Tracing was set up on the replica, so a replica span file exists.
+    # Tracing was set up on the replica and (via long poll) the proxy, so span
+    # files are produced for both.
     spans_dir = os.path.join(get_serve_logs_dir(), "spans")
-    span_files = os.listdir(spans_dir)
+
+    def replica_and_proxy_traces_created() -> bool:
+        if not os.path.isdir(spans_dir):
+            return False
+        files = os.listdir(spans_dir)
+        return any("replica" in f for f in files) and any("proxy" in f for f in files)
+
     try:
-        assert any("replica" in f for f in span_files), span_files
+        wait_for_condition(replica_and_proxy_traces_created, timeout=20)
     finally:
+        serve.shutdown()
         shutil.rmtree(spans_dir, ignore_errors=True)
+
+
+def test_serve_tracing_config_survives_controller_recovery(ray_shutdown):
+    """A tracing config is checkpointed and restored after controller recovery."""
+    serve.start(tracing_config=TracingConfig(enabled=True, sampling_ratio=0.5))
+    client = _get_global_client()
+
+    # Change the config after startup so the checkpoint is the only place the
+    # new value exists: Ray replays the controller's constructor args on
+    # restart, so a config passed to serve.start() would be restored even
+    # without a checkpoint.
+    updated_config = TracingConfig(enabled=True, sampling_ratio=1.0)
+    ray.get(client._controller.reconfigure_global_tracing_config.remote(updated_config))
+    assert ray.get(client._controller.get_tracing_config.remote()) == updated_config
+
+    # Kill the controller; on recovery it should restore the updated config from
+    # its checkpoint rather than the (stale) constructor argument.
+    pid = ray.get(client._controller.get_pid.remote())
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+
+    assert ray.get(client._controller.get_tracing_config.remote()) == updated_config
 
 
 @pytest.mark.parametrize(
