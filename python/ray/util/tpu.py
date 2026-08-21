@@ -1130,10 +1130,6 @@ class SlicePlacementGroup:
 
         Returns:
             A dictionary mapping PyTorch TPU environment variables to their values.
-
-        Note:
-            Currently, this method only sets PyTorch-specific environment variables
-            (TORCH_TPU_TOPOLOGY and TORCH_TPU_SLICEBUILDER_ADDRESSES).
         """
         if slicebuilder_addresses is None:
             slicebuilder_addresses = os.environ.get(
@@ -1158,10 +1154,6 @@ class SlicePlacementGroup:
 
         Returns:
             A Ray RuntimeEnv populated with PyTorch TPU environment variables.
-
-        Note:
-            Currently, this method only sets PyTorch-specific environment variables
-            (TORCH_TPU_TOPOLOGY and TORCH_TPU_SLICEBUILDER_ADDRESSES).
         """
         env_vars = self.get_torchtpu_env_vars(
             slicebuilder_addresses=slicebuilder_addresses
@@ -1249,9 +1241,10 @@ class SlicePlacementGroup:
         """
         if worker_hostnames is None:
             slice_addrs = self.get_worker_addrs(slice_index)
-            addrs = [a for a in slice_addrs if a is not None]
-            if addrs:
-                worker_hostnames = addrs
+            bundles_per_slice = self._num_bundles // self._num_slices
+            placed = [a for a in slice_addrs if a is not None]
+            if len(placed) == bundles_per_slice:
+                worker_hostnames = placed
             else:
                 worker_hostnames = os.environ.get(TPU_WORKER_HOSTNAMES_ENV_VAR, "")
 
@@ -2373,10 +2366,12 @@ class SubslicePlacementGroup:
             self._placement_group = None
         self.release_head_pgs()
 
-    def _slice_addresses_by_offset(self, addresses: List[str]) -> List[str]:
-        """Slices a flat parent TORCH_TPU_SLICEBUILDER_ADDRESSES list by worker index offset.
+    def _slice_addresses_by_offset(
+        self, addresses: List[str], env_var_name: str = "addresses"
+    ) -> List[str]:
+        """Slices a flat parent address or hostname list by worker index offset.
 
-        Used only as a fallback when per-host discovery data is unavailable.
+        Used only as a fallback when per-host discovery or placed bundle data is unavailable.
         """
         total_parent_chips = get_num_chips_from_topology(self._parent_topology)
         parent_hosts = max(1, total_parent_chips // self._chips_per_host)
@@ -2413,7 +2408,7 @@ class SubslicePlacementGroup:
                 return sliced
 
         raise ValueError(
-            f"Cannot slice TORCH_TPU_SLICEBUILDER_ADDRESSES for subslice {self._subslice_index} "
+            f"Cannot slice {env_var_name} for subslice {self._subslice_index} "
             f"of topology '{self._subslice_topology}' in parent '{self._parent_topology}': "
             f"expected {expected_count} addresses for {self._num_hosts} host(s), "
             f"but got {len(addresses)} total parent addresses (start={start_idx}, end={end_idx})."
@@ -2431,7 +2426,7 @@ class SubslicePlacementGroup:
         1. Explicit ``slicebuilder_addresses`` argument passed by caller (used verbatim).
         2. Per-host discovery data cached during subslice placement group creation.
         3. Fallback: local ``TORCH_TPU_SLICEBUILDER_ADDRESSES`` environment variable with positional index slicing (emits a warning).
-        4. If no addresses are available, ``TORCH_TPU_SLICEBUILDER_ADDRESSES`` is omitted.
+        4. If no addresses can be resolved, raises a ``RuntimeError``.
 
         Args:
             slicebuilder_addresses: Optional explicit comma-separated string or list
@@ -2441,12 +2436,9 @@ class SubslicePlacementGroup:
             A dictionary mapping PyTorch TPU environment variables to their values.
 
         Raises:
+            RuntimeError: If slicebuilder addresses cannot be resolved.
             ValueError: If positional address slicing in the fallback yields a count that
                 cannot match the sub-slice topology.
-
-        Note:
-            Currently, this method only sets PyTorch-specific environment variables
-            (TORCH_TPU_TOPOLOGY and TORCH_TPU_SLICEBUILDER_ADDRESSES).
         """
         resolved_addrs: Optional[List[str]] = None
 
@@ -2477,9 +2469,18 @@ class SubslicePlacementGroup:
                     TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR,
                 )
                 raw_list = [a.strip() for a in raw_env_addrs.split(",") if a.strip()]
-                resolved_addrs = self._slice_addresses_by_offset(raw_list)
+                resolved_addrs = self._slice_addresses_by_offset(
+                    raw_list, env_var_name=TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR
+                )
 
-        # 4. Return environment dict
+        if not resolved_addrs:
+            raise RuntimeError(
+                f"Could not resolve {TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR} for subslice "
+                f"{self._subslice_index} (topology '{self._subslice_topology}' of parent '{self._parent_topology}'). "
+                "Per-host discovery data was unavailable and the local environment variable was not found. "
+                "Please verify worker connectivity or pass `slicebuilder_addresses` explicitly."
+            )
+
         return get_torchtpu_env_vars(
             topology=self._subslice_topology,
             slicebuilder_addresses=resolved_addrs,
@@ -2491,12 +2492,7 @@ class SubslicePlacementGroup:
         self,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
     ) -> RuntimeEnv:
-        """Returns a Ray RuntimeEnv with sub-slice TPU environment variables.
-
-        Note:
-            Currently, this method only sets PyTorch-specific environment variables
-            (TORCH_TPU_TOPOLOGY and TORCH_TPU_SLICEBUILDER_ADDRESSES).
-        """
+        """Returns a Ray RuntimeEnv with sub-slice TPU environment variables."""
         env_vars = self.get_torchtpu_env_vars(
             slicebuilder_addresses=slicebuilder_addresses
         )
@@ -2527,34 +2523,58 @@ class SubslicePlacementGroup:
     ) -> Dict[str, str]:
         """Returns the JAX TPU environment variables for this sub-slice.
 
+        Resolution order for ``TPU_WORKER_HOSTNAMES``:
+
+        1. Explicit ``worker_hostnames`` argument passed by caller.
+        2. Placed placement group bundle node IPs (when all bundles are placed).
+        3. Fallback: local ``TPU_WORKER_HOSTNAMES`` environment variable.
+        4. If unresolvable, raises a ``RuntimeError``.
+
         Args:
             worker_id: Optional integer or string ID of the worker within the sub-slice (0 to num_hosts - 1).
             worker_hostnames: Optional comma-separated string or list of host IP
                 addresses or DNS hostnames for this sub-slice. If omitted, resolved
-                from placement group bundles or discovery data.
+                from placement group bundle node IPs.
 
         Returns:
             A dictionary mapping JAX TPU environment variables to their values.
+
+        Raises:
+            RuntimeError: If worker hostnames cannot be resolved.
         """
+        # Resolution order for worker hostnames:
+        # 1. Explicit `worker_hostnames` passed by caller.
+        # 2. Placed placement group bundle node IPs (when fully placed).
+        # 3. Fallback: local TPU_WORKER_HOSTNAMES environment variable.
+        # 4. If unresolvable, raise a RuntimeError.
         if worker_hostnames is None:
-            addrs = [a for a in self.worker_addrs if a is not None]
-            if addrs:
-                worker_hostnames = addrs
-            elif self._slicebuilder_addresses:
-                # Extract host IPs from slicebuilder address:port list
-                clean = []
-                for a in self._slicebuilder_addresses:
-                    h = _strip_endpoint_port(a)
-                    if h and h not in clean:
-                        clean.append(h)
-                worker_hostnames = clean
+            placed_addrs = [a for a in self.worker_addrs if a is not None]
+            if len(placed_addrs) == self._num_hosts:
+                worker_hostnames = placed_addrs
+            elif (
+                TPU_WORKER_HOSTNAMES_ENV_VAR in os.environ
+                and os.environ[TPU_WORKER_HOSTNAMES_ENV_VAR].strip()
+            ):
+                raw_env_hosts = os.environ[TPU_WORKER_HOSTNAMES_ENV_VAR].strip()
+                raw_list = [h.strip() for h in raw_env_hosts.split(",") if h.strip()]
+                if len(raw_list) == self._num_hosts:
+                    worker_hostnames = raw_list
+                else:
+                    worker_hostnames = self._slice_addresses_by_offset(
+                        raw_list, env_var_name=TPU_WORKER_HOSTNAMES_ENV_VAR
+                    )
             else:
-                worker_hostnames = os.environ.get(TPU_WORKER_HOSTNAMES_ENV_VAR, "")
+                raise RuntimeError(
+                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for subslice "
+                    f"{self._subslice_index} (topology '{self._subslice_topology}' of parent '{self._parent_topology}'). "
+                    "Placement group bundles are not yet placed and the "
+                    f"local {TPU_WORKER_HOSTNAMES_ENV_VAR} environment variable was not found. "
+                    "Please ensure the placement group is ready, or pass `worker_hostnames` explicitly."
+                )
 
         process_bounds = get_jax_process_bounds(self._subslice_topology)
         chips_per_process_bounds = get_jax_chips_per_process_bounds(
             chips_per_host=self._chips_per_host,
-            accelerator_version=self._accelerator_version,
         )
 
         return get_jax_env_vars(

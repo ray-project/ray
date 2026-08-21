@@ -282,7 +282,6 @@ def get_jax_process_bounds(topology: str) -> str:
 
 def get_jax_chips_per_process_bounds(
     chips_per_host: int = DEFAULT_TPU_NUM_CHIPS_PER_HOST,
-    accelerator_version: Optional[str] = None,
 ) -> str:
     """Returns the JAX/libtpu chips-per-process bounds string (e.g. '2,2,1' for 4 chips)."""
     return TPU_CHIPS_PER_PROCESS_BOUNDS.get(chips_per_host, f"{chips_per_host},1,1")

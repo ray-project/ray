@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -3236,7 +3237,7 @@ def test_subslice_placement_group_torchtpu_env_explicit_addresses():
 
 
 def test_subslice_placement_group_torchtpu_env_no_discovery_data(monkeypatch):
-    """Test absent discovery data returns TORCH_TPU_TOPOLOGY but omits addresses."""
+    """Test absent discovery data raises RuntimeError when slicebuilder addresses cannot be resolved."""
     monkeypatch.delenv("TORCH_TPU_SLICEBUILDER_ADDRESSES", raising=False)
     ss_pg = SubslicePlacementGroup(
         placement_group=None,
@@ -3250,9 +3251,11 @@ def test_subslice_placement_group_torchtpu_env_no_discovery_data(monkeypatch):
         accelerator_version="v6e",
         slicebuilder_addresses=None,
     )
-    env = ss_pg.get_torchtpu_env_vars()
-    assert env["TORCH_TPU_TOPOLOGY"] == "2,4,1"
-    assert "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in env
+    with pytest.raises(
+        RuntimeError,
+        match="Could not resolve TORCH_TPU_SLICEBUILDER_ADDRESSES",
+    ):
+        ss_pg.get_torchtpu_env_vars()
 
 
 def test_subslice_placement_group_torchtpu_env_fallback(monkeypatch):
@@ -3638,15 +3641,18 @@ def test_slice_placement_group_addresses_and_jax_env():
         assert slice_pg_pps.get_master_addr(0) == "10.0.0.1"
         assert slice_pg_pps.get_master_addr(1) == "10.0.0.3"
 
-        # Partial/unplaced PG retains exact length num_bundles
+        # Partial/unplaced PG retains exact length num_bundles and falls back to env var in get_jax_env_vars
         slice_pg_pps._managed_pgs = [mock_pg_0, None]
         assert slice_pg_pps.get_worker_addrs(1) == [None, None]
         assert slice_pg_pps.worker_addrs == ["10.0.0.1", "10.0.0.2", None, None]
+        with patch.dict(os.environ, {"TPU_WORKER_HOSTNAMES": "10.0.0.99,10.0.0.100"}):
+            env_partial = slice_pg_pps.get_jax_env_vars(slice_index=1)
+            assert env_partial["TPU_WORKER_HOSTNAMES"] == "10.0.0.99,10.0.0.100"
 
 
 def test_subslice_placement_group_addresses_and_jax_env():
     """Test SubslicePlacementGroup address resolution and JAX environment variables."""
-    # 1. Unplaced / uninitialized returns None
+    # 1. Unplaced / uninitialized returns None for addrs, and raises RuntimeError when unresolvable
     ss_pg = SubslicePlacementGroup(
         placement_group=None,
         parent_topology="4x4",
@@ -3660,6 +3666,11 @@ def test_subslice_placement_group_addresses_and_jax_env():
     )
     assert ss_pg.master_addr is None
     assert ss_pg.worker_addrs == [None, None]
+    with pytest.raises(
+        RuntimeError,
+        match="Could not resolve TPU_WORKER_HOSTNAMES",
+    ):
+        ss_pg.get_jax_env_vars(worker_id=0)
 
     # 2. Placed PG resolves bundle 0 and worker addresses
     mock_pg = MagicMock()
@@ -3695,8 +3706,8 @@ def test_subslice_placement_group_addresses_and_jax_env():
             "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
         }
 
-    # 3. Fallback to cached slicebuilder discovery addresses when unplaced
-    ss_unplaced = SubslicePlacementGroup(
+    # 3. Fallback to local TPU_WORKER_HOSTNAMES environment variable (matching subslice size)
+    ss_no_addrs = SubslicePlacementGroup(
         placement_group=None,
         parent_topology="4x4",
         subslice_topology="2x4",
@@ -3706,10 +3717,31 @@ def test_subslice_placement_group_addresses_and_jax_env():
         chips_per_host=4,
         bundle_resources={"CPU": 1, "TPU": 4},
         accelerator_version="v6e",
-        slicebuilder_addresses=["10.0.0.2:8471", "10.0.0.3:8471"],
+        slicebuilder_addresses=None,
     )
-    env_discovery = ss_unplaced.get_jax_env_vars(worker_id=0)
-    assert env_discovery["TPU_WORKER_HOSTNAMES"] == "10.0.0.2,10.0.0.3"
+    with patch.dict(os.environ, {"TPU_WORKER_HOSTNAMES": "10.0.0.8,10.0.0.9"}):
+        env_envvar = ss_no_addrs.get_jax_env_vars(worker_id=0)
+        assert env_envvar["TPU_WORKER_HOSTNAMES"] == "10.0.0.8,10.0.0.9"
+
+    # 4. Fallback slices parent TPU_WORKER_HOSTNAMES by subslice index offset
+    ss_subslice1 = SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=1,
+        slice_name="slice-0",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources={"CPU": 1, "TPU": 4},
+        accelerator_version="v6e",
+        slicebuilder_addresses=None,
+    )
+    with patch.dict(
+        os.environ,
+        {"TPU_WORKER_HOSTNAMES": "10.0.0.0,10.0.0.1,10.0.0.2,10.0.0.3"},
+    ):
+        env_sliced = ss_subslice1.get_jax_env_vars(worker_id=0)
+        assert env_sliced["TPU_WORKER_HOSTNAMES"] == "10.0.0.2,10.0.0.3"
 
 
 @pytest.mark.parametrize(
