@@ -478,6 +478,32 @@ doc/external/
 @ ml_doc
 ;
 
+# Committed intersphinx inventory snapshots and the script that refreshes them.
+# The `.inv` files are live build inputs: `intersphinx_mapping` in
+# doc/source/conf.py resolves each target's local `_intersphinx/<name>.inv`
+# ahead of its remote URL, so a truncated or stale snapshot changes what
+# cross-references resolve. But they are read as inventories, not as pages --
+# `exclude_patterns` drops `_intersphinx/**` from the source tree -- and no
+# bazel target names this directory, so there is nothing here for a docs
+# example step to execute. Route the whole directory to `doc`, the tag that
+# selects the documentation build, and to nothing else.
+#
+# Two things were wrong before this rule existed. `refresh.py` fell through to
+# the `doc/*.py` catch-all below, whose `*` crosses `/`, and so started the core
+# docs example step -- a large-instance, three-invocation bazel run -- for a
+# standalone maintenance script that nothing imports and no target covers. The
+# `.inv` files fell past it to the broad `doc/` skip and emitted no tag at all,
+# so refreshing an inventory, which is the routine maintenance this directory
+# exists for, triggered no build. The premerge gate for an inventory change is
+# the Read the Docs `-W` build, which runs outside tag selection; `doc` is what
+# gives the postmerge documentation build coverage here.
+#
+# README.md is already skipped by the `doc/*.md` prose rule further up, so this
+# rule only ever sees the snapshots and the script.
+doc/source/_intersphinx/
+@ doc
+;
+
 # Starter-template sources and the notebook authoring boilerplate. Sphinx never
 # reads any of these: `exclude_patterns` in doc/source/conf.py drops
 # `templates/*` from the build outright, and `_templates/template.ipynb` is a
