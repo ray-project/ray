@@ -10,6 +10,9 @@ from benchmark import Benchmark
 from ray.data import DataContext
 from ray.data.context import ShuffleStrategy
 
+# Same row-size estimate as bench_shuffle.py (TPC-H lineitem).
+APPROX_BYTES_PER_ROW = 145
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -43,6 +46,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Number of shuffle partitions. Sets "
             "DataContext.default_hash_shuffle_parallelism (hash strategies only)."
+        ),
+    )
+    parser.add_argument(
+        "--data-size-gb",
+        type=int,
+        default=None,
+        help=(
+            "If set, limit the lineitem read to about this many GB "
+            f"(rows ≈ GB * 1024**3 / {APPROX_BYTES_PER_ROW})."
         ),
     )
     parser.add_argument(
@@ -103,15 +115,22 @@ def main(args):
             else None
         )
 
+        limit_rows = None
+        if args.data_size_gb is not None:
+            limit_rows = int(args.data_size_gb * 1024**3 / APPROX_BYTES_PER_ROW)
+
         print(
             f"CONFIG shuffle_strategy={ctx.shuffle_strategy} "
             f"use_external_hash_shuffle={ctx.use_external_hash_shuffle} "
-            f"num_partitions={ctx.default_hash_shuffle_parallelism}",
+            f"num_partitions={ctx.default_hash_shuffle_parallelism} "
+            f"data_size_gb={args.data_size_gb} limit_rows={limit_rows}",
             flush=True,
         )
 
         t0 = time.perf_counter()
         ds = ray.data.read_parquet(path, override_num_blocks=override_num_blocks)
+        if limit_rows is not None:
+            ds = ds.limit(limit_rows)
         # Cast string columns to large_string: on low-cardinality keys a single
         # group's string data can exceed 2GB per column, overflowing Arrow's
         # int32 string offsets when the shuffle reduce sorts the partition

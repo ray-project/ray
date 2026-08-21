@@ -396,6 +396,35 @@
       --shuffle-strategy shuffle_v2 --num-partitions 500
       --shuffle-transport {{shuffle}} --stats
 
+# Same map_groups path at 512GB / 1024 partitions (aligns with
+# repartition_lineitem). Smaller partitions (~0.5GB) reduce sort-reduce
+# memory reservation vs SF1000/500 (~2GB x3).
+- name: "map_groups_512gb_{{shuffle}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle: [in-memory, external]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_object_manager_client_connection_num=8
+        - RAY_object_manager_rpc_threads_num=8
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python groupby_benchmark.py --sf 1000 --map-groups
+      --group-by column02 column14
+      --shuffle-strategy shuffle_v2 --num-partitions 1024
+      --data-size-gb 512 --shuffle-transport {{shuffle}} --stats
+
 # Keyed repartition of TPC-H lineitem (not groupby). Manual release filter.
 # Variants: HASH_SHUFFLE (v1 aggregators) vs SHUFFLE_V2 in-memory vs external.
 # Compute: 32x m5.4xlarge workers (fixed_size_all_to_all_compute.yaml).
