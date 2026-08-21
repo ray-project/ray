@@ -194,7 +194,7 @@ number of files and their sizes, because every block can carry rows for any part
             for f in files:
                 print(f'{subindent}{f}')
 
-    # Sample dataset that we’ll partition by ``city`` and ``year``.
+    # Sample dataset to partition by ``city`` and ``year``.
     df = pd.DataFrame(
         {
             "city": ["SF", "SF", "NYC", "NYC", "SF", "NYC", "SF", "NYC"],
@@ -207,7 +207,7 @@ number of files and their sizes, because every block can carry rows for any part
     # Key-based repartitioning requires a hash-shuffle strategy such as Shuffle v2.
     DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
-    # ── Partitioned write ──────────────────────────────────────────────────────
+    # Partitioned write:
     # 1. Repartition so all rows with the same (city, year) land in the same
     #    block. This minimizes shuffling during the write.
     # 2. Pass the same columns to ``partition_cols`` so Ray creates a
