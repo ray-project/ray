@@ -1333,7 +1333,7 @@ def get_deployment_details(
     deployment_name: str,
     app_name: str = SERVE_DEFAULT_APP_NAME,
     _client: Optional[ServeControllerClient] = None,
-):
+) -> Dict[str, Any]:
     client = _client or _get_global_client()
     assert client is not None
     details = client.get_serve_details()
@@ -1680,9 +1680,10 @@ def get_metric_float(
         timeseries,
         timeout=timeout,
     ).get(metric, [])
-    assert expected_tags is not None
+    # None (no tag filter) matches any sample, per the docstring.
+    tags_to_match = expected_tags or {}
     for sample in samples:
-        if expected_tags.items() <= sample.labels.items():
+        if tags_to_match.items() <= sample.labels.items():
             return sample.value
     return -1
 
