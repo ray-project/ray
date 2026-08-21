@@ -29,6 +29,8 @@ from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import (  # noqa
     _isolate_token_auth_state,  # noqa: F401  autouse fixture
+    _restore_token_auth_env,  # noqa: F401
+    _token_auth_env_baseline,  # noqa: F401
     external_redis,
     propagate_logs,
     pytest_runtest_makereport,
