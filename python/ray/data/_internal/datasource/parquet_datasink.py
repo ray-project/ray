@@ -217,6 +217,7 @@ class ParquetDatasink(_FileDatasink):
         ):
             raise ValueError(
                 "target_file_size cannot be used with min_rows_per_file or max_rows_per_file"
+            )
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
             if self.min_rows_per_file > self.max_rows_per_file:
