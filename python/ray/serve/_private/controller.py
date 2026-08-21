@@ -553,7 +553,9 @@ class ServeController:
         Controller decides where proxy actors should run
         (head node and nodes with deployment replicas).
         """
-        new_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
+        # Copy: get_active_node_ids() returns a shared frozenset, and `frozenset - set`
+        # stays frozen, so the .add() below would raise without this.
+        new_proxy_nodes = set(self.deployment_state_manager.get_active_node_ids())
         new_proxy_nodes = new_proxy_nodes - set(
             self.cluster_node_info_cache.get_draining_nodes()
         )
