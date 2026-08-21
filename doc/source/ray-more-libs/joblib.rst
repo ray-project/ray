@@ -64,6 +64,34 @@ to Actors, such as GPUs <actor-resource-guide>`.
   with joblib.parallel_backend('ray', ray_remote_args=dict(num_gpus=1)):
       search.fit(digits.data, digits.target)
 
+Experimental elastic actor capacity
+-----------------------------------
+
+The Ray backend normally creates a fixed pool of ``n_jobs`` actors. Elastic
+capacity is opt-in:
+
+.. code-block:: python
+
+  register_ray()
+  with joblib.parallel_backend(
+      "ray",
+      n_jobs=8,
+      min_size=0,
+      max_size=8,
+      idle_timeout_s=60,
+      ray_remote_args={"num_cpus": 1},
+  ):
+      search.fit(digits.data, digits.target)
+
+``n_jobs`` remains Joblib's concurrency ceiling, so ``max_size`` may lower but
+never raise it. Actors are created as batches make existing actors busy and are
+retired after they have no outstanding batches for ``idle_timeout_s``.
+
+Ray actor mailboxes hold submitted batches while actors initialize or wait for
+resources. Requesting resources with ``ray_remote_args`` therefore exposes
+pending demand to the Ray cluster autoscaler, including from a zero-CPU head.
+The default actor resource requirement remains unchanged.
+
 Run on a Cluster
 ----------------
 
