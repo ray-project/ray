@@ -56,7 +56,14 @@ using WorkerCommandMap =
 
 constexpr int64_t kWorkerGrpcThreadsWarningThreshold = 32;
 
-/// Return a warning when a high-CPU node uses gRPC's default worker thread sizing.
+/**
+ * @brief Return a warning when a high-CPU node uses gRPC's default worker thread sizing.
+ *
+ * @param num_cpus The number of CPUs configured for the node.
+ * @param configured_threads The configured worker gRPC thread count.
+ * @return A warning when the node exceeds the threshold and the thread count isn't
+ * configured to a positive value; otherwise, std::nullopt.
+ */
 std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t num_cpus,
                                                        int64_t configured_threads);
 
