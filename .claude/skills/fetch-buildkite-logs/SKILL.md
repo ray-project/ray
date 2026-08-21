@@ -1,6 +1,6 @@
 ---
 name: fetch-buildkite-logs
-description: Fetch Buildkite CI job logs, and a job's uploaded artifacts (such as the failed_test_logs archives), from a Buildkite build URL or build number, then summarize the failures
+description: Fetch Buildkite CI job logs, and a job's artifacts when the logs are not enough, from a Buildkite build URL or build number, then summarize the failures
 ---
 
 # Fetch Buildkite Logs
@@ -50,29 +50,24 @@ Always extract `<PIPELINE>` (e.g. `premerge`, `postmerge`) and `<BUILD_NUM>` fro
    Logs come back as JSON with a `content` field containing ANSI escape codes — strip them with `re.sub(r'\x1b\[[0-9;]*m', '', content)` before grepping.
 7. Summarize failures and suggest fixes.
 
-## Artifacts (only when the log is not enough)
+## Artifacts
 
-**Do not download artifacts routinely.** The job log answers most questions. Reach for artifacts only when it demonstrably does not — a hang/timeout with no pytest failure, or a traceback truncated right where the cause would be. Ray uploads a `failed_test_logs` zip per failing test: a whole Ray session log directory (`raylet.out`, `gcs_server.out`, `python-core-worker-*.log`, `events/`).
+If the log does not let you identify the root cause, look for more logs in the job's artifacts.
 
-Requires the token to have the **`read_artifacts`** scope — `read_build_logs` alone is not enough, and the API answers `HTTP 403` if it is missing.
+The token needs the **`read_artifacts`** scope in addition to `read_build_logs`; without it these calls return `HTTP 403`.
 
-1. List a job's artifacts:
+1. List a job's artifacts (raise `page` if a full page of 100 comes back):
    ```bash
    curl -s -H "Authorization: Bearer $BUILDKITE_API_TOKEN" \
-     "https://api.buildkite.com/v2/organizations/ray-project/pipelines/<PIPELINE>/builds/<BUILD_NUM>/jobs/<JOB_ID>/artifacts?per_page=100" \
-     | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(f\"API error: {d}\") if isinstance(d,dict) else [print(f\"{a['id']}  {a['state']:>8}  {a['file_size']:>9}  {a['filename']}\") for a in d]"
+     "https://api.buildkite.com/v2/organizations/ray-project/pipelines/<PIPELINE>/builds/<BUILD_NUM>/jobs/<JOB_ID>/artifacts?per_page=100&page=1"
    ```
-   An empty list is a normal result, not an error — a shard where nothing failed uploads nothing. Only artifacts with `state` `finished` are downloadable.
-
-   `per_page=100` is the API maximum, and Ray uploads a zip per failing test, so a busy shard overflows one page. If exactly 100 come back, there are probably more: append `&page=2`, `&page=3`, ... until a page comes back short. (The response's `Link` header says `rel="next"` while pages remain.)
-2. Download one, by the `id` from that listing:
+2. Download one by its `id`:
    ```bash
    curl -fsL -H "Authorization: Bearer $BUILDKITE_API_TOKEN" \
      "https://api.buildkite.com/v2/organizations/ray-project/pipelines/<PIPELINE>/builds/<BUILD_NUM>/jobs/<JOB_ID>/artifacts/<ARTIFACT_ID>/download" \
      -o "/tmp/<FILENAME>"
    ```
-   `-L` is required — the endpoint 302s to S3, and without it you get a 300-byte redirect body instead of the artifact. Keep the `Authorization` header on: curl drops it on the cross-host hop, which is what S3 wants (sending it yields `400 InvalidRequest`).
-3. `unzip` the archive before reading it — grepping the `.zip` itself only matches the archive's filename table, not the logs inside.
+   `-L` is required: the endpoint returns HTTP 302 and redirects to S3. Keep the `Authorization` header — curl drops it on the cross-host hop, which is what S3 wants (sending it yields `400 InvalidRequest`).
 
 ## Authentication note
 
