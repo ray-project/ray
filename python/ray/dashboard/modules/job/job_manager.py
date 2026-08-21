@@ -6,7 +6,7 @@ import random
 import string
 import time
 import traceback
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -39,6 +39,21 @@ from ray.runtime_env import RuntimeEnvConfig
 
 logger = logging.getLogger(__name__)
 
+_RECOVERY_SCAN_MAX_ATTEMPTS = 5
+_RECOVERY_SCAN_BASE_DELAY_S = 1
+_RECOVERY_SCAN_MAX_DELAY_S = 30
+_RECOVERY_SCAN_GCS_RPC_TIMEOUT_S = 5
+# get_all_jobs lists keys, then fetches job info in a second GCS phase.
+_RECOVERY_SCAN_PER_ATTEMPT_TIMEOUT_S = 2 * _RECOVERY_SCAN_GCS_RPC_TIMEOUT_S + 5
+_RECOVERY_SCAN_TOTAL_BUDGET_S = 45
+_RECOVERY_SUBMISSION_WAIT_TIMEOUT_S = 60
+_RECOVERY_SCAN_TASKS = set()
+
+
+def _consume_recovery_scan_result(task: asyncio.Task) -> None:
+    if not task.cancelled():
+        task.exception()
+
 
 def generate_job_id() -> str:
     """Returns a job_id of the form 'raysubmit_XYZ'.
@@ -68,7 +83,11 @@ class JobManager:
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(
-        self, gcs_client: GcsClient, logs_dir: str, timeout_check_timer: Timer = None
+        self,
+        gcs_client: GcsClient,
+        logs_dir: str,
+        timeout_check_timer: Timer = None,
+        ensure_ray_initialized: Optional[Callable[[], Awaitable[None]]] = None,
     ):
         self._gcs_client = gcs_client
         self._logs_dir = logs_dir
@@ -78,6 +97,7 @@ class JobManager:
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self._timeout_check_timer = timeout_check_timer or Timer()
+        self._ensure_ray_initialized = ensure_ray_initialized
         self.monitored_jobs = set()
         try:
             self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
@@ -111,10 +131,89 @@ class JobManager:
         Each will be added to self._running_jobs and reconciled.
         """
         try:
-            all_jobs = await self._job_info_client.get_all_jobs()
-            for job_id, job_info in all_jobs.items():
-                if not job_info.status.is_terminal():
-                    run_background_task(self._monitor_job(job_id))
+            loop = asyncio.get_running_loop()
+            recovery_deadline = loop.time() + _RECOVERY_SCAN_TOTAL_BUDGET_S
+            for attempt in range(1, _RECOVERY_SCAN_MAX_ATTEMPTS + 1):
+                remaining_s = recovery_deadline - loop.time()
+                if remaining_s <= 0:
+                    logger.error(
+                        "Submission job recovery exceeded its %.1f second budget. "
+                        "Existing non-terminal jobs will not be monitored until "
+                        "the Dashboard Agent restarts.",
+                        _RECOVERY_SCAN_TOTAL_BUDGET_S,
+                    )
+                    return
+                try:
+                    scan_task = asyncio.create_task(
+                        self._job_info_client.get_all_jobs(
+                            timeout=_RECOVERY_SCAN_GCS_RPC_TIMEOUT_S
+                        )
+                    )
+                    _RECOVERY_SCAN_TASKS.add(scan_task)
+                    scan_task.add_done_callback(_RECOVERY_SCAN_TASKS.discard)
+                    scan_task.add_done_callback(_consume_recovery_scan_result)
+                    try:
+                        done, _ = await asyncio.wait(
+                            [scan_task],
+                            timeout=min(
+                                _RECOVERY_SCAN_PER_ATTEMPT_TIMEOUT_S, remaining_s
+                            ),
+                        )
+                    except asyncio.CancelledError:
+                        scan_task.cancel()
+                        raise
+                    if not done:
+                        scan_task.cancel()
+                        raise asyncio.TimeoutError
+                    all_jobs = scan_task.result()
+                    break
+                except Exception:
+                    if attempt == _RECOVERY_SCAN_MAX_ATTEMPTS:
+                        logger.error(
+                            "Failed to fetch submission jobs for recovery after "
+                            "%d attempts. Existing non-terminal jobs will not be "
+                            "monitored until the Dashboard Agent restarts.",
+                            _RECOVERY_SCAN_MAX_ATTEMPTS,
+                            exc_info=True,
+                        )
+                        return
+
+                    delay_s = min(
+                        _RECOVERY_SCAN_BASE_DELAY_S * (2 ** (attempt - 1)),
+                        _RECOVERY_SCAN_MAX_DELAY_S,
+                    )
+                    remaining_s = recovery_deadline - loop.time()
+                    if remaining_s <= delay_s:
+                        logger.error(
+                            "Submission job recovery could not retry within its "
+                            "%.1f second budget. Existing non-terminal jobs will "
+                            "not be monitored until the Dashboard Agent restarts.",
+                            _RECOVERY_SCAN_TOTAL_BUDGET_S,
+                            exc_info=True,
+                        )
+                        return
+                    logger.warning(
+                        "Failed to fetch submission jobs for recovery "
+                        "(attempt %d/%d); retrying in %.1f seconds.",
+                        attempt,
+                        _RECOVERY_SCAN_MAX_ATTEMPTS,
+                        delay_s,
+                        exc_info=True,
+                    )
+                    await asyncio.sleep(delay_s)
+
+            non_terminal_job_ids = [
+                job_id
+                for job_id, job_info in all_jobs.items()
+                if not job_info.status.is_terminal()
+            ]
+            # Keep an idle Dashboard Agent independent of its local raylet. Only
+            # recovery monitors need the CoreWorker connection established here.
+            if non_terminal_job_ids and self._ensure_ray_initialized is not None:
+                await self._ensure_ray_initialized()
+
+            for job_id in non_terminal_job_ids:
+                run_background_task(self._monitor_job(job_id))
         finally:
             # This event is awaited in `submit_job` to avoid race conditions between
             # recovery and new job submission, so it must always get set even if there
@@ -530,7 +629,17 @@ class JobManager:
 
         # Wait for `_recover_running_jobs` to run before accepting submissions to
         # avoid duplicate monitoring of the same job.
-        await self._recover_running_jobs_event.wait()
+        try:
+            await asyncio.wait_for(
+                self._recover_running_jobs_event.wait(),
+                timeout=_RECOVERY_SUBMISSION_WAIT_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                "Submission job recovery did not complete within "
+                f"{_RECOVERY_SUBMISSION_WAIT_TIMEOUT_S} seconds. Check the Dashboard "
+                "Agent logs for recovery failures."
+            )
 
         logger.info(f"Starting job with submission_id: {submission_id}")
         if entrypoint_label_selector:

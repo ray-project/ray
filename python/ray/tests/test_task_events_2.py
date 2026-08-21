@@ -194,7 +194,7 @@ ray.get(f.remote())
     client = StateApiClient()
 
     def list_tasks(exclude_driver):
-        return client.list(
+        all_tasks = client.list(
             StateResource.TASKS,
             # Filter out this driver
             options=ListApiOptions(
@@ -202,6 +202,14 @@ ray.get(f.remote())
             ),
             raise_on_missing_output=True,
         )
+        # Keep only the script driver's job and exclude internal drivers such as the
+        # dashboard agent connection used for eager JobManager recovery.
+        script_job_ids = {
+            task["job_id"] for task in all_tasks if task["type"] == "NORMAL_TASK"
+        }
+        if script_job_ids:
+            all_tasks = [task for task in all_tasks if task["job_id"] in script_job_ids]
+        return all_tasks
 
     # Check driver running
     def verify():
