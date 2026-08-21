@@ -16,16 +16,20 @@
 
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/gcs/store_client/redis_async_context.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/tag_defs.h"
 #include "ray/util/clock.h"
@@ -107,13 +111,81 @@ class CallbackReply {
 /// operation.
 using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
+/// Payload bytes of a Redis reply: the sum of `len` over every string-shaped
+/// node, recursing into arrays. Integer and nil nodes contribute 0, and RESP
+/// framing is never included -- `redisReply::len` is the decoded string length.
+///
+/// Error nodes are measured like any other string, but that only matters for an
+/// error nested inside an aggregate reply. A *top-level* error never reaches
+/// this function: RedisRequestContext::RedisResponseFn routes it into the retry
+/// path before recording, which is why
+/// gcs_redis_response_payload_bytes documents error replies as contributing
+/// nothing.
+///
+/// Callers must invoke this while hiredis still owns the reply. Measuring the
+/// raw reply rather than the `CallbackReply` built from it keeps the
+/// measurement independent of what that copy chooses to keep, and works for
+/// reply shapes `CallbackReply` does not parse.
+///
+/// \param reply The reply to measure. Must be a live hiredis reply.
+/// \return The payload bytes it carries, 0 for replies that carry none.
+size_t ResponsePayloadBytes(const redisReply &reply);
+
+/// Maps a Redis verb onto a closed label domain, so that adding a Redis command
+/// elsewhere in the GCS cannot grow the exported time series count. Returns
+/// "OTHER" for anything not on the allowlist. The returned view points into
+/// static storage and outlives any request.
+///
+/// Matching is exact and case sensitive: every verb in the tree is an uppercase
+/// string literal.
+///
+/// \param verb The Redis command verb to normalize.
+/// \return The matching allowlist entry, or "OTHER". Points into static
+/// storage, so it outlives the argument.
+std::string_view NormalizeRedisCommandLabel(std::string_view verb);
+
+/// A TableName label value for commands that address no single GCS table.
+/// Explicit sentinels rather than "": a blank label value is indistinguishable
+/// from a dropped label in Grafana, and the two cases below mean different
+/// things.
+///
+/// kNoTable: the command has no table at all (PING).
+/// kAllTables: the command spans the whole storage namespace (SCAN/DEL/UNLINK
+/// in the cleanup path).
+inline constexpr std::string_view kNoTable = "NONE";
+inline constexpr std::string_view kAllTables = "ALL";
+
+/// Metrics recorded for every async Redis command. Held by reference: the
+/// referents are owned by GcsServerMetrics and outlive the RedisContext.
+struct RedisMetrics {
+  ray::observability::MetricInterface &request_payload_bytes_sum;
+  ray::observability::MetricInterface &response_payload_bytes_sum;
+  ray::observability::MetricInterface &command_count_counter;
+};
+
+/// Bounded label values for one Redis command.
+///
+/// `command` must already be normalized (see NormalizeRedisCommandLabel) and
+/// point into storage that outlives the call; `table` is copied by the request
+/// context, because the RedisCommand a caller derives it from does not outlive
+/// the reply.
+struct RedisCommandLabels {
+  std::string_view command;
+  std::string_view table;
+};
+
 class RedisContext;
 struct RedisRequestContext {
+  /// \param metrics Payload metrics to record into, or nullptr to record
+  /// nothing. Null both when the payload metrics are disabled by config and in
+  /// the standalone namespace-cleanup process, which has no metrics exporter.
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
                       RedisAsyncContext *context,
                       std::vector<std::string> args,
-                      ClockInterface &clock);
+                      ClockInterface &clock,
+                      RedisMetrics *metrics,
+                      RedisCommandLabels labels);
 
   static void RedisResponseFn(redisAsyncContext *async_context,
                               void *raw_reply,
@@ -134,6 +206,15 @@ struct RedisRequestContext {
   std::vector<size_t> argc_;
   ClockInterface &clock_;
 
+  // Nullable; see the constructor docs.
+  RedisMetrics *metrics_;
+  // Owned copies: the reply is delivered long after the caller's RedisCommand
+  // is gone. Both fit libstdc++'s small-string buffer for every value the GCS
+  // produces (the longest is "PLACEMENT_GROUP", 15 chars), so this does not
+  // allocate.
+  std::string command_label_;
+  std::string table_label_;
+
   // Ray metrics
   ray::stats::Histogram ray_metric_gcs_latency_{
       "gcs_latency",
@@ -145,7 +226,20 @@ struct RedisRequestContext {
 
 class RedisContext {
  public:
-  explicit RedisContext(instrumented_io_context &io_service, ClockInterface &clock);
+  /// \param metrics Payload metrics for every command run through this context,
+  /// or nullopt to record nothing.
+  ///
+  /// Held **by value** rather than by pointer on purpose. A RedisContext is
+  /// shared: RedisStoreClient::RedisScanner copies the shared_ptr and keeps
+  /// itself alive for the duration of a scan, so the context routinely outlives
+  /// the RedisStoreClient that created it. Borrowing the metrics from the store
+  /// client would leave RedisRequestContext dereferencing freed storage on the
+  /// next HSCAN reply. Owning them here ties their lifetime to the object that
+  /// RedisRequestContext already depends on outliving it (it holds a raw
+  /// RedisAsyncContext * into this one).
+  explicit RedisContext(instrumented_io_context &io_service,
+                        ClockInterface &clock,
+                        std::optional<RedisMetrics> metrics = std::nullopt);
 
   ~RedisContext();
 
@@ -158,12 +252,16 @@ class RedisContext {
   /// Disconnect from the server.
   void Disconnect();
 
-  /// Run an arbitrary Redis command without a callback.
+  /// Run an arbitrary Redis command.
   ///
   /// \param args The vector of command args to pass to Redis.
   /// \param redis_callback The Redis callback function.
+  /// \param labels Payload metric labels for this command. Deliberately not
+  /// defaulted: a new command site must decide how it is attributed, so
+  /// instrumentation cannot be silently skipped.
   void RunArgvAsync(std::vector<std::string> args,
-                    RedisCallback redis_callback = nullptr);
+                    RedisCallback redis_callback,
+                    RedisCommandLabels labels);
 
   redisContext *sync_context() {
     RAY_CHECK(context_);
@@ -195,6 +293,10 @@ class RedisContext {
 
   instrumented_io_context &io_service_;
   ClockInterface &clock_;
+  // Owned; see the constructor docs. Never reassigned after construction, so
+  // the pointer handed to each RedisRequestContext stays valid for this
+  // context's lifetime.
+  std::optional<RedisMetrics> metrics_;
 
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
