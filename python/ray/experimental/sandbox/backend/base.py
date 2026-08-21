@@ -4,8 +4,10 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.config import SandboxConfig
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class SandboxStatus(Enum):
     """Operational status of a Sandbox."""
 
@@ -15,6 +17,7 @@ class SandboxStatus(Enum):
     ERROR = "ERROR"
 
 
+@PublicAPI(stability="alpha")
 @dataclass
 class ExecResult:
     """Result of executing a command inside a Sandbox.
@@ -84,6 +87,7 @@ class BaseSandboxBackend(ABC):
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command synchronously inside the sandbox.
 
@@ -93,6 +97,8 @@ class BaseSandboxBackend(ABC):
             timeout: Optional maximum execution time in seconds.
             cwd: Optional working directory override.
             env: Optional additional environment variables.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
 
         Returns:
             An ExecResult instance containing stdout, stderr, and exit code.

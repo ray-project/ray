@@ -1,4 +1,5 @@
 import logging
+import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
@@ -200,13 +201,22 @@ class ParquetDatasink(_FileDatasink):
         self.target_file_size = target_file_size
         self.partition_cols = partition_cols
 
+        if self.partition_cols and self.min_rows_per_file is not None:
+            warnings.warn(
+                "Using `min_rows_per_file` with non-empty `partition_cols` is "
+                "deprecated and will no longer be supported after February 2027. "
+                "Use `repartition(num_blocks=..., keys=partition_cols)` and "
+                "`max_rows_per_file` instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+
         if self.target_file_size is not None and any(
             value is not None
             for value in (self.min_rows_per_file, self.max_rows_per_file)
         ):
             raise ValueError(
                 "target_file_size cannot be used with min_rows_per_file or max_rows_per_file"
-            )
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
             if self.min_rows_per_file > self.max_rows_per_file:
