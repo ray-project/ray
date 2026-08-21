@@ -47,8 +47,8 @@ safely:
 1. An **NRI plugin** that intercepts `CreateContainer` events from the container
    runtime. When the plugin sees the annotation `writable-cgroups.nri.io/enable:
    "true"` (or a user-defined custom annotation) on a pod, it replaces the `ro`
-   option on the cgroup mount with `rw`. Pods without the annotation are left
-   alone.
+   option on the pod's cgroup mount with `rw`. Pods without the annotation
+   remain unmodified.
 
 2. The **`nsdelegate` mount option** on the node's root cgroup filesystem.
    `nsdelegate` instructs the kernel to enforce cgroup namespace delegation
@@ -67,7 +67,7 @@ flag. The default is `writable-cgroups.nri.io/enable`.
 ```
 
 The plugin source is at
-[github.com/pmengelbert/nri-writable-cgroups](https://github.com/pmengelbert/nri-writable-cgroups).
+[https://github.com/pmengelbert/nri-writable-cgroups](https://github.com/pmengelbert/nri-writable-cgroups).
 
 ### NRI
 
@@ -76,11 +76,12 @@ plugin framework for OCI-compatible container runtimes
 ([containerd](https://github.com/containerd/containerd),
 [CRI-O](https://github.com/cri-o/cri-o)). Plugins are daemon-like processes
 that subscribe to container lifecycle events and can modify container
-configuration before the container is created. The NRI protocol is defined
-in protobuf and is not tied to a specific runtime implementation. Plugins
-can inspect pod and container annotations, and can modify mounts, environment
-variables, resource limits, devices, and other OCI spec fields at creation
-time.
+configuration before the container is created. The NRI protocol has a set of
+protobuf definitions and is not tied to a specific runtime implementation.
+Plugins can inspect pod and container annotations (which are propagated down the
+stack from the pod annotations from the pod manifest, and can modify mounts,
+environment variables, resource limits, devices, and other OCI spec fields at
+creation time.
 
 ### Architecture
 
@@ -113,7 +114,8 @@ flowchart TB
 
 ## Prerequisites
 
-- **Linux kernel >= 5.8** with **cgroup v2** (unified hierarchy). Hard requirement.
+- **Linux kernel >= 5.8** with **cgroup v2** (unified hierarchy). Cgroup v1 is
+generally insecure and should is not supported by this guide.
 - **containerd >= 1.7**. See [Enabling NRI](#step-4-enable-nri-in-containerd) for version-specific details.
 - **`kubectl`** configured for your cluster.
 - **[KubeRay operator](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html)** installed.
@@ -130,30 +132,21 @@ may produce undefined behavior.
 :::{note}
 **Non-containerd runtimes** (e.g., CRI-O) are out of scope. NRI itself
 is runtime-agnostic and CRI-O supports it, but the configuration steps
-below are specific to containerd. Consult the
-[NRI documentation](https://github.com/containerd/nri) if you need to
-adapt them.
+below are specific to containerd. The NRI plugin has not been tested with CRI-O.
+Consult the [NRI documentation](https://github.com/containerd/nri) if you need
+to adapt them.
 :::
 
 ## Cluster administrator setup
 
 The steps below must be performed on every node that will run Ray pods
-with resource isolation. They are the same operations that the
+with resource isolation. In the quick start guide, these are the same operations that the
 [setup DaemonSet](#quick-start-non-production) automates. They are
-presented here so that administrators can understand, audit, and adapt
-each one.
+presented here so that administrators can understand, audit, and adapt them if
+necessary.
 
 Nodes can be accessed by SSH or via a privileged debug pod:
 
-::::{tab-set}
-
-:::{tab-item} SSH
-```bash
-ssh <user>@<node-ip>
-```
-:::
-
-:::{tab-item} Privileged debug pod
 ```bash
 $ kubectl apply -f - <<'EOF'
 apiVersion: v1
@@ -180,9 +173,11 @@ EOF
 
 $ kubectl exec -it node-debug -- chroot /host /bin/bash
 ```
-:::
 
-::::
+Note that the above works because privileged pods run in the root (or outermost)
+cgroup namespace (i.e. no namespace). This is mentioned as a troubleshooting
+point -- if at any point you notice that the setup pod is running within a
+cgroup namespace, pause and remedy it before proceeding.
 
 ### Step 1: Verify cgroup v2
 
@@ -198,6 +193,11 @@ used.
 $ stat -fc %T /sys/fs/cgroup
 cgroup2fs
 ```
+
+If this produces `tmpfs` or `cgroup` (not `cgropu2fs`), then the system is
+running cgroupv1 and that must be addressed before proceeding. To set up
+peristent cgroup v2 on the node, see the [cgroup setup section of the Ray
+resource isolation guide](https://github.com/ray-project/ray/blob/master/doc/source/ray-core/resource-isolation-with-cgroupv2.rst#how-to-enable-cgroup-v2-for-resource-isolation).
 
 ### Step 2: Build the NRI plugin
 
