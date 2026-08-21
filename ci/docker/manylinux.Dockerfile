@@ -35,6 +35,12 @@ ENV RAYCI_DISABLE_JAVA=$RAYCI_DISABLE_JAVA
 ENV RAY_INSTALL_JAVA=1
 ENV BUILDKITE_BAZEL_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
 
+# See ci/docker/base.test.Dockerfile: retry transient files.pythonhosted.org failures. This
+# is the image the wheel builds run in, where the manylinux interpreters' own pip installs
+# build dependencies such as cython and setuptools straight from PyPI.
+ENV PIP_RETRIES=9
+ENV UV_HTTP_RETRIES=9
+
 RUN yum -y install sudo
 
 RUN curl -LsSf https://astral.sh/uv/0.8.17/install.sh | \

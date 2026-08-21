@@ -30,6 +30,12 @@ ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 ENV RAY_BUILD_ENV=ubuntu22.04_forge
 
+# See ci/docker/base.test.Dockerfile: retry transient files.pythonhosted.org failures.
+# This image runs the CI job commands themselves, so it also covers the ad hoc pip installs
+# in ci/ scripts (e.g. the `pip install clang-format` in the clang_format lint step).
+ENV PIP_RETRIES=9
+ENV UV_HTTP_RETRIES=9
+
 RUN \
   --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
   --mount=type=bind,source=ci/pypi_index_proxy.py,target=pypi_index_proxy.py \
