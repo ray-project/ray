@@ -136,7 +136,11 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
                             name=f"    - {sub_metrics.name}",
                             desc=None,
                             completed=sub_metrics.completed,
-                            total=sub_metrics.total,
+                            total=(
+                                sub_metrics.total
+                                if sub_metrics.total is not None
+                                else metrics.total
+                            ),
                         )
                     )
 

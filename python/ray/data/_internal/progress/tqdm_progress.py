@@ -38,15 +38,7 @@ class TqdmSubProgressBar(ProgressBar):
         super().__init__(name, total, unit, position, enabled)
 
     def update_absolute(self, completed: int, total_rows: Optional[int] = None) -> None:
-        if self._bar:
-            self._progress = completed
-            if total_rows is not None:
-                self._bar.total = total_rows
-            if self._bar.total is not None and self._progress > self._bar.total:
-                # If the progress goes over 100%, update the total.
-                self._bar.total = self._progress
-            self._bar.n = self._progress
-            self._bar.refresh()
+        self.update(completed - self._progress, total_rows)
 
 
 class TqdmExecutionProgressManager(BaseExecutionProgressManager):
