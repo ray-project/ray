@@ -102,7 +102,7 @@ class TrainStateActor:
                         is_actor_alive(
                             run.controller_actor_id, self._get_actor_timeout_s
                         )
-                        is False
+                        is not True
                     ):
                         update_train_run_aborted(run, False)
                         self.create_or_update_train_run(run)
