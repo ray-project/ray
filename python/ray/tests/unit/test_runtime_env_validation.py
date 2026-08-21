@@ -110,6 +110,24 @@ class TestValidateWorkingDir:
         working_dir = parse_and_validate_working_dir(str(valid_working_dir_path))
         assert working_dir == valid_working_dir_path
 
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "local:///app",
+            "local:///path/in/image",
+            "local:///app/subdir",
+        ],
+    )
+    def test_validate_local_uri_valid_input(self, uri):
+        assert parse_and_validate_working_dir(uri) == uri
+
+    @pytest.mark.parametrize(
+        "uri", ["local://relative/path", "local://", "local://app"]
+    )
+    def test_validate_local_uri_requires_absolute_path(self, uri):
+        with pytest.raises(ValueError, match="the path must be absolute"):
+            parse_and_validate_working_dir(uri)
+
 
 class TestValidatePyModules:
     def test_validate_not_a_list(self):
@@ -791,6 +809,12 @@ def test_validate_no_local_paths_fails_if_local_working_dir():
         runtime_env = RuntimeEnv(working_dir=working_dir_str)
         with pytest.raises(ValueError, match="not a valid URI"):
             _validate_no_local_paths(runtime_env)
+
+
+def test_validate_no_local_paths_allows_local_uris():
+    """Task/actor runtime_envs may use `local://`"""
+    _validate_no_local_paths(RuntimeEnv(working_dir="local:///app"))
+    _validate_no_local_paths(RuntimeEnv(py_modules=["local:///app/lib"]))
 
 
 def test_validate_no_local_paths_fails_if_local_py_module():
