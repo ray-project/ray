@@ -15,7 +15,7 @@ token-auth
 ```
 
 ::::{note}
-For the latest Ray security alerts, see the [Security Advisories](https://github.com/ray-project/ray/security/advisories) page on GitHub.
+Use the [**Report a vulnerability**](https://github.com/ray-project/ray/security/advisories/new) form or email [security@anyscale.com](mailto:security@anyscale.com) to report a new security issue. For the current Ray security alerts, check [Security Advisories](https://github.com/ray-project/ray/security/advisories) on GitHub.
 ::::
 
 Ray is an easy-to-use framework to run arbitrary code across one or more nodes in a Ray Cluster. Ray provides fault-tolerance, optimized scheduling, task orchestration, and auto-scaling to run a given workload.

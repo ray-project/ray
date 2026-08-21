@@ -13,7 +13,11 @@ exclude: |
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
     doc/external/|
-    doc/source/|
+    # Excludes doc/source, except the Markdown and rST prose under doc/source/data
+  # that the `vale` hook below lints. pre-commit ANDs this top-level `exclude`
+  # with each hook's own `files`, so a bare `doc/source/` here cancelled that
+  # hook out entirely and it silently matched zero files.
+  doc/source/(?!data/.*[.](md|rst)$)|
     doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
@@ -21,7 +25,15 @@ repos:
     rev: v4.4.0
     hooks:
       - id: trailing-whitespace
+        # Narrowing the top-level `exclude` above (so the `vale` hook can see
+        # doc/source/data prose) also exposed those files to this hook for the
+        # first time, which would rewrite 17 unrelated files. Keep them exempt
+        # here so enabling Vale stays a config-only change, and clean the
+        # whitespace up in its own PR.
+        exclude: ^doc/source/data/
       - id: end-of-file-fixer
+        # Same reason as trailing-whitespace above.
+        exclude: ^doc/source/data/
       - id: check-added-large-files
       - id: check-ast
         exclude: |
@@ -165,6 +177,7 @@ repos:
             python/ray/serve/_private/deploy_utils.py|
             python/ray/serve/_private/deployment_info.py|
             python/ray/serve/_private/deployment_node.py|
+            python/ray/serve/_private/deployment_scheduler.py|
             python/ray/serve/_private/deployment_state.py|
             python/ray/serve/_private/direct_ingress_grpc_util.py|
             python/ray/serve/_private/direct_ingress_http_util.py|
@@ -197,7 +210,9 @@ repos:
             python/ray/serve/_private/request_router/common.py|
             python/ray/serve/_private/request_router/pow_2_router.py|
             python/ray/serve/_private/request_router/replica_wrapper.py|
+            python/ray/serve/_private/request_router/request_router.py|
             python/ray/serve/_private/rolling_window.py|
+            python/ray/serve/_private/router.py|
             python/ray/serve/_private/serialization.py|
             python/ray/serve/_private/storage/__init__.py|
             python/ray/serve/_private/storage/kv_store.py|
@@ -253,6 +268,7 @@ repos:
             python/ray/serve/_private/deploy_utils.py|
             python/ray/serve/_private/deployment_info.py|
             python/ray/serve/_private/deployment_node.py|
+            python/ray/serve/_private/deployment_scheduler.py|
             python/ray/serve/_private/deployment_state.py|
             python/ray/serve/_private/direct_ingress_grpc_util.py|
             python/ray/serve/_private/direct_ingress_http_util.py|
@@ -285,7 +301,9 @@ repos:
             python/ray/serve/_private/request_router/common.py|
             python/ray/serve/_private/request_router/pow_2_router.py|
             python/ray/serve/_private/request_router/replica_wrapper.py|
+            python/ray/serve/_private/request_router/request_router.py|
             python/ray/serve/_private/rolling_window.py|
+            python/ray/serve/_private/router.py|
             python/ray/serve/_private/serialization.py|
             python/ray/serve/_private/storage/__init__.py|
             python/ray/serve/_private/storage/kv_store.py|
@@ -349,9 +367,17 @@ repos:
     hooks:
       - id: semgrep
         args: [--config=semgrep.yml, --error]
+        # semgrep.yml's `code-block-python` rule targets doc/source/data/**/*.rst,
+        # but the top-level `exclude` above has kept every doc/source path out of
+        # this hook, so the rule has never actually run on those files. Narrowing
+        # that exclude for Vale exposes 8 pre-existing violations under
+        # doc/source/data and would fail `semgrep_lint`. Keep them exempt here and
+        # fix the violations separately, rather than converting code blocks in a
+        # PR about Vale.
+        exclude: ^doc/source/data/
 
   - repo: https://github.com/errata-ai/vale
-    rev: v3.4.1
+    rev: v3.17.1
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$

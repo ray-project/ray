@@ -7,7 +7,7 @@ myst:
 (kuberay-gke-bucket)=
 # Configuring KubeRay to use Google Cloud Storage Buckets in GKE
 
-If you are already familiar with Workload Identity in GKE, you can skip this document. The gist is that you need to specify a service account in each of the Ray pods after linking your Kubernetes service account to your Google Cloud service account. Otherwise, read on.
+If you are already familiar with Workload Identity in GKE, you can skip this document. The gist is that you need to specify a service account in each of the Pods after linking your Kubernetes service account to your Google Cloud service account. Otherwise, read on.
 
 This example is an abridged version of the documentation at <https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity>. The full documentation is worth reading if you are interested in the details.
 
