@@ -866,7 +866,14 @@ _intersphinx_targets = {
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
-    "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
+    "pytorch_lightning": (
+        "https://lightning.ai/docs/pytorch/stable/",
+        # lightning.ai serves its docs as an SPA and returns HTML for
+        # objects.inv (recent readthedocs versions redirect there and do the
+        # same, breaking -W builds with "invalid inventory header"); 2.0.9 is
+        # the newest readthedocs version still serving a real inventory.
+        "https://pytorch-lightning.readthedocs.io/en/2.0.9/objects.inv",
+    ),
     "scipy": (
         "https://docs.scipy.org/doc/scipy/",
         "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
