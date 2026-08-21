@@ -17,18 +17,8 @@ ARG PIP_REQUIREMENTS="python/deplocks/base_extra_testdeps/${IMAGE_TYPE}-base_ext
 # pip would have used anyway. This one carries the release tests' extra dependencies,
 # so a failed fetch here costs a nightly rather than one job.
 ARG RAYCI_IMAGE_PIP_INDEX_URL=""
-ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
-ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
-
-# pip refuses a plain-HTTP index unless the host is named as trusted, with loopback the
-# one exemption -- and this address is a name, not loopback. The refusal is silent: the
-# index is dropped and the install fails with "from versions: none" rather than a
-# connection error (release 104844, cython==3.0.12 in the wheel build). Arrives the same
-# way as the index above and is empty outside CI, where the index is public PyPI over
-# HTTPS and there is nothing to trust.
-ARG RAYCI_IMAGE_PIP_TRUSTED_HOST=""
-ENV PIP_TRUSTED_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
-ENV UV_INSECURE_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
+ARG PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ARG UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 

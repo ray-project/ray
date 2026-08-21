@@ -50,20 +50,8 @@ class LinuxContainer(Container):
         # The step's own index, forwarded into the build: docker builds inherit
         # nothing from the step environment, and the mirror-hosted index
         # (ci/pypi_proxy_profile.sh) is one HTTPS URL reachable from inside builds.
-        # RAYCI_IMAGE_PIP_INDEX_URL remains an explicit override for a fleet that
-        # needs a different value, or "" to opt out. Unset outside CI, and then the
-        # Dockerfile falls back to PyPI.
-        image_index_url = os.environ.get(
-            "RAYCI_IMAGE_PIP_INDEX_URL", os.environ.get("PIP_INDEX_URL", "")
-        )
-        # pip drops a plain-HTTP index whose host it does not trust (loopback
-        # excepted), and says nothing about it beyond "from versions: none" -- so a
-        # trusted host travels with the index when one is set. The default hosted
-        # index is HTTPS and needs none; this carries a value only for a fleet
-        # overriding the index to a plain-HTTP host.
-        image_trusted_host = os.environ.get(
-            "RAYCI_IMAGE_PIP_TRUSTED_HOST", os.environ.get("PIP_TRUSTED_HOST", "")
-        )
+        # Unset outside CI, and then the Dockerfile falls back to PyPI.
+        image_index_url = os.environ.get("RAYCI_IMAGE_PIP_INDEX_URL", "")
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
@@ -82,8 +70,6 @@ class LinuxContainer(Container):
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
             "--build-arg",
             f"RAYCI_IMAGE_PIP_INDEX_URL={image_index_url}",
-            "--build-arg",
-            f"RAYCI_IMAGE_PIP_TRUSTED_HOST={image_trusted_host}",
         ]
 
         if not build_type or build_type in (

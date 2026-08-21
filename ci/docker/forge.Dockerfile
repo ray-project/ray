@@ -14,18 +14,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Empty for anyone building these images outside CI, and then this is exactly the index
 # pip would have used anyway, so an external build behaves as it does today.
 ARG RAYCI_IMAGE_PIP_INDEX_URL=""
-ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
-ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ARG PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ARG UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 
-# pip refuses a plain-HTTP index unless the host is named as trusted, with loopback the
-# one exemption -- and this address is a name, not loopback. The refusal is silent: the
-# index is dropped and the install fails with "from versions: none" rather than a
-# connection error (release 104844, cython==3.0.12 in the wheel build). Arrives the same
-# way as the index above and is empty outside CI, where the index is public PyPI over
-# HTTPS and there is nothing to trust.
-ARG RAYCI_IMAGE_PIP_TRUSTED_HOST=""
-ENV PIP_TRUSTED_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
-ENV UV_INSECURE_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
 ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 ENV RAY_BUILD_ENV=ubuntu22.04_forge

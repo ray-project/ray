@@ -4,7 +4,6 @@ froms:
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - RAYCI_IMAGE_PIP_INDEX_URL
-  - RAYCI_IMAGE_PIP_TRUSTED_HOST
 dockerfile: ci/docker/forge.Dockerfile
 srcs:
   - ci/k8s/install-k8s-tools.sh
