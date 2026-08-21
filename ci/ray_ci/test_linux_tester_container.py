@@ -98,6 +98,14 @@ def test_run_tests_in_docker() -> None:
         )._run_tests_in_docker(["t1", "t2"], [0, 1], "/tmp", ["v=k"], "flag")
         input_str = inputs[-1]
         assert "--env ENV_01 --env ENV_02 --env BUILDKITE" in input_str
+        # The index configuration has to reach the nested container: the bazel
+        # invocation inside it reads the --repo_env passthrough from the repo's
+        # .bazelrc, which only has an effect on variables that container has.
+        assert (
+            "--env PIP_INDEX_URL --env PIP_EXTRA_INDEX_URL --env PIP_TRUSTED_HOST "
+            "--env UV_INDEX_URL --env UV_EXTRA_INDEX_URL --env UV_INSECURE_HOST "
+            "--env RULES_PYTHON_PIP_ISOLATED" in input_str
+        )
         assert "--network host" in input_str
         assert '--gpus "device=0,1"' in input_str
         assert "--volume /tmp:/tmp/bazel_event_logs" in input_str
@@ -164,7 +172,20 @@ def test_ray_installation() -> None:
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
         install_ray_cmds.append(inputs)
 
-    with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
+    # PIP_INDEX_URL is set in every forge step, and install_ray now falls back to
+    # it, so the expected command below depends on the environment unless both
+    # variables are pinned here.
+    with mock.patch(
+        "subprocess.check_call", side_effect=_mock_subprocess
+    ), mock.patch.dict(
+        os.environ,
+        {
+            "RAYCI_IMAGE_PIP_INDEX_URL": "",
+            "PIP_INDEX_URL": "",
+            "RAYCI_IMAGE_PIP_TRUSTED_HOST": "",
+            "PIP_TRUSTED_HOST": "",
+        },
+    ):
         LinuxTesterContainer("team", build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:team"
         assert install_ray_cmds[-1] == [
@@ -180,6 +201,10 @@ def test_ray_installation() -> None:
             "BUILD_TYPE=debug",
             "--build-arg",
             "BUILDKITE_CACHE_READONLY=",
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_INDEX_URL=",
+            "--build-arg",
+            "RAYCI_IMAGE_PIP_TRUSTED_HOST=",
             "-f",
             "ci/ray_ci/tests.env.Dockerfile",
             "/ray",
