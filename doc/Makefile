@@ -4,9 +4,15 @@
 # You can set these variables from the command line.
 # Allow linkcheck to run without treating warnings as errors; -W will
 # fast-fail if enabled; it's better to gather the whole list of bad links at once.
-SPHINXOPTS    = -a -E -W -j auto
-LOCALSPHINXOPTS = -W -j auto
-LINKCHECKOPTS = -a -E -j auto
+# Number of parallel Sphinx workers. "auto" is one per CPU, which is what
+# Sphinx does by default. Overridable so a memory-constrained builder can
+# ask for fewer without changing what everyone else builds with: each
+# worker carries its own copy of the environment, so the write phase costs
+# memory in proportion to this number.
+SPHINX_JOBS ?= auto
+SPHINXOPTS    = -a -E -W -j $(SPHINX_JOBS)
+LOCALSPHINXOPTS = -W -j $(SPHINX_JOBS)
+LINKCHECKOPTS = -a -E -j $(SPHINX_JOBS)
 # RtD-faithful build: our full-build options plus the two flags Read the Docs
 # adds to its synthesized html command (-T full tracebacks, -D language=en).
 RTDSPHINXOPTS = $(SPHINXOPTS) -T -D language=en

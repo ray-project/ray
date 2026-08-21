@@ -87,10 +87,75 @@ build:
         echo "[global]" > ~/.config/pip/pip.conf
         echo "retries = 10" >> ~/.config/pip/pip.conf
         cat ~/.config/pip/pip.conf
+    # Wrap the Sphinx build in builder resource diagnostics.
+    #
+    # Sphinx builds the docs with -j auto, so it forks one write worker per
+    # CPU. When a worker dies the parent only reports EOFError from
+    # multiprocessing/connection.py, with no indication of which document or
+    # why, and the reported document varies from build to build. Five builds
+    # in the last two days failed that way, including one on master, so the
+    # cause is the builder rather than any one PR.
+    #
+    # The likely mechanism is the kernel OOM-killing a write worker, but
+    # confirming that needs the builder's CPU count, its cgroup memory
+    # ceiling, the peak the build actually reached, and the cgroup OOM
+    # counters. Capping -j without those numbers would cost wall-clock on
+    # every doc build and might buy nothing, since the right cap depends on
+    # how many CPUs the builder has in the first place.
+    #
+    # The worker count matters as much as the memory ceiling. Sphinx resolves
+    # -j auto through multiprocessing.cpu_count, which reports the logical
+    # CPUs installed on the host and is neither affinity- nor cgroup-aware.
+    # nproc reports the affinity mask instead, and nproc --all reports what
+    # multiprocessing sees. If those two disagree, Sphinx forks more write
+    # workers than the container has CPUs to run them on, and each one
+    # carries its own copy of the environment, so print both rather than
+    # assuming they agree. Reported via nproc rather than a python -c one
+    # liner because the job runner strips single quotes from arguments,
+    # which silently turns quoted labels into bare names.
+    #
+    # The diagnostics run around the build rather than in a post_build job
+    # because post_build is skipped when the build fails, and the failing
+    # build is the one worth measuring. rc carries the make exit status
+    # through so a real Sphinx failure still fails the build.
+    #
+    # Temporary, for this PR only. The paired run measured the wall clock
+    # cost: 349 seconds at -j auto against 620 seconds at SPHINX_JOBS=2 on
+    # one builder, so the lower job count costs about 78 percent more, and
+    # that is a lower bound because the second arm ran with a warm cache.
+    #
+    # What it could not measure is the memory saving, which is the whole
+    # point of lowering the count. memory.peak turned out not to be
+    # resettable on this kernel, so the reading after both arms was a single
+    # high-water mark across them rather than one figure per arm.
+    #
+    # So this run drops to a single arm at SPHINX_JOBS=2. Peak memory is
+    # far more stable across builders than duration is, three runs at
+    # -j auto landing within 180 MB of each other, so one clean sample is
+    # worth more here than a paired comparison.
+    #
+    # Remove this wrapper once the numbers are captured and the follow-up
+    # fix lands.
     build:
       html:
         - |
-          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
+          echo "=== builder capacity ==="
+          echo "cpus in affinity mask, then cpus installed on the host:"
+          nproc || true
+          nproc --all || true
+          grep -E "MemTotal|MemAvailable" /proc/meminfo || true
+          cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "no cgroup v2 memory.max"
+          cat /sys/fs/cgroup/memory.high 2>/dev/null || echo "no cgroup v2 memory.high"
+          echo "=== single arm jobs=2 start epoch ==="
+          date +%s
+          rc=0
+          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" SPHINX_JOBS=2 || rc=$?
+          echo "=== single arm jobs=2 end epoch, exit $rc ==="
+          date +%s
+          cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo "no cgroup v2 memory.peak"
+          cat /sys/fs/cgroup/memory.events 2>/dev/null || echo "no cgroup v2 memory.events"
+          grep -E "MemAvailable" /proc/meminfo || true
+          exit $rc
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
