@@ -365,6 +365,36 @@
       python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
+# Manual: SHUFFLE_V2 in-memory vs external for map_groups (keyed repartition
+# path; external is a DataContext flag only). Same SF1000 / 7M-group config as
+# the shuffle_v2 map_groups release bar. fixed_size m5.4xlarge x32.
+- name: "map_groups_sf1000_{{shuffle}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle: [in-memory, external]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_max_direct_call_object_size=8192
+        - RAY_object_manager_client_connection_num=8
+        - RAY_object_manager_rpc_threads_num=8
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python groupby_benchmark.py --sf 1000 --map-groups
+      --group-by column02 column14
+      --shuffle-strategy shuffle_v2 --num-partitions 500
+      --shuffle-transport {{shuffle}}
+
 # Keyed repartition of TPC-H lineitem (not groupby). SHUFFLE_V2 in-memory vs
 # external file-transport. Manual: trigger via buildkite/release filter.
 # Compute: 32x m5.2xlarge workers (see fixed_size_all_to_all_compute_m5_2xlarge.yaml).

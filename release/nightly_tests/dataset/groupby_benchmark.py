@@ -44,6 +44,16 @@ def parse_args() -> argparse.Namespace:
             "DataContext.default_hash_shuffle_parallelism (hash strategies only)."
         ),
     )
+    parser.add_argument(
+        "--shuffle-transport",
+        choices=["in-memory", "external"],
+        default="in-memory",
+        help=(
+            "Under shuffle_v2 / SHUFFLE_V2: object-store shards (in-memory) vs "
+            "on-disk Flight file-transport (external). Ignored for non-v2 "
+            "strategies."
+        ),
+    )
 
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--aggregate", action="store_true")
@@ -60,13 +70,19 @@ def main(args):
         path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
 
         # Configure appropriate shuffle-strategy
-        DataContext.get_current().shuffle_strategy = ShuffleStrategy(
-            args.shuffle_strategy
-        )
+        ctx = DataContext.get_current()
+        ctx.shuffle_strategy = ShuffleStrategy(args.shuffle_strategy)
+        if args.shuffle_transport == "external":
+            if ctx.shuffle_strategy != ShuffleStrategy.SHUFFLE_V2:
+                raise ValueError(
+                    "--shuffle-transport=external requires "
+                    "--shuffle-strategy shuffle_v2 (or HASH_SHUFFLE_V2)"
+                )
+            ctx.use_external_hash_shuffle = True
+        else:
+            ctx.use_external_hash_shuffle = False
         if args.num_partitions is not None:
-            DataContext.get_current().default_hash_shuffle_parallelism = (
-                args.num_partitions
-            )
+            ctx.default_hash_shuffle_parallelism = args.num_partitions
         # TODO: Don't override once we fix range-based shuffle
         override_num_blocks = (
             100
