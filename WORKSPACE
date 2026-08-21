@@ -62,6 +62,59 @@ python_register_toolchains(
 load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
+# The pip that whl_library shells out to, overridden ahead of the one rules_python
+# brings.
+#
+# rules_python arrives here transitively -- protobuf's protobuf_deps() declares it,
+# pinned at 0.14.0 -- and that version bundles pip 22.2.1, one release before pip could
+# read a PEP 691 JSON simple index. A JSON index page is therefore skipped rather than
+# parsed, and the resolve fails as though the package did not exist:
+#
+#   Skipping page http://.../simple/pygments/ because the GET request got Content-Type:
+#   application/vnd.pypi.simple.v1+json. The only supported Content-Type is text/html
+#   ERROR: Could not find a version that satisfies the requirement pygments==2.16.1
+#   (from versions: none)
+#
+# Which is what any index whose pages are not HTML produces here. The CI mirror caches
+# an index page keyed on URL while PyPI answers `Vary: Accept`, so whichever client
+# warms an entry picks the representation every later reader gets -- and a pip this old
+# can only read one of the two. A pip that understands JSON understands HTML as well, so
+# moving it forward makes the representation stop mattering in either direction, rather
+# than depending on every producer asking for the same one.
+#
+# Declared before pip_install_dependencies() deliberately: that function declares its
+# deps through maybe(), which skips any repository that already exists, so this wins.
+# The build file has to keep the `lib` target name, because rules_python resolves these
+# as @pypi__pip//:lib.
+#
+# 23.3.2 rather than the newest: it is comfortably past 22.3, and pairing a 2022-era
+# whl_library with a much later pip CLI buys drift for no benefit here.
+http_archive(
+    name = "pypi__pip",
+    build_file_content = """\
+package(default_visibility = ["//visibility:public"])
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "lib",
+    srcs = glob(["**/*.py"]),
+    data = glob(["**/*"], exclude = [
+        "**/*.py",
+        "**/*.pyc",
+        "**/* *",
+        "**/*.dist-info/RECORD",
+        "BUILD",
+        "WORKSPACE",
+    ]),
+    imports = ["."],
+)
+""",
+    sha256 = "5052d7889c1f9d05224cd41741acb7c5d6fa735ab34e339624a614eaaa7e7d76",
+    type = "zip",
+    url = "https://files.pythonhosted.org/packages/15/aa/3f4c7bcee2057a76562a5b33ecbd199be08cdb4443a02e26bd2c3cf6fc39/pip-23.3.2-py3-none-any.whl",
+)
+
 pip_install_dependencies()
 
 load("@rules_python//python:pip.bzl", "pip_parse")
