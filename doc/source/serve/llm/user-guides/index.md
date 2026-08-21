@@ -34,6 +34,10 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 - {doc}`Custom vLLM models <custom-vllm>`: serve an out-of-tree architecture with a vLLM plugin, using a Qwen3 reward model as the example.
 - {doc}`SGLang integration <sglang>`: run SGLang as the inference engine instead of vLLM.
 
+## Accelerator-specific serving
+
+- {doc}`TPU serving <tpu>`: serve a model on single-host or multi-host TPU slices with topology-aware placement.
+
 ## Operate in production
 
 - {doc}`Observability and monitoring <observability>`: engine and request metrics, Grafana dashboards, and Prometheus integration.
@@ -56,5 +60,6 @@ KV cache offloading <kv-cache-offloading>
 vLLM compatibility <vllm-compatibility>
 Custom vLLM models <custom-vllm>
 SGLang integration <sglang>
+TPU serving <tpu>
 Observability and monitoring <observability>
 ```
