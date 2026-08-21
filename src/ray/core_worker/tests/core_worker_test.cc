@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "mock/ray/gcs_client/gcs_client.h"
@@ -63,6 +64,31 @@ namespace core {
 using ::testing::_;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
+
+class TestCoreWorkerClient : public rpc::FakeCoreWorkerClient {
+ public:
+  void GetObjectLocationsOwner(
+      const rpc::GetObjectLocationsOwnerRequest &request,
+      const rpc::ClientCallback<rpc::GetObjectLocationsOwnerReply> &callback) override {
+    location_requests_.push_back(request);
+    if (!respond_to_location_requests_) {
+      return;
+    }
+    // Reply with one location per requested object, as the owner does. A test can ask
+    // for extra entries to check that the caller ignores a longer-than-expected reply.
+    // Each entry carries its 1-based position in the reply as the object size, so a test
+    // can tell which reply entry a result was paired with.
+    rpc::GetObjectLocationsOwnerReply reply;
+    for (int i = 0; i < request.object_ids_size() + extra_location_infos_; ++i) {
+      reply.add_object_location_infos()->set_object_size(i + 1);
+    }
+    callback(Status::OK(), std::move(reply));
+  }
+
+  bool respond_to_location_requests_ = false;
+  int extra_location_infos_ = 0;
+  std::vector<rpc::GetObjectLocationsOwnerRequest> location_requests_;
+};
 
 class CoreWorkerTest : public ::testing::Test {
  public:
@@ -106,10 +132,8 @@ class CoreWorkerTest : public ::testing::Test {
     client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
         io_service_, /*record_stats=*/false, /*local_address=*/"");
 
-    auto core_worker_client_pool =
-        std::make_shared<rpc::CoreWorkerClientPool>([](const rpc::Address &) {
-          return std::make_shared<rpc::FakeCoreWorkerClient>();
-        });
+    auto core_worker_client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+        [this](const rpc::Address &) { return mock_core_worker_client_; });
 
     auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
         [](const rpc::Address &) { return std::make_shared<rpc::FakeRayletClient>(); });
@@ -304,7 +328,15 @@ class CoreWorkerTest : public ::testing::Test {
         clock_);
   }
 
+  // A test that overrides worker_fetch_request_size must not leak it into the next one,
+  // and an ASSERT_* failure returns early, so restore it here rather than in the test.
+  void TearDown() override {
+    RayConfig::instance().worker_fetch_request_size() = worker_fetch_request_size_;
+  }
+
  protected:
+  const int64_t worker_fetch_request_size_ =
+      RayConfig::instance().worker_fetch_request_size();
   FakeClock clock_;
   instrumented_io_context io_service_;
   instrumented_io_context task_execution_service_;
@@ -326,6 +358,8 @@ class CoreWorkerTest : public ::testing::Test {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
+  std::shared_ptr<TestCoreWorkerClient> mock_core_worker_client_ =
+      std::make_shared<TestCoreWorkerClient>();
   ActorTaskSubmitter *actor_task_submitter_;
   std::shared_ptr<rpc::FakeRayletClient> local_raylet_client_;
   pubsub::Publisher *object_info_publisher_;
@@ -364,6 +398,123 @@ TaskSpecification CreateStreamingGeneratorTaskSpec() {
   task.GetMutableMessage().set_streaming_generator(true);
   task.GetMutableMessage().set_generator_backpressure_num_objects(-1);
   return task;
+}
+
+TEST_F(CoreWorkerTest, GetLocationFromOwnerCountsAllBatchesBeforeCallbacks) {
+  const auto object_id_1 = ObjectID::FromRandom();
+  const auto object_id_2 = ObjectID::FromRandom();
+  rpc::Address owner_address_1;
+  owner_address_1.set_worker_id(WorkerID::FromRandom().Binary());
+  rpc::Address owner_address_2;
+  owner_address_2.set_worker_id(WorkerID::FromRandom().Binary());
+
+  reference_counter_->AddOwnedObject(object_id_1,
+                                     {},
+                                     owner_address_1,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+  reference_counter_->AddOwnedObject(object_id_2,
+                                     {},
+                                     owner_address_2,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+  mock_core_worker_client_->respond_to_location_requests_ = true;
+
+  std::vector<std::shared_ptr<ObjectLocation>> results;
+  ASSERT_TRUE(core_worker_
+                  ->GetLocationFromOwner({object_id_1, object_id_2},
+                                         /*timeout_ms=*/1000,
+                                         &results)
+                  .ok());
+  // Before the fix the first callback drove the counter to zero and completed the
+  // promise while the second batch was still uncounted, so the second callback threw
+  // "The state of the promise has already been set."
+  const auto &requests = mock_core_worker_client_->location_requests_;
+  ASSERT_EQ(requests.size(), 2);
+  // One batch per owner, each carrying exactly that owner's object.
+  absl::flat_hash_map<std::string, std::string> object_id_by_owner;
+  for (const auto &request : requests) {
+    ASSERT_EQ(request.object_ids_size(), 1);
+    object_id_by_owner[request.intended_worker_id()] = request.object_ids(0);
+  }
+  ASSERT_EQ(object_id_by_owner.size(), 2);
+  ASSERT_EQ(object_id_by_owner[owner_address_1.worker_id()], object_id_1.Binary());
+  ASSERT_EQ(object_id_by_owner[owner_address_2.worker_id()], object_id_2.Binary());
+  // Both owners replied, so both objects have a location rather than a null entry.
+  ASSERT_EQ(results.size(), 2);
+  ASSERT_NE(results[0], nullptr);
+  ASSERT_NE(results[1], nullptr);
+}
+
+TEST_F(CoreWorkerTest, GetLocationFromOwnerSplitsOneOwnerIntoBatches) {
+  RayConfig::instance().worker_fetch_request_size() = 2;
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  for (int i = 0; i < 5; i++) {
+    object_ids.push_back(ObjectID::FromRandom());
+    reference_counter_->AddOwnedObject(object_ids.back(),
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+  }
+  mock_core_worker_client_->respond_to_location_requests_ = true;
+  // Reply with more locations than requested to exercise the clamp in the callback.
+  mock_core_worker_client_->extra_location_infos_ = 3;
+
+  std::vector<std::shared_ptr<ObjectLocation>> results;
+  ASSERT_TRUE(
+      core_worker_->GetLocationFromOwner(object_ids, /*timeout_ms=*/1000, &results).ok());
+
+  // 5 objects at a batch size of 2 is three batches: 2, 2, 1.
+  const auto &requests = mock_core_worker_client_->location_requests_;
+  ASSERT_EQ(requests.size(), 3);
+  std::vector<ObjectID> requested_ids;
+  for (const auto &request : requests) {
+    for (const auto &object_id : request.object_ids()) {
+      requested_ids.push_back(ObjectID::FromBinary(object_id));
+    }
+  }
+  // Every object is requested exactly once, in order, so each result must line up with
+  // its own position inside its batch rather than with a later reply entry. Comparing the
+  // flattened list against the insertion order is only valid because there is a single
+  // owner here: absl randomizes flat_hash_map iteration, so a second owner would need a
+  // per-owner comparison instead.
+  ASSERT_EQ(requested_ids, object_ids);
+  ASSERT_EQ(results.size(), object_ids.size());
+  const std::vector<int64_t> expected_sizes = {1, 2, 1, 2, 1};
+  for (size_t i = 0; i < results.size(); i++) {
+    ASSERT_NE(results[i], nullptr) << "result " << i;
+    ASSERT_EQ(results[i]->GetObjectSize(), expected_sizes[i]) << "result " << i;
+  }
+}
+
+TEST_F(CoreWorkerTest, GetLocationFromOwnerRejectsNonPositiveBatchSize) {
+  RayConfig::instance().worker_fetch_request_size() = 0;
+  const auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+
+  std::vector<std::shared_ptr<ObjectLocation>> results;
+  const auto status =
+      core_worker_->GetLocationFromOwner({object_id}, /*timeout_ms=*/1000, &results);
+  ASSERT_TRUE(status.IsInvalidArgument()) << status;
+  ASSERT_TRUE(mock_core_worker_client_->location_requests_.empty());
 }
 
 TEST_F(CoreWorkerTest, PeekObjectRefStreamNReturnsExpectedRefs) {
