@@ -137,9 +137,41 @@ Both are packaging-independent and worth fixing regardless of the path chosen:
   `//python/ray/data/...` never enumerates it. The tests cannot run even if the
   extension were installed.
 
+Worth noting this is not a one-draft oversight: **#65406, the further-along A/B
+branch, does not add an `arrow_rs` target either** — its `BUILD.bazel` patch contains
+zero `arrow_rs` mentions. Across the whole effort the test file has never been
+registered with Bazel.
+
 This change adds the `py_test` target (tagged `arrow_rs`), excludes that tag from
 the general data jobs so they cannot silently skip it, and adds a dedicated job
 that runs it against an image where the extension is actually present.
+
+## The parquet-crate patch changes the calculus
+
+PR [#65406](https://github.com/ray-project/ray/pull/65406) (the A/B treatment arm,
+stacked on #64985) carries
+`release/nightly_tests/dataset/arrow_rs_probe/patch_crate_parquet.sh` plus
+`patches/parquet-59.1.0-dict-reserve.diff` — a **local patch to the third-party
+`parquet` crate**, pre-sizing the values buffer in
+`OffsetBuffer::extend_from_dictionary`. It is applied by vendoring the crate source
+out of the cargo registry cache and pointing `[patch.crates-io]` at it from a
+build-local `.cargo/config.toml`. The script is explicit that `vendor/` and `.cargo/`
+are never committed.
+
+That is fine for an experiment. But if the patch proves to be a real win, it becomes a
+**standing fork requirement**, and that materially strengthens the out-of-tree case:
+
+- A dedicated repo can carry a proper forked-and-pinned dependency — a git dependency
+  on a fork with its own tag, or a vendored tree with a documented rebase process.
+- Doing the same inside `ray` means either committing a vendored copy of `parquet`
+  into the Ray tree, or shipping a `[patch.crates-io]` that every Ray wheel build must
+  resolve — on top of the crates.io fetch that the mirror work has not covered yet.
+- `Cargo.lock` loses its `parquet` checksum line under the patch (the script backs the
+  lock up and restores it on `REVERT` precisely because of this), so the
+  reproducibility story that makes the committed lock meaningful weakens.
+
+Ask about this explicitly: **is the patch load-bearing for the performance numbers?**
+If yes, out-of-tree stops being merely preferable and becomes close to required.
 
 ## Notes for the crate itself
 
