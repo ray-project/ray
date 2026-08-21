@@ -387,6 +387,15 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       /*callback_service*/ &io_service_);
 
+  // Take job config setting for lineage pinning if provided
+  const bool cluster_lineage_pinning_enabled =
+      RayConfig::instance().lineage_pinning_enabled();
+  const std::optional<bool> job_enable_object_reconstruction_or =
+      worker_context->GetEnableObjectReconstruction();
+  const bool lineage_reconstruction_enabled =
+      job_enable_object_reconstruction_or.has_value()
+          ? job_enable_object_reconstruction_or.value()
+          : cluster_lineage_pinning_enabled;
   auto reference_counter = std::make_shared<ReferenceCounter>(
       rpc_address,
       /*object_info_publisher=*/object_info_publisher.get(),
@@ -401,7 +410,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,
-      RayConfig::instance().lineage_pinning_enabled());
+      lineage_reconstruction_enabled);
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(
