@@ -189,8 +189,26 @@ class DeploymentAutoscalingState:
             del self._replica_metrics[replica_id]
 
     def get_num_replicas_lower_bound(self) -> int:
-        if self._config.initial_replicas is not None and (
+        # While scaling up under a `target_capacity` limit, hold the number of
+        # replicas at `initial_replicas` so that autoscaling doesn't immediately
+        # scale the deployment back down before it has any metrics.
+        #
+        # A `target_capacity` of 100 imposes no limit on the number of replicas,
+        # so it is equivalent to an unset `target_capacity` and the deployment is
+        # already at full capacity. Treat it as such here, matching
+        # `get_capacity_adjusted_num_replicas`. Otherwise a deployment left at
+        # `target_capacity=100` with `target_capacity_direction=UP`, which is
+        # where KubeRay's `NewClusterWithIncrementalUpgrade` leaves it once an
+        # upgrade completes, keeps `initial_replicas` as its lower bound forever
+        # and can never scale down to `min_replicas`.
+        scaling_up_under_capacity_limit = (
             self._target_capacity_direction == TargetCapacityDirection.UP
+            and self._target_capacity is not None
+            and self._target_capacity != 100
+        )
+        if (
+            self._config.initial_replicas is not None
+            and scaling_up_under_capacity_limit
         ):
             return get_capacity_adjusted_num_replicas(
                 self._config.initial_replicas,

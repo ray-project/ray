@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    TargetCapacityDirection,
+    TimeStampedValue,
+)
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
@@ -1594,6 +1599,93 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
         # user state remains intact
         assert final_state[d2]["counter"] == 5
+
+
+class TestNumReplicasLowerBound:
+    """Tests for `DeploymentAutoscalingState.get_num_replicas_lower_bound`."""
+
+    def _create_state(
+        self,
+        *,
+        min_replicas: int,
+        initial_replicas: int,
+        max_replicas: int,
+        target_capacity,
+        target_capacity_direction,
+    ) -> DeploymentAutoscalingState:
+        state = DeploymentAutoscalingState(DeploymentID(name="test", app_name="app"))
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=min_replicas,
+            initial_replicas=initial_replicas,
+            max_replicas=max_replicas,
+        )
+        info.deployment_config.gang_scheduling_config = None
+        info.target_capacity = target_capacity
+        info.target_capacity_direction = target_capacity_direction
+        info.config_changed.return_value = False
+
+        state.register(info, curr_target_num_replicas=initial_replicas)
+        return state
+
+    @pytest.mark.parametrize("target_capacity", [100, 100.0, None])
+    def test_full_capacity_allows_scale_to_zero(self, target_capacity):
+        """A deployment at full capacity must be able to reach `min_replicas`.
+
+        `target_capacity=100` imposes no limit on the number of replicas, so it
+        is equivalent to an unset `target_capacity`. In both cases the
+        `initial_replicas` floor must not apply, otherwise a deployment left at
+        `target_capacity=100` with direction UP (where KubeRay's
+        `NewClusterWithIncrementalUpgrade` leaves it after an upgrade finishes)
+        can never scale down to `min_replicas=0`.
+        """
+        state = self._create_state(
+            min_replicas=0,
+            initial_replicas=1,
+            max_replicas=2,
+            target_capacity=target_capacity,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        assert state.get_num_replicas_lower_bound() == 0
+
+    @pytest.mark.parametrize(
+        "target_capacity,expected_lower_bound",
+        [(0, 0), (50, 2), (100, 0)],
+    )
+    def test_partial_capacity_holds_initial_replicas(
+        self, target_capacity, expected_lower_bound
+    ):
+        """While ramping up under a real capacity limit, hold `initial_replicas`.
+
+        At `target_capacity=100` the limit is a no-op, so the bound falls back to
+        the capacity-adjusted `min_replicas` instead.
+        """
+        state = self._create_state(
+            min_replicas=0,
+            initial_replicas=4,
+            max_replicas=8,
+            target_capacity=target_capacity,
+            target_capacity_direction=TargetCapacityDirection.UP,
+        )
+
+        assert state.get_num_replicas_lower_bound() == expected_lower_bound
+
+    @pytest.mark.parametrize("target_capacity", [50, 100, None])
+    def test_not_scaling_up_uses_min_replicas(self, target_capacity):
+        """When not scaling up, the bound is always the adjusted `min_replicas`."""
+        for direction in [TargetCapacityDirection.DOWN, None]:
+            state = self._create_state(
+                min_replicas=2,
+                initial_replicas=6,
+                max_replicas=8,
+                target_capacity=target_capacity,
+                target_capacity_direction=direction,
+            )
+
+            expected = 1 if target_capacity == 50 else 2
+            assert state.get_num_replicas_lower_bound() == expected
 
 
 if __name__ == "__main__":
