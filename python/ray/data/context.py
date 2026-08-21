@@ -762,9 +762,10 @@ class DataContext:
             its input shards. A non-positive value (``<= 0``) disables the
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
-            shuffle input blocks before partitioning. Currently only applies
-            to the ``SHUFFLE_V2`` shuffle strategy; other shuffle
-            strategies ignore it. Input blocks are buffered per node and
+            shuffle input blocks before partitioning. Applies to the
+            ``SHUFFLE_V2`` shuffle strategy (including external hash shuffle).
+            Other shuffle strategies ignore it. Input blocks are buffered per
+            node and
             processed as a batch once this size is reached; remaining
             buffered blocks are flushed when input is exhausted. Lower values
             increase shuffle parallelism (useful for CPU-intensive shuffles)

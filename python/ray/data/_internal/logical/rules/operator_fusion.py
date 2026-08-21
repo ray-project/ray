@@ -24,11 +24,11 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
-    ShuffleReduceOp,
-)
 from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_reduce_operator import (  # noqa: E501
     ExternalHashShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
+    ShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
