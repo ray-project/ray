@@ -1,9 +1,6 @@
-"""One-knob benchmark: SHUFFLE_V2 in-memory vs external (file-transport).
+"""One-knob benchmark: hash-shuffle v1 vs SHUFFLE_V2 in-memory vs external.
 
-The only mandatory difference between the two variants is which
-``DataContext`` flag gets flipped -- everything else (read, limit,
-repartition, write, stats collection) is shared.
-
+  v1        -> shuffle_strategy = HASH_SHUFFLE (aggregator actors)
   in-memory -> shuffle_strategy = SHUFFLE_V2,
                use_external_hash_shuffle = False
                (map outputs via Ray object store; spills to disk when full)
@@ -81,13 +78,18 @@ def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
 
 
 def configure_shuffle(ctx, shuffle: str) -> None:
-    """Flip the one knob that distinguishes in-memory from external.
+    """Select hash-shuffle engine / transport.
 
-    Both keep ``SHUFFLE_V2``; ``use_external_hash_shuffle`` selects the
-    transport (object-store vs on-disk / Flight).
+    - ``v1``: aggregator-based ``HASH_SHUFFLE`` (legacy)
+    - ``in-memory``: ``SHUFFLE_V2`` with object-store shards
+    - ``external``: ``SHUFFLE_V2`` with on-disk / Flight transport
     """
-    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = shuffle == "external"
+    if shuffle == "v1":
+        ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+        ctx.use_external_hash_shuffle = False
+    else:
+        ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+        ctx.use_external_hash_shuffle = shuffle == "external"
 
 
 def run_one(
@@ -136,8 +138,11 @@ def run_one(
     wait_for_object_store_to_drain()
 
     gbps = data_size_gb / elapsed if elapsed > 0 else 0.0
+    ctx = DataContext.get_current()
     return {
         "shuffle": shuffle,
+        "shuffle_strategy": str(ctx.shuffle_strategy),
+        "use_external_hash_shuffle": bool(ctx.use_external_hash_shuffle),
         "data_size_gb": data_size_gb,
         "num_partitions": num_partitions,
         "sf": sf,
@@ -197,10 +202,10 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--shuffle",
-        choices=["in-memory", "external", "both"],
+        choices=["v1", "in-memory", "external", "both"],
         default="external",
-        help="Pick one transport, or 'both' to run in-memory then external "
-        "back-to-back for direct comparison.",
+        help="v1=HASH_SHUFFLE aggregators; in-memory/external=SHUFFLE_V2 "
+        "object-store vs Flight; 'both' runs in-memory then external.",
     )
     p.add_argument("--data-size-gb", type=int, required=True)
     p.add_argument("--num-partitions", type=int, required=True)
@@ -284,6 +289,10 @@ def main() -> None:
         case_metrics = benchmark.result[s]
         r = {
             "shuffle": case_metrics["shuffle"],
+            "shuffle_strategy": case_metrics.get("shuffle_strategy"),
+            "use_external_hash_shuffle": case_metrics.get(
+                "use_external_hash_shuffle"
+            ),
             "data_size_gb": case_metrics["data_size_gb"],
             "num_partitions": case_metrics["num_partitions"],
             "sf": case_metrics["sf"],

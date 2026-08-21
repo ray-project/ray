@@ -396,21 +396,21 @@
       --shuffle-strategy shuffle_v2 --num-partitions 500
       --shuffle-transport {{shuffle}} --stats
 
-# Keyed repartition of TPC-H lineitem (not groupby). SHUFFLE_V2 in-memory vs
-# external file-transport. Manual: trigger via buildkite/release filter.
+# Keyed repartition of TPC-H lineitem (not groupby). Manual release filter.
+# Variants: HASH_SHUFFLE (v1 aggregators) vs SHUFFLE_V2 in-memory vs external.
 # Compute: 32x m5.2xlarge workers (see fixed_size_all_to_all_compute_m5_2xlarge.yaml).
 #
-# In-memory (object-store) remote pull knobs (Ray Core / object manager):
+# In-memory / v1 object-store pull knobs (Ray Core / object manager):
 #   RAY_object_manager_client_connection_num  — gRPC clients per OM peer (default 2)
 #   RAY_object_manager_rpc_threads_num        — transfer RPC thread base; 0 = auto
-#       min(max(2, num_cpus/4), 8); actual threads ~= this * 3
 # Both set to 8 here (m5.2xlarge auto would only be ~2). Harmless for external.
+# Note: v1 may OOM/timeout more easily on 512GB (aggregator heap); keep manual.
 - name: "repartition_lineitem_{{shuffle}}"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
-      shuffle: [in-memory, external]
+      shuffle: [v1, in-memory, external]
 
   cluster:
     anyscale_sdk_2026: true
@@ -436,7 +436,7 @@
   frequency: manual
   matrix:
     setup:
-      shuffle: [in-memory, external]
+      shuffle: [v1, in-memory, external]
 
   cluster:
     anyscale_sdk_2026: true
