@@ -369,12 +369,13 @@ class LineageTracker:
         Raises:
             ValueError: If the task is not already registered.
         """
-        task_node = self._data_task_id_to_task_node.get(data_task_id)
-        if task_node is None:
+        node = self._data_task_id_to_task_node.get(data_task_id)
+        if node is None:
             raise ValueError(
                 f"Expected task {data_task_id} to be registered before getting "
                 "object reuse status but was not."
             )
+        task_node: TaskNode = node
 
         # A plan is keyed by the data task ID of the task whose failure opened it.
         is_reconstruction_target = plan_id == data_task_id
