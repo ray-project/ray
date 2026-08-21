@@ -152,6 +152,16 @@ def test_container_option_serialize(runtime_env_class):
 
 
 class TestURICache:
+    def test_add_existing_uri_is_idempotent(self):
+        cache = URICache(debug_mode=True)
+        cache.add("a", 4)
+        cache.add("a", 4)
+        assert cache.get_total_size_bytes() == 4
+
+        cache.mark_unused("a")
+        cache.add("a", 4)
+        assert cache.get_total_size_bytes() == 4
+
     def test_zero_cache_size(self):
         uris_to_sizes = {"5": 5, "3": 3}
 
