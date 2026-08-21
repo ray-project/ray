@@ -825,9 +825,9 @@ for mock_target in autodoc_mock_imports:
 # upstream objects.inv used to *resolve* those references at build time; None
 # means the Sphinx default of <base_url>objects.inv. A few projects pin an
 # explicit inventory URL because their hosted objects.inv is unreliable; the
-# ray-project/*/releases/.../object-mirror-* URLs are stable mirrors we control.
+# ray-project/*/releases/.../object-mirror-* URL is a stable mirror we control.
 #
-# To avoid fetching two dozen inventories over the network on every build (slow,
+# To avoid fetching eighteen inventories over the network on every build (slow,
 # and occasionally flaky via the GitHub release-asset redirects), we commit a
 # snapshot of each under doc/source/_intersphinx/ and prefer it. The
 # `intersphinx_mapping` built below lists the local snapshot first and the
@@ -844,14 +844,10 @@ for mock_target in autodoc_mock_imports:
 # for a releases/download/ asset, and the github.com/.../releases/download/ URL
 # is the stable one to keep.
 _intersphinx_targets = {
-    "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
-    "composer": ("https://docs.mosaicml.com/en/latest/", None),
     "dask": ("https://docs.dask.org/en/stable/", None),
     "datasets": ("https://huggingface.co/docs/datasets/main/en/", None),
-    "distributed": ("https://distributed.dask.org/en/stable/", None),
     "grpc": ("https://grpc.github.io/grpc/python/", None),
     "gymnasium": ("https://gymnasium.farama.org/", None),
-    "horovod": ("https://horovod.readthedocs.io/en/stable/", None),
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
@@ -862,22 +858,9 @@ _intersphinx_targets = {
         "https://github.com/ray-project/pandas/releases/download/object-mirror-0.1.0/objects.inv",
     ),
     "pyarrow": ("https://arrow.apache.org/docs", None),
-    "pydantic": ("https://pydantic.dev/docs/validation/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
-    "pytorch_lightning": (
-        "https://lightning.ai/docs/pytorch/stable/",
-        # lightning.ai serves its docs as an SPA and returns HTML for
-        # objects.inv (recent readthedocs versions redirect there and do the
-        # same, breaking -W builds with "invalid inventory header"); 2.0.9 is
-        # the newest readthedocs version still serving a real inventory.
-        "https://pytorch-lightning.readthedocs.io/en/2.0.9/objects.inv",
-    ),
-    "scipy": (
-        "https://docs.scipy.org/doc/scipy/",
-        "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
-    ),
     "sklearn": ("https://scikit-learn.org/stable/", None),
     "tensorflow": (
         "https://www.tensorflow.org/api_docs/python",
@@ -885,9 +868,11 @@ _intersphinx_targets = {
     ),
     "torch": (
         "https://docs.pytorch.org/docs/stable/",
-        "https://docs.pytorch.org/docs/2.7/objects.inv",
+        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt
+        # so cross-references only resolve to symbols that version ships. Bump this
+        # with that pin, then re-run _intersphinx/refresh.py torch.
+        "https://docs.pytorch.org/docs/2.9/objects.inv",
     ),
-    "torchvision": ("https://docs.pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
 
