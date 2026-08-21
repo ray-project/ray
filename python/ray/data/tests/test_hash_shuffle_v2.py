@@ -14,6 +14,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
     ShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
+    SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     _encode_partition_ipc,
     _get_shard_batch,
     _ipc_write_options,
@@ -52,9 +53,9 @@ def _assert_keys_colocated(per_block):
 
 
 @pytest.fixture(autouse=True)
-def data_context_hash_shuffle_v2(restore_data_context):
+def data_context_shuffle_v2(restore_data_context):
     ctx = restore_data_context
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
 
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
@@ -175,6 +176,26 @@ def test_repartition_with_sort_produces_sorted_partitions(
         for block_ref in ref_bundle.block_refs:
             ids = ray.get(block_ref)["id"].to_pylist()
             assert ids == sorted(ids)
+
+
+def test_sort_reduce_uses_higher_multiplier(ray_start_regular_shared_2_cpus):
+    """Sorted reduces request 3x their input (sort_by materializes a sorted
+    copy on top of the concatenated shards); plain concat reduces keep the
+    2x default."""
+    from ray.data._internal.logical.optimizers import get_execution_plan
+
+    sorted_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"], sort=True)._logical_plan
+    )[0].dag
+    assert sorted_dag._peak_memory_multiplier == 3
+    # The multiplier drives the reduce task's memory request.
+    sorted_dag.input_dependencies[0]._partition_bytes[0] = 100
+    assert sorted_dag.incremental_resource_usage().memory == 300
+
+    plain_dag = get_execution_plan(
+        ray.data.range(10).repartition(2, keys=["id"])._logical_plan
+    )[0].dag
+    assert plain_dag._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
 
 
 def test_get_shard_batch_no_timeout(ray_start_regular_shared_2_cpus):
@@ -316,7 +337,7 @@ def test_shuffle_reduce_task_uses_operator_name():
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
 # shuffle_tasks tests above) into a dedicated operator/task-level test file --
-# they aren't specific to hash-shuffle-v2.
+# they aren't specific to shuffle-v2.
 def _ipc_shard_bundle(partition_id, table):
     """One partition's shard as a ShuffleMapOp emits it: an IPC-encoded buffer
     stamped with the partition id."""

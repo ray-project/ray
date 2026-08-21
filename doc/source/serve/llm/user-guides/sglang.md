@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve models with the SGLang engine through Ray Serve LLM's OpenAI-compatible API via the server_cls parameter on LLMConfig."
+---
+
 (sglang-integration)=
 # SGLang integration
 
