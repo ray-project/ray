@@ -81,7 +81,10 @@ _rayci_pypi_index_setup() {
   fi
 
   local prefix="${RAYCI_PYPI_PROXY_PREFIX:-/opt/pypiproxy}"
-  if [[ ! -x "${prefix}/bin/python" ]]; then
+  # Windows venvs put the interpreter in Scripts/ rather than bin/, so a caller on that
+  # platform names it outright instead of having it derived from the prefix.
+  local proxy_python="${RAYCI_PYPI_PROXY_PYTHON:-${prefix}/bin/python}"
+  if [[ ! -x "${proxy_python}" ]]; then
     export RAYCI_PYPI_INDEX_MODE="pypi"
     echo "pypi index: byte cache reachable but this image carries no proxy; resolving from public PyPI" >&2
     return 0
@@ -121,10 +124,10 @@ _rayci_pypi_index_setup() {
   # with it. setsid is util-linux and absent on macOS, where nohup plus a subshell
   # achieves the same detachment.
   if command -v setsid >/dev/null 2>&1; then
-    MIRROR_URL="${mirror}" setsid "${prefix}/bin/python" \
+    MIRROR_URL="${mirror}" setsid "${proxy_python}" \
       "${prefix}/pypi_index_proxy.py" "${port}" >"${log}" 2>&1 &
   else
-    ( MIRROR_URL="${mirror}" nohup "${prefix}/bin/python" \
+    ( MIRROR_URL="${mirror}" nohup "${proxy_python}" \
         "${prefix}/pypi_index_proxy.py" "${port}" >"${log}" 2>&1 & )
   fi
 
