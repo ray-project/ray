@@ -8,6 +8,10 @@ import ray
 from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
+# Attach the cluster auth token to dashboard HTTP requests (auth is on by
+# default for a local ray.init cluster).
+pytestmark = pytest.mark.usefixtures("auth_token_requests")
+
 
 @pytest.fixture
 def ray_start_8_cpus(monkeypatch):

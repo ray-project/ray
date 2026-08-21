@@ -19,6 +19,10 @@ from ray.serve.schema import HTTPOptionsSchema, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 
+# Attach the cluster auth token to dashboard HTTP requests (auth is on by
+# default for a local ray.init cluster).
+pytestmark = pytest.mark.usefixtures("auth_token_requests")
+
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
 
