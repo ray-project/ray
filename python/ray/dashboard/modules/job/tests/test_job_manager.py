@@ -1656,5 +1656,52 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
         assert "JobSupervisor" not in t.name
 
 
+@pytest.mark.asyncio
+async def test_job_monitor_retries_transient_rpc_errors(job_manager, tmp_path):
+    """Test that transient RPC errors (CANCELLED/UNAVAILABLE) during GCS failover
+    are retried instead of immediately marking the job as FAILED."""
+    from unittest.mock import patch as mock_patch
+
+    from ray.dashboard.modules.job.job_manager import _is_transient_rpc_error
+    from ray.exceptions import RpcError
+
+    assert _is_transient_rpc_error(RpcError("RPC error: CANCELLED", rpc_code=1))
+    assert _is_transient_rpc_error(RpcError("RPC error: UNAVAILABLE", rpc_code=14))
+    assert not _is_transient_rpc_error(RuntimeError("some other error"))
+    assert not _is_transient_rpc_error(RpcError("RPC error: INTERNAL", rpc_code=13))
+    assert not _is_transient_rpc_error(
+        RuntimeError("task was cancelled before it started running")
+    )
+
+    job_id = await job_manager.submit_job(entrypoint="sleep 600")
+    await async_wait_for_condition(
+        check_job_running, job_manager=job_manager, job_id=job_id
+    )
+
+    call_count = {"value": 0}
+    original_get_status = job_manager._job_info_client.get_status
+
+    async def mock_get_status(*args, **kwargs):
+        call_count["value"] += 1
+        if call_count["value"] <= 3:
+            raise RpcError("RPC error: CANCELLED", rpc_code=1)
+        return await original_get_status(*args, **kwargs)
+
+    with mock_patch.object(
+        job_manager._job_info_client, "get_status", side_effect=mock_get_status
+    ):
+        await asyncio.sleep(2)
+
+    status = await job_manager.get_job_status(job_id)
+    assert (
+        status == JobStatus.RUNNING
+    ), f"Job should remain RUNNING after transient RPC errors, got {status}"
+
+    job_manager.stop_job(job_id)
+    await async_wait_for_condition(
+        check_job_stopped, job_manager=job_manager, job_id=job_id
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
