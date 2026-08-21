@@ -8,6 +8,7 @@ import queue
 import random
 import threading
 import time
+import typing
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import (
@@ -81,7 +82,6 @@ from ray.data.context import (
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 

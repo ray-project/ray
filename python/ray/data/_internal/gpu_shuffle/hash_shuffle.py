@@ -2,6 +2,7 @@ import functools
 import logging
 import pickle
 import time
+import typing
 from typing import (
     Any,
     Callable,
@@ -42,7 +43,6 @@ from ray.data.context import DataContext
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.interfaces.physical_operator import ActorPoolInfo
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
