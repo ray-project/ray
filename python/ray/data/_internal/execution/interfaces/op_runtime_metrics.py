@@ -576,6 +576,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
         self._op_task_duration_stats = DistributionTracker()
         self._max_uss_bytes = DistributionTracker()
+        self._max_rss_bytes = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -915,6 +916,44 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         return self.max_uss_bytes.mean
 
     @metric_property(
+        description="Max USS usage across tasks (worst task).",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    def max_uss_per_task(self) -> Optional[float]:
+        """Peak USS of the single worst task — the number a per-worker memory
+        budget must survive (the average can hide one task decoding an outlier
+        file)."""
+        return self.max_uss_bytes.max
+
+    @metric_property(
+        description="Distribution of max RSS bytes across tasks.",
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
+    )
+    def max_rss_bytes(self) -> DistributionTracker:
+        return self._max_rss_bytes
+
+    @metric_property(
+        description="Average RSS usage of tasks.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    def average_max_rss_per_task(self) -> Optional[float]:
+        """Average max RSS usage of tasks. RSS counts the shared pages
+        (e.g. mapped object-store blocks) that USS excludes, so USS vs RSS
+        separates a task's private working set from its OS-visible footprint."""
+        if self.max_rss_bytes.num_samples == 0:
+            return None
+        return self.max_rss_bytes.mean
+
+    @metric_property(
+        description="Max RSS usage across tasks (worst task).",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    def max_rss_per_task(self) -> Optional[float]:
+        """Peak RSS of the single worst task."""
+        return self.max_rss_bytes.max
+
+    @metric_property(
         description="Indicates if the operator is hanging.",
         metrics_group=MetricsGroup.MISC,
         internal_only=True,
@@ -1164,6 +1203,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         if task_exec_stats is not None and task_exec_stats.max_uss_bytes is not None:
             self._max_uss_bytes.add_sample(task_exec_stats.max_uss_bytes)
+
+        if task_exec_stats is not None and task_exec_stats.max_rss_bytes is not None:
+            self._max_rss_bytes.add_sample(task_exec_stats.max_rss_bytes)
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s

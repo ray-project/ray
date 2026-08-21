@@ -201,6 +201,7 @@ python/ray/data/tests/block_batching/test_iter_batches.py
 python/ray/data/tests/block_batching/test_util.py
 python/ray/data/tests/conftest.py
 python/ray/data/tests/datasource/test_arrow.py
+python/ray/data/tests/datasource/test_arrow_rs_parquet_reader.py
 python/ray/data/tests/datasource/test_bigquery.py
 python/ray/data/tests/datasource/test_clickhouse.py
 python/ray/data/tests/datasource/test_csv.py

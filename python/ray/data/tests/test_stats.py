@@ -354,6 +354,10 @@ def gen_expected_metrics(
             "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
+            "'max_uss_per_task': H",
+            "'max_rss_bytes': H",
+            "'average_max_rss_per_task': H",
+            "'max_rss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -444,6 +448,10 @@ def gen_expected_metrics(
             "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
             "'average_max_uss_per_task': H",
+            "'max_uss_per_task': H",
+            "'max_rss_bytes': H",
+            "'average_max_rss_per_task': H",
+            "'max_rss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -636,7 +644,8 @@ def canonicalize(
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
 
     canonicalized_stats = re.sub(
-        r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
+        r"((?:average_)?max_[ur]ss_per_task:|'(?:average_)?max_[ur]ss_per_task':)"
+        r" (?:N|Z|None)\b",
         r"\g<1> H",
         canonicalized_stats,
     )
@@ -647,10 +656,11 @@ def canonicalize(
         r"\g<1>P",
         canonicalized_stats,
     )
-    # max_uss_bytes DistributionTracker may have 0 or N samples depending on
-    # platform (USS measurement only available on Linux). Normalize entire dict.
+    # max_uss_bytes/max_rss_bytes DistributionTrackers may have 0 or N samples
+    # depending on platform (USS/RSS measurement only available on Linux).
+    # Normalize entire dict.
     canonicalized_stats = re.sub(
-        r"(max_uss_bytes['\s:]+)\{[^}]+\}",
+        r"(max_[ur]ss_bytes['\s:]+)\{[^}]+\}",
         r"\g<1>H",
         canonicalized_stats,
     )
@@ -933,6 +943,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
+        "      max_uss_per_task: H,\n"
+        "      max_rss_bytes: H,\n"
+        "      average_max_rss_per_task: H,\n"
+        "      max_rss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -1098,6 +1112,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
         "      average_max_uss_per_task: H,\n"
+        "      max_uss_per_task: H,\n"
+        "      max_rss_bytes: H,\n"
+        "      average_max_rss_per_task: H,\n"
+        "      max_rss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -1216,6 +1234,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
         "            average_max_uss_per_task: H,\n"
+        "            max_uss_per_task: H,\n"
+        "            max_rss_bytes: H,\n"
+        "            average_max_rss_per_task: H,\n"
+        "            max_rss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"

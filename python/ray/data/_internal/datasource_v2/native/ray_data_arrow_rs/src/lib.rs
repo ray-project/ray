@@ -1,0 +1,2171 @@
+//! Experimental arrow-rs Parquet reader for Ray Data (PyO3 extension).
+//!
+//! RECONSTRUCTION STATUS
+//! ---------------------
+//! Reconstructed from the surviving standalone benchmark (`main.rs`). The local
+//! path (`read_row_groups`) ports two of `main.rs`'s modes:
+//!
+//! 1. **Byte-budgeted per-group streaming** (`row_group_loop_bb`, threads==1):
+//!    read one row group at a time with a batch size computed *by bytes* from the
+//!    footer (`byte_budget_rows`), so the decoded working set stays flat across
+//!    schemas (wide-string groups get few rows/batch, numeric groups many). A
+//!    single reader streams each group in file order and drops each batch, so peak
+//!    memory ~= one budget while row order is preserved.
+//!
+//! 2. **Intra-fragment K-split** (`build_units` / `read_range_fixed`): when a call
+//!    covers a *single* row group larger than `split_threshold_bytes`, split its
+//!    rows into K contiguous ranges decoded by K threads and merge them back in
+//!    range order (`ParallelRangeReader`). This is the case Ray can't parallelize
+//!    (a big row group is a lone fragment → thread pool of 1), so PyArrow decodes
+//!    it ~single-threaded; K gives us parallel decode without regressing speed.
+//!    Multi-row-group / small-row-group calls use path 1 (K=1) because Ray's
+//!    fragment thread pool already parallelizes those — so the two parallelism
+//!    layers never multiply.
+//!
+//! Unlike `main.rs` (which only sums a commutative checksum, so range order is
+//! irrelevant), we return real data, so the K-split merge is strictly order
+//! preserving: one bounded channel per range, drained in range order.
+//!
+//! The S3 path (`read_row_groups_s3`) ports `main.rs`'s windowed-async reader
+//! (`read_all_async` / `read_unit_windowed`) but tuned **memory-first**: peak RSS
+//! is `≈ (fetch window compressed) + (decode budget)`, both knobs, flat regardless
+//! of row-group size — not `main.rs`'s always-K-way fan-out (which multiplies
+//! in-flight memory by K for speed). We fan out to K concurrent GET streams ONLY
+//! for a lone row group above `split_threshold_bytes` (the case Ray's fragment
+//! pool can't parallelize) — exactly mirroring the local K-split rule — so crate-K
+//! and Ray's 4-thread pool never multiply. Every other layout is a single windowed
+//! stream (K=1). Output is order-preserving (per-unit channels drained in order),
+//! and the decode batch is byte-budgeted just like the local path.
+//!
+//! Within a single stream, every read shape decomposes into prefetchable *units*
+//! — row windows (`~fetch_window_mb` compressed of all projected columns) for
+//! ordinary groups, column groups (`~column_fetch_mb` compressed of some columns,
+//! all rows) for wide ones — and all units flow through ONE mechanism (`drive_s3`):
+//! a byte-denominated semaphore ("the bucket", `prefetch_budget_mb`) admits ranged
+//! GETs concurrently until the bucket is full, while a single decoder consumes the
+//! prefetched bytes strictly in order; a decoded unit dropping its bytes releases
+//! its permits and wakes the next fetch. Fetch concurrency thus self-adjusts to
+//! the fetch:decode speed ratio and peak prefetch memory is the bucket size by
+//! construction. This is orthogonal to K: K adds parallel streams (spatial
+//! split), each with its own bucket (`≈ k * prefetch_budget` compressed in
+//! flight).
+//!
+//! Public API (consumed by `ArrowRsParquetFileReader` on the Python side via
+//! `pa.RecordBatchReader.from_stream(...)`):
+//!
+//!   read_row_groups(path, row_groups=None, columns=None, batch_size=131072,
+//!                   decode_budget_bytes=2*1024*1024, k=1,
+//!                   split_threshold_bytes=128*1024*1024)
+//!   read_row_groups_s3(bucket, key, region, anonymous, endpoint=None, ...creds...,
+//!                      row_groups=None, columns=None, batch_size=131072,
+//!                      decode_budget_bytes=2*1024*1024, fetch_window_mb=16, k=1,
+//!                      split_threshold_bytes=128*1024*1024, predicate_json=None,
+//!                      column_fetch_mb=16, prefetch_budget_mb=64)
+
+mod predicate;
+
+use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::sync::mpsc::{sync_channel, Receiver};
+use std::thread;
+
+use crate::predicate::{can_match, ColStats, Pred, Value};
+use parquet::basic::{ConvertedType, LogicalType, Type as PhysicalType};
+use parquet::file::metadata::RowGroupMetaData;
+use parquet::file::statistics::Statistics;
+use parquet::schema::types::ColumnDescriptor;
+
+use arrow::array::{ArrayRef, RecordBatch};
+use arrow::datatypes::SchemaRef;
+use arrow::error::ArrowError;
+use arrow::ffi::FFI_ArrowSchema;
+use arrow::ffi_stream::FFI_ArrowArrayStream;
+use arrow::record_batch::RecordBatchReader;
+use parquet::arrow::arrow_reader::{
+    ArrowReaderMetadata, ArrowReaderOptions, ParquetRecordBatchReader,
+    ParquetRecordBatchReaderBuilder, RowSelection, RowSelector,
+};
+use parquet::arrow::async_reader::{
+    AsyncFileReader, ParquetObjectReader, ParquetRecordBatchStreamBuilder,
+};
+use parquet::arrow::ProjectionMask;
+use parquet::errors::ParquetError;
+use parquet::file::metadata::{PageIndexPolicy, ParquetMetaData};
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
+use pyo3::types::PyCapsule;
+use std::ffi::CString;
+
+use bytes::Bytes;
+use futures::future::BoxFuture;
+use futures::StreamExt;
+use object_store::aws::AmazonS3Builder;
+use object_store::path::Path as ObjPath;
+use object_store::ObjectStore;
+use std::ops::Range;
+use std::sync::{Arc, OnceLock};
+use tokio::sync::{mpsc, Semaphore};
+
+// NOTE on allocators: earlier prototypes carried optional mimalloc/jemalloc
+// global-allocator features to chase a suspected allocator-retention gap vs
+// PyArrow. Measurement killed the theory (jemalloc LD_PRELOAD inert, per-worker
+// high-water lower than PyArrow's on the same fixtures), and mimalloc as a
+// cdylib global allocator segfaulted Ray workers across the Arrow C-stream FFI
+// boundary. Both features were removed to keep the dependency tree minimal;
+// the system allocator is correct here. A/B experiments can still use
+// LD_PRELOAD without recompiling.
+
+// --------------------------------------------------------------------------- //
+// Shared tokio runtime
+// --------------------------------------------------------------------------- //
+/// One process-wide multi-thread runtime, lazily built, shared by every
+/// `read_row_groups_s3` call. Previously each fragment read built and tore down
+/// its own 2-thread runtime — churn that scales with the file count. The async
+/// work is IO-bound (awaiting range GETs), so a small fixed worker pool drives
+/// many concurrent fetches. `worker_threads(4)` matches Ray's per-worker fragment
+/// pool so decode never oversubscribes cores: either 4 fragments × K=1 unit, or
+/// 1 lone fragment × K units — never both at once.
+fn shared_runtime() -> &'static tokio::runtime::Runtime {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .enable_all()
+            .build()
+            .expect("build shared tokio runtime")
+    })
+}
+
+// --------------------------------------------------------------------------- //
+// Byte-budget batch sizing (ported from main.rs `byte_budget_rows`)
+// --------------------------------------------------------------------------- //
+/// Choose a batch row count so `rows * bytes_per_row ~= budget_bytes`, using the
+/// row group's uncompressed size / row count from the footer. `requested` is the
+/// upper clamp (a narrow schema never grows past the caller's ask) and 2048 is the
+/// lower clamp (a very wide schema never collapses to a pathologically tiny batch).
+/// This is what keeps the decoded working set flat across schemas.
+fn byte_budget_rows(
+    uncompressed_bytes: i64,
+    num_rows: i64,
+    requested: usize,
+    budget_bytes: u64,
+) -> usize {
+    if num_rows <= 0 {
+        return requested;
+    }
+    let bpr = (uncompressed_bytes as f64 / num_rows as f64).max(1.0);
+    let budget_rows = (budget_bytes as f64 / bpr) as usize;
+    budget_rows.clamp(2048, requested.max(2048))
+}
+
+// --------------------------------------------------------------------------- //
+// Row-group statistics pruning (predicate pushdown, part 1)
+// --------------------------------------------------------------------------- //
+/// Whether an INT32/INT64 physical column is a *plain signed integer*, i.e. the
+/// raw statistic value can be compared directly as a signed `i64`. Everything
+/// else stored in an INT32/INT64 physical slot is rejected:
+///   - UINT_8/16/32/64: Parquet orders these by *unsigned* comparison, so a
+///     value ≥ 2^(bits-1) is stored with its high bit set and reads back as a
+///     negative `i64` — min/max can invert (e.g. u32 max reads as -1). Comparing
+///     as signed would prune row groups that actually match.
+///   - DECIMAL: the stat is the *unscaled* integer, which doesn't match the
+///     decimal literal a predicate carries.
+///   - DATE / TIME / TIMESTAMP: the encoded units may not match the predicate
+///     literal's encoding.
+/// For any of these we return no bound → `can_match` keeps the row group.
+fn is_plain_signed_int(descr: &ColumnDescriptor) -> bool {
+    match descr.logical_type_ref() {
+        Some(LogicalType::Integer(int)) => int.is_signed,
+        // Decimal / Date / Time / Timestamp / etc. on an int physical type.
+        Some(_) => false,
+        // Legacy files predate LogicalType; fall back to the converted type.
+        None => matches!(
+            descr.converted_type(),
+            ConvertedType::NONE
+                | ConvertedType::INT_8
+                | ConvertedType::INT_16
+                | ConvertedType::INT_32
+                | ConvertedType::INT_64
+        ),
+    }
+}
+
+/// Map one column chunk's Parquet statistics to `(min, max)` in `Value` terms.
+/// Types we can't soundly order for pruning — Int96, fixed-len byte arrays,
+/// non-UTF8 byte arrays, and INT32/INT64 columns that aren't plain signed
+/// integers (unsigned / decimal / date-time; see [`is_plain_signed_int`]) —
+/// return `None`, which `can_match` treats as "keep". `descr` supplies the
+/// logical type that `Statistics` (keyed by physical type) can't.
+fn stat_min_max(stats: &Statistics, descr: &ColumnDescriptor) -> (Option<Value>, Option<Value>) {
+    match stats {
+        Statistics::Boolean(v) => (
+            v.min_opt().map(|b| Value::Bool(*b)),
+            v.max_opt().map(|b| Value::Bool(*b)),
+        ),
+        Statistics::Int32(v) if is_plain_signed_int(descr) => (
+            v.min_opt().map(|x| Value::Int(*x as i64)),
+            v.max_opt().map(|x| Value::Int(*x as i64)),
+        ),
+        Statistics::Int64(v) if is_plain_signed_int(descr) => (
+            v.min_opt().map(|x| Value::Int(*x)),
+            v.max_opt().map(|x| Value::Int(*x)),
+        ),
+        Statistics::Float(v) => (
+            v.min_opt().map(|x| Value::Float(*x as f64)),
+            v.max_opt().map(|x| Value::Float(*x as f64)),
+        ),
+        Statistics::Double(v) => (
+            v.min_opt().map(|x| Value::Float(*x)),
+            v.max_opt().map(|x| Value::Float(*x)),
+        ),
+        Statistics::ByteArray(v) => (
+            v.min_opt()
+                .and_then(|b| b.as_utf8().ok().map(|s| Value::Str(s.to_string()))),
+            v.max_opt()
+                .and_then(|b| b.as_utf8().ok().map(|s| Value::Str(s.to_string()))),
+        ),
+        // Int96, FixedLenByteArray, and non-signed-int INT32/INT64 columns
+        // (guards above fell through): not ordered here → keep.
+        _ => (None, None),
+    }
+}
+
+/// Build the per-column statistics map for one row group. Keyed by the leaf
+/// column path string, which equals the field name for the flat columns
+/// predicates push on; nested paths (dotted) simply won't match a top-level
+/// predicate column and are left un-pruned (conservative).
+fn row_group_col_stats(rg: &RowGroupMetaData) -> HashMap<String, ColStats> {
+    let num_rows = rg.num_rows();
+    let mut map = HashMap::with_capacity(rg.num_columns());
+    for i in 0..rg.num_columns() {
+        let col = rg.column(i);
+        if let Some(stats) = col.statistics() {
+            let (min, max) = stat_min_max(stats, col.column_descr());
+            let null_count = stats.null_count_opt().map(|n| n as i64);
+            map.insert(
+                col.column_path().string(),
+                ColStats {
+                    min,
+                    max,
+                    null_count,
+                    num_rows,
+                },
+            );
+        }
+    }
+    map
+}
+
+/// Drop the row groups in `selected` that `pred` proves cannot contain a match.
+/// Conservative by construction (see `predicate::can_match`): a row group is
+/// removed only when provably empty for the predicate, so this never drops a
+/// group that could have contributed rows.
+fn prune_row_groups(meta: &ArrowReaderMetadata, selected: Vec<usize>, pred: &Pred) -> Vec<usize> {
+    let md = meta.metadata();
+    selected
+        .into_iter()
+        .filter(|&rg| can_match(pred, &row_group_col_stats(md.row_group(rg))))
+        .collect()
+}
+
+/// Parse the optional predicate IR and prune `selected` in one step; `None`
+/// (no pushdown) returns `selected` unchanged.
+fn apply_predicate(
+    meta: &ArrowReaderMetadata,
+    selected: Vec<usize>,
+    predicate_json: &Option<String>,
+) -> Vec<usize> {
+    match predicate_json {
+        None => selected,
+        Some(j) => prune_row_groups(meta, selected, &Pred::from_json(j)),
+    }
+}
+
+// --------------------------------------------------------------------------- //
+// Column projection helper
+// --------------------------------------------------------------------------- //
+/// Build a leaf-column ProjectionMask from column names using the parquet schema
+/// descriptor. Names not present are ignored (Python already resolved the read
+/// set). Flat schemas only — the Python `_arrow_rs_supported` gate rejects nested
+/// columns before we get here.
+fn projection_mask(
+    parquet_schema: &parquet::schema::types::SchemaDescriptor,
+    columns: &Option<Vec<String>>,
+) -> ProjectionMask {
+    match columns {
+        None => ProjectionMask::all(),
+        Some(names) => {
+            let root = parquet_schema.root_schema();
+            let mut indices = Vec::new();
+            for (i, f) in root.get_fields().iter().enumerate() {
+                if names.iter().any(|n| n == f.name()) {
+                    indices.push(i);
+                }
+            }
+            ProjectionMask::roots(parquet_schema, indices)
+        }
+    }
+}
+
+/// Ordered ROOT (top-level field) indices for a projection. Mirrors
+/// `projection_mask`'s name matching so the two always agree on which columns
+/// are read. Note these are root indices, not leaf/column-chunk indices — use
+/// [`leaves_under_roots`] to expand to the chunks a root projection touches
+/// (identity for flat schemas, several leaves per root for structs/lists).
+fn projected_root_indices(
+    parquet_schema: &parquet::schema::types::SchemaDescriptor,
+    columns: &Option<Vec<String>>,
+) -> Vec<usize> {
+    let root = parquet_schema.root_schema();
+    match columns {
+        None => (0..root.get_fields().len()).collect(),
+        Some(names) => root
+            .get_fields()
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| names.iter().any(|n| n == f.name()))
+            .map(|(i, _)| i)
+            .collect(),
+    }
+}
+
+/// All leaf-column (column-chunk) indices under the given root fields, in
+/// ascending leaf order — exactly the chunks the decoder requests for a root
+/// projection. Flat schemas: identity.
+fn leaves_under_roots(
+    schema: &parquet::schema::types::SchemaDescriptor,
+    roots: &[usize],
+) -> Vec<usize> {
+    (0..schema.num_columns())
+        .filter(|&l| roots.contains(&schema.get_column_root_idx(l)))
+        .collect()
+}
+
+/// `(root index, compressed size)` for the projected top-level columns of a row
+/// group, in ascending root order — the input to `partition_columns_by_budget`.
+/// A root's size is the sum of its leaf chunks, so a struct column is weighed
+/// (and later fetched/hstacked) as one indivisible unit.
+fn projected_root_sizes(
+    schema: &parquet::schema::types::SchemaDescriptor,
+    rgm: &RowGroupMetaData,
+    roots: &[usize],
+) -> Vec<(usize, u64)> {
+    roots
+        .iter()
+        .map(|&r| {
+            let sz = leaves_under_roots(schema, &[r])
+                .iter()
+                .map(|&l| rgm.column(l).compressed_size().max(0) as u64)
+                .sum();
+            (r, sz)
+        })
+        .collect()
+}
+
+/// Partition projected columns into contiguous groups whose per-group compressed
+/// size stays under `budget_bytes`, so the S3 reader can fetch+decode ONE group at
+/// a time and hold only that group's compressed chunks resident — the wide-schema
+/// memory fix (the async reader's default `InMemoryRowGroup` otherwise fetches every
+/// projected column chunk for the row group up front). `cols` is `(leaf, size)` in
+/// ascending leaf order and groups preserve that order, so hstacking the groups
+/// reproduces file/schema column order. `budget_bytes == 0` (or ≤1 column) => a
+/// single group (disabled). A lone oversized column still gets its own group — a
+/// column can't be split below itself (that would be row-windowing, handled
+/// elsewhere).
+fn partition_columns_by_budget(cols: &[(usize, u64)], budget_bytes: u64) -> Vec<Vec<usize>> {
+    if budget_bytes == 0 || cols.len() <= 1 {
+        return vec![cols.iter().map(|(i, _)| *i).collect()];
+    }
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut cur: Vec<usize> = Vec::new();
+    let mut acc: u64 = 0;
+    for &(idx, sz) in cols {
+        // Start a new group when the current one is non-empty and adding this column
+        // would exceed the budget. A single column always fits (never split below 1).
+        if !cur.is_empty() && acc.saturating_add(sz) > budget_bytes {
+            groups.push(std::mem::take(&mut cur));
+            acc = 0;
+        }
+        cur.push(idx);
+        acc = acc.saturating_add(sz);
+    }
+    if !cur.is_empty() {
+        groups.push(cur);
+    }
+    groups
+}
+
+/// Probe the projected output schema with an empty (zero row group) reader, so
+/// `schema()` is available to the FFI stream before any batch is pulled.
+fn probe_schema(
+    path: &str,
+    meta: &ArrowReaderMetadata,
+    mask: &ProjectionMask,
+) -> Result<SchemaRef, ParquetError> {
+    Ok(
+        ParquetRecordBatchReaderBuilder::new_with_metadata(File::open(path)?, meta.clone())
+            .with_projection(mask.clone())
+            .with_row_groups(vec![])
+            .build()?
+            .schema(),
+    )
+}
+
+// --------------------------------------------------------------------------- //
+// Arrow C-stream wrapper returned to Python
+// --------------------------------------------------------------------------- //
+/// Holds an FFI stream until Python pulls it out via `__arrow_c_stream__`.
+#[pyclass]
+struct ArrowStream {
+    inner: Option<FFI_ArrowArrayStream>,
+}
+
+#[pymethods]
+impl ArrowStream {
+    /// PyCapsule protocol: PyArrow's `RecordBatchReader.from_stream` calls this.
+    #[pyo3(signature = (_requested_schema=None))]
+    fn __arrow_c_stream__<'py>(
+        &mut self,
+        py: Python<'py>,
+        _requested_schema: Option<PyObject>,
+    ) -> PyResult<Bound<'py, PyCapsule>> {
+        let stream = self
+            .inner
+            .take()
+            .ok_or_else(|| PyRuntimeError::new_err("stream already consumed"))?;
+        let name = CString::new("arrow_array_stream").unwrap();
+        PyCapsule::new_bound(py, stream, Some(name))
+    }
+}
+
+fn into_py_stream(reader: Box<dyn RecordBatchReader + Send>) -> ArrowStream {
+    ArrowStream {
+        inner: Some(FFI_ArrowArrayStream::new(reader)),
+    }
+}
+
+// --------------------------------------------------------------------------- //
+// Footer metadata returned to Python (Track 1: arrow-rs owns the footer read)
+// --------------------------------------------------------------------------- //
+/// The parts of the Parquet footer the Python reader needs so PyArrow no longer
+/// has to open the file for supported fragments: the full Arrow schema (exposed
+/// zero-copy via the Arrow C-schema PyCapsule, so it round-trips extension/field
+/// metadata for the UDT path) plus per-row-group row counts and byte sizes (for
+/// chunking, row-offset bookkeeping, `count()`, and the split threshold). Column
+/// statistics for row-group pruning are a follow-up on this same struct.
+#[pyclass]
+struct ParquetFileMetadata {
+    schema: SchemaRef,
+    #[pyo3(get)]
+    num_rows: i64,
+    #[pyo3(get)]
+    num_row_groups: usize,
+    #[pyo3(get)]
+    row_group_num_rows: Vec<i64>,
+    #[pyo3(get)]
+    row_group_byte_sizes: Vec<i64>,
+    // Per-row-group *compressed* (on-disk) byte size — the sum of each column
+    // chunk's compressed size. This is what the Python chunker bundles by, so it
+    // must match PyArrow's `sum(col.total_compressed_size)`. Distinct from
+    // `row_group_byte_sizes`, which is the *uncompressed* `total_byte_size()`.
+    #[pyo3(get)]
+    row_group_compressed_sizes: Vec<i64>,
+    // Root (top-level) column names that contain an INT96-physical leaf. The
+    // support gate needs this because parquet-rs honors an embedded Arrow-schema
+    // unit hint for INT96 (→ us/ms/s) whereas PyArrow always forces ns: a column
+    // in this list whose decoded unit isn't ns would diverge from PyArrow, so the
+    // gate must fall it back. INT96 columns that come out as ns already match.
+    #[pyo3(get)]
+    int96_columns: Vec<String>,
+    // True when the embedded Arrow schema (`ARROW:schema` footer metadata) could
+    // not be parsed and was skipped (see `load_meta_local`), so `schema` here is
+    // the parquet-inferred *storage* schema rather than the Arrow logical schema.
+    // The Python reader reconstructs any lost extension types (e.g. Ray's
+    // cloudpickle-serialized tensor type) from the file's own footer schema.
+    #[pyo3(get)]
+    arrow_schema_skipped: bool,
+}
+
+#[pymethods]
+impl ParquetFileMetadata {
+    /// Arrow PyCapsule protocol: `pa.schema(obj)` / `Schema._import_from_c_capsule`
+    /// pull the schema through this. Rebuilt each call (cheap, non-consuming).
+    fn __arrow_c_schema__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyCapsule>> {
+        let ffi = FFI_ArrowSchema::try_from(self.schema.as_ref()).map_err(to_py)?;
+        let name = CString::new("arrow_schema").unwrap();
+        PyCapsule::new_bound(py, ffi, Some(name))
+    }
+}
+
+/// Reader options shared by *every* entry point (metadata reads, local decode,
+/// S3 decode), so the schema a metadata read reports can never diverge from what
+/// a decode produces. `page_index` varies by caller: pruning paths ask for the
+/// page index (`Optional`); a bare footer/metadata read skips it (`Skip`).
+///
+/// INT96 note: parquet-rs decodes the legacy INT96 timestamp physical type to
+/// `Timestamp(Nanosecond, None)` by default (arrow/schema/primitive.rs), which is
+/// exactly what PyArrow produces for INT96 by default — so a Spark/Hive/Impala
+/// INT96 file (the common producers, which embed no Arrow schema) decodes
+/// byte-identically on both paths and takes the native path with no coercion.
+/// The one divergence is a file that embeds an Arrow schema pinning a *non-ns*
+/// unit (e.g. a PyArrow writer with `use_deprecated_int96_timestamps=True` over a
+/// `timestamp[us]` column): parquet-rs honors that embedded hint (→ us) while
+/// PyArrow forces ns. That mismatch is caught by the support gate's
+/// per-file-vs-unified type check, which falls the file back to PyArrow — correct,
+/// if not yet native. parquet 59 has no `with_coerce_int96`, so forcing ns there
+/// would need a per-column `with_schema` override; deferred (narrow case, and the
+/// fallback is already correct).
+fn reader_options(page_index: PageIndexPolicy) -> ArrowReaderOptions {
+    ArrowReaderOptions::new().with_page_index_policy(page_index)
+}
+
+/// arrow-rs's IPC verifier rejects an embedded `ARROW:schema` footer whose field
+/// `custom_metadata` values aren't valid UTF-8. Ray files written by 2.49-2.54
+/// store the tensor extension type's metadata as a cloudpickle blob (binary), so
+/// `ArrowReaderMetadata::load` fails parsing that embedded schema
+/// (`Unable to get root as message stored in ARROW:schema: Utf8Error`). Detect
+/// exactly that failure so the loaders below can retry with the embedded arrow
+/// schema skipped — decoding the parquet-inferred storage types instead — after
+/// which the Python reader re-applies the extension type from the pinned dataset
+/// schema (a `list<..>`→`extension<..>` cast). Any other load error propagates.
+fn is_embedded_arrow_schema_error<E: std::fmt::Display>(e: &E) -> bool {
+    e.to_string().contains("ARROW:schema")
+}
+
+/// Load footer metadata for a local file, retrying with the embedded arrow schema
+/// skipped when (and only when) it fails to parse (see
+/// [`is_embedded_arrow_schema_error`]). Files whose footer parses normally are
+/// untouched, so INT96 hints and valid embedded schemas behave exactly as before.
+/// The returned bool is `true` when the retry fired (embedded arrow schema
+/// skipped → the reported schema is the parquet-inferred storage type), which the
+/// Python reader uses to reconstruct the extension type from the pinned schema.
+fn load_meta_local(
+    file: &File,
+    page_index: PageIndexPolicy,
+) -> Result<(ArrowReaderMetadata, bool), ParquetError> {
+    match ArrowReaderMetadata::load(file, reader_options(page_index)) {
+        Err(e) if is_embedded_arrow_schema_error(&e) => ArrowReaderMetadata::load(
+            file,
+            reader_options(page_index).with_skip_arrow_metadata(true),
+        )
+        .map(|m| (m, true)),
+        other => other.map(|m| (m, false)),
+    }
+}
+
+/// S3 counterpart of [`load_meta_local`]: same targeted retry (and same
+/// skipped-bool contract), building a fresh `ParquetObjectReader` for the second
+/// attempt so no half-consumed reader state carries over.
+async fn load_meta_s3(
+    store: Arc<dyn ObjectStore>,
+    path: ObjPath,
+    page_index: PageIndexPolicy,
+) -> Result<(ArrowReaderMetadata, bool), ParquetError> {
+    let mut probe = ParquetObjectReader::new(store.clone(), path.clone());
+    match ArrowReaderMetadata::load_async(&mut probe, reader_options(page_index)).await {
+        Err(e) if is_embedded_arrow_schema_error(&e) => {
+            let mut retry = ParquetObjectReader::new(store, path);
+            ArrowReaderMetadata::load_async(
+                &mut retry,
+                reader_options(page_index).with_skip_arrow_metadata(true),
+            )
+            .await
+            .map(|m| (m, true))
+        }
+        other => other.map(|m| (m, false)),
+    }
+}
+
+/// Pull the fields Python needs out of an already-loaded `ArrowReaderMetadata`.
+/// Local and S3 both funnel through here so the shape is identical.
+fn build_file_metadata(meta: &ArrowReaderMetadata, arrow_schema_skipped: bool) -> ParquetFileMetadata {
+    let md = meta.metadata();
+    let n = md.num_row_groups();
+    let mut row_group_num_rows = Vec::with_capacity(n);
+    let mut row_group_byte_sizes = Vec::with_capacity(n);
+    let mut row_group_compressed_sizes = Vec::with_capacity(n);
+    let mut num_rows = 0i64;
+    for i in 0..n {
+        let rg = md.row_group(i);
+        row_group_num_rows.push(rg.num_rows());
+        row_group_byte_sizes.push(rg.total_byte_size());
+        row_group_compressed_sizes.push(rg.compressed_size());
+        num_rows += rg.num_rows();
+    }
+
+    // Collect the root column names backing an INT96 leaf. Walk the flat leaf
+    // descriptors and key by the first path component so a nested INT96 (e.g. a
+    // struct field) still surfaces its top-level column to the gate.
+    let mut int96_roots: HashSet<String> = HashSet::new();
+    for col in md.file_metadata().schema_descr().columns() {
+        if col.physical_type() == PhysicalType::INT96 {
+            if let Some(root) = col.path().parts().first() {
+                int96_roots.insert(root.clone());
+            }
+        }
+    }
+
+    ParquetFileMetadata {
+        schema: meta.schema().clone(),
+        num_rows,
+        num_row_groups: n,
+        row_group_num_rows,
+        row_group_byte_sizes,
+        row_group_compressed_sizes,
+        int96_columns: int96_roots.into_iter().collect(),
+        arrow_schema_skipped,
+    }
+}
+
+// --------------------------------------------------------------------------- //
+// Local read (sync): per-group byte-budgeted sequential reader (K=1 path)
+// --------------------------------------------------------------------------- //
+/// Streams the selected row groups in order, building one `ParquetRecordBatchReader`
+/// per group with a byte-budgeted batch size. Row order is preserved (single
+/// reader, groups in ascending order) and peak memory stays ~one decode budget
+/// because each batch is dropped as Python pulls the next.
+struct RowGroupSeqReader {
+    path: String,
+    meta: ArrowReaderMetadata,
+    mask: ProjectionMask,
+    budget_bytes: u64,
+    batch_clamp: usize,
+    row_groups: Vec<usize>,
+    pos: usize,
+    current: Option<ParquetRecordBatchReader>,
+    schema: SchemaRef,
+}
+
+impl RowGroupSeqReader {
+    fn new(
+        path: String,
+        meta: ArrowReaderMetadata,
+        mask: ProjectionMask,
+        schema: SchemaRef,
+        row_groups: Vec<usize>,
+        batch_clamp: usize,
+        budget_bytes: u64,
+    ) -> Self {
+        Self {
+            path,
+            meta,
+            mask,
+            budget_bytes,
+            batch_clamp,
+            row_groups,
+            pos: 0,
+            current: None,
+            schema,
+        }
+    }
+
+    fn build_group_reader(&self, rg: usize) -> Result<ParquetRecordBatchReader, ParquetError> {
+        let rgm = self.meta.metadata().row_group(rg);
+        let eff = byte_budget_rows(
+            rgm.total_byte_size(),
+            rgm.num_rows(),
+            self.batch_clamp,
+            self.budget_bytes,
+        );
+        ParquetRecordBatchReaderBuilder::new_with_metadata(
+            File::open(&self.path)?,
+            self.meta.clone(),
+        )
+        .with_batch_size(eff)
+        .with_row_groups(vec![rg])
+        .with_projection(self.mask.clone())
+        .build()
+    }
+}
+
+impl Iterator for RowGroupSeqReader {
+    type Item = Result<RecordBatch, ArrowError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(reader) = self.current.as_mut() {
+                match reader.next() {
+                    Some(batch) => return Some(batch),
+                    None => self.current = None,
+                }
+            }
+            if self.pos >= self.row_groups.len() {
+                return None;
+            }
+            let rg = self.row_groups[self.pos];
+            self.pos += 1;
+            match self.build_group_reader(rg) {
+                Ok(reader) => self.current = Some(reader),
+                Err(e) => return Some(Err(ArrowError::ExternalError(Box::new(e)))),
+            }
+        }
+    }
+}
+
+impl RecordBatchReader for RowGroupSeqReader {
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+}
+
+// --------------------------------------------------------------------------- //
+// Local read (sync): intra-fragment K-split for one big row group
+// --------------------------------------------------------------------------- //
+/// Splits one row group's rows into K contiguous ranges decoded by K threads,
+/// merging them back in range order so output row order matches a sequential read.
+/// Each range has its own bounded channel (backpressure), and the consumer drains
+/// channels in ascending range order — so at most `k * channel_depth` batches are
+/// resident and rows come out in file order. Requires the offset/page index so a
+/// `RowSelection` fetches only its range's pages (else each worker would decode the
+/// whole column chunk); the caller checks this before choosing this path.
+struct ParallelRangeReader {
+    schema: SchemaRef,
+    receivers: Vec<Receiver<Result<RecordBatch, ArrowError>>>,
+    cur: usize,
+}
+
+fn build_range_reader(
+    path: &str,
+    meta: &ArrowReaderMetadata,
+    mask: &ProjectionMask,
+    rg: usize,
+    start: usize,
+    len: usize,
+    batch: usize,
+) -> Result<ParquetRecordBatchReader, ParquetError> {
+    let sel = RowSelection::from(vec![RowSelector::skip(start), RowSelector::select(len)]);
+    ParquetRecordBatchReaderBuilder::new_with_metadata(File::open(path)?, meta.clone())
+        .with_row_groups(vec![rg])
+        .with_row_selection(sel)
+        .with_batch_size(batch)
+        .with_projection(mask.clone())
+        .build()
+}
+
+impl ParallelRangeReader {
+    fn spawn(
+        path: String,
+        meta: ArrowReaderMetadata,
+        mask: ProjectionMask,
+        schema: SchemaRef,
+        rg: usize,
+        total_rows: usize,
+        k: usize,
+        batch: usize,
+    ) -> Self {
+        let chunk = total_rows.div_ceil(k.max(1)).max(1);
+        let mut receivers = Vec::new();
+        let mut start = 0usize;
+        while start < total_rows {
+            let len = chunk.min(total_rows - start);
+            // Depth 2: a worker may run one batch ahead of the consumer, no more.
+            let (tx, rx) = sync_channel::<Result<RecordBatch, ArrowError>>(2);
+            receivers.push(rx);
+            let (path, meta, mask) = (path.clone(), meta.clone(), mask.clone());
+            thread::spawn(move || {
+                match build_range_reader(&path, &meta, &mask, rg, start, len, batch) {
+                    Ok(reader) => {
+                        for batch in reader {
+                            if tx.send(batch).is_err() {
+                                break; // consumer dropped
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(ArrowError::ExternalError(Box::new(e))));
+                    }
+                }
+            });
+            start += len;
+        }
+        Self {
+            schema,
+            receivers,
+            cur: 0,
+        }
+    }
+}
+
+impl Iterator for ParallelRangeReader {
+    type Item = Result<RecordBatch, ArrowError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.cur < self.receivers.len() {
+            match self.receivers[self.cur].recv() {
+                Ok(item) => return Some(item),
+                Err(_) => self.cur += 1, // this range's channel closed → next range
+            }
+        }
+        None
+    }
+}
+
+impl RecordBatchReader for ParallelRangeReader {
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+}
+
+// --------------------------------------------------------------------------- //
+// Local entry point: choose sequential vs K-split
+// --------------------------------------------------------------------------- //
+#[allow(clippy::too_many_arguments)]
+fn open_local_reader(
+    path: String,
+    row_groups: Option<Vec<usize>>,
+    columns: Option<Vec<String>>,
+    batch_size: usize,
+    budget_bytes: u64,
+    k: usize,
+    split_threshold_bytes: u64,
+    predicate_json: Option<String>,
+) -> Result<Box<dyn RecordBatchReader + Send>, ParquetError> {
+    // Lean footer parse (#6): the page index is only needed for the K-split
+    // RowSelection (to skip pages by byte range). K-split can only fire when k > 1,
+    // so for the common k == 1 local path we Skip the page index entirely — a
+    // cheaper footer parse that matters on many-row-group files. When k > 1 we load
+    // it Optional so the lone-big-row-group split can use it if present.
+    let policy = if k > 1 {
+        PageIndexPolicy::Optional
+    } else {
+        PageIndexPolicy::Skip
+    };
+    let (meta, _skipped) = load_meta_local(&File::open(&path)?, policy)?;
+    let mask = projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
+    let selected: Vec<usize> = match row_groups {
+        Some(v) => v,
+        None => (0..meta.metadata().num_row_groups()).collect(),
+    };
+    // Statistics-based row-group pruning (conservative — see predicate.rs). This
+    // is the mechanism that replaces PyArrow's `fragment.subset(filter=...)` so
+    // pruned groups are never fetched or decoded.
+    let selected = apply_predicate(&meta, selected, &predicate_json);
+    let schema = probe_schema(&path, &meta, &mask)?;
+
+    // K-split only for a *single* row group above the threshold, and only when the
+    // page index is present (else each range would decode the whole column chunk).
+    // This is exactly the lone-big-fragment case Ray's pool can't parallelize; every
+    // other layout uses the sequential path so crate-K and Ray's pool never multiply.
+    let split = k > 1
+        && selected.len() == 1
+        && meta.metadata().row_group(selected[0]).total_byte_size() as u64 >= split_threshold_bytes
+        && meta.metadata().offset_index().is_some();
+
+    if split {
+        let rg = selected[0];
+        let rgm = meta.metadata().row_group(rg);
+        let total_rows = rgm.num_rows().max(0) as usize;
+        let eff = byte_budget_rows(
+            rgm.total_byte_size(),
+            rgm.num_rows(),
+            batch_size,
+            budget_bytes,
+        );
+        Ok(Box::new(ParallelRangeReader::spawn(
+            path, meta, mask, schema, rg, total_rows, k, eff,
+        )))
+    } else {
+        Ok(Box::new(RowGroupSeqReader::new(
+            path,
+            meta,
+            mask,
+            schema,
+            selected,
+            batch_size,
+            budget_bytes,
+        )))
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (path, row_groups=None, columns=None, batch_size=131072, decode_budget_bytes=2*1024*1024, k=1, split_threshold_bytes=134217728, predicate_json=None))]
+#[allow(clippy::too_many_arguments)]
+fn read_row_groups(
+    py: Python<'_>,
+    path: String,
+    row_groups: Option<Vec<usize>>,
+    columns: Option<Vec<String>>,
+    batch_size: usize,
+    decode_budget_bytes: u64,
+    k: usize,
+    split_threshold_bytes: u64,
+    // Optional predicate IR (JSON, built from the Ray `Expr`) for statistics
+    // row-group pruning. None = no pushdown. Row-level filtering still happens
+    // in Python post-decode, so this only avoids IO/decode, never changes rows.
+    predicate_json: Option<String>,
+) -> PyResult<ArrowStream> {
+    // Footer read + reader construction is blocking file I/O; release the GIL so
+    // sibling Python read threads (Ray's fragment pool) run in parallel.
+    let reader = py
+        .allow_threads(|| {
+            open_local_reader(
+                path,
+                row_groups,
+                columns,
+                batch_size,
+                decode_budget_bytes,
+                k,
+                split_threshold_bytes,
+                predicate_json,
+            )
+        })
+        .map_err(to_py)?;
+    Ok(into_py_stream(reader))
+}
+
+// --------------------------------------------------------------------------- //
+// S3 read (async, windowed, byte-budgeted, order-preserving)
+// --------------------------------------------------------------------------- //
+/// Number of decoded batches a unit task may run ahead of the consumer. Depth 2
+/// bounds resident memory while still letting a task fetch/decode one batch ahead.
+const S3_CHANNEL_DEPTH: usize = 2;
+
+/// A sync `RecordBatchReader` fed by K background tokio tasks (one per row-range
+/// unit), each draining its unit into a bounded async channel. The consumer drains
+/// channels in ascending unit order — so at most `k * S3_CHANNEL_DEPTH` batches are
+/// resident and rows come out in file order (K units are contiguous ascending
+/// ranges). `blocking_recv` is called from the Python thread (outside the runtime),
+/// which is exactly what tokio's mpsc supports.
+struct S3ChannelReader {
+    schema: SchemaRef,
+    receivers: Vec<mpsc::Receiver<Result<RecordBatch, ArrowError>>>,
+    cur: usize,
+}
+
+impl Iterator for S3ChannelReader {
+    type Item = Result<RecordBatch, ArrowError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.cur < self.receivers.len() {
+            match self.receivers[self.cur].blocking_recv() {
+                Some(item) => return Some(item),
+                None => self.cur += 1, // this unit's channel closed → next unit
+            }
+        }
+        None
+    }
+}
+
+impl RecordBatchReader for S3ChannelReader {
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+}
+
+/// Rows per fetch window from a byte budget over the row group's *compressed*
+/// bytes/row — this bounds IN-FLIGHT NETWORK bytes (what we fetch before decode).
+/// 0 means "whole range in one shot" (no window cap).
+fn window_rows_for(rgm: &parquet::file::metadata::RowGroupMetaData, fetch_window_mb: u64) -> usize {
+    if fetch_window_mb == 0 {
+        return 0;
+    }
+    let comp = rgm.compressed_size().max(1) as f64;
+    let rows = rgm.num_rows().max(1) as f64;
+    let comp_bpr = (comp / rows).max(1.0);
+    (((fetch_window_mb as f64) * 1024.0 * 1024.0) / comp_bpr).max(1.0) as usize
+}
+
+/// Largest single data page, in rows, across the projected columns of row group
+/// `rg` (from the offset index). This is the floor a fetch window must not go
+/// below: a `RowSelection` can only skip whole *pages*, never rows within a page,
+/// so a window narrower than a column's page forces every window overlapping that
+/// page to decode the whole page — re-decoding the row group once per window (the
+/// wide/short-row-group pathology: few rows → one page/column → N-way re-decode).
+///
+/// Returns the row group's total row count when there is no offset index (windowing
+/// can't skip pages without it anyway) or the index is empty — either way the
+/// caller then collapses to a single window (no split), which is correct.
+fn max_page_rows(md: &parquet::file::metadata::ParquetMetaData, rg: usize) -> usize {
+    let num_rows = md.row_group(rg).num_rows().max(0);
+    let rg_oi = match md.offset_index().and_then(|oi| oi.get(rg)) {
+        Some(rg_oi) if !rg_oi.is_empty() => rg_oi,
+        _ => return num_rows as usize,
+    };
+    let mut max_rows: i64 = 0;
+    for col in rg_oi {
+        let locs = col.page_locations();
+        for (i, loc) in locs.iter().enumerate() {
+            let end = locs
+                .get(i + 1)
+                .map(|next| next.first_row_index)
+                .unwrap_or(num_rows);
+            max_rows = max_rows.max(end - loc.first_row_index);
+        }
+    }
+    if max_rows <= 0 {
+        num_rows as usize
+    } else {
+        max_rows as usize
+    }
+}
+
+/// The row step a fetch window should advance by, given the byte-budget
+/// `window_rows` (0 = no cap) and the coarsest column's `max_page_rows`. Clamping
+/// the window up to at least one full page means each page is decoded by ~one
+/// window instead of every overlapping window; a group whose largest page spans
+/// the whole range (wide/short) collapses to `len` (a single window == parity with
+/// no windowing), while a tall multi-page group still splits and keeps the
+/// bounded-working-set win. Pure so it is unit-tested without a Parquet fixture.
+fn effective_window_step(window_rows: usize, max_page_rows: usize, len: usize) -> usize {
+    if window_rows == 0 {
+        return len.max(1);
+    }
+    window_rows.max(max_page_rows).max(1)
+}
+
+/// One prefetched unit's compressed bytes, plus the byte-budget permits they
+/// hold. A unit is either a ROW WINDOW (`sel = Some((skip, take))`, all projected
+/// columns) or a COLUMN GROUP (`sel = None`, a slice of the projection over all
+/// rows) — the decode side reassembles accordingly; the fetch side treats both
+/// identically. The permits travel with the bytes (into the decode stream's
+/// `PrefetchedReader`), so dropping the decoded stream frees the bytes AND
+/// releases the permits — which is what wakes the admission loop to launch the
+/// next unit's fetch. That drop-to-wake handoff is the whole backpressure
+/// mechanism: memory pressure stays ~constant at `prefetch_budget` compressed
+/// bytes without any explicit signalling code.
+struct PrefetchedUnit {
+    mask: ProjectionMask,
+    sel: Option<(usize, usize)>,
+    ranges: Vec<Range<u64>>,
+    data: Vec<Bytes>,
+    permit: tokio::sync::OwnedSemaphorePermit,
+}
+
+/// Find `want` inside one of the prefetched `ranges` and return the matching
+/// slice of its `Bytes` (refcounted view, no copy). `None` if no prefetched
+/// range fully contains it. Pure so it unit-tests without an object store.
+fn slice_prefetched(ranges: &[Range<u64>], data: &[Bytes], want: &Range<u64>) -> Option<Bytes> {
+    for (r, b) in ranges.iter().zip(data) {
+        if want.start >= r.start && want.end <= r.end {
+            let s = (want.start - r.start) as usize;
+            let e = (want.end - r.start) as usize;
+            return Some(b.slice(s..e));
+        }
+    }
+    None
+}
+
+/// `AsyncFileReader` that serves a unit's page reads from its prefetched
+/// buffers instead of S3. The decode stream built on top of this never touches
+/// the network — the fetch already happened, budget-gated, in the admission
+/// loop. Requests are always sub-ranges of the prefetched ranges (page reads
+/// within a chunk, or within a window's page span), so containment lookup
+/// suffices. Owning the permit ties the budget release to the stream's drop.
+struct PrefetchedReader {
+    ranges: Vec<Range<u64>>,
+    data: Vec<Bytes>,
+    meta: Arc<ParquetMetaData>,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+}
+
+impl AsyncFileReader for PrefetchedReader {
+    fn get_bytes(&mut self, range: Range<u64>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
+        let res = slice_prefetched(&self.ranges, &self.data, &range).ok_or_else(|| {
+            ParquetError::General(format!(
+                "column-prefetch: byte range {range:?} was not prefetched"
+            ))
+        });
+        Box::pin(futures::future::ready(res))
+    }
+
+    fn get_metadata<'a>(
+        &'a mut self,
+        _options: Option<&'a ArrowReaderOptions>,
+    ) -> BoxFuture<'a, parquet::errors::Result<Arc<ParquetMetaData>>> {
+        // Never hit in practice (streams are built with `new_with_metadata`),
+        // but the trait requires it.
+        let meta = self.meta.clone();
+        Box::pin(futures::future::ready(Ok(meta)))
+    }
+}
+
+/// Byte ranges + compressed KiB of one column group's chunks, straight from
+/// the footer metadata — the "conservative estimate from parquet metadata"
+/// that sizes each fetch exactly (chunk offsets/lengths are exact, not
+/// estimates, so the budget accounting is exact too).
+fn group_fetch_plan(
+    rgm: &parquet::file::metadata::RowGroupMetaData,
+    group: &[usize],
+) -> (Vec<Range<u64>>, u64) {
+    let mut ranges = Vec::with_capacity(group.len());
+    let mut bytes = 0u64;
+    for &leaf in group {
+        let cc = rgm.column(leaf);
+        let (start, len) = cc.byte_range();
+        ranges.push(start..start + len);
+        bytes += len;
+    }
+    (ranges, bytes.div_ceil(1024))
+}
+
+/// Exact byte ranges a ROW-WINDOW decode will request from the store: for each
+/// projected leaf column of row group `rg`, the dictionary page (when present)
+/// plus the contiguous span of data pages overlapping rows `[w, w+wlen)` — read
+/// off the same offset index the decoder's `RowSelection` uses to skip pages,
+/// so prefetch and decode always agree on which bytes are needed. A column
+/// without an offset index, or a window covering the whole group, falls back to
+/// the whole column chunk — also exactly what the decoder requests in that
+/// case. Returns the ranges plus their compressed KiB (exact, from the footer)
+/// for budget accounting, like [`group_fetch_plan`].
+fn window_fetch_plan(
+    md: &parquet::file::metadata::ParquetMetaData,
+    rg: usize,
+    leaves: &[usize],
+    w: usize,
+    wlen: usize,
+) -> (Vec<Range<u64>>, u64) {
+    let rgm = md.row_group(rg);
+    let num_rows = rgm.num_rows().max(0);
+    let rg_oi = md.offset_index().and_then(|oi| oi.get(rg));
+    let whole = w == 0 && wlen as i64 >= num_rows;
+    let (w0, w1) = (w as i64, (w + wlen) as i64);
+    let mut ranges = Vec::with_capacity(leaves.len());
+    let mut bytes = 0u64;
+    for &leaf in leaves {
+        let cc = rgm.column(leaf);
+        let (chunk_start, chunk_len) = cc.byte_range();
+        let locs = rg_oi
+            .and_then(|oi| oi.get(leaf))
+            .map(|c| c.page_locations())
+            .filter(|l| !l.is_empty());
+        let locs = match (whole, locs) {
+            (false, Some(l)) => l,
+            _ => {
+                bytes += chunk_len;
+                ranges.push(chunk_start..chunk_start + chunk_len);
+                continue;
+            }
+        };
+        // Dictionary page: sits between the chunk start and the first data
+        // page, and every window of a dictionary-encoded chunk needs it.
+        let first_data = locs[0].offset.max(0) as u64;
+        if cc.dictionary_page_offset().is_some() && first_data > chunk_start {
+            bytes += first_data - chunk_start;
+            ranges.push(chunk_start..first_data);
+        }
+        // Contiguous span of the data pages overlapping [w, w+wlen). Pages are
+        // laid out back-to-back within a chunk, so one range covers the run.
+        let mut span: Option<(u64, u64)> = None;
+        for (i, loc) in locs.iter().enumerate() {
+            let rows_end = locs
+                .get(i + 1)
+                .map(|next| next.first_row_index)
+                .unwrap_or(num_rows);
+            if loc.first_row_index < w1 && rows_end > w0 {
+                let s = loc.offset.max(0) as u64;
+                let e = s + loc.compressed_page_size.max(0) as u64;
+                span = Some(match span {
+                    None => (s, e),
+                    Some((a, _)) => (a, e),
+                });
+            }
+        }
+        if let Some((s, e)) = span {
+            bytes += e - s;
+            ranges.push(s..e);
+        }
+    }
+    (ranges, bytes.div_ceil(1024))
+}
+
+/// How one row group's prefetched units reassemble into output batches.
+enum RgDecode {
+    /// N row-window units: decode each in order, stream every batch straight out.
+    Windows(usize),
+    /// N column-group units: decode all N (row-aligned), then hstack to full width.
+    Hstack(usize),
+}
+
+/// Decode structure of one (row group, sub-range), in output order.
+struct RgPlan {
+    rg: usize,
+    batch_rows: usize,
+    decode: RgDecode,
+}
+
+/// Fetch plan of one unit, in decode order: what to project, which rows
+/// (`None` = all), which bytes, and their compressed KiB for budget accounting.
+struct UnitFetch {
+    mask: ProjectionMask,
+    sel: Option<(usize, usize)>,
+    ranges: Vec<Range<u64>>,
+    kib: u64,
+}
+
+/// Plan every `(row group, start, len)` sub-range into prefetchable units.
+/// The split axis is chosen per row group by its shape:
+///   * WIDE (the projected roots' compressed bytes partition into >1 group under
+///     `colwindow_budget`, whole-group read): COLUMN GROUPS — each unit is a
+///     slice of the projection over all the group's rows. The async reader's
+///     `InMemoryRowGroup` otherwise stages every projected chunk of the group at
+///     once, which for a 5000-column schema was the entire S3 memory regression;
+///     one group at a time bounds that to ~`colwindow_budget`, and columns are
+///     independent so no page is ever decoded twice.
+///   * otherwise: ROW WINDOWS — each unit is ~`fetch_window_mb` compressed bytes
+///     of ALL projected columns, page-aligned via the offset index (see
+///     `effective_window_step`; without an offset index the group collapses to
+///     one window).
+/// Both unit kinds flow through the same byte-budget admission loop in
+/// [`drive_s3`]; only the decode-side reassembly differs. Planning globally
+/// (not per row group) lets the prefetcher run ahead across row-group
+/// boundaries.
+#[allow(clippy::too_many_arguments)]
+fn plan_s3_units(
+    meta: &ArrowReaderMetadata,
+    full_mask: &ProjectionMask,
+    roots: &[usize],
+    subranges: &[(usize, usize, usize)],
+    batch_clamp: usize,
+    decode_budget: u64,
+    fetch_window_mb: u64,
+    colwindow_budget: u64,
+) -> (Vec<RgPlan>, Vec<UnitFetch>) {
+    let md = meta.metadata();
+    let schema_descr = md.file_metadata().schema_descr();
+    let leaves = leaves_under_roots(schema_descr, roots);
+    let mut rg_plans: Vec<RgPlan> = Vec::with_capacity(subranges.len());
+    let mut units: Vec<UnitFetch> = Vec::new();
+    for &(rg, start, len) in subranges {
+        let rgm = md.row_group(rg);
+        let batch_rows = byte_budget_rows(
+            rgm.total_byte_size(),
+            rgm.num_rows(),
+            batch_clamp,
+            decode_budget,
+        );
+        // Column groups only apply to whole-group reads (a K-split sub-range is
+        // by definition a tall group being split by rows, not columns).
+        let whole = start == 0 && len == rgm.num_rows().max(0) as usize;
+        let groups = if whole && colwindow_budget > 0 {
+            partition_columns_by_budget(
+                &projected_root_sizes(schema_descr, rgm, roots),
+                colwindow_budget,
+            )
+        } else {
+            Vec::new()
+        };
+        if groups.len() > 1 {
+            let n = groups.len();
+            for g in groups {
+                let (ranges, kib) = group_fetch_plan(rgm, &leaves_under_roots(schema_descr, &g));
+                units.push(UnitFetch {
+                    mask: ProjectionMask::roots(schema_descr, g),
+                    sel: None,
+                    ranges,
+                    kib,
+                });
+            }
+            rg_plans.push(RgPlan {
+                rg,
+                batch_rows,
+                decode: RgDecode::Hstack(n),
+            });
+        } else {
+            // Never window below the coarsest column's largest page (see
+            // max_page_rows): a sub-page window re-decodes that page in every
+            // window it overlaps. Wide/short groups (one page per column)
+            // collapse to a single window; tall multi-page groups still split.
+            let step = effective_window_step(
+                window_rows_for(rgm, fetch_window_mb),
+                max_page_rows(md, rg),
+                len,
+            );
+            let (mut w, end) = (start, start + len);
+            let mut n = 0usize;
+            while w < end {
+                let wlen = step.min(end - w);
+                let (ranges, kib) = window_fetch_plan(md, rg, &leaves, w, wlen);
+                units.push(UnitFetch {
+                    mask: full_mask.clone(),
+                    sel: Some((w, wlen)),
+                    ranges,
+                    kib,
+                });
+                w += wlen;
+                n += 1;
+            }
+            rg_plans.push(RgPlan {
+                rg,
+                batch_rows,
+                decode: RgDecode::Windows(n),
+            });
+        }
+    }
+    (rg_plans, units)
+}
+
+/// Receive the next prefetched unit (in plan order) and build its decode
+/// stream, which serves every page read from the prefetched bytes — never the
+/// network. The unit's budget permits ride inside the stream's
+/// `PrefetchedReader`, so dropping the stream is what releases them.
+async fn next_unit_stream(
+    hrx: &mut mpsc::Receiver<tokio::task::JoinHandle<Result<PrefetchedUnit, ArrowError>>>,
+    meta: &ArrowReaderMetadata,
+    rg: usize,
+    batch_rows: usize,
+) -> Result<
+    parquet::arrow::async_reader::ParquetRecordBatchStream<PrefetchedReader>,
+    ArrowError,
+> {
+    let handle = hrx.recv().await.ok_or_else(|| {
+        ArrowError::ExternalError(Box::new(ParquetError::General(
+            "prefetch: admission loop ended early".to_string(),
+        )))
+    })?;
+    let unit = match handle.await {
+        Ok(Ok(u)) => u,
+        Ok(Err(e)) => return Err(e),
+        Err(e) => return Err(ArrowError::ExternalError(Box::new(e))), // task panicked
+    };
+    let PrefetchedUnit {
+        mask,
+        sel,
+        ranges,
+        data,
+        permit,
+    } = unit;
+    let reader = PrefetchedReader {
+        ranges,
+        data,
+        meta: Arc::clone(meta.metadata()),
+        _permit: permit,
+    };
+    let mut builder = ParquetRecordBatchStreamBuilder::new_with_metadata(reader, meta.clone())
+        .with_row_groups(vec![rg])
+        .with_batch_size(batch_rows)
+        .with_projection(mask);
+    if let Some((skip, take)) = sel {
+        builder = builder.with_row_selection(RowSelection::from(vec![
+            RowSelector::skip(skip),
+            RowSelector::select(take),
+        ]));
+    }
+    builder
+        .build()
+        .map_err(|e| ArrowError::ExternalError(Box::new(e)))
+}
+
+/// THE single S3 decode driver: every read shape — row-windowed streaming,
+/// wide-schema column groups, and each K-split row partition — flows through
+/// here. Two halves, connected by a byte-denominated semaphore ("the bucket"):
+///
+///   * admission loop (spawned): for each planned unit IN ORDER, acquire
+///     permits equal to its compressed size (clamped to the whole budget so an
+///     oversized unit can still run, alone), then spawn its ranged GET. Fetches
+///     whose permits fit run CONCURRENTLY — that's what overlaps S3 latency
+///     with decode — while `acquire` blocks the loop the moment the bucket is
+///     spent.
+///   * decoder (this task): strictly one unit at a time (bounds decode
+///     scratch), served entirely from the prefetched bytes. Dropping a decoded
+///     unit's stream frees its bytes AND releases its permits, waking the
+///     admission loop: constant memory pressure, fetch concurrency
+///     self-adjusting to the fetch:decode speed ratio, no rate estimation
+///     anywhere.
+///
+/// `prefetch_budget_mb == 0` degrades to strict fetch→decode→fetch (every
+/// acquire is for the full 1-permit budget). Output batches are sent to `tx`
+/// in row order.
+#[allow(clippy::too_many_arguments)]
+async fn drive_s3(
+    store: Arc<dyn ObjectStore>,
+    path: ObjPath,
+    meta: ArrowReaderMetadata,
+    out_schema: SchemaRef,
+    full_mask: ProjectionMask,
+    roots: Vec<usize>,
+    subranges: Vec<(usize, usize, usize)>,
+    batch_clamp: usize,
+    decode_budget: u64,
+    fetch_window_mb: u64,
+    colwindow_budget: u64,
+    prefetch_budget_mb: u64,
+    tx: mpsc::Sender<Result<RecordBatch, ArrowError>>,
+) {
+    // Send an error downstream and stop.
+    macro_rules! send_err {
+        ($e:expr) => {{
+            let _ = tx.send(Err($e)).await;
+            return;
+        }};
+    }
+
+    let (rg_plans, units) = plan_s3_units(
+        &meta,
+        &full_mask,
+        &roots,
+        &subranges,
+        batch_clamp,
+        decode_budget,
+        fetch_window_mb,
+        colwindow_budget,
+    );
+
+    // --- admission loop: budget-gated concurrent prefetch ---
+    let budget_kib = prefetch_budget_mb.saturating_mul(1024).max(1);
+    let budget_kib = budget_kib.min(u32::MAX as u64 / 2);
+    let sem = Arc::new(Semaphore::new(budget_kib as usize));
+    // Handles are tiny; the byte budget is what actually bounds prefetch. The
+    // channel only keeps the admission loop from racing unboundedly far ahead
+    // in *task count* when units are small.
+    let (htx, mut hrx) =
+        mpsc::channel::<tokio::task::JoinHandle<Result<PrefetchedUnit, ArrowError>>>(64);
+    {
+        let store = store.clone();
+        let path = path.clone();
+        tokio::spawn(async move {
+            for UnitFetch {
+                mask,
+                sel,
+                ranges,
+                kib,
+            } in units
+            {
+                let want = kib.clamp(1, budget_kib) as u32;
+                let permit = match sem.clone().acquire_many_owned(want).await {
+                    Ok(p) => p,
+                    Err(_) => return, // semaphore closed = consumer gone
+                };
+                let store = store.clone();
+                let path = path.clone();
+                let handle = tokio::spawn(async move {
+                    match store.get_ranges(&path, &ranges).await {
+                        Ok(data) => Ok(PrefetchedUnit {
+                            mask,
+                            sel,
+                            ranges,
+                            data,
+                            permit,
+                        }),
+                        Err(e) => Err(ArrowError::ExternalError(Box::new(e))),
+                    }
+                });
+                if htx.send(handle).await.is_err() {
+                    return; // decoder dropped (error path) — stop admitting
+                }
+            }
+        });
+    }
+
+    // --- decoder: strictly one unit at a time (bounds decode scratch;
+    // concurrency lives ONLY on the fetch side above) ---
+    for plan in rg_plans {
+        match plan.decode {
+            RgDecode::Windows(n) => {
+                for _ in 0..n {
+                    let mut stream =
+                        match next_unit_stream(&mut hrx, &meta, plan.rg, plan.batch_rows).await {
+                            Ok(s) => s,
+                            Err(e) => send_err!(e),
+                        };
+                    while let Some(item) = stream.next().await {
+                        let is_err = item.is_err();
+                        let msg = item.map_err(|e| ArrowError::ExternalError(Box::new(e)));
+                        if tx.send(msg).await.is_err() {
+                            return; // consumer dropped
+                        }
+                        if is_err {
+                            return;
+                        }
+                    }
+                    // `stream` drops here -> window bytes freed, permits
+                    // released, next fetch admitted.
+                }
+            }
+            RgDecode::Hstack(n) => {
+                let mut group_batches: Vec<Vec<RecordBatch>> = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let mut stream =
+                        match next_unit_stream(&mut hrx, &meta, plan.rg, plan.batch_rows).await {
+                            Ok(s) => s,
+                            Err(e) => send_err!(e),
+                        };
+                    let mut batches = Vec::new();
+                    while let Some(item) = stream.next().await {
+                        match item {
+                            Ok(b) => batches.push(b),
+                            Err(e) => send_err!(ArrowError::ExternalError(Box::new(e))),
+                        }
+                    }
+                    group_batches.push(batches);
+                    // Group bytes + permits released here; decoded batches (the
+                    // output) are retained for the hstack below.
+                }
+
+                // --- hstack the row-aligned batches into full-width batches ---
+                let nbatches = group_batches.first().map(|g| g.len()).unwrap_or(0);
+                if group_batches.iter().any(|g| g.len() != nbatches) {
+                    send_err!(ArrowError::ComputeError(format!(
+                        "column-window batch-count mismatch in row group {}: {:?}",
+                        plan.rg,
+                        group_batches.iter().map(|g| g.len()).collect::<Vec<_>>()
+                    )));
+                }
+                for i in 0..nbatches {
+                    let mut cols: Vec<ArrayRef> = Vec::with_capacity(out_schema.fields().len());
+                    for g in &group_batches {
+                        cols.extend(g[i].columns().iter().cloned());
+                    }
+                    match RecordBatch::try_new(out_schema.clone(), cols) {
+                        Ok(b) => {
+                            if tx.send(Ok(b)).await.is_err() {
+                                return; // consumer dropped
+                            }
+                        }
+                        Err(e) => send_err!(e),
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Build an S3 `ObjectStore` from the config recovered from the pyarrow
+/// `S3FileSystem` on the Python side (`fs.__reduce__()[1][0]`) so credentialed /
+/// custom-endpoint (MinIO, moto) / anonymous buckets all connect identically to
+/// PyArrow. Empty/None fields are treated as unset. Shared by `read_row_groups_s3`
+/// and `read_metadata_s3`.
+#[allow(clippy::too_many_arguments)]
+fn build_s3_store(
+    bucket: &str,
+    region: &str,
+    anonymous: bool,
+    endpoint: Option<String>,
+    access_key_id: Option<String>,
+    secret_access_key: Option<String>,
+    session_token: Option<String>,
+    allow_http: bool,
+    virtual_hosted_style: bool,
+) -> Result<Arc<dyn ObjectStore>, object_store::Error> {
+    let mut sb = AmazonS3Builder::new()
+        .with_bucket_name(bucket)
+        .with_region(region)
+        .with_virtual_hosted_style_request(virtual_hosted_style);
+    if let Some(ep) = endpoint.filter(|s| !s.is_empty()) {
+        sb = sb.with_endpoint(ep);
+    }
+    if allow_http {
+        sb = sb.with_allow_http(true);
+    }
+    if anonymous {
+        // No signing — public buckets. Any creds are irrelevant.
+        sb = sb.with_skip_signature(true);
+    } else {
+        // Explicit static creds if the S3FileSystem carried them; otherwise the
+        // builder falls back to the AWS credential chain (env / IMDS role).
+        if let Some(kid) = access_key_id.filter(|s| !s.is_empty()) {
+            sb = sb.with_access_key_id(kid);
+        }
+        if let Some(s) = secret_access_key.filter(|s| !s.is_empty()) {
+            sb = sb.with_secret_access_key(s);
+        }
+        if let Some(t) = session_token.filter(|s| !s.is_empty()) {
+            sb = sb.with_token(t);
+        }
+    }
+    Ok(Arc::new(sb.build()?))
+}
+
+#[pyfunction]
+#[pyo3(signature = (bucket, key, region, anonymous, endpoint=None, access_key_id=None,
+                    secret_access_key=None, session_token=None, allow_http=false,
+                    virtual_hosted_style=false, row_groups=None, columns=None,
+                    batch_size=131072, decode_budget_bytes=2*1024*1024,
+                    fetch_window_mb=16, k=1, split_threshold_bytes=134217728,
+                    predicate_json=None, column_fetch_mb=16,
+                    prefetch_budget_mb=64))]
+#[allow(clippy::too_many_arguments)]
+fn read_row_groups_s3(
+    py: Python<'_>,
+    bucket: String,
+    key: String,
+    region: String,
+    anonymous: bool,
+    // Full S3 config, recovered from the pyarrow S3FileSystem on the Python side
+    // (fs.__reduce__()[1][0]) so credentialed / custom-endpoint (MinIO, moto) /
+    // anonymous buckets all decode identically to PyArrow. Empty/None → unset.
+    endpoint: Option<String>,
+    access_key_id: Option<String>,
+    secret_access_key: Option<String>,
+    session_token: Option<String>,
+    allow_http: bool,
+    virtual_hosted_style: bool,
+    row_groups: Option<Vec<usize>>,
+    columns: Option<Vec<String>>,
+    batch_size: usize,
+    decode_budget_bytes: u64,
+    fetch_window_mb: u64,
+    k: usize,
+    split_threshold_bytes: u64,
+    // See `read_row_groups`: statistics row-group pruning only.
+    predicate_json: Option<String>,
+    // Compressed-byte budget per column group for the wide-schema column-windowing
+    // split axis (0 disables it). See `plan_s3_units`.
+    column_fetch_mb: u64,
+    // Compressed bytes the prefetcher may hold in flight/buffered ahead of the
+    // (single) decoder — "the bucket", shared by every unit kind. Bounds memory
+    // by construction while letting enough GETs run concurrently to keep the
+    // decoder fed regardless of the fetch:decode speed ratio. 0 = strictly
+    // sequential (no overlap). See `drive_s3`.
+    prefetch_budget_mb: u64,
+) -> PyResult<ArrowStream> {
+    let store = build_s3_store(
+        &bucket,
+        &region,
+        anonymous,
+        endpoint,
+        access_key_id,
+        secret_access_key,
+        session_token,
+        allow_http,
+        virtual_hosted_style,
+    )
+    .map_err(to_py)?;
+    let obj_path = ObjPath::from(key);
+
+    let rt = shared_runtime();
+
+    // Load footer + page index ONCE (Optional so a window's RowSelection can skip
+    // unselected pages by byte range), and build the projected output schema up
+    // front from an empty stream (no network). Reporting the projected schema is
+    // what keeps it matching the projected batches at the FFI boundary.
+    // Blocking async footer fetch; release the GIL so sibling Python read
+    // threads (Ray's fragment pool) issue their own S3 requests in parallel.
+    let (meta, mask, schema) = py
+        .allow_threads(|| {
+            rt.block_on(async {
+                let (meta, _skipped) =
+                    load_meta_s3(store.clone(), obj_path.clone(), PageIndexPolicy::Optional)
+                        .await?;
+                let mask =
+                    projection_mask(meta.metadata().file_metadata().schema_descr(), &columns);
+                let schema = ParquetRecordBatchStreamBuilder::new_with_metadata(
+                    ParquetObjectReader::new(store.clone(), obj_path.clone()),
+                    meta.clone(),
+                )
+                .with_projection(mask.clone())
+                .with_row_groups(vec![])
+                .build()?
+                .schema()
+                .clone();
+                Ok::<_, parquet::errors::ParquetError>((meta, mask, schema))
+            })
+        })
+        .map_err(to_py)?;
+
+    let selected: Vec<usize> = match row_groups {
+        Some(v) => v,
+        None => (0..meta.metadata().num_row_groups()).collect(),
+    };
+    // Statistics-based pruning (conservative) before any range GET is issued, so
+    // pruned groups cost no S3 traffic. Same mechanism as the local path.
+    let selected = apply_predicate(&meta, selected, &predicate_json);
+
+    // K-split ONLY for a lone row group above the threshold with a page index —
+    // the case Ray's fragment pool can't parallelize. Mirrors the local rule so
+    // crate-K and Ray's pool never multiply. Otherwise a single driver (K=1)
+    // over all selected groups in order; Ray's pool parallelizes files. Each of
+    // the K streams gets its own prefetch bucket (decode parallelism is the
+    // point of the split), so ~`k * prefetch_budget` compressed may be in
+    // flight for this one deliberately-parallel shape.
+    let split = k > 1
+        && selected.len() == 1
+        && meta.metadata().row_group(selected[0]).total_byte_size() as u64 >= split_threshold_bytes
+        && meta.metadata().offset_index().is_some();
+
+    // Build the per-stream sub-range lists (each becomes one drive_s3 task +
+    // one channel, drained in order). How a sub-range further splits into
+    // prefetchable units (row windows vs column groups) is decided per row
+    // group inside the driver — see `plan_s3_units`.
+    let stream_ranges: Vec<Vec<(usize, usize, usize)>> = if split {
+        let rg = selected[0];
+        let total_rows = meta.metadata().row_group(rg).num_rows().max(0) as usize;
+        let chunk = total_rows.div_ceil(k.max(1)).max(1);
+        let mut ranges = Vec::new();
+        let mut start = 0usize;
+        while start < total_rows {
+            let len = chunk.min(total_rows - start);
+            ranges.push(vec![(rg, start, len)]);
+            start += len;
+        }
+        ranges
+    } else {
+        // One stream: every selected group, whole, in order.
+        let subranges = selected
+            .iter()
+            .map(|&rg| {
+                (
+                    rg,
+                    0usize,
+                    meta.metadata().row_group(rg).num_rows().max(0) as usize,
+                )
+            })
+            .collect();
+        vec![subranges]
+    };
+
+    let roots = projected_root_indices(meta.metadata().file_metadata().schema_descr(), &columns);
+    let colwindow_budget = column_fetch_mb.saturating_mul(1024 * 1024);
+
+    // Spawn one driver per stream on the shared runtime; collect receivers in order.
+    let mut receivers = Vec::with_capacity(stream_ranges.len());
+    for subranges in stream_ranges {
+        let (tx, rx) = mpsc::channel::<Result<RecordBatch, ArrowError>>(S3_CHANNEL_DEPTH);
+        receivers.push(rx);
+        rt.spawn(drive_s3(
+            store.clone(),
+            obj_path.clone(),
+            meta.clone(),
+            schema.clone(),
+            mask.clone(),
+            roots.clone(),
+            subranges,
+            batch_size,
+            decode_budget_bytes,
+            fetch_window_mb,
+            colwindow_budget,
+            prefetch_budget_mb,
+            tx,
+        ));
+    }
+
+    Ok(into_py_stream(Box::new(S3ChannelReader {
+        schema,
+        receivers,
+        cur: 0,
+    })))
+}
+
+// --------------------------------------------------------------------------- //
+// Footer-only metadata reads (Track 1): one footer parse, no data decode.
+// --------------------------------------------------------------------------- //
+/// Read just the Parquet footer of a local file and return schema + per-row-group
+/// counts. Page index is skipped (not needed for metadata). Lets the Python reader
+/// stop building a PyArrow dataset to learn the schema / row-group layout.
+#[pyfunction]
+fn read_metadata(py: Python<'_>, path: String) -> PyResult<ParquetFileMetadata> {
+    // Blocking footer read; release the GIL for sibling Python threads.
+    let (meta, skipped) = py
+        .allow_threads(|| load_meta_local(&File::open(&path)?, PageIndexPolicy::Skip))
+        .map_err(to_py)?;
+    Ok(build_file_metadata(&meta, skipped))
+}
+
+/// S3 counterpart of [`read_metadata`]: one async footer fetch via `object_store`,
+/// same connection config recovery as `read_row_groups_s3`.
+#[pyfunction]
+#[pyo3(signature = (bucket, key, region, anonymous, endpoint=None, access_key_id=None,
+                    secret_access_key=None, session_token=None, allow_http=false,
+                    virtual_hosted_style=false))]
+#[allow(clippy::too_many_arguments)]
+fn read_metadata_s3(
+    py: Python<'_>,
+    bucket: String,
+    key: String,
+    region: String,
+    anonymous: bool,
+    endpoint: Option<String>,
+    access_key_id: Option<String>,
+    secret_access_key: Option<String>,
+    session_token: Option<String>,
+    allow_http: bool,
+    virtual_hosted_style: bool,
+) -> PyResult<ParquetFileMetadata> {
+    let store = build_s3_store(
+        &bucket,
+        &region,
+        anonymous,
+        endpoint,
+        access_key_id,
+        secret_access_key,
+        session_token,
+        allow_http,
+        virtual_hosted_style,
+    )
+    .map_err(to_py)?;
+    let obj_path = ObjPath::from(key);
+    let rt = shared_runtime();
+    // Blocking async footer fetch; release the GIL for sibling Python threads.
+    let (meta, skipped) = py
+        .allow_threads(|| {
+            rt.block_on(load_meta_s3(
+                store.clone(),
+                obj_path.clone(),
+                PageIndexPolicy::Skip,
+            ))
+        })
+        .map_err(to_py)?;
+    Ok(build_file_metadata(&meta, skipped))
+}
+
+/// Return the row-group ids of `path` that survive `predicate_json`'s statistics
+/// pruning (all of them when it's None). This is the exact selection
+/// `read_row_groups` would decode; exposed so callers (and tests) can observe
+/// pruning without decoding, and so the pyarrow-free reader can learn the read
+/// set up front. Page index is skipped (stats live in the footer).
+#[pyfunction]
+#[pyo3(signature = (path, predicate_json=None))]
+fn select_row_groups(
+    py: Python<'_>,
+    path: String,
+    predicate_json: Option<String>,
+) -> PyResult<Vec<usize>> {
+    // Blocking footer read; release the GIL for sibling Python threads.
+    let (meta, _skipped) = py
+        .allow_threads(|| load_meta_local(&File::open(&path)?, PageIndexPolicy::Skip))
+        .map_err(to_py)?;
+    let all: Vec<usize> = (0..meta.metadata().num_row_groups()).collect();
+    Ok(apply_predicate(&meta, all, &predicate_json))
+}
+
+fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
+    PyRuntimeError::new_err(e.to_string())
+}
+
+#[pymodule]
+fn ray_data_arrow_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(read_row_groups, m)?)?;
+    m.add_function(wrap_pyfunction!(read_row_groups_s3, m)?)?;
+    m.add_function(wrap_pyfunction!(read_metadata, m)?)?;
+    m.add_function(wrap_pyfunction!(read_metadata_s3, m)?)?;
+    m.add_function(wrap_pyfunction!(select_row_groups, m)?)?;
+    m.add_class::<ParquetFileMetadata>()?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use parquet::schema::types::{ColumnPath, Type};
+    use std::sync::Arc;
+
+    /// Build a leaf `ColumnDescriptor` for one physical/logical/converted type
+    /// combo (the only inputs `is_plain_signed_int` reads).
+    fn descr(
+        physical: PhysicalType,
+        logical: Option<LogicalType>,
+        converted: ConvertedType,
+    ) -> ColumnDescriptor {
+        let ty = Type::primitive_type_builder("c", physical)
+            .with_logical_type(logical)
+            .with_converted_type(converted)
+            .build()
+            .unwrap();
+        ColumnDescriptor::new(Arc::new(ty), 0, 0, ColumnPath::new(vec!["c".to_string()]))
+    }
+
+    #[test]
+    fn plain_signed_ints_are_comparable() {
+        // Plain INT32/INT64 (no logical/converted type).
+        assert!(is_plain_signed_int(&descr(
+            PhysicalType::INT64,
+            None,
+            ConvertedType::NONE
+        )));
+        assert!(is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            None,
+            ConvertedType::NONE
+        )));
+        // Explicit signed-integer logical type.
+        assert!(is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            Some(LogicalType::integer(32, true)),
+            ConvertedType::NONE
+        )));
+        // Legacy signed converted type.
+        assert!(is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            None,
+            ConvertedType::INT_16
+        )));
+    }
+
+    #[test]
+    fn window_step_clamps_up_to_a_full_page() {
+        // The wide/short pathology: byte budget wants a 40-row window but the
+        // (single) page spans all 200 rows -> clamp up to 200 so the whole range
+        // is one window (no per-window re-decode of that page).
+        assert_eq!(effective_window_step(40, 200, 200), 200);
+        // step >= len => the caller emits exactly one window (parity, no split).
+        assert!(effective_window_step(40, 200, 200) >= 200);
+    }
+
+    #[test]
+    fn window_step_keeps_splitting_a_tall_group() {
+        // Tall multi-page group: window (4096 rows) already spans several 512-row
+        // pages, so it is left as-is and the range still splits into windows.
+        assert_eq!(effective_window_step(4096, 512, 1_000_000), 4096);
+        // A window smaller than the page still gets clamped up to the page, so a
+        // page is never split across windows (bounds boundary re-decode to O(1)).
+        assert_eq!(effective_window_step(256, 512, 1_000_000), 512);
+    }
+
+    #[test]
+    fn column_partition_splits_wide_group_under_budget() {
+        // 5 columns of 100 bytes each, budget 250 -> groups of [0,1],[2,3],[4].
+        let cols: Vec<(usize, u64)> = (0..5).map(|i| (i, 100)).collect();
+        assert_eq!(
+            partition_columns_by_budget(&cols, 250),
+            vec![vec![0, 1], vec![2, 3], vec![4]]
+        );
+        // Ascending leaf order is preserved within and across groups (so hstack
+        // reproduces schema order).
+        let flat: Vec<usize> = partition_columns_by_budget(&cols, 250)
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(flat, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn column_partition_disabled_or_narrow_is_one_group() {
+        let cols: Vec<(usize, u64)> = (0..5).map(|i| (i, 100)).collect();
+        // budget 0 disables -> single group.
+        assert_eq!(
+            partition_columns_by_budget(&cols, 0),
+            vec![vec![0, 1, 2, 3, 4]]
+        );
+        // budget larger than the total -> single group (narrow/small reads).
+        assert_eq!(
+            partition_columns_by_budget(&cols, 10_000),
+            vec![vec![0, 1, 2, 3, 4]]
+        );
+        // <=1 column -> single group regardless of budget.
+        assert_eq!(partition_columns_by_budget(&[(7, 999)], 1), vec![vec![7]]);
+    }
+
+    #[test]
+    fn column_partition_never_splits_below_one_column() {
+        // A single oversized column exceeds the budget but still gets its own group
+        // (can't split a column below itself). Neighbours don't merge into it.
+        let cols = vec![(0, 10), (1, 500), (2, 10)];
+        assert_eq!(
+            partition_columns_by_budget(&cols, 100),
+            vec![vec![0], vec![1], vec![2]]
+        );
+    }
+
+    #[test]
+    fn slice_prefetched_serves_contained_subranges() {
+        // Two prefetched chunk ranges; page reads are sub-ranges of a chunk.
+        let ranges = vec![100u64..200, 300u64..350];
+        let data = vec![
+            Bytes::from((0..100u8).collect::<Vec<u8>>()),
+            Bytes::from((0..50u8).collect::<Vec<u8>>()),
+        ];
+        // Exact chunk.
+        assert_eq!(
+            slice_prefetched(&ranges, &data, &(100..200)).unwrap(),
+            data[0]
+        );
+        // Interior page of the first chunk: bytes at offsets 10..15 within it.
+        assert_eq!(
+            slice_prefetched(&ranges, &data, &(110..115)).unwrap().as_ref(),
+            &[10, 11, 12, 13, 14]
+        );
+        // Sub-range of the second chunk.
+        assert_eq!(
+            slice_prefetched(&ranges, &data, &(340..350)).unwrap().as_ref(),
+            &(40..50u8).collect::<Vec<u8>>()[..]
+        );
+    }
+
+    #[test]
+    fn slice_prefetched_rejects_uncached_or_straddling_ranges() {
+        let ranges = vec![100u64..200, 300u64..350];
+        let data = vec![Bytes::from(vec![0u8; 100]), Bytes::from(vec![0u8; 50])];
+        // Not prefetched at all.
+        assert!(slice_prefetched(&ranges, &data, &(0..10)).is_none());
+        // Straddles the gap between the two chunks -> contained in neither.
+        assert!(slice_prefetched(&ranges, &data, &(150..320)).is_none());
+        // Runs past the end of a chunk.
+        assert!(slice_prefetched(&ranges, &data, &(190..201)).is_none());
+    }
+
+    #[test]
+    fn window_step_zero_means_whole_range() {
+        // fetch_window_mb == 0 -> window_rows == 0 -> one window over the range,
+        // regardless of page size.
+        assert_eq!(effective_window_step(0, 512, 8192), 8192);
+        assert_eq!(effective_window_step(0, 0, 1), 1);
+    }
+
+    /// Write a 2-column, 1000-row parquet (data pages capped at ~100 rows, page
+    /// index on) into memory and load its metadata WITH the page index — the
+    /// fixture for the window/unit planning tests below.
+    fn windowed_fixture() -> (ArrowReaderMetadata, Bytes) {
+        use arrow::array::{Int64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use parquet::arrow::arrow_writer::ArrowWriter;
+        use parquet::file::properties::WriterProperties;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Int64, false),
+            Field::new("b", DataType::Utf8, false),
+        ]));
+        let a = Int64Array::from((0..1000i64).collect::<Vec<_>>());
+        let b = StringArray::from((0..1000).map(|i| format!("row-{i}")).collect::<Vec<_>>());
+        let batch =
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(a), Arc::new(b)]).unwrap();
+        let props = WriterProperties::builder()
+            .set_data_page_row_count_limit(100)
+            .set_write_batch_size(100)
+            .build();
+        let mut buf = Vec::new();
+        let mut w = ArrowWriter::try_new(&mut buf, schema, Some(props)).unwrap();
+        w.write(&batch).unwrap();
+        w.close().unwrap();
+        let buf = Bytes::from(buf);
+        let meta =
+            ArrowReaderMetadata::load(&buf, reader_options(PageIndexPolicy::Required)).unwrap();
+        (meta, buf)
+    }
+
+    #[test]
+    fn window_plan_whole_group_equals_whole_chunks() {
+        let (meta, _buf) = windowed_fixture();
+        let md = meta.metadata();
+        let leaves = vec![0usize, 1];
+        let (ranges, kib) = window_fetch_plan(md, 0, &leaves, 0, 1000);
+        let (want_ranges, want_kib) = group_fetch_plan(md.row_group(0), &leaves);
+        assert_eq!(ranges, want_ranges);
+        assert_eq!(kib, want_kib);
+    }
+
+    #[test]
+    fn window_plan_subwindow_fetches_less_than_the_chunk() {
+        let (meta, _buf) = windowed_fixture();
+        let md = meta.metadata();
+        let leaves = vec![0usize, 1];
+        let (_, whole_kib) = window_fetch_plan(md, 0, &leaves, 0, 1000);
+        // A 100-row window out of 1000 (10 pages/column) must fetch strictly
+        // less than the whole chunks...
+        let (ranges, kib) = window_fetch_plan(md, 0, &leaves, 400, 100);
+        assert!(kib < whole_kib, "window kib {kib} >= whole {whole_kib}");
+        // ...and every planned range must sit inside one of the column chunks.
+        for r in &ranges {
+            let contained = leaves.iter().any(|&l| {
+                let (s, len) = md.row_group(0).column(l).byte_range();
+                r.start >= s && r.end <= s + len
+            });
+            assert!(contained, "range {r:?} escapes the column chunks");
+        }
+    }
+
+    /// The load-bearing guarantee: decode served ONLY from a window's planned
+    /// ranges must succeed (a request outside the plan is a hard
+    /// "not prefetched" error) and reproduce exactly the window's rows — for
+    /// windows that tile the group at non-page-aligned offsets.
+    #[test]
+    fn window_plans_serve_every_decoder_request() {
+        use arrow::array::Int64Array;
+
+        let (meta, buf) = windowed_fixture();
+        let md = meta.metadata();
+        let leaves = vec![0usize, 1];
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let sem = Arc::new(Semaphore::new(usize::MAX >> 3));
+        let mut next_val = 0i64;
+        for (w, wlen) in [(0usize, 250usize), (250, 250), (500, 400), (900, 100)] {
+            let (ranges, _kib) = window_fetch_plan(md, 0, &leaves, w, wlen);
+            let data: Vec<Bytes> = ranges
+                .iter()
+                .map(|r| buf.slice(r.start as usize..r.end as usize))
+                .collect();
+            let permit = rt
+                .block_on(sem.clone().acquire_many_owned(1))
+                .unwrap();
+            let reader = PrefetchedReader {
+                ranges,
+                data,
+                meta: Arc::clone(meta.metadata()),
+                _permit: permit,
+            };
+            let batches: Vec<RecordBatch> = rt.block_on(async {
+                let mut stream =
+                    ParquetRecordBatchStreamBuilder::new_with_metadata(reader, meta.clone())
+                        .with_row_groups(vec![0])
+                        .with_batch_size(97)
+                        .with_projection(ProjectionMask::all())
+                        .with_row_selection(RowSelection::from(vec![
+                            RowSelector::skip(w),
+                            RowSelector::select(wlen),
+                        ]))
+                        .build()
+                        .unwrap();
+                let mut out = Vec::new();
+                while let Some(b) = stream.next().await {
+                    out.push(b.unwrap());
+                }
+                out
+            });
+            let rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+            assert_eq!(rows, wlen, "window ({w},{wlen}) yielded {rows} rows");
+            for b in &batches {
+                let col = b.column(0).as_any().downcast_ref::<Int64Array>().unwrap();
+                for i in 0..col.len() {
+                    assert_eq!(col.value(i), next_val);
+                    next_val += 1;
+                }
+            }
+        }
+        assert_eq!(next_val, 1000);
+    }
+
+    #[test]
+    fn plan_chooses_windows_for_narrow_and_hstack_for_wide() {
+        let (meta, _buf) = windowed_fixture();
+        let roots = vec![0usize, 1];
+        let mask = ProjectionMask::all();
+        // Generous column budget -> not wide -> row windows (single window here:
+        // the fixture is tiny, so the byte-budget window covers all rows).
+        let (plans, units) = plan_s3_units(
+            &meta, &mask, &roots, &[(0, 0, 1000)], 131072, 2 << 20, 16, 1 << 30,
+        );
+        assert_eq!(plans.len(), 1);
+        assert!(matches!(plans[0].decode, RgDecode::Windows(1)));
+        assert_eq!(units[0].sel, Some((0, 1000)));
+        // 1-byte column budget -> every root its own group -> hstack of 2.
+        let (plans, units) = plan_s3_units(
+            &meta, &mask, &roots, &[(0, 0, 1000)], 131072, 2 << 20, 16, 1,
+        );
+        assert!(matches!(plans[0].decode, RgDecode::Hstack(2)));
+        assert_eq!(units.len(), 2);
+        assert!(units.iter().all(|u| u.sel.is_none() && u.kib > 0));
+        // A K-split style partial sub-range must NEVER column-window (it is a
+        // tall group split by rows), even under a tiny budget.
+        let (plans, units) = plan_s3_units(
+            &meta, &mask, &roots, &[(0, 500, 500)], 131072, 2 << 20, 16, 1,
+        );
+        assert!(matches!(plans[0].decode, RgDecode::Windows(_)));
+        assert_eq!(units[0].sel, Some((500, 500)));
+    }
+
+    #[test]
+    fn unsigned_and_nonint_logical_types_are_not_comparable() {
+        // Unsigned: a u32 max is stored as the i32 bit pattern -1, so reading
+        // the stat as signed inverts min/max and would wrongly prune. Reject.
+        assert!(!is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            Some(LogicalType::integer(32, false)),
+            ConvertedType::NONE
+        )));
+        assert!(!is_plain_signed_int(&descr(
+            PhysicalType::INT64,
+            Some(LogicalType::integer(64, false)),
+            ConvertedType::NONE
+        )));
+        // Legacy unsigned converted type (logical absent).
+        assert!(!is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            None,
+            ConvertedType::UINT_32
+        )));
+        // Date is INT32-backed but not a plain integer value — reject.
+        assert!(!is_plain_signed_int(&descr(
+            PhysicalType::INT32,
+            Some(LogicalType::Date),
+            ConvertedType::NONE
+        )));
+    }
+}
