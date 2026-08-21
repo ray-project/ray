@@ -11,6 +11,7 @@ from ray._common.usage.usage_lib import (
     get_hardware_usages_to_report,
     record_extra_usage_tag,
 )
+from ray.llm._internal.common.accelerators import AcceleratorType
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.lora_utils import get_lora_model_ids
@@ -253,8 +254,6 @@ class HardwareUsage:
         """Infer the GPU type from the hardware when the accelerator type on llm config is
         not specified.
         """
-        from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
-
         all_accelerator_types = [t.value for t in AcceleratorType]
         gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
         hardwares = self._get_hardware_fn(gcs_client)
