@@ -1,3 +1,6 @@
+.. meta::
+   :description: Join Ray Data Datasets on key columns using the supported join types, and tune the partition and aggregator counts.
+
 .. _joining-data:
 
 ============
@@ -41,6 +44,11 @@ only returning columns from the requested side)
 columns from the requested side)
 
 Internally joins are currently powered by the :ref:`hash-shuffle backend <hash-shuffle>`.
+:ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``), currently in Alpha, provides an
+updated hash-shuffle implementation for joins. To use it, set the shuffle strategy before creating a
+``Dataset``:
+``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2``. See
+:ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for memory-related knobs.
 
 Configuring Joins
 ----------------------------------
@@ -50,18 +58,7 @@ Joins are generally memory-intensive operations that require accurate memory acc
 Ray Data provides the following levers to allow tuning the performance of joins for your workload:
 
 -   `num_partitions`: (required) specifies number of partitions both incoming datasets will be hash-partitioned into. Check out :ref:`configuring number of partitions <joins_configuring_num_partitions>` section for guidance on how to tune this up.
--   `partition_size_hint`: (optional) Hint to joining operator about the estimated avg expected size of the individual partition (in bytes). If not specified, defaults to DataContext.target_max_block_size (128Mb by default).
-    -   Note that, `num_partitions * partition_size_hint` should ideally be approximating actual dataset size, ie `partition_size_hint` could be estimated as dataset size divided by `num_partitions` (assuming relatively evenly sized partitions)
-    -   However, in cases when dataset partitioning is expected to be heavily skewed `partition_size_hint` should approximate largest partition to prevent Out-of-Memory (OOM) errors
-
-.. note:: Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all
-    Ray Data workloads, but especially so for ones utilizing joins.
-
-To configure Object Store to be 50%, add to your image:
-
-.. testcode::
-
-    RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.5
+-   `partition_size_hint`: (**deprecated**) Hint to joining operator about the estimated avg expected size of the individual partition (in bytes). Ray Data ignores this parameter and a future release removes it. Passing a value emits a `DeprecationWarning`. The join path sizes reduce-task memory from observed partition sizes instead of from a hint.
 
 .. _joins_configuring_num_partitions:
 
@@ -82,7 +79,7 @@ Configuring number of Aggregators
 
 Following are important considerations for successfully configuring number of aggregators in your pool:
 
-- Defaults to 64 or `num_partitions` (in cases when there are less than 64 partitions)
+- Defaults to the smallest of `num_partitions`, the number of CPUs in the cluster, and `DataContext.max_hash_shuffle_aggregators` (128 by default)
 - Individual Aggregators might be assigned to handle more than one partition (partitions are evenly split in round-robin fashion among the aggregators)
 - Aggregators are stateful components that hold the state (partitions) during shuffling **in memory**
 

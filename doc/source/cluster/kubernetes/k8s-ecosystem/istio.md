@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Enable Istio mTLS and L7 traffic observability for a RayCluster, including the headless service Ray requires."
+---
+
 (kuberay-istio)=
 # mTLS and L7 observability with Istio
 
@@ -170,8 +176,7 @@ The default Ray worker port range, from 10002 to 19999, is too large to specify 
 
 ## Step 4: Create the RayCluster
 
-The upcoming RayCluster _must_ use exactly the same ports listed in the previous Headless Service, including the `max-worker-port`.
-In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless Service to enable Istio L7 observability.
+The upcoming RayCluster _must_ use exactly the same ports listed in the previous Headless Service, including the `max-worker-port`. In addition, the `node-ip-address` _must_ be set to the Pod FQDN of the Headless Service to enable Istio L7 observability.
 
   ```bash
   kubectl apply -f - <<EOF

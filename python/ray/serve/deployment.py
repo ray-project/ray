@@ -1,5 +1,3 @@
-import logging
-import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -9,18 +7,16 @@ from ray.serve._private.config import (
     RequestRouterConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     DeploymentActorConfig,
     GangSchedulingConfig,
 )
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
-
-logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -109,8 +105,22 @@ class Deployment:
         deployment_config: DeploymentConfig,
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
-        _internal=False,
+        _internal: bool = False,
     ) -> None:
+        """Construct a Deployment. Should only be called by Serve internals.
+
+        Args:
+            name: Unique name of this deployment.
+            deployment_config: Serve-level configuration (number of replicas,
+                user config, autoscaling, etc.).
+            replica_config: Replica-level configuration (actor options, init
+                args/kwargs, etc.).
+            version: Optional opaque deployment version used to determine
+                whether replicas need to be restarted on update.
+            _internal: Internal flag; ``Deployment`` instances must be created
+                via the ``@serve.deployment`` decorator, which sets this to
+                ``True``.
+        """
         if not _internal:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
@@ -129,10 +139,10 @@ class Deployment:
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
 
-        # name does not contain #
+        # '#' is the replica ID delimiter, so it cannot appear in a name.
         if "#" in name:
-            warnings.warn(
-                f"Deployment names should not contain the '#' character, this will raise an error starting in Ray 2.46.0. "
+            raise ValueError(
+                f"Deployment names must not contain the '#' character. "
                 f"Current name: {name}."
             )
 
@@ -171,11 +181,9 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
-    def route_prefix(self):
-        raise ValueError(
-            "`route_prefix` can no longer be specified at the deployment level. "
-            "Pass it to `serve.run` or in the application config instead."
-        )
+    def backpressure_config(self) -> BackpressureConfig:
+        """Config of the HTTP response for requests rejected due to backpressure."""
+        return self._deployment_config.backpressure_config
 
     @property
     def ray_actor_options(self) -> Optional[Dict]:
@@ -189,14 +197,6 @@ class Deployment:
     @property
     def init_kwargs(self) -> Tuple[Any]:
         return self._replica_config.init_kwargs
-
-    @property
-    def url(self) -> Optional[str]:
-        logger.warning(
-            "DeprecationWarning: `Deployment.url` is deprecated "
-            "and will be removed in the future."
-        )
-        return None
 
     @property
     def logging_config(self) -> Dict:
@@ -225,7 +225,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
@@ -236,6 +235,9 @@ class Deployment:
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
         max_queued_requests: Default[int] = DEFAULT.VALUE,
+        backpressure_config: Default[
+            Union[Dict, BackpressureConfig, None]
+        ] = DEFAULT.VALUE,
         autoscaling_config: Default[
             Union[Dict, AutoscalingConfig, None]
         ] = DEFAULT.VALUE,
@@ -265,10 +267,10 @@ class Deployment:
 
         Refer to the `@serve.deployment` decorator docs for available arguments.
         """
-        if route_prefix is not DEFAULT.VALUE:
+        if not _internal and version is not DEFAULT.VALUE:
             raise ValueError(
-                "`route_prefix` can no longer be specified at the deployment level. "
-                "Pass it to `serve.run` or in the application config instead."
+                "`version` in `Deployment.options()` has been removed. "
+                "Serve manages deployment versions internally."
             )
 
         # Modify max_ongoing_requests and autoscaling_config if
@@ -316,14 +318,7 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if not _internal and version is not DEFAULT.VALUE:
-            logger.warning(
-                "DeprecationWarning: `version` in `Deployment.options()` has been "
-                "deprecated. Explicitly specifying version will raise an error in the "
-                "future!"
-            )
-
-        elif num_replicas not in [DEFAULT.VALUE, None, "auto"]:
+        if num_replicas not in [DEFAULT.VALUE, None, "auto"]:
             new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:
@@ -334,6 +329,9 @@ class Deployment:
 
         if max_queued_requests is not DEFAULT.VALUE:
             new_deployment_config.max_queued_requests = max_queued_requests
+
+        if backpressure_config is not DEFAULT.VALUE:
+            new_deployment_config.backpressure_config = backpressure_config
 
         if max_constructor_retry_count is not DEFAULT.VALUE:
             new_deployment_config.max_constructor_retry_count = (
@@ -482,6 +480,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     Args:
         d: Deployment object to convert
+
+    Returns:
+        The structured ``DeploymentSchema`` representing ``d``.
     """
 
     if d.ray_actor_options is not None:
@@ -498,6 +499,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         else d.num_replicas,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
+        "backpressure_config": d.backpressure_config,
         "user_config": d.user_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
         "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
@@ -567,6 +569,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         user_config=s.user_config,
         max_ongoing_requests=s.max_ongoing_requests,
         max_queued_requests=s.max_queued_requests,
+        backpressure_config=s.backpressure_config,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,

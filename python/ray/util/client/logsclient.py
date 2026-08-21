@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 # TODO(barakmich): Running a logger in a logger causes loopback.
 # The client logger need its own root -- possibly this one.
-# For the moment, let's just not propogate beyond this point.
+# For the moment, let's just not propagate beyond this point.
 logger.propagate = False
 
 

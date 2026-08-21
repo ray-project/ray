@@ -1,25 +1,16 @@
-import io
 import json
 import logging
 import os
 import pathlib
 import re
 import sys
-import zipfile
 from datetime import datetime
 from dataclasses import is_dataclass
-from importlib import import_module
 from typing import Any, Dict
-from urllib.request import urlopen
 
 import sphinx
 from docutils import nodes
-from jinja2.filters import FILTERS
-from sphinx.ext import autodoc
-from sphinx.ext.autosummary import generate
-from sphinx.util.inspect import safe_getattr
-
-DEFAULT_API_GROUP = "Others"
+from sphinx.util.matching import compile_matchers
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +24,14 @@ from custom_directives import (  # noqa
     pregenerate_example_rsts,
     generate_versions_json,
     collect_example_orphans,
+)
+
+# Importing api_autogen registers the custom autosummary Jinja filters and
+# exposes the shared stub-generation entry point (see doc/source/api_autogen.py).
+from api_autogen import (  # noqa: E402
+    AUTOGEN_FILES,
+    AUTOSUMMARY_FILENAME_MAP,
+    generate_api_stubs,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -59,6 +58,7 @@ sys.path.append(os.path.abspath("./_ext"))
 extensions = [
     "callouts",  # custom extension from _ext folder
     "queryparamrefs",
+    "api_sidebar",  # APIs tab: shared client-side API nav (see _ext/api_sidebar.py)
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -78,16 +78,36 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
     "sphinx_collections",
-    "sphinx_llms_txt",
+    "llms_txt",  # in-repo extension from _ext folder (replaces sphinx-llms-txt)
+    "sphinxext.opengraph",
 ]
 
-# -- sphinx-llms-txt: agent-friendly summary and full corpus -----------
+# -- llms.txt: agent-friendly index + per-section full corpus -----------
+# Emitted by the in-repo `llms_txt` extension (doc/source/_ext/llms_txt.py),
+# which replaces the third-party `sphinx-llms-txt`.
 
-llms_txt_summary = (
-    "Ray is an open-source unified compute framework for scaling AI and "
-    "Python workloads, including data processing, model training, model "
-    "serving, hyperparameter tuning, and reinforcement learning. The full "
-    "documentation lives at https://docs.ray.io/."
+# H1 title for llms.txt / llms-full.txt.
+llms_txt_title = "Ray"
+
+# Nav sections to move under llms.txt's trailing `## Optional` heading (content
+# agents may skip to save context). Empty for v1.
+llms_txt_optional_sections = []
+
+# Skip the agent manifests on Read the Docs PR previews (they aren't
+# review-critical and the full-source read is wasted work), generating them only
+# on published builds (master, release tags) and local builds. `external` is
+# RtD's version type for PR builds — the same signal `.readthedocs.yaml` keys
+# the incremental-vs-full build off of. (DOC-1048)
+llms_txt_build = os.getenv("READTHEDOCS_VERSION_TYPE") != "external"
+
+# Blockquote summary for llms.txt, kept as editable prose in a sibling file so
+# it can be updated without touching conf.py. `.txt` isn't a Sphinx source
+# suffix, so the file isn't built as a page. Whitespace is collapsed to a single
+# line for the `> summary` blockquote, so the file can be wrapped for readability.
+llms_txt_summary = " ".join(
+    (pathlib.Path(__file__).parent / "llms_txt_summary.txt")
+    .read_text(encoding="utf-8")
+    .split()
 )
 
 # Filter low-signal pages from llms-full.txt. Auto-generated API reference
@@ -101,81 +121,106 @@ llms_txt_exclude = [
     "genindex",
     "404",
     "_TableOfContents",
+    # Include-only fragments and template/example scaffolding — not standalone
+    # nav pages; keep them out of the per-section llms-full shards.
+    "_includes/*",
+    "_templates/*",
+    "templates/*",
     "cluster/running-applications/job-submission/doc/*",
     "ray-observability/reference/doc/*",
     "ray-core/api/doc/*",
+    "ray-core/compiled-graph/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
     "rllib/package_ref/*",
+    # Deprecated pages: surfacing a superseded API/guide to an agent is worse
+    # than omitting it — the agent may follow the old API. (DOC-908)
+    "train/api/deprecated",
+    "train/deprecated-user-guides/*",
+    # Retired Ray AIR namespace: orphaned, no longer in the site nav.
+    "ray-air/deployment",
+    # Include-only fragments spliced into other pages (no standalone title).
+    "train/common/*",
+    "ray-contribute/involvement",
+    # Helper/utility code files and raw scripts rendered as pages — code, not
+    # docs; the real guide pages that literalinclude them are kept.
+    "train/user-guides/_collate_utils",
+    "tune/examples/pbt_visualization/pbt_visualization_utils",
+    "cluster/vms/user-guides/community/slurm-*",
+    # Thin literalinclude example stubs (a heading + a code block, no prose).
+    "tune/examples/includes/*",
+]
+
+# Jupyter notebooks are dropped from llms.txt / llms-full.txt by the llms_txt
+# extension itself, which skips any page whose source is a `.ipynb` (by file
+# suffix, at build time — so it also catches notebooks fetched into the build by
+# sphinx-collections). No docname enumeration needed here. Notebooks remain
+# fully rendered in the HTML build; only the agent corpus drops them.
+
+# Thin API-reference hub pages: a title plus an autosummary table, under 40 words
+# of real prose. The per-symbol pages they link to are already excluded above via
+# the `*/api/doc/*` patterns, so an agent gains nothing from the shell — and a
+# description on one would only restate its title. `data/api/_autogen` has no
+# title at all, and the two `*_regression_example` pages are literalinclude
+# stubs with zero prose. Every remaining in-scope page carries a curated
+# description; these are the pages where exclusion beats describing.
+llms_txt_exclude += [
+    "data/api/_autogen",
+    "data/api/aggregate",
+    "data/api/api",
+    "data/api/checkpoint",
+    "data/api/data_context",
+    "data/api/data_iterator",
+    "data/api/dataset",
+    "data/api/datatype",
+    "data/api/execution_options",
+    "data/api/grouped_data",
+    "data/api/llm",
+    "data/api/loading_data",
+    "data/api/preprocessor",
+    "data/api/saving_data",
+    "ray-core/api/cli",
+    "ray-core/api/core",
+    "ray-core/api/exceptions",
+    "ray-core/api/index",
+    "ray-core/api/runtime-env",
+    "ray-core/api/scheduling",
+    "ray-core/api/utility",
+    "ray-core/compiled-graph/compiled-graph-api",
+    "train/examples/pytorch/torch_regression_example",
+    "train/examples/tf/tensorflow_regression_example",
+    "tune/api/api",
+    "tune/api/execution",
+    "tune/api/integration",
+    "tune/api/internals",
+    "tune/api/result_grid",
+    "tune/api/search_space",
+    "tune/api/syncing",
 ]
 
 # -- sphinx-collections: pull external template files at build time -----------
-
-_TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
-_TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
-
-_TEMPLATE_COLLECTIONS = {
-    "deployment-serve-llm": {
-        "target": "serve/tutorials/deployment-serve-llm",
-    },
-}
-
-
-def _resolve_template_url(name):
-    """Fetch the build zip URL for a template from the channel API."""
-    api_url = _TEMPLATE_CHANNEL_API.format(name=name)
-    logger.info("sphinx-collections: resolving template URL from %s", api_url)
-    with urlopen(api_url) as resp:
-        data = json.loads(resp.read())
-    url = data["url"]
-    # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
-    url = url.replace("ascommon:///", _TEMPLATES_CI_BASE + "/")
-    # Append /build.zip to get the docs build archive.
-    url = url.rstrip("/") + "/build.zip"
-    logger.info("sphinx-collections: resolved URL %s", url)
-    return url
-
-
-def _fetch_and_extract_zip(config):
-    """Download a zip archive and extract it into the collection target directory."""
-    import shutil
-
-    url = _resolve_template_url(config["name"])
-    target = pathlib.Path(config["target"])
-    if target.is_dir():
-        shutil.rmtree(target)
-    target.mkdir(parents=True, exist_ok=True)
-    logger.info("sphinx-collections: downloading %s -> %s", url, target)
-    with urlopen(url) as resp:
-        zip_bytes = io.BytesIO(resp.read())
-    with zipfile.ZipFile(zip_bytes) as zf:
-        zf.extractall(target)
-    logger.info("sphinx-collections: extracted %d files to %s", len(zf.namelist()), target)
-
-
-collections = {
-    name: {
-        "driver": "function",
-        "source": _fetch_and_extract_zip,
-        "target": coll["target"],
-        "clean": False,
-        "final_clean": False,
-        "write_result": False,
-    }
-    for name, coll in _TEMPLATE_COLLECTIONS.items()
-}
-
-# Don't wipe the target before build — other docs may co-exist in parent dirs.
-collections_clean = True
-# Clean up collected files after build so they don't get committed.
-collections_final_clean = True
+# The fetch machinery, template registry, collections config, and _collections/
+# Sphinx wiring live in template_collections.py so template-publishing changes
+# stay scoped away from Sphinx config. See that module.
+from template_collections import (
+    collections,
+    collections_clean,
+    collections_final_clean,
+)
+import template_collections
 
 # The collections config contains a function reference (for the "function" driver)
 # which Sphinx cannot pickle for caching. This is harmless — suppress the warning
 # so it doesn't cause a build failure under -W (warnings-as-errors).
-suppress_warnings = ["config.cache"]
+suppress_warnings = [
+    "config.cache",
+    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
+    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
+    # the existing (identical) file. Benign and not fixable upstream.
+    "misc.copy_overwrite",
+]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
 autodoc_pydantic_model_show_json = False
@@ -187,6 +232,12 @@ docsearch_app_id = "LBHF0PABBL"
 docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
 docsearch_index_name = "docs-ray"
 
+# Remove the per-symbol autogenerated API reference pages (one page per
+# class/method) from the rendered toctree via sphinx-remove-toctrees, so the
+# navigation sidebar isn't swamped by thousands of API stubs. The pages are
+# still generated and linked from the autosummary tables; this only drops them
+# from the nav tree. These API-ref directories mirror the API-ref entries in
+# `llms_txt_exclude` above, which excludes the same pages from the agent corpus.
 remove_from_toctrees = [
     "cluster/running-applications/job-submission/doc/*",
     "ray-observability/reference/doc/*",
@@ -217,7 +268,7 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-myst_heading_anchors = 3
+myst_heading_anchors = 4
 
 # Add these for attachment handling
 nb_render_key_pairs = {
@@ -278,10 +329,28 @@ html_extra_path = ["robots.txt"]
 
 html_baseurl = "https://docs.ray.io/en/latest/"
 
+# Base URL for links in the generated llms.txt / llms-full.txt. Unlike the SEO
+# `html_baseurl` (deliberately pinned to /en/latest/ as the canonical), these
+# should point at the version actually being built, so a version's manifest and
+# index links resolve within that same version — and PR previews are
+# self-navigable rather than pointing at prod /en/latest/. RtD's
+# `READTHEDOCS_CANONICAL_URL` carries the correct host + current version slug;
+# fall back to html_baseurl for local builds. (DOC-1130)
+llms_txt_base_url = os.getenv("READTHEDOCS_CANONICAL_URL") or html_baseurl
+
 # `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
 # default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
 # extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
 sitemap_url_scheme = "{link}"
+
+# sphinxext-opengraph: emit Open Graph metadata per page. Pin `ogp_site_url`
+# to `html_baseurl` so the `og:url` tag tracks the same canonical URL as
+# Sphinx's `<link rel="canonical">`. If `ogp_site_url` were left unset, the
+# extension would fall back to Read the Docs' `READTHEDOCS_CANONICAL_URL`
+# env var (set by RtD's Addons framework from the project's "Canonical
+# version" admin setting), which can diverge from `html_baseurl`. Per-page
+# `:og:description:` and `:og:image:` can still be set in individual files.
+ogp_site_url = html_baseurl
 
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")
@@ -297,24 +366,6 @@ copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
 # By default, tabs can be closed by selecting an open tab. We disable this
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
 sphinx_tabs_disable_tab_closing = True
-
-# Special mocking of packaging.version.Version is required when using sphinx;
-# we can't just add this to autodoc_mock_imports, as packaging is imported by
-# sphinx even before it can be mocked. Instead, we patch it here.
-import packaging.version as packaging_version  # noqa
-
-Version = packaging_version.Version
-
-
-class MockVersion(Version):
-    def __init__(self, version: str):
-        if isinstance(version, (str, bytes)):
-            super().__init__(version)
-        else:
-            super().__init__("0")
-
-
-packaging_version.Version = MockVersion
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -341,14 +392,14 @@ language = "en"
 # autogen files are only used to auto-generate public API documentation.
 # They are not included in the toctree to avoid warnings such as documents not included
 # in any toctree.
-autogen_files = [
-    "data/api/_autogen.rst",
-]
+autogen_files = AUTOGEN_FILES
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
+    # Committed intersphinx inventory snapshots + refresh tooling, not docs.
+    "_intersphinx/**",
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
@@ -360,17 +411,11 @@ exclude_patterns = [
     "train/examples/**/content/**README.md",
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
-    "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
-    "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
-    "train/tutorials/content/**/README.md",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
-    "_collections/serve/tutorials/deployment-serve-llm/README.*",
-    "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
-    "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
-] + autogen_files
+] + template_collections.exclude_patterns() + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
@@ -481,8 +526,8 @@ html_theme_options = {
         "csat",
     ],
     "navigation_depth": 4,
-    "pygment_light_style": "stata-dark",
-    "pygment_dark_style": "stata-dark",
+    "pygments_light_style": "stata-dark",
+    "pygments_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
         "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
@@ -496,6 +541,10 @@ html_context = {
     "doc_path": "doc/source/",
 }
 
+# Pick the sidebar template by build environment: Read the Docs builds
+# (READTHEDOCS=True) use `main-sidebar-readthedocs`, all other builds use
+# `main-sidebar`. The `ray-overview/examples` gallery page renders with no
+# sidebar (empty list).
 html_sidebars = {
     "**": [
         (
@@ -505,6 +554,9 @@ html_sidebars = {
         )
     ],
     "ray-overview/examples": [],
+    # Custom 404 page (DOC-945): drop the section-navigation sidebar so the
+    # standalone error page renders clean and centered, like the examples page.
+    "404": [],
 }
 
 # The name for this set of Sphinx documents.  If None, it defaults to
@@ -564,62 +616,13 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
-# Better typehint formatting (see custom.css)
-autodoc_typehints = "signature"
-
-
-def filter_out_undoc_class_members(member_name, class_name, module_name):
-    module = import_module(module_name)
-    cls = getattr(module, class_name)
-    if getattr(cls, member_name).__doc__:
-        return f"~{class_name}.{member_name}"
-    else:
-        return ""
-
-
-def has_public_constructor(class_name, module_name):
-    cls = getattr(import_module(module_name), class_name)
-    return _is_public_api(cls)
-
-
-def get_api_groups(method_names, class_name, module_name):
-    api_groups = set()
-    cls = getattr(import_module(module_name), class_name)
-    for method_name in method_names:
-        method = getattr(cls, method_name)
-        if _is_public_api(method):
-            api_groups.add(
-                safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP)
-            )
-
-    return sorted(api_groups)
-
-
-def select_api_group(method_names, class_name, module_name, api_group):
-    cls = getattr(import_module(module_name), class_name)
-    return [
-        method_name
-        for method_name in method_names
-        if _is_public_api(getattr(cls, method_name))
-        and _is_api_group(getattr(cls, method_name), api_group)
-    ]
-
-
-def _is_public_api(obj):
-    api_type = safe_getattr(obj, "_annotated_type", None)
-    if not api_type:
-        return False
-    return api_type.value == "PublicAPI"
-
-
-def _is_api_group(obj, group):
-    return safe_getattr(obj, "_annotated_api_group", DEFAULT_API_GROUP) == group
-
-
-FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
-FILTERS["get_api_groups"] = get_api_groups
-FILTERS["select_api_group"] = select_api_group
-FILTERS["has_public_constructor"] = has_public_constructor
+# Show type hints in both the signature and the Parameters description list
+# (see custom.css). "documented" scopes the description-side types to params
+# that already have a docstring entry, which keeps their prose descriptions and
+# preserves short type names. Plain "both" with the default "all" target drops
+# the descriptions and renders verbose typing spellings.
+autodoc_typehints = "both"
+autodoc_typehints_description_target = "documented"
 
 
 def add_custom_assets(
@@ -638,6 +641,22 @@ def add_custom_assets(
         app.add_css_file("css/index.css")
         app.add_js_file("js/index.js")
         return "index.html"  # Use the special index.html template for this page
+
+    if pagename == "404":
+        # Custom 404 page (DOC-945). Read the Docs serves this page's HTML for
+        # any missing URL under the docs domain while the browser keeps the
+        # originally requested (wrong) path, so the 404 template pins a <base>
+        # to the canonical version root to keep every relative URL working.
+        # Prefer Read the Docs' per-build canonical URL (which is correct on PR
+        # previews and per-version builds); fall back to html_baseurl for local
+        # builds where the env var is unset. Scoped to this page only, so it
+        # cannot re-introduce the sitewide sidebar-href regression from #63343.
+        base_url = os.environ.get("READTHEDOCS_CANONICAL_URL") or app.config.html_baseurl or "/"
+        if not base_url.endswith("/"):
+            base_url += "/"
+        context["notfound_base_url"] = base_url
+        app.add_css_file("css/404.css")
+        return "404.html"  # Use the special 404.html template for this page
 
     if pagename == "ray-overview/examples":
         app.add_css_file("css/examples.css")
@@ -662,15 +681,14 @@ def add_custom_assets(
 def _autogen_apis(app: sphinx.application.Sphinx):
     """
     Auto-generate public API documentation.
+
+    Delegates to the shared generate_api_stubs (see doc/source/api_autogen.py),
+    which raises if generation produces nothing. The failure is intentionally
+    not swallowed: the API-doc consistency check reads these stubs, so a broken
+    autogen step must fail the build instead of silently emitting an empty
+    fixture.
     """
-    try:
-        generate.generate_autosummary_docs(
-            [os.path.join(app.srcdir, file) for file in autogen_files],
-            app=app,
-        )
-    except Exception as e:
-        import warnings
-        warnings.warn(f"Skipping autogen due to: {e}")
+    generate_api_stubs(app.srcdir, app=app)
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -740,6 +758,8 @@ def setup(app):
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
+    template_collections.register(app)
+
     # Register hook to mark orphan documents
     example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
     def mark_orphans(app, docname, _source):
@@ -749,17 +769,11 @@ def setup(app):
 
     app.connect('source-read', mark_orphans)
 
-    # Fix code-block language tags in _collections markdown files.
-    # Notebooks converted to markdown tag Jupyter magic shell commands
-    # (e.g. ``!serve run ...``) as ``python`` code blocks, which causes
-    # Sphinx highlighting warnings.  Re-tag them as ``bash``.
-    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n(![a-z])")
 
-    def fix_collections_code_blocks(app, docname, source):
-        if docname.startswith("_collections/"):
-            source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```bash\n\1", source[0])
-
-    app.connect('source-read', fix_collections_code_blocks)
+    app.add_config_value("ipython3_lexer_patterns", [], "env")
+    app.add_config_value("ipython3_lexer_exclude_patterns", [], "env")
+    app.connect("config-inited", _compile_pattern_matchers)
+    app.connect("source-read", apply_ipython3_lexer)
 
 
 redoc = [
@@ -773,68 +787,25 @@ redoc = [
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
 
-autosummary_filename_map = {
-    "ray.serve.deployment": "ray.serve.deployment_decorator",
-    "ray.serve.Deployment": "ray.serve.Deployment",
-}
+autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
 # Mock out external dependencies here.
 
-autodoc_mock_imports = [
-    "aiohttp",
-    "async_timeout",
-    "backoff",
-    "cachetools",
-    "comet_ml",
-    "composer",
-    "cupy",
-    "dask",
-    "datasets",
-    "fastapi",
-    "filelock",
-    "fsspec",
-    "google",
-    "grpc",
-    "gymnasium",
-    "horovod",
-    "huggingface",
-    "httpx",
-    "joblib",
-    "lightgbm",
-    "lightgbm_ray",
-    "mlflow",
-    "nevergrad",
-    "numpy",
-    "pandas",
-    "pyarrow",
-    "pyarrow.compute",
-    "pytorch_lightning",
-    "scipy",
-    "setproctitle",
-    "skimage",
-    "sklearn",
-    "starlette",
-    "tensorflow",
-    "torch",
-    "torchvision",
-    "transformers",
-    "tree",
-    "typer",
-    "uvicorn",
-    "wandb",
-    "watchfiles",
-    "openai",
-    "xgboost",
-    "xgboost_ray",
-    "psutil",
-    "colorama",
-    "grpc",
-    "vllm",
-    # Internal compiled modules
-    "ray._raylet",
-    "ray.core.generated",
-    "ray.serve.generated",
-]
+# Prefer not to mock libraries that are actually installed in the docs build
+# environment (doc/requirements-doc.lock.txt). Mocking an installed library
+# shadows the real module: an eager import in a documented class body then hits
+# the mock and aborts the whole package import as a misleading error. numpy and
+# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
+# direct requirements-doc entry), but importing it for real breaks the autodoc
+# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
+# The mock list is shared with api_autogen.py and the API/doc consistency check
+# (ci/ray_ci/doc) via api_mock_imports.py, so the standalone stub generator and
+# the check see the same API surface this render produces. THIRD_PARTY_MOCK
+# covers uninstalled third-party libraries; BUILD_ONLY_MOCK covers Ray's
+# compiled/generated modules, which are absent only in a source-checkout build.
+from api_mock_imports import BUILD_ONLY_MOCK_MODULES, THIRD_PARTY_MOCK_MODULES
+
+autodoc_mock_imports = THIRD_PARTY_MOCK_MODULES + BUILD_ONLY_MOCK_MODULES
 
 for mock_target in autodoc_mock_imports:
     if mock_target in sys.modules:
@@ -845,21 +816,34 @@ for mock_target in autodoc_mock_imports:
         )
 
 
-class MockedClassDocumenter(autodoc.ClassDocumenter):
-    """Remove note about base class when a class is derived from object."""
-
-    def add_line(self, line: str, source: str, *lineno: int) -> None:
-        if line == "   Bases: :py:class:`object`":
-            return
-        super().add_line(line, source, *lineno)
-
-
-autodoc.ClassDocumenter = MockedClassDocumenter
-
 # Other sphinx docs can be linked to if the appropriate URL to the docs
 # is specified in the `intersphinx_mapping` - for example, types annotations
 # that are defined in dependencies can link to their respective documentation.
-intersphinx_mapping = {
+#
+# `_intersphinx_targets` is the source of truth: name -> (base_url, inventory).
+# `base_url` is where generated cross-reference links point. `inventory` is the
+# upstream objects.inv used to *resolve* those references at build time; None
+# means the Sphinx default of <base_url>objects.inv. A few projects pin an
+# explicit inventory URL because their hosted objects.inv is unreliable; the
+# ray-project/*/releases/.../object-mirror-* URLs are stable mirrors we control.
+#
+# To avoid fetching two dozen inventories over the network on every build (slow,
+# and occasionally flaky via the GitHub release-asset redirects), we commit a
+# snapshot of each under doc/source/_intersphinx/ and prefer it. The
+# `intersphinx_mapping` built below lists the local snapshot first and the
+# upstream location second; Sphinx uses the first that loads, so a present
+# snapshot means no network fetch, and a missing one degrades to the old remote
+# behavior (an info message, not a build-breaking warning). Refresh snapshots
+# with `python doc/source/_intersphinx/refresh.py` (see that directory's README).
+#
+# Maintenance note: the build log emits "intersphinx inventory has moved: A -> B"
+# when A returns a redirect (only when fetching remotely, i.e. on refresh or
+# fallback). Only chase it when B is another documentation URL (the project
+# relocated). Do NOT copy B when it points at a signed, expiring
+# release-assets.githubusercontent.com URL - that's just GitHub's normal redirect
+# for a releases/download/ asset, and the github.com/.../releases/download/ URL
+# is the stable one to keep.
+_intersphinx_targets = {
     "aiohttp": ("https://docs.aiohttp.org/en/stable/", None),
     "composer": ("https://docs.mosaicml.com/en/latest/", None),
     "dask": ("https://docs.dask.org/en/stable/", None),
@@ -878,11 +862,18 @@ intersphinx_mapping = {
         "https://github.com/ray-project/pandas/releases/download/object-mirror-0.1.0/objects.inv",
     ),
     "pyarrow": ("https://arrow.apache.org/docs", None),
-    "pydantic": ("https://docs.pydantic.dev/latest/", None),
+    "pydantic": ("https://pydantic.dev/docs/validation/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
     "pyspark": ("https://spark.apache.org/docs/latest/api/python/", None),
     "python": ("https://docs.python.org/3", None),
-    "pytorch_lightning": ("https://lightning.ai/docs/pytorch/stable/", None),
+    "pytorch_lightning": (
+        "https://lightning.ai/docs/pytorch/stable/",
+        # lightning.ai serves its docs as an SPA and returns HTML for
+        # objects.inv (recent readthedocs versions redirect there and do the
+        # same, breaking -W builds with "invalid inventory header"); 2.0.9 is
+        # the newest readthedocs version still serving a real inventory.
+        "https://pytorch-lightning.readthedocs.io/en/2.0.9/objects.inv",
+    ),
     "scipy": (
         "https://docs.scipy.org/doc/scipy/",
         "https://github.com/ray-project/scipy/releases/download/object-mirror-0.1.0/objects.inv",
@@ -896,9 +887,18 @@ intersphinx_mapping = {
         "https://docs.pytorch.org/docs/stable/",
         "https://docs.pytorch.org/docs/2.7/objects.inv",
     ),
-    "torchvision": ("https://pytorch.org/vision/stable/", None),
+    "torchvision": ("https://docs.pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
+
+# Prefer the committed local snapshot, falling back to the upstream inventory
+# (or the <base_url>objects.inv default when None) if a snapshot is missing.
+intersphinx_mapping = {
+    name: (base_url, (f"_intersphinx/{name}.inv", inventory))
+    for name, (base_url, inventory) in _intersphinx_targets.items()
+}
+
+intersphinx_timeout = 15
 
 # Ray must not be imported in conf.py because third party modules initialized by
 # `import ray` will no be mocked out correctly. Perform a check here to ensure
@@ -907,6 +907,46 @@ assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
 
-os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
-
 os.environ["RAY_DOC_BUILD"] = "1"
+
+ipython3_lexer_patterns = [
+    *template_collections.IPYTHON3_LEXER_PATTERNS,
+    "ray-overview/examples/**/content/**.ipynb",
+    "serve/tutorials/**/content/**.ipynb",
+    "data/examples/**/content/**.ipynb",
+    "tune/examples/**/content/**.ipynb",
+]
+ipython3_lexer_exclude_patterns = []
+
+
+def _compile_pattern_matchers(app, config):
+    app.ipython3_lexer_patterns = compile_matchers(
+        config.ipython3_lexer_patterns or []
+    )
+    app.ipython3_lexer_exclude_patterns = compile_matchers(
+        config.ipython3_lexer_exclude_patterns or []
+    )
+
+
+def apply_ipython3_lexer(app, docname, source):
+    """Force the ipython3 pygments lexer on notebooks matching
+    ``ipython3_lexer_patterns`` (minus ``ipython3_lexer_exclude_patterns``).
+
+    Sphinx + myst-nb otherwise default to the python3 lexer, which fails on
+    ``!shell`` and ``%magic`` cells and is fatal under Readthedocs ``-W``.
+    """
+    # Sphinx 8 returns a _StrPath from doc2path; coerce to str so the re-based
+    # matchers (compile_matchers) and .endswith below accept it.
+    doc_source = str(app.env.doc2path(docname, base=False))
+    if not doc_source.endswith(".ipynb"):
+        return
+    if any(m(doc_source) for m in app.ipython3_lexer_exclude_patterns):
+        return
+    if not any(m(doc_source) for m in app.ipython3_lexer_patterns):
+        return
+
+    notebook = json.loads(source[0])
+    lang_info = notebook.setdefault("metadata", {}).setdefault("language_info", {})
+    if lang_info.get("pygments_lexer") != "ipython3":
+        lang_info["pygments_lexer"] = "ipython3"
+        source[0] = json.dumps(notebook, ensure_ascii=False)

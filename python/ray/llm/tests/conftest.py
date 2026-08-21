@@ -30,7 +30,7 @@ def download_model_from_s3(
         file_list: The list of files to download.
 
     Yields:
-        The path to the downloaded model checkpoint and tokenizer.
+        str: The path to the downloaded model checkpoint and tokenizer.
     """
     with tempfile.TemporaryDirectory(prefix="ray-llm-test-model") as checkpoint_dir:
         print(f"Downloading model from {remote_url} to {checkpoint_dir}", flush=True)

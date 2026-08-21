@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import React, { PropsWithChildren } from "react";
 import { GlobalContext } from "../../App";
 import { STYLE_WRAPPER } from "../../util/test-utils";
-import { Metrics } from "./Metrics";
+import { isGrafanaCloudHost, Metrics } from "./Metrics";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
   return (
@@ -29,6 +29,7 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         themeMode: "light",
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         toggleTheme: () => {},
+        showAcceleratorColumns: true,
       }}
     >
       <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
@@ -61,6 +62,7 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         themeMode: "light",
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         toggleTheme: () => {},
+        showAcceleratorColumns: true,
       }}
     >
       <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
@@ -69,6 +71,15 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
 };
 
 describe("Metrics", () => {
+  it("detects Grafana Cloud hosts", () => {
+    expect(isGrafanaCloudHost("https://example.grafana.net")).toBe(true);
+    expect(isGrafanaCloudHost("https://grafana.net")).toBe(true);
+    expect(isGrafanaCloudHost("https://grafana.example.com")).toBe(false);
+    expect(isGrafanaCloudHost(undefined)).toBe(false);
+    expect(isGrafanaCloudHost("")).toBe(false);
+    expect(isGrafanaCloudHost("not a valid url")).toBe(false);
+  });
+
   it("renders", async () => {
     expect.assertions(4);
 
@@ -152,6 +163,7 @@ describe("Metrics", () => {
             themeMode: "light",
             // eslint-disable-next-line @typescript-eslint/no-empty-function
             toggleTheme: () => {},
+            showAcceleratorColumns: true,
           }}
         >
           <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
@@ -172,5 +184,57 @@ describe("Metrics", () => {
 
     expect(url.searchParams.get("var-Cluster")).toBe("test-cluster");
     expect(iframeSrc).toContain("var-Cluster=test-cluster");
+  });
+
+  it("renders Grafana Cloud fallback instead of iframe", async () => {
+    const GrafanaCloudWrapper = ({ children }: PropsWithChildren<{}>) => {
+      return (
+        <GlobalContext.Provider
+          value={{
+            metricsContextLoaded: true,
+            grafanaHost: "https://ray-observability.grafana.net",
+            grafanaOrgId: "1",
+            grafanaClusterFilter: "test-cluster",
+            dashboardUids: {
+              default: "rayDefaultDashboard",
+              serve: "rayServeDashboard",
+              serveDeployment: "rayServeDeploymentDashboard",
+              data: "rayDataDashboard",
+            },
+            prometheusHealth: true,
+            sessionName: "session-name",
+            nodeMap: {},
+            nodeMapByIp: {},
+            namespaceMap: {},
+            dashboardDatasource: "Prometheus",
+            serverTimeZone: undefined,
+            currentTimeZone: undefined,
+            themeMode: "light",
+            // eslint-disable-next-line @typescript-eslint/no-empty-function
+            toggleTheme: () => {},
+            showAcceleratorColumns: true,
+          }}
+        >
+          <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
+        </GlobalContext.Provider>
+      );
+    };
+
+    expect.assertions(7);
+
+    render(<Metrics />, { wrapper: GrafanaCloudWrapper });
+    await screen.findByText(/Open this dashboard in Grafana Cloud/);
+
+    expect(document.querySelector("iframe")).toBeNull();
+    expect(screen.getByText(/Core/)).toBeVisible();
+
+    const link = screen.getByRole("link", { name: /Open in Grafana/ });
+    const url = new URL(link.getAttribute("href") ?? "");
+
+    expect(url.origin).toBe("https://ray-observability.grafana.net");
+    expect(url.pathname).toBe("/d/rayDefaultDashboard/");
+    expect(url.searchParams.get("var-SessionName")).toBe("session-name");
+    expect(url.searchParams.get("var-Cluster")).toBe("test-cluster");
+    expect(url.searchParams.get("kiosk")).toBeNull();
   });
 });

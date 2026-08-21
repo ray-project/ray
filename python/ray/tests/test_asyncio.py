@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 
 import pytest
 
@@ -126,14 +127,14 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     def task():
         return 1
 
-    assert await task.remote().as_future() == 1
+    assert await task.remote() == 1
 
     @ray.remote
     def task_throws():
         _ = 1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await task_throws.remote().as_future()
+        await task_throws.remote()
 
     # Test actor calls.
     str_len = 200 * 1024
@@ -152,14 +153,12 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     actor = Actor.remote()
 
-    actor_call_future = actor.echo.remote(2).as_future()
-    assert await actor_call_future == 2
+    assert await actor.echo.remote(2) == 2
 
-    promoted_to_plasma_future = actor.big_object.remote().as_future()
-    assert await promoted_to_plasma_future == "a" * str_len
+    assert await actor.big_object.remote() == "a" * str_len
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await actor.throw_error.remote().as_future()
+        await actor.throw_error.remote()
 
     # Wrap in Remote Function to work with Ray client.
     kill_actor_ref = ray.remote(kill_actor_and_wait_for_failure).remote(actor)
@@ -196,7 +195,7 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     signal = SignalActor.remote()
     waiting = signal.wait.remote()
 
-    future = waiting.as_future()
+    future = asyncio.ensure_future(waiting)
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(future, timeout=0.1)
     assert future.cancelled()
@@ -216,7 +215,10 @@ async def test_asyncio_double_await(ray_start_regular_shared):
 )
 async def test_asyncio_exit_actor(ray_start_regular_shared):
     # https://github.com/ray-project/ray/issues/12649
-    # The test should just hang without the fix.
+    # exit_actor() must terminate the actor and not leak the process.
+    # exit_actor() drains in-flight tasks before exiting (matching
+    # threaded actors). In-flight task draining on graceful exit is covered in
+    # test_worker_graceful_shutdown.py.
 
     @ray.remote
     class Actor:
@@ -226,14 +228,9 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
         async def ping(self):
             return os.getpid()
 
-        async def loop_forever(self):
-            while True:
-                await asyncio.sleep(5)
-
     a = Actor.options(max_task_retries=0).remote()
     pid = ray.get(a.ping.remote())
-    a.loop_forever.remote()
-    # Make sure exit_actor exits immediately, not once all tasks completed.
+    # exit_actor() exits the actor, so the caller observes the actor's death.
     with pytest.raises(ray.exceptions.RayError):
         ray.get(a.exit.remote())
 
@@ -266,13 +263,13 @@ def test_asyncio_exit_actor_with_concurrency_group(ray_start_regular_shared):
             ray.actor.exit_actor()
 
         @ray.method(concurrency_group="async")
-        async def loop_forever(self):
-            while True:
-                await asyncio.sleep(5)
+        async def echo(self, value):
+            return value
 
     a = Actor.remote()
-    a.loop_forever.remote()
     pid = ray.get(a.getpid.remote())
+    # Exercise the concurrency group, then exit the actor.
+    assert ray.get(a.echo.remote("hi")) == "hi"
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.exit.remote())
     wait_for_pid_to_exit(pid)
@@ -387,28 +384,34 @@ def test_asyncio_actor_with_large_concurrency(ray_start_regular_shared):
 
 
 def test_asyncio_actor_shutdown_when_non_async_method_mixed(ray_start_regular_shared):
-    # It is a regression test.
-    # https://github.com/ray-project/ray/issues/32376
-    # Make sure the core worker doesn't crash when
-    # exit_actor is used when async & regular actor tasks
-    # are executed.
+    # Regression test for:  https://github.com/ray-project/ray/issues/32376
+    # Ensure the core worker doesn't crash when exit_actor is used while mixing async
+    # and sync actor tasks.
     @ray.remote
     class A:
-        async def f(self):
-            await asyncio.sleep(1)
+        def __init__(self, *, exit_after: int):
+            self._remaining = exit_after
+            self._event = asyncio.Event()
+
+        async def wait_then_exit(self):
+            await self._event.wait()
             ray.actor.exit_actor()
 
         def ping(self):
-            pass
+            self._remaining -= 1
+            if self._remaining == 0:
+                self._event.set()
 
-    a = A.remote()
-    a.f.remote()
+    # Exit after 1/2 of the ping tasks have executed to ensure interleaving.
+    a = A.remote(exit_after=500)
+    exit_ref = a.wait_then_exit.remote()
+    ping_refs = [a.ping.remote() for _ in range(1000)]
 
     with pytest.raises(
         ray.exceptions.RayActorError,
-        match=("exit_actor"),
+        match="INTENDED_USER_EXIT",
     ):
-        ray.get([a.ping.remote() for _ in range(10000)])
+        ray.get([exit_ref] + ping_refs)
 
 
 def test_asyncio_actor_argument_collision(ray_start_regular_shared):
@@ -430,6 +433,55 @@ def test_asyncio_actor_argument_collision(ray_start_regular_shared):
     assert (
         ray.get(a.hi_sync.remote(task_id="TEST", specified_cgname="test2"))
         == "Hi from sync: TEST! cgname: test2."
+    )
+
+
+def test_async_actor_finalizes_objects_dropped_on_fiber(ray_start_regular_shared):
+    """Objects dropped as an async-actor task returns must be finalized promptly.
+
+    Async-actor tasks execute on boost fiber stacks. CPython's C-stack overflow
+    checks are keyed on the bounds it recorded for the *thread*, so a fiber stack
+    can be mistaken for an exhausted one -- and on CPython 3.14 the deallocator
+    then parks every object it frees on a per-thread-state list that is never
+    drained, leaking the task's entire object graph.
+
+    A task's return value is serialized on the fiber, so the last reference the
+    actor process holds to the payload below is released there. If deallocation
+    is being deferred, the payload's finalizer never runs.
+
+    max_concurrency > 1 is required for coverage rather than realism: with a
+    single fiber, anchoring once at task entry would suffice, so only interleaved
+    fibers exercise the re-anchoring that happens after a fiber resumes.
+    """
+
+    class Payload:
+        pass
+
+    @ray.remote(max_concurrency=2)
+    class Probe:
+        def __init__(self, unused):
+            # Taking a constructor argument is deliberate: it makes the creation
+            # task deserialize arguments, which is one of the paths that reaches
+            # the fiber bookkeeping from a thread that is not running a fiber.
+            self._finalizers = []
+
+        async def make_payload(self):
+            payload = Payload()
+            self._finalizers.append(weakref.finalize(payload, lambda: None))
+            return payload
+
+        async def num_finalized(self):
+            return sum(not f.alive for f in self._finalizers)
+
+    num_tasks = 50
+    probe = Probe.remote("unused")
+    ray.get([probe.make_payload.remote() for _ in range(num_tasks)])
+
+    num_finalized = ray.get(probe.num_finalized.remote())
+    assert num_finalized == num_tasks, (
+        f"{num_tasks - num_finalized} of {num_tasks} payloads returned by an async "
+        "actor were never finalized in the actor process, so their deallocation is "
+        "being deferred and never completed"
     )
 
 

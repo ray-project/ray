@@ -27,7 +27,6 @@
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
 #include "ray/util/process_utils.h"
-#include "ray/util/time.h"
 
 namespace ray {
 namespace core {
@@ -62,7 +61,7 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
 
     task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-        current_sys_time_ms());
+        clock_.NowUnixMillis());
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
@@ -103,7 +102,7 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
     const SchedulingKey &scheduling_key,
     const LeaseID &lease_id) {
   core_worker_client_pool_->GetOrConnect(worker_address);
-  int64_t expiration = current_time_ms() + lease_timeout_ms_;
+  int64_t expiration = clock_.SteadyNowMillis() + lease_timeout_ms_;
   LeaseEntry new_lease_entry{
       raylet_address, expiration, assigned_resources, scheduling_key, lease_id};
   worker_to_lease_entry_.emplace(worker_address, new_lease_entry);
@@ -157,7 +156,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
   // the lease is expired; Return the worker if there are no more applicable
   // queued tasks.
   if ((was_error || worker_exiting ||
-       current_time_ms() > lease_entry.lease_expiration_time) ||
+       clock_.SteadyNowMillis() > lease_entry.lease_expiration_time) ||
       current_queue.empty()) {
     RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 
@@ -179,7 +178,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
       RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
       scheduling_key_entry.num_busy_workers++;
 
-      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
+      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(clock_.NowUnixMillis());
       task_spec.EmitTaskMetrics(scheduler_placement_time_ms_histogram_);
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
@@ -212,26 +211,10 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
         raylet_client_pool_->GetOrConnectByAddress(pending_lease_request.second);
     const auto &lease_id = pending_lease_request.first;
     RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
+    // The raylet tombstones CancelWorkerLease, so a later-arriving
+    // RequestWorkerLease for this lease ID is rejected
     raylet_client->CancelWorkerLease(
-        lease_id,
-        [this, scheduling_key](const Status &status,
-                               const rpc::CancelWorkerLeaseReply &reply) {
-          absl::MutexLock lock(&mu_);
-          if (status.ok() && !reply.success()) {
-            // The cancellation request can fail if the raylet does not have
-            // the request queued. This can happen if: a) due to message
-            // reordering, the raylet has not yet received the worker lease
-            // request, b) we have already returned the worker lease
-            // request, or c) the current request is a retry and the server response to
-            // the initial request was lost after cancelling the lease. In case a), we
-            // should try the cancellation request again. In case b), the in-flight lease
-            // request should already have been removed from our local state, so we no
-            // longer need to cancel. In case c), the response for ReturnWorkerLease
-            // should have already been triggered and the pending lease request will be
-            // cleaned up.
-            CancelWorkerLeaseIfNeeded(scheduling_key);
-          }
-        });
+        lease_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
   }
 }
 
@@ -822,6 +805,7 @@ void NormalTaskSubmitter::RequestOwnerToCancelTask(const ObjectID &object_id,
 }
 
 bool NormalTaskSubmitter::QueueGeneratorForResubmit(const TaskSpecification &spec) {
+  RAY_LOG(DEBUG).WithField(spec.TaskId()) << "Queueing generator for resubmit.";
   absl::MutexLock lock(&mu_);
   if (cancelled_tasks_.contains(spec.TaskId())) {
     // The user cancelled the task.

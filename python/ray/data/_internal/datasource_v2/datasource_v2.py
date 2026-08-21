@@ -97,6 +97,12 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         self._name = name
         self._category = category
+        # File-based subclasses set this to ``False`` in their ``__init__``
+        # when the user-supplied paths are in the ``local://`` scheme —
+        # the driver node is the only one that can read those files.
+        # ``_read_datasource_v2`` consults the flag to decide whether to
+        # pin read tasks via a ``label_selector``.
+        self._supports_distributed_reads: bool = True
 
     @property
     def name(self) -> str:
@@ -107,6 +113,18 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     def category(self) -> DatasourceCategory:
         """Category of this datasource."""
         return self._category
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        """Whether read tasks may run on any cluster node.
+
+        Defaults to ``True``. File-based subclasses (e.g.
+        :class:`ParquetDatasourceV2`) flip this to ``False`` when the
+        user supplies ``local://``-scheme paths so ``_read_datasource_v2``
+        can pin reads to the driver node via a ``ray.io/node-id``
+        label selector. Mirrors V1 ``Datasource.supports_distributed_reads``.
+        """
+        return self._supports_distributed_reads
 
     def _get_file_indexer(self) -> Optional[FileIndexer]:
         """Return FileIndexer component if applicable.

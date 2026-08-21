@@ -56,6 +56,7 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
       const std::vector<ObjectID> &object_ids,
       const std::vector<rpc::Address> &owner_addresses,
       int64_t get_request_id) override {
+    async_get_object_calls.push_back(object_ids);
     return ScopedResponse();
   }
 
@@ -74,7 +75,8 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
   Status NotifyWorkerUnblocked() override { return Status::OK(); }
 
   Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                              int64_t tag) override {
+                              const TaskID &task_id,
+                              int32_t attempt_number) override {
     return Status::OK();
   }
 
@@ -91,6 +93,8 @@ class FakeRayletIpcClient : public RayletIpcClientInterface {
 
   void SubscribePlasmaReady(const ObjectID &object_id,
                             const rpc::Address &owner_address) override {}
+
+  std::vector<std::vector<ObjectID>> async_get_object_calls;
 };
 
 }  // namespace ipc

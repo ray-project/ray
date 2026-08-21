@@ -31,7 +31,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve.config import (
-    DeploymentMode,
     ProxyLocation,
     gRPCOptions,
 )
@@ -132,15 +131,6 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
-def warn_if_agent_address_set():
-    if "RAY_AGENT_ADDRESS" in os.environ:
-        cli_logger.warning(
-            "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
-            "the `RAY_DASHBOARD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
-            "ignored."
-        )
-
-
 @click.group(
     help="CLI for managing Serve applications on a Ray cluster.",
     context_settings=dict(help_option_names=["--help", "-h"]),
@@ -173,13 +163,6 @@ def cli():
     help="Port for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
-    "--http-location",
-    default=DeploymentMode.HeadOnly,
-    required=False,
-    type=click.Choice(list(DeploymentMode)),
-    help="DEPRECATED: Use `--proxy-location` instead.",
-)
-@click.option(
     "--proxy-location",
     default=ProxyLocation.EveryNode,
     required=False,
@@ -205,19 +188,10 @@ def start(
     address,
     http_host,
     http_port,
-    http_location,
     proxy_location,
     grpc_port,
     grpc_servicer_functions,
 ):
-    if http_location != DeploymentMode.HeadOnly:
-        cli_logger.warning(
-            "The `--http-location` flag to `serve start` is deprecated, "
-            "use `--proxy-location` instead."
-        )
-
-        proxy_location = http_location
-
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -538,20 +512,23 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    http_options = {"location": "EveryNode"}
+    http_options = {}
+    proxy_location = ProxyLocation.EveryNode
     grpc_options = gRPCOptions()
-    # Merge http_options and grpc_options with the ones on ServeDeploySchema.
+    controller_options = None
+    # Merge http_options, grpc_options, and controller_options with the ones on
+    # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
-        http_options["location"] = ProxyLocation._to_deployment_mode(
-            config.proxy_location
-        ).value
-        config_http_options = config.http_options.model_dump()
-        http_options = {**config_http_options, **http_options}
+        proxy_location = config.proxy_location
+        http_options = config.http_options.model_dump()
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
+        controller_options = config.controller_options
 
     client = _private_api.serve_start(
         http_options=http_options,
+        proxy_location=proxy_location,
         grpc_options=grpc_options,
+        controller_options=controller_options,
     )
 
     try:
@@ -636,8 +613,6 @@ def run(
     ),
 )
 def config(address: str, name: Optional[str]):
-    warn_if_agent_address_set()
-
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -710,8 +685,6 @@ def config(address: str, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
-    warn_if_agent_address_set()
-
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -758,8 +731,6 @@ def status(address: str, name: Optional[str]):
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
-    warn_if_agent_address_set()
-
     # check if the address is a valid Ray address
     try:
         # see what applications are deployed on the cluster

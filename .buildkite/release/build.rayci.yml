@@ -9,6 +9,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray"
@@ -24,12 +25,10 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
         - "12.3.2-cudnn9"
-      adjustments:
-        - with:
-            python: "3.12"
-            cuda: "13.0.0-cudnn"
+        - "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -45,10 +44,6 @@ steps:
         - "3.12"
       cuda:
         - "13.0.0-cudnn"
-      adjustments:
-        - with:
-            python: "3.11"
-            cuda: "12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -71,6 +66,23 @@ steps:
     depends_on:
       - ray-mlcudabaseextra($)
 
+  - name: ray-torchcudabase
+    label: "wanda: ray-torch.py{{array.python}}.cu{{array.cuda}}.base"
+    wanda: docker/ray-torch/cuda.wanda.yaml
+    array:
+      python:
+        - "3.14"
+      cuda:
+        - "12.8.1-cudnn"
+      image_type:
+        - "ray-torch-cu128"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      IMAGE_TYPE: "{{array.image_type}}"
+    depends_on:
+      - raycudabaseextra($)
+
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{array.python}} cpu"
     wanda: ci/docker/ray-anyscale-cpu.wanda.yaml
@@ -83,6 +95,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
@@ -99,6 +112,7 @@ steps:
     array:
       gpu:
         - "cu12.3.2-cudnn9"
+        - "cu13.0.0-cudnn"
       python:
         # This list should be kept in sync with the list of supported Python in
         # release test suite
@@ -106,10 +120,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
-      adjustments:
-        - with:
-            python: "3.12"
-            gpu: "cu13.0.0-cudnn"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -141,6 +152,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
 
   - label: ":crane: publish: ray-anyscale py{{array.python}} {{array.gpu}}"
     key: anyscalecudabuild
@@ -160,15 +172,13 @@ steps:
     array:
       gpu:
         - cu12.3.2-cudnn9
+        - cu13.0.0-cudnn
       python:
         - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
-      adjustments:
-        - with:
-            python: "3.12"
-            gpu: cu13.0.0-cudnn
+        - "3.14"
 
   - name: ray-llm-anyscale-cuda-build
     label: "wanda: ray-llm-anyscale py{{array.python}} {{array.gpu}}"
@@ -179,10 +189,6 @@ steps:
         - "cu13.0.0-cudnn"
       python:
         - "3.12"
-      adjustments:
-        - with:
-            python: "3.11"
-            gpu: "cu12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -213,10 +219,6 @@ steps:
         - cu13.0.0-cudnn
       python:
         - "3.12"
-      adjustments:
-        - with:
-            python: "3.11"
-            gpu: "cu12.8.1-cudnn"
 
   - name: ray-ml-anyscale-cuda-build
     label: "wanda: ray-ml-anyscale py{{array.python}} {{array.gpu}}"
@@ -238,6 +240,46 @@ steps:
     depends_on:
       - ray-wheel-build($)
       - ray-mlcudabaseextra-testdeps($)
+
+  - name: ray-torch-anyscale-cuda-build
+    label: "wanda: ray-torch-anyscale py{{array.python}} {{array.gpu}}"
+    wanda: ci/docker/ray-torch-anyscale-cuda.wanda.yaml
+    env_file: rayci.env
+    array:
+      python:
+        - "3.14"
+      gpu:
+        - "cu12.8.1-cudnn"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      GPU: "{{array.gpu}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - oss
+    depends_on:
+      - ray-wheel-build($)
+      - ray-torchcudabase($)
+
+  - label: ":crane: publish: ray-torch-anyscale py{{array.python}} {{array.gpu}}"
+    key: anyscaletorchcudabuild
+    instance_type: release-medium
+    mount_buildkite_agent: true
+    tags:
+      - oss
+    commands:
+      - bazel run //ci/ray_ci/automation:push_release_test_image --
+        --python-version {{array.python}}
+        --platform {{array.gpu}}
+        --image-type ray-torch
+        --upload
+    depends_on:
+      - forge
+      - ray-torch-anyscale-cuda-build($)
+    array:
+      python:
+        - "3.14"
+      gpu:
+        - cu12.8.1-cudnn
 
   - label: ":crane: publish: ray-ml-anyscale py{{array.python}} cu12.1.1-cudnn8"
     key: anyscalemlbuild

@@ -86,6 +86,13 @@ _EXPECTED_DASHBOARD_MODULES = [
     "ray.dashboard.modules.state.state_head.StateHead",
     "ray.dashboard.modules.train.train_head.TrainHead",
 ]
+# TaskEventsHead only runs as a subprocess when the migration flag is on. Mirror the
+# loader (is_enabled reads the same flag) so the expected count tracks the flag rather
+# than assuming a fixed default.
+if ray._config.enable_task_events_to_dashboard_head():
+    _EXPECTED_DASHBOARD_MODULES.append(
+        "ray.dashboard.modules.task_events.task_events_head.TaskEventsHead"
+    )
 
 # The list of processes expected to be started in the system cgroup
 # with default params for 'ray start' and 'ray.init(...)'
@@ -330,9 +337,7 @@ def assert_cgroup_hierarchy_exists_for_node(
     with open(user_cgroup / "memory.high", "r") as memory_high_file:
         contents = memory_high_file.read().strip()
         assert contents == str(
-            total_memory
-            - resource_isolation_config.system_reserved_memory
-            + resource_isolation_config.object_store_memory
+            total_memory - resource_isolation_config.system_reserved_memory
         )
     with open(system_cgroup / "memory.low", "r") as memory_low_file:
         contents = memory_low_file.read().strip()
@@ -495,7 +500,6 @@ def test_ray_cli_start_resource_isolation_creates_cgroup_hierarchy_and_cleans_up
         enable_resource_isolation=True,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
     )
     node_id = ray.NodeID.from_random().hex()
     os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id
@@ -578,7 +582,6 @@ def test_ray_init_resource_isolation_creates_cgroup_hierarchy_and_cleans_up(
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
-        object_store_memory=object_store_memory,
     )
     node_id = generate_node_id()
     os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"] = node_id

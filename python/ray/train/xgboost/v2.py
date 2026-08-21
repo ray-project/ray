@@ -13,64 +13,63 @@ logger = logging.getLogger(__name__)
 class XGBoostTrainer(DataParallelTrainer):
     """A Trainer for distributed data-parallel XGBoost training.
 
-    Example
-    -------
+    Example:
 
-    .. testcode::
-        :skipif: True
+        .. testcode::
+            :skipif: True
 
-        import xgboost
+            import xgboost
 
-        import ray.data
-        import ray.train
-        from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
+            import ray.data
+            import ray.train
+            from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
 
-        def train_fn_per_worker(config: dict):
-            # (Optional) Add logic to resume training state from a checkpoint.
-            # ray.train.get_checkpoint()
+            def train_fn_per_worker(config: dict):
+                # (Optional) Add logic to resume training state from a checkpoint.
+                # ray.train.get_checkpoint()
 
-            # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
-            train_ds_iter, eval_ds_iter = (
-                ray.train.get_dataset_shard("train"),
-                ray.train.get_dataset_shard("validation"),
+                # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
+                train_ds_iter, eval_ds_iter = (
+                    ray.train.get_dataset_shard("train"),
+                    ray.train.get_dataset_shard("validation"),
+                )
+                train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
+
+                train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
+                train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
+                eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
+
+                dtrain = xgboost.DMatrix(train_X, label=train_y)
+                deval = xgboost.DMatrix(eval_X, label=eval_y)
+
+                params = {
+                    "tree_method": "approx",
+                    "objective": "reg:squarederror",
+                    "eta": 1e-4,
+                    "subsample": 0.5,
+                    "max_depth": 2,
+                }
+
+                # 2. Do distributed data-parallel training.
+                # Ray Train sets up the necessary coordinator processes and
+                # environment variables for your workers to communicate with each other.
+                bst = xgboost.train(
+                    params,
+                    dtrain=dtrain,
+                    evals=[(deval, "validation")],
+                    num_boost_round=10,
+                    callbacks=[RayTrainReportCallback()],
+                )
+
+            train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+            eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
+            trainer = XGBoostTrainer(
+                train_fn_per_worker,
+                datasets={"train": train_ds, "validation": eval_ds},
+                scaling_config=ray.train.ScalingConfig(num_workers=4),
             )
-            train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
-
-            train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
-            train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
-            eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
-
-            dtrain = xgboost.DMatrix(train_X, label=train_y)
-            deval = xgboost.DMatrix(eval_X, label=eval_y)
-
-            params = {
-                "tree_method": "approx",
-                "objective": "reg:squarederror",
-                "eta": 1e-4,
-                "subsample": 0.5,
-                "max_depth": 2,
-            }
-
-            # 2. Do distributed data-parallel training.
-            # Ray Train sets up the necessary coordinator processes and
-            # environment variables for your workers to communicate with each other.
-            bst = xgboost.train(
-                params,
-                dtrain=dtrain,
-                evals=[(deval, "validation")],
-                num_boost_round=10,
-                callbacks=[RayTrainReportCallback()],
-            )
-
-        train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
-        trainer = XGBoostTrainer(
-            train_fn_per_worker,
-            datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
-        )
-        result = trainer.fit()
-        booster = RayTrainReportCallback.get_model(result.checkpoint)
+            result = trainer.fit()
+            booster = RayTrainReportCallback.get_model(result.checkpoint)
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -84,22 +83,22 @@ class XGBoostTrainer(DataParallelTrainer):
         xgboost_config: The configuration for setting up the distributed xgboost
             backend. Defaults to using the "rabit" backend.
             See :class:`~ray.train.xgboost.XGBoostConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Datasets are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
             See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.
-        resume_from_checkpoint: A checkpoint to resume training from.
-            This checkpoint can be accessed from within ``train_loop_per_worker``
-            by calling ``ray.train.get_checkpoint()``.
+        datasets: The Ray Datasets to use for training and validation.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Datasets are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
+        resume_from_checkpoint: A checkpoint to resume training from.
+            This checkpoint can be accessed from within ``train_loop_per_worker``
+            by calling ``ray.train.get_checkpoint()``.
     """
 
     def __init__(

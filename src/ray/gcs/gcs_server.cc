@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -34,6 +35,9 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
+#if defined(__linux__)
+#include "ray/gcs/store_client/rocksdb_store_client.h"
+#endif
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/observability/metric_constants.h"
@@ -52,6 +56,8 @@ inline std::ostream &operator<<(std::ostream &str, GcsServer::StorageType val) {
     return str << "StorageType::IN_MEMORY";
   case GcsServer::StorageType::REDIS_PERSIST:
     return str << "StorageType::REDIS_PERSIST";
+  case GcsServer::StorageType::ROCKSDB_PERSIST:
+    return str << "StorageType::ROCKSDB_PERSIST";
   case GcsServer::StorageType::UNKNOWN:
     return str << "StorageType::UNKNOWN";
   default:
@@ -70,11 +76,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_port,
                   IsLocalhost(config.node_ip_address),
                   config.grpc_server_thread_num,
-                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms(),
-                  /*auth_token=*/nullptr,
-                  // The health check implementation is overridden to check the health
-                  // of our boost::asio event loop threads.
-                  /*enable_default_health_check_service=*/false),
+                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
                            config.node_ip_address,
@@ -129,6 +131,20 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   });
             });
       }),
+      resource_load_pull_client_call_manager_(
+          io_context_provider_.GetIOContext<GcsResourceLoadPuller>(),
+          /*record_stats=*/true,
+          config.node_ip_address,
+          ClusterID::Nil(),
+          /*num_threads=*/1),
+      resource_load_pull_raylet_client_pool_([this](const rpc::Address &addr) {
+        // GetResourceLoad is not retryable, so the unavailable-timeout callback
+        // can never fire; the puller's snapshot diff evicts instead.
+        return std::make_shared<ray::rpc::RayletClient>(
+            addr,
+            this->resource_load_pull_client_call_manager_,
+            /*raylet_unavailable_timeout_callback=*/[]() {});
+      }),
       event_aggregator_client_call_manager_(
           io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
           /*record_stats=*/true,
@@ -140,7 +156,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           event_aggregator_client_call_manager_)),
       ray_event_recorder_(std::make_unique<observability::RayEventRecorder>(
           *event_aggregator_client_,
-          io_context_provider_.GetIOContext<observability::RayEventRecorder>(),
+          PeriodicalRunner::Create(
+              io_context_provider_.GetIOContext<observability::RayEventRecorder>()),
           RayConfig::instance().ray_event_recorder_max_queued_events(),
           observability::kMetricSourceGCS,
           metrics_.event_recorder_dropped_events_counter,
@@ -151,6 +168,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
       observability_pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::ObservabilityPublisher>())),
+      resource_load_pull_periodical_runner_(PeriodicalRunner::Create(
+          io_context_provider_.GetIOContext<GcsResourceLoadPuller>())),
       periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
@@ -167,11 +186,12 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     store_client = std::make_shared<ObservableStoreClient>(
         std::make_unique<InMemoryStoreClient>(),
         metrics_.storage_operation_latency_in_ms_histogram,
-        metrics_.storage_operation_count_counter);
+        metrics_.storage_operation_count_counter,
+        clock_);
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_store_client =
-        std::make_shared<RedisStoreClient>(io_context, GetRedisClientOptions());
+        std::make_shared<RedisStoreClient>(io_context, GetRedisClientOptions(), clock_);
     // Health check Redis periodically and crash if it becomes unavailable.
     // NOTE: periodical_runner_ must run on the same IO context as the Redis client.
     periodical_runner_->RunFnPeriodically(
@@ -188,6 +208,32 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     store_client = redis_store_client;
     break;
   }
+#if defined(__linux__)
+  case StorageType::ROCKSDB_PERSIST:
+    // Empty expected_cluster_id: at the moment InitKVManager runs (before
+    // GetOrGenerateClusterId), the rpc server's cluster_id is still Nil()
+    // and GetClusterId() would RAY_CHECK-fail. RocksDbStoreClient skips
+    // the marker check when cluster_id is empty. PVC-mismatch fail-fast
+    // (REP §"Stale data protection") requires an external authoritative
+    // cluster_id source (e.g. K8s downward API) and is deferred to a
+    // follow-on PR.
+    //
+    // Use a "tables" subdirectory so the KV client (InitKVManager) can
+    // open its own separate RocksDB instance at "kv/" without triggering
+    // RocksDB's in-process double-open guard (locked_files static map →
+    // ENOLCK).
+    store_client = std::make_shared<ObservableStoreClient>(
+        std::make_unique<RocksDbStoreClient>(
+            io_context,
+            RayConfig::instance().gcs_storage_path() + "/tables",
+            /*expected_cluster_id=*/"",
+            RayConfig::instance().gcs_rocksdb_io_pool_size(),
+            RayConfig::instance().gcs_rocksdb_strand_buckets()),
+        metrics_.storage_operation_latency_in_ms_histogram,
+        metrics_.storage_operation_count_counter,
+        clock_);
+    break;
+#endif
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
@@ -203,7 +249,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
           rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
       /*periodical_runner=*/*pubsub_periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*clock=*/clock_,
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());
@@ -216,7 +262,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                                     rpc::ChannelType::RAY_LOG_CHANNEL,
                                     rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
       /*periodical_runner=*/*observability_pubsub_periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*clock=*/clock_,
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());
@@ -303,19 +349,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       metrics_.placement_group_count_gauge);
   InitGcsActorManager(
       gcs_init_data, metrics_.actor_by_state_gauge, metrics_.gcs_actor_by_state_gauge);
-  InitGcsWorkerManager();
+  InitGcsWorkerManager(gcs_init_data);
   InitGcsTaskManager(metrics_.task_events_reported_gauge,
                      metrics_.task_events_dropped_gauge,
                      metrics_.task_events_stored_gauge);
   InstallEventListeners();
   InitGcsAutoscalerStateManager(gcs_init_data);
+  InitGcsResourceLoadPuller();
   InitUsageStatsClient();
-
-  // Register a custom health check service that runs on the io_context instead of the
-  // default gRPC health check (which responds directly from gRPC threads). This way,
-  // if the GCS event loop is stuck, health checks will time out.
-  rpc_server_.RegisterService(std::make_unique<rpc::HealthCheckGrpcService>(
-      io_context_provider_.GetDefaultIOContext()));
 
   // Start RPC server when all tables have finished loading initial
   // data.
@@ -323,6 +364,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   if (port_ready_callback_) {
     port_ready_callback_(rpc_server_.GetPort());
   }
+
+  // Start monitoring the io_contexts. The monitor drives the serving status of
+  // the gRPC health check service, so it must be started after the RPC server is
+  // running (GetHealthCheckService() is only valid once the server is built).
+  InitIOContextMonitor();
 
   periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
@@ -348,24 +394,34 @@ void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
 
+    // Stop the io_context monitor before tearing down the io_contexts it probes.
+    if (io_context_monitor_thread_) {
+      io_context_monitor_thread_->Stop();
+      // The monitor is the only thing that drives the gRPC health serving
+      // status. With it stopped, the last reported status (typically SERVING)
+      // would stay cached and be returned to clients on the gRPC threads for
+      // the rest of teardown. Explicitly mark the server NOT_SERVING so health
+      // checks reflect that GCS is shutting down. This must come after the
+      // monitor is stopped so it cannot overwrite the status back to SERVING,
+      // and before the RPC server is shut down below (the health check service
+      // is only valid while the server is running).
+      rpc_server_.GetServer().GetHealthCheckService()->SetServingStatus(
+          /*service_name=*/"", false);
+    }
+
     // Flush any remaining events before stopping.
     if (ray_event_recorder_) {
       ray_event_recorder_->StopExportingEvents();
     }
 
     io_context_provider_.StopAllDedicatedIOContexts();
-
     ray_syncer_.reset();
     observability_pubsub_handler_.reset();
     pubsub_handler_.reset();
-
-    // Shutdown the rpc server
     rpc_server_.Shutdown();
-
     kv_manager_.reset();
 
     is_stopped_ = true;
-
     RAY_LOG(INFO) << "GCS server stopped.";
   }
 }
@@ -380,7 +436,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       rpc_server_.GetClusterId(),
       *ray_event_recorder_,
       config_.session_name,
-      observability_publisher_.get());
+      observability_publisher_.get(),
+      clock_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
@@ -400,7 +457,8 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   gcs_healthcheck_manager_ =
       GcsHealthCheckManager::Create(io_context_provider_.GetDefaultIOContext(),
                                     node_death_callback,
-                                    metrics_.health_check_rpc_latency_ms_histogram);
+                                    metrics_.health_check_rpc_latency_ms_histogram,
+                                    clock_);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       auto remote_address =
@@ -411,6 +469,38 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
       gcs_healthcheck_manager_->AddNode(item.first, raylet_client->GetChannel());
     }
   }
+}
+
+void GcsServer::InitIOContextMonitor() {
+  std::vector<MonitoredIOContext> monitored_io_contexts;
+  // The main io_context always contributes to the health check.
+  monitored_io_contexts.push_back({"gcs_server_main_io_context",
+                                   &io_context_provider_.GetDefaultIOContext(),
+                                   /*include_in_health_check=*/true});
+  const auto &dedicated_io_contexts = io_context_provider_.GetAllDedicatedIOContexts();
+  for (const auto &dedicated_io_context : dedicated_io_contexts) {
+    monitored_io_contexts.push_back({dedicated_io_context->GetName(),
+                                     &dedicated_io_context->GetIoService(),
+                                     dedicated_io_context->UsedForHealthCheck()});
+  }
+
+  auto monitor = std::make_unique<IOContextMonitor>(
+      std::move(monitored_io_contexts),
+      metrics_.io_context_monitor_latency_ms_gauge,
+      metrics_.io_context_monitor_unhealthy_counter,
+      absl::Milliseconds(RayConfig::instance().io_context_monitor_healthy_deadline_ms()));
+  io_context_monitor_thread_ = std::make_unique<IOContextMonitorThread>(
+      std::move(monitor),
+      absl::Milliseconds(RayConfig::instance().io_context_monitor_probe_interval_ms()),
+      [this](bool healthy) {
+        // Drive the gRPC default health check service's serving status. Called
+        // from the monitor thread; SetServingStatus is thread-safe. The empty
+        // service name is the conventional overall-server health that clients
+        // (e.g. the GCS client) query.
+        rpc_server_.GetServer().GetHealthCheckService()->SetServingStatus(
+            /*service_name=*/"", healthy);
+      });
+  io_context_monitor_thread_->Start();
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
@@ -426,36 +516,39 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       io_context_provider_.GetDefaultIOContext(),
       *gcs_resource_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+}
 
-  periodical_runner_->RunFnPeriodically(
+void GcsServer::InitGcsResourceLoadPuller() {
+  RAY_CHECK(gcs_node_manager_ && gcs_resource_manager_ && gcs_autoscaler_state_manager_);
+  resource_load_puller_ = std::make_unique<GcsResourceLoadPuller>(
+      io_context_provider_.GetIOContext<GcsResourceLoadPuller>(),
+      io_context_provider_.GetDefaultIOContext(),
+      resource_load_pull_raylet_client_pool_,
+      /*apply_on_main=*/
+      [this](rpc::ResourcesData resources) {
+        // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
+        // after verifying that non-autoscaler paths are taken care of.
+        // Currently, GcsResourceManager aggregates reporting from different
+        // sources at different intervals, leading to an obviously inconsistent
+        // view.
+        //
+        // Once autoscaler is completely moved to the new mode of consistent
+        // per-node reporting, remove this if it is not needed anymore.
+        gcs_resource_manager_->UpdateResourceLoads(resources);
+        gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(std::move(resources));
+      });
+  resource_load_pull_periodical_runner_->RunFnPeriodically(
       [this] {
-        for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
-          auto remote_address = rpc::RayletClientPool::GenerateRayletAddress(
+        const auto alive_nodes = gcs_node_manager_->GetAllAliveNodes();
+        std::vector<rpc::Address> raylet_addresses;
+        raylet_addresses.reserve(alive_nodes.size());
+        for (const auto &alive_node : alive_nodes) {
+          raylet_addresses.push_back(rpc::RayletClientPool::GenerateRayletAddress(
               alive_node.first,
               alive_node.second->node_manager_address(),
-              alive_node.second->node_manager_port());
-          auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(remote_address);
-
-          // GetResourceLoad will also get usage. Historically it didn't.
-          raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
-            if (status.ok()) {
-              // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
-              // after verifying that non-autoscaler paths are taken care of.
-              // Currently, GcsResourceManager aggregates reporting from different
-              // sources at different intervals, leading to an obviously inconsistent
-              // view.
-              //
-              // Once autoscaler is completely moved to the new mode of consistent
-              // per-node reporting, remove this if it is not needed anymore.
-              gcs_resource_manager_->UpdateResourceLoads(load_and_usage.resources());
-              gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(
-                  std::move(*load_and_usage.mutable_resources()));
-            } else {
-              RAY_LOG_EVERY_N(WARNING, 10)
-                  << "Failed to get the resource load: " << status.ToString();
-            }
-          });
+              alive_node.second->node_manager_port()));
         }
+        resource_load_puller_->Pull(std::move(raylet_addresses));
       },
       RayConfig::instance().gcs_pull_resource_loads_period_milliseconds(),
       "RayletLoadPulled");
@@ -463,7 +556,9 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      io_context_provider_.GetDefaultIOContext(),
+      // See https://github.com/ray-project/ray/pull/65271 for why the GCS
+      // resource view does not need the periodic reset that raylets run.
+      /*periodical_runner=*/nullptr,
       scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
@@ -491,7 +586,8 @@ void GcsServer::InitGcsJobManager(
                                       config_.session_name,
                                       running_job_gauge,
                                       finished_job_counter,
-                                      job_duration_in_seconds_gauge);
+                                      job_duration_in_seconds_gauge,
+                                      clock_);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
@@ -531,7 +627,8 @@ void GcsServer::InitGcsActorManager(
                                           schedule_success_handler,
                                           raylet_client_pool_,
                                           worker_client_pool_,
-                                          metrics_.scheduler_placement_time_ms_histogram);
+                                          metrics_.scheduler_placement_time_ms_histogram,
+                                          clock_);
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),
       gcs_table_storage_.get(),
@@ -548,7 +645,8 @@ void GcsServer::InitGcsActorManager(
       config_.session_name,
       actor_by_state_gauge,
       gcs_actor_by_state_gauge,
-      observability_publisher_.get());
+      observability_publisher_.get(),
+      clock_);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
@@ -583,7 +681,8 @@ void GcsServer::InitGcsPlacementGroupManager(
       placement_group_gauge,
       placement_group_creation_latency_in_ms_histogram,
       placement_group_scheduling_latency_in_ms_histogram,
-      placement_group_count_gauge);
+      placement_group_count_gauge,
+      clock_);
 
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::PlacementGroupInfoGrpcService>(
@@ -605,6 +704,17 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
     RAY_CHECK(!config_.redis_address.empty());
     return StorageType::REDIS_PERSIST;
   }
+  if (RayConfig::instance().gcs_storage() == kRocksDbStorage) {
+#if defined(__linux__)
+    RAY_CHECK(!RayConfig::instance().gcs_storage_path().empty())
+        << "RAY_gcs_storage=rocksdb requires RAY_gcs_storage_path to be set to "
+           "a directory on a persistent volume.";
+    return StorageType::ROCKSDB_PERSIST;
+#else
+    RAY_LOG(FATAL) << "RAY_gcs_storage=rocksdb is only supported on Linux. Set "
+                      "RAY_gcs_storage to 'memory' or 'redis' on this platform.";
+#endif
+  }
   RAY_LOG(FATAL) << "Unsupported GCS storage type: "
                  << RayConfig::instance().gcs_storage();
   return StorageType::UNKNOWN;
@@ -624,6 +734,7 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
 
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
       io_context_provider_.GetIOContext<syncer::RaySyncer>(),
+      PeriodicalRunner::Create(io_context_provider_.GetIOContext<syncer::RaySyncer>()),
       kGCSNodeID.Binary(),
       /* batch_size */ RayConfig::instance().gcs_resource_broadcast_max_batch_size(),
       /* batch_delay_ms */
@@ -660,14 +771,33 @@ void GcsServer::InitKVManager() {
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     store_client =
-        std::make_unique<RedisStoreClient>(io_context, GetRedisClientOptions());
+        std::make_unique<RedisStoreClient>(io_context, GetRedisClientOptions(), clock_);
     break;
   case (StorageType::IN_MEMORY):
     store_client = std::make_unique<ObservableStoreClient>(
         std::make_unique<InMemoryStoreClient>(),
         metrics_.storage_operation_latency_in_ms_histogram,
-        metrics_.storage_operation_count_counter);
+        metrics_.storage_operation_count_counter,
+        clock_);
     break;
+#if defined(__linux__)
+  case (StorageType::ROCKSDB_PERSIST):
+    // See ROCKSDB_PERSIST case in InitClusterStorageBackend for the
+    // cluster_id deferral rationale. Use a "kv" subdirectory so this
+    // client and the tables client do not share a RocksDB directory,
+    // avoiding the in-process double-open ENOLCK failure.
+    store_client = std::make_unique<ObservableStoreClient>(
+        std::make_unique<RocksDbStoreClient>(
+            io_context,
+            RayConfig::instance().gcs_storage_path() + "/kv",
+            /*expected_cluster_id=*/"",
+            RayConfig::instance().gcs_rocksdb_io_pool_size(),
+            RayConfig::instance().gcs_rocksdb_strand_buckets()),
+        metrics_.storage_operation_latency_in_ms_histogram,
+        metrics_.storage_operation_count_counter,
+        clock_);
+    break;
+#endif
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
@@ -762,13 +892,19 @@ void GcsServer::InitRuntimeEnvManager() {
       /*max_active_rpcs_per_handler=*/-1));
 }
 
-void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
-      *gcs_table_storage_, io_context_provider_.GetDefaultIOContext(), *gcs_publisher_);
+void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
+  gcs_worker_manager_ =
+      std::make_unique<GcsWorkerManager>(*gcs_table_storage_,
+                                         io_context_provider_.GetDefaultIOContext(),
+                                         *gcs_publisher_,
+                                         *ray_event_recorder_,
+                                         config_.session_name);
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
       *gcs_worker_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+  // No-op unless dead worker entries survived a GCS restart (Redis FT).
+  gcs_worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
 }
 
 void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
@@ -813,7 +949,8 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       kv_manager_->GetInstance(),
       io_context_provider_.GetDefaultIOContext(),
       gcs_publisher_.get(),
-      observability_publisher_.get());
+      observability_publisher_.get(),
+      clock_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(
       std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
@@ -827,10 +964,12 @@ void GcsServer::InitGcsTaskManager(
     ray::observability::MetricInterface &task_events_dropped_gauge,
     ray::observability::MetricInterface &task_events_stored_gauge) {
   auto &io_context = io_context_provider_.GetIOContext<GcsTaskManager>();
-  gcs_task_manager_ = std::make_unique<GcsTaskManager>(io_context,
-                                                       task_events_reported_gauge,
-                                                       task_events_dropped_gauge,
-                                                       task_events_stored_gauge);
+  gcs_task_manager_ =
+      std::make_unique<GcsTaskManager>(io_context,
+                                       PeriodicalRunner::Create(io_context),
+                                       task_events_reported_gauge,
+                                       task_events_dropped_gauge,
+                                       task_events_stored_gauge);
   // Register service.
   rpc_server_.RegisterService(std::make_unique<rpc::TaskInfoGrpcService>(
       io_context,
@@ -921,7 +1060,6 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_type(),
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
-        gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
         observability_pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
         gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);

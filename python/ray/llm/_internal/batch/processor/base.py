@@ -17,11 +17,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
-# Higher values here are better for prefetching and locality. It's ok for this to be
-# fairly high since streaming backpressure prevents us from overloading actors.
-DEFAULT_MAX_TASKS_IN_FLIGHT = 16
-
-
 class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
@@ -32,11 +27,6 @@ class ProcessorConfig(BaseModelExtended):
         "are more fault-tolerant and could reduce bubbles in the data pipeline. "
         "You can tune the batch size to balance the throughput and fault-tolerance "
         "based on your use case. Defaults to 32.",
-    )
-    resources_per_bundle: Optional[Dict[str, float]] = Field(
-        default=None,
-        description="[DEPRECATED] This parameter is deprecated and will be removed in a future version. ",
-        deprecated=True,
     )
     accelerator_type: Optional[str] = Field(
         default=None,
@@ -51,13 +41,6 @@ class ProcessorConfig(BaseModelExtended):
         "If ``concurrency`` is an ``int`` ``n``, Ray uses either a fixed pool of ``n`` "
         "workers or an autoscaling pool from ``1`` to ``n`` workers, depending on "
         "the processor and stage.",
-    )
-
-    experimental: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="[Experimental] Experimental configurations."
-        "Supported keys:\n"
-        "`max_tasks_in_flight_per_actor`: The maximum number of tasks in flight per actor. Default to 16.",
     )
 
     @field_validator("concurrency")
@@ -156,7 +139,21 @@ class OfflineProcessorConfig(ProcessorConfig):
         "This is to overlap the batch processing to avoid the tail latency of "
         "each batch. The default value may not be optimal when the batch size "
         "or the batch processing latency is too small, but it should be good "
-        "enough for batch size >= 32.",
+        "enough for batch size >= 32. Sets the engine actor's Ray Core "
+        "`max_concurrency`.",
+    )
+    max_tasks_in_flight_per_actor: Optional[int] = Field(
+        default=None,
+        description="Max tasks Ray Data submits concurrently to each engine "
+        "actor. Passed through to `ray.data.ActorPoolStrategy`. If unset, Ray "
+        "Data uses `ray.data.DataContext.max_tasks_in_flight_per_actor` if set "
+        "globally. Otherwise, it defaults to `2 * max_concurrent_batches`; the "
+        "factor can be overridden via the "
+        "`RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR` "
+        "env var. "
+        "Setting this lower than `max_concurrent_batches` can underutilize the "
+        "engine actor because Ray Data submits fewer tasks than the actor can "
+        "process concurrently.",
     )
     should_continue_on_error: bool = Field(
         default=False,
@@ -167,30 +164,7 @@ class OfflineProcessorConfig(ProcessorConfig):
         "If False (default), any inference error will raise an exception.",
     )
 
-    # Processor stage configurations (legacy booleans, will be deprecated).
-    apply_chat_template: bool = Field(
-        default=True,
-        description="[DEPRECATED] Prefer `chat_template_stage`. Whether to apply chat template.",
-    )
-    chat_template: Optional[str] = Field(
-        default=None,
-        description="[DEPRECATED] Prefer `chat_template_stage.chat_template`. The chat template to use.",
-    )
-    tokenize: bool = Field(
-        default=True,
-        description="[DEPRECATED] Prefer `tokenize_stage`. Whether to tokenize input before engine.",
-    )
-    detokenize: bool = Field(
-        default=True,
-        description="[DEPRECATED] Prefer `detokenize_stage`. Whether to detokenize the output.",
-    )
-    has_image: bool = Field(
-        default=False,
-        description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. "
-        "Whether the input messages have images.",
-    )
-
-    # New nested stage configuration (bool | dict | typed config).
+    # Nested stage configuration (bool | dict | typed config).
     chat_template_stage: Any = Field(
         default=True,
         description="Chat templating stage config (bool | dict | ChatTemplateStageConfig).",
@@ -203,93 +177,29 @@ class OfflineProcessorConfig(ProcessorConfig):
         default=True,
         description="Detokenizer stage config (bool | dict | DetokenizeStageConfig).",
     )
-    prepare_image_stage: Any = Field(
-        default=False,
-        description="[DEPRECATED] Prefer `prepare_multimodal_stage` for processing multimodal data. Prepare image stage config (bool | dict | PrepareImageStageConfig).",
-    )
     prepare_multimodal_stage: Any = Field(
         default=False,
         description="Prepare multimodal stage config (bool | dict | PrepareMultimodalStageConfig).",
     )
 
-    @model_validator(mode="before")
-    def _coerce_legacy_to_stage_config(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        # Only set stage fields if not explicitly provided.
-        # Emit deprecation warnings when legacy boolean flags are used.
-
-        # Chat template stage: special case (handles both apply_chat_template and chat_template fields)
-        if "chat_template_stage" not in values:
-            if "apply_chat_template" in values or "chat_template" in values:
-                logger.warning(
-                    "The `apply_chat_template` and `chat_template` fields are deprecated. "
-                    "Use `chat_template_stage` instead. For example: "
-                    "`chat_template_stage=ChatTemplateStageConfig(enabled=True, chat_template='...')` "
-                    "or `chat_template_stage={'enabled': True, 'chat_template': '...'}`. "
-                    "This will raise an error in a future version."
-                )
-                enabled_value = values.get("apply_chat_template")
-                enabled = enabled_value if enabled_value is not None else True
-                stage: Dict[str, Any] = {"enabled": enabled}
-                if values.get("chat_template") is not None:
-                    stage["chat_template"] = values["chat_template"]
-                values["chat_template_stage"] = stage
-
-        # Other stages: simple boolean-to-stage mapping
-        stage_mappings = [
-            ("tokenize_stage", "tokenize", True, "TokenizerStageConfig"),
-            ("detokenize_stage", "detokenize", True, "DetokenizeStageConfig"),
-            ("prepare_image_stage", "has_image", False, "PrepareImageStageConfig"),
-        ]
-        for (
-            stage_field,
-            legacy_field,
-            default_enabled,
-            config_class_name,
-        ) in stage_mappings:
-            if stage_field not in values and legacy_field in values:
-                logger.warning(
-                    f"The `{legacy_field}` field is deprecated. "
-                    f"Use `{stage_field}` instead. For example: "
-                    f"`{stage_field}={config_class_name}(enabled=True)` "
-                    f"or `{stage_field}={{'enabled': True}}`. "
-                    "This will raise an error in a future version."
-                )
-                legacy_value = values.get(legacy_field)
-                enabled = default_enabled if legacy_value is None else legacy_value
-                values[stage_field] = {"enabled": enabled}
-
-        return values
-
-    @model_validator(mode="before")
-    def _warn_prepare_image_stage_deprecation(
-        cls, values: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Warn if prepare_image_stage is enabled, recommend prepare_multimodal_stage instead."""
-        if "prepare_image_stage" in values:
-            prepare_image_stage_value = values.get("prepare_image_stage")
-            if prepare_image_stage_value is None:
-                is_enabled = False
-            elif isinstance(prepare_image_stage_value, bool):
-                is_enabled = prepare_image_stage_value
-            elif isinstance(prepare_image_stage_value, dict):
-                is_enabled = True
-            else:
-                is_enabled = prepare_image_stage_value.enabled
-
-            if is_enabled:
-                logger.warning(
-                    "The stage `prepare_image_stage` is deprecated. "
-                    "Prefer `prepare_multimodal_stage` instead, which unifies image, audio, "
-                    "video, etc. processing with a single stage. For example: "
-                    "`prepare_multimodal_stage=PrepareMultimodalStageConfig(enabled=True)` "
-                    "or `prepare_multimodal_stage={'enabled': True}`. "
-                    "This will raise an error in a future version."
-                )
-
-        return values
+    @model_validator(mode="after")
+    def _warn_if_max_tasks_in_flight_underutilizes_actor(self):
+        if (
+            self.max_tasks_in_flight_per_actor is not None
+            and self.max_tasks_in_flight_per_actor < self.max_concurrent_batches
+        ):
+            logger.warning(
+                "Setting `max_tasks_in_flight_per_actor` (%s) lower than "
+                "`max_concurrent_batches` (%s) can underutilize each engine "
+                "actor because Ray Data will submit fewer tasks than the actor "
+                "can process concurrently.",
+                self.max_tasks_in_flight_per_actor,
+                self.max_concurrent_batches,
+            )
+        return self
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 class Processor:
     """A processor is composed of a preprocess stage, followed by one or more
     processing stages, and finally a postprocess stage. We use processor as a
@@ -373,7 +283,7 @@ class Processor:
                 batch_size=self.config.batch_size,
                 data_column=self.DATA_COLUMN,
             )
-            dataset = dataset.map_batches(stage.fn, **kwargs)
+            dataset = dataset.map_batches_internal(stage.fn, **kwargs)
 
         if self.postprocess is not None:
             dataset = dataset.map(self.postprocess, **self.postprocess_map_kwargs)

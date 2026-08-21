@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference table of the system metrics Ray exports for tasks, actors, resources, and hardware utilization, with semantics and consistency guarantees.
+
 .. _system-metrics:
 
 System Metrics
@@ -49,8 +52,17 @@ Ray exports a number of system metrics, which provide introspection into the sta
      - `instance`
      - The number of CPU cores per node.
    * - `ray_node_gpus_utilization`
-     - `instance`, `GpuDeviceName`, `GpuIndex`
-     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G) and `GpuIndex` is the index of the GPU.
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The GPU utilization per GPU as a percentage quantity (0..NGPU*100). `GpuDeviceName` is a name of a GPU device (e.g., NVIDIA A10G), `GpuIndex` is the index of the GPU, and `GpuUuid` is the unique device identifier.
+   * - `ray_node_gpus_available`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The number of GPUs available.
+   * - `ray_node_gpu_power_milliwatts`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The current GPU power per GPU, in milliwatts.
+   * - `ray_node_gpu_temperature_celsius`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+     - The current GPU temperature per GPU, in Celsius.
    * - `ray_node_disk_usage`
      - `instance`
      - The amount of disk space used per node, in bytes.
@@ -81,17 +93,42 @@ Ray exports a number of system metrics, which provide introspection into the sta
    * - `ray_node_mem_total`
      - `instance`
      - The amount of physical memory available per node, in bytes.
+   * - `ray_node_mem_used_host`
+     - `instance`
+     - The host (OS-level) physical memory used per node, in bytes.
+   * - `ray_node_mem_total_host`
+     - `instance`
+     - The host (OS-level) total physical memory per node, in bytes.
+   * - `ray_node_cgroup_mem_used`
+     - `instance`
+     - The container memory usage per node (from cgroup), in bytes. Only emitted when cgroup memory limits are present.
+   * - `ray_node_cgroup_mem_total`
+     - `instance`
+     - The container memory limit per node (from cgroup), in bytes. Only emitted when cgroup memory limits are present.
+   
+   * - `ray_component_rss_mb`
+     - `Component`, `instance`
+     - Note: This metric will be deprecated in the future, please use `ray_component_rss_bytes` instead. The measured resident set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_rss_bytes`
+     - `Component`, `instance`
+     - The measured resident set size in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_shared_bytes`
+     - `Component`, `instance`
+     - The measured shared memory in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_component_uss_mb`
      - `Component`, `instance`
-     - The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+     - Note: This metric will be deprecated in the future, please use `ray_component_uss_bytes` instead. The measured unique set size in megabytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
+   * - `ray_component_uss_bytes`
+     - `Component`, `instance`
+     - The measured unique set size in bytes, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_component_cpu_percentage`
      - `Component`, `instance`
      - The measured CPU percentage, broken down by logical Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the method names of running tasks/actors.
    * - `ray_node_gram_available`
-     - `instance`, `node_type`, `GpuIndex`, `GpuDeviceName`
+     - `instance`, `node_type`, `GpuIndex`, `GpuDeviceName`, `GpuUuid`
      - The amount of GPU memory available per GPU, in megabytes.
    * - `ray_node_gram_used`
-     - `instance`, `GpuDeviceName`, `GpuIndex`
+     - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
      - The amount of GPU memory used per GPU, in bytes.
    * - `ray_node_network_received`
      - `instance`, `node_type`

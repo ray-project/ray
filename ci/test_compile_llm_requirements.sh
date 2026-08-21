@@ -14,11 +14,11 @@ echo "Created temporary directory: $TEMP_DIR"
 
 # Create backup copies of req files to reference to
 LOCK_TYPES=(rayllm_test ray_test ray rayllm)
-VARIANTS=(cpu cu121 cu128)
+VARIANTS=(cpu cu130)
 
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock"
+        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py312_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py312_${VARIANT}_backup.lock"
     done
 done
 
@@ -27,7 +27,7 @@ bazel run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayllm.depse
 # Copy files to artifact mount on Buildkite
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock /artifact-mount/
+        cp ./python/deplocks/llm/"${LOCK_TYPE}"_py312_"${VARIANT}".lock /artifact-mount/
     done
 done
 
@@ -35,8 +35,8 @@ done
 FAILED=0
 for LOCK_TYPE in "${LOCK_TYPES[@]}"; do
     for VARIANT in "${VARIANTS[@]}"; do
-        diff -u ./python/deplocks/llm/"${LOCK_TYPE}"_py311_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py311_${VARIANT}_backup.lock" || {
-            echo "${LOCK_TYPE}_py311_${VARIANT}.lock is not up to date. Please download it from Artifacts tab and git push the changes."
+        diff -u ./python/deplocks/llm/"${LOCK_TYPE}"_py312_"${VARIANT}".lock "$TEMP_DIR/${LOCK_TYPE}_py312_${VARIANT}_backup.lock" || {
+            echo "${LOCK_TYPE}_py312_${VARIANT}.lock is not up to date. Please download it from Artifacts tab and git push the changes."
             FAILED=1
         }
     done

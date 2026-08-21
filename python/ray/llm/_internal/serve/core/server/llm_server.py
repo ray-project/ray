@@ -13,18 +13,26 @@ from typing import (
     Union,
 )
 
+from fastapi import HTTPException
+
 import ray
 from ray import serve
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import import_attr
 from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
+)
+from ray.llm._internal.serve.core.configs.openai_api_models import (
+    ModelCard,
+    to_model_metadata,
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
@@ -97,6 +105,23 @@ def _merge_replica_actor_and_child_actor_bundles(
     return [merged_first_bundle] + [
         copy.copy(bundle) for bundle in child_actor_bundles[1:]
     ]
+
+
+def _add_openai_models_retrieve_route(app, llm_config: LLMConfig) -> None:
+    """Mount GET /v1/models/{id} on a native engine ASGI app.
+
+    Native engine apps (vLLM, SGLang) expose only GET /v1/models (list). Direct
+    streaming clients call openai_client.models.retrieve(...) like the
+    OpenAiIngress path, so add the single-model retrieve route here.
+    """
+    model_id = llm_config.model_id
+    model_card = to_model_metadata(model_id, llm_config)
+
+    @app.get("/v1/models/{model:path}", response_model=ModelCard)
+    async def _get_model(model: str):
+        if model != model_id:
+            raise HTTPException(status_code=404, detail=f"Unknown model: {model}")
+        return model_card
 
 
 class LLMServer(LLMServerProtocol):
@@ -195,6 +220,11 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
+    async def __serve_build_asgi_app__(self):
+        app = await self.engine.build_asgi_app()
+        _add_openai_models_retrieve_route(app, self._llm_config)
+        return app
+
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
     ):
@@ -248,6 +278,10 @@ class LLMServer(LLMServerProtocol):
 
         # Push telemetry reports for the model in the current deployment.
         push_telemetry_report_for_all_models(all_models=[self._llm_config])
+        if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+            # Cluster-wide adoption signal: written from each replica on engine
+            # start, but last-write-wins so it reports one value per cluster.
+            record_extra_usage_tag(TagKey.LLM_SERVE_DIRECT_STREAMING_ENABLED, "1")
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
         """Calculate the batching interval for responses."""
@@ -267,7 +301,17 @@ class LLMServer(LLMServerProtocol):
             "TranscriptionRequest",
         ],
     ):
-        """Add the request id to the request."""
+        """Stamp the Serve request id, unless the caller set request_id explicitly.
+
+        request_id defaults to a random uuid (never None), so use model_fields_set
+        to avoid clobbering an id a caller deliberately set (e.g. a P/D connector's
+        coordination id). Some request types (tokenize/detokenize) have no
+        request_id field at all -- skip those.
+        """
+        if not hasattr(request, "request_id"):
+            return
+        if "request_id" in request.model_fields_set:
+            return
         request_id = get_serve_request_id()
         if request_id:
             request.request_id = request_id
@@ -518,6 +562,17 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine health check failed in LLMServer.check_health: %s", e)
             raise e
 
+    async def record_routing_stats(self) -> Dict[str, Any]:
+        """Serve request-router hook, polled by the controller.
+
+        Surfaces this replica's routing stats (the engine's KV-events endpoint
+        for KV-aware routing); the LLMRouter's own ``KVTokenTracker``
+        reads them off the ``LongPoll`` replica snapshot to register the worker.
+        """
+        if self.engine is None:
+            return {}
+        return self.engine.routing_stats()
+
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
 
@@ -681,6 +736,11 @@ class LLMServer(LLMServerProtocol):
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
+
+    async def __del__(self) -> None:
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            await engine.shutdown()
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):

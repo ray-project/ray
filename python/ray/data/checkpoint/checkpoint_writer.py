@@ -158,7 +158,7 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
 
         return pa.table({self.id_col: id_column_data})
 
-    def write_block_checkpoint(self, block: BlockAccessor):
+    def write_block_checkpoint(self, block: BlockAccessor) -> None:
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
 

@@ -14,8 +14,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray._common.retry import call_with_retry
-from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import _check_import
@@ -358,8 +356,9 @@ class TurbopufferDatasink(Datasink):
         # Sort by the namespace column so _iter_groups_sorted can yield
         # contiguous zero-copy slices for each unique namespace value.
         sort_key = SortKey(key=group_col_name, descending=False)
-        sorted_table = transform_pyarrow.sort(table, sort_key)
-        block_accessor = ArrowBlockAccessor.for_block(sorted_table)
+        block_accessor = BlockAccessor.for_block(
+            BlockAccessor.for_block(table).sort(sort_key)
+        )
 
         for (namespace_name,), group_table in block_accessor._iter_groups_sorted(
             sort_key

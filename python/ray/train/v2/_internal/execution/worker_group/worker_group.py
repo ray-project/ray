@@ -85,6 +85,16 @@ from ray.util.tpu import (
 logger = logging.getLogger(__name__)
 
 
+_SERIALIZATION_FAILURE_MARKERS = (
+    "cannot pickle",
+    "Cannot pickle",
+    "cannot serialize",
+    "Can't pickle",
+    "PicklingError",
+    "ray/cloudpickle/cloudpickle.py",
+)
+
+
 class WorkerGroup(ExecutionGroup):
     _worker_cls = RayTrainWorker
 
@@ -679,6 +689,9 @@ class WorkerGroup(ExecutionGroup):
 
         Args:
             timeout: The maximum time to wait for the poll tasks to complete.
+
+        Returns:
+            A ``WorkerGroupPollStatus`` aggregating each worker's status.
         """
         self._assert_active()
 
@@ -716,6 +729,9 @@ class WorkerGroup(ExecutionGroup):
 
         If a worker's poll task fails, a WorkerHealthCheckFailedError is similarly
         propagated in the worker status.
+
+        Args:
+            timeout: The maximum time to wait for the poll tasks to complete.
 
         Returns:
             poll_results: A list of WorkerStatus objects.
@@ -773,6 +789,30 @@ class WorkerGroup(ExecutionGroup):
                     "A worker health check failed.\n"
                     f"Worker info: {workers[done_rank]}"
                 )
+
+                # The ray.get can fail for serialization / deserialization, adds a hint to users.
+                try:
+                    exception_msg = str(e)
+
+                    if any(
+                        marker in exception_msg
+                        for marker in _SERIALIZATION_FAILURE_MARKERS
+                    ):
+                        error_msg += (
+                            "\nHint: This is a failure to serialize a value that "
+                            "the training function produced, which is needed to "
+                            "send it back to the Ray Train controller. "
+                            "Ray Train checks the most common cases up front, "
+                            "but cannot cover every type. "
+                            "Look for non-serializable objects in: \n"
+                            " (1) the `metrics` passed to `ray.train.report()`,\n"
+                            " (2) the value returned by the training function, and\n"
+                            " (3) exceptions raised by the training function.\n"
+                            "The traceback below shows the object that failed to serialize."
+                        )
+                except Exception:
+                    error_msg += "\nFailed to convert the exception to a string."
+
                 poll_result = WorkerStatus(
                     running=False,
                     error=WorkerHealthCheckFailedError(error_msg, failure=e),
@@ -1060,6 +1100,9 @@ class WorkerGroup(ExecutionGroup):
     @staticmethod
     def _decorate_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:
         """Decorate worker log file paths.
+
+        Args:
+            workers: The workers to decorate with log file paths.
 
         Returns:
             workers: Workers with log file paths set.

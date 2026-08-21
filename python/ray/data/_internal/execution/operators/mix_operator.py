@@ -59,7 +59,10 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
 
         self._stats: StatsDict = {"Mix": []}
 
-        super().__init__(data_context, *input_ops)
+        input_names = ", ".join([op._name for op in input_ops])
+        weights_str = [round(w, 2) for w in self._weights]
+        name = f"Mix({input_names}, weights={weights_str})"
+        super().__init__(data_context, *input_ops, name=name)
 
     # ------------------------------------------------------------------
     # InternalQueueOperatorMixin interface
@@ -144,8 +147,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
 
     @override
     def throttling_disabled(self) -> bool:
-        # TODO: Disable throttling along with Union once NAry operator resource accounting is fixed.
-        return False
+        return True
 
     # ------------------------------------------------------------------
     # Output selection

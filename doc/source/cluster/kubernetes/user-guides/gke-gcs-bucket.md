@@ -1,7 +1,13 @@
+---
+myst:
+  html_meta:
+    description: "Give a RayCluster access to a Google Cloud Storage bucket on GKE using Workload Identity and a Kubernetes service account."
+---
+
 (kuberay-gke-bucket)=
 # Configuring KubeRay to use Google Cloud Storage Buckets in GKE
 
-If you are already familiar with Workload Identity in GKE, you can skip this document. The gist is that you need to specify a service account in each of the Ray pods after linking your Kubernetes service account to your Google Cloud service account. Otherwise, read on.
+If you are already familiar with Workload Identity in GKE, you can skip this document. The gist is that you need to specify a service account in each of the Pods after linking your Kubernetes service account to your Google Cloud service account. Otherwise, read on.
 
 This example is an abridged version of the documentation at <https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity>. The full documentation is worth reading if you are interested in the details.
 
@@ -50,8 +56,7 @@ BUCKET=my-bucket
 gcloud storage buckets create gs://$BUCKET --uniform-bucket-level-access
 ```
 
-Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy.
-See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
+Bind the `roles/storage.objectUser` role to the Kubernetes service account and bucket IAM policy. See [Identifying projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects#identifying_projects) to find your project ID and project number:
 ```bash
 PROJECT_ID=<your project ID>
 PROJECT_NUMBER=<your project number>

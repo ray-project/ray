@@ -36,13 +36,17 @@ def test_gradio_ingress_correctness(serve_start_shutdown, use_user_defined_class
         class UserDefinedGradioServer(GradioIngress):
             def __init__(self):
                 super().__init__(
-                    lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+                    lambda: gr.Interface(
+                        fn=greet, inputs="text", outputs="text", api_name="predict"
+                    )
                 )
 
         app = UserDefinedGradioServer.bind()
     else:
         app = GradioServer.bind(
-            lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+            lambda: gr.Interface(
+                fn=greet, inputs="text", outputs="text", api_name="predict"
+            )
         )
 
     serve.run(app)
@@ -67,7 +71,7 @@ def test_gradio_ingress_scaling(serve_start_shutdown):
         return os.getpid()
 
     app = GradioServer.options(num_replicas=2).bind(
-        lambda: gr.Interface(fn=f, inputs="text", outputs="text")
+        lambda: gr.Interface(fn=f, inputs="text", outputs="text", api_name="predict")
     )
     serve.run(app)
 

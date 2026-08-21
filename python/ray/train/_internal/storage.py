@@ -59,6 +59,8 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
         exclude: List of patterns that are applied to files returned by
             ``self.find()``. If a file path matches this pattern, it will
             be excluded.
+        **kwargs: Forwarded to the ``fsspec.implementations.local.LocalFileSystem``
+            parent class.
 
     """
 
@@ -266,6 +268,13 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
 def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Checks if (fs, fs_path) is a directory or a file.
 
+    Args:
+        fs: The filesystem to use.
+        fs_path: The path on the filesystem to check.
+
+    Returns:
+        True if the path is a directory, False if it is a file.
+
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
@@ -306,6 +315,9 @@ def get_fs_and_path(
             this will be auto-resolved by pyarrow. If provided, the storage_path
             is assumed to be prefix-stripped already, and must be a valid path
             on the filesystem.
+
+    Returns:
+        A tuple of (filesystem, path) resolved from the inputs.
     """
     storage_path = str(storage_path)
 

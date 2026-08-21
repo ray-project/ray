@@ -1,0 +1,8 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+# Single GPU node. The torchft linear example trains on CPU (gloo) but the
+# image ships GPU torch (torch==2.9.0+cu128), so a CUDA node is representative.
+head_node:
+    instance_type: g4dn.4xlarge
+
+worker_nodes: []

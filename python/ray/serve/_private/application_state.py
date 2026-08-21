@@ -6,14 +6,18 @@ import traceback
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
-from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.build_app import (
+    CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    BuiltApplication,
+    build_app,
+)
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -26,6 +30,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
@@ -43,6 +48,7 @@ from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    _callable_uses_multiplexing,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
@@ -300,6 +306,10 @@ class ApplicationState:
         # get the docs path from the running deployments
         # we are making an assumption that the docs path can only be set
         # on ingress deployments with fastapi.
+        # `_ingress_deployment_name` may still be None before the app is built;
+        # there is no ingress deployment to look up in that case.
+        if self._ingress_deployment_name is None:
+            return None
         ingress_deployment = DeploymentID(self._ingress_deployment_name, self._name)
         return self._deployment_state_manager.get_deployment_docs_path(
             ingress_deployment
@@ -426,6 +436,16 @@ class ApplicationState:
             external_scaler_enabled=external_scaler_enabled,
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
+
+        if (
+            ingress_request_router_deployment_name is not None
+            and ingress_request_router_deployment_name
+            != self._ingress_request_router_deployment_name
+        ):
+            logger.info(
+                f"Application '{self._name}' has ingress request router "
+                f"deployment '{ingress_request_router_deployment_name}' configured."
+            )
 
         self._ingress_deployment_name = ingress_deployment_name
         self._ingress_request_router_deployment_name = (
@@ -652,6 +672,9 @@ class ApplicationState:
 
         config_version = get_app_code_version(config)
         if config_version == self._target_state.code_version:
+            # `deployment_infos` is non-None whenever `code_version` is
+            # non-None (they are always set together in the target state).
+            assert self._target_state.deployment_infos is not None
             try:
                 overrided_infos = override_deployment_info(
                     self._target_state.deployment_infos,
@@ -697,9 +720,13 @@ class ApplicationState:
             self._clear_target_state_and_store_config(config)
 
             # Record telemetry for container runtime env feature
-            if self._target_state.config.runtime_env.get(
+            # The target state config was just set to the (non-None) `config`
+            # by `_clear_target_state_and_store_config` above.
+            assert self._target_state.config is not None
+            stored_config = self._target_state.config
+            if stored_config.runtime_env.get(
                 "container"
-            ) or self._target_state.config.runtime_env.get("image_uri"):
+            ) or stored_config.runtime_env.get("image_uri"):
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
             if isinstance(config.autoscaling_policy, dict):
@@ -723,14 +750,16 @@ class ApplicationState:
                 for deployment in config.deployments
                 if isinstance(deployment.request_router_config, dict)
             }
-            deployment_to_deployment_actor_classes = {}
+            deployment_to_deployment_actor_classes: Dict[str, Dict[str, str]] = {}
             for deployment in config.deployments:
                 actors = getattr(deployment, "deployment_actors", None)
                 if actors and actors is not DEFAULT.VALUE:
-                    actor_classes = {}
+                    actor_classes: Dict[str, str] = {}
                     for actor_cfg in actors:
                         if isinstance(actor_cfg, dict):
                             name = actor_cfg.get("name")
+                            if not name:
+                                continue
                             cls_path = actor_cfg.get("actor_class")
                             if isinstance(cls_path, str):
                                 actor_classes[name] = cls_path
@@ -744,6 +773,7 @@ class ApplicationState:
             build_app_obj_ref = build_serve_application.options(
                 runtime_env=config.runtime_env,
                 enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+                label_selector=_get_shared_build_app_label_selector(config),
             ).remote(
                 config.import_path,
                 config_version,
@@ -756,7 +786,7 @@ class ApplicationState:
                 deployment_to_deployment_actor_classes,
             )
             self._build_app_task_info = BuildAppTaskInfo(
-                obj_ref=build_app_obj_ref,
+                obj_ref=cast(ObjectRef, build_app_obj_ref),
                 code_version=config_version,
                 config=config,
                 target_capacity=target_capacity,
@@ -792,7 +822,9 @@ class ApplicationState:
         # The deployment status info with highest priority determines the corresponding
         # application status to set.
         deployment_statuses = self.get_deployments_statuses()
-        lowest_rank_status = min(deployment_statuses, key=lambda info: info.rank)
+        # `rank` is only None for statuses missing from the ranking order,
+        # which never happens for statuses produced by the state manager.
+        lowest_rank_status = min(deployment_statuses, key=lambda info: info.rank)  # type: ignore[arg-type, return-value]
         if lowest_rank_status.status == DeploymentStatus.DEPLOY_FAILED:
             failed_deployments = [
                 s.name
@@ -854,7 +886,9 @@ class ApplicationState:
         # Retrieve build app task result
         self._build_app_task_info.finished = True
         try:
-            serialized_application_autoscaling_policy_def, args, err = ray.get(
+            # `ray.get` overloads expect the raylet ObjectRef type, while the
+            # task info stores the interchangeable `ray.types.ObjectRef`.
+            serialized_application_autoscaling_policy_def, args, err = ray.get(  # type: ignore[call-overload]
                 self._build_app_task_info.obj_ref
             )
             if err is None:
@@ -906,7 +940,7 @@ class ApplicationState:
                 for params in args
                 if params["serialized_request_router_cls"] is not None
             }
-            deployment_to_serialized_deployment_actors = {}
+            deployment_to_serialized_deployment_actors: Dict[str, Dict[str, bytes]] = {}
             for params in args:
                 dep_name = params["deployment_name"]
                 # From proto roundtrip (code-defined actors)
@@ -947,7 +981,7 @@ class ApplicationState:
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
-    ) -> Tuple[str, str]:
+    ) -> Optional[str]:
         """Check route prefixes of deployments in app.
 
         There should only be one non-null route prefix. If there is one,
@@ -976,7 +1010,7 @@ class ApplicationState:
 
         return route_prefix
 
-    def _reconcile_target_deployments(self) -> None:
+    def _reconcile_target_deployments(self) -> bool:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date info, and
@@ -984,8 +1018,12 @@ class ApplicationState:
         """
         target_state_changed = False
 
+        # `deployment_infos` is non-None here: `update` only calls this method
+        # after checking `self._target_state.deployment_infos is not None`.
+        assert self._target_state.deployment_infos is not None
+        deployment_infos = self._target_state.deployment_infos
         # Set target state for each deployment
-        for deployment_name, info in self._target_state.deployment_infos.items():
+        for deployment_name, info in deployment_infos.items():
             deploy_info = deepcopy(info)
 
             # Apply the target capacity information to the deployment info.
@@ -1011,12 +1049,15 @@ class ApplicationState:
                 or target_state_changed
             )
 
-        # Delete outdated deployments
-        for deployment_name in self._get_live_deployments():
-            if deployment_name not in self.target_deployments:
-                target_state_changed = (
-                    self._delete_deployment(deployment_name) or target_state_changed
-                )
+        # Delete outdated deployments. Skipped during a full instance
+        # shutdown, as it would bypass DeploymentStateManager's own tiered
+        # shutdown order.
+        if not self._deployment_state_manager.is_shutting_down():
+            for deployment_name in self._get_live_deployments():
+                if deployment_name not in self.target_deployments:
+                    target_state_changed = (
+                        self._delete_deployment(deployment_name) or target_state_changed
+                    )
 
         return target_state_changed
 
@@ -1082,14 +1123,18 @@ class ApplicationState:
             ) = self._reconcile_build_app_task()
             if task_status == BuildAppStatus.SUCCEEDED:
                 target_state_changed = True
+                # A SUCCEEDED status is only returned when a build app task
+                # exists, so `_build_app_task_info` is non-None here.
+                assert self._build_app_task_info is not None
+                build_app_task_info = self._build_app_task_info
                 self._set_target_state(
                     deployment_infos=infos,
-                    code_version=self._build_app_task_info.code_version,
+                    code_version=build_app_task_info.code_version,
                     api_type=self._target_state.api_type,
-                    target_config=self._build_app_task_info.config,
-                    target_capacity=self._build_app_task_info.target_capacity,
+                    target_config=build_app_task_info.config,
+                    target_capacity=build_app_task_info.target_capacity,
                     target_capacity_direction=(
-                        self._build_app_task_info.target_capacity_direction
+                        build_app_task_info.target_capacity_direction
                     ),
                     external_scaler_enabled=self._target_state.external_scaler_enabled,
                     serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
@@ -1272,7 +1317,9 @@ class ApplicationStateManager:
                 # against during this batch operation.
                 live_route_prefixes[deploy_app_prefix] = name
 
-            application_args = name_to_application_args.get(name)
+            # Callers pass parallel dicts keyed by the same app names, so the
+            # lookup is expected to succeed for every deployed app.
+            application_args = name_to_application_args[name]
             external_scaler_enabled = application_args.external_scaler_enabled
 
             if name not in self._application_states:
@@ -1309,7 +1356,7 @@ class ApplicationStateManager:
 
         Args:
             name: application name
-            deployment_args_list: arguments for deploying a list of deployments.
+            deployment_args: arguments for deploying a list of deployments.
             application_args: application arguments.
         """
         self.deploy_apps({name: deployment_args}, {name: application_args})
@@ -1560,6 +1607,36 @@ class ApplicationStateManager:
         )
 
 
+def _get_shared_build_app_label_selector(
+    config: ServeApplicationSchema,
+) -> Optional[Dict[str, str]]:
+    """Get the shared deployment label selector for the application build task.
+
+    The build task imports the application before Serve schedules its replicas.
+    If all nonempty selectors in the application config are equal and hard
+    constraints, schedule the build task on that node pool. Otherwise, leave
+    the build task unpinned.
+    """
+    shared_selector = None
+    for deployment in config.deployments:
+        if deployment.ray_actor_options is DEFAULT.VALUE:
+            continue
+
+        selector = deployment.ray_actor_options.label_selector
+        if not selector:
+            continue
+
+        if deployment.ray_actor_options.fallback_strategy:
+            return None
+
+        if shared_selector is not None and selector != shared_selector:
+            return None
+
+        shared_selector = selector
+
+    return shared_selector
+
+
 @ray.remote(num_cpus=0, max_calls=1, max_retries=3, retry_exceptions=True)
 def build_serve_application(
     import_path: str,
@@ -1680,6 +1757,9 @@ def build_serve_application(
                     serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                     serialized_deployment_actors=serialized_deployment_actors,
+                    uses_multiplexing=_callable_uses_multiplexing(
+                        deployment.func_or_class
+                    ),
                 )
             )
 
@@ -1729,7 +1809,6 @@ def override_deployment_info(
     """Override deployment infos with options from app config.
 
     Args:
-        app_name: application name
         deployment_infos: deployment info loaded from code
         override_config: application config deployed by user with
             options to override those loaded from code.
@@ -1739,7 +1818,8 @@ def override_deployment_info(
             to {actor_name: serialized_actor_class_bytes} for each deployment
             actor, produced by the build task
 
-    Returns: the updated deployment infos.
+    Returns:
+        The updated deployment infos.
 
     Raises:
         ValueError: If config options have invalid values.
@@ -1800,7 +1880,7 @@ def override_deployment_info(
             ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # What to pass to info.update
-        override_options = {}
+        override_options: Dict[str, Any] = {}
 
         # Merge app-level and deployment-level runtime_envs.
         replica_config = info.replica_config
@@ -1839,10 +1919,14 @@ def override_deployment_info(
         ):
             ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.record("1")
 
-        merged_env = override_runtime_envs_except_env_vars(
-            app_runtime_env, override_actor_options.get("runtime_env", {})
-        )
-        override_actor_options.update({"runtime_env": merged_env})
+        child_runtime_env = override_actor_options.get("runtime_env", {})
+        # Avoid materializing an empty runtime_env; it changes the actor options
+        # hash and causes an unnecessary rolling update.
+        if app_runtime_env or child_runtime_env:
+            merged_env = override_runtime_envs_except_env_vars(
+                app_runtime_env, child_runtime_env
+            )
+            override_actor_options.update({"runtime_env": merged_env})
 
         replica_config.update(
             ray_actor_options=override_actor_options,
@@ -1881,13 +1965,23 @@ def override_deployment_info(
                         **request_router_config
                     )
 
+        # _serialized_actor_class is a PrivateAttr dropped by model_dump() above;
+        # carry it over so it survives the DeploymentConfig reconstruction.
+        serialized_actors = {
+            cfg.name: cfg._serialized_actor_class
+            for cfg in (info.deployment_config.deployment_actors or [])
+            if cfg._serialized_actor_class
+        }
+
         if (
             deployment_to_serialized_deployment_actors
             and deployment_name in deployment_to_serialized_deployment_actors
         ):
-            serialized_actors = deployment_to_serialized_deployment_actors[
+            serialized_actors |= deployment_to_serialized_deployment_actors[
                 deployment_name
             ]
+
+        if serialized_actors:
             actors_list = options.get(
                 "deployment_actors",
                 original_options.get("deployment_actors"),
@@ -1931,5 +2025,15 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
+
+    # build_app cannot see config overrides, so re-check the post-override
+    # ingress router here.
+    if RAY_SERVE_ENABLE_HA_PROXY and not any(
+        info.ingress_request_router for info in deployment_infos.values()
+    ):
+        for info in deployment_infos.values():
+            request_router_config = info.deployment_config.request_router_config
+            if info.ingress and not request_router_config.is_default_request_router():
+                raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 
     return deployment_infos

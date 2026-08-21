@@ -1,8 +1,10 @@
 import logging
+from functools import partial
 from typing import Iterator, List, Optional
 
 import pyarrow as pa
 
+from ray._common.utils import env_integer
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
@@ -18,6 +20,7 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner._obstore_download import (
     OBSTORE_AVAILABLE,
     _log_fallback_warning,
+    _plan_obstore_routing,
     download_bytes_async,
 )
 from ray.data._internal.planner.download_partition_actor import (
@@ -27,14 +30,40 @@ from ray.data._internal.planner.download_partition_actor import (
 )
 from ray.data._internal.util import (
     RetryingPyFileSystem,
+    _arrow_batcher,
     _iter_arrow_table_for_target_max_block_size,
     make_async_gen,
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+    _validate_and_wrap_filesystem,
+)
 
 logger = logging.getLogger(__name__)
+
+URI_SPLIT_MAX_ROWS = max(1, env_integer("RAY_DATA_DOWNLOAD_URI_SHARD_NUM_ROWS", 8192))
+URI_METADATA_FETCH_MAX_ACTORS = max(
+    1, env_integer("RAY_DATA_DOWNLOAD_PARTITION_MAX_ACTORS", 16)
+)
+
+
+def split_download_uri_blocks(
+    blocks: Iterator[pa.Table],
+    _,
+    *,
+    max_rows_per_block: int,
+) -> Iterator[pa.Table]:
+    """Split large URI-string blocks before exact metadata fetching."""
+    max_rows_per_block = max(1, max_rows_per_block)
+    for block in blocks:
+        if not isinstance(block, pa.Table):
+            block = BlockAccessor.for_block(block).to_arrow()
+        if block.num_rows == 0:
+            yield block
+            continue
+        yield from _arrow_batcher(block, max_rows_per_block)
 
 
 def plan_download_op(
@@ -64,18 +93,47 @@ def plan_download_op(
         _get_udf,
     )
 
-    # If we have multiple download operators in a row, we should only include the partition actor
-    # at the start of the chain. This is primarily done to prevent partition actors from bottlenecking
-    # the chain becuase the interleaved operators would be a single actor. As a result, the
-    # URIDownloader physical operator is responsible for outputting appropriately sized blocks.
-    partition_map_operator = None
+    # If we have multiple download operators in a row, only include the
+    # metadata planning stage at the start of the chain. The downstream download
+    # operators then use normal block shaping.
+    # Decide obstore vs threaded upfront. For fsspec-S3 filesystems backed by
+    # a session we can't statically introspect (Okta / STS / profile-based),
+    # _plan_obstore_routing emits a warning and returns use_obstore=False so
+    # we fall back to the threaded PyArrow path — which uses the user's
+    # filesystem directly and resolves credentials correctly.
+    use_obstore_path = False
+    if OBSTORE_AVAILABLE:
+        use_obstore_path, _ = _plan_obstore_routing(filesystem)
+
+    metadata_map_operator = None
     if not upstream_op_is_download:
-        partition_cls = AsyncPartitionActor if OBSTORE_AVAILABLE else PartitionActor
+        split_transformer = MapTransformer(
+            [
+                BlockMapTransformFn(
+                    partial(
+                        split_download_uri_blocks,
+                        max_rows_per_block=URI_SPLIT_MAX_ROWS,
+                    ),
+                    disable_block_shaping=True,
+                )
+            ]
+        )
+        split_map_operator = MapOperator.create(
+            split_transformer,
+            input_physical_dag,
+            data_context,
+            name=f"SplitDownloadURIs({uri_column_names_str})",
+            compute_strategy=TaskPoolStrategy(),
+        )
+
+        partition_cls = AsyncPartitionActor if use_obstore_path else PartitionActor
         # PartitionActor / AsyncPartitionActor are callable classes, so we need
-        # ActorPoolStrategy.
-        partition_compute = ActorPoolStrategy(
-            size=1, enable_true_multi_threading=True
-        )  # Use single actor for partitioning
+        # ActorPoolStrategy. Let the actor pool autoscale over row-split URI
+        # blocks, but cap it so S3 HEAD concurrency is bounded by default.
+        metadata_compute = ActorPoolStrategy(
+            max_size=URI_METADATA_FETCH_MAX_ACTORS,
+            enable_true_multi_threading=True,
+        )
 
         fn, init_fn = _get_udf(
             partition_cls,
@@ -83,46 +141,50 @@ def plan_download_op(
             {},
             (uri_column_names, data_context, filesystem),
             {},
-            compute=partition_compute,
+            compute=metadata_compute,
         )
         block_fn = _generate_transform_fn_for_map_batches(fn)
 
-        partition_transform_fns = [
+        metadata_transform_fns = [
             BlockMapTransformFn(
                 block_fn,
                 # NOTE: Disable block-shaping to produce blocks as is
                 disable_block_shaping=True,
             ),
         ]
-        partition_map_transformer = MapTransformer(
-            partition_transform_fns,
+        metadata_map_transformer = MapTransformer(
+            metadata_transform_fns,
             init_fn=init_fn,
         )
 
-        partition_map_operator = ActorPoolMapOperator(
-            partition_map_transformer,
-            input_physical_dag,
+        metadata_map_operator = ActorPoolMapOperator(
+            metadata_map_transformer,
+            split_map_operator,
             data_context,
-            name=f"Partition({uri_column_names_str})",
-            # NOTE: Partition actor doesn't use the user-provided `ray_remote_args`
-            #       since those only apply to the actual download tasks. Partitioning is
-            #       a lightweight internal operation that doesn't need custom resource
-            #       requirements.
+            name=f"PlanDownloadBlocks({uri_column_names_str})",
+            # NOTE: The metadata planning actor doesn't use the user-provided
+            #       `ray_remote_args` since those only apply to the actual
+            #       download tasks. Planning is a lightweight internal operation
+            #       that doesn't need custom resource requirements.
             ray_remote_args=None,
-            compute_strategy=partition_compute,  # Use actor-based compute for callable class
-            # NOTE: We set `_generator_backpressure_num_objects` to -1 to unblock
-            #       backpressure since partitioning is extremely fast. Without this, the
-            #       partition actor gets bottlenecked by the Ray Data scheduler, which
-            #       can prevent Ray Data from launching enough download tasks.
+            compute_strategy=metadata_compute,
+            # NOTE: Let each metadata actor stream emitted download blocks without
+            #       generator-object backpressure. Downstream operator
+            #       backpressure still controls the end-to-end pipeline.
             ray_actor_task_remote_args={"_generator_backpressure_num_objects": -1},
         )
 
-    if OBSTORE_AVAILABLE:
+    if use_obstore_path:
         download_fn = download_bytes_async
         logger.debug("Using obstore async download path.")
     else:
         download_fn = download_bytes_threaded
-        _log_fallback_warning()
+        # The "obstore not installed" warning is only relevant when obstore is
+        # missing entirely. When obstore is available but the filesystem can't
+        # be routed through it, _plan_obstore_routing already logged the reason
+        # (a WARNING for fsspec-S3-unextractable, DEBUG otherwise).
+        if not OBSTORE_AVAILABLE:
+            _log_fallback_warning()
 
     fn, init_fn = _get_udf(
         download_fn,
@@ -151,9 +213,9 @@ def plan_download_op(
 
     download_map_operator = MapOperator.create(
         download_map_transformer,
-        partition_map_operator if partition_map_operator else input_physical_dag,
+        metadata_map_operator if metadata_map_operator else input_physical_dag,
         data_context,
-        name=f"Download({uri_column_names_str})",
+        name=f"DownloadURIBytes({uri_column_names_str})",
         compute_strategy=download_compute,
         ray_remote_args=ray_remote_args,
     )
@@ -198,36 +260,64 @@ def download_bytes_threaded(
         if len(uris) == 0:
             continue
 
-        def load_uri_bytes(uri_iterator):
-            """Resolve filesystem and download bytes for each URI.
+        # Resolve the filesystem once before spawning workers; otherwise each
+        # worker infers its own S3FileSystem and fires a duplicate IMDS
+        # credential fetch. Normalize fsspec inputs so RetryingPyFileSystem.wrap
+        # can forward open_input_stream.
+        resolved_fs = _validate_and_wrap_filesystem(filesystem)
+        if resolved_fs is None:
+            for probe_uri in uris:
+                if probe_uri is None:
+                    continue
+                try:
+                    paths, candidate_fs = _resolve_paths_and_filesystem(probe_uri, None)
+                except Exception as e:
+                    logger.debug(f"Could not infer filesystem from '{probe_uri}': {e}")
+                    continue
+                # Skip results that drop the URI (([], ...)) or yield no FS.
+                if paths and candidate_fs is not None:
+                    resolved_fs = candidate_fs
+                    break
 
-            Takes an iterator of URIs and yields bytes for each.
-            Uses lazy filesystem resolution - resolves once and reuses for subsequent URIs.
-            If a filesystem was provided explicitly, it will be used for all URIs.
-            """
-            cached_fs = filesystem
+        if resolved_fs is None:
+            # No URI resolved a filesystem; workers would only repeat the same
+            # failed inference. Yield None for every row and skip the pool.
+            logger.warning(
+                "Could not resolve a filesystem from any URI in column "
+                f"{uri_column_name!r} ({len(uris)} URIs). Yielding None for "
+                "all rows."
+            )
+            output_block = output_block.add_column(
+                len(output_block.column_names),
+                output_bytes_column_name,
+                pa.array([None] * len(uris), type=pa.binary()),
+            )
+            continue
+
+        wrapped_fs = RetryingPyFileSystem.wrap(
+            resolved_fs, retryable_errors=data_context.retried_io_errors
+        )
+
+        def load_uri_bytes(
+            uri_iterator,
+            wrapped_fs=wrapped_fs,
+            resolved_fs=resolved_fs,
+            uri_column_name=uri_column_name,
+        ):
+            """Download bytes for each URI using the pre-resolved filesystem."""
             for uri in uri_iterator:
                 read_bytes = None
                 try:
-                    # Use cached FS if available, otherwise resolve the filesystem for the uri.
-                    resolved_paths, resolved_fs = _resolve_paths_and_filesystem(
-                        uri, filesystem=cached_fs
+                    if uri is None:
+                        continue
+                    # Normalize the path only; FS is supplied so no network I/O.
+                    resolved_paths, _ = _resolve_paths_and_filesystem(
+                        uri, filesystem=resolved_fs
                     )
-                    cached_fs = resolved_fs
-
-                    # Wrap with retrying filesystem
-                    fs = RetryingPyFileSystem.wrap(
-                        resolved_fs, retryable_errors=data_context.retried_io_errors
-                    )
-                    # We only pass one uri to resolve and unwrap it from the list of resolved paths,
-                    # if fails, we will catch the index error and log it.
-                    resolved_path = resolved_paths[0]
+                    resolved_path = resolved_paths[0] if resolved_paths else None
                     if resolved_path is None:
                         continue
-
-                    # Download bytes
-                    # Use open_input_stream to handle the rare scenario where the data source is not seekable.
-                    with fs.open_input_stream(resolved_path) as f:
+                    with wrapped_fs.open_input_stream(resolved_path) as f:
                         read_bytes = f.read()
                 except OSError as e:
                     logger.debug(

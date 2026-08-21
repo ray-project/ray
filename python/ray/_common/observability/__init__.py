@@ -4,7 +4,9 @@ the C++ RayEventRecorder.
 """
 
 from ray._common.observability.internal_event import InternalEventBuilder
+from ray._common.observability.platform_events import PlatformEventBuilder
 
 __all__ = [
     "InternalEventBuilder",
+    "PlatformEventBuilder",
 ]

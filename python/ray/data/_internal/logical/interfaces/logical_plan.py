@@ -27,7 +27,7 @@ class LogicalPlan(Plan):
 
         sources = []
         for op in self._dag.input_dependencies:
-            sources.extend(LogicalPlan(op, self._context).sources())
+            sources.extend(LogicalPlan(op, self.context).sources())
         return sources
 
     def has_lazy_input(self) -> bool:

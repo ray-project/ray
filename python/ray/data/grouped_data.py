@@ -14,7 +14,11 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import ShuffleStrategy
-from ray.data.dataset import EXPRESSION_API_GROUP, Dataset
+from ray.data.dataset import (
+    EXPRESSION_API_GROUP,
+    Dataset,
+    _warn_on_ray_remote_args_fn,
+)
 from ray.data.expressions import DownloadExpr, Expr, StarExpr
 from ray.util.annotations import PublicAPI
 
@@ -54,7 +58,7 @@ class GroupedData:
         """Implements an accumulator-based aggregation.
 
         Args:
-            aggs: Aggregations to do.
+            *aggs: Aggregations to do.
 
         Returns:
             The output is an dataset of ``n + 1`` columns where the first column
@@ -63,7 +67,6 @@ class GroupedData:
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        plan = self._dataset._plan.copy()
         op = Aggregate(
             key=self._key,
             aggs=aggs,
@@ -71,10 +74,7 @@ class GroupedData:
             num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
-        return Dataset(
-            plan,
-            logical_plan,
-        )
+        return Dataset._from_parent(self._dataset, logical_plan)
 
     def _aggregate_on(
         self,
@@ -196,14 +196,15 @@ class GroupedData:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             memory: The heap memory in bytes to reserve for each parallel map worker.
+            concurrency: This argument is deprecated. Use ``compute`` argument.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor or task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
-                experimental feature.
-            concurrency: This argument is deprecated. Use ``compute`` argument.
-            ray_remote_args: Additional resource requirements to request from
+                experimental feature. This argument is deprecated and will be removed
+                in Ray 2.64.
+            **ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
 
@@ -216,6 +217,7 @@ class GroupedData:
             :meth:`GroupedData.aggregate`
                 Use this method for common aggregation use cases.
         """
+        _warn_on_ray_remote_args_fn(ray_remote_args_fn)
 
         # Prior to applying map operation we have to shuffle the data based on provided
         # key and (optionally) number of partitions
@@ -228,6 +230,7 @@ class GroupedData:
             shuffled_ds = self._dataset.repartition(1)
         elif self._dataset.context.shuffle_strategy in (
             ShuffleStrategy.HASH_SHUFFLE,
+            ShuffleStrategy.SHUFFLE_V2,
             ShuffleStrategy.GPU_SHUFFLE,
         ):
             num_partitions = (
@@ -290,7 +293,7 @@ class GroupedData:
 
         # NOTE: We set batch_size=None here, so that every batch contains the entire block,
         #       guaranteeing that groups are contained in full (ie not being split)
-        return shuffled_ds._map_batches_without_batch_size_validation(
+        return shuffled_ds.map_batches_internal(
             wrapped_fn,
             batch_size=None,
             compute=compute,

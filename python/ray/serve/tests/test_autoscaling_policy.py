@@ -38,6 +38,7 @@ from ray.serve._private.test_utils import (
     check_num_replicas_lte,
     check_running,
     get_num_alive_replicas,
+    skip_if_haproxy,
     tlog,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, AutoscalingPolicy
@@ -152,7 +153,6 @@ class TestAutoscalingMetrics:
                 "aggregation_function": aggregation_function,
             },
             max_ongoing_requests=25,
-            version="v1",
             # To make the test run faster, we set the graceful_shutdown_timeout_s to 0.1
             graceful_shutdown_timeout_s=0.1,
         )
@@ -298,7 +298,13 @@ class TestAutoscalingMetrics:
                 await signal.wait.remote()
                 return "sup"
 
-        @serve.deployment(graceful_shutdown_timeout_s=1, max_ongoing_requests=50)
+        # Health check often so the controller notices the killed replica (and drops
+        # its handle metrics) in ~1s; the default 10s period is what made this flaky.
+        @serve.deployment(
+            graceful_shutdown_timeout_s=1,
+            max_ongoing_requests=50,
+            health_check_period_s=1,
+        )
         class Router:
             def __init__(self, handle: DeploymentHandle):
                 if use_get_handle_api:
@@ -329,8 +335,10 @@ class TestAutoscalingMetrics:
         print(f"Killing Router ({router_info['actor_id']}) at", time.time())
         ray.kill(router)
 
-        wait_for_condition(check_num_replicas_eq, name="A", target=0)
-        wait_for_condition(check_num_requests_eq, client=client, id=dep_id, expected=0)
+        wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=20)
+        wait_for_condition(
+            check_num_requests_eq, client=client, id=dep_id, expected=0, timeout=20
+        )
 
         # Wait for new Router replica to start, so we avoid potential
         # race conditions during test shutdown.
@@ -338,8 +346,13 @@ class TestAutoscalingMetrics:
         # initializes the test shutdown procedure deletes the Router
         # deployment, replica initializes and tries to get deployment
         # handle to `A` and fails.)
-        wait_for_condition(check_num_replicas_eq, name="Router", target=1)
+        wait_for_condition(check_num_replicas_eq, name="Router", target=1, timeout=20)
 
+    @skip_if_haproxy(
+        "direct ingress makes the ingress replicas self-report a source-agnostic "
+        "ongoing-request count that no handle owns, so killing the caller cannot "
+        "invalidate its still-inflight requests and the deployment never scales to 0"
+    )
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
         reason="Needs metric collection at handle.",
@@ -561,7 +574,6 @@ def test_e2e_scale_up_down_with_0_replica(
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
         max_ongoing_requests=1000,
-        version="v1",
     )
     class A:
         def __call__(self):
@@ -684,7 +696,6 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
         # killed quickly during cleanup.
         graceful_shutdown_timeout_s=1,
         max_ongoing_requests=1000,
-        version="v1",
     )
     class A:
         def __init__(self):

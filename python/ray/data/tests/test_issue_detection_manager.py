@@ -96,6 +96,26 @@ def test_report_issues():
     )
     assert data[1]["event_data"]["message"] == "High memory usage detected"
 
+    # The manager stores raw (issue_type, operator) pairs
+    expected_issues = {
+        (IssueType.HANGING, input_operator),
+        (IssueType.HIGH_MEMORY, map_operator),
+    }
+    assert detector.get_detected_issues() == expected_issues
+
+    # Reporting the same issues again must not grow the deduplicated set.
+    detector._report_issues(
+        [
+            Issue(
+                dataset_name="dataset",
+                operator_id=input_operator.id,
+                issue_type=IssueType.HANGING,
+                message="Hanging detected",
+            ),
+        ]
+    )
+    assert detector.get_detected_issues() == expected_issues
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

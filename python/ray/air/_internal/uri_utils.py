@@ -54,6 +54,11 @@ class URI:
             >>> str(uri.rstrip_subpath(Path("/b/c/.//")))
             '/tmp/a'
 
+        Args:
+            subpath: The subpath to strip from the end of this URI.
+
+        Returns:
+            A new URI with the subpath stripped from the end.
         """
         assert str(self._path).endswith(str(subpath)), (self._path, subpath)
         stripped_path = str(self._path).replace(str(subpath), "")

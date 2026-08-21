@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Security model and best practices for Ray, covering the Dashboard/Jobs/Client trust model, gRPC communication, and token authentication."
+---
+
 (security)=
 
 # Security
@@ -9,7 +15,7 @@ token-auth
 ```
 
 ::::{note}
-For the latest Ray security alerts, see the [Security Advisories](https://github.com/ray-project/ray/security/advisories) page on GitHub.
+Use the [**Report a vulnerability**](https://github.com/ray-project/ray/security/advisories/new) form or email [security@anyscale.com](mailto:security@anyscale.com) to report a new security issue. For the current Ray security alerts, check [Security Advisories](https://github.com/ray-project/ray/security/advisories) on GitHub.
 ::::
 
 Ray is an easy-to-use framework to run arbitrary code across one or more nodes in a Ray Cluster. Ray provides fault-tolerance, optimized scheduling, task orchestration, and auto-scaling to run a given workload.
@@ -21,14 +27,12 @@ Ray offers additional services to improve the developer experience. These servic
 :::{admonition} Ray allows any clients to run arbitrary code. Be extremely careful about what is allowed to access your Ray Cluster
 :class: caution
 
-If you expose these services (Ray Dashboard, Ray Jobs, Ray Client), anybody
-who can access the associated ports can execute arbitrary code on your Ray Cluster. This can happen:
+If you expose these services (Ray Dashboard, Ray Jobs, Ray Client), anybody who can access the associated ports can execute arbitrary code on your Ray Cluster. This can happen:
 * Explicitly: By submitting a Ray Job, or using the Ray Client
 * Indirectly: By calling the Dashboard REST APIs of these services
 * Implicitly: Ray extensively uses cloudpickle for serialization of arbitrary Python objects. See [the pickle documentation](https://docs.python.org/3/library/pickle.html) for more details on Pickle's security model.
 
-The Ray Dashboard, Ray Jobs and Ray Client are developer tools that you should
-only use with the necessary access controls in place to restrict access to trusted parties only.
+The Ray Dashboard, Ray Jobs and Ray Client are developer tools that you should only use with the necessary access controls in place to restrict access to trusted parties only.
 :::
 
 ## Personas

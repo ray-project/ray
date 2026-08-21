@@ -764,8 +764,7 @@ class KafkaDatasource(Datasource):
                                     ):
                                         table = pa.Table.from_pylist(records)
                                         output_buffer.add_block(table)
-                                        while output_buffer.has_next():
-                                            yield output_buffer.next()
+                                        yield from output_buffer.iter_ready_blocks()
                                         records = []
 
                         # Yield any remaining records
@@ -774,8 +773,7 @@ class KafkaDatasource(Datasource):
                             output_buffer.add_block(table)
 
                         output_buffer.finalize()
-                        while output_buffer.has_next():
-                            yield output_buffer.next()
+                        yield from output_buffer.iter_ready_blocks()
 
                     finally:
                         consumer.close()

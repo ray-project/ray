@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Deploy data parallel attention with Ray Serve LLM, covering YAML configuration, required parameters, and replica coordination."
+---
+
 (data-parallel-attention-guide)=
 # Data parallel attention
 
@@ -151,7 +157,7 @@ This configuration creates:
 - **PDDecodeServer**: Orchestrates remote prefill then runs local decode
 - **OpenAI ingress**: Provides OpenAI-compatible API endpoints
 
-This allows you to:
+With this setup, you can:
 - Optimize prefill and decode phases independently based on workload characteristics
 - Use data parallel attention within each phase for increased throughput
 

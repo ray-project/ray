@@ -1,9 +1,9 @@
 """The SGLang engine processor."""
 
+import hashlib
 import logging
 from typing import Any, Dict, Optional
 
-import transformers
 from pydantic import Field, root_validator
 
 import ray
@@ -15,7 +15,6 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.processor.base import (
-    DEFAULT_MAX_TASKS_IN_FLIGHT,
     OfflineProcessorConfig,
     Processor,
     ProcessorBuilder,
@@ -24,12 +23,6 @@ from ray.llm._internal.batch.processor.utils import (
     build_cpu_stage_map_kwargs,
     get_value_or_fallback,
 )
-from ray.llm._internal.batch.stages import (
-    ChatTemplateStage,
-    DetokenizeStage,
-    SGLangEngineStage,
-    TokenizeStage,
-)
 from ray.llm._internal.batch.stages.configs import (
     ChatTemplateStageConfig,
     DetokenizeStageConfig,
@@ -37,10 +30,6 @@ from ray.llm._internal.batch.stages.configs import (
     resolve_stage_config,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
-from ray.llm._internal.common.utils.download_utils import (
-    NodeModelDownloadable,
-    download_model_files,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +102,20 @@ def build_sglang_engine_processor(
     Returns:
         The constructed processor.
     """
+    # Defer SGLang and Transformers imports until this processor is constructed.
+    import transformers
+
+    from ray.llm._internal.batch.stages import (
+        ChatTemplateStage,
+        DetokenizeStage,
+        SGLangEngineStage,
+        TokenizeStage,
+    )
+    from ray.llm._internal.common.utils.download_utils import (
+        NodeModelDownloadable,
+        download_model_files,
+    )
+
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
@@ -137,9 +140,7 @@ def build_sglang_engine_processor(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
                     model=chat_template_stage_cfg.model_source,
-                    chat_template=get_value_or_fallback(
-                        chat_template_stage_cfg.chat_template, config.chat_template
-                    ),
+                    chat_template=chat_template_stage_cfg.chat_template,
                     chat_template_kwargs=get_value_or_fallback(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
@@ -152,7 +153,7 @@ def build_sglang_engine_processor(
 
     # Resolve and build TokenizeStage if enabled
     tokenize_stage_cfg = resolve_stage_config(
-        getattr(config, "tokenize_stage", config.tokenize),
+        config.tokenize_stage,
         TokenizerStageConfig,
         processor_defaults,
     )
@@ -184,9 +185,7 @@ def build_sglang_engine_processor(
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
                     **config.get_concurrency(autoscaling_enabled=True),
-                    max_tasks_in_flight_per_actor=config.experimental.get(
-                        "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
-                    ),
+                    max_tasks_in_flight_per_actor=config.max_tasks_in_flight_per_actor,
                 ),
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
@@ -200,7 +199,7 @@ def build_sglang_engine_processor(
 
     # Resolve and build DetokenizeStage if enabled
     detokenize_stage_cfg = resolve_stage_config(
-        getattr(config, "detokenize_stage", config.detokenize),
+        config.detokenize_stage,
         DetokenizeStageConfig,
         processor_defaults,
     )
@@ -253,6 +252,9 @@ def build_sglang_engine_processor(
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
         BatchModelTelemetry(
+            model_id_hash=hashlib.sha256(
+                config.model_source.encode("utf-8")
+            ).hexdigest(),
             processor_config_name=type(config).__name__,
             model_architecture=architecture,
             batch_size=config.batch_size,

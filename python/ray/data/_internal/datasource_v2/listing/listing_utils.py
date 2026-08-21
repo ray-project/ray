@@ -16,7 +16,7 @@ from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.datasource.partitioning import PathPartitionFilter
+    from ray.data.expressions import Expr
 
 
 def partition_files(
@@ -62,6 +63,9 @@ def list_files_for_each_block(
     file_extensions: Optional[List[str]] = None,
     partition_filter: Optional["PathPartitionFilter"] = None,
     preserve_order: bool = False,
+    predicate: Optional["Expr"] = None,
+    limit: Optional[int] = None,
+    projected_columns: Optional[List[str]] = None,
 ) -> Iterable[Block]:
     """Expand path blocks into ``FileManifest`` blocks.
 
@@ -71,6 +75,11 @@ def list_files_for_each_block(
     Pruners are constructed once per task from ``file_extensions`` /
     ``partition_filter`` — keeps pruner construction out of the
     ``_read_datasource_v2`` entry point.
+
+    Pushed-down ``predicate`` / ``limit`` / ``projected_columns`` are forwarded
+    to the indexer; metadata-aware indexers (e.g. the footer-based Parquet
+    indexer) use them to skip row groups, stop early, and size projected
+    columns, while the plain indexer ignores them.
     """
     pruners = _build_pruners(file_extensions, partition_filter)
     for block in blocks:
@@ -79,6 +88,9 @@ def list_files_for_each_block(
             filesystem=filesystem,
             pruners=pruners,
             preserve_order=preserve_order,
+            predicate=predicate,
+            limit=limit,
+            projected_columns=projected_columns,
         ):
             if len(manifest) > 0:
                 yield manifest.as_block()
@@ -120,40 +132,37 @@ def sample_files(
     pruners: Optional[List[FilePruner]] = None,
     max_files: int = 16,
 ) -> FileManifest:
-    """Drive the indexer until up to ``max_files`` files arrive; return them.
+    """List up to ``max_files`` files and return them as a whole-file manifest.
 
-    Used for driver-side schema inference in ``_read_datasource_v2``.
-    Sampling more than one file lets callers unify schemas (e.g., if the
-    first file has an all-null column, later files' non-null types can
-    promote it). No caching — the returned manifest is discarded after
-    schema inference, and the ``ListFiles`` op lists the same paths
-    again on workers at execution time.
+    Used for driver-side schema inference in ``_read_datasource_v2``. Sampling
+    more than one file lets callers unify schemas (e.g., if the first file has an
+    all-null column, later files' non-null types can promote it). No caching --
+    the returned manifest is discarded after schema inference, and the
+    ``ListFiles`` op lists the same paths again on workers at execution time.
+
+    Uses ``list_file_infos`` (raw path + size), not ``list_files``, so that
+    metadata-heavy indexers (e.g. the footer-based Parquet indexer) don't do
+    their footer-read + bin-pack work on the driver just to sample a schema --
+    schema inference only needs the paths.
     """
     assert max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
-    collected: List[FileManifest] = []
-    collected_rows = 0
-    for manifest in indexer.list_files(
+    sampled_paths: List[str] = []
+    sampled_sizes: List[int] = []
+    for file_info in indexer.list_file_infos(
         paths_column,
         filesystem=filesystem,
         pruners=pruners or [],
         preserve_order=True,
     ):
-        if len(manifest) == 0:
+        if file_info.size is None:
             continue
-        remaining = max_files - collected_rows
-        if len(manifest) <= remaining:
-            collected.append(manifest)
-            collected_rows += len(manifest)
-        else:
-            collected.append(
-                FileManifest(
-                    BlockAccessor.for_block(manifest.as_block()).slice(0, remaining)
-                )
-            )
-            collected_rows = max_files
-        if collected_rows >= max_files:
+        sampled_paths.append(file_info.path)
+        sampled_sizes.append(file_info.size)
+        if len(sampled_paths) >= max_files:
             break
-    if not collected:
-        return FileManifest.construct_manifest(paths=[], sizes=[])
-    return FileManifest.concat(collected)
+    return FileManifest.construct_manifest(
+        paths=sampled_paths,
+        sizes=sampled_sizes,
+        chunk_metadatas=[None] * len(sampled_paths),
+    )

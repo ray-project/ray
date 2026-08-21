@@ -1,7 +1,10 @@
+import contextlib
 import os
 import pathlib
+import pickle
 import shutil
 import time
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Union
 from unittest.mock import MagicMock
@@ -28,6 +31,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
@@ -41,6 +45,183 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def use_datasource_v2(request, restore_data_context):
+    restore_data_context.use_datasource_v2 = request.param
+
+
+def test_read_parquet_allows_pickle_object_columns_with_env_var(
+    tmp_path, shutdown_only, use_datasource_v2, monkeypatch
+):
+    # Set the environment variable on both the driver and the worker processes.
+    monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
+    ray.init(runtime_env={"env_vars": {"RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR": "1"}})
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps({"key": "value"})], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    rows = ds.take_all()
+
+    assert len(rows) == 1
+    assert rows[0]["col"] == {"key": "value"}
+
+
+def test_read_parquet_rejects_pickle_object_columns(
+    tmp_path, ray_start_regular_shared, use_datasource_v2
+):
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    table = pa.table({"col": pa.ExtensionArray.from_storage(ext_type, storage)})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
+def test_read_parquet_rejects_nested_pickle_object_columns(
+    tmp_path, ray_start_regular_shared, use_datasource_v2
+):
+    # A pickled-object column nested inside a `list<...>` must trip the guard
+    # just like a top-level one; otherwise nesting bypasses the check.
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    ext_array = pa.ExtensionArray.from_storage(ext_type, storage)
+    list_array = pa.ListArray.from_arrays([0, 1], ext_array)
+    table = pa.table({"col": list_array})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
+def test_write_parquet_handles_per_block_column_reorder(
+    ray_start_regular_shared, tmp_path
+):
+    # When the Write task receives multiple blocks whose schemas share the same
+    # field names in a different order, `pa.unify_schemas` fixes the column
+    # order from the first block. Previously the per-block `Table.cast` was
+    # positional and rejected the second block; ParquetDatasink now reorders
+    # columns by name before casting.
+    from ray.data._internal.datasource.parquet_datasink import (
+        WRITE_UUID_KWARG_NAME,
+        ParquetDatasink,
+    )
+    from ray.data._internal.execution.interfaces import TaskContext
+
+    t1 = pa.table({"x": [1], "y": [2]})
+    t2 = pa.table({"y": [3], "x": [4]})
+    sink = ParquetDatasink(path=str(tmp_path))
+    ctx = TaskContext(task_idx=0, op_name="Write")
+    ctx.kwargs = {WRITE_UUID_KWARG_NAME: "wuid"}
+
+    sink.write([t1, t2], ctx)
+
+    out = pq.read_table(str(tmp_path))
+    assert sorted(out.column_names) == ["x", "y"]
+    assert out.num_rows == 2
+    # Pair each row's (x, y) regardless of the unified output order.
+    assert sorted(zip(out.column("x").to_pylist(), out.column("y").to_pylist())) == [
+        (1, 2),
+        (4, 3),
+    ]
+
+
+def test_widen_offset_overflowing_columns(monkeypatch):
+    # Unit test for the schema-promotion helper. Only `string`/`binary` columns
+    # whose combined size across the blocks exceeds the int32 offset limit
+    # (2 GiB) should be promoted to their `large_*` variant; everything else is
+    # left untouched. The real limit is impractical to allocate, so patch the
+    # threshold low and check the decision boundary directly.
+    from ray.data._internal.datasource import parquet_datasink
+    from ray.data._internal.datasource.parquet_datasink import (
+        _widen_offset_overflowing_columns,
+    )
+
+    monkeypatch.setattr(parquet_datasink, "INT32_MAX", 1024)
+
+    big, tiny = "z" * 600, "x"
+    t1 = pa.table(
+        {
+            "id": pa.array([0, 1]),  # not variable-width
+            "big_str": pa.array([big, big]),  # combined > 1024 -> promote
+            "big_bin": pa.array([big.encode(), big.encode()]),  # -> large_binary
+            "small_str": pa.array([tiny, tiny]),  # combined < 1024 -> untouched
+        }
+    )
+    t2 = pa.table(
+        {
+            "id": pa.array([2, 3]),
+            "big_str": pa.array([big, big]),
+            "big_bin": pa.array([big.encode(), big.encode()]),
+            "small_str": pa.array([tiny, tiny]),
+        }
+    )
+    schema = pa.unify_schemas([t1.schema, t2.schema])
+
+    widened = _widen_offset_overflowing_columns([t1, t2], schema)
+
+    assert widened.field("big_str").type == pa.large_string()
+    assert widened.field("big_bin").type == pa.large_binary()
+    assert widened.field("small_str").type == pa.string()
+    assert widened.field("id").type == pa.int64()
+
+    # When nothing overflows, the original schema is returned unchanged.
+    monkeypatch.setattr(parquet_datasink, "INT32_MAX", 1 << 40)
+    assert _widen_offset_overflowing_columns([t1, t2], schema) is schema
+
+
+def test_write_parquet_string_column_over_2gib_e2e(ray_start_regular_shared, tmp_path):
+    # End-to-end through the ray.data API: a dataset whose `payload` column, once
+    # the writer coalesces blocks into a single row group (forced by
+    # `min_rows_per_file`), exceeds Arrow's 2 GiB int32-offset `string` limit.
+    # Each individual value stays small, so only the *cumulative* size overflows.
+    #
+    # Pre-fix the write task died with an offset-overflow / column-length
+    # mismatch; ParquetDatasink now promotes the column to `large_string`.
+    num_rows, row_bytes = 1100, 2_000_000  # ~2.05 GiB combined, just over 2 GiB
+
+    def add_payload(batch):
+        # Reusing one string keeps driver-side memory ~row_bytes; Ray
+        # materializes per-row copies into the object store.
+        batch["payload"] = ["z" * row_bytes] * len(batch["id"])
+        return batch
+
+    ds = ray.data.range(num_rows).map_batches(add_payload, batch_format="numpy")
+    # min_rows_per_file makes the write coalesce all blocks into one row group.
+    ds.write_parquet(str(tmp_path), min_rows_per_file=num_rows)
+
+    out = pq.read_table(str(tmp_path), columns=["id"])
+    assert out.num_rows == num_rows
+    # The oversized variable-width column was promoted to dodge int32 offsets.
+    full_schema = pq.read_schema(str(next(pathlib.Path(tmp_path).glob("*.parquet"))))
+    assert full_schema.field("payload").type == pa.large_string()
 
 
 def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
@@ -120,16 +301,27 @@ def test_include_paths(
 
 
 def test_include_paths_with_column_projection(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
     pq.write_table(table, path)
 
-    # Under V1, ``include_paths=True`` implicitly retained ``path`` through
-    # ``.select_columns``. V2 respects ``.select_columns`` literally — the
-    # caller must include ``"path"`` explicitly when they want it.
-    ds = ray.data.read_parquet(path, include_paths=True).select_columns(["id", "path"])
+    # Exercises the deprecated ``columns=`` arg: V1 retained ``"path"``
+    # implicitly under ``include_paths=True``, and read_api preserves that
+    # by appending it to the projection on the caller's behalf. The
+    # deprecation warning is emitted only on the V2 path.
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        warn_ctx = pytest.warns(
+            DeprecationWarning, match="`columns=` on `read_parquet`"
+        )
+    else:
+        warn_ctx = contextlib.nullcontext()
+    with warn_ctx:
+        ds = ray.data.read_parquet(path, columns=["id"], include_paths=True)
 
     schema_names = ds.schema().names
     assert "id" in schema_names, f"'id' column not found in schema: {schema_names}"
@@ -213,13 +405,27 @@ def test_include_row_hash_same_data_different_files(
 
 
 def test_include_row_hash_with_column_projection(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    use_datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
     pq.write_table(table, path)
 
-    ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
+    # Exercises the deprecated ``columns=`` arg: V1 retained ``"row_hash"``
+    # implicitly under ``include_row_hash=True``, and read_api preserves
+    # that by appending it to the projection on the caller's behalf. The
+    # deprecation warning is emitted only on the V2 path.
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        warn_ctx = pytest.warns(
+            DeprecationWarning, match="`columns=` on `read_parquet`"
+        )
+    else:
+        warn_ctx = contextlib.nullcontext()
+    with warn_ctx:
+        ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
     schema_names = ds.schema().names
     assert "a" in schema_names
     assert "b" not in schema_names
@@ -274,7 +480,9 @@ def test_include_row_hash_existing_column_with_projection(
     table = pa.Table.from_pydict({"val": [1, 2], "row_hash": [10, 20]})
     pq.write_table(table, path)
 
-    ds = ray.data.read_parquet(path, columns=["val"], include_row_hash=True)
+    ds = ray.data.read_parquet(path, include_row_hash=True).select_columns(
+        ["val", "row_hash"]
+    )
     schema_names = ds.schema().names
     assert "val" in schema_names
     assert "row_hash" in schema_names
@@ -479,6 +687,8 @@ def test_parquet_read_partitioned(
 def test_parquet_read_partitioned_with_filter(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
+    from ray.data.expressions import col, lit
+
     df = pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
     )
@@ -491,8 +701,8 @@ def test_parquet_read_partitioned_with_filter(
 
     # 2 partitions, 1 empty partition, 1 block/read task
 
-    ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=1, filter=(pds.field("two") == "a")
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=1).filter(
+        expr=col("two") == lit("a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -501,8 +711,8 @@ def test_parquet_read_partitioned_with_filter(
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
-    ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=2, filter=(pds.field("two") == "a")
+    ds = ray.data.read_parquet(str(tmp_path), override_num_blocks=2).filter(
+        expr=col("two") == lit("a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -775,10 +985,6 @@ def test_projection_pushdown_on_count(ray_start_regular_shared, temp_dir):
 def test_parquet_read_with_udf(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
-        )
     one_data = list(range(6))
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})
     table = pa.Table.from_pandas(df)
@@ -1188,8 +1394,11 @@ def test_parquet_roundtrip(
     assert read_data == written_data
 
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    for entry in ds2._execute().blocks:
+        # pyrefly: ignore[no-matching-overload]
+        BlockAccessor.for_block(
+            ray.get(entry.ref)
+        ).size_bytes() == entry.metadata.size_bytes
 
     if fs is None:
         shutil.rmtree(path)
@@ -1361,10 +1570,6 @@ def test_tensors_in_tables_parquet(
     """This test verifies both V1 and V2 Tensor Type extensions of
     Arrow Array types
     """
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
-        )
     new_tensor_format = tensor_format_context
 
     num_rows = 10_000
@@ -1453,10 +1658,6 @@ def test_tensors_in_tables_parquet(
 def test_multiple_files_with_ragged_arrays(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
-        )
     # Test reading multiple parquet files, each of which has different-shaped
     # ndarrays in the same column.
     # See https://github.com/ray-project/ray/issues/47960 for more context.
@@ -1485,8 +1686,10 @@ def test_multiple_files_with_ragged_arrays(
 def test_count_with_filter(
     ray_start_regular_shared, target_max_block_size_infinite_or_default
 ):
-    ds = ray.data.read_parquet(
-        "example://iris.parquet", filter=(pds.field("sepal.length") < pds.scalar(0))
+    from ray.data.expressions import col, lit
+
+    ds = ray.data.read_parquet("example://iris.parquet").filter(
+        expr=col("sepal.length") < lit(0)
     )
     assert ds.count() == 0
     assert isinstance(ds.count(), int)
@@ -1700,6 +1903,34 @@ def test_read_null_data_in_first_file(
     ]
 
 
+def test_read_parquet_does_not_call_infer_schema(
+    tmp_path, monkeypatch, ray_start_regular_shared, use_datasource_v2
+):
+    """The V2 read path should not call _infer_schema, which can cause O(N)
+    metadata reads. V1 still calls it to reconcile per-file schemas."""
+
+    num_files = 10
+    for i in range(num_files):
+        cols = {"data": [0]}
+        if i == 0:
+            cols["null_col"] = pa.nulls(1)
+        else:
+            cols["null_col"] = [1]
+        pq.write_table(pa.table(cols), tmp_path / f"part_{i:05d}.parquet")
+
+    mock = MagicMock()
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.parquet_datasource._infer_schema",
+        mock,
+    )
+    mock.return_value = pa.schema({"data": pa.int64()})
+    ray.data.read_parquet(str(tmp_path))
+    if ray.data.DataContext.get_current().use_datasource_v2:
+        mock.assert_not_called()
+    else:
+        mock.assert_called()
+
+
 def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
     """Verify row_group_size is respected."""
 
@@ -1841,7 +2072,9 @@ def test_write_partition_cols_with_min_rows_per_file(
 
     ds = ray.data.from_pandas(df)
     ds.write_parquet(
-        tmp_path, partition_cols=["partition_col"], min_rows_per_file=min_rows_per_file
+        tmp_path,
+        partition_cols=["partition_col"],
+        min_rows_per_file=min_rows_per_file,
     )
 
     # Check partition directories exist
@@ -1897,6 +2130,38 @@ def test_write_partition_cols_with_min_rows_per_file(
     # Align column order and compare.
     actual_df = actual_df[expected_df.columns]
     pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+def test_write_partition_cols_with_num_rows_per_file_warns(
+    tmp_path,
+    ray_start_regular_shared,
+):
+    ds = ray.data.from_items(
+        [{"partition": index % 2, "value": index} for index in range(10)]
+    )
+
+    with pytest.warns(
+        DeprecationWarning,
+        match=r"will no longer be supported after February 2027",
+    ):
+        ds.write_parquet(tmp_path, partition_cols=["partition"], num_rows_per_file=5)
+
+
+def test_write_empty_partition_cols_with_min_rows_per_file_does_not_warn(
+    tmp_path,
+    ray_start_regular_shared,
+):
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        ray.data.range(10).write_parquet(
+            tmp_path, partition_cols=[], min_rows_per_file=5
+        )
+
+    assert not any(
+        issubclass(warning.category, DeprecationWarning)
+        and "non-empty `partition_cols`" in str(warning.message)
+        for warning in caught_warnings
+    )
 
 
 @pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])
@@ -2846,7 +3111,6 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert not ds.has_started_execution
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -2923,7 +3187,6 @@ class TestParquetFragmentBatchSizeCoercion:
                     fragment,
                     schema=schema,
                     data_columns=["x"],
-                    data_columns_rename_map=None,
                     partition_columns=None,
                     partitioning=Partitioning("hive"),
                     to_batches_kwargs=to_batches_kwargs,
@@ -3024,11 +3287,6 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     Regression test for https://github.com/ray-project/ray/issues/61675
     See also: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
     """
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "Nested-type (ARROW-5030) fallback reader is not yet ported to "
-            "the DataSourceV2 path."
-        )
     data_dir, _, num_rows, schema = nested_parquet_exceeding_2gb
     ds = ray.data.read_parquet(data_dir)
     total_rows = 0
@@ -3037,6 +3295,51 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
         assert "id" in batch.column_names
         assert "nested_col" in batch.column_names
     assert total_rows == num_rows
+
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("16.0.0"),
+    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
+)
+@pytest.mark.timeout(300)
+def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_column(
+    ray_start_regular_shared, nested_parquet_exceeding_2gb
+):
+    """When the projection excludes the large nested column but the filter
+    references it, the V2 reader must still trigger the fallback because the
+    scanner would otherwise hit ARROW-5030 while decoding the column for
+    row-level filter evaluation.
+    """
+    import pyarrow.dataset as pds
+
+    from ray.data import DataContext
+    from ray.data._internal.datasource.parquet_datasource import (
+        _needs_nested_type_fallback,
+        _resolve_read_columns,
+    )
+
+    if not DataContext.get_current().use_datasource_v2:
+        pytest.skip("V2-only: fallback decision lives in ParquetFileReader (V2).")
+
+    _, file_path, _, _ = nested_parquet_exceeding_2gb
+
+    fragment = next(pds.dataset(file_path, format="parquet").get_fragments())
+
+    # Sanity: the fragment has a flat column we could project alone without
+    # triggering the fallback (covered by the sibling _skipped test).
+    assert _needs_nested_type_fallback(fragment, columns=["id"]) is False
+
+    # When the projection excludes ``nested_col`` but the filter references
+    # it, the V2 reader resolves the union of projected + filter-referenced
+    # columns before deciding whether to use the fallback. That union must
+    # include ``nested_col`` so the fallback is triggered.
+    read_columns = _resolve_read_columns(
+        columns=["id"],
+        filter_expr=pds.field("nested_col").is_valid(),
+        filter_columns=["nested_col"],
+    )
+    assert read_columns is not None and "nested_col" in read_columns
+    assert _needs_nested_type_fallback(fragment, read_columns) is True
 
 
 @pytest.mark.skipif(
@@ -3081,6 +3384,42 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         assert total_rows == num_rows
         # The fallback batch-size helper should never have been called.
         mock_safe.assert_not_called()
+
+
+def test_parquet_sampling_fails_on_permanent_error(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
+    """Test that parquet sampling does not hang on permanent OSError (e.g.,
+    permission denied). Instead, it should fail with a clear error after
+    limited retries. Regression test for #57278."""
+    from unittest.mock import patch
+
+    # Write a valid parquet file so that file/fragment discovery succeeds and
+    # the failure is isolated to the schema/encoding sampling step.
+    table = pa.table({"col": [1, 2, 3]})
+    pq.write_table(table, os.path.join(tmp_path, "data.parquet"))
+
+    def _raise_permission_error(*args, **kwargs):
+        # PermissionError is a subclass of OSError, simulating invalid
+        # credentials against an object store.
+        raise PermissionError("Access Denied: invalid credentials")
+
+    if DataContext.get_current().use_datasource_v2:
+        # V2 samples schema on the driver by reading Parquet footers via
+        # ``pq.read_schema``; a permanent OSError there must propagate.
+        target = "pyarrow.parquet.read_schema"
+    else:
+        # V1 samples files through a remote task wrapping
+        # ``_fetch_parquet_file_info``; retries are capped so the error
+        # surfaces instead of hanging forever.
+        target = (
+            "ray.data._internal.datasource.parquet_datasource."
+            "_fetch_parquet_file_info"
+        )
+
+    with patch(target, new=_raise_permission_error):
+        with pytest.raises(Exception, match="Access Denied"):
+            ray.data.read_parquet(str(tmp_path)).materialize()
 
 
 if __name__ == "__main__":

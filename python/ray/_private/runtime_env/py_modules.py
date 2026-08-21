@@ -4,10 +4,10 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    Protocol,
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
@@ -17,11 +17,11 @@ from ray._private.runtime_env.packaging import (
     install_wheel_package,
     is_whl_uri,
     package_exists,
-    parse_uri,
     upload_package_if_needed,
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.protocol import Protocol
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
@@ -36,12 +36,13 @@ def _check_is_uri(s: str) -> bool:
     except ValueError:
         protocol, path = None, None
 
-    if (
-        protocol in Protocol.remote_protocols()
-        and not path.endswith(".zip")
-        and not path.endswith(".whl")
+    supported_extensions = (".zip", ".whl", ".tar.gz", ".tgz")
+    if protocol in Protocol.remote_protocols() and not any(
+        path.endswith(ext) for ext in supported_extensions
     ):
-        raise ValueError("Only .zip or .whl files supported for remote URIs.")
+        raise ValueError(
+            "Only .zip, .whl, .tar.gz, and .tgz files supported for remote URIs."
+        )
 
     return protocol is not None
 
@@ -49,7 +50,7 @@ def _check_is_uri(s: str) -> bool:
 def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
     include_gitignore: bool,
-    scratch_dir: Optional[str] = os.getcwd(),
+    scratch_dir: Optional[str] = None,
     logger: Optional[logging.Logger] = default_logger,
     upload_fn=None,
 ) -> Dict[str, Any]:
@@ -111,6 +112,8 @@ def upload_py_modules_if_needed(
                 else:
                     module_uri = get_uri_for_file(module_path)
                 if upload_fn is None:
+                    if scratch_dir is None:
+                        scratch_dir = os.getcwd()
                     try:
                         upload_package_if_needed(
                             module_uri,

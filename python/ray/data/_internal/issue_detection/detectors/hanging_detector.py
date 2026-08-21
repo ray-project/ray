@@ -130,9 +130,9 @@ class HangingExecutionIssueDetector(IssueDetector):
     ) -> Issue:
 
         hes = hanging_execution_state
-        op_task_stats = operator.metrics._op_task_duration_stats
-        avg_duration = op_task_stats.mean()
-        stdev = op_task_stats.stddev()
+        op_task_stats = operator.metrics.op_task_duration_stats
+        avg_duration = op_task_stats.mean
+        stdev = op_task_stats.stddev
 
         meta = hes.task_metadata
         task_info = ""
@@ -206,14 +206,14 @@ class HangingExecutionIssueDetector(IssueDetector):
                 continue
 
             op_metrics = operator.metrics
-            op_task_stats = op_metrics._op_task_duration_stats
+            op_task_stats = op_metrics.op_task_duration_stats
             # 1) Skip if not reached minimum task count
-            if op_task_stats.count() < self._op_task_stats_min_count:
+            if op_task_stats.num_samples < self._op_task_stats_min_count:
                 continue
 
             # 2) Skip if under threshold of mean + z-score * stddev
-            mean = op_task_stats.mean()
-            stddev = op_task_stats.stddev()
+            mean = op_task_stats.mean
+            stddev = op_task_stats.stddev
             threshold = mean + self._op_task_stats_std_factor_threshold * stddev
 
             for task_idx, task_info in op_metrics._running_tasks.items():

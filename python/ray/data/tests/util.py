@@ -13,6 +13,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.metadata_fetcher import (
+    InlineMetadataFetcher,
+    ThreadedMetadataFetcher,
+)
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformCallable,
@@ -20,6 +24,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data.block import Block
+from ray.data.expressions import Expr
 
 
 @ray.remote
@@ -83,6 +88,29 @@ def extract_values(col_name, tuples):
     return [t[col_name] for t in tuples]
 
 
+def assert_exprs_equal(actual: List[Expr], expected: List[Expr]):
+    """Assert two expression lists match element-wise.
+
+    ``Expr`` overloads ``==`` to build a comparison expression (e.g.
+    ``col("a") == 5``), so it can't be used to compare exprs for equality;
+    use ``structurally_equals`` instead.
+    """
+    actual_names = [e.name for e in actual]
+    expected_names = [e.name for e in expected]
+    assert len(actual) == len(expected), (actual_names, expected_names)
+    assert all(a.structurally_equals(b) for a, b in zip(actual, expected)), (
+        actual_names,
+        expected_names,
+    )
+
+
+def fetcher_has_pending_work(fetcher: ThreadedMetadataFetcher) -> bool:
+    """Whether a ``ThreadedMetadataFetcher`` still has a submitted pair to emit
+    or a postponed done-callback to fire. Test-only poll helper (peeks at the
+    fetcher's internals); call from the same thread that drives the fetcher."""
+    return any(fetcher._fifos.values()) or bool(fetcher._drained_tasks)
+
+
 def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
     """Run tasks of a PhysicalOperator synchronously.
 
@@ -103,7 +131,7 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
                 # Read all currently available output from the streaming generator
-                task.on_data_ready(max_bytes_to_read=None)
+                task.on_data_ready(None, InlineMetadataFetcher())
                 # Only remove the task when the generator has been fully exhausted
                 if task.has_finished:
                     tasks.remove(task)
@@ -137,7 +165,7 @@ def run_one_op_task(op):
         tasks = [task]
 
         if isinstance(task, DataOpTask):
-            task.on_data_ready(None)
+            task.on_data_ready(None, InlineMetadataFetcher())
             if task.has_finished:
                 tasks.remove(task)
         else:

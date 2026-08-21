@@ -22,6 +22,7 @@ package(
 
 exports_files([
     ".rayciversion",
+    "python/setup.py",
     "ray-images.json",
 ])
 
@@ -86,9 +87,11 @@ ray_cc_library(
         ],
     ),
     deps = [
+        "//src/ray/asio:periodical_runner",
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/pubsub:fake_publisher",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -221,7 +224,7 @@ filegroup(
         "python/ray/*.py",
         "python/ray/cloudpickle/*.py",
         "python/ray/dashboard/**/*.py",
-        "python/ray/experimental/*.py",
+        "python/ray/experimental/**/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
     ]) + [

@@ -2,10 +2,8 @@ import json
 import os
 
 import pytest
-from google.protobuf.json_format import MessageToDict, MessageToJson
 
 import ray
-from ray.train.v2._internal.state.export import _dict_to_human_readable_struct
 from ray.train.v2._internal.state.schema import (
     RunAttemptStatus,
     RunStatus,
@@ -244,122 +242,6 @@ def test_export_train_run_attempt(enable_export_api_write):
     assert len(data) == 1
     assert data[0]["source_type"] == "EXPORT_TRAIN_RUN_ATTEMPT"
     assert data[0]["event_data"]["status"] == "RUNNING"
-
-
-def test_dict_to_human_readable_struct_complex_dict():
-    class UserObj:
-        def __init__(self):
-            self.a = 1
-            self.b = "hello"
-
-        def __str__(self) -> str:
-            return "UserObj(a=1, b=hello)"
-
-    obj = {
-        "user_obj": UserObj(),
-        "nested_dict": {"level1": 2},
-        "list": [UserObj(), 3, 4],
-        "json_native_types": {
-            "str": "t",
-            "int": 1,
-            "float": 1.5,
-            "bool": True,
-            "none": None,
-        },
-        42: "integer_key_value",
-    }
-
-    expected = {
-        "user_obj": "UserObj(a=1, b=hello)",
-        "nested_dict": {"level1": 2},
-        "list": [
-            "UserObj(a=1, b=hello)",
-            3,
-            4,
-        ],
-        "json_native_types": {
-            "str": "t",
-            "int": 1,
-            "float": 1.5,
-            "bool": True,
-            "none": None,
-        },
-        "42": "integer_key_value",
-    }
-
-    assert json.loads(MessageToJson(_dict_to_human_readable_struct(obj))) == expected
-
-
-def test_dict_to_human_readable_struct_max_depth():
-    """Test that _dict_to_human_readable_struct respects the max_depth argument.
-
-    - `max_depth <= 0` raises.
-    - Depth counts only dict nesting; lists recurse at the same depth as their parent,
-      so a list of primitives is always shown in full regardless of depth.
-    - Positive depths truncate nested dicts and custom objects appropriately.
-    """
-
-    class CustomObj:
-        def __str__(self) -> str:
-            return "CustomObj"
-
-    obj = {
-        "native": 42,
-        "sequence": [1, CustomObj()],
-        "nested": {"inner": {"deep": 99}},
-        "obj": CustomObj(),
-        "inf_float": float("inf"),
-    }
-
-    # max_depth <= 0 raises
-    with pytest.raises(ValueError, match="max_depth must be greater than 0"):
-        _dict_to_human_readable_struct(obj, max_depth=0)
-
-    # max_depth=2: lists shown in full (lists don't consume depth);
-    # dict nested 2 levels deep is truncated at the innermost level
-    assert json.loads(
-        MessageToJson(_dict_to_human_readable_struct(obj, max_depth=2))
-    ) == {
-        "native": 42,
-        "nested": {"inner": "..."},
-        "obj": "CustomObj",
-        "sequence": [1, "CustomObj"],
-        "inf_float": "inf",
-    }
-
-    # max_depth=3: all dict nesting fits within depth; full output
-    assert json.loads(
-        MessageToJson(_dict_to_human_readable_struct(obj, max_depth=3))
-    ) == {
-        "native": 42,
-        "nested": {"inner": {"deep": 99}},
-        "obj": "CustomObj",
-        "sequence": [1, "CustomObj"],
-        "inf_float": "inf",
-    }
-
-
-def test_dict_to_human_readable_struct_non_dict_raises():
-    """Test that _dict_to_human_readable_struct raises ValueError for non-dict inputs."""
-    with pytest.raises(ValueError, match="argument must be a dictionary"):
-        _dict_to_human_readable_struct([1, 2, 3])
-
-    with pytest.raises(ValueError, match="argument must be a dictionary"):
-        _dict_to_human_readable_struct("a string")
-
-    with pytest.raises(ValueError, match="argument must be a dictionary"):
-        _dict_to_human_readable_struct(42)
-
-
-def test_dict_to_human_readable_struct_conversion_error_falls_back_to_empty():
-    """Test that when conversion raises unexpectedly, an empty Struct is returned."""
-
-    class BrokenStr:
-        def __str__(self):
-            raise RuntimeError("__str__ failed")
-
-    result = _dict_to_human_readable_struct({"key": BrokenStr()})
-    assert MessageToDict(result) == {}
 
 
 def test_export_oneof_datasets_to_split(enable_export_api_write):
@@ -637,9 +519,7 @@ def test_export_optional_fields(enable_export_api_write):
     run_with_optional.run_settings.run_config.checkpoint_config.checkpoint_score_attribute = (
         "score"
     )
-    run_with_optional.run_settings.run_config.storage_filesystem = (
-        "<pyarrow._fs.S3FileSystem object>"
-    )
+    run_with_optional.run_settings.run_config.storage_filesystem = "S3FileSystem"
 
     # Create attempt with optional fields
     attempt_with_optional = create_mock_train_run_attempt(

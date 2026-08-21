@@ -47,21 +47,21 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
     absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
-  if (options.label_domain_scheduling_strategy_ != LabelDomainSchedulingStrategy::NONE) {
+  if (options.topology_scheduling_strategy_ != TopologySchedulingStrategy::NONE) {
     NodeScheduleFn node_schedule_fn =
         [this](const std::vector<const ResourceRequest *> &reqs,
                SchedulingOptions opts,
                absl::flat_hash_set<scheduling::NodeID> nodes) {
-          opts.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::NONE;
+          opts.topology_scheduling_strategy_ = TopologySchedulingStrategy::NONE;
           return this->Schedule(reqs, std::move(opts), std::move(nodes));
         };
-    switch (options.label_domain_scheduling_strategy_) {
-    case LabelDomainSchedulingStrategy::STRICT_PACK:
-      return label_domain_strict_pack_policy_.Schedule(
+    switch (options.topology_scheduling_strategy_) {
+    case TopologySchedulingStrategy::STRICT_PACK:
+      return topology_strict_pack_policy_.Schedule(
           resource_request_list, options, std::move(candidate_nodes), node_schedule_fn);
     default:
-      RAY_LOG(FATAL) << "Unsupported label domain scheduling strategy: "
-                     << static_cast<int>(options.label_domain_scheduling_strategy_);
+      RAY_LOG(FATAL) << "Unsupported topology scheduling strategy: "
+                     << static_cast<int>(options.topology_scheduling_strategy_);
     }
     UNREACHABLE;
   }
