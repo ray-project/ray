@@ -87,6 +87,10 @@ SHAPE_BINS = {
     # sizing change must NOT regress this cell: the win comes from exactly the
     # small-resident-batch behaviour the fix candidate touches.
     "agg": 67_108_864,
+    # 1o: fat_col (1 file, 1 rg, 1024 rows, binary ~256 KiB/row + int64) — the
+    # incompressible-BYTE_ARRAY kernel-throughput shape. Bin size is moot (one
+    # file = one task either way); default 64 MiB.
+    "fatcol": 67_108_864,
 }
 SHAPE_FIXTURE = {
     "auto": "auto_rg",
@@ -94,6 +98,7 @@ SHAPE_FIXTURE = {
     "tensorscp": "tensors_cp",
     "tensorsdict": "tensors_dict",
     "agg": "auto_rg",
+    "fatcol": "fat_col",
 }
 # Ray-only shapes: no standalone part (agg's point is the read-op USS inside a
 # read->shuffle->aggregate pipeline, which has no standalone analogue).
@@ -427,6 +432,22 @@ def main():
     p.add_argument("--warmup", type=int, default=1)
     p.add_argument("--tasks", type=int, default=24, help="auto standalone task count")
     p.add_argument(
+        "--budget-sweep",
+        default=None,
+        help=(
+            "comma list of MiB values; adds an rs_b<N> Ray arm per value with "
+            "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES=<N MiB> (pareto sweep, TODO 1y)"
+        ),
+    )
+    p.add_argument(
+        "--k-sweep",
+        default=None,
+        help=(
+            "comma list of K values; adds an rs_k<N> Ray arm per value with "
+            "RAY_DATA_ARROW_RS_K=<N> (intra-task K-split sweep, 1o)"
+        ),
+    )
+    p.add_argument(
         "--no-arena-sweep",
         action="store_true",
         help="skip the MALLOC_ARENA_MAX=2 variant of each arrow_rs Ray cell",
@@ -526,6 +547,26 @@ def main():
                             },
                         )
                     )
+                if args.budget_sweep:
+                    for mib in [
+                        int(x) for x in args.budget_sweep.split(",") if x.strip()
+                    ]:
+                        arms.append(
+                            (
+                                "arrow_rs",
+                                f"rs_b{mib}",
+                                {
+                                    "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES": str(
+                                        mib * MiB
+                                    )
+                                },
+                            )
+                        )
+                if args.k_sweep:
+                    for k in [int(x) for x in args.k_sweep.split(",") if x.strip()]:
+                        arms.append(
+                            ("arrow_rs", f"rs_k{k}", {"RAY_DATA_ARROW_RS_K": str(k)})
+                        )
                 for reader, tag, arm_env in arms:
                     cells[tag] = median_cell(
                         outdir,
@@ -601,6 +642,19 @@ def main():
             f"{key:<26} {fmt(wall_r):>8} {fmt(mem_r):>11} {fmt(task_r):>11} "
             f"{fmt(ar_r):>13} {spill:>13}" + suffix
         )
+        if "standalone" not in key:
+            for t in sorted(t for t in cells if t.startswith(("rs_b", "rs_k"))):
+                r = cells.get(t) or {}
+                w = ratio(_num(r, "wall_s"), _num(pa_res, "wall_s"))
+                m = ratio(_num(r, "peak_uss_gb"), _num(pa_res, "peak_uss_gb"))
+                tu = ratio(
+                    _num(r, "read_avg_max_uss_gb"),
+                    _num(pa_res, "read_avg_max_uss_gb"),
+                )
+                print(
+                    f"    {t:<22} wall {fmt(w)}  peak mem {fmt(m)}  "
+                    f"task USS {fmt(tu)}"
+                )
     print(
         "\nRead it as: loss in standalone => decoder; only in ray_local => Ray worker/\n"
         "allocator (arena2 column collapsing confirms glibc arenas); only in ray_s3 =>\n"
