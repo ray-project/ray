@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/random/bit_gen_ref.h"
 #include "absl/time/time.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner_interface.h"
@@ -56,6 +57,33 @@ using WorkerCommandMap =
 
 // TODO(#54703): Put this type in a separate target.
 using AddProcessToCgroupHook = std::function<void(const std::string &)>;
+
+/// Build the list of ports that workers on this raylet may bind on.
+///
+/// \param worker_ports The explicit port list (--worker-port-list). Takes
+/// precedence over the port range when non-empty.
+/// \param min_worker_port The lower bound of the port range (--min-worker-port).
+/// 0 means no port range is configured.
+/// \param max_worker_port The upper bound of the port range (--max-worker-port).
+/// 0 means the range extends to the maximum valid port.
+/// \param gen The random bit generator used to shuffle the ports.
+/// \return The validated ports in a random order, or an empty vector if no port
+/// pool is configured, in which case workers bind port 0 and let the OS pick.
+///
+/// All configured ports must be within [1024, 65535], matching the Python-side
+/// validation: ports below 1024 are well-known ports that unprivileged workers
+/// cannot bind.
+///
+/// The order is randomized so that raylets sharing a network namespace and the
+/// same port range don't all start from the low end of the range and
+/// deterministically contend for the same ports. This lowers the odds of a
+/// collision; it is not a cross-raylet port reservation protocol, and two
+/// raylets can still pick the same port. Set `worker_port_shuffle_enabled` to
+/// false to keep the configured order.
+std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
+                                     int min_worker_port,
+                                     int max_worker_port,
+                                     absl::BitGenRef gen);
 
 enum PopWorkerStatus {
   // OK.

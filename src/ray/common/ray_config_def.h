@@ -356,6 +356,14 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// 0 means it will use the default (number of CPUs).
 RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
 
+/// Whether the raylet randomizes the order of the worker ports configured via
+/// --min-worker-port/--max-worker-port or --worker-port-list. Randomizing makes
+/// raylets that share a network namespace and a port range stop deterministically
+/// contending for the low end of the range. Set to false to restore the legacy
+/// behavior of handing out ports in ascending (or, for an explicit list, the
+/// configured) order.
+RAY_CONFIG(bool, worker_port_shuffle_enabled, true)
+
 /// Maximum number of retries for pop worker before the task is
 /// cancelled. 0 means no retry (fail immediately), default is 5.
 /// Retries indefinitely if the value is -1.
