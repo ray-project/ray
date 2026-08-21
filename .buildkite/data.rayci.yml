@@ -156,7 +156,7 @@ steps:
   # py_test target at all -- so `//python/ray/data/...` never even enumerates it.
   - label: ":database: data: arrow-rs parquet reader tests"
     tags:
-      - data
+      - arrow_rs
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
