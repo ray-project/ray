@@ -26,6 +26,7 @@ from ray.data._internal.datasource_v2.readers.supports_metadata import (
     MetadataType,
     SupportsMetadata,
 )
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
@@ -187,6 +188,9 @@ class OrcFileReader(FileReader, SupportsMetadata):
             for stripe_idx in _iter_stripe_indices(orc_file, read_unit.chunk_metadata):
                 batch = orc_file.read_stripe(stripe_idx, columns=physical_read_columns)
                 table = pa.Table.from_batches([batch])
+                # Unpickling untrusted data can execute arbitrary code. Reject object
+                # columns unless the user has explicitly opted in.
+                raise_on_pickle_object_columns(table)
 
                 for column_name in columns_to_null_fill:
                     if column_name not in table.column_names:
