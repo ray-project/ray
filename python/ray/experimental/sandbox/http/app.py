@@ -20,6 +20,7 @@ import hmac
 import logging
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
@@ -299,9 +300,23 @@ def create_app(
             },
         )
         # Fire-and-forget: boot progress and failures are reported through
-        # describe(), never through this call's result.
+        # describe(), never through this call's result. The response is
+        # synthesized from the request rather than fetched from the actor so
+        # that creation never blocks behind actor scheduling — on a saturated
+        # cluster the new actor may legitimately be queued for a while.
         handle.boot.remote()
-        info = await _actor_call(sandbox_id, handle.describe.remote())
+        created_at = datetime.now(timezone.utc)
+        info = {
+            "sandbox_id": sandbox_id,
+            "status": "pending",
+            "image": request.image,
+            "created_at": created_at.isoformat(),
+            "ttl_seconds": effective_ttl,
+            "expires_at": (created_at + timedelta(seconds=effective_ttl)).isoformat(),
+            "network": request.network,
+            "labels": request.labels,
+            "error": None,
+        }
         return JSONResponse(status_code=202, content=info)
 
     @v1.get("/sandboxes", response_model=SandboxList)
