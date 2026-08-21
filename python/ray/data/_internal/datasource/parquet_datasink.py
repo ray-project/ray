@@ -200,6 +200,14 @@ class ParquetDatasink(_FileDatasink):
         self.target_file_size = target_file_size
         self.partition_cols = partition_cols
 
+        if self.target_file_size is not None and any(
+            value is not None
+            for value in (self.min_rows_per_file, self.max_rows_per_file)
+        ):
+            raise ValueError(
+                "target_file_size cannot be used with min_rows_per_file or max_rows_per_file"
+            )
+
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
             if self.min_rows_per_file > self.max_rows_per_file:
                 raise ValueError(
