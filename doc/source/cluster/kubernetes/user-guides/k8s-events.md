@@ -13,7 +13,7 @@ This guide describes how to enable and use platform events in the Ray Dashboard 
 ## Prerequisites
 
 * **Ray version**: Ray 2.56.0 or later.
-* **Kubernetes Python client**: Install the `kubernetes` Python package in the Ray head pod's Python environment. The official `rayproject/ray` images include it. Add it to custom images.
+* **Kubernetes Python client**: Install the `kubernetes` Python package (`pip install kubernetes`) in the Ray head pod's Python environment. The official `rayproject/ray` images don't include it.
 * **Kubernetes cluster**: A Kubernetes cluster where you can deploy Ray workloads.
 
 ## Configure RBAC permissions
