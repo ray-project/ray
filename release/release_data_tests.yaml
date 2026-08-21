@@ -368,6 +368,12 @@
 # Keyed repartition of TPC-H lineitem (not groupby). SHUFFLE_V2 in-memory vs
 # external file-transport. Manual: trigger via buildkite/release filter.
 # Compute: 32x m5.2xlarge workers (see fixed_size_all_to_all_compute_m5_2xlarge.yaml).
+#
+# In-memory (object-store) remote pull knobs (Ray Core / object manager):
+#   RAY_object_manager_client_connection_num  — gRPC clients per OM peer (default 2)
+#   RAY_object_manager_rpc_threads_num        — transfer RPC thread base; 0 = auto
+#       min(max(2, num_cpus/4), 8); actual threads ~= this * 3
+# Both set to 8 here (m5.2xlarge auto would only be ~2). Harmless for external.
 - name: "repartition_lineitem_{{shuffle}}"
   python: "3.10"
   frequency: manual
@@ -383,13 +389,42 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
+        - RAY_object_manager_client_connection_num=8
+        - RAY_object_manager_rpc_threads_num=8
     cluster_compute: fixed_size_all_to_all_compute_m5_2xlarge.yaml
 
   run:
     timeout: 7200
     script: >
       python bench_shuffle.py --shuffle {{shuffle}}
-      --data-size-gb 512 --num-partitions 500 --target-cpu 256
+      --data-size-gb 512 --num-partitions 512 --target-cpu 256
+      --write-parquet
+
+# Same as above at 1 TiB / 1024 partitions (SF10000 lineitem, limit to 1024GB).
+- name: "repartition_lineitem_1tb_{{shuffle}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle: [in-memory, external]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_max_direct_call_object_size=8192
+        - RAY_object_manager_client_connection_num=8
+        - RAY_object_manager_rpc_threads_num=8
+    cluster_compute: fixed_size_all_to_all_compute_m5_2xlarge.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python bench_shuffle.py --shuffle {{shuffle}}
+      --data-size-gb 1024 --num-partitions 1024 --target-cpu 256
       --write-parquet
 
 ###############

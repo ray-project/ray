@@ -23,7 +23,11 @@ Usage:
 
   # release-test style: stream out with write_parquet (matches prior Anyscale runs;
   # materialize() of 512GB OOMs/spills hard on m5.2xlarge object stores)
-  python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 500 \\
+  python bench_shuffle.py --shuffle external --data-size-gb 512 --num-partitions 512 \\
+      --write-parquet
+
+  # 1 TiB / 1024 partitions
+  python bench_shuffle.py --shuffle external --data-size-gb 1024 --num-partitions 1024 \\
       --write-parquet
 
   # with timeline dump + per-run stats
@@ -273,20 +277,30 @@ def main() -> None:
                 write_parquet=args.write_parquet,
             )
 
+        # Benchmark.run_fn times the whole fn (incl. object-store drain) and
+        # records spill/peak-util; the shuffle wall we care about is elapsed_s
+        # inside the returned dict.
         benchmark.run_fn(s, _case)
+        case_metrics = benchmark.result[s]
         r = {
-            k: v
-            for k, v in benchmark.result[s].items()
-            if k
-            in (
-                "shuffle",
-                "data_size_gb",
-                "num_partitions",
-                "sf",
-                "rows",
-                "elapsed_s",
-                "throughput_gbps",
-            )
+            "shuffle": case_metrics["shuffle"],
+            "data_size_gb": case_metrics["data_size_gb"],
+            "num_partitions": case_metrics["num_partitions"],
+            "sf": case_metrics["sf"],
+            "rows": case_metrics["rows"],
+            "elapsed_s": case_metrics["elapsed_s"],
+            "throughput_gbps": case_metrics["throughput_gbps"],
+            # Full Benchmark wall (shuffle + drain/gc); not the RESULT wall.
+            "benchmark_wall_s": case_metrics.get("time"),
+            "object_store_spilled_total_gb": case_metrics.get(
+                "object_store_spilled_total_gb"
+            ),
+            "object_store_memory_used_peak_gb": case_metrics.get(
+                "object_store_memory_used_peak_gb"
+            ),
+            "object_store_memory_utilization_peak": case_metrics.get(
+                "object_store_memory_utilization_peak"
+            ),
         }
 
         if args.timeline_out:
@@ -318,15 +332,14 @@ def main() -> None:
             flush=True,
         )
 
-    if args.result_json:
-        # Strip stats text from JSON output (too verbose for an aggregate dump);
-        # individual stats already went to stdout if --stats was set.
-        slim = [{k: v for k, v in r.items() if k != "stats"} for r in results]
-        with open(args.result_json, "w") as f:
-            json.dump(slim, f, indent=2)
-        print(f"RESULTS_JSON {args.result_json}", flush=True)
-
-    benchmark.write_result()
+    # Write RESULT metrics as-is (not Benchmark's nested/mixed schema).
+    # Release infra reads TEST_OUTPUT_JSON; default locally is ./result.json.
+    out_path = args.result_json or os.environ.get("TEST_OUTPUT_JSON", "./result.json")
+    payload = results[0] if len(results) == 1 else {"runs": results}
+    with open(out_path, "w") as f:
+        json.dump(payload, f, indent=2)
+    print(f"RESULTS_JSON {out_path}", flush=True)
+    print(json.dumps(payload, indent=2), flush=True)
     print("DONE", flush=True)
 
 
