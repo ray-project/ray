@@ -93,26 +93,49 @@ The resulting output follows:
 (MyActor(index=1) pid=482119) hello there
 ```
 
-### Disabling the worker log prefix
-
-Set the environment variable `RAY_DISABLE_WORKER_LOG_PREFIX=1` to
-stop Ray from adding the `(Task or Actor repr, process ID, IP address)` prefix to worker stdout/stderr lines forwarded to the driver, while continuing to forward the
-logs. This is useful for structured logging (for example, newline-delimited JSON) when you want to collect logs from the driver's stdout/stderr rather than from the
-per-worker log files under the {ref}`logging directory <logging-directory>` the prefix otherwise turns each structured log line into invalid JSON.
-
-If you are disabling the worker log prefix specifically to avoid interference with structured logging, also consider setting `RAY_DEDUP_LOGS=0`. By default, Ray
-{ref}`deduplicates repeated log messages <log-deduplication>` and annotates them with a `[repeated Nx across cluster]` suffix, which breaks structured, line-oriented
-log formats.
-
-:::{note}
-Disabling the worker log prefix removes the only signal in the forwarded stream that identifies which Task, Actor, or process emitted a given line.
-:::
-
 ### Coloring Actor log prefixes
 By default, Ray prints Actor log prefixes in light blue. Turn color logging off by setting the environment variable ``RAY_COLOR_PREFIX=0``
 - for example, when outputting logs to a file or other location that doesn't support ANSI codes. Or activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``; this indexes into an array of colors modulo the PID of each process.
 
 ![coloring-actor-log-prefixes](../images/coloring-actor-log-prefixes.png)
+
+### Disable the worker log prefix
+
+Set the environment variable `RAY_DISABLE_WORKER_LOG_PREFIX=1` to stop Ray from adding the `(Task or Actor repr, process ID, IP address)` prefix to worker stdout and stderr lines forwarded to the driver, while continuing to forward the logs. Use it for structured logging formats such as newline-delimited JSON, when you want to collect logs from the driver's stdout and stderr rather than from the per-worker log files under the {ref}`logging directory <logging-directory>`.
+
+For example, an Actor that emits one JSON object per line:
+
+```python
+import ray
+
+ray.init()
+
+@ray.remote
+class SegmentationActor:
+    def run(self):
+        print('{"event": "segmenting batch", "job_id": "abc123", "level": "info"}')
+
+actor = SegmentationActor.remote()
+ray.get(actor.run.remote())
+```
+
+By default, the prefix turns each line into invalid JSON:
+
+```bash
+(SegmentationActor pid=558) {"event": "segmenting batch", "job_id": "abc123", "level": "info"}
+```
+
+With `RAY_DISABLE_WORKER_LOG_PREFIX=1`, each line stays parseable:
+
+```bash
+{"event": "segmenting batch", "job_id": "abc123", "level": "info"}
+```
+
+If you're disabling the worker log prefix specifically to avoid interference with structured logging, also set `RAY_DEDUP_LOGS=0`. By default, Ray {ref}`deduplicates repeated log messages <log-deduplication>` and annotates them with a `[repeated Nx across cluster]` suffix, which breaks structured, line-oriented log formats.
+
+:::{note}
+Disabling the worker log prefix removes the only signal in the forwarded stream that identifies which task, actor, or process emitted a given line.
+:::
 
 ### Disable logging to the driver
 In large scale runs, you may not want to route all worker logs to the driver. Disable this feature by setting ``log_to_driver=False`` in `ray.init`:
@@ -125,6 +148,7 @@ ray.init(log_to_driver=False)
 ```
 
 
+(log-deduplication)=
 ## Log deduplication
 
 By default, Ray deduplicates logs that appear redundantly across multiple processes. The first instance of each log message is always immediately printed. However, Ray buffers subsequent log messages of the same pattern for up to five seconds and prints them in batch. Note that Ray also ignores words with numeric components. For example, for the following code snippet:
