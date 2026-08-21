@@ -2173,6 +2173,55 @@ def test_write_max_rows_per_file(
     pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
 
 
+def test_write_target_file_size_coalesces_small_blocks(
+    tmp_path, ray_start_regular_shared
+):
+    ray.data.range(100, override_num_blocks=10).write_parquet(
+        tmp_path,
+        target_file_size=160,
+        compression=None,
+        row_group_size=1000,
+    )
+
+    files = list(pathlib.Path(tmp_path).glob("*.parquet"))
+    rows_per_file = sorted(pq.read_table(file).num_rows for file in files)
+    assert rows_per_file == [20, 20, 20, 20, 20]
+
+
+@pytest.mark.parametrize(
+    "row_size_arg",
+    [
+        {"min_rows_per_file": 10},
+        {"max_rows_per_file": 10},
+        {"num_rows_per_file": 10},
+    ],
+)
+def test_write_target_file_size_rejects_row_limits(
+    tmp_path, ray_start_regular_shared, row_size_arg
+):
+    with pytest.raises(ValueError, match="target_file_size"):
+        ray.data.range(1).write_parquet(
+            tmp_path,
+            target_file_size=100,
+            **row_size_arg,
+        )
+
+
+def test_target_file_size_sets_min_bytes_per_write(tmp_path):
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+
+    datasink = ParquetDatasink(str(tmp_path), target_file_size=100)
+    assert datasink.min_bytes_per_write == 100
+
+
+@pytest.mark.parametrize("target_file_size", [0, -1, "160MiB", 1.5, True])
+def test_write_target_file_size_validation(
+    tmp_path, ray_start_regular_shared, target_file_size
+):
+    with pytest.raises(ValueError, match="target_file_size"):
+        ray.data.range(1).write_parquet(tmp_path, target_file_size=target_file_size)
+
+
 @pytest.mark.parametrize(
     "min_rows_per_file,max_rows_per_file", [(5, 10), (10, 20), (15, 30)]
 )

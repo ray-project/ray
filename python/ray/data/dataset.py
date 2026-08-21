@@ -4822,6 +4822,7 @@ class Dataset:
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
+        target_file_size: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
@@ -4830,9 +4831,9 @@ class Dataset:
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
-        The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
-        :meth:`~ray.data.Dataset.repartition`.
+        By default, the number of files is determined by the number of blocks in the
+        dataset. You can use ``target_file_size``, ``min_rows_per_file``, or
+        ``max_rows_per_file`` to let Ray Data combine or split blocks when writing.
 
         If pyarrow can't represent your data, this method errors.
 
@@ -4845,6 +4846,12 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.write_parquet("local:///tmp/data/")
+
+            Write Parquet files with a target size of 128 MiB.
+
+            >>> ds.write_parquet(
+            ...     "local:///tmp/sized-data/", target_file_size=128 * 1024 * 1024
+            ... )
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4905,6 +4912,13 @@ class Dataset:
                 might write more or fewer rows to each file. If both ``min_rows_per_file``
                 and ``max_rows_per_file`` are specified, ``max_rows_per_file`` takes
                 precedence when they cannot both be satisfied.
+            target_file_size: [Experimental] The target size of each output file in
+                bytes. This must be a positive integer. Ray Data combines small input
+                blocks until their total in-memory size reaches this target. Ray Data
+                doesn't split blocks or write inputs that exceed the target, so output
+                files can be larger. Compression, encoding, and partitioning can also
+                cause actual file sizes to differ. You can't use this parameter with
+                ``min_rows_per_file``, ``max_rows_per_file``, or ``num_rows_per_file``.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -4968,6 +4982,21 @@ class Dataset:
                     )
                 filesystem = resolved.filesystem
 
+        if target_file_size is not None and (
+            isinstance(target_file_size, bool)
+            or not isinstance(target_file_size, int)
+            or target_file_size <= 0
+        ):
+            raise ValueError("target_file_size must be a positive integer")
+        if target_file_size is not None and any(
+            value is not None
+            for value in (min_rows_per_file, max_rows_per_file, num_rows_per_file)
+        ):
+            raise ValueError(
+                "target_file_size cannot be used with min_rows_per_file, "
+                "max_rows_per_file, or num_rows_per_file"
+            )
+
         effective_min_rows, effective_max_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file,
             min_rows_per_file=min_rows_per_file,
@@ -4981,6 +5010,7 @@ class Dataset:
             arrow_parquet_args=arrow_parquet_args,
             min_rows_per_file=effective_min_rows,
             max_rows_per_file=effective_max_rows,
+            target_file_size=target_file_size,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
