@@ -8,6 +8,7 @@ from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock, patch
 
+import aiohttp
 import numpy as np
 import pytest
 import requests
@@ -33,6 +34,14 @@ from ray.dashboard.modules.reporter.reporter_agent import (
     METRICS_GAUGES,
     ReporterAgent,
     TpuUtilizationInfo,
+)
+from ray.dashboard.modules.reporter.reporter_head import (
+    MULTI_TASK_WARNING_HEADER,
+    SVG_STYLE,
+    WARNING_FOR_MULTI_TASK_IN_A_WORKER,
+    _query_duration,
+    _query_flag,
+    _task_cpu_profiling_response,
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
@@ -1661,6 +1670,244 @@ async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(tmp_path):
         recs, node_type, active=1, pending=2, failed=1, idle_expected=2
     )
     agent._get_cluster_stats_v2.assert_called_once()
+
+
+class _FakeRequest:
+    """Minimal stand-in for aiohttp.web.Request exposing only `.query`."""
+
+    def __init__(self, query):
+        self.query = query
+
+
+@pytest.mark.parametrize(
+    "query, default, expected",
+    [
+        # Param absent -> falls back to the configured default (either value).
+        ({}, False, False),
+        ({}, True, True),
+        # Param present -> the explicit value wins, ignoring the default.
+        ({"native": "1"}, False, True),
+        ({"native": "0"}, True, False),
+        # Any non-"1" value is treated as False (matches prior behavior).
+        ({"native": "true"}, True, False),
+    ],
+)
+def test_query_flag(query, default, expected):
+    assert _query_flag(_FakeRequest(query), "native", default) is expected
+
+
+@pytest.mark.parametrize(
+    "query, default, expected",
+    [
+        # Param absent -> falls back to the configured default.
+        ({}, 5, 5),
+        ({}, 10, 10),
+        # Param present and in range -> parsed as int, ignoring the default.
+        ({"duration": "30"}, 5, 30),
+        # Boundary values are accepted (min is always 1; max is configurable).
+        ({"duration": "1"}, 5, 1),
+        (
+            {"duration": str(ray_constants.MAX_PROFILING_DURATION_S)},
+            5,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
+    ],
+)
+def test_query_duration_valid(query, default, expected):
+    assert _query_duration(_FakeRequest(query), default) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "abc",  # not an integer
+        "0",  # below the minimum
+        "-5",  # negative
+        # just above the (operator-configurable) maximum
+        str(ray_constants.MAX_PROFILING_DURATION_S + 1),
+    ],
+)
+def test_query_duration_invalid_raises_bad_request(value):
+    # Invalid or out-of-range durations must surface as HTTP 400, not a bare
+    # ValueError (which would become a 500).
+    with pytest.raises(aiohttp.web.HTTPBadRequest):
+        _query_duration(_FakeRequest({"duration": value}), 5)
+
+
+@pytest.mark.parametrize(
+    "seconds, expected",
+    [
+        # In-range values pass through unchanged.
+        (1, 1),
+        (5, 5),
+        (
+            ray_constants.MAX_PROFILING_DURATION_S,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
+        # Out-of-range env-configured values are clamped to the accepted bound,
+        # so a misconfigured head-node default can never bypass the endpoint cap.
+        (0, 1),
+        (-5, 1),
+        (
+            ray_constants.MAX_PROFILING_DURATION_S + 1,
+            ray_constants.MAX_PROFILING_DURATION_S,
+        ),
+        (10**9, ray_constants.MAX_PROFILING_DURATION_S),
+    ],
+)
+def test_clamp_profiling_duration(seconds, expected):
+    assert ray_constants._clamp_profiling_duration(seconds) == expected
+
+
+def test_clamp_profiling_duration_warns_and_names_the_env_var():
+    # A silently clamped value looks like the operator's setting took effect, so
+    # the warning must name the env var that was ignored and the bound applied.
+    with patch.object(ray_constants.logger, "warning") as mock_warning:
+        ray_constants._clamp_profiling_duration(
+            ray_constants.MAX_PROFILING_DURATION_S + 1, "RAY_TEST_PROFILING_DURATION"
+        )
+    assert mock_warning.call_count == 1
+    rendered = mock_warning.call_args.args[0] % mock_warning.call_args.args[1:]
+    assert "RAY_TEST_PROFILING_DURATION" in rendered
+    assert str(ray_constants.MAX_PROFILING_DURATION_S) in rendered
+
+
+def test_clamp_profiling_duration_silent_when_in_range():
+    with patch.object(ray_constants.logger, "warning") as mock_warning:
+        ray_constants._clamp_profiling_duration(
+            ray_constants.MIN_PROFILING_DURATION_S, "RAY_TEST_PROFILING_DURATION"
+        )
+    mock_warning.assert_not_called()
+
+
+# A speedscope profile is JSON, so any markup prepended to it makes it unparseable.
+_SPEEDSCOPE_OUTPUT = '{"version": "0.0.1", "profiles": []}'
+
+
+def test_task_cpu_profiling_response_wraps_flamegraph_in_html():
+    resp = _task_cpu_profiling_response("<svg></svg>", "flamegraph", ["task_1"])
+    assert resp.content_type == "text/html"
+    # SVG_STYLE sizes the flame graph to the viewport, so it must stay.
+    assert resp.text == SVG_STYLE + "<svg></svg>"
+    assert MULTI_TASK_WARNING_HEADER not in resp.headers
+
+
+def test_task_cpu_profiling_response_prepends_multi_task_warning_to_flamegraph():
+    resp = _task_cpu_profiling_response(
+        "<svg></svg>", "flamegraph", ["task_1", "task_2"]
+    )
+    assert resp.content_type == "text/html"
+    assert WARNING_FOR_MULTI_TASK_IN_A_WORKER in resp.text
+    assert resp.text.endswith(SVG_STYLE + "<svg></svg>")
+
+
+@pytest.mark.parametrize(
+    "format, output",
+    [
+        ("raw", "frame_a;frame_b 10"),
+        ("speedscope", _SPEEDSCOPE_OUTPUT),
+    ],
+)
+def test_task_cpu_profiling_response_returns_non_flamegraph_verbatim(format, output):
+    # Only flamegraph output is an SVG. Wrapping `raw`/`speedscope` in HTML (as
+    # this endpoint used to do for every format) corrupts the payload.
+    resp = _task_cpu_profiling_response(output, format, ["task_1"])
+    assert resp.content_type == "text/plain"
+    assert resp.text == output
+    assert SVG_STYLE not in resp.text
+
+
+@pytest.mark.parametrize("format", ["raw", "speedscope"])
+def test_task_cpu_profiling_response_moves_multi_task_warning_to_header(format):
+    # The warning is an HTML fragment, so for non-HTML formats it has to travel
+    # out of band rather than be dropped or spliced into the body.
+    resp = _task_cpu_profiling_response(
+        _SPEEDSCOPE_OUTPUT, format, ["task_1", "task_2"]
+    )
+    assert resp.text == _SPEEDSCOPE_OUTPUT
+    assert WARNING_FOR_MULTI_TASK_IN_A_WORKER in resp.headers[MULTI_TASK_WARNING_HEADER]
+    assert "task_2" in resp.headers[MULTI_TASK_WARNING_HEADER]
+
+
+def test_task_cpu_profiling_response_keeps_speedscope_output_parseable():
+    # The regression this guards: speedscope output served as HTML with
+    # SVG_STYLE prepended is rejected by speedscope.app as invalid JSON.
+    resp = _task_cpu_profiling_response(
+        _SPEEDSCOPE_OUTPUT, "speedscope", ["task_1", "task_2"]
+    )
+    assert json.loads(resp.text) == {"version": "0.0.1", "profiles": []}
+
+
+@pytest.mark.parametrize(
+    "env_value, valid_formats, expected",
+    [
+        # Valid values pass through unchanged.
+        ("flamegraph", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        ("speedscope", ray_constants.VALID_CPU_PROFILING_FORMATS, "speedscope"),
+        ("table", ray_constants.VALID_MEMORY_PROFILING_FORMATS, "table"),
+        # Invalid values fall back to flamegraph.
+        ("bogus", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+        # The valid sets differ by profiler: `speedscope` is a py-spy (CPU) format
+        # and must be rejected for memray (memory) profiling, and vice versa for
+        # `table`. This guards against a single shared format default.
+        ("speedscope", ray_constants.VALID_MEMORY_PROFILING_FORMATS, "flamegraph"),
+        ("table", ray_constants.VALID_CPU_PROFILING_FORMATS, "flamegraph"),
+    ],
+)
+def test_validated_profiling_format(monkeypatch, env_value, valid_formats, expected):
+    monkeypatch.setenv("RAY_TEST_PROFILING_FORMAT", env_value)
+    assert (
+        ray_constants._validated_profiling_format(
+            "RAY_TEST_PROFILING_FORMAT", valid_formats
+        )
+        == expected
+    )
+
+
+def test_validated_profiling_format_absent_uses_fallback(monkeypatch):
+    monkeypatch.delenv("RAY_TEST_PROFILING_FORMAT", raising=False)
+    assert (
+        ray_constants._validated_profiling_format(
+            "RAY_TEST_PROFILING_FORMAT", ray_constants.VALID_CPU_PROFILING_FORMATS
+        )
+        == "flamegraph"
+    )
+
+
+def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
+    """`/api/profiling_enabled` exposes the profiling defaults (camelCased)."""
+    address_info = ray.init()
+    assert wait_until_server_available(address_info["webui_url"])
+    webui_url = format_web_url(address_info["webui_url"])
+
+    def verify():
+        resp = requests.get(f"{webui_url}/api/profiling_enabled")
+        resp.raise_for_status()
+        data = resp.json()["data"]
+        assert data["profilingEnabled"] is True
+        defaults = data["profilingDefaults"]
+        # snake_case keys are google-style-cased in the response.
+        for key in (
+            "native",
+            "subprocesses",
+            "idle",
+            "leaks",
+            "tracePythonAllocators",
+            "cpuDuration",
+            "memoryDuration",
+            "maxDuration",
+            "cpuFormat",
+            "memoryFormat",
+            "pyspyNativeSupported",
+        ):
+            assert key in defaults, f"missing {key} in {defaults}"
+        # Spot-check defaults match the constants' shipped values.
+        assert defaults["cpuDuration"] == 5
+        assert defaults["memoryDuration"] == 10
+        assert defaults["cpuFormat"] == "flamegraph"
+        return True
+
+    wait_for_condition(verify, timeout=20)
 
 
 if __name__ == "__main__":
