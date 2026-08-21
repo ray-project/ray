@@ -247,11 +247,36 @@ def run_case(a):
     except Exception:
         pass
 
-    files = sorted(glob.glob(os.path.join(os.path.expanduser(a.path), "*.parquet")))
+    if a.path.startswith("s3://"):
+        # The S3 leg (user, 2026-08-21: does the M38 release write loss need
+        # S3 transport?). aws-cli is the lister so the fixture needs no
+        # local mirror on the driver.
+        ls = subprocess.run(
+            ["aws", "s3", "ls", a.path.rstrip("/") + "/"],
+            capture_output=True,
+            text=True,
+        ).stdout
+        files = sorted(
+            a.path.rstrip("/") + "/" + ln.split()[-1]
+            for ln in ls.splitlines()
+            if ln.strip().endswith(".parquet")
+        )
+    else:
+        files = sorted(glob.glob(os.path.join(os.path.expanduser(a.path), "*.parquet")))
     if not files:
         raise SystemExit(f"no parquet files under {a.path}")
     paths = files * a.path_repeat
-    write_out = os.path.join(a.workdir, f"soak_write_out_{a.tag}")
+    write_out = a.write_out or os.path.join(a.workdir, f"soak_write_out_{a.tag}")
+
+    def clean_write_out():
+        if write_out.startswith("s3://"):
+            subprocess.run(
+                ["aws", "s3", "rm", "--recursive", "--quiet", write_out],
+                capture_output=True,
+            )
+        else:
+            shutil.rmtree(write_out, ignore_errors=True)
+
     series_path = os.path.join(a.workdir, f"{a.tag}.series.jsonl")
 
     rounds = []
@@ -264,9 +289,9 @@ def run_case(a):
                 t0 = time.perf_counter()
                 ds = ray.data.read_parquet(paths)
                 if a.shape == "write":
-                    shutil.rmtree(write_out, ignore_errors=True)
+                    clean_write_out()
                     ds.write_parquet(write_out)
-                    shutil.rmtree(write_out, ignore_errors=True)
+                    clean_write_out()
                 else:
                     # capture_executor=True so per-task USS survives (read_probe's
                     # GE1 snapshot-race fix); bundles are dropped as they stream.
@@ -304,7 +329,7 @@ def run_case(a):
                 )
                 print(f"  round {rnd}: {rounds[-1]}", flush=True)
     finally:
-        shutil.rmtree(write_out, ignore_errors=True)
+        clean_write_out()
         import ray as _ray
 
         _ray.shutdown()
@@ -346,7 +371,7 @@ def run_case(a):
 # --------------------------------------------------------------------------
 
 
-def run_cell(logdir, name, shape, reader, path, env_extra, a):
+def run_cell(logdir, name, shape, reader, path, env_extra, a, write_out=None):
     defaults = SHAPE_DEFAULTS[shape]
     cmd = [
         PY,
@@ -373,6 +398,8 @@ def run_cell(logdir, name, shape, reader, path, env_extra, a):
         "--tag",
         name,
     ]
+    if write_out:
+        cmd += ["--write-out", write_out]
     env = dict(os.environ)
     env["RAY_DATA_PARQUET_BIN_PACKING_BYTES"] = str(SHAPE_BINS[shape])
     env.update(env_extra)
@@ -450,6 +477,11 @@ def main():
     c.add_argument("--sample-s", type=float, default=0.5)
     c.add_argument("--workdir", default=".")
     c.add_argument("--tag", default="case")
+    c.add_argument(
+        "--write-out",
+        default=None,
+        help="write-shape output root (s3://... allowed); default <workdir>/...",
+    )
 
     p.add_argument("--fixture-root", default=None)
     p.add_argument("--outdir", default=None)
@@ -464,6 +496,12 @@ def main():
     )
     p.add_argument("--settle-s", type=float, default=3.0)
     p.add_argument("--sample-s", type=float, default=0.5)
+    p.add_argument(
+        "--transports",
+        default="local",
+        help="comma list of local,s3 — s3 soaks read from AND write to the bucket",
+    )
+    p.add_argument("--s3-bucket", default=os.environ.get("ARROW_RS_S3_BUCKET"))
     args = p.parse_args()
 
     if args.cmd == "case":
@@ -504,18 +542,42 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     print(f"shapes={shapes} arms={arms} workers={args.workers} outdir={outdir}")
 
+    transports = [t.strip() for t in args.transports.split(",") if t.strip()]
+    if "s3" in transports and not args.s3_bucket:
+        p.error("--transports s3 needs --s3-bucket or ARROW_RS_S3_BUCKET")
+
     summary = {"shapes": shapes, "arms": arms, "workers": args.workers, "cells": {}}
     for shape in shapes:
         entry = manifest[SHAPE_FIXTURE[shape]]
-        path = entry["path"] if isinstance(entry, dict) else entry
-        print(f"\n=== [{shape}] soak ({SHAPE_FIXTURE[shape]}) ===", flush=True)
-        cells = {}
-        for tag in arms:
-            reader, env_extra = arm_defs[tag]
-            cells[tag] = run_cell(
-                outdir, f"{shape}.{tag}", shape, reader, path, env_extra, args
+        local_path = entry["path"] if isinstance(entry, dict) else entry
+        for transport in transports:
+            if transport == "s3":
+                from loss_triage import s3_sync
+
+                bucket = args.s3_bucket.rstrip("/")
+                path = f"{bucket}/soak/{SHAPE_FIXTURE[shape]}"
+                s3_sync(local_path, path)
+                write_out = f"{bucket}/soak_write_out/{shape}"
+            else:
+                path, write_out = local_path, None
+            print(
+                f"\n=== [{shape}] soak/{transport} ({SHAPE_FIXTURE[shape]}) ===",
+                flush=True,
             )
-        summary["cells"][shape] = cells
+            cells = {}
+            for tag in arms:
+                reader, env_extra = arm_defs[tag]
+                cells[tag] = run_cell(
+                    outdir,
+                    f"{shape}.{transport}.{tag}",
+                    shape,
+                    reader,
+                    path,
+                    env_extra,
+                    args,
+                    write_out=write_out,
+                )
+            summary["cells"][f"{shape}.{transport}"] = cells
 
     print("\n\n============ SOAK SUMMARY (R = arrow_rs/pyarrow) ============")
     if sys.platform == "darwin":
