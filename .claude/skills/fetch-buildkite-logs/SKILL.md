@@ -67,7 +67,7 @@ Requires the token to have the **`read_artifacts`** scope — `read_build_logs` 
    `per_page=100` is the API maximum, and Ray uploads a zip per failing test, so a busy shard overflows one page. If exactly 100 come back, there are probably more: append `&page=2`, `&page=3`, ... until a page comes back short. (The response's `Link` header says `rel="next"` while pages remain.)
 2. Download one, by the `id` from that listing:
    ```bash
-   curl -sL -H "Authorization: Bearer $BUILDKITE_API_TOKEN" \
+   curl -fsL -H "Authorization: Bearer $BUILDKITE_API_TOKEN" \
      "https://api.buildkite.com/v2/organizations/ray-project/pipelines/<PIPELINE>/builds/<BUILD_NUM>/jobs/<JOB_ID>/artifacts/<ARTIFACT_ID>/download" \
      -o "/tmp/<FILENAME>"
    ```
