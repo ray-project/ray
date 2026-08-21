@@ -47,19 +47,20 @@ class LinuxContainer(Container):
         self, build_type: Optional[str] = None, mask: Optional[str] = None
     ) -> List[str]:
         cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
-        # The step's own index, because a docker build can reach it: measured on
-        # premerge 72149, a RUN step reached the job-local proxy on both the BuildKit
-        # and legacy builders with default networking, no --network=host needed.
+        # The step's own index, forwarded into the build: docker builds inherit
+        # nothing from the step environment, and the mirror-hosted index
+        # (ci/pypi_proxy_profile.sh) is one HTTPS URL reachable from inside builds.
         # RAYCI_IMAGE_PIP_INDEX_URL remains an explicit override for a fleet that
         # needs a different value, or "" to opt out. Unset outside CI, and then the
         # Dockerfile falls back to PyPI.
         image_index_url = os.environ.get(
             "RAYCI_IMAGE_PIP_INDEX_URL", os.environ.get("PIP_INDEX_URL", "")
         )
-        # pip drops a plain-HTTP index whose host it does not trust, and says nothing
-        # about it beyond "from versions: none" -- so the host travels with the index.
-        # Loopback is the one host pip exempts, and neither address here is loopback:
-        # the step's own proxy is on the bridge, and the agent's is a name.
+        # pip drops a plain-HTTP index whose host it does not trust (loopback
+        # excepted), and says nothing about it beyond "from versions: none" -- so a
+        # trusted host travels with the index when one is set. The default hosted
+        # index is HTTPS and needs none; this carries a value only for a fleet
+        # overriding the index to a plain-HTTP host.
         image_trusted_host = os.environ.get(
             "RAYCI_IMAGE_PIP_TRUSTED_HOST", os.environ.get("PIP_TRUSTED_HOST", "")
         )

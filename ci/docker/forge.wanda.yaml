@@ -8,7 +8,5 @@ build_args:
 dockerfile: ci/docker/forge.Dockerfile
 srcs:
   - ci/k8s/install-k8s-tools.sh
-  - ci/pypi_index_proxy.py
   - ci/pypi_proxy_profile.sh
-  - ci/install_pypi_proxy.sh
   - ci/bazel_mirror_downloader.sh
