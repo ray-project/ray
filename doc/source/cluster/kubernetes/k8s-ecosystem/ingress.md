@@ -4,6 +4,7 @@
 
 The following examples show how to use Ingress or Gateway to access your Ray clusters:
 
+  * [KubeRay built-in Ingress](kuberay-builtin-ingress)
   * [AWS Application Load Balancer (ALB) Ingress support on AWS EKS](kuberay-aws-alb)
   * [GKE Ingress support](kuberay-gke-ingress)
   * [GKE Gateway API support](kuberay-gke-gateway)
@@ -16,6 +17,53 @@ The following examples show how to use Ingress or Gateway to access your Ray clu
 **Only expose Ingresses or Gateways to authorized users.** The Ray Dashboard provides read and write access to the Ray Cluster. Anyone with access to this Ingress or Gateway can execute arbitrary code on the Ray Cluster.
 ```
 
+(kuberay-builtin-ingress)=
+## KubeRay built-in Ingress
+
+KubeRay 1.7.0 adds `ingressOptions`, which lets the operator generate and manage an Ingress for the Ray head service. You can configure the Ingress directly in the RayCluster using `ingressOptions`. The operator creates the corresponding Ingress, updates it when the configuration changes, and deletes it when the RayCluster is deleted.
+
+### Prerequisites
+
+- KubeRay operator v1.7 or later installed.
+
+- An Ingress controller running in your cluster. See the [Kubernetes Ingress Controllers documentation](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/) for more information.
+
+### Configure `ingressOptions`
+
+Set `enableIngress` to `true` and add `ingressOptions` to `headGroupSpec`:
+
+```yaml
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  headGroupSpec:
+    enableIngress: true
+    ingressOptions:
+      host: ray-dashboard.example.com
+      path: /
+      pathType: Prefix
+      tls:
+        - hosts:
+            - ray-dashboard.example.com
+          secretName: ray-dashboard-tls
+```
+
+The operator generates an Ingress named `<raycluster-name>-head-ingress` that routes to the head service on the dashboard port.
+
+Every field under `ingressOptions` is optional:
+
+| Field      | Description                                                                                                                                                                         | Default                         |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `host`     | Fully qualified domain name that routes external traffic to the Ray head dashboard.                                                                                                 | Unset, which matches any host.  |
+| `path`     | HTTP path that routes to the dashboard.                                                                                                                                             | `/`                             |
+| `pathType` | Path matching mode for `path`. One of `Exact`, `Prefix`, or `ImplementationSpecific`.                                                                                               | `Prefix`                        |
+| `tls`      | TLS termination for the generated Ingress, using the Kubernetes [IngressTLS](https://kubernetes.io/docs/reference/kubernetes-api/service-resources/ingress-v1/#IngressSpec) schema. | Unset, which serves plain HTTP. |
+
+If you set only `enableIngress: true`, KubeRay generates an Ingress that matches any host and routes `/` to the dashboard. If you update `ingressOptions` on an existing RayCluster, KubeRay updates the generated Ingress to match.
 
 (kuberay-aws-alb)=
 ## AWS Application Load Balancer (ALB) Ingress support on AWS EKS
