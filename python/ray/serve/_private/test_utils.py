@@ -403,11 +403,7 @@ class MockDeploymentHandle:
         return self
 
     def __eq__(self, other: object) -> bool:
-        other_deployment_name, other_app_name = cast(Tuple[str, str], other)
-        return (
-            self._deployment_name == other_deployment_name
-            and self._app_name == other_app_name
-        )
+        return other == (self._deployment_name, self._app_name)
 
     def _set_request_protocol(self, protocol: RequestProtocol):
         self._protocol = protocol
