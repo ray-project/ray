@@ -79,7 +79,7 @@ use std::sync::mpsc::{sync_channel, Receiver};
 use std::thread;
 
 use crate::predicate::{can_match, ColStats, Pred, Value};
-use parquet::basic::{ConvertedType, LogicalType, Type as PhysicalType};
+use parquet::basic::{ConvertedType, Encoding, LogicalType, Type as PhysicalType};
 use parquet::file::metadata::RowGroupMetaData;
 use parquet::file::statistics::Statistics;
 use parquet::schema::types::ColumnDescriptor;
@@ -233,6 +233,58 @@ fn group_batch_rows(rgm: &RowGroupMetaData, requested: usize, budget_bytes: u64)
         requested,
         budget_bytes,
     )
+}
+
+/// A row group is *estimator-blind* when its decoded size cannot be derived
+/// from the footer: dictionary-encoded BYTE_ARRAY (strings/binary) chunks,
+/// where [`decoded_estimate_bytes`] falls back to the encoded size and batches
+/// sized from it overshoot the decode budget by the dictionary expansion
+/// ratio (M50 residual: 4x on dict-string lone_big_rg — the one measured
+/// shape the footer-exact estimator can't cover). Checked against ALL columns,
+/// not the projection, mirroring `decoded_estimate_bytes`.
+fn group_is_estimator_blind(rgm: &RowGroupMetaData) -> bool {
+    rgm.columns().iter().any(|c| {
+        c.column_descr().physical_type() == PhysicalType::BYTE_ARRAY
+            && c
+                .encodings()
+                .any(|e| matches!(e, Encoding::PLAIN_DICTIONARY | Encoding::RLE_DICTIONARY))
+    })
+}
+
+/// Running decoded-size measurement for mid-stream batch adaptation:
+/// cumulative (bytes, rows) over every batch yielded from blind groups, so
+/// `bytes_per_row` amortizes per-batch buffer-capacity rounding (a lone
+/// [`MIN_BATCH_ROWS`]-row probe can overcount from allocator doubling; the
+/// cumulative average self-corrects as full-size batches arrive).
+#[derive(Default, Clone, Copy)]
+struct BprTracker {
+    bytes: u64,
+    rows: u64,
+}
+
+impl BprTracker {
+    fn record(&mut self, batch: &RecordBatch) {
+        self.bytes = self
+            .bytes
+            .saturating_add(batch.get_array_memory_size() as u64);
+        self.rows = self.rows.saturating_add(batch.num_rows() as u64);
+    }
+    fn bytes_per_row(&self) -> Option<f64> {
+        (self.rows > 0).then(|| self.bytes as f64 / self.rows as f64)
+    }
+}
+
+/// Re-size a batch row count from the MEASURED decoded bytes/row. Shrink-only:
+/// the static estimate stays the upper clamp, so a non-expanding shape (or a
+/// noisy low measurement) can never produce batches bigger than today's, and
+/// [`MIN_BATCH_ROWS`] stays the floor. `None` (nothing measured yet) keeps the
+/// static size.
+fn adapted_rows(static_rows: usize, budget_bytes: u64, measured_bpr: Option<f64>) -> usize {
+    match measured_bpr {
+        Some(bpr) if bpr > 0.0 => ((budget_bytes as f64 / bpr) as usize)
+            .clamp(MIN_BATCH_ROWS, static_rows.max(MIN_BATCH_ROWS)),
+        _ => static_rows,
+    }
 }
 
 // --------------------------------------------------------------------------- //
@@ -714,6 +766,13 @@ struct RowGroupSeqReader {
     pos: usize,
     current: Option<ParquetRecordBatchReader>,
     schema: SchemaRef,
+    /// Decoded bytes/row observed so far (recorded for blind groups only —
+    /// see [`group_is_estimator_blind`]); carries across row groups.
+    bpr: BprTracker,
+    /// Whether `current` reads a blind group (= record its batches).
+    cur_blind: bool,
+    /// Rest-of-group continuation after a probe reader: (rg, rows to skip).
+    pending: Option<(usize, usize)>,
 }
 
 impl RowGroupSeqReader {
@@ -736,20 +795,38 @@ impl RowGroupSeqReader {
             pos: 0,
             current: None,
             schema,
+            bpr: BprTracker::default(),
+            cur_blind: false,
+            pending: None,
         }
     }
 
-    fn build_group_reader(&self, rg: usize) -> Result<ParquetRecordBatchReader, ParquetError> {
-        let rgm = self.meta.metadata().row_group(rg);
-        let eff = group_batch_rows(rgm, self.batch_clamp, self.budget_bytes);
-        ParquetRecordBatchReaderBuilder::new_with_metadata(
+    /// Build a reader for rows `[skip, skip+take)` of `rg` at `batch_rows`.
+    /// A partial range uses a `RowSelection`; skipping needs no page index —
+    /// the parquet reader decode-skips leading rows, and every skip here is at
+    /// most one probe's worth.
+    fn build_group_reader(
+        &self,
+        rg: usize,
+        skip: usize,
+        take: usize,
+        total: usize,
+        batch_rows: usize,
+    ) -> Result<ParquetRecordBatchReader, ParquetError> {
+        let mut builder = ParquetRecordBatchReaderBuilder::new_with_metadata(
             File::open(&self.path)?,
             self.meta.clone(),
         )
-        .with_batch_size(eff)
+        .with_batch_size(batch_rows)
         .with_row_groups(vec![rg])
-        .with_projection(self.mask.clone())
-        .build()
+        .with_projection(self.mask.clone());
+        if skip > 0 || skip + take < total {
+            builder = builder.with_row_selection(RowSelection::from(vec![
+                RowSelector::skip(skip),
+                RowSelector::select(take),
+            ]));
+        }
+        builder.build()
     }
 }
 
@@ -759,16 +836,60 @@ impl Iterator for RowGroupSeqReader {
         loop {
             if let Some(reader) = self.current.as_mut() {
                 match reader.next() {
-                    Some(batch) => return Some(batch),
+                    Some(Ok(batch)) => {
+                        if self.cur_blind {
+                            self.bpr.record(&batch);
+                        }
+                        return Some(Ok(batch));
+                    }
+                    Some(Err(e)) => return Some(Err(e)),
                     None => self.current = None,
                 }
             }
-            if self.pos >= self.row_groups.len() {
-                return None;
+            // Next reader: the rest of a probed group, else the next group.
+            let (rg, skip) = match self.pending.take() {
+                Some(cont) => cont,
+                None => {
+                    if self.pos >= self.row_groups.len() {
+                        return None;
+                    }
+                    let rg = self.row_groups[self.pos];
+                    self.pos += 1;
+                    (rg, 0)
+                }
+            };
+            let (blind, static_eff, total) = {
+                let rgm = self.meta.metadata().row_group(rg);
+                (
+                    group_is_estimator_blind(rgm),
+                    group_batch_rows(rgm, self.batch_clamp, self.budget_bytes),
+                    rgm.num_rows().max(0) as usize,
+                )
+            };
+            self.cur_blind = blind;
+            let remaining = total.saturating_sub(skip);
+            if remaining == 0 {
+                continue;
             }
-            let rg = self.row_groups[self.pos];
-            self.pos += 1;
-            match self.build_group_reader(rg) {
+            let (batch_rows, take) = if !blind {
+                (static_eff, remaining)
+            } else if self.bpr.bytes_per_row().is_some() {
+                (
+                    adapted_rows(static_eff, self.budget_bytes, self.bpr.bytes_per_row()),
+                    remaining,
+                )
+            } else if remaining > MIN_BATCH_ROWS {
+                // First blind group, nothing measured yet: open with a tiny
+                // probe reader (bounded by the same argument that sets
+                // MIN_BATCH_ROWS), then continue the group adapted.
+                self.pending = Some((rg, skip + MIN_BATCH_ROWS));
+                (MIN_BATCH_ROWS, MIN_BATCH_ROWS)
+            } else {
+                // Group no bigger than a probe: just read it; its batches
+                // still feed the tracker for the groups after it.
+                (static_eff, remaining)
+            };
+            match self.build_group_reader(rg, skip, take, total, batch_rows) {
                 Ok(reader) => self.current = Some(reader),
                 Err(e) => return Some(Err(ArrowError::ExternalError(Box::new(e)))),
             }
@@ -956,9 +1077,36 @@ fn build_local_reader(
 
     if split {
         let rg = selected[0];
-        let rgm = meta.metadata().row_group(rg);
-        let total_rows = rgm.num_rows().max(0) as usize;
-        let eff = group_batch_rows(rgm, batch_size, budget_bytes);
+        let (total_rows, static_eff, blind) = {
+            let rgm = meta.metadata().row_group(rg);
+            (
+                rgm.num_rows().max(0) as usize,
+                group_batch_rows(rgm, batch_size, budget_bytes),
+                group_is_estimator_blind(rgm),
+            )
+        };
+        let mut eff = static_eff;
+        if blind && total_rows > MIN_BATCH_ROWS {
+            // K range readers can't re-size mid-range, so measure BEFORE the
+            // fan-out: a measure-only decode of the group's first
+            // MIN_BATCH_ROWS rows (range 0 decodes them again — 32 rows,
+            // negligible) gives the real decoded bytes/row.
+            let mut tracker = BprTracker::default();
+            let probe = build_range_reader(
+                &path,
+                &meta,
+                &mask,
+                rg,
+                0,
+                MIN_BATCH_ROWS,
+                MIN_BATCH_ROWS,
+            )?;
+            for batch in probe {
+                let batch = batch.map_err(|e| ParquetError::External(Box::new(e)))?;
+                tracker.record(&batch);
+            }
+            eff = adapted_rows(static_eff, budget_bytes, tracker.bytes_per_row());
+        }
         Ok(Box::new(ParallelRangeReader::spawn(
             path, meta, mask, schema, rg, total_rows, k, eff,
         )))
@@ -1569,16 +1717,36 @@ async fn drive_s3(
 
     // --- decoder: strictly one unit at a time (bounds decode scratch;
     // concurrency lives ONLY on the fetch side above) ---
+    // Mid-stream batch adaptation (see `group_is_estimator_blind`): measured
+    // decoded bytes/row carries across units and row groups, re-sizing each
+    // window unit's batch rows at stream build time. Residual: the FIRST unit
+    // of a blind file still decodes at the static (encoded-fallback) size —
+    // adapting inside an already-built stream would need re-buildable
+    // prefetched bytes. The Hstack path is excluded: its units are column
+    // groups (partial rows), so their bytes/row is not comparable, and that
+    // path retains the whole decoded group anyway (TODO 1u).
+    let mut bpr = BprTracker::default();
     for plan in rg_plans {
+        let blind = group_is_estimator_blind(meta.metadata().row_group(plan.rg));
         match plan.decode {
             RgDecode::Windows(n) => {
                 for _ in 0..n {
+                    let batch_rows = if blind {
+                        adapted_rows(plan.batch_rows, decode_budget, bpr.bytes_per_row())
+                    } else {
+                        plan.batch_rows
+                    };
                     let mut stream =
-                        match next_unit_stream(&mut hrx, &meta, plan.rg, plan.batch_rows).await {
+                        match next_unit_stream(&mut hrx, &meta, plan.rg, batch_rows).await {
                             Ok(s) => s,
                             Err(e) => send_err!(e),
                         };
                     while let Some(item) = stream.next().await {
+                        if blind {
+                            if let Ok(b) = &item {
+                                bpr.record(b);
+                            }
+                        }
                         let is_err = item.is_err();
                         let msg = item.map_err(|e| ArrowError::ExternalError(Box::new(e)));
                         if tx.send(msg).await.is_err() {
@@ -2543,6 +2711,187 @@ mod tests {
             }
         }
         assert_eq!(next_val, 1000);
+    }
+
+    /// Write a single-column Utf8 parquet of `n` rows cycling through 4
+    /// distinct 4 KiB values — dictionary-encoded by default, so the footer's
+    /// encoded size (~dict + indices) understates the decoded size ~500x: the
+    /// estimator-blind expansion shape for the adaptation tests below.
+    fn dict_string_file(n: usize, rows_per_group: usize, dictionary: bool) -> Vec<u8> {
+        use arrow::array::StringArray;
+        use arrow::datatypes::{DataType, Field, Schema};
+        use parquet::arrow::arrow_writer::ArrowWriter;
+        use parquet::file::properties::WriterProperties;
+
+        let vals: Vec<String> = (0..4u8).map(|i| i.to_string().repeat(4096)).collect();
+        let col: Vec<&str> = (0..n).map(|i| vals[i % 4].as_str()).collect();
+        let schema = Arc::new(Schema::new(vec![Field::new("s", DataType::Utf8, false)]));
+        let batch =
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(StringArray::from(col))]).unwrap();
+        let props = WriterProperties::builder()
+            .set_dictionary_enabled(dictionary)
+            .set_max_row_group_size(rows_per_group)
+            .build();
+        let mut buf = Vec::new();
+        let mut w = ArrowWriter::try_new(&mut buf, schema, Some(props)).unwrap();
+        w.write(&batch).unwrap();
+        w.close().unwrap();
+        buf
+    }
+
+    fn write_temp(name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("rrs_{}_{}.parquet", name, std::process::id()));
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    /// Every value is 4096 repeats of one ASCII digit; check each row against
+    /// its expected cycle position so parity failures point at a row index.
+    fn assert_dict_string_content(batches: &[RecordBatch], n: usize) {
+        use arrow::array::{Array, StringArray};
+        let mut row = 0usize;
+        for b in batches {
+            let col = b.column(0).as_any().downcast_ref::<StringArray>().unwrap();
+            for i in 0..col.len() {
+                let v = col.value(i);
+                assert_eq!(v.len(), 4096, "row {row}: bad length");
+                assert_eq!(
+                    v.as_bytes()[0],
+                    b'0' + (row % 4) as u8,
+                    "row {row}: wrong value"
+                );
+                row += 1;
+            }
+        }
+        assert_eq!(row, n, "row count mismatch");
+    }
+
+    #[test]
+    fn estimator_blind_detects_dict_byte_array_only() {
+        // Dict strings -> blind.
+        let buf = Bytes::from(dict_string_file(1000, 1_000_000, true));
+        let meta = ArrowReaderMetadata::load(&buf, reader_options(PageIndexPolicy::Skip)).unwrap();
+        assert!(group_is_estimator_blind(meta.metadata().row_group(0)));
+        // Same data with dictionary encoding off -> not blind.
+        let buf = Bytes::from(dict_string_file(1000, 1_000_000, false));
+        let meta = ArrowReaderMetadata::load(&buf, reader_options(PageIndexPolicy::Skip)).unwrap();
+        assert!(!group_is_estimator_blind(meta.metadata().row_group(0)));
+    }
+
+    #[test]
+    fn adapted_rows_clamps_both_ways() {
+        let mib = 1024 * 1024u64;
+        // 4 KiB/row measured, 1 MiB budget -> 256 rows.
+        assert_eq!(adapted_rows(131_072, mib, Some(4096.0)), 256);
+        // Measurement smaller than the static estimate implies -> upper clamp.
+        assert_eq!(adapted_rows(500, mib, Some(1.0)), 500);
+        // Fat rows -> floor.
+        assert_eq!(adapted_rows(131_072, mib, Some(mib as f64)), MIN_BATCH_ROWS);
+        // Nothing measured -> static.
+        assert_eq!(adapted_rows(777, mib, None), 777);
+    }
+
+    /// M50 residual (a), the fix under test: on a dict-string group the static
+    /// estimator falls back to encoded bytes (~8 B/row here), so it would
+    /// decode ALL rows as one ~80 MiB batch against a 1 MiB budget. Adaptation
+    /// must instead yield one MIN_BATCH_ROWS probe, then budget-sized batches.
+    #[test]
+    fn seq_reader_adapts_blind_dict_string_batches() {
+        let n = 20_000usize;
+        let path = write_temp("adapt1", &dict_string_file(n, 1_000_000, true));
+        let budget = 1024 * 1024u64;
+        let reader = open_local_reader(
+            path.to_str().unwrap().to_string(),
+            None,
+            None,
+            131_072,
+            budget,
+            1,
+            u64::MAX,
+            None,
+        )
+        .unwrap();
+        let batches: Vec<RecordBatch> = reader.map(|b| b.unwrap()).collect();
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(batches[0].num_rows(), MIN_BATCH_ROWS, "probe first");
+        for (i, b) in batches[1..].iter().enumerate() {
+            let sz = b.get_array_memory_size() as u64;
+            assert!(
+                sz <= budget + budget / 2,
+                "batch {}: {} bytes > 1.5x budget",
+                i + 1,
+                sz
+            );
+        }
+        // ...and not degenerate: ~budget/4KiB = 256 rows, not another probe.
+        assert!(batches[1].num_rows() >= 128, "over-shrunk: {}", batches[1].num_rows());
+        assert_dict_string_content(&batches, n);
+    }
+
+    /// The measurement carries across row groups: only the very first blind
+    /// group pays a probe; later groups open already adapted.
+    #[test]
+    fn seq_reader_probe_carries_across_groups() {
+        let n = 20_000usize;
+        let path = write_temp("adapt2", &dict_string_file(n, 5_000, true)); // 4 groups
+        let budget = 1024 * 1024u64;
+        let reader = open_local_reader(
+            path.to_str().unwrap().to_string(),
+            None,
+            None,
+            131_072,
+            budget,
+            1,
+            u64::MAX,
+            None,
+        )
+        .unwrap();
+        let batches: Vec<RecordBatch> = reader.map(|b| b.unwrap()).collect();
+        std::fs::remove_file(&path).ok();
+
+        let probes = batches
+            .iter()
+            .filter(|b| b.num_rows() == MIN_BATCH_ROWS)
+            .count();
+        assert_eq!(probes, 1, "exactly one probe across 4 groups");
+        for (i, b) in batches[1..].iter().enumerate() {
+            let sz = b.get_array_memory_size() as u64;
+            assert!(
+                sz <= budget + budget / 2,
+                "batch {}: {} bytes > 1.5x budget",
+                i + 1,
+                sz
+            );
+        }
+        assert_dict_string_content(&batches, n);
+    }
+
+    /// Non-blind groups keep today's static sizing exactly: with dictionary
+    /// encoding off the encoded size ~= decoded size, one reader per group,
+    /// no probe batch.
+    #[test]
+    fn seq_reader_leaves_plain_groups_alone() {
+        let n = 2_000usize;
+        let path = write_temp("adapt3", &dict_string_file(n, 1_000_000, false));
+        let budget = 1024 * 1024u64;
+        let reader = open_local_reader(
+            path.to_str().unwrap().to_string(),
+            None,
+            None,
+            131_072,
+            budget,
+            1,
+            u64::MAX,
+            None,
+        )
+        .unwrap();
+        let batches: Vec<RecordBatch> = reader.map(|b| b.unwrap()).collect();
+        std::fs::remove_file(&path).ok();
+        // Static sizing: ~4 KiB/row encoded -> 256-row batches, and the first
+        // batch is NOT a 32-row probe.
+        assert!(batches[0].num_rows() > MIN_BATCH_ROWS, "no probe on plain groups");
+        assert_dict_string_content(&batches, n);
     }
 
     #[test]
