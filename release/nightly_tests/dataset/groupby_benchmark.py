@@ -1,4 +1,5 @@
 import argparse
+import time
 
 import pyarrow as pa
 from pyarrow import types
@@ -54,12 +55,24 @@ def parse_args() -> argparse.Namespace:
             "strategies."
         ),
     )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Print ds.stats() after the consume phase.",
+    )
 
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--aggregate", action="store_true")
     consume_group.add_argument("--map-groups", action="store_true")
 
     return parser.parse_args()
+
+
+def _plan_op_names(ds) -> list:
+    from ray.data._internal.logical.optimizers import get_execution_plan
+
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+    return [type(op).__name__ for op in dag.post_order_iter()]
 
 
 def main(args):
@@ -89,6 +102,15 @@ def main(args):
             if args.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED.value
             else None
         )
+
+        print(
+            f"CONFIG shuffle_strategy={ctx.shuffle_strategy} "
+            f"use_external_hash_shuffle={ctx.use_external_hash_shuffle} "
+            f"num_partitions={ctx.default_hash_shuffle_parallelism}",
+            flush=True,
+        )
+
+        t0 = time.perf_counter()
         ds = ray.data.read_parquet(path, override_num_blocks=override_num_blocks)
         # Cast string columns to large_string: on low-cardinality keys a single
         # group's string data can exceed 2GB per column, overflowing Arrow's
@@ -96,10 +118,58 @@ def main(args):
         # into one contiguous table.
         ds = ds.map_batches(_cast_strings_to_large, batch_format="pyarrow")
         grouped_ds = ds.groupby(args.group_by)
-        consume_fn(grouped_ds)
 
-        # Report arguments for the benchmark.
-        return vars(args)
+        # Build the lazy sink first so we can assert the physical plan before
+        # spending ~10min on SF1000 execution.
+        if args.map_groups:
+            out_ds = grouped_ds.map_groups(normalize_table, batch_format="pyarrow")
+            op_names = _plan_op_names(out_ds)
+            print(f"PLAN_OPS {op_names}", flush=True)
+            if args.shuffle_transport == "external":
+                assert any(
+                    "ExternalHashShuffle" in n for n in op_names
+                ), f"expected ExternalHashShuffle* in plan, got {op_names}"
+            else:
+                assert not any(
+                    "ExternalHashShuffle" in n for n in op_names
+                ), f"unexpected ExternalHashShuffle* in in-memory plan: {op_names}"
+            t_exec0 = time.perf_counter()
+            n_bundles = 0
+            for _ in out_ds.iter_internal_ref_bundles():
+                n_bundles += 1
+            exec_s = time.perf_counter() - t_exec0
+            print(
+                f"CONSUME map_groups exec_s={exec_s:.1f} bundles={n_bundles}",
+                flush=True,
+            )
+            extra = {"map_groups_exec_s": exec_s, "output_bundles": n_bundles}
+        else:
+            out_ds, extra = consume_fn(grouped_ds)
+            op_names = _plan_op_names(out_ds)
+            print(f"PLAN_OPS {op_names}", flush=True)
+
+        wall_s = time.perf_counter() - t0
+
+        if args.stats:
+            stats_str = out_ds.stats()
+            print("\n===== ds.stats() =====\n" + stats_str + "\n", flush=True)
+        else:
+            stats_str = None
+
+        print(f"RESULT_WALL wall_s={wall_s:.1f}", flush=True)
+
+        metrics = vars(args)
+        metrics.update(
+            {
+                "wall_s": wall_s,
+                "use_external_hash_shuffle": ctx.use_external_hash_shuffle,
+                "plan_ops": op_names,
+                **extra,
+            }
+        )
+        if stats_str is not None:
+            metrics["stats"] = stats_str
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
@@ -110,14 +180,23 @@ def get_consume_fn(args: argparse.Namespace):
 
         def consume_fn(grouped_ds):
             # 'column05' is 'l_extendedprice'
-            grouped_ds.mean("column05").materialize()
+            out = grouped_ds.mean("column05").materialize()
+            return out, {}
 
     elif args.map_groups:
 
         def consume_fn(grouped_ds):
             ds = grouped_ds.map_groups(normalize_table, batch_format="pyarrow")
+            t_exec0 = time.perf_counter()
+            n_bundles = 0
             for _ in ds.iter_internal_ref_bundles():
-                pass
+                n_bundles += 1
+            exec_s = time.perf_counter() - t_exec0
+            print(
+                f"CONSUME map_groups exec_s={exec_s:.1f} bundles={n_bundles}",
+                flush=True,
+            )
+            return ds, {"map_groups_exec_s": exec_s, "output_bundles": n_bundles}
 
     else:
         assert False, f"Invalid consume argument: {args}"

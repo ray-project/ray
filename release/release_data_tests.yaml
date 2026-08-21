@@ -368,6 +368,8 @@
 # Manual: SHUFFLE_V2 in-memory vs external for map_groups (keyed repartition
 # path; external is a DataContext flag only). Same SF1000 / 7M-group config as
 # the shuffle_v2 map_groups release bar. fixed_size m5.4xlarge x32.
+# groupby_benchmark prints PLAN_OPS / CONFIG / CONSUME timings; --stats dumps
+# per-operator wall so shuffle vs read vs map_groups can be compared.
 - name: "map_groups_sf1000_{{shuffle}}"
   python: "3.10"
   frequency: manual
@@ -392,7 +394,7 @@
       python groupby_benchmark.py --sf 1000 --map-groups
       --group-by column02 column14
       --shuffle-strategy shuffle_v2 --num-partitions 500
-      --shuffle-transport {{shuffle}}
+      --shuffle-transport {{shuffle}} --stats
 
 # Keyed repartition of TPC-H lineitem (not groupby). SHUFFLE_V2 in-memory vs
 # external file-transport. Manual: trigger via buildkite/release filter.
