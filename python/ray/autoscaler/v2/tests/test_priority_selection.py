@@ -54,6 +54,29 @@ def test_recovery_scoring():
     assert scores[node_type] == 1.0
 
 
+def test_allocation_gated_marks_unavailable():
+    # An ALLOCATION_GATED (scaleGate quota-exceeded fallback) should mark the node
+    # type unavailable, just like ALLOCATION_TIMEOUT.
+    monitor = CloudResourceMonitor()
+    node_type = "gpu-node-preferred"
+
+    event = InstanceUpdateEvent(
+        instance_type=node_type, new_instance_status=Instance.ALLOCATION_GATED
+    )
+    monitor.notify([event])
+
+    assert node_type in monitor._last_unavailable_timestamp
+    scores = monitor.get_recoverable_resource_availabilities()
+    assert scores[node_type] == 0.0
+
+    # Recovery re-enables the node type once it comes up.
+    success = InstanceUpdateEvent(
+        instance_type=node_type, new_instance_status=Instance.RAY_RUNNING
+    )
+    monitor.notify([success])
+    assert node_type not in monitor._last_unavailable_timestamp
+
+
 def test_scheduler_priority_tie_breaking():
     # Two node types with identical resources
     resources = {"CPU": 4}

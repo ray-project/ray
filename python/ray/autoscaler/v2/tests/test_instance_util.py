@@ -41,6 +41,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.ALLOCATED,
             Instance.QUEUED,
             Instance.ALLOCATION_FAILED,
+            Instance.ALLOCATION_GATED,
         }
         all_status.remove(Instance.REQUESTED)
 
@@ -115,6 +116,9 @@ class InstanceUtilTest(unittest.TestCase):
 
         assert g[Instance.ALLOCATION_FAILED] == set()
         all_status.remove(Instance.ALLOCATION_FAILED)
+
+        assert g[Instance.ALLOCATION_GATED] == set()
+        all_status.remove(Instance.ALLOCATION_GATED)
 
         assert g[Instance.RAY_INSTALL_FAILED] == {
             Instance.TERMINATED,
@@ -297,6 +301,7 @@ class InstanceUtilTest(unittest.TestCase):
 
         # Error status and terminal status.
         expected_reachable[Instance.ALLOCATION_FAILED] = set()
+        expected_reachable[Instance.ALLOCATION_GATED] = set()
         expected_reachable[Instance.UNKNOWN] = set()
         expected_reachable[Instance.TERMINATED] = set()
 

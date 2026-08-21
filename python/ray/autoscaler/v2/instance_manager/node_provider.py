@@ -87,6 +87,9 @@ class LaunchNodeError(CloudInstanceProviderError):
     count: int
     # A unique id that identifies from which update request the error originates.
     request_id: str
+    # Whether the launch was blocked by an external scaling gate (e.g. Kueue
+    # scaleStrategy.scaleGate) rather than a genuine allocation failure.
+    gated: bool
 
     def __init__(
         self,
@@ -96,6 +99,7 @@ class LaunchNodeError(CloudInstanceProviderError):
         timestamp_ns: int,
         details: str = "",
         cause: Optional[Exception] = None,
+        gated: bool = False,
     ) -> None:
         msg = (
             f"Failed to launch {count} nodes of type {node_type} with "
@@ -105,6 +109,7 @@ class LaunchNodeError(CloudInstanceProviderError):
         self.node_type = node_type
         self.count = count
         self.request_id = request_id
+        self.gated = gated
         if cause:
             self.__cause__ = cause
 

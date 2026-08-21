@@ -181,9 +181,10 @@ class Reconciler:
                 When an instance with launch request id (indicating a previous launch
                 request was made) could be assigned to an unassigned cloud instance
                 of the same instance type.
-            2.  REQUESTED -> ALLOCATION_FAILED:
+            2.  REQUESTED -> ALLOCATION_FAILED/ALLOCATION_GATED:
                 When there's an error from the cloud provider for launch failure so
-                that the instance becomes ALLOCATION_FAILED.
+                that the instance becomes ALLOCATION_FAILED, or ALLOCATION_GATED when
+                the launch was blocked by an external scaling gate.
             3. ALLOCATED -> ALLOCATION_TIMEOUT:
                 When an instance has been allocated to a cloud instance, but is stuck in
                 this state. For example, a kubernetes pod remains pending due to
@@ -423,6 +424,8 @@ class Reconciler:
                 instance with the same type.
             Instance update to ALLOCATION_FAILED: if the instance allocation failed
                 with errors.
+            Instance update to ALLOCATION_GATED: if the launch was blocked by an
+                external scaling gate.
             None: if there's no update.
 
         """
@@ -450,12 +453,19 @@ class Reconciler:
                 ),
             )
 
-        # If there's a launch error, transition to ALLOCATION_FAILED.
+        # If there's a launch error, transition to ALLOCATION_GATED when the launch
+        # was blocked by an external scaling gate, else ALLOCATION_FAILED.
         launch_error = launch_errors.get(im_instance.launch_request_id)
         if launch_error and launch_error.node_type == im_instance.instance_type:
+            new_status = (
+                IMInstance.ALLOCATION_GATED
+                if launch_error.gated
+                else IMInstance.ALLOCATION_FAILED
+            )
             return IMInstanceUpdateEvent(
                 instance_id=im_instance.instance_id,
-                new_instance_status=IMInstance.ALLOCATION_FAILED,
+                new_instance_status=new_status,
+                instance_type=im_instance.instance_type,
                 details=f"launch failed with {str(launch_error)}",
             )
         # No update.
@@ -1350,6 +1360,7 @@ class Reconciler:
         inactive_statuses = statuses_to_terminate | {
             IMInstance.TERMINATED,
             IMInstance.ALLOCATION_FAILED,
+            IMInstance.ALLOCATION_GATED,
         }
         # A RAY_STOPPED row can be stale after a raylet restart on the same
         # cloud instance. If another active IM row still owns that cloud
@@ -1509,34 +1520,44 @@ class Reconciler:
                 )
             )
 
-        # Failed instance requests
-        for instance in instances_by_status[IMInstance.ALLOCATION_FAILED]:
-            request_status_update = InstanceUtil.get_last_status_transition(
-                instance, IMInstance.REQUESTED
-            )
-            failed_status_update = InstanceUtil.get_last_status_transition(
-                instance, IMInstance.ALLOCATION_FAILED
-            )
-            failed_time = (
-                failed_status_update.timestamp_ns if failed_status_update else 0
-            )
-            request_time = (
-                request_status_update.timestamp_ns if request_status_update else 0
-            )
-            autoscaling_state.failed_instance_requests.append(
-                FailedInstanceRequest(
-                    instance_type_name=get_provider_instance_type(
-                        instance.instance_type
-                    ),
-                    ray_node_type_name=instance.instance_type,
-                    start_ts=int(request_time // 1e9),
-                    failed_ts=int(
-                        failed_time // 1e9,
-                    ),
-                    reason=failed_status_update.details,
-                    count=1,
+        # Failed instance requests (genuine failures and external scale-gate blocks).
+        for failed_status in (
+            IMInstance.ALLOCATION_FAILED,
+            IMInstance.ALLOCATION_GATED,
+        ):
+            for instance in instances_by_status[failed_status]:
+                request_status_update = InstanceUtil.get_last_status_transition(
+                    instance, IMInstance.REQUESTED
                 )
-            )
+                failed_status_update = InstanceUtil.get_last_status_transition(
+                    instance, failed_status
+                )
+                failed_time = (
+                    failed_status_update.timestamp_ns if failed_status_update else 0
+                )
+                request_time = (
+                    request_status_update.timestamp_ns
+                    if request_status_update
+                    else 0
+                )
+                autoscaling_state.failed_instance_requests.append(
+                    FailedInstanceRequest(
+                        instance_type_name=get_provider_instance_type(
+                            instance.instance_type
+                        ),
+                        ray_node_type_name=instance.instance_type,
+                        start_ts=int(request_time // 1e9),
+                        failed_ts=int(
+                            failed_time // 1e9,
+                        ),
+                        reason=(
+                            failed_status_update.details
+                            if failed_status_update
+                            else "Unknown reason"
+                        ),
+                        count=1,
+                    )
+                )
 
     @staticmethod
     def _handle_stuck_requested_instance(
