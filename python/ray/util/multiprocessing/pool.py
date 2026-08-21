@@ -8,6 +8,9 @@ import queue
 import sys
 import threading
 import time
+import weakref
+from dataclasses import dataclass
+from enum import Enum, auto
 from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
@@ -158,6 +161,425 @@ class PoolTaskError(Exception):
         self.underlying = underlying
 
 
+@dataclass(frozen=True)
+class _TaskSuccess:
+    value: Any
+
+
+@dataclass(frozen=True)
+class _TaskFailure:
+    error: BaseException
+
+
+class _ElasticSlotState(Enum):
+    EMPTY = auto()
+    STARTING = auto()
+    ACTIVE = auto()
+    DRAINING = auto()
+
+
+@dataclass
+class _ElasticSlot:
+    """One bounded actor slot owned by ``_ElasticActorSet``."""
+
+    generation: int = 0
+    state: _ElasticSlotState = _ElasticSlotState.EMPTY
+    actor: Any = None
+    outstanding: int = 0
+    idle_since: Optional[float] = None
+    readiness_ref: Any = None
+    exit_ref: Any = None
+
+
+class _ElasticActorSet:
+    """Own actor capacity without taking ownership of tasks or results.
+
+    Ray actor mailboxes remain the task queue and ObjectRefs remain the result
+    protocol. This class only chooses an actor, counts its outstanding calls,
+    and retires it after an idle deadline.
+    """
+
+    def __init__(
+        self,
+        create_actor: Callable[[], Any],
+        min_size: int,
+        max_size: int,
+        idle_timeout_s: float,
+    ):
+        self._create_actor = create_actor
+        self._min_size = min_size
+        self._idle_timeout_s = idle_timeout_s
+        self._slots = [_ElasticSlot() for _ in range(max_size)]
+        self._condition = threading.Condition()
+        self._closed = False
+        self._error: Optional[BaseException] = None
+
+        with self._condition:
+            for _ in range(min_size):
+                self._create_slot_locked()
+
+        self._reaper = threading.Thread(
+            target=self._reap_idle_actors,
+            name="ray-pool-idle-reaper",
+            daemon=True,
+        )
+        self._reaper.start()
+
+    @property
+    def max_size(self) -> int:
+        return len(self._slots)
+
+    def submit(self, func: Callable, batch: Iterable) -> ray.ObjectRef:
+        """Submit directly to Ray while pending actors only express demand."""
+        with self._condition:
+            while True:
+                self._raise_if_unavailable_locked()
+                active = [
+                    slot
+                    for slot in self._slots
+                    if slot.state is _ElasticSlotState.ACTIVE
+                ]
+                empty = next(
+                    (
+                        slot
+                        for slot in self._slots
+                        if slot.state is _ElasticSlotState.EMPTY
+                    ),
+                    None,
+                )
+                starting = [
+                    slot
+                    for slot in self._slots
+                    if slot.state is _ElasticSlotState.STARTING
+                ]
+                capacity = active + starting
+                if empty is not None and (
+                    not capacity
+                    or sum(slot.outstanding for slot in capacity) >= len(capacity)
+                ):
+                    self._create_slot_locked(empty)
+                    active = [
+                        slot
+                        for slot in self._slots
+                        if slot.state is _ElasticSlotState.ACTIVE
+                    ]
+                    starting = [
+                        slot
+                        for slot in self._slots
+                        if slot.state is _ElasticSlotState.STARTING
+                    ]
+                if active:
+                    slot = min(active, key=lambda candidate: candidate.outstanding)
+                    break
+                if starting:
+                    slot = min(starting, key=lambda candidate: candidate.outstanding)
+                    break
+                # Every bounded slot is finishing an idle retirement. Waiting
+                # for one exit preserves the strict max-size bound.
+                self._condition.wait()
+
+            generation = slot.generation
+            object_ref = slot.actor.run_batch.remote(func, batch)
+            slot.outstanding += 1
+            slot.idle_since = None
+            try:
+                object_ref.future().add_done_callback(
+                    lambda future, target=slot, expected=generation: (
+                        self._batch_completed(target, expected, future)
+                    )
+                )
+            except BaseException:
+                # The Ray call was accepted, so decrementing would make an
+                # idle retirement unsafe. Keep the slot active and occupied;
+                # close/terminate can still reclaim this bounded resource.
+                logger.exception("Failed to observe a submitted Pool actor call")
+            return object_ref
+
+    def close(self) -> None:
+        """Reject new calls and queue graceful exit after accepted calls."""
+        with self._condition:
+            if self._closed:
+                return
+            self._closed = True
+            for slot in self._slots:
+                if slot.state in (
+                    _ElasticSlotState.STARTING,
+                    _ElasticSlotState.ACTIVE,
+                ):
+                    self._begin_draining_locked(slot)
+            self._condition.notify_all()
+
+    def terminate(self) -> None:
+        """Force actors already moved to DRAINING to exit."""
+        self.close()
+        with self._condition:
+            actors = [
+                slot.actor
+                for slot in self._slots
+                if slot.state is _ElasticSlotState.DRAINING
+            ]
+        for actor in actors:
+            ray.kill(actor)
+
+    def join(self) -> None:
+        with self._condition:
+            while any(
+                slot.state is not _ElasticSlotState.EMPTY for slot in self._slots
+            ):
+                if self._error is not None:
+                    raise RuntimeError(
+                        "Elastic Pool actor cleanup failed"
+                    ) from self._error
+                self._condition.wait()
+        self._reaper.join()
+
+    def snapshot(self) -> List[Tuple[_ElasticSlotState, int]]:
+        """Return state and outstanding counts for tests and diagnostics."""
+        with self._condition:
+            return [(slot.state, slot.outstanding) for slot in self._slots]
+
+    def _raise_if_unavailable_locked(self) -> None:
+        if self._closed:
+            raise ValueError("Pool not running")
+        if self._error is not None:
+            raise RuntimeError("Elastic Pool actor management failed") from self._error
+
+    def _create_slot_locked(self, slot: Optional[_ElasticSlot] = None) -> _ElasticSlot:
+        if slot is None:
+            slot = next(
+                slot for slot in self._slots if slot.state is _ElasticSlotState.EMPTY
+            )
+        # Actor creation is an external side effect and may fail synchronously.
+        # Do not publish ACTIVE until a handle exists, so the slot remains
+        # reusable after a failed submission.
+        actor = self._create_actor()
+        readiness_ref = actor.ping.remote()
+        slot.generation += 1
+        slot.state = _ElasticSlotState.STARTING
+        slot.actor = actor
+        slot.outstanding = 0
+        slot.idle_since = None
+        slot.readiness_ref = readiness_ref
+        slot.exit_ref = None
+        generation = slot.generation
+        try:
+            readiness_ref.future().add_done_callback(
+                lambda future, target=slot, expected=generation: self._actor_ready(
+                    target, expected, future
+                )
+            )
+        except BaseException as error:
+            self._error = error
+            self._condition.notify_all()
+            raise
+        return slot
+
+    def _actor_ready(self, slot: _ElasticSlot, generation: int, future) -> None:
+        with self._condition:
+            if (
+                slot.generation != generation
+                or slot.state is not _ElasticSlotState.STARTING
+            ):
+                return
+            try:
+                error = future.exception()
+            except BaseException as callback_error:
+                error = callback_error
+            if error is not None:
+                self._clear_slot_locked(slot)
+                self._condition.notify_all()
+                return
+            slot.state = _ElasticSlotState.ACTIVE
+            slot.readiness_ref = None
+            if slot.outstanding == 0:
+                slot.idle_since = time.monotonic()
+                self._yield_to_pending_work_locked(slot)
+            self._condition.notify_all()
+
+    def _batch_completed(
+        self,
+        slot: _ElasticSlot,
+        generation: int,
+        future,
+    ) -> None:
+        with self._condition:
+            if slot.generation != generation or slot.state not in (
+                _ElasticSlotState.STARTING,
+                _ElasticSlotState.ACTIVE,
+            ):
+                return
+            try:
+                error = future.exception()
+            except BaseException as callback_error:
+                self._error = callback_error
+                self._condition.notify_all()
+                return
+            if isinstance(error, ray.exceptions.RayActorError):
+                restore_capacity_floor = slot.state is _ElasticSlotState.ACTIVE
+                self._clear_slot_locked(slot)
+                if restore_capacity_floor:
+                    self._restore_min_size_locked()
+                self._condition.notify_all()
+                return
+
+            slot.outstanding -= 1
+            if slot.outstanding < 0:
+                self._error = RuntimeError("Pool actor completion count underflow")
+            elif slot.outstanding == 0:
+                if slot.state is _ElasticSlotState.ACTIVE:
+                    slot.idle_since = time.monotonic()
+                    self._yield_to_pending_work_locked(slot)
+                for pending_slot in self._slots:
+                    if (
+                        pending_slot.state is _ElasticSlotState.STARTING
+                        and pending_slot.outstanding == 0
+                    ):
+                        self._cancel_starting_locked(pending_slot)
+            self._condition.notify_all()
+
+    def _yield_to_pending_work_locked(self, slot: _ElasticSlot) -> None:
+        if slot.state is not _ElasticSlotState.ACTIVE or slot.outstanding != 0:
+            return
+        if any(
+            candidate.state is _ElasticSlotState.STARTING and candidate.outstanding > 0
+            for candidate in self._slots
+        ):
+            self._begin_draining_locked(slot)
+
+    def _begin_draining_locked(self, slot: _ElasticSlot) -> None:
+        if slot.state is _ElasticSlotState.STARTING and slot.outstanding == 0:
+            self._cancel_starting_locked(slot)
+            return
+        try:
+            exit_ref = slot.actor.__ray_terminate__.remote()
+        except BaseException as error:
+            if self._closed:
+                self._error = error
+            else:
+                slot.idle_since = time.monotonic()
+            self._condition.notify_all()
+            return
+
+        slot.state = _ElasticSlotState.DRAINING
+        slot.exit_ref = exit_ref
+        generation = slot.generation
+        try:
+            exit_ref.future().add_done_callback(
+                lambda _future, target=slot, expected=generation: self._actor_exited(
+                    target, expected
+                )
+            )
+        except BaseException as error:
+            self._error = error
+            self._condition.notify_all()
+
+    def _cancel_starting_locked(self, slot: _ElasticSlot) -> None:
+        readiness_ref = slot.readiness_ref
+        try:
+            ray.kill(slot.actor)
+        except BaseException as error:
+            self._error = error
+            return
+        slot.state = _ElasticSlotState.DRAINING
+        slot.exit_ref = readiness_ref
+        generation = slot.generation
+        try:
+            readiness_ref.future().add_done_callback(
+                lambda _future, target=slot, expected=generation: self._actor_exited(
+                    target, expected
+                )
+            )
+        except BaseException as error:
+            self._error = error
+
+    def _actor_exited(self, slot: _ElasticSlot, generation: int) -> None:
+        with self._condition:
+            if (
+                slot.generation != generation
+                or slot.state is not _ElasticSlotState.DRAINING
+            ):
+                return
+            self._clear_slot_locked(slot)
+            self._restore_min_size_locked()
+            self._condition.notify_all()
+
+    @staticmethod
+    def _clear_slot_locked(slot: _ElasticSlot) -> None:
+        slot.state = _ElasticSlotState.EMPTY
+        slot.actor = None
+        slot.outstanding = 0
+        slot.idle_since = None
+        slot.readiness_ref = None
+        slot.exit_ref = None
+
+    def _restore_min_size_locked(self) -> None:
+        if self._closed:
+            return
+        capacity = sum(
+            slot.state in (_ElasticSlotState.STARTING, _ElasticSlotState.ACTIVE)
+            for slot in self._slots
+        )
+        while capacity < self._min_size:
+            empty = next(
+                (slot for slot in self._slots if slot.state is _ElasticSlotState.EMPTY),
+                None,
+            )
+            if empty is None:
+                return
+            try:
+                self._create_slot_locked(empty)
+            except BaseException as error:
+                self._error = error
+                return
+            capacity += 1
+
+    def _reap_idle_actors(self) -> None:
+        while True:
+            with self._condition:
+                if self._closed:
+                    if all(
+                        slot.state is _ElasticSlotState.EMPTY for slot in self._slots
+                    ):
+                        return
+                    self._condition.wait()
+                    continue
+                if self._error is not None:
+                    return
+
+                idle = [
+                    slot
+                    for slot in self._slots
+                    if slot.state is _ElasticSlotState.ACTIVE
+                    and slot.outstanding == 0
+                    and slot.idle_since is not None
+                ]
+                excess = max(
+                    0,
+                    sum(slot.state is _ElasticSlotState.ACTIVE for slot in self._slots)
+                    - self._min_size,
+                )
+                idle.sort(key=lambda slot: slot.idle_since)
+                candidates = idle[:excess]
+                now = time.monotonic()
+                expired = [
+                    slot
+                    for slot in candidates
+                    if now - slot.idle_since >= self._idle_timeout_s
+                ]
+                for slot in expired:
+                    self._begin_draining_locked(slot)
+                if expired:
+                    continue
+
+                timeout = None
+                if candidates:
+                    timeout = max(
+                        0.0,
+                        candidates[0].idle_since + self._idle_timeout_s - now,
+                    )
+                self._condition.wait(timeout)
+
+
 class ResultThread(threading.Thread):
     """Thread that collects results from distributed actors.
 
@@ -249,6 +671,8 @@ class ResultThread(threading.Thread):
                         # Receiving the END_SENTINEL object is the signal to stop.
                         # Store the total number of objects.
                         self._total_object_refs = len(self._object_refs)
+                        if self._num_ready >= self._total_object_refs:
+                            break
                     else:
                         self._add_object_ref(new_object_ref)
                         unready.append(new_object_ref)
@@ -266,19 +690,35 @@ class ResultThread(threading.Thread):
                 if len(ready) > 0:
                     ready_id = ready[0]
 
+            if ready_id is None:
+                break
+
             try:
                 batch = ray.get(ready_id)
             except ray.exceptions.RayError as e:
-                batch = [e]
+                batch = [_TaskFailure(e)]
 
             # The exception callback is called only once on the first result
             # that errors. If no result errors, it is never called.
+            callback_error = None
             if not self._got_error:
                 for result in batch:
-                    if isinstance(result, Exception):
+                    if isinstance(result, _TaskFailure):
                         self._got_error = True
-                        if self._error_callback is not None:
-                            self._error_callback(result)
+                        callback_error = result.error
+                        break
+                    elif isinstance(result, _TaskSuccess):
+                        aggregated_batch_results.append(result.value)
+                    # Accept results from actors created by an older version
+                    # of this module while preserving their historical error
+                    # representation.
+                    elif isinstance(result, PoolTaskError):
+                        self._got_error = True
+                        callback_error = result.underlying
+                        break
+                    elif isinstance(result, Exception):
+                        self._got_error = True
+                        callback_error = result
                         break
                     else:
                         aggregated_batch_results.append(result)
@@ -286,6 +726,11 @@ class ResultThread(threading.Thread):
             self._num_ready += 1
             self._results[self._indices[ready_id]] = batch
             self._ready_index_queue.put(self._indices[ready_id])
+            if callback_error is not None and self._error_callback is not None:
+                try:
+                    self._error_callback(callback_error)
+                except BaseException:
+                    logger.exception("Pool error_callback raised")
 
         # The regular callback is called only once on the entire List of
         # results as long as none of the results were errors. If any results
@@ -295,13 +740,16 @@ class ResultThread(threading.Thread):
         # This callback is called outside the while loop to ensure that it's
         # called on the entire list of results– not just a single batch.
         if not self._got_error and self._callback is not None:
-            if not self._single_result:
-                self._callback(aggregated_batch_results)
-            else:
-                # On a thread handling a function with a single result
-                # (e.g. apply_async), we call the callback on just that result
-                # instead of on a list encaspulating that result
-                self._callback(aggregated_batch_results[0])
+            try:
+                if not self._single_result:
+                    self._callback(aggregated_batch_results)
+                else:
+                    # On a thread handling a function with a single result
+                    # (e.g. apply_async), we call the callback on just that result
+                    # instead of on a list encaspulating that result
+                    self._callback(aggregated_batch_results[0])
+            except BaseException:
+                logger.exception("Pool callback raised")
 
     def got_error(self):
         # Should only be called after the thread finishes.
@@ -357,11 +805,16 @@ class AsyncResult:
         results = []
         for batch in self._result_thread.results():
             for result in batch:
-                if isinstance(result, PoolTaskError):
+                if isinstance(result, _TaskFailure):
+                    raise result.error
+                if isinstance(result, _TaskSuccess):
+                    results.append(result.value)
+                elif isinstance(result, PoolTaskError):
                     raise result.underlying
                 elif isinstance(result, Exception):
                     raise result
-            results.extend(batch)
+                else:
+                    results.append(result)
 
         if self._single_result:
             return results[0]
@@ -387,6 +840,14 @@ class AsyncResult:
         return not self._result_thread.got_error()
 
 
+def _result_for_iterator(result):
+    if isinstance(result, _TaskSuccess):
+        return result.value
+    if isinstance(result, _TaskFailure):
+        return PoolTaskError(result.error)
+    return result
+
+
 class IMapIterator:
     """Base class for OrderedIMapIterator and UnorderedIMapIterator."""
 
@@ -400,20 +861,24 @@ class IMapIterator:
         self._submitted_chunks = []
         self._ready_objects = collections.deque()
         self._iterator = iter(iterable)
-        if isinstance(iterable, collections.abc.Iterator):
-            # Got iterator (which has no len() function).
-            # Make default chunksize 1 instead of using _calculate_chunksize().
-            # Indicate unknown queue length, requiring explicit stopping.
-            self._chunksize = chunksize or 1
-            result_list_size = float("inf")
-        else:
-            self._chunksize = chunksize or pool._calculate_chunksize(iterable)
-            result_list_size = div_round_up(len(iterable), chunksize)
+        if chunksize is None:
+            try:
+                chunksize = pool._calculate_chunksize(iterable)
+            except (TypeError, AttributeError):
+                chunksize = 1
+        self._chunksize = chunksize
 
-        self._result_thread = ResultThread([], total_object_refs=result_list_size)
+        # Iteration end is the only reliable completion signal: custom
+        # iterables may report a stale or approximate length.
+        self._result_thread = ResultThread([], total_object_refs=float("inf"))
         self._result_thread.start()
+        self._result_finalizer = weakref.finalize(
+            self,
+            self._stop_result_thread,
+            self._result_thread,
+        )
 
-        for _ in range(len(self._pool._actor_pool)):
+        for _ in range(self._pool._pool_size):
             self._submit_next_chunk()
 
     def _submit_next_chunk(self):
@@ -421,7 +886,7 @@ class IMapIterator:
         if self._finished_iterating:
             return
 
-        actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
+        actor_index = len(self._submitted_chunks) % self._pool._pool_size
         chunk_iterator = itertools.islice(self._iterator, self._chunksize)
 
         # Check whether we have run out of samples.
@@ -431,19 +896,27 @@ class IMapIterator:
             # Reached end of self._iterator
             self._finished_iterating = True
             if len(chunk_list) == 0:
-                # Nothing to do, return.
+                self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
                 return
         chunk_iterator = iter(chunk_list)
 
-        new_chunk_id = self._pool._submit_chunk(
-            self._func, chunk_iterator, self._chunksize, actor_index
-        )
+        try:
+            new_chunk_id = self._pool._submit_chunk(
+                self._func, chunk_iterator, self._chunksize, actor_index
+            )
+        except BaseException as error:
+            self._finished_iterating = True
+            new_chunk_id = ray.put([_TaskFailure(error)])
         self._submitted_chunks.append(False)
         # Wait for the result
         self._result_thread.add_object_ref(new_chunk_id)
         # If we submitted the final chunk, notify the result thread
         if self._finished_iterating:
             self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
+
+    @staticmethod
+    def _stop_result_thread(result_thread):
+        result_thread.add_object_ref(ResultThread.END_SENTINEL)
 
     def __iter__(self):
         return self
@@ -491,7 +964,7 @@ class OrderedIMapIterator(IMapIterator):
                 and self._submitted_chunks[self._next_chunk_index]
             ):
                 for result in self._result_thread.result(self._next_chunk_index):
-                    self._ready_objects.append(result)
+                    self._ready_objects.append(_result_for_iterator(result))
                 self._next_chunk_index += 1
 
         return self._ready_objects.popleft()
@@ -520,7 +993,7 @@ class UnorderedIMapIterator(IMapIterator):
             self._submit_next_chunk()
 
             for result in self._result_thread.result(index):
-                self._ready_objects.append(result)
+                self._ready_objects.append(_result_for_iterator(result))
             self._next_chunk_index += 1
 
         return self._ready_objects.popleft()
@@ -545,9 +1018,9 @@ class PoolActor:
             args = args or ()
             kwargs = kwargs or {}
             try:
-                results.append(func(*args, **kwargs))
+                results.append(_TaskSuccess(func(*args, **kwargs)))
             except Exception as e:
-                results.append(PoolTaskError(e))
+                results.append(_TaskFailure(e))
         return results
 
 
@@ -573,6 +1046,11 @@ class Pool:
             also be specified using the `RAY_ADDRESS` environment variable.
         ray_remote_args: arguments used to configure the Ray Actors making up
             the pool. See :func:`ray.remote` for details.
+        min_size: minimum number of actors retained by an elastic pool.
+            Supplying any elastic option enables elastic capacity management.
+        max_size: maximum number of actor slots in an elastic pool. Defaults
+            to ``processes`` when given, otherwise the current cluster CPUs.
+        idle_timeout_s: seconds an idle actor remains active before retirement.
     """
 
     def __init__(
@@ -584,10 +1062,14 @@ class Pool:
         context: Any = None,
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        min_size: Optional[int] = None,
+        max_size: Optional[int] = None,
+        idle_timeout_s: Optional[float] = None,
     ):
         usage_lib.record_library_usage("util.multiprocessing.Pool")
 
         self._closed = False
+        self._pool_lock = threading.Lock()
         self._initializer = initializer
         self._initargs = initargs
         self._maxtasksperchild = maxtasksperchild or -1
@@ -597,6 +1079,10 @@ class Pool:
         self._current_index = 0
         self._ray_remote_args = ray_remote_args or {}
         self._pool_actor = None
+        self._elastic_actor_set: Optional[_ElasticActorSet] = None
+        self._autoscale = any(
+            option is not None for option in (min_size, max_size, idle_timeout_s)
+        )
 
         if context and log_once("context_argument_warning"):
             logger.warning(
@@ -605,8 +1091,34 @@ class Pool:
                 "to control ray initialization."
             )
 
-        processes = self._init_ray(processes, ray_address)
-        self._start_actor_pool(processes)
+        processes, ray_cpus = self._init_ray(processes, ray_address)
+        if self._autoscale:
+            if maxtasksperchild is not None:
+                raise ValueError(
+                    "maxtasksperchild is not supported by elastic Ray Pools"
+                )
+            max_size = max_size if max_size is not None else processes
+            max_size = ray_cpus if max_size is None else max_size
+            min_size = 0 if min_size is None else min_size
+            idle_timeout_s = 60.0 if idle_timeout_s is None else idle_timeout_s
+            if max_size <= 0:
+                raise ValueError("max_size must be greater than 0")
+            if not 0 <= min_size <= max_size:
+                raise ValueError("min_size must be between 0 and max_size")
+            if idle_timeout_s < 0:
+                raise ValueError("idle_timeout_s must be non-negative")
+            self._pool_size = max_size
+            self._actor_pool = []
+            self._pool_actor = PoolActor.options(**self._ray_remote_args)
+            self._elastic_actor_set = _ElasticActorSet(
+                lambda: self._pool_actor.remote(self._initializer, self._initargs),
+                min_size,
+                max_size,
+                idle_timeout_s,
+            )
+        else:
+            self._pool_size = processes
+            self._start_actor_pool(processes)
 
     def _init_ray(self, processes=None, ray_address=None):
         # Initialize ray. If ray is already initialized, we do nothing.
@@ -631,19 +1143,20 @@ class Pool:
             else:
                 ray.init(num_cpus=processes)
 
-        ray_cpus = int(ray._private.state.cluster_resources()["CPU"])
-        if processes is None:
-            processes = ray_cpus
-        if processes <= 0:
-            raise ValueError("Processes in the pool must be >0.")
-        if ray_cpus < processes:
-            raise ValueError(
-                "Tried to start a pool with {} processes on an "
-                "existing ray cluster, but there are only {} "
-                "CPUs in the ray cluster.".format(processes, ray_cpus)
-            )
+        ray_cpus = int(ray._private.state.cluster_resources().get("CPU", 0))
+        if not self._autoscale:
+            if processes is None:
+                processes = ray_cpus
+            if processes <= 0:
+                raise ValueError("Processes in the pool must be >0.")
+            if ray_cpus < processes:
+                raise ValueError(
+                    "Tried to start a pool with {} processes on an "
+                    "existing ray cluster, but there are only {} "
+                    "CPUs in the ray cluster.".format(processes, ray_cpus)
+                )
 
-        return processes
+        return processes, ray_cpus
 
     def _start_actor_pool(self, processes):
         self._pool_actor = None
@@ -680,7 +1193,7 @@ class Pool:
         return (self._pool_actor.remote(self._initializer, self._initargs), 0)
 
     def _next_actor_index(self):
-        if self._current_index == len(self._actor_pool) - 1:
+        if self._current_index == self._pool_size - 1:
             self._current_index = 0
         else:
             self._current_index += 1
@@ -688,15 +1201,19 @@ class Pool:
 
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch(self, actor_index, func, batch):
-        actor, count = self._actor_pool[actor_index]
-        object_ref = actor.run_batch.remote(func, batch)
-        count += 1
-        assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
-        if count == self._maxtasksperchild:
-            self._stop_actor(actor)
-            actor, count = self._new_actor_entry()
-        self._actor_pool[actor_index] = (actor, count)
-        return object_ref
+        with self._pool_lock:
+            self._check_running()
+            if self._elastic_actor_set is not None:
+                return self._elastic_actor_set.submit(func, batch)
+            actor, count = self._actor_pool[actor_index]
+            object_ref = actor.run_batch.remote(func, batch)
+            count += 1
+            assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
+            if count == self._maxtasksperchild:
+                self._stop_actor(actor)
+                actor, count = self._new_actor_entry()
+            self._actor_pool[actor_index] = (actor, count)
+            return object_ref
 
     def apply(
         self,
@@ -785,10 +1302,10 @@ class Pool:
         return func
 
     def _calculate_chunksize(self, iterable):
-        chunksize, extra = divmod(len(iterable), len(self._actor_pool) * 4)
+        chunksize, extra = divmod(len(iterable), self._pool_size * 4)
         if extra:
             chunksize += 1
-        return chunksize
+        return max(chunksize, 1)
 
     def _submit_chunk(self, func, iterator, chunksize, actor_index, unpack_args=False):
         chunk = []
@@ -801,27 +1318,28 @@ class Pool:
             except StopIteration:
                 break
 
-        # Nothing to submit. The caller should prevent this.
-        assert len(chunk) > 0
+        if not chunk:
+            return None
 
         return self._run_batch(actor_index, func, chunk)
 
     def _chunk_and_run(self, func, iterable, chunksize=None, unpack_args=False):
-        if not hasattr(iterable, "__len__"):
-            iterable = list(iterable)
-
         if chunksize is None:
-            chunksize = self._calculate_chunksize(iterable)
+            try:
+                chunksize = self._calculate_chunksize(iterable)
+            except (TypeError, AttributeError):
+                chunksize = 1
 
         iterator = iter(iterable)
         chunk_object_refs = []
-        while len(chunk_object_refs) * chunksize < len(iterable):
-            actor_index = len(chunk_object_refs) % len(self._actor_pool)
-            chunk_object_refs.append(
-                self._submit_chunk(
-                    func, iterator, chunksize, actor_index, unpack_args=unpack_args
-                )
+        while True:
+            actor_index = len(chunk_object_refs) % self._pool_size
+            object_ref = self._submit_chunk(
+                func, iterator, chunksize, actor_index, unpack_args=unpack_args
             )
+            if object_ref is None:
+                break
+            chunk_object_refs.append(object_ref)
 
         return chunk_object_refs
 
@@ -988,11 +1506,18 @@ class Pool:
         outstanding work to finish.
         """
 
-        self._registry.clear()
-        self._registry_hashable.clear()
-        for actor, _ in self._actor_pool:
-            self._stop_actor(actor)
-        self._closed = True
+        with self._pool_lock:
+            if self._closed:
+                return
+            self._registry.clear()
+            self._registry_hashable.clear()
+            if self._elastic_actor_set is not None:
+                self._closed = True
+                self._elastic_actor_set.close()
+            else:
+                for actor, _ in self._actor_pool:
+                    self._stop_actor(actor)
+                self._closed = True
         gc.collect()
 
     def terminate(self):
@@ -1004,8 +1529,11 @@ class Pool:
 
         if not self._closed:
             self.close()
-        for actor, _ in self._actor_pool:
-            ray.kill(actor)
+        if self._elastic_actor_set is not None:
+            self._elastic_actor_set.terminate()
+        else:
+            for actor, _ in self._actor_pool:
+                ray.kill(actor)
 
     def join(self):
         """Wait for the actors in a closed pool to exit.
@@ -1018,4 +1546,7 @@ class Pool:
 
         if not self._closed:
             raise ValueError("Pool is still running")
-        self._wait_for_stopping_actors()
+        if self._elastic_actor_set is not None:
+            self._elastic_actor_set.join()
+        else:
+            self._wait_for_stopping_actors()
