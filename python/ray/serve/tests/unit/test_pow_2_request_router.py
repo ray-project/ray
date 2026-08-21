@@ -127,6 +127,27 @@ def fake_pending_request(
         )
 
 
+async def verify_replicas_chosen(
+    router: PowerOfTwoChoicesRequestRouter, expected_replica_ids: Set[ReplicaID]
+):
+    """Route requests until every expected replica has been chosen.
+
+    Candidates are picked at random, so one batch of 10 can miss a valid replica.
+    Route up to 1000 in batches of 10: fast on average, and no longer a coin flip.
+    """
+    loop = get_or_create_event_loop()
+    chosen_replica_ids = set()
+    for _ in range(100):
+        tasks = [
+            loop.create_task(router._choose_replica_for_request(fake_pending_request()))
+            for _ in range(10)
+        ]
+        chosen_replica_ids |= {r.replica_id for r in await asyncio.gather(*tasks)}
+        if chosen_replica_ids == expected_replica_ids:
+            return
+    assert chosen_replica_ids == expected_replica_ids
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pow_2_router",
@@ -901,7 +922,6 @@ async def test_prefer_az_off(pow_2_router):
     """
 
     s = pow_2_router
-    loop = get_or_create_event_loop()
 
     r1 = FakeRunningReplica("r1", availability_zone=ROUTER_AZ)
     r2 = FakeRunningReplica("r2", availability_zone=ROUTER_AZ)
@@ -911,31 +931,11 @@ async def test_prefer_az_off(pow_2_router):
     r3.set_queue_len_response(0)
     s.update_replicas([r1, r2, r3])
 
-    async def choose_replicas():
-        tasks = []
-        for _ in range(10):
-            tasks.append(
-                loop.create_task(s._choose_replica_for_request(fake_pending_request()))
-            )
-        replicas = await asyncio.gather(*tasks)
-        return {r.replica_id for r in replicas}
-
-    async def verify_replicas_batched(expected_replicas: Set[str]):
-        chosen_replicas = set()
-        for _ in range(100):
-            chosen_replicas = chosen_replicas.union(await choose_replicas())
-            print("Replicas chosen after batch of 10:", chosen_replicas)
-            if chosen_replicas == expected_replicas:
-                break
-        assert chosen_replicas == expected_replicas
-
-    # Requests should be spread across all nodes
-    # NOTE(zcin): Choose up to 1000 replicas in batches of 10 at a time.
-    # This deflakes the test, but also makes sure the test runs fast on average
-    await verify_replicas_batched({r1.replica_id, r2.replica_id, r3.replica_id})
+    # Requests should be spread across all nodes.
+    await verify_replicas_chosen(s, {r1.replica_id, r2.replica_id, r3.replica_id})
 
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
-    await verify_replicas_batched({r2.replica_id, r3.replica_id})
+    await verify_replicas_chosen(s, {r2.replica_id, r3.replica_id})
 
 
 @pytest.mark.asyncio
@@ -974,7 +974,7 @@ async def test_prefer_replica_in_same_az_without_prefer_node(pow_2_router):
     # All requests should be routed to the two nodes in the same AZ
     # (r1 and r2). Without node preference in routing, requests should
     # be routed to BOTH r1 and r2
-    assert set(await choose_replicas()) == {r1, r2}
+    await verify_replicas_chosen(s, {r1.replica_id, r2.replica_id})
 
     # Update replica on one of the nodes in the same AZ to reject
     # requests. Now requests should only go to the remaining node in the
@@ -1028,7 +1028,7 @@ async def test_prefer_replica_on_same_node_without_prefer_az(pow_2_router):
     # If replica on same node is blocked, there should be no preference between
     # remaining replicas even if the availability zones are different.
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
-    assert set(await choose_replicas()) == {r2, r3}
+    await verify_replicas_chosen(s, {r2.replica_id, r3.replica_id})
 
 
 @pytest.mark.asyncio
@@ -1280,13 +1280,24 @@ class TestModelMultiplexing:
             assert done.pop() == m2_tasks[0]
             m2_tasks = m2_tasks[1:]
 
-    async def test_replicas_with_model_id_not_chosen_when_busy(self, pow_2_router):
+    async def test_replicas_with_model_id_not_chosen_when_busy(
+        self, pow_2_router, monkeypatch
+    ):
         """
         Setup 3 replicas, one of which has the model ID, the other two do not. Verifies
         that when the replica with the model ID is busy, the other replicas are chosen.
         """
         s = pow_2_router
         loop = get_or_create_event_loop()
+
+        # Restore the production matching timeout. The deadline below has to sit
+        # between normal routing and a request that waits the window out, and the
+        # fixture-shortened 10ms window leaves those two too close together.
+        monkeypatch.setattr(
+            ray.serve._private.request_router.request_router,
+            "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S",
+            1.0,
+        )
 
         r1 = FakeRunningReplica("r1", model_ids={"m1"})
         r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
@@ -1305,12 +1316,9 @@ class TestModelMultiplexing:
         ]
 
         # Ensure that all tasks are routed to r2 and r3 right away, since r1 is busy.
-        #
-        # The timeout is important in this test, else the request can still wait for the
-        # _multiplexed_matching_timeout to expire then to go to other replicas. This
-        # timeout ensures that the request is routed to other replicas right away
-        # after first try.
-        done, _ = await asyncio.wait(tasks, timeout=0.1)
+        # The deadline is what proves "right away": falling back only after the 1s
+        # matching window expires would take far longer than this.
+        done, _ = await asyncio.wait(tasks, timeout=1)
         assert len(done) == 100
         for task in done:
             assert task.result() in {r2, r3}
