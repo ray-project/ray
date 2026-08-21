@@ -68,7 +68,7 @@ The token needs the **`read_artifacts`** scope in addition to `read_build_logs`;
      -o /tmp/<ARTIFACT_ID>
    ```
    `-L` is required: the endpoint returns HTTP 302 and redirects to S3. Keep the `Authorization` header — curl drops it on the cross-host hop, which is what S3 wants (sending it yields `400 InvalidRequest`).
-3. If the artifact is a zip, unzip it — the logs are inside.
+3. If the artifact is a zip, unzip it — the logs are inside. If that is still not enough, try another artifact.
 
 ## Authentication note
 
