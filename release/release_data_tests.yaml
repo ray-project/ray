@@ -398,12 +398,10 @@
 
 # Keyed repartition of TPC-H lineitem (not groupby). Manual release filter.
 # Variants: HASH_SHUFFLE (v1 aggregators) vs SHUFFLE_V2 in-memory vs external.
-# Compute: 32x m5.2xlarge workers (see fixed_size_all_to_all_compute_m5_2xlarge.yaml).
+# Compute: 32x m5.4xlarge workers (fixed_size_all_to_all_compute.yaml).
 #
 # In-memory / v1 object-store pull knobs (Ray Core / object manager):
-#   RAY_object_manager_client_connection_num  — gRPC clients per OM peer (default 2)
-#   RAY_object_manager_rpc_threads_num        — transfer RPC thread base; 0 = auto
-# Both set to 8 here (m5.2xlarge auto would only be ~2). Harmless for external.
+#   RAY_object_manager_client_connection_num / RAY_object_manager_rpc_threads_num = 8
 # Note: v1 may OOM/timeout more easily on 512GB (aggregator heap); keep manual.
 - name: "repartition_lineitem_{{shuffle}}"
   python: "3.10"
@@ -421,13 +419,13 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_object_manager_client_connection_num=8
         - RAY_object_manager_rpc_threads_num=8
-    cluster_compute: fixed_size_all_to_all_compute_m5_2xlarge.yaml
+    cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
     timeout: 7200
     script: >
       python bench_shuffle.py --shuffle {{shuffle}}
-      --data-size-gb 512 --num-partitions 512 --target-cpu 256
+      --data-size-gb 512 --num-partitions 512 --target-cpu 512
       --write-parquet
 
 # Same as above at 1 TiB / 1024 partitions (SF10000 lineitem, limit to 1024GB).
@@ -447,13 +445,13 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_object_manager_client_connection_num=8
         - RAY_object_manager_rpc_threads_num=8
-    cluster_compute: fixed_size_all_to_all_compute_m5_2xlarge.yaml
+    cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
     timeout: 10800
     script: >
       python bench_shuffle.py --shuffle {{shuffle}}
-      --data-size-gb 1024 --num-partitions 1024 --target-cpu 256
+      --data-size-gb 1024 --num-partitions 1024 --target-cpu 512
       --write-parquet
 
 ###############
