@@ -15,6 +15,7 @@ from ray.data._internal.datasource.lance_datasink import (
     LanceDatasink,
     _write_fragment,
 )
+from ray.data._internal.datasource.lance_utils import get_lance_namespace_kwargs
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -426,6 +427,54 @@ def test_lance_namespace_write_rejects_non_create_mode(monkeypatch, mode):
             namespace_impl="dir",
             namespace_properties={"path": "/tmp/ns"},
         )
+
+
+def test_lance_namespace_kwargs_omits_namespace_for_plain_uri():
+    def current_lance_api(*, namespace_client=None, table_id=None):
+        pass
+
+    assert get_lance_namespace_kwargs(current_lance_api, None, None, None) == {}
+
+
+def test_lance_namespace_kwargs_uses_current_api(monkeypatch):
+    namespace = object()
+
+    def current_lance_api(*, namespace_client=None, table_id=None):
+        pass
+
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.lance_utils.get_or_create_namespace",
+        lambda namespace_impl, namespace_properties: namespace,
+    )
+
+    assert get_lance_namespace_kwargs(
+        current_lance_api,
+        "dir",
+        {"path": "/tmp/ns"},
+        ["db", "table"],
+    ) == {
+        "namespace_client": namespace,
+        "table_id": ["db", "table"],
+    }
+
+
+def test_lance_namespace_kwargs_uses_legacy_api(monkeypatch):
+    provider = object()
+
+    def legacy_lance_api(*, storage_options_provider=None):
+        pass
+
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.lance_utils.create_storage_options_provider",
+        lambda namespace_impl, namespace_properties, table_id: provider,
+    )
+
+    assert get_lance_namespace_kwargs(
+        legacy_lance_api,
+        "dir",
+        {"path": "/tmp/ns"},
+        ["db", "table"],
+    ) == {"storage_options_provider": provider}
 
 
 @pytest.mark.parametrize(
