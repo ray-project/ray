@@ -22,6 +22,24 @@ FROM ${RAY_DASHBOARD_IMAGE} AS ray-dashboard
 # Main build stage - manylinux2014 provides GLIBC 2.17
 FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE} AS builder
 
+# Where pip resolves from while building the wheel. This stage builds FROM the upstream
+# manylinux image, so it inherits nothing from the CI image roots, and a docker build
+# cannot see an index configured in the step's environment -- BuildKit RUN steps inherit
+# nothing from it. So it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment. Empty outside CI, and then this is
+# the index pip would have used anyway.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
+# pip refuses a plain-HTTP index unless the host is named as trusted, with loopback the
+# one exemption -- and this address is a name, not loopback. The refusal is silent: the
+# index is dropped and the install fails with "from versions: none" rather than a
+# connection error (release 104844, cython==3.0.12 in the wheel build). Arrives the same
+# way as the index above and is empty outside CI, where the index is public PyPI over
+# HTTPS and there is nothing to trust.
+ARG RAYCI_IMAGE_PIP_TRUSTED_HOST=""
+ENV PIP_TRUSTED_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
+
 ARG BUILDKITE_COMMIT
 
 WORKDIR /home/forge/ray
