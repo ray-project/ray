@@ -328,20 +328,11 @@ class TestGPUShuffleOperatorConstructor:
         usage = op.incremental_resource_usage()
         assert usage.gpu == 1
 
-    def test_progress_bar_names(self):
+    def test_sub_progress_state(self):
         op = self._make_op()
-        names = list(op.get_sub_progress_metrics().keys())
-        assert names == ["GPU Shuffle", "GPU Reduce"]
-
-    def test_sub_progress_metric_shuffle(self):
-        op = self._make_op()
-        metric = op.get_sub_progress_metrics()["GPU Shuffle"]
-        assert metric is not None
-
-    def test_sub_progress_metric_reduce(self):
-        op = self._make_op()
-        metric = op.get_sub_progress_metrics()["GPU Reduce"]
-        assert metric is not None
+        expected_names = ["GPU Shuffle", "GPU Reduce"]
+        assert list(op.get_sub_progress_metrics()) == expected_names
+        assert list(op.get_sub_progress_updaters()) == expected_names
 
     def test_initial_state(self):
         op = self._make_op()

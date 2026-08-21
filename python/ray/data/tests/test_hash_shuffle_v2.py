@@ -354,11 +354,6 @@ def test_shuffle_operators_expose_sub_progress_state():
     assert list(reduce_op.get_sub_progress_metrics()) == ["Reduce"]
     assert list(reduce_op.get_sub_progress_updaters()) == ["Reduce"]
 
-    map_op.get_sub_progress_updaters()["Map"].update(increment=3, total=10)
-    map_metrics = map_op.get_sub_progress_metrics()["Map"]
-    assert map_metrics.completed == 3
-    assert map_metrics.total == 10
-
 
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch

@@ -236,28 +236,13 @@ class TestLoggingProgressManager:
     def test_sub_progress_uses_operator_total_when_metric_total_is_unset(
         self, mock_logger
     ):
-        class _SubProgressOp(SubProgressMixin):
-            name = "Shuffle"
-
-            def __init__(self):
-                self._metrics = {
-                    "Map": ProgressMetrics(name="Map", completed=3, total=None)
-                }
-
-            @property
-            def metrics(self):
-                return MagicMock(row_outputs_taken=0)
-
-            def num_output_rows_total(self):
-                return 10
-
-            def get_sub_progress_metrics(self):
-                return self._metrics
-
-            def get_sub_progress_updaters(self):
-                return None
-
-        op = _SubProgressOp()
+        op = MagicMock(spec=SubProgressMixin)
+        op.name = "Shuffle"
+        op.metrics = MagicMock(row_outputs_taken=0)
+        op.num_output_rows_total = MagicMock(return_value=10)
+        op.get_sub_progress_metrics.return_value = {
+            "Map": ProgressMetrics(name="Map", completed=3, total=None)
+        }
         op_state = MagicMock()
         op_state.op = op
         topology = MagicMock()
