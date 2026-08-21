@@ -868,7 +868,10 @@ _intersphinx_targets = {
     ),
     "torch": (
         "https://docs.pytorch.org/docs/stable/",
-        "https://docs.pytorch.org/docs/2.7/objects.inv",
+        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt
+        # so cross-references only resolve to symbols that version ships. Bump this
+        # with that pin, then re-run _intersphinx/refresh.py torch.
+        "https://docs.pytorch.org/docs/2.9/objects.inv",
     ),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
