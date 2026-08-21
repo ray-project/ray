@@ -13,12 +13,14 @@ from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxNotFoundError,
 )
+from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
         cpu=1.0,
         memory="512Mi",
@@ -54,7 +56,7 @@ def test_gvisor_backend_not_found():
 def test_create_sandbox_helper():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
-    sb = create("busybox:latest", workdir="/workspace")
+    sb = create("busybox:latest", workdir="/workspace", shell="/bin/sh")
     assert isinstance(sb, ActorHandle)
     res = ray.get(sb.exec.remote("echo 'Process isolation'"))
     assert res.exit_code == 0
@@ -67,6 +69,7 @@ def test_gvisor_backend_container_image_support():
     backend = GVisorSandboxBackend()
     config = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
     )
     sandbox_id = backend.create_sandbox(config)
@@ -115,11 +118,13 @@ def test_gvisor_backend_container_image_overlay_isolation():
     backend = GVisorSandboxBackend()
     cfg1 = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
         readonly=False,
     )
     cfg2 = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
         readonly=False,
     )
@@ -159,6 +164,7 @@ def test_gvisor_backend_container_image_overlay_isolation():
     # A newly created SB3 should not see /overlay_test.txt
     cfg3 = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
         readonly=False,
     )
@@ -175,6 +181,7 @@ def test_gvisor_backend_readonly_rootfs():
     # Default is readonly=True
     cfg = GVisorSandboxConfig(
         image="busybox:latest",
+        shell="/bin/sh",
         workdir="/workspace",
     )
     assert cfg.readonly is True
@@ -200,18 +207,102 @@ def test_gvisor_backend_readonly_rootfs():
 
 def test_gvisor_backend_ignore_cgroups_flag():
     backend = GVisorSandboxBackend()
-    cfg_default = GVisorSandboxConfig(image="busybox:latest")
+    cfg_default = GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
     orig_env = os.environ.pop("RAY_SANDBOX_IGNORE_CGROUPS", None)
     try:
         args_default = backend._runsc_base_args(cfg_default)
         assert "--ignore-cgroups" not in args_default
 
-        cfg_ignored = GVisorSandboxConfig(image="busybox:latest", _ignore_cgroups=True)
+        cfg_ignored = GVisorSandboxConfig(
+            image="busybox:latest", shell="/bin/sh", _ignore_cgroups=True
+        )
         args_ignored = backend._runsc_base_args(cfg_ignored)
         assert "--ignore-cgroups" in args_ignored
     finally:
         if orig_env is not None:
             os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
+
+
+def test_string_exec_shell_configuration():
+    """String commands run under config.shell (default /bin/bash) with a
+    per-exec override; there is no auto-detection."""
+    # busybox has /bin/sh but no /bin/bash: with the deterministic bash
+    # default a string exec fails loudly instead of degrading to sh, so this
+    # image configures the shell explicitly.
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(
+        image="busybox:latest", readonly=False, shell="/bin/sh"
+    )
+    try:
+        result = runtime.exec(instance_id, "echo hello-$0")
+        assert result.exit_code == 0
+        assert "hello-" in result.stdout
+        # Per-exec override beats the configured shell.
+        result = runtime.exec(instance_id, "echo again", shell="/bin/sh")
+        assert result.exit_code == 0
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_workdir_writability_matrix():
+    """readonly=True + workdir=None -> nothing writable; explicit workdir is
+    the only writable path; readonly=False -> everything writable."""
+    runtime = SandboxRuntime()
+
+    # Default (readonly=True, workdir=None): the rootfs is not writable.
+    # (Standard tmpfs mounts like /tmp are, as in any container runtime.)
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        assert runtime.exec(instance_id, "touch /probe").exit_code != 0
+        assert runtime.exec(instance_id, "touch /etc/probe").exit_code != 0
+    finally:
+        runtime.delete(instance_id)
+
+    # readonly=True, explicit workdir: it is the only writable path.
+    instance_id = runtime.create(
+        image="busybox:latest", workdir="/data", shell="/bin/sh"
+    )
+    try:
+        assert runtime.exec(instance_id, "touch /data/probe").exit_code == 0
+        assert runtime.exec(instance_id, "touch /etc/probe").exit_code != 0
+        assert runtime.exec(instance_id, "pwd").stdout.strip() == "/data"
+    finally:
+        runtime.delete(instance_id)
+
+    # readonly=False: everything is writable, with or without a workdir.
+    instance_id = runtime.create(
+        image="busybox:latest", readonly=False, shell="/bin/sh"
+    )
+    try:
+        assert runtime.exec(instance_id, "touch /etc/probe").exit_code == 0
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_image_workdir_sets_cwd_without_becoming_writable():
+    """The image's own WORKDIR is inherited as the process cwd only — its
+    content stays visible and it is never silently made writable."""
+    runtime = SandboxRuntime()
+    # golang:alpine sets WORKDIR /go and ships /go/bin and /go/src.
+    instance_id = runtime.create(image="golang:1.22-alpine", shell="/bin/sh")
+    try:
+        assert runtime.exec(instance_id, "pwd").stdout.strip() == "/go"
+        listing = runtime.exec(instance_id, "ls /go").stdout
+        assert "bin" in listing and "src" in listing
+        # Inherited WORKDIR is not a scratch mount: still readonly.
+        assert runtime.exec(instance_id, "touch /go/probe").exit_code != 0
+    finally:
+        runtime.delete(instance_id)
+
+    # With a writable rootfs the same path is writable and unshadowed.
+    instance_id = runtime.create(
+        image="golang:1.22-alpine", readonly=False, shell="/bin/sh"
+    )
+    try:
+        assert "bin" in runtime.exec(instance_id, "ls /go").stdout
+        assert runtime.exec(instance_id, "touch /go/probe").exit_code == 0
+    finally:
+        runtime.delete(instance_id)
 
 
 if __name__ == "__main__":
