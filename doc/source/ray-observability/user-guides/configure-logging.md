@@ -95,7 +95,7 @@ The resulting output follows:
 
 ### Disabling the worker log prefix
 
-Set the environment variable `RAY_DISABLE_WORKER_LOG_PREFIX=1` before starting your driver process (for example, `RAY_DISABLE_WORKER_LOG_PREFIX=1 python driver.py`) to
+Set the environment variable `RAY_DISABLE_WORKER_LOG_PREFIX=1` to
 stop Ray from adding the `(Task or Actor repr, process ID, IP address)` prefix to worker stdout/stderr lines forwarded to the driver, while continuing to forward the
 logs. This is useful for structured logging (for example, newline-delimited JSON) when you want to collect logs from the driver's stdout/stderr rather than from the
 per-worker log files under the {ref}`logging directory <logging-directory>` the prefix otherwise turns each structured log line into invalid JSON.
