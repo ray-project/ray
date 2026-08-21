@@ -65,7 +65,7 @@ The token needs the **`read_artifacts`** scope in addition to `read_build_logs`;
    ```bash
    curl -fsL -H "Authorization: Bearer $BUILDKITE_API_TOKEN" \
      "https://api.buildkite.com/v2/organizations/ray-project/pipelines/<PIPELINE>/builds/<BUILD_NUM>/jobs/<JOB_ID>/artifacts/<ARTIFACT_ID>/download" \
-     -o /tmp/<ARTIFACT_ID>.zip
+     -o /tmp/<ARTIFACT_ID>
    ```
    `-L` is required: the endpoint returns HTTP 302 and redirects to S3. Keep the `Authorization` header — curl drops it on the cross-host hop, which is what S3 wants (sending it yields `400 InvalidRequest`).
 
