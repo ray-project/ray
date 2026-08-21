@@ -1,6 +1,6 @@
 # Intersphinx inventory snapshots
 
-This directory holds committed snapshots of the third-party Sphinx inventories (`objects.inv`) that Ray's docs cross-reference (NumPy, PyTorch, pandas, and about two dozen others).
+This directory holds committed snapshots of the third-party Sphinx inventories (`objects.inv`) that Ray's docs cross-reference (NumPy, PyTorch, pandas, and fifteen others).
 
 ## Why these are committed
 
@@ -17,7 +17,7 @@ Generated cross-reference links still point at each project's live docs site. On
 
 Most targets resolve against upstream's *moving* docs: `.../stable/`, `.../latest/`, `.../main/`, or an unversioned root. Their inventory therefore changes when the upstream project *releases*, independently of anything Ray pins in its own requirements. There's no Ray-side event to refresh against.
 
-Four targets are the exception, because they set an explicit inventory URL rather than deriving it from `base_url`: `pandas` and `scipy` read frozen `object-mirror-*` release assets under `ray-project`, `torch` is pinned to `docs/2.7/`, and `tensorflow` reads a third-party GPflow mirror that tracks its own `master`. For the three frozen ones a refresh is a no-op. They change only when someone re-cuts the mirror or repoints the URL, so committing a snapshot of them changes nothing about their staleness.
+Three targets are the exception, because they set an explicit inventory URL rather than deriving it from `base_url`: `pandas` reads a frozen `object-mirror-*` release asset under `ray-project`, `torch` is pinned to `docs/2.7/`, and `tensorflow` reads a third-party GPflow mirror that tracks its own `master`. For the two frozen ones a refresh is a no-op. They change only when someone re-cuts the mirror or repoints the URL, so committing a snapshot of them changes nothing about their staleness.
 
 On `master`, that leaves a clock as the only thing that can bound staleness, and the refresh cadence is what bounds two failure modes:
 

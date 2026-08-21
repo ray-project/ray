@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh the committed intersphinx inventory snapshots.
 
-Ray's Sphinx build resolves cross-references against ~two dozen third-party
+Ray's Sphinx build resolves cross-references against roughly twenty third-party
 ``objects.inv`` inventories. Fetching them over the network at the start of
 every build is slow and occasionally flaky (a couple go through GitHub
 release-asset redirects to signed blob-storage URLs). To keep builds fast and
