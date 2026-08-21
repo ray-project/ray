@@ -425,6 +425,10 @@ autogen_files = AUTOGEN_FILES
 exclude_patterns = [
     # Committed intersphinx inventory snapshots + refresh tooling, not docs.
     "_intersphinx/**",
+    # Prose fragments spliced into pages with `include`, not pages themselves.
+    # They reference substitutions the including page supplies, so building them
+    # standalone raises an undefined-substitution error and a missing-toctree warning.
+    "_includes/**",
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
