@@ -6,3 +6,8 @@ build_args:
   - MANYLINUX_VERSION
   - HOSTTYPE
 dockerfile: ci/docker/manylinux-retag.Dockerfile
+srcs:
+  - ci/pypi_index_proxy.py
+  - ci/pypi_proxy_profile.sh
+  - ci/install_pypi_proxy.sh
+  - ci/bazel_mirror_downloader.sh

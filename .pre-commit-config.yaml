@@ -177,6 +177,7 @@ repos:
             python/ray/serve/_private/deploy_utils.py|
             python/ray/serve/_private/deployment_info.py|
             python/ray/serve/_private/deployment_node.py|
+            python/ray/serve/_private/deployment_scheduler.py|
             python/ray/serve/_private/deployment_state.py|
             python/ray/serve/_private/direct_ingress_grpc_util.py|
             python/ray/serve/_private/direct_ingress_http_util.py|
@@ -209,7 +210,9 @@ repos:
             python/ray/serve/_private/request_router/common.py|
             python/ray/serve/_private/request_router/pow_2_router.py|
             python/ray/serve/_private/request_router/replica_wrapper.py|
+            python/ray/serve/_private/request_router/request_router.py|
             python/ray/serve/_private/rolling_window.py|
+            python/ray/serve/_private/router.py|
             python/ray/serve/_private/serialization.py|
             python/ray/serve/_private/storage/__init__.py|
             python/ray/serve/_private/storage/kv_store.py|
@@ -265,6 +268,7 @@ repos:
             python/ray/serve/_private/deploy_utils.py|
             python/ray/serve/_private/deployment_info.py|
             python/ray/serve/_private/deployment_node.py|
+            python/ray/serve/_private/deployment_scheduler.py|
             python/ray/serve/_private/deployment_state.py|
             python/ray/serve/_private/direct_ingress_grpc_util.py|
             python/ray/serve/_private/direct_ingress_http_util.py|
@@ -297,7 +301,9 @@ repos:
             python/ray/serve/_private/request_router/common.py|
             python/ray/serve/_private/request_router/pow_2_router.py|
             python/ray/serve/_private/request_router/replica_wrapper.py|
+            python/ray/serve/_private/request_router/request_router.py|
             python/ray/serve/_private/rolling_window.py|
+            python/ray/serve/_private/router.py|
             python/ray/serve/_private/serialization.py|
             python/ray/serve/_private/storage/__init__.py|
             python/ray/serve/_private/storage/kv_store.py|

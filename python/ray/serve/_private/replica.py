@@ -1518,10 +1518,7 @@ class Replica:
                     service=self._deployment_id.name,
                 )
             if user_exception is not None:
-                # `user_exception` may be an `asyncio.CancelledError`
-                # (a BaseException); `set_span_exception` annotates `exc:
-                # Exception` too narrowly for that.
-                set_span_exception(user_exception, escaped=False)  # type: ignore[arg-type]  # pyrefly: ignore[bad-argument-type]
+                set_span_exception(user_exception, escaped=False)
 
         # Record ingress metrics for direct ingress requests
         if request_metadata.is_direct_ingress and status_code is not None:
