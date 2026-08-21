@@ -7551,7 +7551,40 @@ class Dataset:
         # `PandasBlockBuilder` creates a dataframe with internal extension types like
         # 'TensorDtype'. We use the `to_pandas` method to convert these extension
         # types to regular types.
-        return BlockAccessor.for_block(block).to_pandas()
+        df = BlockAccessor.for_block(block).to_pandas()
+
+        # An empty dataset yields no batches above, so the builder produces a
+        # DataFrame with no columns. Restore the columns and dtypes from the
+        # dataset schema so the result still matches the dataset's structure
+        # (issue #59946).
+        if df.shape[1] == 0:
+            import pyarrow as pa
+
+            schema = self.schema(fetch_if_missing=True)
+            if schema is not None and schema.names:
+                base_schema = getattr(schema, "base_schema", None)
+                if isinstance(base_schema, pa.Schema):
+                    # Route the empty Arrow table through the same
+                    # `BlockAccessor.to_pandas()` path used for non-empty blocks
+                    # so the two agree on column types (types_mapper, tensor
+                    # casting, etc.).
+                    df = BlockAccessor.for_block(base_schema.empty_table()).to_pandas()
+                else:
+                    import pandas
+
+                    # Pandas-backed schema: preserve per-column dtypes when known.
+                    types = getattr(base_schema, "types", None)
+                    if types is not None and len(types) == len(schema.names):
+                        df = pandas.DataFrame(
+                            {
+                                name: pandas.Series([], dtype=dtype)
+                                for name, dtype in zip(schema.names, types)
+                            }
+                        )
+                    else:
+                        df = pandas.DataFrame(columns=list(schema.names))
+
+        return df
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI

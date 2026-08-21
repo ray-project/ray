@@ -473,5 +473,48 @@ def test_to_pandas_does_not_downcast_out_of_range_floats(
     assert float_value in df["v"].dropna().tolist()
 
 
+def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
+    """`to_pandas()` on an empty dataset must keep the schema's columns.
+
+    Regression test for #59946: an empty Arrow table with columns was converted
+    to a column-less pandas DataFrame because `to_pandas()` builds only from the
+    (zero) batches of an empty dataset and ignored the known schema.
+    """
+    ds = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([], pa.int32())], ["apples"]))]
+    )
+    df = ds.to_pandas()
+    assert list(df.columns) == ["apples"]
+    assert len(df) == 0
+    # The empty-dataset dtype must match what a non-empty dataset of the same
+    # schema produces (routed through the same BlockAccessor conversion).
+    nonempty = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([1], pa.int32())], ["apples"]))]
+    ).to_pandas()
+    assert df["apples"].dtype == nonempty["apples"].dtype
+
+    # Multiple columns are preserved too.
+    ds2 = ray.data.from_arrow_refs(
+        [
+            ray.put(
+                pa.table(
+                    [pa.array([], pa.int32()), pa.array([], pa.string())], ["a", "b"]
+                )
+            )
+        ]
+    )
+    assert list(ds2.to_pandas().columns) == ["a", "b"]
+
+    # Pandas-backed empty datasets preserve columns and dtypes too.
+    pandas_df = pd.DataFrame(
+        {"a": pd.Series([], dtype="int64"), "b": pd.Series([], dtype="float64")}
+    )
+    ds3 = ray.data.from_pandas(pandas_df)
+    df3 = ds3.to_pandas()
+    assert list(df3.columns) == ["a", "b"]
+    assert df3["a"].dtype == np.int64
+    assert df3["b"].dtype == np.float64
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
