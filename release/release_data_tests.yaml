@@ -382,7 +382,6 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAY_max_direct_call_object_size=8192
         - RAY_object_manager_client_connection_num=8
         - RAY_object_manager_rpc_threads_num=8
     cluster_compute: fixed_size_all_to_all_compute.yaml
@@ -418,7 +417,6 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAY_max_direct_call_object_size=8192
         - RAY_object_manager_client_connection_num=8
         - RAY_object_manager_rpc_threads_num=8
     cluster_compute: fixed_size_all_to_all_compute_m5_2xlarge.yaml
@@ -445,7 +443,6 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAY_max_direct_call_object_size=8192
         - RAY_object_manager_client_connection_num=8
         - RAY_object_manager_rpc_threads_num=8
     cluster_compute: fixed_size_all_to_all_compute_m5_2xlarge.yaml
