@@ -511,6 +511,21 @@ def main():
                 arms = [("pyarrow", "pa", {}), ("arrow_rs", "rs", {})]
                 if not args.no_arena_sweep:
                     arms.append(("arrow_rs", "rs_arena2", {"MALLOC_ARENA_MAX": "2"}))
+                    # M56: env-only glibc page retention (never munmap, never
+                    # trim) removed 50-65% of standalone decode wall on fat
+                    # shapes by taking fault amplification to ~0. In-Ray arm
+                    # tests whether the win survives short-lived tasks, at the
+                    # known cost of up to 1.5x per-worker RSS.
+                    arms.append(
+                        (
+                            "arrow_rs",
+                            "rs_retain",
+                            {
+                                "MALLOC_MMAP_MAX_": "0",
+                                "MALLOC_TRIM_THRESHOLD_": "-1",
+                            },
+                        )
+                    )
                 for reader, tag, arm_env in arms:
                     cells[tag] = median_cell(
                         outdir,
@@ -561,6 +576,17 @@ def main():
             )
             ar_r = ratio(_num(ar_res, "peak_uss_gb"), _num(pa_res, "peak_uss_gb"))
             kern_r = None
+            rt_res = cells.get("rs_retain") or {}
+            rt_wall = ratio(_num(rt_res, "wall_s"), _num(pa_res, "wall_s"))
+            rt_uss = ratio(_num(rt_res, "peak_uss_gb"), _num(pa_res, "peak_uss_gb"))
+            if rt_wall is not None:
+                suffix_retain = (
+                    f"  retain: wall {rt_wall:.2f} uss {rt_uss:.2f}"
+                    if rt_uss is not None
+                    else f"  retain: wall {rt_wall:.2f}"
+                )
+            else:
+                suffix_retain = ""
         fmt = lambda v: f"{v:.2f}" if v is not None else "—"  # noqa: E731
         sp_t, sp_b = _num(rs_res, "spilled_gb"), _num(pa_res, "spilled_gb")
         spill = (
@@ -569,6 +595,8 @@ def main():
         suffix = ""
         if "standalone" in key and kern_r is not None:
             suffix = f"  wall R vs pa-1t: {kern_r:.2f}"
+        elif "standalone" not in key:
+            suffix = suffix_retain
         print(
             f"{key:<26} {fmt(wall_r):>8} {fmt(mem_r):>11} {fmt(task_r):>11} "
             f"{fmt(ar_r):>13} {spill:>13}" + suffix
