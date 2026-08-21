@@ -3,11 +3,6 @@ myst:
   html_meta:
     description: "Enable automated mutual TLS for RayCluster internal communication with the KubeRay RayClusterMTLS feature gate and cert-manager."
 ---
----
-myst:
-  html_meta:
-    description: "Enable automated mutual TLS for RayCluster internal communication with the KubeRay RayClusterMTLS feature gate and cert-manager."
----
 
 (kuberay-mtls)=
 
