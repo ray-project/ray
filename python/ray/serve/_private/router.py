@@ -21,6 +21,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -657,6 +658,8 @@ class AsyncioRouter:
 
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[RequestRouter] = request_router
+        self._request_router_initialization_task: Optional[asyncio.Task] = None
+        self._request_router_update_tasks: Set[asyncio.Task] = set()
 
         if _request_router_initialized_event:
             self._request_router_initialized = _request_router_initialized_event
@@ -789,19 +792,26 @@ class AsyncioRouter:
                 # Streaming ObjectRefGenerators are not supported in Ray Client
                 use_replica_queue_len_cache=self._enable_strict_max_ongoing_requests,
                 create_replica_wrapper_func=lambda r: RunningReplica(r),
+                create_replica_wrapper_from_handle_func=lambda r, h: RunningReplica(
+                    r, actor_handle=h
+                ),
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
                 **backoff_kwargs,
             )
             request_router.initialize_state(**(self._request_router_kwargs))
+            self._request_router = request_router
 
             # Populate the running replicas if they are already available.
             if self._running_replicas is not None:
-                request_router._update_running_replicas(self._running_replicas)
-
-            self._request_router = request_router
-            self._request_router_initialized.set()
+                self._request_router_initialization_task = self._event_loop.create_task(
+                    self._initialize_request_router(
+                        request_router, self._running_replicas
+                    )
+                )
+            else:
+                self._request_router_initialized.set()
 
             # Log usage telemetry to indicate that custom request router
             # feature is being used in this cluster.
@@ -812,20 +822,62 @@ class AsyncioRouter:
                 ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED.record("1")
         return self._request_router
 
+    async def _initialize_request_router(
+        self,
+        request_router: RequestRouter,
+        running_replicas: List[RunningReplicaInfo],
+    ) -> None:
+        try:
+            await request_router._update_running_replicas(running_replicas)
+        except Exception:
+            logger.exception("Failed to initialize request router replicas.")
+        finally:
+            self._request_router_initialized.set()
+
+    async def _update_request_router_replicas(
+        self,
+        request_router: RequestRouter,
+        running_replicas: List[RunningReplicaInfo],
+    ) -> None:
+        try:
+            initialization_task = self._request_router_initialization_task
+            if initialization_task is not None:
+                await initialization_task
+                if self._request_router_initialization_task is initialization_task:
+                    self._request_router_initialization_task = None
+
+            await request_router._update_running_replicas(running_replicas)
+        except Exception:
+            logger.exception(
+                f"Failed to update request router replicas for {self.deployment_id}."
+            )
+
+    def _schedule_request_router_update(
+        self,
+        request_router: RequestRouter,
+        running_replicas: List[RunningReplicaInfo],
+    ) -> None:
+        task = self._event_loop.create_task(
+            self._update_request_router_replicas(request_router, running_replicas)
+        )
+        self._request_router_update_tasks.add(task)
+        task.add_done_callback(self._request_router_update_tasks.discard)
+
     def running_replicas_populated(self) -> bool:
         return self._running_replicas_populated
 
-    def update_deployment_targets(self, deployment_target_info: DeploymentTargetInfo):
+    def update_deployment_targets(
+        self, deployment_target_info: DeploymentTargetInfo
+    ) -> None:
         self._deployment_available = deployment_target_info.is_available
 
         running_replicas = deployment_target_info.running_replicas
-        if self.request_router:
-            self.request_router._update_running_replicas(running_replicas)
-        else:
-            # In this case, the request router hasn't been initialized yet.
-            # Store the running replicas so that we can update the request
-            # router once it is initialized.
-            self._running_replicas = running_replicas
+        request_router_was_initialized = self._request_router is not None
+        self._running_replicas = running_replicas
+        request_router = self.request_router
+        if request_router is not None and request_router_was_initialized:
+            self._schedule_request_router_update(request_router, running_replicas)
+
         self._metrics_manager._update_running_replicas(running_replicas)
 
         if running_replicas:
@@ -1651,6 +1703,17 @@ class AsyncioRouter:
         return results
 
     async def shutdown(self):
+        request_router_tasks = list(self._request_router_update_tasks)
+        if self._request_router_initialization_task is not None:
+            request_router_tasks.append(self._request_router_initialization_task)
+
+        for task in request_router_tasks:
+            task.cancel()
+        if request_router_tasks:
+            await asyncio.gather(*request_router_tasks, return_exceptions=True)
+
+        self._request_router_update_tasks.clear()
+        self._request_router_initialization_task = None
         await self._metrics_manager.shutdown()
 
 
@@ -1955,7 +2018,8 @@ class SharedRouterLongPollClient:
         deployment_target_info: DeploymentTargetInfo,
         deployment_id: DeploymentID,
     ) -> None:
-        for router in self.routers[deployment_id]:
+        routers = list(self.routers[deployment_id])
+        for router in routers:
             router.update_deployment_targets(deployment_target_info)
             router.long_poll_client.stop()
 

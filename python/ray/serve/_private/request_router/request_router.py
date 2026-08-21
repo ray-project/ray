@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.replica_handle_resolver import get_replica_handle_resolver
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router.common import (
     PendingRequest,
@@ -442,7 +443,24 @@ class FIFOMixin:
 
 @PublicAPI(stability="alpha")
 class RequestRouter(ABC):
-    """Abstract interface for a request router (how the router calls it)."""
+    """Abstract interface for a request router (how the router calls it).
+
+    Args:
+        deployment_id: ID of the deployment this router sends requests to.
+        handle_source: Source of the handle using this router.
+        self_actor_id: Actor ID of the process hosting this router.
+        self_actor_handle: Handle to the actor hosting this router.
+        use_replica_queue_len_cache: Whether to cache replica queue lengths.
+        get_curr_time_s: Callable returning the current time in seconds.
+        create_replica_wrapper_func: Factory for a running replica wrapper.
+        create_replica_wrapper_from_handle_func: Factory for a running replica
+            wrapper using a pre-resolved actor handle.
+        initial_backoff_s: Initial request-routing retry backoff in seconds.
+        backoff_multiplier: Multiplier applied to each retry backoff.
+        max_backoff_s: Maximum request-routing retry backoff in seconds.
+        *args: Additional positional arguments for subclasses.
+        **kwargs: Additional keyword arguments for subclasses.
+    """
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
@@ -472,6 +490,9 @@ class RequestRouter(ABC):
         create_replica_wrapper_func: Optional[
             Callable[[RunningReplicaInfo], RunningReplica]
         ] = None,
+        create_replica_wrapper_from_handle_func: Optional[
+            Callable[[RunningReplicaInfo, ActorHandle], RunningReplica]
+        ] = None,
         initial_backoff_s: float = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
         backoff_multiplier: float = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
         max_backoff_s: float = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -483,6 +504,9 @@ class RequestRouter(ABC):
         self._self_actor_handle = self_actor_handle
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
+        self._create_replica_wrapper_from_handle_func = (
+            create_replica_wrapper_from_handle_func
+        )
         self._get_curr_time_s = get_curr_time_s if get_curr_time_s else time.time
 
         # Backoff parameters for request routing, from RequestRouterConfig.
@@ -497,6 +521,11 @@ class RequestRouter(ABC):
         # Cached list of replicas to avoid O(n) dict-to-list conversion on every
         # routing iteration. Updated only when replicas change via `update_replicas`.
         self._replicas_list: List[RunningReplica] = []
+        self._desired_running_replica_infos: Dict[ReplicaID, RunningReplicaInfo] = {}
+        self._replica_wrapper_resolution_futures: Dict[ReplicaID, asyncio.Future] = {}
+        self._replica_wrapper_resolution_waiters: DefaultDict[
+            ReplicaID, int
+        ] = defaultdict(int)
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
@@ -776,6 +805,20 @@ class RequestRouter(ABC):
         self, replica_info: RunningReplicaInfo
     ) -> RunningReplica:
         return self._create_replica_wrapper_func(replica_info)
+
+    def create_replica_wrapper_from_handle(
+        self, replica_info: RunningReplicaInfo, actor_handle: ActorHandle
+    ) -> RunningReplica:
+        """Create a running replica wrapper from a resolved actor handle.
+
+        Args:
+            replica_info: Metadata for the running replica.
+            actor_handle: Resolved handle for the replica actor.
+
+        Returns:
+            The running replica wrapper.
+        """
+        return self._create_replica_wrapper_from_handle_func(replica_info, actor_handle)
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
@@ -1332,31 +1375,166 @@ class RequestRouter(ABC):
 
         return replica
 
-    def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
-        """Compatibility shim for RunningReplicaInfo datatype."""
-        replica_wrappers = []
-        for r in running_replicas:
-            # Reuse existing wrapper for known replicas to avoid O(n) create_replica_wrapper
-            # calls on every update (e.g. during scaling storms).
-            if r.replica_id in self._replicas:
-                wrapper = self._replicas[r.replica_id]
-                wrapper.update_replica_info(r)
-                replica_wrappers.append(wrapper)
-            else:
-                try:
-                    replica_wrappers.append(self.create_replica_wrapper(r))
-                except ValueError:
-                    # NOTE(abrar): ValueError is raised when the actor handle is not found
-                    # by ray.get_actor.
+    async def _update_running_replicas(
+        self, running_replicas: List[RunningReplicaInfo]
+    ) -> None:
+        """Apply a replica update without blocking the router event loop."""
+        self._desired_running_replica_infos = {
+            replica.replica_id: replica for replica in running_replicas
+        }
+
+        retained_wrappers = []
+        for replica_info in running_replicas:
+            wrapper = self._replicas.get(replica_info.replica_id)
+            if wrapper is not None:
+                wrapper.update_replica_info(replica_info)
+                retained_wrappers.append(wrapper)
+
+        # Remove stale replicas before waiting for blocking GCS lookups. Retained
+        # replicas remain available to route requests while new handles resolve.
+        self.update_replicas(retained_wrappers)
+
+        missing_infos = [
+            replica_info
+            for replica_info in running_replicas
+            if replica_info.replica_id not in self._replicas
+        ]
+        resolved_wrappers, resolution_error = await self._resolve_replica_wrappers(
+            missing_infos
+        )
+
+        # Commit whatever resolved successfully before surfacing any error. A
+        # single unexpected resolution failure must not drop healthy replicas
+        # and leave the router under-populated (or empty on first init) until
+        # the next target broadcast.
+        self._commit_resolved_replica_wrappers(resolved_wrappers)
+        if resolution_error is not None:
+            raise resolution_error
+
+    async def _resolve_replica_wrappers(
+        self, replica_infos: List[RunningReplicaInfo]
+    ) -> Tuple[Dict[ReplicaID, RunningReplica], Optional[BaseException]]:
+        """Resolve actor handles concurrently outside the router event loop.
+
+        Concurrent updates share the same in-flight resolution for each replica.
+        Returns the wrappers that resolved successfully along with the first
+        unexpected error encountered (if any). The caller is responsible for
+        committing the resolved wrappers before re-raising the error so that a
+        single failure does not discard healthy replicas.
+        """
+        if not replica_infos:
+            return {}, None
+
+        loop = asyncio.get_running_loop()
+        resolver = get_replica_handle_resolver()
+        has_handle_factory = (
+            getattr(self, "_create_replica_wrapper_from_handle_func", None) is not None
+        )
+
+        def resolve(replica_info: RunningReplicaInfo) -> RunningReplica:
+            if has_handle_factory:
+                return self.create_replica_wrapper_from_handle(
+                    replica_info, replica_info.get_actor_handle()
+                )
+
+            # Compatibility fallback for directly constructed custom routers.
+            return self.create_replica_wrapper(replica_info)
+
+        resolution_futures: List[asyncio.Future] = []
+        raw_resolution_futures: List[asyncio.Future] = []
+        for replica_info in replica_infos:
+            replica_id = replica_info.replica_id
+            future = self._replica_wrapper_resolution_futures.get(replica_id)
+            if future is None:
+                future = loop.run_in_executor(resolver, resolve, replica_info)
+                self._replica_wrapper_resolution_futures[replica_id] = future
+
+                def discard_if_unawaited(
+                    completed_future: asyncio.Future,
+                    replica_id: ReplicaID = replica_id,
+                ) -> None:
+                    self._discard_replica_wrapper_resolution_future(
+                        replica_id, completed_future
+                    )
+
+                future.add_done_callback(discard_if_unawaited)
+
+            self._replica_wrapper_resolution_waiters[replica_id] += 1
+
+            # One update being cancelled must not cancel a resolution shared with
+            # another concurrent update.
+            raw_resolution_futures.append(future)
+            resolution_futures.append(asyncio.shield(future))
+
+        try:
+            results = await asyncio.gather(
+                *resolution_futures,
+                return_exceptions=True,
+            )
+
+            resolved: Dict[ReplicaID, RunningReplica] = {}
+            resolution_error: Optional[BaseException] = None
+            for replica_info, result in zip(replica_infos, results):
+                if isinstance(result, ValueError):
+                    # NOTE(abrar): ValueError is raised when the actor handle is not
+                    # found by ray.get_actor.
 
                     # Actor has died (e.g., due to node failure) but controller hasn't
                     # detected it yet. Skip this replica; controller will send an update
                     # when it detects the failure.
                     logger.warning(
-                        f"Failed to get handle to replica {r.replica_id} during router "
-                        "update. The replica actor may have died. Skipping this replica."
+                        f"Failed to get handle to replica {replica_info.replica_id} "
+                        "during router update. The replica actor may have died. "
+                        "Skipping this replica."
                     )
-        return self.update_replicas(replica_wrappers)
+                elif isinstance(result, BaseException):
+                    # Capture the first unexpected error but keep processing the
+                    # remaining results so successfully resolved wrappers are not
+                    # dropped. The caller re-raises after committing them.
+                    if resolution_error is None:
+                        resolution_error = result
+                else:
+                    resolved[replica_info.replica_id] = result
+
+            return resolved, resolution_error
+        finally:
+            for replica_info, future in zip(replica_infos, raw_resolution_futures):
+                replica_id = replica_info.replica_id
+                self._replica_wrapper_resolution_waiters[replica_id] -= 1
+                if self._replica_wrapper_resolution_waiters[replica_id] == 0:
+                    self._replica_wrapper_resolution_waiters.pop(replica_id)
+                    self._discard_replica_wrapper_resolution_future(replica_id, future)
+
+    def _discard_replica_wrapper_resolution_future(
+        self, replica_id: ReplicaID, future: asyncio.Future
+    ) -> None:
+        if (
+            future.done()
+            and self._replica_wrapper_resolution_waiters.get(replica_id, 0) == 0
+            and self._replica_wrapper_resolution_futures.get(replica_id) is future
+        ):
+            self._replica_wrapper_resolution_futures.pop(replica_id)
+            if not future.cancelled():
+                # Retrieve any exception when all waiters were cancelled before
+                # the executor call completed.
+                future.exception()
+
+    def _commit_resolved_replica_wrappers(
+        self, resolved_wrappers: Dict[ReplicaID, RunningReplica]
+    ) -> None:
+        """Merge resolved wrappers into the latest desired replica snapshot."""
+        wrappers = []
+        for replica_id, replica_info in self._desired_running_replica_infos.items():
+            wrapper = self._replicas.get(replica_id) or resolved_wrappers.get(
+                replica_id
+            )
+            if wrapper is None:
+                continue
+
+            wrapper.update_replica_info(replica_info)
+            wrappers.append(wrapper)
+
+        self.update_replicas(wrappers)
 
     def select_available_replicas(
         self, candidates: Optional[List[RunningReplica]] = None
