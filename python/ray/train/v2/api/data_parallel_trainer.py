@@ -35,6 +35,7 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.callbacks.nccl_ras import NCCLRASCallback
 from ray.train.v2._internal.callbacks.placement_group_callback import (
     PlacementGroupCleanerCallback,
 )
@@ -42,6 +43,7 @@ from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
+    ENABLE_NCCL_HANG_DETECTOR_ENV_VAR,
     METRICS_ENABLED_ENV_VAR,
     V2_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
@@ -228,6 +230,10 @@ class DataParallelTrainer:
         if env_bool(METRICS_ENABLED_ENV_VAR, True):
             callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
+
+        # TODO: The NCCLRASCallback is experiment, therefore, default-off for now
+        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
+            callbacks.append(NCCLRASCallback())
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
             callbacks.append(StateManagerCallback(datasets=self.datasets))

@@ -13,6 +13,7 @@ from ray.train.v2._internal.execution.failure_handling import (
 from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2.api.exceptions import (
     ControllerError,
+    NCCLHangError,
     PreemptionError,
     WorkerGroupError,
 )
@@ -75,6 +76,15 @@ def test_max_failures(max_failures):
         )
         == FailureDecision.RAISE
     )
+
+
+@pytest.mark.parametrize("max_failures", [0, 1, 10])
+def test_nccl_hang_error_is_non_retryable(max_failures):
+    # NCCL hangs are usually deterministic, so the policy must fail the run
+    # immediately regardless of the retry budget.
+    policy = create_failure_policy(FailureConfig(max_failures=max_failures))
+    error = NCCLHangError("hang detected", {1: RuntimeError("rank 1 stuck")})
+    assert policy.make_decision(training_failed_error=error) == FailureDecision.RAISE
 
 
 @pytest.mark.parametrize("controller_failure_limit", [0, 1, 10])
