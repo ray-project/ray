@@ -188,6 +188,14 @@ class TimeSpan:
         return self.end_s - self.start_s
 
 
+@dataclass
+class BackpressureStats:
+    """Snapshot of the backpressure policies affecting an operator."""
+
+    task_submission_policy: Optional[str] = None
+    task_output_policy: Optional[str] = None
+
+
 @contextmanager
 def _maybe_time(timer: Optional["Timer"]) -> Iterator[Optional[TimeSpan]]:
     """Time a block, yielding a TimeSpan (or None if timer is None)."""
@@ -1224,6 +1232,7 @@ class DatasetStats:
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
         self.parents: List["DatasetStats"] = parent or []
+        self.backpressure_stats: BackpressureStats = BackpressureStats()
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
@@ -1366,7 +1375,10 @@ class DatasetStats:
         # Create temporary operator stats objects from block metadata
         op_stats = [
             OperatorStatsSummary.from_block_metadata(
-                name, stats, is_sub_operator=is_sub_operator
+                name,
+                stats,
+                is_sub_operator=is_sub_operator,
+                backpressure_stats=self.backpressure_stats,
             )
             for name, stats in self.metadata.items()
         ]
@@ -1706,6 +1718,8 @@ class OperatorStatsSummary:
     node_count: Optional[StatsSummary] = None
     task_rows: Optional[StatsSummary] = None
     scheduling_overhead: Optional[List["BucketedSchedulingOverhead"]] = None
+    task_submission_backpressure_policy: Optional[str] = None
+    task_output_backpressure_policy: Optional[str] = None
 
     @property
     def num_rows_per_s(self) -> float:
@@ -1733,6 +1747,7 @@ class OperatorStatsSummary:
         operator_name: str,
         block_stats: List[BlockStats],
         is_sub_operator: bool,
+        backpressure_stats: Optional[BackpressureStats] = None,
     ) -> "OperatorStatsSummary":
         """Calculate the stats for a operator from a given list of blocks,
         and generates a `OperatorStatsSummary` object with the results.
@@ -1741,6 +1756,7 @@ class OperatorStatsSummary:
             operator_name: Name of operator associated with `blocks`
             block_stats: List of `BlockStats` to calculate stats of
             is_sub_operator: Whether this set of blocks belongs to a sub operator.
+            backpressure_stats: Snapshot of the operator's backpressure policies.
         Returns:
             A `OperatorStatsSummary` object initialized with the calculated statistics
         """
@@ -1844,6 +1860,16 @@ class OperatorStatsSummary:
             output_size_bytes=output_size_bytes_stats,
             node_count=node_counts_stats,
             task_rows=task_rows_stats,
+            task_submission_backpressure_policy=(
+                backpressure_stats.task_submission_policy
+                if backpressure_stats
+                else None
+            ),
+            task_output_backpressure_policy=(
+                backpressure_stats.task_output_policy
+                if backpressure_stats
+                else None
+            ),
         )
 
     def __str__(self) -> str:
@@ -1856,6 +1882,18 @@ class OperatorStatsSummary:
         """
         indent = "\t" if self.is_sub_operator else ""
         out = self.block_execution_summary_str
+
+        if self.task_submission_backpressure_policy:
+            out += indent
+            out += (
+                f"* Backpressured: tasks({self.task_submission_backpressure_policy})\n"
+            )
+
+        if self.task_output_backpressure_policy:
+            out += indent
+            out += (
+                f"* Backpressured: outputs({self.task_output_backpressure_policy})\n"
+            )
 
         if self.wall_time:
             out += indent

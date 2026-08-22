@@ -710,6 +710,39 @@ def test_summary_str_backpressure_policies(ray_start_regular_shared):
     assert "backpressured" not in summary
 
 
+def test_stats_include_backpressure_policy(ray_start_regular_shared):
+    """Test that operator stats include backpressure policy names."""
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: block),
+        o1,
+        DataContext.get_current(),
+        name="O2",
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
+
+    executor = StreamingExecutor(DataContext.get_current())
+    executor._topology = topo
+
+    o2._in_task_submission_backpressure = True
+    o2._task_submission_backpressure_policy = "MockPolicy1"
+    o2._in_task_output_backpressure = True
+    o2._task_output_backpressure_policy = "MockPolicy2"
+
+    summary = executor._generate_stats().to_summary()
+    operator_summary = summary.operators_stats[0]
+
+    assert (
+        operator_summary.task_submission_backpressure_policy == "MockPolicy1"
+    )
+    assert operator_summary.task_output_backpressure_policy == "MockPolicy2"
+
+    summary_str = str(operator_summary)
+    assert "Backpressured: tasks(MockPolicy1)" in summary_str
+    assert "Backpressured: outputs(MockPolicy2)" in summary_str
+
+
 def test_rank_operators(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(1)])
 
