@@ -10,12 +10,18 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.controller.placement_group_cleaner import (
+    PLACEMENT_GROUP_CLEANER_NAME,
+    PLACEMENT_GROUP_CLEANER_NAMESPACE,
     PlacementGroupCleaner,
 )
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.context import TrainRunContext
-    from ray.train.v2._internal.execution.worker_group import WorkerGroup
+    from ray.train.v2._internal.execution.worker_group import (
+        WorkerGroup,
+        WorkerGroupContext,
+    )
+    from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
@@ -50,29 +56,44 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             )
         self._cleaner: Optional[PlacementGroupCleaner] = None
         self._controller_actor_id: Optional[str] = None
+        self._registered_placement_group: Optional["PlacementGroup"] = None
 
     def after_controller_start(self, train_run_context: "TrainRunContext"):
-        """Launch the detached PlacementGroupCleaner actor and start monitoring."""
+        """Get the shared PlacementGroupCleaner actor and register this controller."""
 
         core_context = ray.runtime_context.get_runtime_context()
         self._controller_actor_id = core_context.get_actor_id()
         try:
-            # Launch the cleaner as a detached actor so it survives controller death
+            # This named detached actor is shared across jobs. Keeping it alive when
+            # the registry is empty avoids a create-versus-exit race between jobs.
             cleaner_actor_cls = ray.remote(num_cpus=0)(PlacementGroupCleaner)
             self._cleaner = cleaner_actor_cls.options(
+                name=PLACEMENT_GROUP_CLEANER_NAME,
+                namespace=PLACEMENT_GROUP_CLEANER_NAMESPACE,
                 lifetime="detached",
-                get_if_exists=False,
+                get_if_exists=True,
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
                 scheduling_strategy="DEFAULT",
+                max_restarts=-1,
+                max_task_retries=-1,
             ).remote(
-                controller_actor_id=self._controller_actor_id,
                 check_interval_s=self._check_interval_s,
                 get_actor_timeout_s=self._get_actor_timeout_s,
                 stop_timeout=self._stop_timeout,
             )
 
+            registered = ray.get(
+                self._cleaner.register_controller.remote(self._controller_actor_id)
+            )
+            if not registered:
+                raise RuntimeError(
+                    "The shared PlacementGroupCleaner already observed this "
+                    "controller as dead."
+                )
+
             logger.debug(
-                f"PlacementGroupCleaner launched for run_id={train_run_context.run_id}"
+                "Registered run_id=%s with the shared PlacementGroupCleaner",
+                train_run_context.run_id,
             )
         except Exception as e:
             logger.warning(
@@ -99,7 +120,15 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
         placement_group = worker_group_state.placement_group_handle.placement_group
 
         try:
-            ray.get(self._cleaner.register_placement_group.remote(placement_group))
+            registered = ray.get(
+                self._cleaner.register_placement_group.remote(
+                    self._controller_actor_id, placement_group
+                )
+            )
+            if not registered:
+                raise RuntimeError(
+                    "PlacementGroupCleaner already observed the controller as dead."
+                )
         except Exception as e:
             logger.warning(
                 f"Failed to register placement group with cleaner: {e}. "
@@ -107,28 +136,74 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             )
             return
 
+        self._registered_placement_group = placement_group
         logger.debug(
             f"Registered placement group {placement_group.id} with PlacementGroupCleaner."
         )
 
-    async def before_controller_shutdown(self):
-        self._stop_cleaner()
+    def after_worker_group_shutdown(self, worker_group_context: "WorkerGroupContext"):
+        self._unregister_placement_group()
 
-    def before_controller_abort(self):
-        self._stop_cleaner()
+    def after_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
+        if self._unregister_placement_group():
+            self._unregister_controller()
 
-    def _stop_cleaner(self):
-        if not self._cleaner:
+    def _unregister_placement_group(self) -> bool:
+        placement_group = self._registered_placement_group
+        self._registered_placement_group = None
+        if (
+            not self._cleaner
+            or not self._controller_actor_id
+            or placement_group is None
+        ):
+            return True
+
+        try:
+            ray.get(
+                self._cleaner.unregister_placement_group.remote(
+                    self._controller_actor_id, placement_group
+                ),
+                timeout=self._stop_timeout,
+            )
+        except Exception:
+            # Keep the durable registration on failure so the cleaner can still
+            # remove or prune the placement group if the controller later dies.
+            logger.exception(
+                "Failed to unregister placement group from PlacementGroupCleaner."
+            )
+            return False
+        return True
+
+    def _unregister_controller(self):
+        if not self._cleaner or not self._controller_actor_id:
             return
 
         try:
-            # Stop the cleaner gracefully (it won't clean up the PG)
-            ray.get(self._cleaner.stop.remote(), timeout=self._stop_timeout)
+            ray.get(
+                self._cleaner.unregister_controller.remote(self._controller_actor_id),
+                timeout=self._stop_timeout,
+            )
         except RayActorError:
             logger.debug(
-                "PlacementGroupCleaner exited before stop completed; ignoring."
+                "PlacementGroupCleaner exited before controller deregistration "
+                "completed; ignoring."
             )
         except Exception:
-            logger.exception("Failed to stop PlacementGroupCleaner gracefully.")
+            logger.exception("Failed to unregister controller from cleaner.")
         finally:
             self._cleaner = None
+            self._registered_placement_group = None
+
+    async def before_controller_shutdown(self):
+        self._stop_cleaner()
+
+    def _stop_cleaner(self):
+        # Worker-group shutdown has already completed before this hook runs, so
+        # it is safe to drop this controller's durable registration.
+        self._unregister_controller()
+
+    def before_controller_abort(self):
+        # Keep the durable registration until worker-group abort has completed.
+        # If abort fails, the cleaner must retain the PGs and clean them after
+        # this controller exits.
+        return

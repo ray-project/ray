@@ -1,4 +1,5 @@
 import time
+from typing import Optional
 
 from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
 from ray.train._internal.data_config import DataConfig
@@ -50,10 +51,25 @@ def current_time_ns() -> int:
     return time.time_ns()
 
 
-def is_actor_alive(actor_id: str, timeout: int) -> bool:
-    """Returns whether actor is alive."""
-    actor_state = get_actor(actor_id, timeout=timeout)
-    return actor_state and actor_state.state != "DEAD"
+def is_actor_alive(
+    actor_id: str, timeout: int, address: Optional[str] = None
+) -> Optional[bool]:
+    """Returns whether actor is alive.
+
+    Args:
+        actor_id: ID of the actor to query.
+        timeout: Timeout for the State API request.
+        address: Optional Ray cluster address.
+    Returns:
+        Whether the actor is alive, or ``None`` when no actor record is found.
+    """
+    if address is None:
+        actor_state = get_actor(actor_id, timeout=timeout)
+    else:
+        actor_state = get_actor(actor_id, timeout=timeout, address=address)
+    if actor_state is None:
+        return None
+    return actor_state.state != "DEAD"
 
 
 def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
