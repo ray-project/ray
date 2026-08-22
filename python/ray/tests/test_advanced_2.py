@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -10,6 +11,8 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
+from ray._private.test_utils import get_gpu_visible_devices_env_var
 from ray.util.accelerators import AWS_NEURON_CORE
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -20,6 +23,7 @@ logger = logging.getLogger(__name__)
 def test_gpu_ids(shutdown_only):
     num_gpus = 3
     ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
+    gpu_env_var = get_gpu_visible_devices_env_var()
 
     def get_gpu_ids(num_gpus_per_worker):
         gpu_ids = ray.get_gpu_ids()
@@ -32,12 +36,13 @@ def test_gpu_ids(shutdown_only):
         ]
         assert len(gpu_ids) == len(gpu_ids_from_runtime_context)
         assert len(neuron_core_ids) == 0
-        if num_gpus_per_worker > 0:
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]  # noqa
-            )
-        else:
-            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
+        if gpu_env_var is not None:
+            if num_gpus_per_worker > 0:
+                assert os.environ[gpu_env_var] == ",".join(
+                    [str(i) for i in gpu_ids]  # noqa
+                )
+            else:
+                assert os.environ.get(gpu_env_var) is None
         for gpu_id in gpu_ids:
             assert gpu_id in range(num_gpus)
         return gpu_ids
@@ -65,21 +70,23 @@ def test_gpu_ids(shutdown_only):
     ray.get([f1.remote() for _ in range(10)])
     ray.get([f2.remote() for _ in range(10)])
 
-    # Test that actors have CUDA_VISIBLE_DEVICES set properly.
+    # Test that actors have the visible devices env var set properly.
 
     @ray.remote
     class Actor0:
         def __init__(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
-            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
+            if gpu_env_var is not None:
+                assert os.environ.get(gpu_env_var) is None
             # Set self.x to make sure that we got here.
             self.x = 1
 
         def test(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
-            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
+            if gpu_env_var is not None:
+                assert os.environ.get(gpu_env_var) is None
             return self.x
 
     @ray.remote(num_gpus=1)
@@ -87,18 +94,16 @@ def test_gpu_ids(shutdown_only):
         def __init__(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 1
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]
-            )
+            if gpu_env_var is not None:
+                assert os.environ[gpu_env_var] == ",".join([str(i) for i in gpu_ids])
             # Set self.x to make sure that we got here.
             self.x = 1
 
         def test(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 1
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]
-            )
+            if gpu_env_var is not None:
+                assert os.environ[gpu_env_var] == ",".join([str(i) for i in gpu_ids])
             return self.x
 
     a0 = Actor0.remote()
@@ -108,9 +113,15 @@ def test_gpu_ids(shutdown_only):
     ray.get(a1.test.remote())
 
 
-def test_gpu_ids_cuda_visible_devices_preset(monkeypatch, shutdown_only):
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Apple exposes a single unified GPU with no per device IDs to distinguish.",
+)
+def test_gpu_ids_visible_devices_preset(monkeypatch, shutdown_only):
+    gpu_env_var = get_gpu_visible_devices_env_var()
+
     with monkeypatch.context() as m:
-        m.setenv("CUDA_VISIBLE_DEVICES", "uuid1,uuid2")
+        m.setenv(gpu_env_var, "uuid1,uuid2")
         ray.init(num_gpus=1)
 
         @ray.remote(num_gpus=1)
@@ -507,7 +518,11 @@ def test_many_custom_resources(shutdown_only):
 def test_neuron_core_ids(shutdown_only):
     num_nc = 3
     accelerator_type = AWS_NEURON_CORE
-    ray.init(num_cpus=num_nc, resources={"neuron_cores": num_nc})
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=["neuron_cores"],
+    ):
+        ray.init(num_cpus=num_nc, resources={"neuron_cores": num_nc})
 
     def get_neuron_core_ids(neuron_cores_per_worker):
         neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
@@ -660,13 +675,15 @@ def test_gpu_and_neuron_cores(shutdown_only):
     num_gpus = 2
     num_nc = 2
     ray.init(num_cpus=2, num_gpus=num_gpus, resources={"neuron_cores": num_nc})
+    gpu_env_var = get_gpu_visible_devices_env_var()
 
     def get_gpu_ids(num_gpus_per_worker):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == num_gpus_per_worker
-        assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]  # noqa
-        )
+        if gpu_env_var is not None:
+            assert os.environ[gpu_env_var] == ",".join(
+                [str(i) for i in gpu_ids]  # noqa
+            )
         for gpu_id in gpu_ids:
             assert gpu_id in range(num_gpus)
         gpu_ids_from_runtime_context = ray.get_runtime_context().get_accelerator_ids()[
@@ -703,7 +720,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
         del resources["memory"]
         del resources["object_store_memory"]
         for key in list(resources.keys()):
-            if key.startswith("node:"):
+            # accelerator_type is a label rather than a capacity anyone
+            # consumes, so it never drains.
+            if key.startswith("node:") or key.startswith(RESOURCE_CONSTRAINT_PREFIX):
                 del resources[key]
 
     def test():

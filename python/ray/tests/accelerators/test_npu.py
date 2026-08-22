@@ -56,6 +56,9 @@ def test_visible_ascend_npu_ids(monkeypatch, shutdown_only):
         monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "0,1,2")
         with patch.object(
             Accelerator, "get_current_node_num_accelerators", return_value=4
+        ), patch(
+            "ray._private.accelerators.get_all_accelerator_resource_names",
+            return_value=["NPU"],
         ):
 
             ray.init()
@@ -119,6 +122,9 @@ def test_auto_detected_more_than_visible(monkeypatch, shutdown_only):
 
         with patch.object(
             Accelerator, "get_current_node_num_accelerators", return_value=4
+        ), patch(
+            "ray._private.accelerators.get_all_accelerator_resource_names",
+            return_value=["NPU"],
         ):
             # If more NPUs are detected than visible.
             monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "0,1,2")

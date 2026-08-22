@@ -5,10 +5,7 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray._private.accelerators import (
-    IntelGPUAcceleratorManager as Accelerator,
-    get_accelerator_manager_for_resource,
-)
+from ray._private.accelerators import IntelGPUAcceleratorManager as Accelerator
 from ray.util.accelerators import INTEL_MAX_1100, INTEL_MAX_1550
 
 
@@ -30,15 +27,17 @@ def clean_accelerator_env():
 
 
 def test_visible_intel_gpu_ids(shutdown_only, clean_accelerator_env):
-    with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
+    with patch.object(
+        Accelerator, "get_current_node_num_accelerators", return_value=4
+    ), patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=["GPU"],
+    ), patch(
+        "ray._private.accelerators.get_accelerator_manager_for_resource",
+        return_value=Accelerator,
+    ):
         os.environ["ONEAPI_DEVICE_SELECTOR"] = "level_zero:0,1,2"
-        # Delete the cache so it can be re-populated the next time
-        # we call get_accelerator_manager_for_resource
-        del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
         ray.init()
-        manager = get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_num_accelerators() == 4
-        assert manager.__name__ == "IntelGPUAcceleratorManager"
         assert ray.available_resources()["GPU"] == 3
 
 
@@ -47,12 +46,16 @@ def test_visible_intel_gpu_type(shutdown_only, clean_accelerator_env):
         Accelerator, "get_current_node_num_accelerators", return_value=4
     ), patch.object(
         Accelerator, "get_current_node_accelerator_type", return_value=INTEL_MAX_1550
+    ), patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=["GPU"],
+    ), patch(
+        "ray._private.accelerators.get_accelerator_manager_for_resource",
+        return_value=Accelerator,
     ):
         os.environ["ONEAPI_DEVICE_SELECTOR"] = "level_zero:0,1,2"
-        del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
         ray.init()
-        manager = get_accelerator_manager_for_resource("GPU")
-        assert manager.get_current_node_accelerator_type() == INTEL_MAX_1550
+        assert ray.available_resources()[f"accelerator_type:{INTEL_MAX_1550}"] == 1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
