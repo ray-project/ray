@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 import pyarrow as pa
 from typing_extensions import override
 
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
     check_for_legacy_tensor_type,
@@ -178,11 +179,48 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._shuffle
 
     def _get_file_indexer(self) -> FileIndexer:
+        # Opt-in footer-based indexing: reads each file's footer on a
+        # ``FooterReader`` actor pool so listing rows carry per-row-group stats
+        # (and predicate / limit / projection push-down reach listing). Grouping
+        # those rows into read units is ``get_file_partitioner``'s job. Off by
+        # default while it is validated against release benchmarks; the flag and
+        # the blind chunker below both go away once it is the only path.
+        if env_bool("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", False):
+            from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+                FooterFileIndexer,
+            )
+
+            return FooterFileIndexer(
+                ignore_missing_paths=self._ignore_missing_paths,
+                skip_paths=self._skip_paths,
+                coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
+            )
+
         return NonSamplingFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
             file_chunker=self._file_chunker,
         )
+
+    def get_file_partitioner(self, **kwargs):
+        # With the footer indexer on, listing rows carry per-row-group stats, so
+        # bin-pack them into read units instead of size-estimating whole files.
+        if env_bool("RAY_DATA_PARQUET_ENABLE_FOOTER_INDEXER", False):
+            from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (  # noqa: E501
+                OnlineBinPacker,
+            )
+            from ray.data._internal.util import MiB
+
+            return OnlineBinPacker(
+                env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB),
+                max_shared_open_bins=env_integer(
+                    "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
+                ),
+                split_coalesced=env_bool(
+                    "RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False
+                ),
+            )
+        return super().get_file_partitioner(**kwargs)
 
     def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
         return ParquetInMemorySizeEstimator()

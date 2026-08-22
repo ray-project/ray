@@ -70,11 +70,6 @@ def plan_list_files_op(
 
     shuffle_config = op.shuffle_config_factory()
 
-    # Some indexers (e.g. the footer-based Parquet indexer) already emit
-    # bin-packed read units from ``list_files`` -- they need the whole file
-    # stream on one task to pack globally, and there's nothing left to partition.
-    produces_partitioned_manifests = indexer.produces_partitioned_manifests
-
     transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(
             partial(
@@ -107,7 +102,7 @@ def plan_list_files_op(
             )
         )
 
-    if partitioner is not None and not produces_partitioned_manifests:
+    if partitioner is not None:
         transform_fns.append(
             BlockMapTransformFn(
                 partial(partition_files, partitioner=partitioner),
@@ -123,10 +118,12 @@ def plan_list_files_op(
             op,
             data_context,
             # A single task is required when shuffle needs one global RNG over
-            # the full listing, or when the indexer bin-packs read units itself
-            # (it must see the whole file stream to pack globally).
-            should_parallelize=shuffle_config is None
-            and not produces_partitioned_manifests,
+            # the full listing, or when the partitioner packs globally (it must
+            # see every listing row, not just this shard's).
+            should_parallelize=(
+                shuffle_config is None
+                and not (partitioner is not None and partitioner.requires_global_input)
+            ),
         ),
         data_context,
         name="ListFiles",

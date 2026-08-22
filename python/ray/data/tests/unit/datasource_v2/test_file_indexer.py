@@ -391,6 +391,97 @@ class TestFileChunkerIntegration:
         assert rows[-1][2]["chunk_byte_end_idx"] == 10_000
 
 
+class TestAsWholeFileIndexer:
+    """``as_whole_file_indexer`` must downgrade to a plain per-file lister.
+
+    ``PushdownCountFiles`` relies on this to count each file exactly once
+    without triggering a metadata-aware subclass's listing strategy.
+    """
+
+    def test_returns_base_type_from_metadata_aware_subclass(self):
+        from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+            FooterFileIndexer,
+        )
+
+        downgraded = FooterFileIndexer(
+            ignore_missing_paths=False
+        ).as_whole_file_indexer()
+
+        # Exact type, not isinstance: FooterFileIndexer subclasses
+        # NonSamplingFileIndexer but overrides list_files, so an isinstance
+        # check here would not catch a regression.
+        assert type(downgraded) is NonSamplingFileIndexer
+
+    @pytest.mark.parametrize(
+        "ignore_missing_paths,num_workers,max_paths_per_output",
+        [(False, 1, 10), (True, 4, 1000)],
+    )
+    def test_carries_over_traversal_config(
+        self, ignore_missing_paths, num_workers, max_paths_per_output
+    ):
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=ignore_missing_paths,
+            num_workers=num_workers,
+            max_paths_per_output=max_paths_per_output,
+        )
+
+        downgraded = source.as_whole_file_indexer()
+
+        assert downgraded._ignore_missing_paths == ignore_missing_paths
+        assert downgraded._num_workers == num_workers
+        assert downgraded._max_paths_per_output == max_paths_per_output
+        # Derived in __init__, so rebuilding must recompute it rather than
+        # copying a stale value.
+        assert downgraded._queue_size_per_thread == max_paths_per_output * 4
+
+    def test_always_uses_whole_file_chunker(self):
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, file_chunker=LineDelimitedFileChunker()
+        )
+
+        assert isinstance(source.as_whole_file_indexer().file_chunker, WholeFileChunker)
+
+    def test_source_indexer_is_not_mutated(self):
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, file_chunker=LineDelimitedFileChunker()
+        )
+
+        source.as_whole_file_indexer()
+
+        # Guards against regressing to in-place mutation of the caller's indexer.
+        assert isinstance(source.file_chunker, LineDelimitedFileChunker)
+
+    def test_carries_over_skip_paths(self, tmp_path):
+        """A dropped ``skip_paths`` would let excluded files back into the
+        listing, inflating a pushed-down ``count()``."""
+        kept = tmp_path / "kept.csv"
+        skipped = tmp_path / "skipped.csv"
+        kept.write_bytes(b"x" * 10)
+        skipped.write_bytes(b"x" * 20)
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={str(skipped)}
+        )
+
+        downgraded = source.as_whole_file_indexer()
+
+        assert downgraded._skip_paths == frozenset({str(skipped)})
+        assert _list_all(downgraded, [str(tmp_path)]) == [(str(kept), 10)]
+
+    def test_carried_skip_paths_still_tolerate_missing_path(self, tmp_path):
+        """``skip_paths`` drops a named path whether or not it exists, so a
+        skip-only missing path must not raise once carried over."""
+        kept = tmp_path / "kept.csv"
+        kept.write_bytes(b"x" * 10)
+        missing = str(tmp_path / "gone.csv")
+        source = NonSamplingFileIndexer(
+            ignore_missing_paths=False, skip_paths={missing}
+        )
+
+        downgraded = source.as_whole_file_indexer()
+
+        assert _list_all(downgraded, [str(kept), missing]) == [(str(kept), 10)]
+
+
 if __name__ == "__main__":
     import sys
 

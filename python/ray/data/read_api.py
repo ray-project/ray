@@ -464,9 +464,6 @@ def _read_datasource_v2(
         _build_pruners,
         sample_files,
     )
-    from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-        RoundRobinPartitioner,
-    )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
     ctx = DataContext.get_current()
@@ -543,17 +540,14 @@ def _read_datasource_v2(
     # (``-1`` when unset). Honoring it here per-read avoids mutating the
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    # An indexer that already emits bin-packed read units (e.g. the footer-based
-    # Parquet indexer) doesn't use the size-estimate ``RoundRobinPartitioner``.
-    partitioner = (
-        None
-        if indexer.produces_partitioned_manifests
-        else RoundRobinPartitioner(
-            in_memory_size_estimator=datasource.get_size_estimator(),
-            min_bucket_size=min_bucket_size,
-            max_bucket_size=max_bucket_size,
-            num_buckets=num_buckets,
-        )
+    # The datasource chooses how listing rows are grouped into read units. The
+    # default is the size-estimate ``RoundRobinPartitioner``; a datasource whose
+    # listing carries richer metadata can supply a partitioner that uses it.
+    partitioner = datasource.get_file_partitioner(
+        in_memory_size_estimator=datasource.get_size_estimator(),
+        min_bucket_size=min_bucket_size,
+        max_bucket_size=max_bucket_size,
+        num_buckets=num_buckets,
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
