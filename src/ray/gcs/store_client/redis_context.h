@@ -200,6 +200,10 @@ class RedisContext {
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   int64_t redis_db_probe_timeout_milliseconds_;
+  /// Whether the current connection is TLS. Error classification consults this
+  /// because hiredis reports OpenSSL failures with an errno-derived message
+  /// that may describe an unrelated error.
+  bool enable_ssl_{false};
 };
 
 }  // namespace ray::gcs
