@@ -383,8 +383,8 @@ if setup_spec.type == SetupType.RAY:
         set(
             [
                 "vllm[audio]==0.26.0",
-                "nixl==1.3.1",
-                "nixl-cu13==1.3.1",
+                "nixl==1.4.0",
+                "nixl-cu13==1.4.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
