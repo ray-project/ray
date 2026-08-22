@@ -758,7 +758,7 @@ class _StatsActor:
                 if isinstance(value, RuntimeMetricsHistogram):
                     value.export_to(prom_metric, tags)
             elif isinstance(prom_metric, dict) and isinstance(value, dict):
-                if value.get("num_samples", 0) == 0:
+                if value.get("num_samples") == 0:
                     return
                 for statistic, gauge in prom_metric.items():
                     statistic_value = value.get(statistic)

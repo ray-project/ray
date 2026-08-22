@@ -2035,7 +2035,7 @@ def test_stats_actor_exports_distribution_metrics():
 
         actor.update_execution_metrics(
             "dataset_1",
-            [{"max_uss_bytes": {"num_samples": 2, "mean": 200, "max": 300}}],
+            [{"max_uss_bytes": {"mean": 200, "max": 300}}],
             ["MapBatches_1"],
             {},
         )
