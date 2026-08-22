@@ -1,0 +1,20 @@
+# Same shape as fixed_size_all_to_all_compute.yaml, but workers are
+# m5.2xlarge (8 vCPU / 32 GiB) instead of m5.4xlarge (16 vCPU / 64 GiB).
+# Used by the external-shuffle repartition release benchmark.
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 512
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    - instance_type: m5.2xlarge
+      min_nodes: 32
+      max_nodes: 32
+      market_type: ON_DEMAND

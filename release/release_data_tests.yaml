@@ -340,6 +340,125 @@
       python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
       --shuffle-strategy {{shuffle_strategy}}
 
+# Manual: SHUFFLE_V2 in-memory vs external for map_groups (keyed repartition
+# path; external is a DataContext flag only). Same SF1000 / 7M-group config as
+# the shuffle_v2 map_groups release bar. fixed_size m5.4xlarge x32.
+# groupby_benchmark prints PLAN_OPS / CONFIG / CONSUME timings; --stats dumps
+# per-operator wall so shuffle vs read vs map_groups can be compared.
+- name: "map_groups_sf1000_{{shuffle}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle: [in-memory, external]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_object_manager_client_connection_num=8
+        - RAY_object_manager_rpc_threads_num=8
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python groupby_benchmark.py --sf 1000 --map-groups
+      --group-by column02 column14
+      --shuffle-strategy shuffle_v2 --num-partitions 500
+      --shuffle-transport {{shuffle}} --stats
+
+# Full SF1000 (no row limit), vary partition count to trade sort-reduce
+# memory (x3) vs concurrency. 512 ≈1GB/part, 1024 ≈0.5GB/part vs the
+# 500-part baseline above (~2GB/part).
+- name: "map_groups_sf1000_p{{partitions}}_{{shuffle}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      partitions: [512, 1024]
+      shuffle: [in-memory, external]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_object_manager_client_connection_num=8
+        - RAY_object_manager_rpc_threads_num=8
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python groupby_benchmark.py --sf 1000 --map-groups
+      --group-by column02 column14
+      --shuffle-strategy shuffle_v2 --num-partitions {{partitions}}
+      --shuffle-transport {{shuffle}} --stats
+
+# Keyed repartition of TPC-H lineitem (not groupby). Manual release filter.
+# Variants: HASH_SHUFFLE (v1 aggregators) vs SHUFFLE_V2 in-memory vs external.
+# Compute: 32x m5.4xlarge workers (fixed_size_all_to_all_compute.yaml).
+#
+# In-memory / v1 object-store pull knobs (Ray Core / object manager):
+#   RAY_object_manager_client_connection_num / RAY_object_manager_rpc_threads_num = 8
+# Note: v1 may OOM/timeout more easily on 512GB (aggregator heap); keep manual.
+- name: "repartition_lineitem_{{shuffle}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle: [v1, in-memory, external]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_object_manager_client_connection_num=8
+        - RAY_object_manager_rpc_threads_num=8
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python bench_shuffle.py --shuffle {{shuffle}}
+      --data-size-gb 512 --num-partitions 512 --target-cpu 512
+      --write-parquet
+
+# Same as above at 1 TiB / 1024 partitions (SF10000 lineitem, limit to 1024GB).
+- name: "repartition_lineitem_1tb_{{shuffle}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      shuffle: [v1, in-memory, external]
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_object_manager_client_connection_num=8
+        - RAY_object_manager_rpc_threads_num=8
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  run:
+    timeout: 10800
+    script: >
+      python bench_shuffle.py --shuffle {{shuffle}}
+      --data-size-gb 1024 --num-partitions 1024 --target-cpu 512
+      --write-parquet
+
 ###############
 # Join tests
 ###############
