@@ -1,3 +1,4 @@
+import inspect
 import os
 import warnings
 from enum import Enum
@@ -44,6 +45,32 @@ class CheckpointBackend(Enum):
     Note, when using this backend, the checkpoint path must be a network-mounted
     file system (e.g. `/mnt/cluster_storage/`).
     """
+
+
+def _validate_checkpoint_cls(cls: type, base_cls: type, param_name: str) -> None:
+    """Validate that ``cls`` is a concrete subclass of ``base_cls``.
+
+    Args:
+        cls: The user-provided class to validate.
+        base_cls: The required base class.
+        param_name: The ``CheckpointConfig`` parameter name, for error messages.
+
+    Raises:
+        InvalidCheckpointingConfig: if ``cls`` is not a subclass of
+            ``base_cls``, or is abstract (so instantiation would fail later
+            inside a remote worker instead of at config construction).
+    """
+    if not (isinstance(cls, type) and issubclass(cls, base_cls)):
+        raise InvalidCheckpointingConfig(
+            f"`{param_name}` must be a subclass of `{base_cls.__name__}`, "
+            f"but got {cls}"
+        )
+    if inspect.isabstract(cls):
+        raise InvalidCheckpointingConfig(
+            f"`{param_name}` must be a concrete class, but {cls} is abstract "
+            "(it does not implement all abstract methods of "
+            f"`{base_cls.__name__}`)"
+        )
 
 
 @PublicAPI(stability="beta")
@@ -120,26 +147,16 @@ class CheckpointConfig:
         if checkpoint_filter_cls is not None:
             from ray.data.checkpoint.checkpoint_filter import CheckpointFilter
 
-            if not (
-                isinstance(checkpoint_filter_cls, type)
-                and issubclass(checkpoint_filter_cls, CheckpointFilter)
-            ):
-                raise InvalidCheckpointingConfig(
-                    "`checkpoint_filter_cls` must be a subclass of "
-                    f"`CheckpointFilter`, but got {checkpoint_filter_cls}"
-                )
+            _validate_checkpoint_cls(
+                checkpoint_filter_cls, CheckpointFilter, "checkpoint_filter_cls"
+            )
 
         if checkpoint_manager_cls is not None:
             from ray.data.checkpoint.checkpoint_filter import CheckpointManager
 
-            if not (
-                isinstance(checkpoint_manager_cls, type)
-                and issubclass(checkpoint_manager_cls, CheckpointManager)
-            ):
-                raise InvalidCheckpointingConfig(
-                    "`checkpoint_manager_cls` must be a subclass of "
-                    f"`CheckpointManager`, but got {checkpoint_manager_cls}"
-                )
+            _validate_checkpoint_cls(
+                checkpoint_manager_cls, CheckpointManager, "checkpoint_manager_cls"
+            )
 
         if override_backend is not None:
             warnings.warn(

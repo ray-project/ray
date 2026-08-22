@@ -17,7 +17,7 @@ _LAZY_EXPORTS = (
 )
 
 
-def __getattr__(name):
+def __getattr__(name: str) -> type:
     # Lazily import filter/manager classes to avoid a circular import:
     # checkpoint_filter -> ray.data.context -> this package.
     if name in _LAZY_EXPORTS:

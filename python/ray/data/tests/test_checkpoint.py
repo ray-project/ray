@@ -310,6 +310,21 @@ class TestCheckpointConfig:
         )
         assert config.checkpoint_manager_cls is IdColumnCheckpointManager
 
+    def test_abstract_checkpoint_filter_cls(self, local_path):
+        """The abstract base class (or a still-abstract subclass) is rejected
+        at config construction instead of failing inside a filter actor."""
+        from ray.data.checkpoint.checkpoint_filter import CheckpointFilter
+
+        class StillAbstractFilter(CheckpointFilter):
+            pass
+
+        for cls in [CheckpointFilter, StillAbstractFilter]:
+            with pytest.raises(
+                InvalidCheckpointingConfig,
+                match="`checkpoint_filter_cls` must be a concrete class",
+            ):
+                CheckpointConfig(ID_COL, local_path, checkpoint_filter_cls=cls)
+
 
 @pytest.mark.parametrize(
     "backend,fs,data_path",
