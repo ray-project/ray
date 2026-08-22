@@ -258,6 +258,8 @@ Starting with KubeRay v1.1.0, KubeRay changes the Redis cleanup behavior from a 
 
 Users can turn off this by setting the feature gate value `ENABLE_GCS_FT_REDIS_CLEANUP`. Refer to the [KubeRay GCS fault tolerance configurations](kuberay-redis-cleanup-gate) section for more details.
 
+Cleanup deletes each namespace key with `UNLINK` on Redis 4.0+, which removes the keys from the keyspace immediately and reclaims their memory on a background thread, so deleting a large namespace doesn't add latency to other clients of the same Redis instance. As a consequence, `used_memory` may not drop until slightly after cleanup returns; `INFO memory` shows the backlog in `lazyfree_pending_objects`. On servers that reject `UNLINK` (for example, an ACL that denies the command), cleanup logs a warning and automatically falls back to `DEL`. Set the `RAY_redis_namespace_cleanup_use_unlink=0` environment variable to force the old synchronous `DEL` behavior, for example when a teardown script must observe the memory reclaimed before cleanup returns. The variable must reach the process that runs the cleanup: for KubeRay, set it in the head group's pod template `env` — KubeRay builds the Redis cleanup Job's pod from the head pod template, so the Job inherits it (it has no effect on the running head itself); for manual cleanup, set it in the shell that invokes `cleanup_redis_storage`.
+
 ### Step 10: Delete the Kubernetes cluster
 
 ```sh
