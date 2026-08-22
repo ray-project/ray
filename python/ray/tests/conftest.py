@@ -1602,6 +1602,80 @@ def clean_token_sources(cleanup_auth_token_env):
 
     yield
 
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_token_auth_state():
+    """Isolate token-authentication state across test sessions (bazel targets).
+
+    A local cluster enables token auth by default and writes a token to
+    ``~/.ray/auth_token``. Under ``bazel test`` HOME is unset, so every target
+    resolves the same home, and a token left by one target would enable auth on a
+    later target's cluster whose other processes can't authenticate.
+
+    Clear a leftover token once at session start so each target starts clean, and
+    restore the original at session end so a developer's existing
+    ``~/.ray/auth_token`` is never modified by a test run. This is session-scoped
+    on purpose: removing the token between tests would break module- or
+    session-scoped cluster fixtures that keep an authenticated cluster alive
+    across tests.
+    """
+    default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
+    original_token = None
+    if os.path.exists(default_token):
+        with open(default_token) as f:
+            original_token = f.read()
+        os.remove(default_token)
+    reset_auth_token_state()
+    try:
+        yield
+    finally:
+        if original_token is None:
+            if os.path.exists(default_token):
+                os.remove(default_token)
+        else:
+            os.makedirs(os.path.dirname(default_token), exist_ok=True)
+            with open(default_token, "w") as f:
+                f.write(original_token)
+        reset_auth_token_state()
+
+
+_TOKEN_AUTH_ENV_VARS = ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
+
+
+@pytest.fixture(scope="session")
+def _token_auth_env_baseline():
+    """Snapshot the auth env vars once, so per-test restore has a clean target."""
+    return {k: os.environ.get(k) for k in _TOKEN_AUTH_ENV_VARS}
+
+
+@pytest.fixture(autouse=True)
+def _restore_token_auth_env(_token_auth_env_baseline):
+    """Restore the auth env vars to the session baseline after each test.
+
+    A new local cluster started by ``ray.init`` enables token auth by default: it
+    sets ``RAY_AUTH_MODE=token`` in ``os.environ`` and writes ``~/.ray/auth_token``.
+    Left in place, they make later tests spawn auth-enabled clusters they don't
+    expect (dashboard HTTP without a token gets 401) or auto-enable auth from the
+    leftover token in ``ray start --head``.
+
+    Only clean up when no cluster is live (``ray.is_initialized()`` is False). A
+    module- or session-scoped cluster keeps Ray initialized across its tests and
+    its processes and subprocess drivers still need both the env var (to connect)
+    and the token file (their token value), so leave everything in place while it
+    runs and only reset between independent tests.
+    """
+    yield
+    if ray.is_initialized():
+        return
+    for key, value in _token_auth_env_baseline.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
+    if os.path.exists(default_token):
+        os.remove(default_token)
+
     if ray.is_initialized():
         ray.shutdown()
 

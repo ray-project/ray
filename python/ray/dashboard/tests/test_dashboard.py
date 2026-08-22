@@ -1186,6 +1186,7 @@ import time
 import requests
 from ray._private.test_utils import (
     format_web_url,
+    get_with_auth_token,
     wait_until_server_available,
 )
 import logging
@@ -1203,7 +1204,7 @@ start_time = time.time()
 while True:
     time.sleep(1)
     try:
-        response = requests.get(
+        response = get_with_auth_token(
             webui_url + "/test/dump", proxies={"http": None, "https": None}
         )
         response.raise_for_status()
