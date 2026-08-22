@@ -187,54 +187,75 @@ class NodeHead(SubprocessModule):
         }
 
     async def _subscribe_for_node_updates(self) -> AsyncGenerator[dict, None]:
-        """
-        Yields the initial state of all nodes, then yields the updated state of nodes.
-
-        It makes GetAllNodeInfo call only once after the subscription is done, to get
-        the initial state of the nodes.
-        """
-        subscriber = GcsAioNodeInfoSubscriber(address=self.gcs_address)
-        await subscriber.subscribe()
-
-        # Get all node info from GCS. To prevent Time-of-check to time-of-use issue [1],
-        # it happens after the subscription. That is, an update between
-        # get-all-node-info and the subscription is not missed.
-        # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        node_infos, _ = await self.gcs_client.async_get_all_node_info(timeout=None)
-
-        def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
-            return [_gcs_node_info_to_dict(m) for m in messages]
-
-        all_node_infos = await self._loop.run_in_executor(
-            self._node_executor,
-            _convert_to_dict,
-            node_infos.values(),
-        )
-
-        for node in all_node_infos:
-            yield node
-
+        """Yield the current node state, then yield node state changes."""
+        recoverable_status_codes = {
+            grpc.StatusCode.NOT_FOUND,
+            grpc.StatusCode.UNAVAILABLE,
+        }
         while True:
+            subscriber = GcsAioNodeInfoSubscriber(address=self.gcs_address)
             try:
-                node_id_updated_info_tuples = await subscriber.poll(
-                    batch_size=node_consts.RAY_DASHBOARD_NODE_SUBSCRIBER_POLL_SIZE
+                await subscriber.subscribe()
+
+                # Subscribe before GetAllNodeInfo so that no update between the
+                # snapshot and the subscription is lost.
+                node_infos, _ = await self.gcs_client.async_get_all_node_info(
+                    timeout=None
                 )
 
-                if node_id_updated_info_tuples:
-                    _, updated_infos_proto = zip(*node_id_updated_info_tuples)
-                else:
-                    updated_infos_proto = []
+                def _convert_to_dict(
+                    messages: Iterable[gcs_pb2.GcsNodeInfo],
+                ) -> List[dict]:
+                    return [_gcs_node_info_to_dict(message) for message in messages]
 
-                updated_infos = await self._loop.run_in_executor(
+                all_node_infos = await self._loop.run_in_executor(
                     self._node_executor,
                     _convert_to_dict,
-                    updated_infos_proto,
+                    node_infos.values(),
                 )
-
-                for node in updated_infos:
+                for node in all_node_infos:
                     yield node
+
+                while True:
+                    updates = await subscriber.poll(
+                        batch_size=(node_consts.RAY_DASHBOARD_NODE_SUBSCRIBER_POLL_SIZE)
+                    )
+                    updated_infos_proto = (
+                        [update for _, update in updates] if updates else []
+                    )
+                    updated_infos = await self._loop.run_in_executor(
+                        self._node_executor,
+                        _convert_to_dict,
+                        updated_infos_proto,
+                    )
+                    for node in updated_infos:
+                        yield node
+            except grpc.RpcError as error:
+                if error.code() not in recoverable_status_codes:
+                    raise
+                logger.warning(
+                    "Lost the GCS node subscription (%s). Reconnecting and "
+                    "refreshing node state.",
+                    error.code(),
+                )
             except Exception:
-                logger.exception("Failed handling updated nodes.")
+                logger.exception(
+                    "Failed handling updated nodes. Reconnecting and refreshing "
+                    "node state."
+                )
+            finally:
+                await subscriber.close()
+
+            await asyncio.sleep(
+                node_consts.RETRY_GCS_NODE_SUBSCRIPTION_INTERVAL_SECONDS
+            )
+
+    def _remove_from_dead_node_queue(self, node_id: str):
+        while True:
+            try:
+                self._dead_node_queue.remove(node_id)
+            except ValueError:
+                return
 
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]
@@ -264,7 +285,11 @@ class NodeHead(SubprocessModule):
             )
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
-        if not is_alive:
+        if is_alive:
+            if DataSource.nodes.get(node_id, {}).get("state") == "DEAD":
+                self._remove_from_dead_node_queue(node_id)
+        else:
+            self._remove_from_dead_node_queue(node_id)
             # Remove the agent address from the internal KV.
             keys = [
                 f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}",
@@ -304,6 +329,8 @@ class NodeHead(SubprocessModule):
         """
         warning_shown = False
         async for node in self._subscribe_for_node_updates():
+            if DataSource.nodes.get(node["nodeId"]) == node:
+                continue
             await self._update_node(node)
             if not self._head_node_registration_time_s:
                 # head node is not registered yet

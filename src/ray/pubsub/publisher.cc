@@ -415,6 +415,13 @@ void Publisher::ConnectToSubscriber(
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
+    if (request.reject_if_subscriber_missing()) {
+      send_reply_callback(
+          Status::NotFound("Subscriber " + subscriber_id.Hex() + " is not registered."),
+          nullptr,
+          nullptr);
+      return;
+    }
     it = subscribers_
              .emplace(subscriber_id,
                       std::make_unique<SubscriberState>(subscriber_id,
