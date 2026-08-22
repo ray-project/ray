@@ -87,6 +87,18 @@ class ParquetRowGroupChunkMetadata(ChunkMetadata):
     uncompressed_size: int
 
 
+class OrcFileChunkMetadata(ChunkMetadata):
+    """Metadata for ORC file chunks.
+
+    The chunker estimates how many chunks a file should produce from the file
+    size only. The reader opens the ORC footer on the worker and maps these
+    estimated chunks onto the file's real stripe range.
+    """
+
+    chunk_idx: int
+    total_num_chunks: int
+
+
 @DeveloperAPI
 class FileChunker(abc.ABC):
     """Abstract base class for chunking files into smaller pieces for parallel processing.
@@ -223,6 +235,51 @@ class ParquetFileChunker(FileChunker):
             yield (
                 create_chunk_metadata(
                     ParquetFileChunkMetadata,
+                    chunk_idx=i,
+                    total_num_chunks=num_chunks,
+                ),
+                chunk_size,
+            )
+
+
+@DeveloperAPI
+class OrcFileChunker(FileChunker):
+    """File chunker for ORC files.
+
+    Similar to :class:`ParquetFileChunker`, this avoids driver/listing-time
+    footer reads. The worker-side ORC reader resolves estimated chunks to
+    actual stripe ranges after opening the file.
+    """
+
+    _DEFAULT_TARGET_CHUNK_SIZE = 1 * GiB
+
+    def __init__(self, target_chunk_size: Optional[int] = None):
+        from ray.data.context import DataContext
+
+        ctx = DataContext.get_current()
+
+        if target_chunk_size is not None:
+            self._target_chunk_size = target_chunk_size
+        elif ctx.orc_chunker_target_chunk_size is not None:
+            self._target_chunk_size = ctx.orc_chunker_target_chunk_size
+        else:
+            self._target_chunk_size = self._DEFAULT_TARGET_CHUNK_SIZE
+
+    def generate_chunk_metadatas(
+        self, path: str, file_size: int
+    ) -> Iterable[Tuple[Optional[ChunkMetadata], int]]:
+        if file_size <= self._target_chunk_size:
+            yield None, file_size
+            return
+
+        num_chunks = math.ceil(file_size / self._target_chunk_size)
+        for i in range(num_chunks):
+            chunk_start = self._target_chunk_size * i
+            chunk_end = min(self._target_chunk_size * (i + 1), file_size)
+            chunk_size = chunk_end - chunk_start
+            yield (
+                create_chunk_metadata(
+                    OrcFileChunkMetadata,
                     chunk_idx=i,
                     total_num_chunks=num_chunks,
                 ),
