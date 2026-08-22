@@ -83,11 +83,13 @@ When scheduling a replica, the scheduler evaluates strategies in the following p
 
 ### Downscaling behavior
 
-When Ray Serve scales down a deployment, it intelligently selects which replicas to stop:
+When Ray Serve scales down a deployment, it selects which replicas to stop in the following priority order:
 
 1. **Non-running replicas first**: Pending, launching, or recovering replicas are stopped before running replicas.
-2. **Minimize node count**: Running replicas are stopped from nodes with the fewest total replicas across all deployments, helping to free up nodes faster. Among replicas on the same node, newer replicas are stopped before older ones.
-3. **Head node protection**: Replicas on the head node have the lowest priority for removal since the head node can't be released. Among replicas on the head node, newer replicas are stopped before older ones.
+2. **Head node protection**: Because the head node can't be released, replicas on worker nodes are always stopped before replicas on the head node, regardless of the criteria below.
+3. **Non-matching nodes first**: If the deployment uses a `label_selector` or `placement_group_bundle_label_selector`, replicas on fallback nodes that don't match the selector are stopped before replicas on matching nodes.
+4. **Minimize node count**: Running replicas are stopped from nodes with the fewest total replicas across all deployments, helping to free up nodes faster.
+5. **Newest replicas first**: Among nodes that are otherwise tied, the node hosting the most recently started replica is drained first. Within each node, newer replicas are stopped before older ones. This preserves long-lived, warmed-up replicas and stops recently scaled-up replicas first.
 
 :::{note}
 Running replicas on the head node isn't recommended for production deployments. The head node runs critical cluster processes such as the GCS and Serve controller, and replica workloads can compete for resources.
