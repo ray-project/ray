@@ -8,8 +8,7 @@ Choosing a generator API
 Ray's streaming generator API, also called the regular generator API, is the
 recommended way to consume generator results. It returns an
 ``ObjectRefGenerator``. Use it when a task yields a known or naturally bounded
-stream of results, or when the number of results is not known when the task is
-submitted. You can iterate over it, call ``ray.get`` on each reference, or pass
+stream of results. You can iterate over it, call ``ray.get`` on each reference, or pass
 it to ``ray.wait``.
 
 The deprecated dynamic generator API is only needed to support existing code
