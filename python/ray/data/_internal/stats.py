@@ -1526,11 +1526,7 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(operator_uuid)
                     out += str(operators_stats_summary)
-        indent = (
-            "\t"
-            if operators_stats_summary and operators_stats_summary.is_sub_operator
-            else ""
-        )
+        indent = "\t" if len(self.operators_stats) > 1 else ""
         backpressure_stats = getattr(self, "backpressure_stats", None)
         if backpressure_stats:
             if backpressure_stats.task_submission_policy:
