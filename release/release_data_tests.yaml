@@ -419,6 +419,97 @@
       --join_type {{join_type}}
       --num_partitions 1000
 
+########################################
+# Shuffle v2 shard-compression sweep
+########################################
+
+# Sweeps the shuffle-v2 shard codec over two representative shuffle-bound
+# workloads so we can compare runtime, peak object-store usage and spill per
+# codec (the numbers behind the compression chart in the shuffle-v2 blog post).
+#
+# The codec comes from `DataContext.shuffle_compression`. Both the current
+# (`RAY_DATA_SHUFFLE_COMPRESSION`) and the deprecated legacy
+# (`RAY_DATA_HASH_SHUFFLE_COMPRESSION`) environment overrides are set so the
+# sweep works either side of that rename; drop the legacy one once this branch
+# is based on a master that has `shuffle_compression`. Shards are Arrow IPC
+# streams and Arrow IPC only accepts `lz4` (LZ4 frame) and `zstd`, so the sweep
+# is `none` (uncompressed baseline) / `lz4` / `zstd` (today's default).
+#
+# Workloads:
+#   * join (TPC-H lineitem x orders): the heaviest shuffle we run, wide
+#     mixed-type payload carried through both sides of the shuffle.
+#   * aggregate on the 7M-group key: map-side combine shrinks the shuffle a
+#     lot first, so it shows what compression buys when shards are already
+#     small and CPU is the scarce resource.
+#
+# Both are manual-only: this is a one-off comparison, not a regression signal.
+# Everything except the codec matches the corresponding nightly shuffle_v2
+# test, so the `zstd` run should line up with nightly numbers. If the
+# uncompressed run at sf1000 blows its timeout, drop `dataset` to sf100 (and
+# `--num_partitions` to 100) rather than raising the timeout further.
+
+- name: "joins_{{dataset}}_inner_shuffle_v2_compression_{{compression}}"
+  python: "3.10"
+  frequency: manual
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
+        - RAY_DATA_SHUFFLE_COMPRESSION={{compression}}
+        - RAY_DATA_HASH_SHUFFLE_COMPRESSION={{compression}}
+        - RAY_max_direct_call_object_size=8192
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  matrix:
+    setup:
+      dataset: [sf1000]
+      compression: ["none", "lz4", "zstd"]
+
+  run:
+    # Larger than the nightly join budget: the uncompressed run moves several
+    # times more bytes through the object store and spills much more.
+    timeout: 14400
+    script: >
+      python join_benchmark.py
+      --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
+      --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
+      --left_join_keys column00
+      --right_join_keys column0
+      --join_type inner
+      --num_partitions 1000
+
+- name: "aggregate_groups_fixed_size_shuffle_v2_compression_{{compression}}"
+  python: "3.10"
+  frequency: manual
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        # The benchmark script sets the strategy itself, so only the codec is
+        # passed through the environment here.
+        - RAY_DATA_SHUFFLE_COMPRESSION={{compression}}
+        - RAY_DATA_HASH_SHUFFLE_COMPRESSION={{compression}}
+        - RAY_max_direct_call_object_size=8192
+    cluster_compute: fixed_size_all_to_all_compute.yaml
+
+  matrix:
+    setup:
+      compression: ["none", "lz4", "zstd"]
+
+  run:
+    timeout: 10800
+    script: >
+      python groupby_benchmark.py --sf 1000 --aggregate
+      --group-by column02 column14
+      --shuffle-strategy shuffle_v2 --num-partitions 500
+
 ###############
 # Wide Schema tests
 ###############
