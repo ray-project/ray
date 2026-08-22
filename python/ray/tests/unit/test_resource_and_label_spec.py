@@ -68,7 +68,11 @@ def test_resource_and_label_spec_resolves_with_params():
         labels={"ray.io/market-type": "spot"},
     )
 
-    spec.resolve(is_head=False)
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        spec.resolve(is_head=False)
 
     # Verify that explicit Ray Params values are preserved.
     assert spec.num_cpus == 8
@@ -97,7 +101,11 @@ def test_resource_and_label_spec_resolves_auto_detect(monkeypatch):
     )  # 4GB
 
     spec = ResourceAndLabelSpec()
-    spec.resolve(is_head=True)
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        spec.resolve(is_head=True)
 
     assert spec.resolved()
 
@@ -145,7 +153,11 @@ def test_env_resource_overrides_with_conflict(monkeypatch):
         labels={},
     )
 
-    spec.resolve(is_head=True)
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        spec.resolve(is_head=True)
 
     # Environment overrides values take precedence after resolve
     assert spec.num_cpus == 8
@@ -164,7 +176,11 @@ def test_to_resource_dict_with_invalid_types():
         resources={"INVALID": -5},  # Invalid
         labels={},
     )
-    spec.resolve(is_head=True, node_ip_address="127.0.0.1")
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        spec.resolve(is_head=True, node_ip_address="127.0.0.1")
     with pytest.raises(ValueError):
         spec.to_resource_dict()
 
@@ -200,7 +216,11 @@ def test_resolve_memory_resources(monkeypatch):
     )  # 512 MB
 
     spec1 = ResourceAndLabelSpec()
-    spec1.resolve(is_head=False)
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        spec1.resolve(is_head=False)
 
     max_shm = 512 * 1024**2 * 0.95
     assert spec1.object_store_memory <= max_shm
@@ -218,7 +238,10 @@ def test_resolve_memory_resources(monkeypatch):
     )  # 50 MB
 
     spec2 = ResourceAndLabelSpec()
-    with pytest.raises(ValueError, match="available for tasks and actors"):
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ), pytest.raises(ValueError, match="available for tasks and actors"):
         spec2.resolve(is_head=False)
 
 
@@ -376,7 +399,11 @@ def test_label_spec_resolve_merged_env_labels(monkeypatch):
         ray_constants.LABELS_ENVIRONMENT_VARIABLE, json.dumps(override_labels)
     )
     spec = ResourceAndLabelSpec()
-    spec.resolve(is_head=True)
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        spec.resolve(is_head=True)
 
     assert any(key == "autoscaler-override-label" for key in spec.labels)
 

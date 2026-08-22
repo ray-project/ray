@@ -24,6 +24,7 @@ import requests
 import yaml
 
 import ray
+import ray._private.accelerators
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
@@ -66,6 +67,17 @@ RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
 )
+
+
+def get_gpu_visible_devices_env_var() -> Optional[str]:
+    """Name of the visible devices env var for this node's GPU family, or None.
+
+    The name differs per family (CUDA_VISIBLE_DEVICES on NVIDIA, HIP_VISIBLE_DEVICES
+    on AMD), and Apple Silicon has none at all, so callers must handle None.
+    """
+    return ray._private.accelerators.get_accelerator_manager_for_resource(
+        "GPU"
+    ).get_visible_accelerator_ids_env_var()
 
 
 def make_global_state_accessor(ray_context):

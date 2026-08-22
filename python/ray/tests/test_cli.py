@@ -1065,7 +1065,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 @pytest.mark.parametrize("enable_v2", [True, False])
 def test_ray_status(shutdown_only, monkeypatch, enable_v2):
     address = ray.init(
-        num_cpus=3, _system_config={"enable_autoscaler_v2": enable_v2}
+        num_cpus=3, num_gpus=0, _system_config={"enable_autoscaler_v2": enable_v2}
     ).get("address")
     runner = CliRunner()
 

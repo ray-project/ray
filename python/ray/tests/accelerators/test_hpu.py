@@ -13,16 +13,23 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 def test_user_configured_more_than_visible(monkeypatch, call_ray_stop_only):
     # Test more hpus are configured than visible.
     monkeypatch.setenv("HABANA_VISIBLE_MODULES", "0,1,2")
-    with pytest.raises(ValueError):
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=["HPU"],
+    ), pytest.raises(ValueError):
         ray.init(resources={"HPU": 4})
 
 
+@patch(
+    "ray._private.accelerators.get_all_accelerator_resource_names",
+    return_value=["HPU"],
+)
 @patch(
     "ray._private.accelerators.HPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
     return_value=4,
 )
 def test_auto_detected_more_than_visible(
-    mock_get_num_accelerators, monkeypatch, shutdown_only
+    mock_get_num_accelerators, mock_resource_names, monkeypatch, shutdown_only
 ):
     # Test more hpus are detected than visible.
     monkeypatch.setenv("HABANA_VISIBLE_MODULES", "0,1,2")
@@ -32,10 +39,16 @@ def test_auto_detected_more_than_visible(
 
 
 @patch(
+    "ray._private.accelerators.get_all_accelerator_resource_names",
+    return_value=["HPU"],
+)
+@patch(
     "ray._private.accelerators.HPUAcceleratorManager.get_current_node_num_accelerators",  # noqa: E501
     return_value=2,
 )
-def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
+def test_auto_detect_resources(
+    mock_get_num_accelerators, mock_resource_names, shutdown_only
+):
     # Test that ray node resources are filled with auto detected count.
     ray.init()
     _ = mock_get_num_accelerators.called
