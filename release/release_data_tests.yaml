@@ -1069,7 +1069,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
       type: cu123
-      post_build_script: byod_install_text_embedding.sh
+      python_depset: text_embedding_py3.10.lock
 
   run:
     timeout: 3600
