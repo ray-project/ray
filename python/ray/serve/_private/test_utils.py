@@ -8,7 +8,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from copy import copy, deepcopy
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 from unittest.mock import Mock
 
 import grpc
@@ -31,6 +31,7 @@ from ray.serve._private.common import (
     CreatePlacementGroupRequest,
     DeploymentID,
     DeploymentStatus,
+    Duration,
     ReplicaID,
     RequestProtocol,
     RunningReplicaInfo,
@@ -48,6 +49,7 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaState,
+    ReplicaStateContainer,
 )
 from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -91,12 +93,12 @@ def skip_if_haproxy(reason: str):
 # is called in the controller's init function, instead of in the control
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
-dead_replicas_context = set()
+dead_replicas_context: Set[ReplicaID] = set()
 # Replicas registered in this set will report `was_initialized() == False` to
 # the controller during recovery, simulating the case where a previous
 # controller crashed before the actor finished its initial setup.
-uninitialized_replicas_context = set()
-replica_rank_context: Dict[str, ReplicaRank] = {}
+uninitialized_replicas_context: Set[ReplicaID] = set()
+replica_rank_context: Dict[str, Optional[ReplicaRank]] = {}
 
 
 class MockTimer(TimerBase):
@@ -122,11 +124,11 @@ class MockTimer(TimerBase):
 
 
 class MockAsyncTimer:
-    def __init__(self, start_time: Optional[float] = 0):
+    def __init__(self, start_time: float = 0):
         self.reset(start_time=start_time)
         self._num_sleepers = 0
 
-    def reset(self, start_time: 0):
+    def reset(self, start_time: float = 0):
         self._curr = start_time
 
     def time(self) -> float:
@@ -201,7 +203,12 @@ class MockClusterNodeInfoCache:
     def get_total_resources_per_node(self):
         return self.total_resources_per_node
 
-    def add_node(self, node_id: str, resources: Dict = None, labels: Dict = None):
+    def add_node(
+        self,
+        node_id: str,
+        resources: Optional[Dict] = None,
+        labels: Optional[Dict] = None,
+    ):
         self.alive_node_ids.add(node_id)
         self.total_resources_per_node[node_id] = deepcopy(resources) or {}
         self.available_resources_per_node[node_id] = deepcopy(resources) or {}
@@ -257,7 +264,7 @@ class FakeRunningReplica(RunningReplica):
         self._exception: Optional[Exception] = None
 
         self.get_queue_len_was_cancelled = False
-        self.queue_len_deadline_history = list()
+        self.queue_len_deadline_history: List[float] = list()
         self.num_get_queue_len_calls = 0
 
     @property
@@ -395,12 +402,8 @@ class MockDeploymentHandle:
     def options(self, *args, **kwargs):
         return self
 
-    def __eq__(self, dep: Tuple[str]):
-        other_deployment_name, other_app_name = dep
-        return (
-            self._deployment_name == other_deployment_name
-            and self._app_name == other_app_name
-        )
+    def __eq__(self, other: object) -> bool:
+        return other == (self._deployment_name, self._app_name)
 
     def _set_request_protocol(self, protocol: RequestProtocol):
         self._protocol = protocol
@@ -518,19 +521,19 @@ class MockReplicaActorWrapper:
         self.healthy = True
         self._is_cross_language = False
         self._actor_handle = MockActorHandle()
-        self._node_id = None
+        self._node_id: Optional[str] = None
         self._node_ip = None
         self._node_instance_id = None
         self._node_id_is_set = False
-        self._log_file_path = None
-        self._actor_id = None
+        self._log_file_path: Optional[str] = None
+        self._actor_id: Optional[str] = None
         self._internal_grpc_port = None
         self._http_port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
-        self._docs_path = None
+        self._docs_path: Optional[str] = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
-        self._assign_rank_callback = None
+        self._assign_rank_callback: Optional[Callable[..., ReplicaRank]] = None
         self._ingress = False
         self._gang_context = None
         self._gang_pg_index = None
@@ -644,7 +647,7 @@ class MockReplicaActorWrapper:
     def set_status(self, status: ReplicaStartupStatus):
         self.status = status
 
-    def set_ready(self, version: DeploymentVersion = None):
+    def set_ready(self, version: Optional[DeploymentVersion] = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
         # Mirror the real actor: a started replica has allocated a log file.
         self._log_file_path = "serve/replica.log"
@@ -676,7 +679,7 @@ class MockReplicaActorWrapper:
     def start(
         self,
         deployment_info: DeploymentInfo,
-        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        assign_rank_callback: Callable[..., ReplicaRank],
         gang_placement_group=None,
         gang_pg_index=None,
         gang_context=None,
@@ -714,7 +717,7 @@ class MockReplicaActorWrapper:
     def reconfigure(
         self,
         version: DeploymentVersion,
-        rank: ReplicaRank = None,
+        rank: Optional[ReplicaRank] = None,
     ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
@@ -737,7 +740,7 @@ class MockReplicaActorWrapper:
         self._unrecoverable = self.replica_id in uninitialized_replicas_context
         return True
 
-    def check_ready(self) -> ReplicaStartupStatus:
+    def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         # If the controller's async `was_initialized` probe came back False,
         # report a failed-but-unrecoverable startup so the reconciler drops
         # and replaces the replica without recording a deploy failure.
@@ -769,7 +772,7 @@ class MockReplicaActorWrapper:
         # Only used to print a warning.
         return {}
 
-    def graceful_stop(self) -> None:
+    def graceful_stop(self) -> Duration:
         # `started` is only set after a successful `check_ready` transition
         # to RUNNING. A replica force-stopped while still RECOVERING (e.g.,
         # because the `was_initialized` probe failed) is a legitimate stop.
@@ -812,7 +815,7 @@ class GetPID:
         return os.getpid()
 
 
-get_pid_entrypoint = GetPID.bind()
+get_pid_entrypoint = GetPID.bind()  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
 
 
 def check_ray_stopped():
@@ -959,7 +962,7 @@ def check_replica_counts(
     controller: ActorHandle,
     deployment_id: DeploymentID,
     total: Optional[int] = None,
-    by_state: Optional[List[Tuple[ReplicaState, int, Callable]]] = None,
+    by_state: Optional[List[Tuple[ReplicaState, int, Optional[Callable]]]] = None,
 ):
     """Uses _dump_replica_states_for_testing to check replica counts.
 
@@ -974,8 +977,11 @@ def check_replica_counts(
     Returns:
         True when all assertions pass (raises ``AssertionError`` otherwise).
     """
-    replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(deployment_id)
+    replicas = cast(
+        ReplicaStateContainer,
+        ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)  # type: ignore[attr-defined]
+        ),
     )
 
     if total is not None:
@@ -1001,7 +1007,7 @@ def check_replica_counts(
     return True
 
 
-@ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)
+@ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)  # type: ignore[call-overload]  # pyrefly: ignore[unexpected-keyword]
 class TelemetryStorage:
     def __init__(self):
         self.reports_received = 0
@@ -1029,7 +1035,7 @@ class TelemetryReceiver:
         return True
 
 
-receiver_app = TelemetryReceiver.bind()
+receiver_app = TelemetryReceiver.bind()  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
 
 
 def start_telemetry_app():
@@ -1046,7 +1052,7 @@ def start_telemetry_app():
     to access the latest telemetry reports.
     """
 
-    storage = TelemetryStorage.remote()
+    storage = TelemetryStorage.remote()  # pyrefly: ignore[missing-attribute]
     serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
     return storage
 
@@ -1055,7 +1061,9 @@ def check_telemetry(
     tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
 ):
     storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
-    report = ray.get(storage_handle.get_report.remote())
+    report = cast(
+        Dict[str, Any], ray.get(storage_handle.get_report.remote())  # type: ignore[attr-defined]
+    )
     print(report["extra_usage_tags"])
     assert tag.get_value_from_report(report) == expected
     return True
@@ -1165,8 +1173,8 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
     except asyncio.CancelledError:
         cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
-        ray._raylet.async_task_id.set(None)
-        await signal_actor.send.remote()
+        ray._raylet.async_task_id.set(None)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        await signal_actor.send.remote()  # type: ignore[attr-defined]
 
     if not cancelled:
         raise RuntimeError(
@@ -1221,19 +1229,21 @@ class FakeGrpcContext:
 
 
 class FakeGauge:
-    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+    def __init__(
+        self, name: Optional[str] = None, tag_keys: Optional[Tuple[str, ...]] = None
+    ):
         self.name = name
-        self.values = dict()
+        self.values: Dict[str, Any] = dict()
 
-        self.tags = tag_keys or ()
-        self.default_tags = dict()
+        self.tags: Tuple[str, ...] = tag_keys or ()
+        self.default_tags: Dict[str, str] = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
             self.default_tags[key] = tag
 
-    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+    def set(self, value: Union[int, float], tags: Optional[Dict[str, str]] = None):
         merged_tags = self.default_tags.copy()
         merged_tags.update(tags or {})
         assert set(merged_tags.keys()) == set(self.tags)
@@ -1248,7 +1258,7 @@ class FakeGauge:
         d[merged_tags[self.tags[-1]]] = value
 
     def get_value(self, tags: Dict[str, str]):
-        value = self.values
+        value: Any = self.values
         for tag in self.tags:
             tag_value = tags[tag]
             value = value.get(tag_value)
@@ -1259,19 +1269,23 @@ class FakeGauge:
 
 
 class FakeCounter:
-    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+    def __init__(
+        self, name: Optional[str] = None, tag_keys: Optional[Tuple[str, ...]] = None
+    ):
         self.name = name
-        self.counts = dict()
+        self.counts: Dict[str, Any] = dict()
 
-        self.tags = tag_keys or ()
-        self.default_tags = dict()
+        self.tags: Tuple[str, ...] = tag_keys or ()
+        self.default_tags: Dict[str, str] = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
             self.default_tags[key] = tag
 
-    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+    def inc(
+        self, value: Union[int, float] = 1.0, tags: Optional[Dict[str, str]] = None
+    ):
         merged_tags = self.default_tags.copy()
         merged_tags.update(tags or {})
         assert set(merged_tags.keys()) == set(self.tags)
@@ -1286,13 +1300,13 @@ class FakeCounter:
         key = merged_tags[self.tags[-1]]
         d[key] = d.get(key, 0) + value
 
-    def get_count(self, tags: Dict[str, str]) -> int:
-        value = self.counts
+    def get_count(self, tags: Dict[str, str]) -> Optional[int]:
+        value: Any = self.counts
         for tag in self.tags:
             tag_value = tags[tag]
             value = value.get(tag_value)
             if value is None:
-                return
+                return None
 
         return value
 
@@ -1314,9 +1328,10 @@ def check_num_alive_nodes(target: int):
 def get_deployment_details(
     deployment_name: str,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    _client: ServeControllerClient = None,
-):
+    _client: Optional[ServeControllerClient] = None,
+) -> Dict[str, Any]:
     client = _client or _get_global_client()
+    assert client is not None
     details = client.get_serve_details()
     return details["applications"][app_name]["deployments"][deployment_name]
 
@@ -1499,7 +1514,9 @@ def check_target_groups_ready(
     possible that target groups are not ready immediately. An example is when the controller
     is recovering from a crash.
     """
-    target_groups = ray.get(client._controller.get_target_groups.remote(app_name))
+    target_groups = ray.get(
+        client._controller.get_target_groups.remote(app_name)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+    )
     target_groups = [
         target_group
         for target_group in target_groups
@@ -1534,6 +1551,7 @@ def get_application_urls(
         The URLs of the application.
     """
     client = _get_global_client()
+    assert client is not None
     serve_details = client.get_serve_details()
     assert (
         app_name in serve_details["applications"]
@@ -1546,7 +1564,7 @@ def get_application_urls(
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
     target_groups: List[TargetGroup] = ray.get(
-        client._controller.get_target_groups.remote(app_name, from_proxy_manager)
+        client._controller.get_target_groups.remote(app_name, from_proxy_manager)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
     )
     target_groups = [
         target_group
@@ -1658,8 +1676,10 @@ def get_metric_float(
         timeseries,
         timeout=timeout,
     ).get(metric, [])
+    # None (no tag filter) matches any sample, per the docstring.
+    tags_to_match = expected_tags or {}
     for sample in samples:
-        if expected_tags.items() <= sample.labels.items():
+        if tags_to_match.items() <= sample.labels.items():
             return sample.value
     return -1
 
@@ -1725,7 +1745,7 @@ def get_metric_dictionaries(
 
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
-        if sample.name == name:
-            metric_dicts.append(sample.labels)
+        if sample.name == name:  # pyrefly: ignore[missing-attribute]
+            metric_dicts.append(sample.labels)  # pyrefly: ignore[missing-attribute]
 
     return metric_dicts
