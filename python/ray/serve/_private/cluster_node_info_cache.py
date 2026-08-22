@@ -139,9 +139,37 @@ class ClusterNodeInfoCache(ABC):
 class DefaultClusterNodeInfoCache(ClusterNodeInfoCache):
     def __init__(self, gcs_client: GcsClient):
         super().__init__(gcs_client)
+        self._cached_draining_nodes: Dict[str, int] = dict()
+
+    def update(self):
+        super().update()
+
+        try:
+            draining_nodes = self._gcs_client.get_draining_nodes(
+                timeout=RAY_GCS_RPC_TIMEOUT_S
+            )
+        except Exception:
+            logger.warning(
+                "Failed to fetch draining nodes from GCS. "
+                "Draining nodes cache will be stale.",
+                exc_info=True,
+            )
+            # Don't retain stale state for a node that is no longer alive.
+            self._cached_draining_nodes = {
+                node_id: deadline
+                for node_id, deadline in self._cached_draining_nodes.items()
+                if node_id in self._alive_node_id_set
+            }
+            return
+
+        self._cached_draining_nodes = {
+            node_id: deadline
+            for node_id, deadline in draining_nodes.items()
+            if node_id in self._alive_node_id_set
+        }
 
     def get_draining_nodes(self) -> Dict[str, int]:
-        return dict()
+        return dict(self._cached_draining_nodes)
 
     def get_node_az(self, node_id: str) -> Optional[str]:
         """Get availability zone of a node."""
