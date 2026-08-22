@@ -314,10 +314,10 @@ def _external_shuffle_reduce_task(
             # Accumulator for the final reduce.
             accum_tables: List[pa.Table] = []
             output_buffer: Optional[BlockOutputBuffer] = None
-            # Codec from data_context.hash_shuffle_compression (same field the map used).
+            # Codec from data_context.shuffle_compression (same field the map used).
             _compression = (
                 data_context if data_context is not None else DataContext.get_current()
-            ).hash_shuffle_compression
+            ).shuffle_compression
 
             def _flush(tables: List[pa.Table]):
                 """Call reduce_fn on ``tables`` and yield reshaped raw blocks.
