@@ -491,8 +491,12 @@ class StreamingExecutor(Executor, threading.Thread):
             stats = builder.build_multioperator(op.get_stats())
             stats.extra_metrics = op.metrics.as_dict(skip_internal_metrics=True)
             stats.backpressure_stats = BackpressureStats(
-                task_submission_policy=op._task_submission_backpressure_policy,
-                task_output_policy=op._task_output_backpressure_policy,
+                task_submission_policy=getattr(
+                    op, "_task_submission_backpressure_policy", None
+                ),
+                task_output_policy=getattr(
+                    op, "_task_output_backpressure_policy", None
+                ),
             )
         # Always assign a ``Timer`` so downstream consumers can call
         # ``.get()`` / ``.avg()`` / ``.max()`` / ``.percentile()``

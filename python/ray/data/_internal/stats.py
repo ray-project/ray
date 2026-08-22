@@ -1375,10 +1375,7 @@ class DatasetStats:
         # Create temporary operator stats objects from block metadata
         op_stats = [
             OperatorStatsSummary.from_block_metadata(
-                name,
-                stats,
-                is_sub_operator=is_sub_operator,
-                backpressure_stats=self.backpressure_stats,
+                name, stats, is_sub_operator=is_sub_operator
             )
             for name, stats in self.metadata.items()
         ]
@@ -1417,6 +1414,7 @@ class DatasetStats:
             stats_summary_parents,
             self.number,
             self.dataset_uuid,
+            self.backpressure_stats,
             self.time_total_s,
             self.base_name,
             self.extra_metrics,
@@ -1456,6 +1454,7 @@ class DatasetStatsSummary:
     parents: List["DatasetStatsSummary"]
     number: int
     dataset_uuid: str
+    backpressure_stats: "BackpressureStats"
     time_total_s: float
     base_name: str
     extra_metrics: Dict[str, Any]
@@ -1527,6 +1526,16 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(operator_uuid)
                     out += str(operators_stats_summary)
+        if self.backpressure_stats.task_submission_policy:
+            out += (
+                "* Backpressured: "
+                f"tasks({self.backpressure_stats.task_submission_policy})\n"
+            )
+        if self.backpressure_stats.task_output_policy:
+            out += (
+                "* Backpressured: "
+                f"outputs({self.backpressure_stats.task_output_policy})\n"
+            )
         verbose_stats_logs = DataContext.get_current().verbose_stats_logs
         if verbose_stats_logs and self.extra_metrics:
             indent = (
@@ -1718,8 +1727,6 @@ class OperatorStatsSummary:
     node_count: Optional[StatsSummary] = None
     task_rows: Optional[StatsSummary] = None
     scheduling_overhead: Optional[List["BucketedSchedulingOverhead"]] = None
-    task_submission_backpressure_policy: Optional[str] = None
-    task_output_backpressure_policy: Optional[str] = None
 
     @property
     def num_rows_per_s(self) -> float:
@@ -1747,7 +1754,6 @@ class OperatorStatsSummary:
         operator_name: str,
         block_stats: List[BlockStats],
         is_sub_operator: bool,
-        backpressure_stats: Optional[BackpressureStats] = None,
     ) -> "OperatorStatsSummary":
         """Calculate the stats for a operator from a given list of blocks,
         and generates a `OperatorStatsSummary` object with the results.
@@ -1756,7 +1762,6 @@ class OperatorStatsSummary:
             operator_name: Name of operator associated with `blocks`
             block_stats: List of `BlockStats` to calculate stats of
             is_sub_operator: Whether this set of blocks belongs to a sub operator.
-            backpressure_stats: Snapshot of the operator's backpressure policies.
         Returns:
             A `OperatorStatsSummary` object initialized with the calculated statistics
         """
@@ -1860,16 +1865,6 @@ class OperatorStatsSummary:
             output_size_bytes=output_size_bytes_stats,
             node_count=node_counts_stats,
             task_rows=task_rows_stats,
-            task_submission_backpressure_policy=(
-                backpressure_stats.task_submission_policy
-                if backpressure_stats
-                else None
-            ),
-            task_output_backpressure_policy=(
-                backpressure_stats.task_output_policy
-                if backpressure_stats
-                else None
-            ),
         )
 
     def __str__(self) -> str:
@@ -1882,18 +1877,6 @@ class OperatorStatsSummary:
         """
         indent = "\t" if self.is_sub_operator else ""
         out = self.block_execution_summary_str
-
-        if self.task_submission_backpressure_policy:
-            out += indent
-            out += (
-                f"* Backpressured: tasks({self.task_submission_backpressure_policy})\n"
-            )
-
-        if self.task_output_backpressure_policy:
-            out += indent
-            out += (
-                f"* Backpressured: outputs({self.task_output_backpressure_policy})\n"
-            )
 
         if self.wall_time:
             out += indent

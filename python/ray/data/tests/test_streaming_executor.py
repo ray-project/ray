@@ -731,14 +731,11 @@ def test_stats_include_backpressure_policy(ray_start_regular_shared):
     o2._task_output_backpressure_policy = "MockPolicy2"
 
     summary = executor._generate_stats().to_summary()
-    operator_summary = summary.operators_stats[0]
 
-    assert (
-        operator_summary.task_submission_backpressure_policy == "MockPolicy1"
-    )
-    assert operator_summary.task_output_backpressure_policy == "MockPolicy2"
+    assert summary.backpressure_stats.task_submission_policy == "MockPolicy1"
+    assert summary.backpressure_stats.task_output_policy == "MockPolicy2"
 
-    summary_str = str(operator_summary)
+    summary_str = summary.to_string()
     assert "Backpressured: tasks(MockPolicy1)" in summary_str
     assert "Backpressured: outputs(MockPolicy2)" in summary_str
 
