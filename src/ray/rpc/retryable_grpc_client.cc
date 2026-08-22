@@ -17,6 +17,7 @@
 #include <memory>
 #include <utility>
 
+#include "ray/asio/asio_util.h"
 #include "ray/util/exponential_backoff.h"
 
 namespace ray::rpc {
@@ -126,6 +127,27 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
     RAY_LOG(FATAL) << "Not covered status: " << status;
   }
   }
+}
+
+void RetryableGrpcClient::RetryAfterJitteredBackoff(
+    std::shared_ptr<RetryableGrpcRequest> request, const ray::Status &status) {
+  // Full jitter: uniform in [0, min(base * 2^attempt, cap)]. When many clients
+  // time out on the same overloaded server at the same moment (e.g. mass
+  // cluster bring-up), decorrelating their retries matters more than the exact
+  // backoff value. The delay consumes the call's overall budget, so retries
+  // stay within timeout_ms; a retry that fires with (almost) no budget left
+  // makes one last short attempt and delivers TimedOut.
+  const uint64_t attempt = request->NextAttemptNumber();
+  const uint64_t backoff_cap_ms = ExponentialBackoff::GetBackoffMs(
+      attempt, kRetryOnTimeoutBackoffBaseMs, kRetryOnTimeoutBackoffMaxMs);
+  const int64_t delay_ms =
+      absl::Uniform<int64_t>(bit_gen_, 0, static_cast<int64_t>(backoff_cap_ms) + 1);
+  RAY_LOG(WARNING) << request->GetCallName() << " attempt " << attempt + 1
+                   << " timed out (" << status << "); retrying in " << delay_ms << " ms.";
+  execute_after(
+      io_context_,
+      [request = std::move(request)]() { request->CallMethod(); },
+      std::chrono::milliseconds(delay_ms));
 }
 
 void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {

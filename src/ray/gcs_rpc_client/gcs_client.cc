@@ -200,10 +200,20 @@ Status GcsClient::FetchClusterId(int64_t timeout_ms) {
   if (!GetClusterId().IsNil()) {
     return Status::OK();
   }
+  // Connect() replaces a negative timeout with the connect-timeout config, so a
+  // non-positive budget here means a misconfiguration (it would silently make
+  // the fetch a no-op deadline). Fail loudly instead of guessing a value.
+  RAY_CHECK_GT(timeout_ms, static_cast<int64_t>(0))
+      << "FetchClusterId requires a positive timeout budget; check "
+         "gcs_rpc_server_connect_timeout_s.";
   rpc::GetClusterIdRequest request;
   rpc::GetClusterIdReply reply;
   RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
 
+  // GetClusterId carries a RetryOnTimeoutPolicy (see GcsRpcClient): timed-out
+  // attempts are retried with bounded per-attempt deadlines and jittered
+  // backoff within timeout_ms, so a read of this immutable value that lands on
+  // a momentarily backlogged GCS degrades to slow instead of fatal.
   Status s = client_context_->GetGcsRpcClient().SyncGetClusterId(
       std::move(request), &reply, timeout_ms);
   if (!s.ok()) {
