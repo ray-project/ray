@@ -1,3 +1,4 @@
+import gc
 import sys
 
 import pytest
@@ -5,7 +6,11 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental import set_target_device_for_ref, set_target_for_ref
+from ray.experimental import (
+    set_target_device_for_ref,
+    set_target_for_ref,
+    wait_tensor_freed,
+)
 from ray.experimental.rdt.util import get_tensor_transport_manager
 
 
@@ -206,6 +211,39 @@ def test_put_gc(ray_start_regular):
     actor = GPUTestActor.remote()
     ref = actor.gc.remote()
     assert ray.get(ref) == "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_put_nixl(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+    ref = ray.put(tensor, _tensor_transport="nixl")
+
+    actor = GPUTestActor.remote()
+    assert ray.get(actor.sum.remote(ref, "cuda")) == 6
+    assert ray.get(actor.borrow_and_sum.remote([ref])) == 6
+    assert torch.equal(ray.get(ref), tensor)
+
+    del ref
+    gc.collect()
+
+    wait_tensor_freed(tensor, timeout=10)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_owned_rdt_rejects_object_store_fallback(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+    ref = ray.put(tensor, _tensor_transport="nixl")
+
+    with pytest.raises(ValueError, match="_use_object_store=True"):
+        ray.get(ref, _use_object_store=True)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_driver_rejects_two_sided_transport(ray_start_regular):
+    tensor = torch.tensor([1, 2, 3], device="cuda")
+
+    with pytest.raises(ValueError, match="one-sided transport"):
+        ray.put(tensor, _tensor_transport="nccl")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
