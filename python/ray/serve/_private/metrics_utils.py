@@ -76,30 +76,43 @@ class MetricsPusher:
         """
 
         wait_for_stop_event = asyncio.create_task(self.stop_event.wait())
-        while True:
-            if wait_for_stop_event.done():
-                return
+        try:
+            while True:
+                if wait_for_stop_event.done():
+                    return
 
-            try:
-                task_func = self._tasks[name].task_func
-                # Check if the function is a coroutine function
-                if asyncio.iscoroutinefunction(task_func):
-                    await task_func()
-                else:
-                    task_func()
-            except Exception as e:
-                logger.exception(f"Failed to run metrics task '{name}': {e}")
+                try:
+                    task_func = self._tasks[name].task_func
+                    # Check if the function is a coroutine function
+                    if asyncio.iscoroutinefunction(task_func):
+                        await task_func()
+                    else:
+                        task_func()
+                except Exception as e:
+                    logger.exception(f"Failed to run metrics task '{name}': {e}")
 
-            sleep_task = asyncio.create_task(
-                self._async_sleep(self._tasks[name].interval_s)
-            )
-            await asyncio.wait(
-                [sleep_task, wait_for_stop_event],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-
-            if not sleep_task.done():
-                sleep_task.cancel()
+                sleep_task = asyncio.create_task(
+                    self._async_sleep(self._tasks[name].interval_s)
+                )
+                try:
+                    await asyncio.wait(
+                        [sleep_task, wait_for_stop_event],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                finally:
+                    if not sleep_task.done():
+                        sleep_task.cancel()
+                        try:
+                            await sleep_task
+                        except asyncio.CancelledError:
+                            pass
+        finally:
+            if not wait_for_stop_event.done():
+                wait_for_stop_event.cancel()
+                try:
+                    await wait_for_stop_event
+                except asyncio.CancelledError:
+                    pass
 
     def register_or_update_task(
         self,
@@ -135,10 +148,14 @@ class MetricsPusher:
 
         self.stop_event.set()
         if self._async_tasks:
-            await asyncio.wait(
+            _, pending = await asyncio.wait(
                 list(self._async_tasks.values()),
                 timeout=METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
             )
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
 
         self._tasks.clear()
         self._async_tasks.clear()
