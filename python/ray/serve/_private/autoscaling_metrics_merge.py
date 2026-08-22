@@ -1,0 +1,130 @@
+"""Array-native reference for the autoscaling decision-time merge.
+
+This is the EXACT spec for an array-input port of the two _raylet Cython kernels
+(`merge_instantaneous_total_cython`, `time_weighted_average_cython`), operating on
+the columnar layout — flat float64 `ts`/`val` arrays + CSR-style per-source
+`offsets` — with no per-point Python objects. Kept exact-equivalent to the
+object-list kernels (randomized equivalence tests in
+tests/unit/test_columnar_review_hardening.py).
+
+Pinned semantics of merge_instantaneous_total_cython (verified 8000/8000):
+  1. Drop empty sources.
+  2. If exactly ONE active source -> return it as-is (identity; no dedup, no merge).
+  3. Else, per source: keep only points where the value CHANGED from that source's
+     previous RAW value (LOCF, baseline 0), recording the delta (first point delta =
+     value); THEN round those points' ts to 2 decimals (10ms). Order matters -- see
+     _round_10ms and the change-detect comment below.
+  4. Merge all per-source change-points by rounded timestamp (sum deltas at equal ts),
+     cumsum -> instantaneous total. Keep EVERY change-point timestamp (an event
+     survives if any source changed there, even if deltas net to zero).
+"""
+from __future__ import annotations
+
+from typing import Tuple
+
+try:
+    import numpy as np
+except ModuleNotFoundError:  # numpy is only needed on the columnar (opt-in) path;
+    np = None  # serve-minimal installs lack it and never reach the columnar code.
+
+
+def _round_10ms(ts: np.ndarray) -> np.ndarray:
+    """Kernel-exact 10ms rounding. The kernel uses c_round (half away from zero);
+    np.round is half-to-even, so the two disagree on exact ties. ts is a positive
+    unix timestamp, so floor(x+0.5) reproduces the C rule."""
+    return np.floor(ts * 100.0 + 0.5) / 100.0
+
+
+def merge_instantaneous_total_arrays(
+    ts: np.ndarray, val: np.ndarray, offsets: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Columnar form of merge_instantaneous_total. `offsets` is CSR: source i is
+    ts[offsets[i]:offsets[i+1]]. Returns (merged_ts, merged_total) float64 arrays."""
+    starts, ends = offsets[:-1], offsets[1:]
+    nonempty = ends > starts
+    n_active = int(nonempty.sum())
+    if n_active == 0:
+        return np.zeros(0), np.zeros(0)
+    if n_active == 1:
+        # Pass through unrounded: the object path returns the lone series as-is.
+        i = int(np.argmax(nonempty))
+        return ts[starts[i] : ends[i]].astype(float), val[starts[i] : ends[i]].astype(
+            float
+        )
+
+    # One pass over the flat arrays -- sources are already contiguous, so a per-source
+    # loop costs dispatch overhead linear in source count. LOCF change-detect on RAW
+    # values (baseline 0), rounding only after, exactly as the kernel orders it: a
+    # v->w->v inside one 10ms bucket must still emit an event there.
+    prev = np.empty_like(val, dtype=np.float64)
+    prev[1:] = val[:-1]
+    prev[0] = 0.0
+    prev[starts[nonempty]] = 0.0
+    delta = val - prev
+    changed = delta != 0
+    uts, inv = np.unique(_round_10ms(ts)[changed], return_inverse=True)
+    summed = np.bincount(inv, weights=delta[changed], minlength=len(uts))
+    return uts, np.cumsum(summed)
+
+
+def time_weighted_average_arrays(
+    mts: np.ndarray, mtot: np.ndarray, window_start, last_window_s: float
+) -> float:
+    """Columnar form of time_weighted_average (MEAN), right-continuous/LOCF.
+
+    Integrates the step function over [window_start, end], end = last event +
+    last_window_s. The value active on each segment is the LOCF total at the
+    segment's start, so a window_start that falls BETWEEN events still counts the
+    value carried forward from the prior event (not skipped)."""
+    if mts.size == 0:
+        return 0.0
+    ws = mts[0] if window_start is None else window_start
+    end = mts[-1] + last_window_s
+    if end <= ws:
+        return 0.0
+    after = mts[mts > ws]  # event times strictly inside the window
+    starts = np.concatenate(([ws], after))
+    ends = np.concatenate((after, [end]))
+    si = (
+        np.searchsorted(mts, starts, side="right") - 1
+    )  # last event <= each start (LOCF)
+    active = np.where(si >= 0, mtot[np.clip(si, 0, mtot.size - 1)], 0.0)
+    durs = ends - starts
+    return float(np.dot(active, durs) / durs.sum())
+
+
+def aggregate_arrays(mts, mtot, agg_function, window_start, last_window_s) -> float:
+    """Columnar form of aggregate_timeseries. agg_function is AggregationFunction
+    (str enum: 'mean'|'max'|'min')."""
+    if mts.size == 0:
+        return 0.0
+    if agg_function == "mean":
+        return time_weighted_average_arrays(mts, mtot, window_start, last_window_s)
+    # max/min over event values, filtered by window_start (matches aggregate_timeseries)
+    vals = mtot if window_start is None else mtot[mts >= window_start]
+    if vals.size == 0:
+        return 0.0
+    return float(vals.max() if agg_function == "max" else vals.min())
+
+
+def merge_and_aggregate_arrays(
+    ts, val, offsets, now: float, agg_function="mean"
+) -> float:
+    """Columnar form of DeploymentAutoscalingState._merge_and_aggregate_timeseries."""
+    mts, mtot = merge_instantaneous_total_arrays(ts, val, offsets)
+    if mts.size == 0:
+        return 0.0
+    last_window_s = now - mts[-1]
+    if last_window_s <= 0:
+        last_window_s = 1e-3
+    window_start = None
+    starts = offsets[:-1]
+    nonempty = offsets[1:] > starts
+    if int(nonempty.sum()) > 1:
+        # Unrounded, matching the object path: the bound is compared against merged
+        # timestamps that ARE rounded, and rounding it too can shift which points fall
+        # inside the window.
+        aligned = float(ts[starts[nonempty]].max())
+        if aligned <= mts[-1]:
+            window_start = max(aligned, mts[0])
+    return aggregate_arrays(mts, mtot, agg_function, window_start, last_window_s)

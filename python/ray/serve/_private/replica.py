@@ -53,6 +53,7 @@ from ray.actor import ActorClass, ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentID,
@@ -986,7 +987,11 @@ class ReplicaMetricsManager:
             self._pending_metrics_push_ref = (
                 # Actor methods are resolved dynamically on the actor handle.
                 self._controller_handle.record_autoscaling_metrics_from_replica.remote(  # type: ignore[attr-defined]
-                    compress_metric_report(replica_metric_report)
+                    autoscaling_metrics_codec.encode(replica_metric_report)
+                    if autoscaling_metrics_codec.should_encode_columnar(
+                        replica_metric_report
+                    )
+                    else compress_metric_report(replica_metric_report)
                 )
             )
 
