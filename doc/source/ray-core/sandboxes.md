@@ -193,8 +193,9 @@ For advanced workloads, you might need to configure low-level runtime options su
 The `_oci_spec_transform_fn` callable receives the fully generated OCI specification dictionary. It can mutate the dictionary in place or return a modified one. Common use cases include the following:
 
 * **Host mounts**: Mount host directories, read-only datasets, or model weights into the sandbox container.
-* **Networking and DNS**: Set up DNS resolution by mounting host configuration files such as `/etc/resolv.conf` and `/etc/hosts`, or modify network namespace parameters when using `network="sandbox"`.
-* **Linux capabilities**: Add or restrict Linux process capabilities such as `CAP_NET_RAW` or `CAP_SYS_PTRACE` under `spec["process"]["capabilities"]`.
+* **Namespace and mount details**: Configure namespace or mount behavior that the first-class options don't cover.
+
+Internet access, DNS, and Linux capabilities each have a first-class option: `network=`, `dns=`, and `capabilities=`. Pass `capabilities=[]` to run with no capabilities at all. Reserve the hook for network or capability configurations those options don't reach. See [Networking and DNS](#networking-and-dns).
 
 ```python
 import ray
@@ -214,23 +215,6 @@ def configure_oci_spec(spec: dict) -> dict:
         }
     )
 
-    # Configure networking and DNS resolution
-    spec["mounts"].append(
-        {
-            "destination": "/etc/resolv.conf",
-            "source": "/etc/resolv.conf",
-            "type": "bind",
-            "options": ["rbind", "ro"],
-        }
-    )
-
-    # Grant additional Linux process capabilities
-    caps = spec.setdefault("process", {}).setdefault("capabilities", {})
-    for cap_set in ["bounding", "effective", "permitted"]:
-        caps.setdefault(cap_set, [])
-        if "CAP_NET_RAW" not in caps[cap_set]:
-            caps[cap_set].append("CAP_NET_RAW")
-
     return spec
 
 
@@ -238,7 +222,6 @@ def configure_oci_spec(spec: dict) -> dict:
 sb = sandbox.create(
     image="python:3.10-slim",
     workdir="/workspace",
-    network="sandbox",  # Enable network isolation namespace in gVisor
     _oci_spec_transform_fn=configure_oci_spec,
 )
 
@@ -253,6 +236,35 @@ print(result.stdout)
 # Clean up resources
 ray.get(sb.delete.remote())
 ```
+
+## Networking and DNS
+
+Sandboxes support four network modes. The default is `none`, which follows the safe-defaults principle. Use `public` when a sandbox needs internet access.
+
+| Mode | Network access | `/etc/resolv.conf` | Security property |
+| --- | --- | --- | --- |
+| `none` *(default)* | None | untouched | No egress. |
+| `public` | Host egress | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Egress works, but the sandbox inherits nothing from the host's resolver configuration. No internal search domains, resolver addresses, or `ndots` options leak in, and the sandbox config stays portable across clusters. |
+| `host` | Full host network identity | Host's own file, mounted read-only (`dns=` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. Use `public` for untrusted code. |
+| `sandbox` | gVisor netstack | untouched | Requires `rootless=False`. runsc doesn't support the sandbox netstack in rootless mode. |
+
+To give a sandbox internet access, use `network="public"`. Pair it with `DOCKER_DEFAULT_CAPABILITIES` so standard images behave the way they do under Docker, because `apt-get`, `tar` ownership restore, and similar operations all need those capabilities:
+
+```python
+from ray.experimental import sandbox
+from ray.experimental.sandbox import DOCKER_DEFAULT_CAPABILITIES
+
+sb = sandbox.create(
+    image="python:3.10-slim",
+    network="public",
+    capabilities=DOCKER_DEFAULT_CAPABILITIES,
+    readonly=False,
+)
+```
+
+### DNS in locked-down networks
+
+Some VPCs block outbound port 53 to public resolvers, where the `public` defaults can't resolve. Pass your internal resolver instead with `network="public", dns=["10.0.0.2"]`. If that isn't an option, fall back to `network="host"`, which uses the host's `/etc/resolv.conf`, at the cost of full host network identity. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
 
 ## Architecture
 
@@ -308,7 +320,7 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **System call interception**: gVisor's Sentry application kernel intercepts system calls in user space, isolating untrusted code from the host Linux kernel.
 * **Read-only root filesystem**: Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
 * **Restricted working directory**: Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
-* **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network.
+* **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity; see [Networking and DNS](#networking-and-dns).
 * **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
 
 ## API reference
