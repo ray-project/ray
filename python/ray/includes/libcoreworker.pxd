@@ -2,7 +2,8 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
-from libc.stdint cimport int64_t, uint64_t
+from libc.stdint cimport int64_t, uint64_t, uint8_t
+from libc.stddef cimport size_t
 from libcpp cimport bool as c_bool
 from libcpp.functional cimport function
 from libcpp.memory cimport shared_ptr, unique_ptr
@@ -65,6 +66,9 @@ ctypedef void (*ray_callback_function) \
 
 ctypedef void (*plasma_callback_function) \
     (CObjectID object_id, int64_t data_size, int64_t metadata_size)
+
+ctypedef void (*wait_async_callback) \
+    (CRayStatus status, const uint8_t *ready, size_t n, void *user_data)
 
 # NOTE: This ctypedef is needed, because Cython doesn't compile
 # "pair[shared_ptr[const CActorHandle], CRayStatus]".
@@ -330,6 +334,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
+        uint64_t WaitAsync(const c_vector[CObjectID] &object_ids, int num_objects,
+                           int64_t timeout_ms, c_bool fetch_local,
+                           wait_async_callback callback, void *user)
+        void CancelWaitAsync(uint64_t handle)
         CRayStatus GetLocalObjectLocations(
                 const c_vector[CObjectID] &object_ids,
                 c_vector[optional[CObjectLocation]] *results)

@@ -15,7 +15,9 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <deque>
+#include <functional>
 #include <future>
 #include <memory>
 #include <string>
@@ -36,6 +38,7 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "ray/asio/asio_util.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/protobuf_utils.h"
@@ -55,6 +58,23 @@ using json = nlohmann::json;
 using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
+
+struct WaitAsyncState {
+  uint64_t handle = 0;
+  // Unregisters this request from CoreWorker::wait_async_requests_. Must run
+  // before the user callback: the callback may DECREF a Python closure, and
+  // completing waits must not remain pinned in the map.
+  std::function<void(uint64_t)> unregister;
+  std::vector<bool> ready;
+  int num_objects = 0;
+  int num_ready = 0;
+  bool fetch_local = true;
+  bool done = false;
+  void (*callback)(Status status, const uint8_t *ready, size_t n, void *user) = nullptr;
+  void *user = nullptr;
+  std::shared_ptr<boost::asio::deadline_timer> timer;
+  absl::Mutex mu;
+};
 
 namespace {
 // Default capacity for serialization caches.
@@ -589,6 +609,24 @@ CoreWorker::CoreWorker(
 }
 
 CoreWorker::~CoreWorker() {
+  // Drop in-flight WaitAsync state before io_context teardown. Cancel timers and
+  // clear callbacks without invoking them (worker is shutting down).
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
+         wait_async_requests_) {
+      absl::MutexLock state_lock(&entry.second->mu);
+      entry.second->done = true;
+      if (entry.second->timer) {
+        boost::system::error_code ec;
+        entry.second->timer->cancel(ec);
+      }
+      entry.second->callback = nullptr;
+      entry.second->user = nullptr;
+      entry.second->unregister = nullptr;
+    }
+    wait_async_requests_.clear();
+  }
   WaitForShutdownComplete();
   RAY_LOG(INFO) << "Core worker is destructed";
 }
@@ -1720,6 +1758,329 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
 
   return Status::OK();
+}
+
+namespace {
+
+/**
+ * Complete a WaitAsync request and invoke its callback at most once.
+ *
+ * Ready bits are snapshotted under ``state->mu`` together with the ``done``
+ * flag so concurrent ready markers cannot set more bits than ``num_objects``.
+ * The registry unregister runs before ``callback`` (see WaitAsyncState).
+ *
+ * \param[in] state Shared wait state for the request.
+ * \param[in] status Status passed to the user callback.
+ */
+void FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state, Status status) {
+  void (*callback)(Status status, const uint8_t *ready, size_t n, void *user) = nullptr;
+  void *user = nullptr;
+  uint64_t handle = 0;
+  std::function<void(uint64_t)> unregister;
+  std::vector<uint8_t> ready_bytes;
+  {
+    absl::MutexLock lock(&state->mu);
+    if (state->done) {
+      return;
+    }
+    state->done = true;
+    if (state->timer) {
+      boost::system::error_code ec;
+      state->timer->cancel(ec);
+    }
+    callback = state->callback;
+    user = state->user;
+    handle = state->handle;
+    unregister = std::move(state->unregister);
+    state->callback = nullptr;
+    state->user = nullptr;
+    ready_bytes.resize(state->ready.size());
+    for (size_t i = 0; i < state->ready.size(); i++) {
+      ready_bytes[i] = state->ready[i] ? 1 : 0;
+    }
+  }
+  // Unregister before invoking the callback so a Python DECREF cannot recycle
+  // an address into a live registry key (handle-based keys make this moot for
+  // CancelWaitAsync, but still keeps the map from pinning completed waits).
+  if (unregister) {
+    unregister(handle);
+  }
+  if (callback != nullptr) {
+    callback(std::move(status), ready_bytes.data(), ready_bytes.size(), user);
+  }
+}
+
+/**
+ * Mark one object as ready for a WaitAsync request.
+ *
+ * Completes the request when ``num_objects`` objects are ready. Completion
+ * (including snapshotting ready bits) happens under ``state->mu`` so the
+ * returned ready set never exceeds ``num_objects`` true bits from a race.
+ *
+ * \param[in] state Shared wait state for the request.
+ * \param[in] index Index of the object within the wait request.
+ */
+void MarkWaitAsyncReady(const std::shared_ptr<WaitAsyncState> &state, size_t index) {
+  void (*callback)(Status status, const uint8_t *ready, size_t n, void *user) = nullptr;
+  void *user = nullptr;
+  uint64_t handle = 0;
+  std::function<void(uint64_t)> unregister;
+  std::vector<uint8_t> ready_bytes;
+  {
+    absl::MutexLock lock(&state->mu);
+    if (state->done || state->ready[index]) {
+      return;
+    }
+    state->ready[index] = true;
+    state->num_ready += 1;
+    if (state->num_ready < state->num_objects) {
+      return;
+    }
+    // Complete under the same lock that decided we reached num_objects.
+    state->done = true;
+    if (state->timer) {
+      boost::system::error_code ec;
+      state->timer->cancel(ec);
+    }
+    callback = state->callback;
+    user = state->user;
+    handle = state->handle;
+    unregister = std::move(state->unregister);
+    state->callback = nullptr;
+    state->user = nullptr;
+    ready_bytes.resize(state->ready.size());
+    for (size_t i = 0; i < state->ready.size(); i++) {
+      ready_bytes[i] = state->ready[i] ? 1 : 0;
+    }
+  }
+  if (unregister) {
+    unregister(handle);
+  }
+  if (callback != nullptr) {
+    callback(Status::OK(), ready_bytes.data(), ready_bytes.size(), user);
+  }
+}
+
+/**
+ * Invoke a WaitAsync callback immediately with an error status.
+ *
+ * Invoked synchronously on the calling thread (validation errors).
+ *
+ * \param[in] callback User callback to invoke.
+ * \param[in] user Opaque pointer passed through to ``callback``.
+ * \param[in] status Error status to report.
+ * \param[in] n Length of the ready bit array (all zeros).
+ */
+void InvokeWaitAsyncError(
+    void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
+    void *user,
+    Status status,
+    size_t n) {
+  std::vector<uint8_t> ready_bytes(n, 0);
+  callback(std::move(status), ready_bytes.data(), ready_bytes.size(), user);
+}
+
+bool IsWaitAsyncDone(const std::shared_ptr<WaitAsyncState> &state) {
+  absl::MutexLock lock(&state->mu);
+  return state->done;
+}
+
+}  // namespace
+
+uint64_t CoreWorker::WaitAsync(
+    const std::vector<ObjectID> &ids,
+    int num_objects,
+    int64_t timeout_ms,
+    bool fetch_local,
+    void (*callback)(Status status, const uint8_t *ready, size_t n, void *user),
+    void *user) {
+  if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
+    InvokeWaitAsyncError(
+        callback,
+        user,
+        Status::Invalid(
+            "Number of objects to wait for must be between 1 and the number of ids."),
+        ids.size());
+    return 0;
+  }
+
+  absl::flat_hash_set<ObjectID> unique_ids(ids.begin(), ids.end());
+  if (unique_ids.size() != ids.size()) {
+    InvokeWaitAsyncError(callback,
+                         user,
+                         Status::Invalid("Duplicate object IDs not supported in wait."),
+                         ids.size());
+    return 0;
+  }
+
+  size_t objs_without_owners = 0;
+  size_t objs_with_owners = 0;
+  std::ostringstream ids_stream;
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (!HasOwner(ids[i])) {
+      ids_stream << ids[i] << " ";
+      ++objs_without_owners;
+    } else {
+      ++objs_with_owners;
+    }
+    if (objs_with_owners == static_cast<size_t>(num_objects)) {
+      break;
+    }
+    if (static_cast<size_t>(num_objects) > ids.size() - objs_without_owners) {
+      std::ostringstream stream;
+      stream << "An application is trying to access a Ray object whose owner is unknown"
+             << "(" << ids_stream.str()
+             << "). "
+                "Please make sure that all Ray objects you are trying to access are part"
+                " of the current Ray session. Note that "
+                "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+                "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+                " Ray does not know which task created them. "
+                "If this was not how your object ID was generated, please file an issue "
+                "at https://github.com/ray-project/ray/issues/";
+      InvokeWaitAsyncError(
+          callback, user, Status::ObjectUnknownOwner(stream.str()), ids.size());
+      return 0;
+    }
+  }
+
+  std::shared_ptr<WaitAsyncState> state = std::make_shared<WaitAsyncState>();
+  state->ready.assign(ids.size(), false);
+  state->num_objects = num_objects;
+  state->fetch_local = fetch_local;
+  state->callback = callback;
+  state->user = user;
+  state->unregister = [this](uint64_t handle) {
+    absl::MutexLock lock(&wait_async_mu_);
+    wait_async_requests_.erase(handle);
+  };
+
+  uint64_t handle = 0;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    // Handles are never zero; zero means "already completed / not registered".
+    do {
+      ++wait_async_next_handle_;
+    } while (wait_async_next_handle_ == 0);
+    handle = wait_async_next_handle_;
+    state->handle = handle;
+    wait_async_requests_[handle] = state;
+  }
+
+  // In-process pre-pass only (GetIfExists). Do not call Contains() here — that
+  // is a blocking raylet IPC and would stall the caller's event loop when
+  // invoked from _wait_async. Plasma locality is resolved on io_service_.
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (IsWaitAsyncDone(state)) {
+      break;
+    }
+    std::shared_ptr<RayObject> ray_object = memory_store_->GetIfExists(ids[i]);
+    if (ray_object == nullptr) {
+      continue;
+    }
+    // Memory objects are ready. Plasma markers are ready only when we do not
+    // require a local pull; fetch_local plasma checks stay on the io thread.
+    if (!ray_object->IsInPlasmaError() || !fetch_local) {
+      MarkWaitAsyncReady(state, i);
+    }
+  }
+  // Synchronous completion → return 0 (callback already ran; handle unregistered).
+  if (IsWaitAsyncDone(state)) {
+    return 0;
+  }
+
+  // timeout_ms == 0: report whatever the in-process pre-pass found. Do not
+  // SubscribePlasmaReady here to "start pulls" — that requires a matching
+  // async_plasma_callbacks_ entry (HandlePlasmaObjectReady UB otherwise) and
+  // GetOwnerAddressOrDie can abort if the ref is dropped. Sync Wait starts
+  // pulls via plasma_store_provider_->Wait instead.
+  if (timeout_ms == 0) {
+    FinishWaitAsync(state, Status::OK());
+    return 0;
+  }
+
+  for (size_t i = 0; i < ids.size(); i++) {
+    {
+      absl::MutexLock lock(&state->mu);
+      if (state->done) {
+        return 0;
+      }
+      if (state->ready[i]) {
+        continue;
+      }
+    }
+    const ObjectID object_id = ids[i];
+    memory_store_->GetAsync(
+        object_id, [this, state, i, object_id](std::shared_ptr<RayObject> ray_object) {
+          {
+            absl::MutexLock lock(&state->mu);
+            if (state->done) {
+              return;
+            }
+          }
+          if (!ray_object->IsInPlasmaError()) {
+            MarkWaitAsyncReady(state, i);
+            return;
+          }
+          // Plasma marker: ready without pull when fetch_local is false.
+          if (!state->fetch_local) {
+            MarkWaitAsyncReady(state, i);
+            return;
+          }
+          // fetch_local=true: wait until the object is local (may pull).
+          // TODO(wait-async): batch Contains/SubscribePlasmaReady like sync Wait.
+          bool object_is_local = false;
+          if (Contains(object_id, &object_is_local).ok() && object_is_local) {
+            MarkWaitAsyncReady(state, i);
+            return;
+          }
+          {
+            absl::MutexLock lock(&state->mu);
+            if (state->done) {
+              return;
+            }
+          }
+          {
+            absl::MutexLock lock(&plasma_mutex_);
+            async_plasma_callbacks_[object_id].emplace_back(
+                [state, i]() { MarkWaitAsyncReady(state, i); });
+          }
+          rpc::Address owner_address = GetOwnerAddressOrDie(object_id);
+          raylet_ipc_client_->SubscribePlasmaReady(object_id, owner_address);
+        });
+  }
+
+  if (timeout_ms > 0) {
+    // Assign under mu so FinishWaitAsync cannot race with the shared_ptr write.
+    absl::MutexLock lock(&state->mu);
+    if (!state->done) {
+      state->timer = execute_after(
+          io_service_,
+          [state]() { FinishWaitAsync(state, Status::OK()); },
+          std::chrono::milliseconds(timeout_ms));
+    }
+  }
+  if (IsWaitAsyncDone(state)) {
+    return 0;
+  }
+  return handle;
+}
+
+void CoreWorker::CancelWaitAsync(uint64_t handle) {
+  if (handle == 0) {
+    return;
+  }
+  std::shared_ptr<WaitAsyncState> state;
+  {
+    absl::MutexLock lock(&wait_async_mu_);
+    absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>>::iterator it =
+        wait_async_requests_.find(handle);
+    if (it == wait_async_requests_.end()) {
+      return;
+    }
+    state = it->second;
+  }
+  FinishWaitAsync(state, Status::OK());
 }
 
 Status CoreWorker::GetLocationFromOwner(

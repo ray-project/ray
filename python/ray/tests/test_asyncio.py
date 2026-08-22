@@ -15,6 +15,7 @@ from ray._private.test_utils import (
     kill_actor_and_wait_for_failure,
     wait_for_pid_to_exit,
 )
+from ray._private.worker import _wait_async
 from ray.util.state import get_actor
 
 
@@ -483,6 +484,182 @@ def test_async_actor_finalizes_objects_dropped_on_fiber(ray_start_regular_shared
         "actor were never finalized in the actor process, so their deallocation is "
         "being deferred and never completed"
     )
+
+
+@pytest.mark.asyncio
+async def test_wait_async_basic(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def blocked():
+        ray.get(signal.wait.remote())
+        return "ok"
+
+    ref = blocked.remote()
+    # Pending ref should not be ready yet.
+    ready, remaining = await _wait_async([ref], timeout=0.1, fetch_local=False)
+    assert ready == []
+    assert remaining == [ref]
+
+    # Event loop should keep progressing while waiting.
+    progressed = False
+
+    async def mark_progressed():
+        nonlocal progressed
+        await asyncio.sleep(0.05)
+        progressed = True
+
+    wait_task = asyncio.create_task(_wait_async([ref], fetch_local=False))
+    progress_task = asyncio.create_task(mark_progressed())
+    await progress_task
+    assert progressed
+
+    ray.get(signal.send.remote())
+    ready, remaining = await wait_task
+    assert ready == [ref]
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_wait_async_num_returns(ray_start_regular_shared):
+    @ray.remote
+    def f(x):
+        return x
+
+    refs = [f.remote(i) for i in range(3)]
+    ready, remaining = await _wait_async(refs, num_returns=2, fetch_local=False)
+    assert len(ready) == 2
+    assert len(remaining) == 1
+    assert set(ready + remaining) == set(refs)
+
+
+@pytest.mark.asyncio
+async def test_wait_async_timeout_zero_ready_ref(ray_start_regular_shared):
+    @ray.remote
+    def f():
+        return 1
+
+    ref = f.remote()
+    ray.get(ref)
+    ready, remaining = await _wait_async([ref], timeout=0, fetch_local=False)
+    assert ready == [ref]
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_wait_async_cancel_releases_promptly(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def blocked():
+        ray.get(signal.wait.remote())
+        return "ok"
+
+    ref = blocked.remote()
+    wait_task = asyncio.create_task(_wait_async([ref], fetch_local=False))
+    await asyncio.sleep(0.05)
+    assert not wait_task.done()
+    wait_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await wait_task
+    ray.get(signal.send.remote())
+    # Cancelling the waiter must not affect the underlying task, and a new wait
+    # on the same ref must still complete (unregister succeeded).
+    assert ray.get(ref) == "ok"
+    ready, remaining = await _wait_async([ref], timeout=0, fetch_local=False)
+    assert ready == [ref]
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_wait_async_rejects_invalid_args(ray_start_regular_shared):
+    ref = ray.put(1)
+    with pytest.raises(ValueError, match="unique"):
+        await _wait_async([ref, ref], fetch_local=False)
+    with pytest.raises(ValueError, match="Invalid number"):
+        await _wait_async([ref], num_returns=0, fetch_local=False)
+    with pytest.raises(TypeError):
+        await _wait_async(ref, fetch_local=False)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_wait_async_unknown_owner_raises_value_error(ray_start_regular_shared):
+    """C++ ObjectUnknownOwner must surface as ValueError (like ray.wait/get)."""
+    # skip_adding_local_ref keeps the id out of the reference counter, matching
+    # C++ WaitAsyncUnknownOwner (ObjectID::FromRandom without AddOwnedObject).
+    # ObjectRef.from_random() adds a local ref entry, so HasOwner() becomes true
+    # and the wait would hang instead of raising.
+    unknown_ref = ray.ObjectRef(
+        os.urandom(ray.ObjectRef.size()), skip_adding_local_ref=True
+    )
+    with pytest.raises(ValueError, match="owner is unknown"):
+        await _wait_async([unknown_ref], fetch_local=False)
+    # ObjectRef.__init__ still sets in_core_worker with skip_adding_local_ref,
+    # so __dealloc__ will remove_object_ref_reference. Add a matching local ref
+    # so that remove does not log "Tried to decrease ref count for nonexistent".
+    ray._private.worker.global_worker.core_worker.add_object_ref_reference(unknown_ref)
+
+
+@pytest.mark.asyncio
+async def test_wait_async_fetch_local_true_ready_ref(ray_start_regular_shared):
+    """fetch_local=True completes for an already-local in-memory object."""
+
+    @ray.remote
+    def f():
+        return 1
+
+    ref = f.remote()
+    ray.get(ref)
+    ready, remaining = await _wait_async([ref], timeout=0, fetch_local=True)
+    assert ready == [ref]
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_wait_async_fetch_local_true_waits_for_value(ray_start_regular_shared):
+    """fetch_local=True waits until the object is locally available."""
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def blocked():
+        ray.get(signal.wait.remote())
+        return "ok"
+
+    ref = blocked.remote()
+    wait_task = asyncio.create_task(_wait_async([ref], timeout=0.1, fetch_local=True))
+    ready, remaining = await wait_task
+    assert ready == []
+    assert remaining == [ref]
+
+    ray.get(signal.send.remote())
+    ready, remaining = await _wait_async([ref], fetch_local=True)
+    assert ready == [ref]
+    assert remaining == []
+    assert ray.get(ref) == "ok"
+
+
+@pytest.mark.asyncio
+async def test_wait_async_fetch_local_true_local_plasma_object(
+    ray_start_regular_shared,
+):
+    """fetch_local=True covers Contains() for an already-local plasma object.
+
+    Small returns are inlined into the memory store; a 1MiB payload is stored
+    in plasma (memory store only has an OBJECT_IN_PLASMA marker). Waiting with
+    fetch_local=True and a non-zero timeout exercises the GetAsync plasma
+    branch that calls Contains() and treats a local plasma object as ready.
+    """
+
+    @ray.remote
+    def large():
+        return b"x" * (1024 * 1024)
+
+    ref = large.remote()
+    assert len(ray.get(ref)) == 1024 * 1024
+    # timeout=0 would skip the plasma path by design; use a positive timeout.
+    ready, remaining = await _wait_async([ref], timeout=5.0, fetch_local=True)
+    assert ready == [ref]
+    assert remaining == []
 
 
 if __name__ == "__main__":
