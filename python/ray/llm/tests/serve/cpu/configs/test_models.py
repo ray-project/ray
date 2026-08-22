@@ -11,6 +11,7 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     CPUConfig,
     GPUAccelerator,
     GPUConfig,
+    NPUAccelerator,
     TPUAccelerator,
     TPUConfig,
 )
@@ -480,6 +481,9 @@ class TestAcceleratorConfigLogic:
         gpu_accel = GPUAccelerator()
         assert gpu_accel.requires_deferred_placement_group is False
 
+        npu_accel = NPUAccelerator()
+        assert npu_accel.requires_deferred_placement_group is False
+
         tpu_accel_no_topo = TPUAccelerator(TPUConfig(kind="tpu"))
         assert tpu_accel_no_topo.requires_deferred_placement_group is False
 
@@ -531,6 +535,67 @@ class TestAcceleratorConfigLogic:
         tpu_accel = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
         with pytest.raises(ValueError, match="must be a multiple of chips_per_host"):
             tpu_accel.default_bundles(num_devices=6, accelerator_type_str="TPU-V6E")
+
+    def test_accelerator_config_npu_basic(self):
+        """Test that NPU accelerator_config field works with basic values."""
+        llm_config_npu = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_config={"kind": "npu"},
+        )
+        assert llm_config_npu.accelerator_config.kind == "npu"
+        engine_config = llm_config_npu.get_engine_config()
+        assert engine_config.accelerator_config.kind == "npu"
+        assert isinstance(engine_config.accelerator, NPUAccelerator)
+
+    def test_engine_config_infers_npu_from_accelerator_type_string(self):
+        """Test that the engine config infers an NPU backend directly from the accelerator_type string."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="Ascend910B",
+        )
+        engine_config = llm_config.get_engine_config()
+        assert isinstance(engine_config.accelerator, NPUAccelerator)
+        assert engine_config.accelerator_type == "Ascend910B"
+
+    def test_accelerator_type_with_npu_config_succeeds(self):
+        """Test that accelerator_type with NPU config succeeds."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="Ascend910B",
+            accelerator_config={"kind": "npu"},
+        )
+        assert llm_config.accelerator_type == "Ascend910B"
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.accelerator_type == "Ascend910B"
+
+    def test_accelerator_type_with_npu_placement_group_succeeds(self):
+        """Test that accelerator_type with NPU-containing placement_group_config succeeds."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="Ascend910B",
+            placement_group_config={"bundles": [{"NPU": 1, "CPU": 4}]},
+        )
+        assert llm_config.accelerator_type == "Ascend910B"
+        assert llm_config.accelerator_config.kind == "npu"
+
+    @pytest.mark.parametrize(
+        "accelerator_type,config_kind",
+        [
+            ("Ascend910B", "gpu"),  # NPU accelerator_type with GPU config
+            ("L4", "npu"),  # GPU accelerator_type with NPU config
+        ],
+    )
+    def test_accelerator_type_hardware_mismatch(self, accelerator_type, config_kind):
+        """Test that a mismatch between accelerator_type and accelerator_config.kind raises a hardware mismatch error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="Hardware mismatch",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type=accelerator_type,
+                accelerator_config={"kind": config_kind},
+            )
 
 
 class TestCheckpointInfo:
