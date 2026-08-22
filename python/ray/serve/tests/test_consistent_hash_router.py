@@ -7,13 +7,12 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_running,
     get_application_url,
     skip_if_haproxy,
 )
-from ray.serve.config import RequestRouterConfig, gRPCOptions
+from ray.serve.config import RequestRouterConfig
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
@@ -312,21 +311,10 @@ class TestProtocolStickiness:
         assert len(session_replicas) == 1, f"sess_http_42 drifted: {session_replicas}"
         assert len(other_replicas) == 1, f"sess_http_99 drifted: {other_replicas}"
 
-    def test_grpc_same_session_sticky(self, ray_cluster):
-        cluster = ray_cluster
-        cluster.add_node(num_cpus=2)
-        cluster.connect(namespace=SERVE_NAMESPACE)
-
-        serve.start(
-            grpc_options=gRPCOptions(
-                port=9000,
-                grpc_servicer_functions=[
-                    "ray.serve.generated.serve_pb2_grpc."
-                    "add_UserDefinedServiceServicer_to_server",
-                ],
-            ),
-        )
-
+    def test_grpc_same_session_sticky(self, serve_instance):
+        # Uses the shared instance rather than its own cluster: that fixture already
+        # serves gRPC on 9000 with this servicer, and a second cluster here would
+        # shut down the shared one that the rest of the file still depends on.
         @serve.deployment(
             request_router_config=RequestRouterConfig(
                 request_router_class=ROUTER_CLASS,
