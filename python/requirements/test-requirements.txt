@@ -142,7 +142,11 @@ watchfiles==0.19.0
 # Upgrades
 typing-extensions>=4.10
 filelock>=3.16.1
-virtualenv>=20.29
+# Pin virtualenv: 21.x bundles setuptools>=82, which removed the pkg_resources
+# module. virtualenv seeds its bundled setuptools into uv/pip runtime-env venvs
+# (created with --no-download), so >=21 breaks `import pkg_resources` in those
+# envs on Python <3.12 (e.g. test_runtime_env_uv). 20.29.1 bundles setuptools 75.x.
+virtualenv==20.29.1
 # jsonschema 4.25 introduced rfc3987-syntax (format-nongpl extra) which pins
 # lark==1.3.1. That conflicts with vllm's lark==1.2.2, so we cap below 4.25
 # to keep the rayllm depsets resolvable when they use this lock as a constraint.

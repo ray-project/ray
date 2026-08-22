@@ -559,7 +559,6 @@ filelock==3.29.0
     #   aim
     #   datasets
     #   huggingface-hub
-    #   python-discovery
     #   ray
     #   snowflake-connector-python
     #   torch
@@ -1584,7 +1583,6 @@ platformdirs==4.9.6
     #   black
     #   jupyter-core
     #   moocore
-    #   python-discovery
     #   snowflake-connector-python
     #   textual
     #   virtualenv
@@ -1898,8 +1896,6 @@ python-dateutil==2.9.0.post0
     #   pandas
     #   segment-analytics-python
     #   strictyaml
-python-discovery==1.2.2
-    # via virtualenv
 python-dotenv==1.2.2
     # via
     #   mlflow-skinny
@@ -2611,7 +2607,7 @@ vine==5.1.0
     #   amqp
     #   celery
     #   kombu
-virtualenv==21.2.4
+virtualenv==20.29.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
