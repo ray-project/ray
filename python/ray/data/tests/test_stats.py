@@ -56,6 +56,7 @@ from ray.data.block import BlockExecStats, BlockStats, CustomOpStats
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+from ray.util.metrics import Gauge
 
 
 @dataclass(frozen=True)
@@ -353,7 +354,6 @@ def gen_expected_metrics(
             "'average_rows_outputs_per_task': N",
             "'op_task_duration_stats': {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
-            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -443,7 +443,6 @@ def gen_expected_metrics(
             "'average_rows_outputs_per_task': None",
             "'op_task_duration_stats': {'num_samples': Z, 'mean': Z, 'variance': Z, 'min': None, 'max': None, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P}",
             "'max_uss_bytes': H",
-            "'average_max_uss_per_task': H",
             "'num_inputs_received': N",
             "'num_row_inputs_received': N",
             "'bytes_inputs_received': N",
@@ -635,11 +634,6 @@ def canonicalize(
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
 
-    canonicalized_stats = re.sub(
-        r"(average_max_uss_per_task:|'average_max_uss_per_task':) (?:N|Z|None)\b",
-        r"\g<1> H",
-        canonicalized_stats,
-    )
     # Percentile values in DistributionTracker dicts can be None (when datasketches
     # is not installed) or a number (canonicalized to N). Normalize to P.
     canonicalized_stats = re.sub(
@@ -932,7 +926,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
-        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -1097,7 +1090,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      average_rows_outputs_per_task: N,\n"
         "      op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "      max_uss_bytes: H,\n"
-        "      average_max_uss_per_task: H,\n"
         "      num_inputs_received: N,\n"
         "      num_row_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
@@ -1215,7 +1207,6 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            average_rows_outputs_per_task: N,\n"
         "            op_task_duration_stats: {'num_samples': N, 'mean': N, 'variance': N, 'min': N, 'max': N, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P, 'pN': P},\n"
         "            max_uss_bytes: H,\n"
-        "            average_max_uss_per_task: H,\n"
         "            num_inputs_received: N,\n"
         "            num_row_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
@@ -2015,6 +2006,46 @@ def test_stats_actor_iter_metrics():
     assert final_stats == ds_stats
     assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
     assert update_fn.call_args_list[-1].args[2] is None
+
+
+def test_stats_actor_exports_distribution_metrics():
+    actor = _StatsActor.__ray_metadata__.modified_class()
+
+    metrics = actor.execution_metrics_tasks["max_uss_bytes"]
+    assert set(metrics) == {"mean", "max"}
+    for statistic, metric in metrics.items():
+        assert isinstance(metric, Gauge)
+        assert metric.info["name"] == f"data_max_uss_bytes_{statistic}"
+        assert metric.info["tag_keys"] == ("dataset", "operator")
+
+    actor.update_dataset = MagicMock()
+
+    with (
+        patch.object(metrics["mean"], "set") as set_mean,
+        patch.object(metrics["max"], "set") as set_max,
+    ):
+        actor.update_execution_metrics(
+            "dataset_1",
+            [{"max_uss_bytes": {"num_samples": 0, "mean": 0, "max": None}}],
+            ["MapBatches_1"],
+            {},
+        )
+        set_mean.assert_not_called()
+        set_max.assert_not_called()
+
+        actor.update_execution_metrics(
+            "dataset_1",
+            [{"max_uss_bytes": {"num_samples": 2, "mean": 200, "max": 300}}],
+            ["MapBatches_1"],
+            {},
+        )
+
+    set_mean.assert_called_once_with(
+        200, {"dataset": "dataset_1", "operator": "MapBatches_1"}
+    )
+    set_max.assert_called_once_with(
+        300, {"dataset": "dataset_1", "operator": "MapBatches_1"}
+    )
 
 
 @pytest.mark.parametrize(

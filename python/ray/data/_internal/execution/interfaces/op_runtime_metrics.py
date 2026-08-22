@@ -53,6 +53,7 @@ class MetricsType(Enum):
     Gauge = 1
     Histogram = 2
     Unsupported = 3
+    Distribution = 4
 
 
 @dataclass(frozen=True)
@@ -892,20 +893,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @metric_property(
         description="Distribution of max USS bytes across tasks.",
         metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Unsupported,
+        metrics_type=MetricsType.Distribution,
+        metrics_args={"statistics": ("mean", "max")},
     )
     def max_uss_bytes(self) -> DistributionTracker:
         return self._max_uss_bytes
-
-    @metric_property(
-        description="Average USS usage of tasks.",
-        metrics_group=MetricsGroup.TASKS,
-    )
-    def average_max_uss_per_task(self) -> Optional[float]:
-        """Average max USS usage of tasks."""
-        if self.max_uss_bytes.num_samples == 0:
-            return None
-        return self.max_uss_bytes.mean
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
