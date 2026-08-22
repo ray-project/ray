@@ -1,13 +1,14 @@
 import os
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple, Type
 
 import pyarrow
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    from ray.data.checkpoint.checkpoint_filter import CheckpointFilter
     from ray.data.datasource import PathPartitionFilter
 
 
@@ -66,6 +67,13 @@ class CheckpointConfig:
             completed rows.
         checkpoint_path_partition_filter: Filter for checkpoint files to load during
             restoration when reading from `checkpoint_path`.
+        checkpoint_filter_cls: Override the :class:`~ray.data.checkpoint.CheckpointFilter`
+            subclass used to filter out already-checkpointed rows during
+            restoration. The class is instantiated once per checkpoint filter
+            actor with ``(checkpoint_config, checkpointed_ids_ref)``, where
+            ``checkpointed_ids_ref`` is an ``ObjectRef`` to the sorted NumPy
+            array of checkpointed IDs. Defaults to
+            :class:`~ray.data.checkpoint.NumpyArrayBasedCheckpointFilter`.
     """
 
     DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR = "RAY_DATA_CHECKPOINT_PATH_BUCKET"
@@ -84,6 +92,7 @@ class CheckpointConfig:
         override_backend: Optional[CheckpointBackend] = None,
         write_num_threads: int = 3,
         checkpoint_path_partition_filter: Optional["PathPartitionFilter"] = None,
+        checkpoint_filter_cls: Optional[Type["CheckpointFilter"]] = None,
     ):
         self.id_column: Optional[str] = id_column
 
@@ -92,6 +101,18 @@ class CheckpointConfig:
                 "Checkpoint ID column must be a non-empty string, "
                 f"but got {self.id_column}"
             )
+
+        if checkpoint_filter_cls is not None:
+            from ray.data.checkpoint.checkpoint_filter import CheckpointFilter
+
+            if not (
+                isinstance(checkpoint_filter_cls, type)
+                and issubclass(checkpoint_filter_cls, CheckpointFilter)
+            ):
+                raise InvalidCheckpointingConfig(
+                    "`checkpoint_filter_cls` must be a subclass of "
+                    f"`CheckpointFilter`, but got {checkpoint_filter_cls}"
+                )
 
         if override_backend is not None:
             warnings.warn(
@@ -113,6 +134,7 @@ class CheckpointConfig:
         self.delete_checkpoint_on_success: bool = delete_checkpoint_on_success
         self.write_num_threads: int = write_num_threads
         self.checkpoint_path_partition_filter = checkpoint_path_partition_filter
+        self.checkpoint_filter_cls = checkpoint_filter_cls
         self.checkpoint_actor_pool_min_size = self.CHECKPOINT_ACTOR_POOL_MIN_SIZE
         self.checkpoint_actor_pool_max_size = self.CHECKPOINT_ACTOR_POOL_MAX_SIZE
         self.checkpoint_actor_memory_bytes = self.CHECKPOINT_ACTOR_MEMORY_BYTES

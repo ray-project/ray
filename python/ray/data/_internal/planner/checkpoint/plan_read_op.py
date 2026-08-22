@@ -129,7 +129,10 @@ class _CheckpointFilterFn:
 
     def init_checkpoint_filter(self):
         """Called once per actor worker to materialize the filter."""
-        self._filter = NumpyArrayBasedCheckpointFilter(self._config, self._ref)
+        filter_cls = (
+            self._config.checkpoint_filter_cls or NumpyArrayBasedCheckpointFilter
+        )
+        self._filter = filter_cls(self._config, self._ref)
 
     def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         assert self._filter is not None, "checkpoint filter was not initialized!"

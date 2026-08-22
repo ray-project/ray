@@ -22,6 +22,7 @@ from ray.data.checkpoint.util import build_pending_checkpoint_trie
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -369,9 +370,16 @@ class IdColumnCheckpointManager(CheckpointManager):
     """Manager for regular ID columns."""
 
 
+@DeveloperAPI
 class CheckpointFilter(abc.ABC):
     """Abstract class which defines the interface for filtering checkpointed rows
     based on varying backends.
+
+    Subclasses passed as ``CheckpointConfig.checkpoint_filter_cls`` must have a
+    constructor accepting ``(checkpoint_config, checkpointed_ids_ref)``, where
+    ``checkpointed_ids_ref`` is an ``ObjectRef`` to the sorted NumPy array of
+    checkpointed IDs. The class is instantiated once per checkpoint filter
+    actor on a remote worker, so it must be serializable (or importable) there.
     """
 
     def __init__(self, config: CheckpointConfig):
@@ -391,6 +399,7 @@ class CheckpointFilter(abc.ABC):
         raise NotImplementedError
 
 
+@DeveloperAPI
 class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
     """CheckpointFilter for batch-based backends.
 
