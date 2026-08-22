@@ -215,7 +215,10 @@ class API:
         """
         if not _is_directly_annotated(obj):
             return AnnotationType.UNKNOWN
-        annotated_type = getattr(obj, "_annotated_type", None)
+        try:
+            annotated_type = getattr(obj, "_annotated_type", None)
+        except Exception:
+            return AnnotationType.UNKNOWN
         if annotated_type is None:
             return AnnotationType.UNKNOWN
         try:
