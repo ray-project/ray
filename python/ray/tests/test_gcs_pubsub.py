@@ -2,11 +2,13 @@ import asyncio
 import re
 import sys
 import threading
+from collections import deque
 
 import pytest
 
 import ray
 from ray._private.gcs_pubsub import (
+    _AioSubscriber,
     GcsAioResourceUsageSubscriber,
 )
 
@@ -91,6 +93,22 @@ async def test_aio_poll_no_leaks(ray_start_regular):
         assert len(asyncio.all_tasks()) < 10
 
     await subscriber.close()
+
+
+@pytest.mark.asyncio
+async def test_aio_poll_handles_poll_and_close_completing_together():
+    """Poll and close can both complete before asyncio.wait returns."""
+    subscriber = object.__new__(_AioSubscriber)
+    subscriber._queue = deque()
+    subscriber._close = asyncio.Event()
+    subscriber._close.set()
+    subscriber._poll_request = lambda: None
+
+    async def poll_call(req, timeout=None):
+        return None
+
+    subscriber._poll_call = poll_call
+    await subscriber._poll()
 
 
 def test_two_subscribers(ray_start_regular):
