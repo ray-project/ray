@@ -1094,3 +1094,162 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+@pytest.mark.parametrize(
+    "op_builder,expected_fused_name",
+    [
+        # filter -> streaming_repartition: fuse in non-strict mode.
+        (
+            lambda ds: ds.filter(lambda r: r["id"] % 2 == 0),
+            "Filter(<lambda>)->StreamingRepartition",
+        ),
+        # map_rows -> streaming_repartition: fuse in non-strict mode.
+        (
+            lambda ds: ds.map(lambda r: {"id": r["id"] + 1, "value": r["value"]}),
+            "Map(<lambda>)->StreamingRepartition",
+        ),
+        # flat_map -> streaming_repartition: fuse in non-strict mode.
+        (
+            lambda ds: ds.flat_map(
+                lambda r: [{"id": r["id"], "value": r["value"] + 1}, r]
+            ),
+            "FlatMap(<lambda>)->StreamingRepartition",
+        ),
+        # expression-based filter -> streaming_repartition: fuse in non-strict mode.
+        (
+            lambda ds: ds.filter(expr="id >= 50"),
+            "Filter(col('id') >= 50)->StreamingRepartition",
+        ),
+    ],
+    ids=["filter", "map_rows", "flat_map", "expression_filter"],
+)
+def test_streaming_repartition_non_mapbatches_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+    op_builder,
+    expected_fused_name,
+):
+    """Test that Filter/MapRows/FlatMap/expression-Filter fuse with
+    StreamingRepartition in non-strict mode (same eligibility as MapBatches)."""
+    n = 100
+    ds = ray.data.range(n, override_num_blocks=4).map(
+        lambda r: {"id": r["id"], "value": r["id"]}
+    )
+    ds = op_builder(ds).repartition(target_num_rows_per_block=20)
+
+    assert len(ds.take_all()) > 0
+
+    stats = ds.stats()
+    assert (
+        expected_fused_name in stats
+    ), f"Expected '{expected_fused_name}' in stats: {stats}"
+
+
+@pytest.mark.parametrize(
+    "op_builder,op_name,expected_count",
+    [
+        (
+            lambda ds: ds.filter(lambda r: r["id"] % 2 == 0),
+            "Filter(<lambda>)",
+            50,
+        ),
+        (
+            lambda ds: ds.map(lambda r: {"id": r["id"] + 1, "value": r["value"]}),
+            "Map(<lambda>)",
+            100,
+        ),
+        (
+            lambda ds: ds.flat_map(
+                lambda r: [{"id": r["id"], "value": r["value"] + 1}, r]
+            ),
+            "FlatMap(<lambda>)",
+            200,
+        ),
+        (
+            lambda ds: ds.filter(expr="id >= 50"),
+            "Filter(col('id') >= 50)",
+            50,
+        ),
+    ],
+    ids=["filter", "map_rows", "flat_map", "expression_filter"],
+)
+def test_streaming_repartition_non_mapbatches_no_fusion_strict(
+    ray_start_regular_shared_2_cpus,
+    op_builder,
+    op_name,
+    expected_count,
+):
+    """Test that Filter/MapRows/FlatMap/expression-Filter do NOT fuse with
+    StreamingRepartition in strict mode, because they have no batch_size and
+    strict mode requires batch_size % target_num_rows_per_block == 0."""
+    n = 100
+    ds = ray.data.range(n, override_num_blocks=4).map(
+        lambda r: {"id": r["id"], "value": r["id"]}
+    )
+    ds = op_builder(ds).repartition(target_num_rows_per_block=20, strict=True)
+
+    assert len(ds.take_all()) == expected_count
+
+    stats = ds.stats()
+    assert (
+        f"{op_name}->StreamingRepartition" not in stats
+    ), f"{op_name} should not fuse with strict StreamingRepartition: {stats}"
+
+
+def test_streaming_repartition_chain_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test chain fusion of Map -> Filter -> StreamingRepartition in non-strict
+    mode: the streaming repartition rule fuses Filter, then the map fusion rule
+    folds in the upstream Map."""
+    n = 100
+    ds = ray.data.range(n, override_num_blocks=4).map(
+        lambda r: {"id": r["id"], "value": r["id"]}
+    )
+    ds = (
+        ds.map(lambda r: {"id": r["id"] * 2, "value": r["value"]})
+        .filter(lambda r: r["id"] % 4 == 0)
+        .repartition(target_num_rows_per_block=20)
+    )
+
+    assert len(ds.take_all()) == n // 2
+
+    stats = ds.stats()
+    assert (
+        "Map(<lambda>)->Filter(<lambda>)->StreamingRepartition" in stats
+    ), f"Expected chain fusion in stats: {stats}"
+
+
+def test_streaming_repartition_map_batches_filter_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test that MapBatches(batch_size) -> Filter -> StreamingRepartition fuses
+    end-to-end while preserving batch_size semantics.
+
+    MapBatches -> Filter already fuses on master (see
+    test_filter_operator_no_upstream_fusion), so the whole chain fusing is
+    expected. The key invariant is that the map_batches fn must still be
+    invoked on ~batch_size rows, before the filter runs.
+    """
+    n = 100
+
+    def fn(batch):
+        # batch_size semantics must be preserved after fusion: the fn is
+        # called on batches of at most batch_size rows, before the filter
+        # removes any. Asserting here fails the task if violated.
+        assert 0 < len(batch["id"]) <= 10, f"batch size violated: {len(batch['id'])}"
+        return batch
+
+    ds = ray.data.range(n, override_num_blocks=4)
+    ds = (
+        ds.map_batches(fn, batch_size=10)
+        .filter(lambda r: r["id"] % 2 == 0)
+        .repartition(target_num_rows_per_block=20)
+    )
+
+    assert len(ds.take_all()) == n // 2
+
+    stats = ds.stats()
+    assert (
+        "MapBatches(fn)->Filter(<lambda>)->StreamingRepartition" in stats
+    ), f"Expected full chain fusion in stats: {stats}"

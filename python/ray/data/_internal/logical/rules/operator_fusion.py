@@ -35,7 +35,10 @@ from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractMap,
     AbstractUDFMap,
+    Filter,
+    FlatMap,
     MapBatches,
+    MapRows,
     RandomShuffle,
     Repartition,
     StreamingRepartition,
@@ -55,6 +58,19 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
 logger = logging.getLogger(__name__)
+
+
+# Logical operators eligible for fusion with StreamingRepartition. They all
+# process each input block independently and have no batch_size constraint, so
+# they are safe to fuse in non-strict mode (which splits each input block
+# independently, without cross-task buffering). Only MapBatches can also fuse
+# in strict mode, where batch_size % target_num_rows_per_block == 0 guarantees
+# exact slicing without buffering.
+_STREAMING_REPARTITION_FUSABLE_OPS = (MapBatches, Filter, MapRows, FlatMap)
+
+
+def _identity_fn(row):
+    return row
 
 
 class FuseOperators(Rule):
@@ -167,10 +183,17 @@ class FuseOperators(Rule):
     def _fuse_streaming_repartition_operators_in_dag(
         self, dag: PhysicalOperator
     ) -> PhysicalOperator:
-        """Fuse (MapBatches -> StreamingRepartition) pair.
+        """Fuse (MapBatches/Filter/MapRows/FlatMap -> StreamingRepartition) pair.
 
-        This will ensure the map_batch's function receive the correct number of rows.
-        We also ensure the output rows is `batch_size`.
+        In non-strict mode, StreamingRepartition uses the default pass-through
+        bundler: each input block is split independently into blocks of roughly
+        target_num_rows_per_block rows, with no cross-task buffering and no
+        batch_size constraint. Under that semantics, Filter/MapRows/FlatMap are
+        fusion-eligible for exactly the same reason MapBatches is — they also
+        process each input block independently. Fusing avoids an intermediate
+        materialization round-trip (serialize to object store, deserialize)
+        between the two operators, while parallelism is unchanged: the fused
+        operator still runs one task per input block.
 
         Why don't we fuse `StreamingRepartition -> MapBatches`?
 
@@ -195,12 +218,19 @@ class FuseOperators(Rule):
         ----------------------------------------------------------
 
         Parallelism is unchanged, so we fuse to avoid intermediate materialization.
+
+        In strict mode, only MapBatches can fuse (when batch_size is a multiple of
+        target_num_rows_per_block): each batch can then be perfectly sliced into
+        chunks without cross-task buffering. Filter/MapRows/FlatMap have no
+        batch_size, so they can never fuse in strict mode.
         """
         upstream_ops = dag.input_dependencies
         while (
             len(upstream_ops) == 1
             and isinstance(self._op_map[dag], StreamingRepartition)
-            and isinstance(self._op_map[upstream_ops[0]], MapBatches)
+            and isinstance(
+                self._op_map[upstream_ops[0]], _STREAMING_REPARTITION_FUSABLE_OPS
+            )
             and self._can_fuse(dag, upstream_ops[0])
         ):
             dag = self._get_fused_streaming_repartition_operator(dag, upstream_ops[0])
@@ -343,10 +373,10 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # only allow fusion of MapBatches -> StreamingRepartition
+        # only allow fusion of MapBatches/Filter/MapRows/FlatMap -> StreamingRepartition
         if isinstance(down_logical_op, StreamingRepartition):
             if not (
-                isinstance(up_logical_op, MapBatches)
+                isinstance(up_logical_op, _STREAMING_REPARTITION_FUSABLE_OPS)
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
             ):
@@ -354,13 +384,20 @@ class FuseOperators(Rule):
 
             # Non-strict mode: can always fuse, no matter what batch_size is.
             # This allows fusion without cross-task buffering by using default bundler.
+            # Filter/MapRows/FlatMap have no batch_size, so they are only eligible in
+            # non-strict mode, where each input block is split independently without
+            # cross-task buffering (matching their row-wise processing semantics).
             if not down_logical_op.strict:
                 return True
 
-            # Strict mode: only fuse when batch_size is a multiple of target_num_rows_per_block.
-            # When batch_size % target == 0, each batch can be perfectly sliced into chunks
-            # without cross-task buffering. See `_fuse_streaming_repartition_operators_in_dag`
-            # docstring for details.
+            # Strict mode: only fuse MapBatches when batch_size is a multiple of
+            # target_num_rows_per_block. When batch_size % target == 0, each batch can
+            # be perfectly sliced into chunks without cross-task buffering. See
+            # `_fuse_streaming_repartition_operators_in_dag` docstring for details.
+            # Filter/MapRows/FlatMap have no batch_size, so they cannot fuse in strict
+            # mode.
+            if not isinstance(up_logical_op, MapBatches):
+                return False
             # "auto" batch_size is resolved at task runtime, so divisibility is unknown at
             # plan time — skip fusion and let the operators run separately.
             return (
@@ -409,7 +446,8 @@ class FuseOperators(Rule):
         self, down_op: PhysicalOperator, up_op: PhysicalOperator
     ) -> PhysicalOperator:
         assert self._can_fuse(down_op, up_op), (
-            "Current rule supports fusing MapBatches->StreamingRepartition, but received: "
+            "Current rule supports fusing "
+            "MapBatches/Filter/MapRows/FlatMap->StreamingRepartition, but received: "
             f"{type(up_op).__name__} -> {type(down_op).__name__}"
         )
 
@@ -417,10 +455,13 @@ class FuseOperators(Rule):
 
         down_logical_op = self._op_map.pop(down_op)
         up_logical_op = self._op_map.pop(up_op)
-        assert isinstance(up_logical_op, MapBatches)
+        assert isinstance(up_logical_op, _STREAMING_REPARTITION_FUSABLE_OPS)
         assert isinstance(down_logical_op, StreamingRepartition)
 
-        batch_size = up_logical_op.batch_size
+        # Filter/MapRows/FlatMap have no batch_size attribute; batch_size is only
+        # relevant for MapBatches (and for strict-mode fusion, which only accepts
+        # MapBatches upstreams — see _can_fuse).
+        batch_size = getattr(up_logical_op, "batch_size", None)
 
         # Choose ref_bundler and fusion behavior based on strict mode
         if down_logical_op.strict:
@@ -482,10 +523,17 @@ class FuseOperators(Rule):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
         input_op = up_logical_op.input_dependencies[0]
+        # For expression-based Filter, the logical operator has fn=None (the predicate
+        # is evaluated directly in the physical transform). Use an identity placeholder
+        # for the fused logical operator, which is only used for metadata and further
+        # fusion checks.
+        fn = up_logical_op.fn
+        if fn is None:
+            fn = _identity_fn
         logical_op = AbstractUDFMap(
             name,
             [input_op],
-            up_logical_op.fn,
+            fn,
             can_modify_num_rows=up_logical_op.can_modify_num_rows,
             fn_args=up_logical_op.fn_args,
             fn_kwargs=up_logical_op.fn_kwargs,
