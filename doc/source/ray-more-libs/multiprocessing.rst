@@ -43,6 +43,36 @@ The full ``multiprocessing.Pool`` API is currently supported. Please see the
 
 .. _`multiprocessing documentation`: https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 
+Experimental elastic actor capacity
+-----------------------------------
+
+By default, ``Pool`` eagerly creates a fixed number of actors. Supplying
+``min_size``, ``max_size``, or ``idle_timeout_s`` enables elastic capacity:
+
+.. code-block:: python
+
+  pool = Pool(
+      min_size=0,
+      max_size=64,
+      idle_timeout_s=60,
+      ray_remote_args={"num_cpus": 1},
+  )
+
+The pool creates actors as submitted batches make existing actors busy and
+retires actors that have no outstanding batches after ``idle_timeout_s``.
+``min_size`` is the idle capacity floor and ``max_size`` is the actor-slot
+ceiling. A slot undergoing retirement remains occupied until Ray confirms the
+actor exit.
+
+Actor creation is asynchronous. Batches are submitted directly to Ray actor
+mailboxes, including while a new actor is waiting for resources or running its
+initializer. This creates cluster-autoscaler demand without a local dispatcher
+or readiness polling. Actor resources do not change implicitly; use
+``ray_remote_args`` when actors should request CPUs, GPUs, or custom resources.
+
+Elastic pools do not currently support ``maxtasksperchild``. Fixed pools retain
+their existing construction, scheduling, and ``maxtasksperchild`` behavior.
+
 Run on a Cluster
 ----------------
 
