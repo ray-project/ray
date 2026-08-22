@@ -31,10 +31,15 @@ from ray._private.authentication_test_utils import (
     set_env_auth_token,
 )
 
-pytestmark = pytest.mark.skipif(
-    not _RAYLET_AVAILABLE,
-    reason="Authentication tests require ray._raylet (not available in minimal installs)",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not _RAYLET_AVAILABLE,
+        reason="Authentication tests require ray._raylet (not available in minimal installs)",
+    ),
+    # This suite manages tokens explicitly (and asserts unauthenticated 401s), so
+    # don't let the auto-token plugin attach a token to its HTTP requests.
+    pytest.mark.no_auth_token,
+]
 
 
 def _run_ray_start_and_verify_status(

@@ -2,15 +2,11 @@ import sys
 import time
 
 import pytest
-import requests
 
 import ray
+from ray._private.test_utils import get_with_auth_token
 from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
-
-# Attach the cluster auth token to dashboard HTTP requests (auth is on by
-# default for a local ray.init cluster).
-pytestmark = pytest.mark.usefixtures("auth_token_requests")
 
 
 @pytest.fixture
@@ -39,7 +35,7 @@ def test_get_train_runs(ray_start_8_cpus):
 
     # Call the train run api
     url = ray._private.worker.get_dashboard_url()
-    resp = requests.get("http://" + url + "/api/train/v2/runs")
+    resp = get_with_auth_token("http://" + url + "/api/train/v2/runs")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["train_runs"]) == 1
@@ -52,7 +48,7 @@ def test_add_actor_status(ray_start_8_cpus):
 
     def check_actor_status(expected_actor_status):
         url = ray._private.worker.get_dashboard_url()
-        resp = requests.get("http://" + url + "/api/train/v2/runs")
+        resp = get_with_auth_token("http://" + url + "/api/train/v2/runs")
         assert resp.status_code == 200
         body = resp.json()
 

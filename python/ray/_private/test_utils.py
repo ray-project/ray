@@ -68,6 +68,24 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 
+def get_with_auth_token(url, **kwargs):
+    """Like ``requests.get`` but attaches the cluster's auth token.
+
+    Use in test code that issues HTTP to the dashboard from inside a Ray
+    worker/actor, where the ``auth_token_requests`` autouse fixture (which only
+    patches the driver process) can't reach. This is a real function, so it works
+    in any process that can load the token. Nothing is added when no token is
+    available (auth disabled); an explicit ``Authorization`` header is preserved.
+    """
+    from ray._raylet import AuthenticationTokenLoader
+
+    header = AuthenticationTokenLoader.instance().get_token_for_http_header(
+        ignore_auth_mode=True
+    )
+    kwargs["headers"] = {**header, **(kwargs.get("headers") or {})}
+    return requests.get(url, **kwargs)
+
+
 def make_global_state_accessor(ray_context):
     gcs_options = GcsClientOptions.create(
         ray_context.address_info["gcs_address"],
