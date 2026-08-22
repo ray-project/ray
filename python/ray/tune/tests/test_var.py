@@ -10,6 +10,7 @@ from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.search import BasicVariantGenerator, grid_search
 from ray.tune.search.variant_generator import (
     RecursiveDependencyError,
+    _get_preset_variants,
     _resolve_nested_dict,
 )
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
@@ -342,6 +343,74 @@ class VariantGeneratorTest(unittest.TestCase):
         resolved = _resolve_nested_dict(config)
         for k, v in [(("a", "b"), 1), (("a", "c"), 2), (("b", "a"), 3)]:
             self.assertEqual(resolved.get(k), v)
+
+    def testPresetVariantMissingKeyRaisesValueError(self):
+        with self.assertRaises(ValueError) as cm:
+            list(
+                _get_preset_variants(
+                    {
+                        "run": MOCK_TRAINABLE_NAME,
+                        "config": {"a": tune.uniform(0, 1)},
+                    },
+                    {"typo": 1},
+                )
+            )
+        assert "does not correspond to a valid key" in str(cm.exception)
+
+    def testPresetVariantMissingListIndexRaisesValueError(self):
+        with self.assertRaises(ValueError) as cm:
+            list(
+                _get_preset_variants(
+                    {"run": MOCK_TRAINABLE_NAME, "config": {"lst": []}},
+                    {"lst": [1, 2]},
+                )
+            )
+        assert "`lst/0`" in str(cm.exception)
+
+    def testPresetVariantUntraversablePathRaisesValueError(self):
+        for config, point, expected in (
+            ({"a": 1}, {"a": {"b": 2}}, "`a/b`"),
+            ({"lst": []}, {"lst": {"typo": 1}}, "`lst/typo`"),
+            ({"s": "hi"}, {"s": {"b": 2}}, "`s/b`"),
+        ):
+            with self.assertRaises(ValueError) as cm:
+                list(
+                    _get_preset_variants(
+                        {"run": MOCK_TRAINABLE_NAME, "config": config}, point
+                    )
+                )
+            assert expected in str(cm.exception), (config, point)
+
+    def testPresetVariantGridSearchErrorIsNotReportedAsAMissingKey(self):
+        # Categorical() raises TypeError on a non-iterable grid_search value.
+        # That is not a bad path, so it must not be relabelled as one.
+        with self.assertRaises(TypeError):
+            list(
+                _get_preset_variants(
+                    {
+                        "run": MOCK_TRAINABLE_NAME,
+                        "config": {"a": {"grid_search": 5}},
+                    },
+                    {"a": 1},
+                )
+            )
+
+    def testPresetVariantInsideListOnlyWarns(self):
+        with self.assertLogs(
+            "ray.tune.search.variant_generator", level="WARNING"
+        ) as cm:
+            trials = list(
+                _get_preset_variants(
+                    {
+                        "run": MOCK_TRAINABLE_NAME,
+                        "config": {"x": [tune.uniform(0, 1), tune.uniform(0, 1)]},
+                    },
+                    {"x": [5, 2]},
+                )
+            )
+        assert len(trials) == 1
+        assert trials[0][1]["config"]["x"] == [5, 2]
+        assert any("`x/0`" in message for message in cm.output)
 
     def testRecursiveDep(self):
         try:

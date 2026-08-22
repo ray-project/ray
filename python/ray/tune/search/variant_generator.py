@@ -312,35 +312,38 @@ def _get_preset_variants(
     resolved, _, _ = parse_spec_vars(config)
 
     for path, val in resolved:
+        # A path into a list carries an int index, so join a stringified copy.
+        path_str = "/".join(str(key) for key in path)
         try:
             domain = _get_value(spec["config"], path)
-            if isinstance(domain, dict):
-                if "grid_search" in domain:
-                    domain = Categorical(domain["grid_search"])
-                else:
-                    # If users want to overwrite an entire subdict,
-                    # let them do it.
-                    domain = None
-        except IndexError as exc:
+        except (KeyError, IndexError, TypeError) as exc:
             raise ValueError(
-                f"Pre-set config key `{'/'.join(path)}` does not correspond "
+                f"Pre-set config key `{path_str}` does not correspond "
                 f"to a valid key in the search space definition. Please add "
                 f"this path to the `param_space` variable passed to `tune.Tuner()`."
             ) from exc
+
+        if isinstance(domain, dict):
+            if "grid_search" in domain:
+                domain = Categorical(domain["grid_search"])
+            else:
+                # If users want to overwrite an entire subdict,
+                # let them do it.
+                domain = None
 
         if domain:
             if isinstance(domain, Domain):
                 if not domain.is_valid(val):
                     logger.warning(
                         f"Pre-set value `{val}` is not within valid values of "
-                        f"parameter `{'/'.join(path)}`: {domain.domain_str}"
+                        f"parameter `{path_str}`: {domain.domain_str}"
                     )
             else:
                 # domain is actually a fixed value
                 if domain != val:
                     logger.warning(
                         f"Pre-set value `{val}` is not equal to the value of "
-                        f"parameter `{'/'.join(path)}`: {domain}"
+                        f"parameter `{path_str}`: {domain}"
                     )
         assign_value(spec["config"], path, val)
 
