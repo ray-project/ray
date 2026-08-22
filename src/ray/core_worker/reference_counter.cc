@@ -1864,5 +1864,12 @@ std::optional<std::string> ReferenceCounter::GetTensorTransport(
   return it->second.tensor_transport_;
 }
 
+void ReferenceCounter::MarkObjectForRecovery(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end() && !it->second.OutOfScope(lineage_pinning_enabled_)) {
+    objects_to_recover_.push_back(object_id);
+  }
+}
 }  // namespace core
 }  // namespace ray

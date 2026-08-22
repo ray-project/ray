@@ -144,7 +144,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
-            /*is_node_dead=*/[](const NodeID &) { return false; },
+            /*is_node_dead=*/[this](const NodeID &) { return node_died_; },
             /*free_object_on_nodes_async=*/
             [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *std::make_shared<ray::observability::FakeGauge>(),
@@ -184,6 +184,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   }
 
   NodeID local_node_id_;
+  bool node_died_ = false;
   absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
   // Used by memory_store_.
@@ -546,6 +547,149 @@ TEST_F(ObjectRecoveryManagerTest, TestTaskCancelledReconstructionFails) {
   ASSERT_EQ(failed_reconstructions_[object_id],
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestRecoveryRequeuesWhenNodeDiesDuringPin) {
+  // Test that if a pin reply arrives but the node is already dead,
+  // the callback requeues the object for recovery.
+
+  // Stop the background io_context thread so we control callback execution.
+  io_context_.Stop();
+
+  ObjectID object_id = ObjectID::FromRandom();
+  NodeID remote_node_id = NodeID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+
+  // Start recovery.
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+
+  rpc::Address address;
+  address.set_node_id(remote_node_id.Binary());
+  object_directory_->SetLocations(object_id, {address});
+  ASSERT_EQ(object_directory_->Flush(), 1);
+
+  // Mark node dead before pin reply.
+  node_died_ = true;
+
+  ASSERT_EQ(raylet_client_->Flush(), 1);
+
+  auto objects = ref_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(objects.size(), 1);
+  ASSERT_EQ(objects[0], object_id);
+  memory_store_->Delete(objects);
+
+  // RecoverObject is suppressed
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 0);
+
+  // Run GetAsync callback.
+  io_context_.GetIoService().restart();
+  io_context_.GetIoService().poll();
+
+  // Callback requeues
+  auto requeued = ref_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(requeued.size(), 1);
+  ASSERT_EQ(requeued[0], object_id);
+
+  // Verify recovery is no longer suppressed.
+  memory_store_->Delete(requeued);
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 1);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestRecoveryRequeuesWhenNodeDiesAfterPin) {
+  // Test that if a pin succeeds but the node dies before the GetAsync
+  // callback fires, the callback requeues the object for recovery.
+
+  // Stop the background io_context thread to control callback execution.
+  io_context_.Stop();
+
+  ObjectID object_id = ObjectID::FromRandom();
+  NodeID remote_node_id = NodeID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+
+  // Start recovery.
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+
+  // Directory returns a location.
+  rpc::Address address;
+  address.set_node_id(remote_node_id.Binary());
+  object_directory_->SetLocations(object_id, {address});
+  ASSERT_EQ(object_directory_->Flush(), 1);
+
+  // Pin succeeds with node alive — sets pinned location.
+  ASSERT_EQ(raylet_client_->Flush(), 1);
+
+  // Node dies — clears pinned_at and pushes to objects_to_recover_.
+  ref_counter_->ResetObjectsOnRemovedNode(remote_node_id);
+  auto objects = ref_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(objects.size(), 1);
+  ASSERT_EQ(objects[0], object_id);
+  memory_store_->Delete(objects);
+
+  // RecoverObject is suppressed, callback hasn't cleared pending yet.
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 0);
+
+  // Run GetAsync callback.
+  io_context_.GetIoService().restart();
+  io_context_.GetIoService().poll();
+
+  // Callback requeues
+  auto requeued = ref_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(requeued.size(), 1);
+  ASSERT_EQ(requeued[0], object_id);
+
+  // Verify recovery is no longer suppressed.
+  memory_store_->Delete(requeued);
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 1);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestRecoveryCallbackNoRequeueWhenHealthy) {
+  // Test that the callback does not requeue the object when
+  // it has a valid pinned location.
+
+  // Stop the background io_context thread so we control callback execution.
+  io_context_.Stop();
+
+  ObjectID object_id = ObjectID::FromRandom();
+  NodeID remote_node_id = NodeID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+
+  // Start recovery, pin succeeds on a healthy node.
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  rpc::Address address;
+  address.set_node_id(remote_node_id.Binary());
+  object_directory_->SetLocations(object_id, {address});
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(raylet_client_->Flush(), 1);
+
+  // Run the GetAsync callback.
+  io_context_.GetIoService().restart();
+  io_context_.GetIoService().poll();
+
+  // Callback should NOT requeue
+  auto requeued = ref_counter_->FlushObjectsToRecover();
+  ASSERT_TRUE(requeued.empty());
 }
 
 }  // namespace core
