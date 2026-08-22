@@ -2,9 +2,9 @@
 
 Loaded for every Ray test via ``addopts = -p ...`` in ``pytest.ini``. A local
 cluster started with a default-on ``ray.init()`` enables token auth, so raw
-``requests``/``httpx`` calls to the dashboard without a token get 401. This
-plugin autouse-patches the HTTP clients so every test's calls carry the token
-when one is available.
+``requests``/``httpx``/``aiohttp`` calls to the dashboard without a token get
+401. This plugin autouse-patches the HTTP clients so every test's calls carry
+the token when one is available.
 
 It only reads the token (via the loader's non-raising ``get_token_for_http_header``)
 and adds an ``Authorization`` header; it never touches the token file, env vars,
@@ -92,5 +92,22 @@ def _auth_token_requests(request, monkeypatch):
             return await original_async(self, method, url, **kwargs)
 
         monkeypatch.setattr(httpx.AsyncClient, "request", async_with_token)
+
+    try:
+        import aiohttp
+    except ImportError:
+        aiohttp = None
+    if aiohttp is not None:
+        original_aiohttp = aiohttp.ClientSession._request
+
+        async def aiohttp_with_token(self, method, str_or_url, **kwargs):
+            if is_local_cluster_url(str_or_url):
+                header = auth_header()
+                if header:
+                    existing = kwargs.get("headers") or {}
+                    kwargs["headers"] = {**header, **dict(existing)}
+            return await original_aiohttp(self, method, str_or_url, **kwargs)
+
+        monkeypatch.setattr(aiohttp.ClientSession, "_request", aiohttp_with_token)
 
     yield

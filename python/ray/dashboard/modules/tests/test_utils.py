@@ -12,8 +12,15 @@ logger = logging.getLogger(__name__)
 
 
 async def http_get(http_session, url, timeout_seconds=60):
+    from ray._raylet import AuthenticationTokenLoader
+
+    # These test routes make a server-side hop back to the dashboard, which
+    # rejects tokenless requests when auth is on, so carry the cluster token.
+    headers = AuthenticationTokenLoader.instance().get_token_for_http_header(
+        ignore_auth_mode=True
+    )
     async with asyncio_timeout(timeout_seconds):
-        async with http_session.get(url) as response:
+        async with http_session.get(url, headers=headers) as response:
             return await response.json()
 
 
