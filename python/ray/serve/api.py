@@ -1215,6 +1215,36 @@ def get_multiplexed_model_id() -> str:
     return _request_context.multiplexed_model_id
 
 
+@PublicAPI(stability="beta")
+def get_multiplexed_model_ids() -> List[str]:
+    """Get the model IDs currently loaded on this replica.
+
+    This can be called from within a Serve deployment to inspect the local
+    multiplexed-model cache without making a request to the Serve controller.
+
+    Returns:
+        The IDs of models currently loaded on this replica. Returns an empty list
+        if no models have been loaded.
+
+    Raises:
+        RayServeException: If called outside of a Ray Serve deployment.
+    """
+    replica_context = _get_internal_replica_context()
+    if replica_context is None:
+        raise RayServeException(
+            "`serve.get_multiplexed_model_ids()` may only be called from within "
+            "a Ray Serve deployment."
+        )
+
+    model_multiplex_wrapper = getattr(
+        replica_context.servable_object, "__serve_multiplex_wrapper", None
+    )
+    if model_multiplex_wrapper is None:
+        return []
+
+    return list(model_multiplex_wrapper.models)
+
+
 @PublicAPI(stability="alpha")
 def status() -> ServeStatus:
     """Get the status of Serve on the cluster.

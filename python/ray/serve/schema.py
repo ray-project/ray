@@ -1366,6 +1366,10 @@ class ReplicaDetails(ServeActorDetails):
             "state from the running replica actor."
         )
     )
+    multiplexed_model_ids: List[str] = Field(
+        default_factory=list,
+        description="Model IDs currently loaded by this replica.",
+    )
 
 
 @PublicAPI(stability="alpha")
