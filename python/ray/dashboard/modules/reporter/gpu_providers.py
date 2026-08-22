@@ -7,9 +7,11 @@ This module provides an object-oriented interface for different GPU providers
 import abc
 import enum
 import logging
+import os
+import re
 import subprocess
 import time
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import Dict, List, Optional, Set, TypedDict, Union
 
 try:
     from typing import NotRequired
@@ -22,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MB = 1024 * 1024
+RAY_SKIP_PROCESS_UTIL_API = "RAY_SKIP_PROCESS_UTIL_API"
+_PPU_NAME_RE = re.compile(r"\bPPU\b", re.IGNORECASE)
 
 # Types
 Percentage = int
@@ -119,6 +123,13 @@ class NvidiaGpuProvider(GpuProvider):
         self._pynvml = None
         # Maintain per-GPU sampling timestamps when using process utilization API
         self._gpu_process_last_sample_ts: Dict[int, int] = {}
+        self._force_skip_process_util_api = os.environ.get(
+            RAY_SKIP_PROCESS_UTIL_API, ""
+        ).lower() in ("1", "true")
+        self._skip_process_util_gpu_indices: Set[int] = set()
+        self._ppu_detection_done = False
+        self._detected_gpu_count: Optional[int] = None
+        self._force_fallback_this_cycle = False
 
     def get_provider_name(self) -> GpuProviderType:
         return GpuProviderType.NVIDIA
@@ -166,15 +177,57 @@ class NvidiaGpuProvider(GpuProvider):
 
         return self._get_pynvml_gpu_usage()
 
+    def _detect_ppu_devices(self, num_gpus: int) -> None:
+        """Detect devices that cannot safely use the process utilization API."""
+        self._force_fallback_this_cycle = False
+
+        if self._force_skip_process_util_api:
+            return
+
+        if self._ppu_detection_done and self._detected_gpu_count == num_gpus:
+            return
+
+        detected_indices: Set[int] = set()
+        try:
+            for gpu_index in range(num_gpus):
+                gpu_handle = self._pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+                gpu_name = self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle))
+                if _PPU_NAME_RE.search(gpu_name):
+                    detected_indices.add(gpu_index)
+        except Exception as e:
+            self._ppu_detection_done = False
+            self._detected_gpu_count = None
+            self._force_fallback_this_cycle = True
+            if log_once("gpu_process_utilization_device_detection"):
+                logger.info(
+                    "Failed to detect devices that support GPU process SM "
+                    "utilization; skipping the process utilization API for this "
+                    f"collection cycle: {e}"
+                )
+            return
+
+        self._skip_process_util_gpu_indices = detected_indices
+        self._ppu_detection_done = True
+        self._detected_gpu_count = num_gpus
+
     def _get_pynvml_gpu_usage(self) -> List[GpuUtilizationInfo]:
         if not self._initialized:
             if not self._initialize():
                 return []
 
         gpu_utilizations = []
+        self._force_fallback_this_cycle = False
 
         try:
-            num_gpus = self._pynvml.nvmlDeviceGetCount()
+            try:
+                num_gpus = self._pynvml.nvmlDeviceGetCount()
+            except Exception:
+                self._ppu_detection_done = False
+                self._detected_gpu_count = None
+                self._force_fallback_this_cycle = True
+                raise
+
+            self._detect_ppu_devices(num_gpus)
 
             for i in range(num_gpus):
                 gpu_handle = self._pynvml.nvmlDeviceGetHandleByIndex(i)
@@ -352,34 +405,43 @@ class NvidiaGpuProvider(GpuProvider):
                         f"and `nvmlDeviceGetGraphicsRunningProcesses` APIs: {e}"
                     )
 
-            # Use a newer API (driver 550+) to get per-process SM utilization, but the user
-            # may not always have the access to the newest API.
-            try:
-                current_ts_ms = int(time.time() * 1000)
-                last_ts_ms = self._gpu_process_last_sample_ts.get(gpu_index, 0)
-                nv_processes = self._pynvml.nvmlDeviceGetProcessesUtilizationInfo(
-                    gpu_handle, last_ts_ms
-                )
-                self._gpu_process_last_sample_ts[gpu_index] = current_ts_ms
-
-                for nv_process in nv_processes:
-                    pid = int(nv_process.pid)
-                    if pid not in processes_pids:
-                        # Note that it's pretty unlikely that nvmlDeviceGetProcessesUtilizationInfo
-                        # will include a process that nvmlDeviceGetComputeRunningProcesses +
-                        # nvmlDeviceGetGraphicsRunningProcesses didn't find, but doing this just in case.
-                        processes_pids[pid] = ProcessGPUInfo(
-                            pid=pid,
-                            gpu_memory_usage=0,
-                            gpu_utilization=int(nv_process.smUtil),
-                        )
-                    else:
-                        processes_pids[pid]["gpu_utilization"] = int(nv_process.smUtil)
-            except self._pynvml.NVMLError as e:
-                if log_once("gpu_process_sm_utilization"):
-                    logger.info(
-                        f"Failed to retrieve GPU process SM utilization using `nvmlDeviceGetProcessesUtilizationInfo`, error: {e}"
+            skip_process_util = (
+                self._force_skip_process_util_api
+                or self._force_fallback_this_cycle
+                or gpu_index in self._skip_process_util_gpu_indices
+            )
+            if not skip_process_util:
+                # Use a newer API (driver 550+) to get per-process SM utilization,
+                # but the user may not always have access to the newest API.
+                try:
+                    current_ts_ms = int(time.time() * 1000)
+                    last_ts_ms = self._gpu_process_last_sample_ts.get(gpu_index, 0)
+                    nv_processes = self._pynvml.nvmlDeviceGetProcessesUtilizationInfo(
+                        gpu_handle, last_ts_ms
                     )
+                    self._gpu_process_last_sample_ts[gpu_index] = current_ts_ms
+
+                    for nv_process in nv_processes:
+                        pid = int(nv_process.pid)
+                        if pid not in processes_pids:
+                            # This API may include a process that the compute and
+                            # graphics running-process APIs did not find.
+                            processes_pids[pid] = ProcessGPUInfo(
+                                pid=pid,
+                                gpu_memory_usage=0,
+                                gpu_utilization=int(nv_process.smUtil),
+                            )
+                        else:
+                            processes_pids[pid]["gpu_utilization"] = int(
+                                nv_process.smUtil
+                            )
+                except self._pynvml.NVMLError as e:
+                    if log_once("gpu_process_sm_utilization"):
+                        logger.info(
+                            "Failed to retrieve GPU process SM utilization using "
+                            "`nvmlDeviceGetProcessesUtilizationInfo`, "
+                            f"error: {e}"
+                        )
 
             # Optional: power (milliwatts) and temperature (Celsius)
             power_mw = None
