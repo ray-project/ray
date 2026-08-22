@@ -2651,6 +2651,27 @@ bool CoreWorker::AddObjectOutOfScopeOrFreedCallback(const ObjectID &object_id,
       });
 }
 
+bool CoreWorker::AddObjectFreedOnProducerCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> &callback) {
+  auto wrapped = [&object_freed_callback_service = object_freed_callback_service_,
+                  callback](const ObjectID &id) {
+    object_freed_callback_service.post([callback, id]() { callback(id); },
+                                       "CoreWorker.ObjFreedOnProducerCb");
+  };
+  return reference_counter_->AddObjectFreedOnProducerCallback(object_id, wrapped);
+}
+
+bool CoreWorker::AddObjectFreedOnProducerCallback(const ObjectID &object_id,
+                                                  void (*callback)(const ObjectID &,
+                                                                   void *),
+                                                  void *callback_context) {
+  RAY_CHECK(callback != nullptr) << "callback must not be null";
+  return AddObjectFreedOnProducerCallback(
+      object_id, [callback, callback_context](const ObjectID &id) {
+        callback(id, callback_context);
+      });
+}
+
 Status CoreWorker::CheckObjectOwnedByUs(const ObjectID &object_id) const {
   if (reference_counter_->OwnedByUs(object_id)) {
     return Status::OK();
@@ -4112,6 +4133,23 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                        << object_location_update.plasma_location_update()
                        << " has been received.";
       }
+    }
+
+    if (object_location_update.has_primary_moved_to_node_id()) {
+      // Plasma move semantics: the consumer raylet is telling us that the
+      // primary pin has moved to a new node. Update pinned_at_node_id_ so
+      // lineage reconstruction fires on the right node if it later dies.
+      const auto new_primary_node_id =
+          NodeID::FromBinary(object_location_update.primary_moved_to_node_id());
+      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, new_primary_node_id);
+    }
+
+    if (object_location_update.has_freed_on_producer_node_id()) {
+      // Plasma move semantics: the producer raylet has physically freed its
+      // copy after moving the object. Fire the per-object "freed on producer"
+      // callback (e.g. Ray Data releases the producer's output-buffer
+      // backpressure now that the bytes are actually gone).
+      reference_counter_->OnObjectFreedOnProducer(object_id);
     }
   }
 

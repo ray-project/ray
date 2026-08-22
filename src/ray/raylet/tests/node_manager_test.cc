@@ -119,6 +119,10 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
     return {};
   }
 
+  std::optional<rpc::Address> GetOwnerAddress(const ObjectID &object_id) const override {
+    return std::nullopt;
+  }
+
   std::string DebugString() const override { return ""; }
 
  private:
