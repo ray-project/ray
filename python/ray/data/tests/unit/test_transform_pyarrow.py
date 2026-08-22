@@ -1743,6 +1743,47 @@ def test_align_struct_fields_deep_nesting(deep_nesting_blocks, deep_nesting_sche
     ]
 
 
+def test_align_struct_fields_nested_non_struct_field():
+    """A nested field that is a struct in one block and a primitive in another."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": 5}])})
+
+    # ``unify_schemas`` drops the non-struct arm when reconciling, so the
+    # unified type claims ``inner`` is a struct even though ``t2`` holds an
+    # int64 there.
+    schema = unify_schemas([t1.schema, t2.schema])
+    assert pa.types.is_struct(schema.field("outer").type.field("inner").type)
+
+    with pytest.raises(ValueError, match="cannot be aligned with struct type"):
+        _align_struct_fields([t1, t2], schema)
+
+
+def test_concat_nested_non_struct_field():
+    """The same mismatch reaching ``_align_struct_fields`` through ``concat``."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": 5}])})
+
+    with pytest.raises(ValueError, match="cannot be aligned with struct type"):
+        concat([t1, t2])
+
+
+def test_concat_nested_all_null_field():
+    """An all-null nested field is filled, not treated as a conflict."""
+    t1 = pa.table({"outer": pa.array([{"inner": {"y": 1}}])})
+    t2 = pa.table({"outer": pa.array([{"inner": None}, {"inner": None}])})
+
+    # ``inner`` infers as null in ``t2`` and is promoted to the struct type.
+    assert pa.types.is_null(t2.schema.field("outer").type.field("inner").type)
+
+    result = concat([t1, t2])
+
+    assert result["outer"].to_pylist() == [
+        {"inner": {"y": 1}},
+        {"inner": None},
+        {"inner": None},
+    ]
+
+
 # Test fixtures for tensor-related tests
 @pytest.fixture
 def uniform_tensor_blocks(tensor_format_context):
