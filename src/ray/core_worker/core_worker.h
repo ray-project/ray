@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/buffer.h"
@@ -50,6 +51,7 @@
 #include "ray/core_worker/task_execution/task_receiver.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "ray/util/clock.h"
@@ -185,41 +187,43 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// All member variables are injected either from CoreWorkerProcess or test code
 
-  CoreWorker(CoreWorkerOptions options,
-             std::unique_ptr<WorkerContext> worker_context,
-             instrumented_io_context &io_service,
-             instrumented_io_context &object_freed_callback_service,
-             std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-             std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
-             std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
-             std::unique_ptr<rpc::GrpcServer> core_worker_server,
-             rpc::Address rpc_address,
-             std::shared_ptr<gcs::GcsClient> gcs_client,
-             std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
-             std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
-             boost::thread &io_thread,
-             boost::thread &object_freed_callback_thread,
-             std::shared_ptr<ReferenceCounterInterface> reference_counter,
-             std::shared_ptr<CoreWorkerMemoryStore> memory_store,
-             std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
-             std::shared_ptr<experimental::MutableObjectProviderInterface>
-                 experimental_mutable_object_provider,
-             std::unique_ptr<FutureResolver> future_resolver,
-             std::shared_ptr<TaskManager> task_manager,
-             std::shared_ptr<ActorCreatorInterface> actor_creator,
-             std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
-             std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
-             std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
-             std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
-             std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
-             std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
-             std::unique_ptr<ActorManager> actor_manager,
-             instrumented_io_context &task_execution_service,
-             std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
-             uint32_t pid,
-             ray::observability::MetricInterface &task_by_state_counter,
-             ray::observability::MetricInterface &actor_by_state_counter,
-             ClockInterface &clock);
+  CoreWorker(
+      CoreWorkerOptions options,
+      std::unique_ptr<WorkerContext> worker_context,
+      instrumented_io_context &io_service,
+      instrumented_io_context &object_freed_callback_service,
+      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+      std::shared_ptr<rpc::RayletClientPool> raylet_client_pool,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
+      std::unique_ptr<rpc::GrpcServer> core_worker_server,
+      rpc::Address rpc_address,
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      std::shared_ptr<ipc::RayletIpcClientInterface> raylet_ipc_client,
+      std::shared_ptr<ray::RayletClientInterface> local_raylet_rpc_client,
+      boost::thread &io_thread,
+      boost::thread &object_freed_callback_thread,
+      std::shared_ptr<ReferenceCounterInterface> reference_counter,
+      std::shared_ptr<CoreWorkerMemoryStore> memory_store,
+      std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider,
+      std::shared_ptr<experimental::MutableObjectProviderInterface>
+          experimental_mutable_object_provider,
+      std::unique_ptr<FutureResolver> future_resolver,
+      std::shared_ptr<TaskManager> task_manager,
+      std::shared_ptr<ActorCreatorInterface> actor_creator,
+      std::unique_ptr<ActorTaskSubmitter> actor_task_submitter,
+      std::unique_ptr<pubsub::PublisherInterface> object_info_publisher,
+      std::unique_ptr<pubsub::SubscriberInterface> object_info_subscriber,
+      std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
+      std::unique_ptr<NormalTaskSubmitter> normal_task_submitter,
+      std::unique_ptr<ObjectRecoveryManager> object_recovery_manager,
+      std::unique_ptr<ActorManager> actor_manager,
+      instrumented_io_context &task_execution_service,
+      std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
+      std::unique_ptr<observability::RayEventRecorderInterface> ray_task_event_recorder,
+      uint32_t pid,
+      ray::observability::MetricInterface &task_by_state_counter,
+      ray::observability::MetricInterface &actor_by_state_counter,
+      ClockInterface &clock);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -356,8 +360,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * \param[in] generator_id The object ref id of the streaming generator task.
    * \param[in] num_items The number of indexes to advance past, starting from
    * the current head of the stream.
-   * \return Status ObjectRefEndOfStream if the stream has already reached EoF.
-   * InvalidArgument if the last requested ref is not ready. OK otherwise.
+   * \return Status InvalidArgument if the last requested ref is not ready, or
+   * if the requested range would exceed max_num_generator_returns. OK
+   * otherwise.
    */
   Status TryReadObjectRefStreamN(const ObjectID &generator_id, int64_t num_items);
 
@@ -786,30 +791,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               const int64_t timeout_ms,
               std::vector<bool> *results,
               bool fetch_local);
-
-  /// Delete a list of objects from the plasma object store.
-  ///
-  /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
-  /// for objects we do not own.
-  ///
-  /// If IOError is returned from DeleteImpl() when deleting objects locally, we will
-  /// return an UnexpectedSystemExit status instead. This is to make sure the tasks
-  /// that calls this function in application code can properly retry when hitting the
-  /// IOError.
-  ///
-  /// \param[in] object_ids IDs of the objects to delete.
-  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
-  /// the cluster.
-  /// \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
-
-  /// Delete a list of objects from the plasma object store; called by Delete().
-  ///
-  /// \param[in] object_ids IDs of the objects to delete.
-  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
-  /// the cluster.
-  /// \return Status.
-  Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
@@ -1302,15 +1283,17 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] owner_address The address of the owner who will own this
   /// dynamically generated object.
   /// \param[in] task_id The task id of the dynamically generated return ID.
-  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// Nil() together with a std::nullopt put_index deduces both from the current
   /// worker context.
   /// \param[in] put_index The equivalent of the return value of
   /// WorkerContext::GetNextPutIndex.
-  /// If std::nullopt is specified, it will deduce the put index from the
-  /// current worker context.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
-                                   const TaskID &task_id = TaskID::Nil(),
-                                   std::optional<ObjectIDIndexType> put_index = -1);
+  /// Both task_id and put_index have to be supplied, or neither: deducing one
+  /// while the caller supplies the other would key the ObjectID to one task
+  /// while drawing the index from another. Mixing them panics.
+  ObjectID AllocateDynamicReturnId(
+      const rpc::Address &owner_address,
+      const TaskID &task_id = TaskID::Nil(),
+      std::optional<ObjectIDIndexType> put_index = std::nullopt);
 
   /// Get a handle to an actor.
   ///
@@ -1438,11 +1421,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                      rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback);
 
-  /// Delete objects explicitly.
-  void HandleDeleteObjects(rpc::DeleteObjectsRequest request,
-                           rpc::DeleteObjectsReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
-
   // Spill objects to external storage.
   void HandleSpillObjects(rpc::SpillObjectsRequest request,
                           rpc::SpillObjectsReply *reply,
@@ -1563,6 +1541,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// other live node, or nullptr if the node is dead or unknown to GCS.
   std::shared_ptr<RayletClientInterface> GetRayletRpcClient(const NodeID &node_id);
 
+  /// Send a FreeLocalObjects batch to the node using the Nagle algorithm. A null
+  /// client or failed reply drops the node's queue so a flaky raylet cannot wedge
+  /// it.
+  /// \param node_id The node whose buffered FreeLocalObjects requests to flush.
+  void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
+
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
 
@@ -1579,13 +1563,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void SubscribeToNodeChanges();
 
   /**
-   * Subscribe to GCS worker failures so ``HandleOwnerDied`` can clean up
-   * generator backpressure state when an owner dies. Covers both per-task BP
-   * (unblock ``WaitUntilObjectConsumed``) and actor-wide BP (reclaim shared
-   * budget held by finished tasks). Called from
-   * ``RegisterGeneratorBackpressureState``; idempotent via ``std::call_once``.
+   * @brief Subscribe to the GCS failure notification of a single owner worker
+   * so ``HandleOwnerDied`` can clean up generator backpressure state when that
+   * owner dies. Covers both per-task BP (unblock ``WaitUntilObjectConsumed``)
+   * and actor-wide BP (reclaim shared budget held by finished tasks).
+   *
+   * @param owner_worker_id The owner worker whose failure to watch.
    */
-  void SubscribeToOwnerWorkerFailures();
+  void SubscribeToOwnerWorkerFailure(const WorkerID &owner_worker_id);
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
@@ -2043,13 +2028,30 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// contexts from GetCoreWorkerStats().
   absl::flat_hash_map<TaskID, TaskSpecification> running_tasks_ ABSL_GUARDED_BY(mutex_);
 
+  /// Guards free_pending_ / free_in_flight_: FreeObjectOnNodesAsync runs on
+  /// arbitrary ReferenceCounter threads while the reply callback runs on
+  /// io_service_. Lock order is ReferenceCounter::mutex_ -> free_batch_mu_ (the
+  /// former is held when FreeObjectOnNodesAsync is called), so keep this a leaf:
+  /// never call back into ReferenceCounter while holding it.
+  absl::Mutex free_batch_mu_;
+  /// node id -> FIFO queue of object ids waiting to be freed on that node.
+  absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_
+      ABSL_GUARDED_BY(free_batch_mu_);
+  /// Nodes with a FreeLocalObjects RPC currently in flight (backpressure).
+  absl::flat_hash_set<NodeID> free_in_flight_ ABSL_GUARDED_BY(free_batch_mu_);
+
   /// Tracks which tasks have been marked as canceled. For single-threaded, non-async
   /// actors this will contain at most one task ID.
   ///
   /// We have to track this separately because cancellation requests come from submitter
   /// thread than the thread executing the task, so we cannot get the cancellation status
   /// from the thread-local WorkerThreadContext.
-  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(mutex_);
+  ///
+  /// This has its own mutex because IsTaskCanceled() is called from check_signals
+  /// while the process-level core_worker_ lock is held, and taking mutex_ there
+  /// closes a lock-order cycle.
+  mutable absl::Mutex canceled_tasks_mutex_ ABSL_ACQUIRED_AFTER(mutex_);
+  absl::flat_hash_set<TaskID> canceled_tasks_ ABSL_GUARDED_BY(canceled_tasks_mutex_);
 
   /// Actor repr name if overrides by the user, empty string if not.
   std::string actor_repr_name_ ABSL_GUARDED_BY(mutex_);
@@ -2147,6 +2149,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
 
+  /// Records task events and exports them to the event aggregator.
+  std::unique_ptr<observability::RayEventRecorderInterface> ray_task_event_recorder_ =
+      nullptr;
+
   /// Worker's PID
   uint32_t pid_;
 
@@ -2176,8 +2182,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Used to ensure we only subscribe to node changes once.
   std::once_flag subscribe_to_node_changes_flag_;
 
-  /** Used to ensure we only subscribe to owner-worker failures once. */
-  std::once_flag subscribe_to_owner_worker_failures_flag_;
+  /// Owners whose worker-failure notifications this worker is subscribed to
+  /// for generator-backpressure cleanup. An owner is inserted on the first
+  /// backpressure registration for one of its generator tasks and erased in
+  /// HandleOwnerDied (a dead owner's keyed subscription is useless; live
+  /// owners stay subscribed so churning generator tasks don't
+  /// unsubscribe/resubscribe).
+  absl::flat_hash_set<WorkerID> subscribed_bp_owners_ ABSL_GUARDED_BY(mutex_);
 
   // Grant CoreWorkerShutdownExecutor access to CoreWorker internals for orchestrating
   // the shutdown procedure without exposing additional public APIs.
@@ -2194,6 +2205,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Shutdown synchronization primitives
   std::atomic<bool> connected_{true};
   std::atomic<bool> event_loops_running_{false};
+
+  /// Max object ids per coalesced FreeLocalObjects RPC, read once at
+  /// construction (validated > 0 there; used by
+  /// SendFreeLocalObjectsBatchIfNeeded). Mirrors
+  /// OwnershipBasedObjectDirectory::kMaxObjectReportBatchSize.
+  const size_t max_free_local_objects_batch_size_;
 
   /// Clock used for timestamping events, retries, and timeouts.
   ClockInterface &clock_;

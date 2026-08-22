@@ -30,6 +30,13 @@ _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
 
+# Deprecated value of ``ShuffleStrategy.SHUFFLE_V2``, still accepted when
+# constructing the enum from a string (i.e. by
+# ``RAY_DATA_DEFAULT_SHUFFLE_STRATEGY`` or when assigning
+# ``DataContext.shuffle_strategy``).
+_DEPRECATED_SHUFFLE_V2_VALUE = "hash_shuffle_v2"
+
+
 @DeveloperAPI(stability="alpha")
 class ShuffleStrategy(str, enum.Enum):
     """Shuffle strategy determines shuffling algorithm employed by operations
@@ -38,8 +45,28 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
-    HASH_SHUFFLE_V2 = "hash_shuffle_v2"
+    SHUFFLE_V2 = "shuffle_v2"
     GPU_SHUFFLE = "gpu_shuffle"
+
+    # Deprecated alias of ``SHUFFLE_V2`` (this strategy is no longer specific
+    # to hash-partitioning). Enum members sharing a value are aliases of each
+    # other, hence this resolves to ``SHUFFLE_V2`` itself and is excluded from
+    # iteration over the strategies.
+    HASH_SHUFFLE_V2 = "shuffle_v2"
+
+    @classmethod
+    def _missing_(cls, value):
+        if value == _DEPRECATED_SHUFFLE_V2_VALUE:
+            warnings.warn(
+                f"`{_DEPRECATED_SHUFFLE_V2_VALUE}` shuffle strategy is deprecated, "
+                f"please use `{cls.SHUFFLE_V2.value}` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+            return cls.SHUFFLE_V2
+
+        return None
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -130,8 +157,6 @@ DEFAULT_USE_POLARS = False
 
 DEFAULT_USE_POLARS_SORT = False
 
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "0")))
-
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
@@ -163,6 +188,10 @@ DEFAULT_LOG_INTERNAL_STACK_TRACE = env_bool(
 
 DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
     "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", False
+)
+
+DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S = env_float(
+    "RAY_DATA_EXECUTION_NO_PROGRESS_TIMEOUT_S", 30 * 60
 )
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -318,6 +347,8 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
+DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
+
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
 
 DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED = env_bool(
@@ -382,6 +413,10 @@ class IcebergConfig:
         catalog_retried_errors: A list of substrings of error messages that
             should trigger a retry for Iceberg catalog operations. Includes common
             HTTP error codes and connection errors.
+        read_file_tasks_sequentially: Whether each Ray read task processes files
+            one at a time. Defaults to ``True`` to limit memory use. Set to
+            ``False`` for higher throughput when a task has many small files and
+            their combined input comfortably fits in memory.
     """
 
     write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
@@ -391,6 +426,7 @@ class IcebergConfig:
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
     )
+    read_file_tasks_sequentially: bool = True
 
 
 @DeveloperAPI
@@ -514,14 +550,17 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
 
         return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
     else:
-        vs = [s for s in ShuffleStrategy]  # noqa: C416
+        try:
+            # NOTE: This also resolves deprecated aliases (like `hash_shuffle_v2`)
+            #       to their current strategy
+            return ShuffleStrategy(DEFAULT_SHUFFLE_STRATEGY)
+        except ValueError:
+            vs = [s.value for s in ShuffleStrategy]
 
-        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
-            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
-            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
-        )
-
-        return DEFAULT_SHUFFLE_STRATEGY
+            raise ValueError(
+                f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the "
+                f"[{','.join(vs)}] (got {DEFAULT_SHUFFLE_STRATEGY})"
+            ) from None
 
 
 def _default_fixed_shape_tensor_format():
@@ -578,7 +617,6 @@ class DataContext:
         large_args_threshold: Deprecated. Ray Data manages scheduling internally.
         use_polars: Whether to use Polars for tabular dataset sorts, groupbys, and
             aggregations.
-        eager_free: Whether to eagerly free memory.
         decoding_size_estimation: Whether to estimate in-memory decoding data size for
             data source.
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
@@ -673,6 +711,12 @@ class DataContext:
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        execution_no_progress_timeout_s: Maximum time in seconds that an execution may
+            go without any operator producing or consuming an output before it fails
+            with `ExecutionTimeoutError`. Doesn't apply to Datasets with an
+            all-to-all operation.
+            Raise this if your workload can wait a long time for cluster capacity.
+            Set to -1 to disable.
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
@@ -724,7 +768,7 @@ class DataContext:
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
             shuffle input blocks before partitioning. Currently only applies
-            to the ``HASH_SHUFFLE_V2`` shuffle strategy; other shuffle
+            to the ``SHUFFLE_V2`` shuffle strategy; other shuffle
             strategies ignore it. Input blocks are buffered per node and
             processed as a batch once this size is reached; remaining
             buffered blocks are flushed when input is exhausted. Lower values
@@ -748,6 +792,7 @@ class DataContext:
         hash_aggregate_operator_actor_num_cpus_per_partition_override: Override CPU
             allocation per partition for hash aggregate operator actors.
         use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
+        use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
@@ -834,7 +879,7 @@ class DataContext:
     hash_shuffle_reduce_get_timeout_s: float = DEFAULT_HASH_SHUFFLE_REDUCE_GET_TIMEOUT_S
 
     # Target batch size (bytes) for coalescing shuffle input blocks before
-    # partitioning (currently hash_shuffle_v2 only); blocks are buffered per
+    # partitioning (currently shuffle_v2 only); blocks are buffered per
     # node until this size is reached. 0 disables batching.
     shuffle_input_batch_bytes: int = DEFAULT_SHUFFLE_INPUT_BATCH_BYTES
 
@@ -894,7 +939,7 @@ class DataContext:
     large_args_threshold: int = DEFAULT_LARGE_ARGS_THRESHOLD
     use_polars: bool = DEFAULT_USE_POLARS
     use_polars_sort: bool = DEFAULT_USE_POLARS_SORT
-    eager_free: bool = DEFAULT_EAGER_FREE
+    use_legacy_dataset_ids: bool = DEFAULT_USE_LEGACY_DATASET_IDS
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
@@ -940,6 +985,7 @@ class DataContext:
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
+    execution_no_progress_timeout_s: float = DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S
     log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
     raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
@@ -1215,8 +1261,10 @@ class DataContext:
         return self._shuffle_strategy
 
     @shuffle_strategy.setter
-    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
-        self._shuffle_strategy = value
+    def shuffle_strategy(self, value: Union[ShuffleStrategy, str]) -> None:
+        # NOTE: Coercing to the enum resolves deprecated aliases (like
+        #       `hash_shuffle_v2`) to their current strategy
+        self._shuffle_strategy = ShuffleStrategy(value)
 
     @property
     def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:

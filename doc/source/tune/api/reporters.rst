@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for tune.ProgressReporter and Tune's built-in reporters, which control the trial table and console output during a run.
+
 .. _tune-reporter-doc:
 
 

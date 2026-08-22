@@ -9,6 +9,8 @@ py_library(
         "//python/ray/autoscaler/v2:__pkg__",
         "//python/ray/dashboard:__pkg__",
         "//python/ray/data:__pkg__",
+        "//python/ray/experimental/sandbox:__pkg__",
+        "//python/ray/experimental/sandbox:__subpackages__",
         "//python/ray/tests:__subpackages__",
     ],
 )
@@ -72,6 +74,7 @@ py_test_module_list(
         "test_object_spilling_2.py",
         "test_placement_group.py",
         "test_ray_event_export_task_events.py",
+        "test_ray_event_export_worker_events.py",
         "test_ray_get.py",
         "test_reference_counting_2.py",
         "test_reference_counting_standalone.py",
@@ -519,6 +522,7 @@ py_test_module_list(
         "accelerators/test_amd_gpu.py",
         "accelerators/test_furiosa.py",
         "accelerators/test_intel_gpu.py",
+        "accelerators/test_mblt.py",
         "accelerators/test_metax_gpu.py",
         "accelerators/test_npu.py",
         "accelerators/test_nvidia_gpu.py",
@@ -834,6 +838,7 @@ py_test_module_list(
     files = [
         "kuberay/test_autoscaling_config.py",
         "kuberay/test_kuberay_node_provider.py",
+        "kuberay/test_run_autoscaler_logging.py",
         "test_cli_logger.py",
         "test_client_metadata.py",
         "test_client_terminate.py",
