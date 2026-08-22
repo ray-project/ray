@@ -242,7 +242,10 @@ class TestOverflowToFallback:
                 max_backoff_s=0.1,
             ),
             num_replicas=3,
-            max_ongoing_requests=1,
+            # Not 1: a replica retires a finished request only after replying, so a
+            # cap of 1 leaves the primary reporting itself full for a few ms and
+            # pushes the next same-session request to a fallback.
+            max_ongoing_requests=5,
             ray_actor_options={"num_cpus": 0},
         )
         class BlockingApp:
