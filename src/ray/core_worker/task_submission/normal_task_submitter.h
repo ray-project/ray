@@ -148,6 +148,11 @@ class NormalTaskSubmitter {
   /// when it finishes. false if the user cancelled the task.
   bool QueueGeneratorForResubmit(const TaskSpecification &spec);
 
+  /// Return running streaming generator tasks that have a queued resubmission for
+  /// lineage reconstruction once their current attempt finishes.
+  /// \return The task IDs of those streaming generators.
+  std::vector<TaskID> GetQueuedGeneratorResubmitTaskIds() const;
+
   /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
   /// CheckNoSchedulingKeyEntries function after acquiring the lock.
   bool CheckNoSchedulingKeyEntriesPublic() {
@@ -276,7 +281,7 @@ class NormalTaskSubmitter {
   const WorkerType worker_type_;
 
   // Protects task submission state below.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 

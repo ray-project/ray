@@ -4213,6 +4213,13 @@ CoreWorker::GetLocalOngoingLineageReconstructionTasks() const {
   return task_manager_->GetOngoingLineageReconstructionTasks(*actor_manager_);
 }
 
+std::vector<TaskID> CoreWorker::GetLocalQueuedGeneratorResubmitTaskIds() const {
+  auto result = normal_task_submitter_->GetQueuedGeneratorResubmitTaskIds();
+  auto actor_task_ids = actor_task_submitter_->GetQueuedGeneratorResubmitTaskIds();
+  result.insert(result.end(), actor_task_ids.begin(), actor_task_ids.end());
+  return result;
+}
+
 Status CoreWorker::GetLocalObjectLocations(
     const std::vector<ObjectID> &object_ids,
     std::vector<std::optional<ObjectLocation>> *results) {

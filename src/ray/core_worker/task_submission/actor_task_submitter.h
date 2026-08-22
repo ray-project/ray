@@ -19,6 +19,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -246,6 +247,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \return true if the task is still executing and the submitter agrees to resubmit
   /// when it finishes. false case is a TODO.
   bool QueueGeneratorForResubmit(const TaskSpecification &spec);
+
+  /// Return running streaming generator tasks that have a queued resubmission for
+  /// lineage reconstruction once their current attempt finishes.
+  /// \return The task IDs of those streaming generators.
+  std::vector<TaskID> GetQueuedGeneratorResubmitTaskIds() const;
 
  private:
   struct PendingTaskWaitingForDeathInfo {
