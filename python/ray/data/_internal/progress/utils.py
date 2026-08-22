@@ -4,6 +4,8 @@ from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH = 100
+
 
 def truncate_operator_name(name: str, max_name_length: int) -> str:
     from ray.data.context import DataContext

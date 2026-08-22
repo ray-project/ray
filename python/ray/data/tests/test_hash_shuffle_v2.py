@@ -334,6 +334,27 @@ def test_shuffle_reduce_task_uses_operator_name():
     assert shuffle_reduce_task.options.call_args.kwargs["name"] == name
 
 
+def test_shuffle_operators_expose_sub_progress_state():
+    ctx = DataContext.get_current()
+    map_op = ShuffleMapOp(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    reduce_op = ShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=1,
+        reduce_fn=lambda partition_id, tables_by_input: iter(()),
+    )
+
+    assert list(map_op.get_sub_progress_metrics()) == ["Map"]
+    assert list(map_op.get_sub_progress_updaters()) == ["Map"]
+    assert list(reduce_op.get_sub_progress_metrics()) == ["Reduce"]
+    assert list(reduce_op.get_sub_progress_updaters()) == ["Reduce"]
+
+
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
 # shuffle_tasks tests above) into a dedicated operator/task-level test file --

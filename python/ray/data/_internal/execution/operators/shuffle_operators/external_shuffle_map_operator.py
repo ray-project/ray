@@ -45,7 +45,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
+from ray.data._internal.progress.base_progress import ProgressMetrics
 from ray.data.block import BlockExecStats, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -53,8 +54,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if typing.TYPE_CHECKING:
     import pyarrow as pa
-
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,7 @@ def _make_mapper_sentinel(mapper_id: int) -> Tuple[str, ...]:
 
 
 class ExternalHashShuffleMapOp(
-    InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin
+    InternalQueueOperatorMixin, PhysicalOperator, SubProgressMixin
 ):
     """External-shuffle map operator. See module docstring."""
 
@@ -130,8 +129,11 @@ class ExternalHashShuffleMapOp(
         self._partition_rows: Dict[int, int] = defaultdict(int)
         self._partition_bytes: Dict[int, int] = defaultdict(int)
 
-        # -- Sub-progress bars -----------------------------------------------
-        self._map_bar: Optional["BaseProgressBar"] = None
+        # -- Sub-progress ----------------------------------------------------
+        (
+            self._sub_progress_metrics,
+            self._sub_progress_updaters,
+        ) = self._create_sub_progress_state(["Map"])
 
         # =====================================================================
         # External-shuffle-specific state below.
@@ -282,14 +284,13 @@ class ExternalHashShuffleMapOp(
             task_id=task.get_task_id(),
         )
 
-        if self._map_bar is not None:
-            _, _, num_rows = estimate_total_num_of_blocks(
-                cur_task_idx + 1,
-                self.upstream_op_num_outputs(),
-                self._metrics,
-                total_num_tasks=None,
-            )
-            self._map_bar.update(total=num_rows)
+        _, _, num_rows = estimate_total_num_of_blocks(
+            cur_task_idx + 1,
+            self.upstream_op_num_outputs(),
+            self._metrics,
+            total_num_tasks=None,
+        )
+        self._sub_progress_updaters["Map"].update(total=num_rows)
 
     def _handle_map_done(
         self,
@@ -373,8 +374,7 @@ class ExternalHashShuffleMapOp(
             task_exec_driver_stats=None,
         )
 
-        if self._map_bar is not None:
-            self._map_bar.update(increment=input_rows)
+        self._sub_progress_updaters["Map"].update(increment=input_rows)
 
         self._maybe_emit_partition_bundles()
 
@@ -575,12 +575,11 @@ class ExternalHashShuffleMapOp(
             parts.append(f"merge_buf: {total_merge_buf}")
         return ", ".join(parts)
 
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return ["Map"]
+    def get_sub_progress_metrics(self) -> Dict[str, ProgressMetrics]:
+        return self._sub_progress_metrics
 
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "Map":
-            self._map_bar = pg
+    def get_sub_progress_updaters(self):
+        return self._sub_progress_updaters
 
     @property
     def num_partitions(self) -> int:

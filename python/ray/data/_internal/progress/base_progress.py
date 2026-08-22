@@ -2,11 +2,14 @@ import logging
 import threading
 import typing
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
 
 import ray
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
-from ray.data._internal.progress.utils import truncate_operator_name
+from ray.data._internal.progress.utils import (
+    DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH,
+    truncate_operator_name,
+)
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -112,7 +115,7 @@ class BaseExecutionProgressManager(ABC):
 
     # If the name/description of the progress bar exceeds this length,
     # it will be truncated.
-    MAX_NAME_LENGTH = 100
+    MAX_NAME_LENGTH = DEFAULT_PROGRESS_BAR_MAX_NAME_LENGTH
 
     # Total progress refresh rate (update interval in scheduling step)
     # refer to `streaming_executor.py::StreamingExecutor::_scheduling_loop_step`
@@ -127,8 +130,8 @@ class BaseExecutionProgressManager(ABC):
         verbose_progress: bool,
     ):
         """Initialize the progress manager, create all necessary progress bars
-        and sub-progress bars for the given topology. Sub-progress bars are
-        created for operators that implement the SubProgressBarMixin.
+        and sub-progress trackers for the given topology. Concrete progress bars
+        are created only for operators that implement the SubProgressMixin.
 
         Args:
             dataset_id: id of Dataset
@@ -192,12 +195,45 @@ class BaseExecutionProgressManager(ABC):
         ...
 
 
-class NoopSubProgressBar(BaseProgressBar):
-    """Sub-Progress Bar for Noop (Disabled) Progress Manager"""
+@dataclass(frozen=True)
+class ProgressMetrics:
+    """Immutable snapshot of sub-progress state exposed to progress managers."""
 
-    def __init__(self, name: str, max_name_length: int):
+    name: str
+    total: Optional[int]
+    completed: int
+
+
+class SubProgressUpdater(BaseProgressBar):
+    """Driver-side helper that updates immutable sub-progress metrics."""
+
+    def __init__(
+        self,
+        metrics_by_name: Dict[str, ProgressMetrics],
+        name: str,
+        max_name_length: int,
+    ):
+        self._metrics_by_name = metrics_by_name
+        self._name = name
         self._max_name_length = max_name_length
         self._desc = truncate_operator_name(name, self._max_name_length)
+        self._lock = threading.Lock()
+        self._update_callbacks: List[Callable[[ProgressMetrics], None]] = []
+
+    def add_update_callback(self, callback: Callable[[ProgressMetrics], None]) -> None:
+        with self._lock:
+            self._update_callbacks.append(callback)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("_lock", None)
+        state["_update_callbacks"] = []
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._lock = threading.Lock()
+        self._update_callbacks = []
 
     def set_description(self, name: str) -> None:
         self._desc = truncate_operator_name(name, self._max_name_length)
@@ -206,13 +242,28 @@ class NoopSubProgressBar(BaseProgressBar):
         return self._desc
 
     def update(self, increment: int = 0, total: Optional[int] = None) -> None:
-        pass
+        with self._lock:
+            metrics = self._metrics_by_name[self._name]
+            new_total = total if total is not None else metrics.total
+            new_completed = metrics.completed + increment
+            updated_metrics = ProgressMetrics(
+                name=metrics.name,
+                total=new_total,
+                completed=new_completed,
+            )
+            self._metrics_by_name[self._name] = updated_metrics
+            callbacks = list(self._update_callbacks)
+        for callback in callbacks:
+            callback(updated_metrics)
 
-    def refresh(self):
-        pass
 
-    def close(self):
-        pass
+def make_sub_progress_sync_callback(
+    display_bar: Any,
+) -> Callable[[ProgressMetrics], None]:
+    def sync_display(metrics: ProgressMetrics) -> None:
+        display_bar.update_absolute(metrics.completed, metrics.total)
+
+    return sync_display
 
 
 class NoopExecutionProgressManager(BaseExecutionProgressManager):
@@ -225,17 +276,7 @@ class NoopExecutionProgressManager(BaseExecutionProgressManager):
         show_op_progress: bool,
         verbose_progress: bool,
     ):
-        for state in topology.values():
-            op = state.op
-            if not isinstance(op, SubProgressBarMixin):
-                continue
-            sub_pg_names = op.get_sub_progress_bar_names()
-            if sub_pg_names is not None:
-                for name in sub_pg_names:
-                    pg = NoopSubProgressBar(
-                        name=name, max_name_length=self.MAX_NAME_LENGTH
-                    )
-                    op.set_sub_progress_bar(name, pg)
+        pass
 
     def start(self) -> None:
         pass

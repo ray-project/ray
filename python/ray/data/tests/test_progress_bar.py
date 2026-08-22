@@ -1,12 +1,25 @@
 import functools
 import logging
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest import fixture
 
 import ray
+from ray import cloudpickle
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.progress.base_progress import (
+    ProgressMetrics,
+    SubProgressUpdater,
+)
 from ray.data._internal.progress.progress_bar import ProgressBar
+from ray.data._internal.progress.rich_progress import RichSubProgressBar
+from ray.data._internal.progress.tqdm_progress import TqdmSubProgressBar
+
+
+class _FakeRichProgress:
+    def update(self, *args, **kwargs):
+        pass
 
 
 @fixture(params=[True, False])
@@ -81,6 +94,74 @@ def test_progress_bar(enable_tqdm_ray):
     pb.update(total + 1, total)
     assert pb._bar.total == total + 1
     pb.close()
+
+
+def test_sub_progress_updater_updates_metrics_and_notifies_callback():
+    metrics_by_name = {
+        "Shuffle": ProgressMetrics(name="Shuffle", total=None, completed=0)
+    }
+    updater = SubProgressUpdater(metrics_by_name, "Shuffle", max_name_length=100)
+    snapshots = []
+
+    updater.add_update_callback(snapshots.append)
+    updater.update(increment=3, total=10)
+
+    assert metrics_by_name["Shuffle"] == ProgressMetrics(
+        name="Shuffle", total=10, completed=3
+    )
+    assert snapshots == [ProgressMetrics(name="Shuffle", total=10, completed=3)]
+
+
+def test_task_context_sub_progress_state_cloudpickle_round_trip():
+    metrics_by_name = {
+        "Shuffle": ProgressMetrics(name="Shuffle", total=None, completed=0)
+    }
+    updater = SubProgressUpdater(metrics_by_name, "Shuffle", max_name_length=100)
+    updater.add_update_callback(MagicMock())
+    task_context = TaskContext(
+        task_idx=0,
+        op_name="HashShuffle",
+        sub_progress_metrics=metrics_by_name,
+        sub_progress_updaters={"Shuffle": updater},
+    )
+
+    restored_context = cloudpickle.loads(cloudpickle.dumps(task_context))
+    restored_metrics = restored_context.sub_progress_metrics
+    restored_updaters = restored_context.sub_progress_updaters
+    assert restored_metrics is not None
+    assert restored_updaters is not None
+
+    restored_updater = restored_updaters["Shuffle"]
+    assert restored_updater._metrics_by_name is restored_metrics
+    assert restored_updater._update_callbacks == []
+
+    restored_updater.update(increment=3, total=10)
+    assert restored_metrics["Shuffle"] == ProgressMetrics(
+        name="Shuffle", total=10, completed=3
+    )
+
+
+def test_tqdm_sub_progress_bar_update_absolute_uses_incremental_update():
+    progress_bar = TqdmSubProgressBar.__new__(TqdmSubProgressBar)
+    progress_bar._progress = 4
+    progress_bar._bar = MagicMock()
+    progress_bar._bar.total = 10
+
+    progress_bar.update_absolute(7, 10)
+
+    assert progress_bar._progress == 7
+    progress_bar._bar.update.assert_called_once_with(3)
+    progress_bar._bar.refresh.assert_not_called()
+
+
+def test_rich_sub_progress_bar_starts_timer_on_first_progress_update():
+    progress_bar = RichSubProgressBar("Shuffle", progress=_FakeRichProgress(), tid=0)
+
+    progress_bar.update_absolute(0, None)
+    assert progress_bar._start_time is None
+
+    progress_bar.update_absolute(1, 10)
+    assert progress_bar._start_time is not None
 
 
 @pytest.mark.parametrize(

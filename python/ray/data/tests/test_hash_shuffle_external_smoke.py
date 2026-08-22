@@ -108,6 +108,8 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
             f"expected {num_parts} partition wrappers from map, "
             f"got {len(map_output)}"
         )
+        map_progress = map_op.get_sub_progress_metrics()["Map"]
+        assert map_progress.completed == expected_total_rows
         for bundle in map_output:
             reduce_op.add_input(bundle, input_index=0)
         reduce_op.all_inputs_done()
@@ -118,6 +120,8 @@ def test_external_repartition_smoke(ray_init_shutdown, num_blocks, rows, num_par
         assert got_rows == expected_total_rows, (
             f"row count mismatch: got {got_rows}, expected " f"{expected_total_rows}"
         )
+        reduce_progress = reduce_op.get_sub_progress_metrics()["Reduce"]
+        assert reduce_progress.completed == expected_total_rows
         assert len({id(bundle) for bundle in reduce_output}) >= 1
     finally:
         reduce_op.shutdown(Timer(), force=True)

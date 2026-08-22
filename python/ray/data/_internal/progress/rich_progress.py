@@ -20,14 +20,14 @@ from rich.table import Column, Table
 from rich.text import Text
 
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.execution.streaming_executor_state import (
     format_op_state_summary,
 )
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
     BaseProgressBar,
-    NoopSubProgressBar,
+    make_sub_progress_sync_callback,
 )
 from ray.data._internal.progress.utils import truncate_operator_name
 
@@ -89,9 +89,10 @@ class RichSubProgressBar(BaseProgressBar):
 
     def _update(self, completed: int, total: Optional[int] = None) -> None:
         assert self._enabled
-        if self._start_time is None:
+        if self._start_time is None and completed > 0:
             self._start_time = time.time()
-        metrics = _get_progress_metrics(self._start_time, completed, total)
+        start_time = self._start_time if self._start_time is not None else time.time()
+        metrics = _get_progress_metrics(start_time, completed, total)
         self._progress.update(
             self._tid,
             completed=metrics.completed,
@@ -105,6 +106,13 @@ class RichSubProgressBar(BaseProgressBar):
             if total is not None:
                 self._total = total
             self._completed += increment
+            self._update(self._completed, self._total)
+
+    def update_absolute(self, completed: int, total: Optional[int] = None) -> None:
+        if self._enabled:
+            self._completed = completed
+            if total is not None:
+                self._total = total
             self._update(self._completed, self._total)
 
     def complete(self) -> None:
@@ -179,7 +187,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             if isinstance(op, InputDataBuffer):
                 continue
 
-            contains_sub_progress_bars = isinstance(op, SubProgressBarMixin)
+            contains_sub_progress_bars = isinstance(op, SubProgressMixin)
             sub_progress_bar_enabled = self._show_op_progress and (
                 contains_sub_progress_bars or self._verbose_progress
             )
@@ -203,37 +211,46 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             if not contains_sub_progress_bars:
                 continue
 
-            sub_progress_bar_names = op.get_sub_progress_bar_names()
-            if sub_progress_bar_names is None:
+            sub_progress_metrics = op.get_sub_progress_metrics()
+            if sub_progress_metrics is None:
                 continue
+            sub_progress_updaters = op.get_sub_progress_updaters()
 
-            for name in sub_progress_bar_names:
+            for name, metrics in sub_progress_metrics.items():
                 if sub_progress_bar_enabled:
+                    display_total = (
+                        metrics.total if metrics.total is not None else total
+                    )
                     progress = self._make_progress_bar(
                         _TREE_VERTICAL_SUB_PROGRESS, "", 10
                     )
-                    total = state.op.num_output_rows_total()
                     tid = progress.add_task(
                         name,
-                        total=total if total is not None else 1,
+                        total=display_total if display_total is not None else 1,
                         start=True,
                         rate_str="? rows/s",
                         count_str="0/?",
                     )
                     rows.append(progress)
-                    pg = RichSubProgressBar(
+                    display_pg = RichSubProgressBar(
                         name=name,
-                        total=total,
+                        total=display_total,
                         progress=progress,
                         tid=tid,
                         max_name_length=self.MAX_NAME_LENGTH,
                     )
                 else:
-                    pg = NoopSubProgressBar(
-                        name=name, max_name_length=self.MAX_NAME_LENGTH
-                    )
-                op.set_sub_progress_bar(name, pg)
-                self._sub_progress_bars.append(pg)
+                    display_pg = None
+                if display_pg is not None:
+                    display_pg.update_absolute(metrics.completed, metrics.total)
+                    self._sub_progress_bars.append(display_pg)
+                    if (
+                        sub_progress_updaters is not None
+                        and name in sub_progress_updaters
+                    ):
+                        sub_progress_updaters[name].add_update_callback(
+                            make_sub_progress_sync_callback(display_pg)
+                        )
         if rows:
             self._layout_table.add_row(Text(f"  {_TREE_VERTICAL}", no_wrap=True))
             for row in rows:
