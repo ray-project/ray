@@ -1,3 +1,5 @@
+# isort: skip_file
+# ruff: noqa: E402
 import asyncio
 import json
 import os
@@ -10,6 +12,13 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+
+# Set before importing ray: the C++ RayConfig reads the auth mode once, at import
+# time. This keeps token auth on and consistent between the `ray start --head`
+# subprocess (which inherits this env) and this process's in-process GCS client,
+# regardless of any token left in ~/.ray by an earlier test.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ["RAY_AUTH_TOKEN"] = "test_token_12345678901234567890123456789012"
 
 import ray
 from ray._common.network_utils import build_address, get_localhost_ip
