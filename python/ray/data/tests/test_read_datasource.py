@@ -14,6 +14,7 @@ from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -113,6 +114,21 @@ class TestDatasource(Datasource):
             i += block_size
 
         return read_tasks
+
+
+def test_read_datasource_ray_remote_args_deprecation_warning(shutdown_only):
+    with pytest.warns(
+        RayDeprecationWarning, match="ray_remote_args"
+    ) as warning_records:
+        ray.data.read_datasource(
+            RangeDatasource(n=1),
+            ray_remote_args={"scheduling_strategy": "SPREAD"},
+        )
+
+    # The deprecated argument should produce exactly one warning.
+    assert len(warning_records) == 1
+    # The warning should point to the public API caller, not Ray Data internals.
+    assert warning_records[0].filename == __file__
 
 
 @pytest.mark.parametrize(
