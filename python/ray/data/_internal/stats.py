@@ -1526,23 +1526,25 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(operator_uuid)
                     out += str(operators_stats_summary)
-        if self.backpressure_stats.task_submission_policy:
-            out += (
-                "* Backpressured: "
-                f"tasks({self.backpressure_stats.task_submission_policy})\n"
-            )
-        if self.backpressure_stats.task_output_policy:
-            out += (
-                "* Backpressured: "
-                f"outputs({self.backpressure_stats.task_output_policy})\n"
-            )
+        indent = (
+            "\t"
+            if operators_stats_summary and operators_stats_summary.is_sub_operator
+            else ""
+        )
+        backpressure_stats = getattr(self, "backpressure_stats", None)
+        if backpressure_stats:
+            if backpressure_stats.task_submission_policy:
+                out += (
+                    f"{indent}* Backpressured: "
+                    f"tasks({backpressure_stats.task_submission_policy})\n"
+                )
+            if backpressure_stats.task_output_policy:
+                out += (
+                    f"{indent}* Backpressured: "
+                    f"outputs({backpressure_stats.task_output_policy})\n"
+                )
         verbose_stats_logs = DataContext.get_current().verbose_stats_logs
         if verbose_stats_logs and self.extra_metrics:
-            indent = (
-                "\t"
-                if operators_stats_summary and operators_stats_summary.is_sub_operator
-                else ""
-            )
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
