@@ -106,7 +106,6 @@ py_test_module_list(
         "test_batching.py",
         "test_broadcast.py",
         "test_callback.py",
-        "test_cluster.py",
         "test_controller.py",
         "test_controller_benchmark.py",
         "test_controller_recovery.py",
@@ -145,6 +144,25 @@ py_test_module_list(
         "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
         "test_util.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Multi-node cluster test. On the shared Windows shard it runs at ~79% of the
+# default medium timeout, so a loaded runner tips it over; give it headroom.
+py_test_module_list(
+    size = "medium",
+    timeout = "long",
+    files = [
+        "test_cluster.py",
     ],
     tags = [
         "exclusive",
