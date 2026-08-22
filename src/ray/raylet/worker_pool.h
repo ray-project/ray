@@ -54,6 +54,19 @@ namespace raylet {
 using WorkerCommandMap =
     absl::flat_hash_map<Language, std::vector<std::string>, std::hash<int>>;
 
+constexpr int64_t kWorkerGrpcThreadsWarningThreshold = 32;
+
+/**
+ * @brief Return a warning when a high-CPU node uses gRPC's default worker thread sizing.
+ *
+ * @param num_cpus The number of CPUs configured for the node.
+ * @param configured_threads The configured worker gRPC thread count.
+ * @return A warning when the node exceeds the threshold and the thread count isn't
+ * configured to a positive value; otherwise, std::nullopt.
+ */
+std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t num_cpus,
+                                                       int64_t configured_threads);
+
 // TODO(#54703): Put this type in a separate target.
 using AddProcessToCgroupHook = std::function<void(const std::string &)>;
 

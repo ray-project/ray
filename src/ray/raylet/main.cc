@@ -47,6 +47,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/node_manager.h"
+#include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
@@ -605,6 +606,11 @@ int main(int argc, char *argv[]) {
     int num_cpus = num_cpus_it != static_resource_conf.end()
                        ? static_cast<int>(num_cpus_it->second)
                        : 0;
+    auto worker_grpc_threads_warning = ray::raylet::GetWorkerGrpcThreadsWarning(
+        num_cpus, RayConfig::instance().worker_num_grpc_internal_threads());
+    if (worker_grpc_threads_warning.has_value()) {
+      RAY_LOG(WARNING) << *worker_grpc_threads_warning;
+    }
 
     node_manager_config.raylet_config = *stored_raylet_config;
     node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
