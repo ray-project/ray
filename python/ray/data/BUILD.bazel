@@ -106,6 +106,25 @@ py_test_module_list(
 )
 
 py_test(
+    name = "test_arrow_rs_parquet_reader",
+    size = "large",
+    srcs = ["tests/datasource/test_arrow_rs_parquet_reader.py"],
+    tags = [
+        # Only runs in the dataarrowrsbuild image, which is the only one with the
+        # native `ray_data_arrow_rs` extension installed. Excluded from the
+        # general data jobs via --except-tags so they do not silently
+        # importorskip the whole module and report green.
+        "arrow_rs",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_arrow",
     size = "small",
     srcs = ["tests/datasource/test_arrow.py"],
