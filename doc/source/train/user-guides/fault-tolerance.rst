@@ -106,6 +106,110 @@ The :ref:`storage path has been configured <persistent-storage-guide>` to use cl
     The workers download the checkpoint from storage and use it to resume training.
 
 
+.. _train-nccl-hang-detection:
+
+NCCL Hang Detection
+-------------------
+
+Distributed GPU training can *hang* rather than crash: if ranks disagree on which
+collective to run (a divergent code path, a rank that exited early, or a
+mismatched shape/dtype/call order), NCCL blocks forever waiting for a peer that
+will never arrive. Because no process dies, Ray's normal worker-failure handling
+never triggers and the job sits idle burning GPU hours until a wall-clock timeout.
+
+For runs using the NCCL backend, Ray Train ships an opt-in hang detector,
+enabled by setting ``RAY_TRAIN_ENABLE_NV_HANG_DETECTOR=1`` on the driver.
+It builds on NCCL's `RAS (Reliability, Availability, Serviceability) subsystem
+<https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/ras.html>`_
+(NCCL >= 2.28, via the ``ncclras`` client binary): the controller periodically
+queries each communicator's per-rank collective *launch counts*. A communicator
+whose counts are mismatched **and** make no progress across the confirmation
+window is flagged as hung. On confirmation the detector logs the RAS report and
+the suspected culprit workers (world rank, host, PID, CUDA device — the world
+rank is recovered by matching the RAS-reported host and PID against the worker
+group), captures diagnostics to your storage path, and — depending on the
+configured action — either fails the run with a ``NCCLHangError``, which also
+names the culprits in its ``worker_failures`` keyed by world rank, or only
+observes.
+
+The diagnostics land in a ``nv_hang_detector_artifacts/`` folder under the
+run's storage path::
+
+    nv_hang_detector_artifacts/
+    ├── nccl_ras/
+    │   ├── report.txt         # human-readable RAS report at confirmation
+    │   └── {timestamp}.log    # raw JSON RAS report per recent poll (timeline)
+    ├── stack_traces/
+    │   └── {rank}.log         # per-rank py-spy stack dump
+    ├── flight_recorder/
+    │   └── {rank}.log         # per-rank flight-recorder JSON (when armed)
+    └── nvidia_smi/
+        └── {node_ip}.log      # nvidia-smi -q, one per node
+
+Configuration
+~~~~~~~~~~~~~
+
+The detector is configured through environment variables. All but
+``NCCL_RAS_ADDR`` are read on the driver at trainer construction and forwarded
+to the controller; ``NCCL_RAS_ADDR`` is read in the worker environment at query
+time:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Environment variable
+     - Description
+   * - ``RAY_TRAIN_ENABLE_NV_HANG_DETECTOR``
+     - Enable the detector. Default ``0`` (off). Enable it only for NCCL
+       jobs, since the RAS subsystem exists only for NCCL.
+   * - ``RAY_TRAIN_NCCL_RAS_ACTION``
+     - ``observe`` (default) logs diagnostics and captures stacks without
+       failing the run; ``fail`` additionally raises ``NCCLHangError`` to
+       terminate the run.
+   * - ``RAY_TRAIN_NCCL_RAS_POLL_INTERVAL_S``
+     - Seconds between RAS polls. Default ``15``.
+   * - ``RAY_TRAIN_NCCL_RAS_CONFIRM_WINDOW_S``
+     - Seconds a communicator must stay frozen before a hang is confirmed.
+       Default ``600`` (10 minutes).
+   * - ``RAY_TRAIN_NCCLRAS_PATH``
+     - Path to the ``ncclras`` client binary used to query RAS. Default
+       ``ncclras``, resolved on the workers' ``PATH``. If the binary is
+       missing or predates NCCL 2.28 (no ``-f`` support), the detector logs a
+       warning and disables itself for the rest of the run.
+   * - ``NCCL_RAS_ADDR``
+     - NCCL's own RAS listen address (``host:port``). Read on the *workers*
+       when querying, defaulting to ``localhost:28028``; set it in the worker
+       environment if your NCCL deployment uses a non-default address.
+   * - ``TORCH_NCCL_TRACE_BUFFER_SIZE``
+     - Opt-in (default off). PyTorch's own flight-recorder knob: set it to a
+       positive ring-buffer size (for example ``20000``) on the driver, and Ray
+       Train propagates it to the workers before the process group is created
+       and dumps the per-rank flight-recorder trace (as JSON) at a confirmed
+       hang for a finer-grained collective timeline.
+
+We recommend rolling out in ``observe`` mode first to establish that the detector
+does not fire on your healthy workloads, then switching to ``fail`` to have hung
+runs terminate instead of hanging indefinitely. ``NCCLHangError`` is terminal:
+because a deterministic hang would usually just hang again on a restart, it is
+not retried by :ref:`worker fault tolerance <train-worker-fault-tolerance>`
+regardless of ``max_failures``. Relaunching the job resumes from the latest
+checkpoint as described in
+:ref:`job driver fault tolerance <train-job-driver-fault-tolerance>`.
+
+.. note::
+    **Known limitations.** RAS tracks collective *launch* counts, so a *symmetric*
+    hang where every rank has launched the same collective and the network or
+    hardware then wedges mid-collective (a switch failure or NIC flap) shows zero
+    skew and is not detected — this needs completion-timing telemetry or the flight
+    recorder. Conversely, pipeline-parallel / point-to-point (``send``/``recv``)
+    communicators can legitimately sit skewed and idle for long stretches; the
+    ``observe`` default plus the time-based confirmation window guard against
+    spurious failures, but consider raising
+    ``RAY_TRAIN_NCCL_RAS_CONFIRM_WINDOW_S`` for such workloads before enabling
+    ``fail``.
+
+
 .. _train-restore-guide:
 .. _train-job-driver-fault-tolerance:
 
