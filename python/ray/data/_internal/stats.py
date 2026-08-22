@@ -188,6 +188,14 @@ class TimeSpan:
         return self.end_s - self.start_s
 
 
+@dataclass
+class BackpressureStats:
+    """Snapshot of the backpressure policies affecting an operator."""
+
+    task_submission_policy: Optional[str] = None
+    task_output_policy: Optional[str] = None
+
+
 @contextmanager
 def _maybe_time(timer: Optional["Timer"]) -> Iterator[Optional[TimeSpan]]:
     """Time a block, yielding a TimeSpan (or None if timer is None)."""
@@ -1224,6 +1232,7 @@ class DatasetStats:
         if parent is not None and not isinstance(parent, list):
             parent = [parent]
         self.parents: List["DatasetStats"] = parent or []
+        self.backpressure_stats: BackpressureStats = BackpressureStats()
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
@@ -1405,6 +1414,7 @@ class DatasetStats:
             stats_summary_parents,
             self.number,
             self.dataset_uuid,
+            self.backpressure_stats,
             self.time_total_s,
             self.base_name,
             self.extra_metrics,
@@ -1444,6 +1454,7 @@ class DatasetStatsSummary:
     parents: List["DatasetStatsSummary"]
     number: int
     dataset_uuid: str
+    backpressure_stats: "BackpressureStats"
     time_total_s: float
     base_name: str
     extra_metrics: Dict[str, Any]
@@ -1515,13 +1526,21 @@ class DatasetStatsSummary:
                 else:
                     already_printed.add(operator_uuid)
                     out += str(operators_stats_summary)
+        indent = "\t" if len(self.operators_stats) > 1 else ""
+        backpressure_stats = getattr(self, "backpressure_stats", None)
+        if backpressure_stats:
+            if backpressure_stats.task_submission_policy:
+                out += (
+                    f"{indent}* Backpressured: "
+                    f"tasks({backpressure_stats.task_submission_policy})\n"
+                )
+            if backpressure_stats.task_output_policy:
+                out += (
+                    f"{indent}* Backpressured: "
+                    f"outputs({backpressure_stats.task_output_policy})\n"
+                )
         verbose_stats_logs = DataContext.get_current().verbose_stats_logs
         if verbose_stats_logs and self.extra_metrics:
-            indent = (
-                "\t"
-                if operators_stats_summary and operators_stats_summary.is_sub_operator
-                else ""
-            )
             out += indent
             out += "* Extra metrics: " + str(self.extra_metrics) + "\n"
         out += str(self.iter_stats)
