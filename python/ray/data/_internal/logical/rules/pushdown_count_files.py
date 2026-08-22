@@ -5,9 +5,6 @@ from typing import TYPE_CHECKING, Optional
 from ray.data._internal.datasource_v2.chunkers.file_chunker import (
     WholeFileChunker,
 )
-from ray.data._internal.datasource_v2.listing.file_indexer import (
-    NonSamplingFileIndexer,
-)
 from ray.data._internal.datasource_v2.listing.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
@@ -95,7 +92,11 @@ class PushdownCountFiles(Rule):
         # appear once per chunk, in different batches, and be over-counted).
         # ``ListFiles`` is frozen, so ``replace`` a copy with a fresh indexer.
         count_indexer = copy.deepcopy(list_files.file_indexer)
-        assert isinstance(count_indexer, NonSamplingFileIndexer), type(count_indexer)
+        if not hasattr(count_indexer, "_file_chunker"):
+            # An indexer that doesn't expose a chunker can't be pinned to
+            # whole-file listing, and counting a chunked file once per chunk
+            # would overcount. Skip the optimization rather than risk it.
+            return plan
         count_indexer._file_chunker = WholeFileChunker()
         list_files = dataclasses.replace(
             list_files,

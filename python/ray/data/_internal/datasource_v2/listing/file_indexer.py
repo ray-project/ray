@@ -58,6 +58,7 @@ class FileIndexer(ABC):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        partition_predicate: Optional["Expr"] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
 
@@ -66,13 +67,18 @@ class FileIndexer(ABC):
             filesystem: A PyArrow filesystem object.
             pruners: A list of file pruners to apply.
             preserve_order: Whether to preserve order in file listing.
-            predicate: Pushed-down row filter. Indexers that read file
-                metadata (e.g. the footer-based Parquet indexer) use it to skip
-                row groups; others ignore it.
+            predicate: Pushed-down row filter over data columns. Indexers that
+                read file metadata (e.g. the footer-based Parquet indexer) use
+                it to skip row groups; others ignore it.
             limit: Pushed-down row limit, for indexers that can stop listing
                 early. Others ignore it.
             projected_columns: Pushed-down column projection, for metadata-aware
                 sizing. Others ignore it.
+            partition_predicate: Pushed-down filter over partition columns,
+                disjoint from ``predicate``. Indexers backed by a catalog that
+                records partition values (e.g. the Delta transaction log) drop
+                whole files from it without touching the filesystem; others
+                ignore it and let the scanner prune the manifest instead.
 
         Returns:
             An iterator of `FileManifest` objects, each of which contains a file path
@@ -198,9 +204,12 @@ class NonSamplingFileIndexer(FileIndexer):
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
         projected_columns: Optional[List[str]] = None,
+        partition_predicate: Optional["Expr"] = None,
     ) -> Iterable[FileManifest]:
-        # This per-file listing path ignores predicate/limit/projected_columns;
-        # they're consumed by metadata-aware indexers (e.g. the footer indexer).
+        # This per-file listing path ignores the pushed-down constraints; they
+        # are consumed by metadata-aware indexers (e.g. the footer indexer for
+        # predicate/limit/projected_columns, the Delta indexer for
+        # partition_predicate).
         # ``list_file_infos`` already skips zero-size files and applies pruners,
         # so the manifest builder only has to chunk.
         file_infos = self.list_file_infos(
@@ -372,50 +381,74 @@ class NonSamplingFileIndexer(FileIndexer):
     ) -> Iterable[FileManifest]:
         # ``file_infos`` are already filtered (zero-size skipped, pruners applied)
         # by ``list_file_infos``; this method only chunks them into manifests.
-        running_paths: List[str] = []
-        running_file_sizes: List[int] = []
-        running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
-        manifests_count = 0
-        chunks_count = 0
-
-        for file_info in file_infos:
-            # ``list_file_infos`` already dropped zero/None-size files.
-            assert file_info.size is not None
-            path, file_size = file_info.path, file_info.size
-
-            # Drive the chunker once per file; emit one manifest row per chunk.
-            # ``chunk_metadata`` is ``None`` for whole-file chunks (default
-            # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
-            # smaller than the target chunk size).
-            for (
-                chunk_metadata,
-                chunk_size,
-            ) in self._file_chunker.generate_chunk_metadatas(path, file_size):
-                running_paths.append(path)
-                running_file_sizes.append(chunk_size)
-                running_chunk_metadatas.append(chunk_metadata)
-                chunks_count += 1
-
-                if len(running_paths) >= self._max_paths_per_output:
-                    manifests_count += 1
-                    yield FileManifest.construct_manifest(
-                        running_paths,
-                        running_file_sizes,
-                        running_chunk_metadatas,
-                    )
-                    running_paths = []
-                    running_file_sizes = []
-                    running_chunk_metadatas = []
-
-        if running_paths:
-            manifests_count += 1
-            yield FileManifest.construct_manifest(
-                running_paths,
-                running_file_sizes,
-                running_chunk_metadatas,
-            )
-
-        logger.debug(
-            f"Listing files: constructed {manifests_count} manifests "
-            f"with {chunks_count} file chunks"
+        yield from build_manifests(
+            file_infos,
+            file_chunker=self._file_chunker,
+            max_paths_per_output=self._max_paths_per_output,
         )
+
+
+def build_manifests(
+    file_infos: Iterable[FileInfo],
+    *,
+    file_chunker: FileChunker,
+    max_paths_per_output: int,
+) -> Iterable[FileManifest]:
+    """Turn a stream of ``FileInfo`` into batched ``FileManifest`` blocks.
+
+    Shared by every :class:`FileIndexer`, regardless of where the file infos
+    come from -- a filesystem walk for :class:`NonSamplingFileIndexer`, or a
+    Delta transaction log for
+    :class:`~ray.data._internal.datasource_v2.listing.delta_file_indexer.DeltaFileIndexer`.
+
+    Callers filter ``file_infos`` first -- zero-size files dropped and pruners
+    applied -- as :meth:`FileIndexer.list_file_infos` does; this helper only
+    chunks and batches.
+    """
+    running_paths: List[str] = []
+    running_file_sizes: List[int] = []
+    running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
+    manifests_count = 0
+    chunks_count = 0
+
+    for file_info in file_infos:
+        # Callers already dropped zero/None-size files.
+        assert file_info.size is not None
+        path, file_size = file_info.path, file_info.size
+
+        # Drive the chunker once per file; emit one manifest row per chunk.
+        # ``chunk_metadata`` is ``None`` for whole-file chunks (default
+        # ``WholeFileChunker`` behavior and ``ParquetFileChunker`` for files
+        # smaller than the target chunk size).
+        for (
+            chunk_metadata,
+            chunk_size,
+        ) in file_chunker.generate_chunk_metadatas(path, file_size):
+            running_paths.append(path)
+            running_file_sizes.append(chunk_size)
+            running_chunk_metadatas.append(chunk_metadata)
+            chunks_count += 1
+
+            if len(running_paths) >= max_paths_per_output:
+                manifests_count += 1
+                yield FileManifest.construct_manifest(
+                    running_paths,
+                    running_file_sizes,
+                    running_chunk_metadatas,
+                )
+                running_paths = []
+                running_file_sizes = []
+                running_chunk_metadatas = []
+
+    if running_paths:
+        manifests_count += 1
+        yield FileManifest.construct_manifest(
+            running_paths,
+            running_file_sizes,
+            running_chunk_metadatas,
+        )
+
+    logger.debug(
+        f"Listing files: constructed {manifests_count} manifests "
+        f"with {chunks_count} file chunks"
+    )

@@ -402,15 +402,27 @@ class ReadFiles(
             # ``PredicatePushdown`` to keep the ``Filter`` above us.
             return self
 
+        residual_predicate = split.residual_predicate
+
         new_scanner = self.scanner
         if split.partition_predicate is not None:
             new_scanner = new_scanner.prune_partitions(split.partition_predicate)
+            if not new_scanner.enforces_partition_predicate:
+                # The scanner took the predicate as a pruning hint without
+                # promising to apply it, so it has to stay in a ``Filter``
+                # above. Partition columns are materialized into the block by
+                # the reader, so the filter binds there.
+                residual_predicate = (
+                    split.partition_predicate
+                    if residual_predicate is None
+                    else residual_predicate & split.partition_predicate
+                )
         if split.data_predicate is not None:
             new_scanner, _residual = new_scanner.push_filters(split.data_predicate)
 
         new_op = replace(self, scanner=new_scanner)
 
-        if split.residual_predicate is None:
+        if residual_predicate is None:
             return new_op
 
         # Residual conjuncts can't be pushed through either ``push_filters``
@@ -419,9 +431,7 @@ class ReadFiles(
         # ``Filter`` above the new ``ReadFiles``. Without this, we'd keep
         # the splittable parts and silently drop the residual — letting
         # rows through that the original predicate would have rejected.
-        return Filter(
-            predicate_expr=split.residual_predicate, input_dependencies=[new_op]
-        )
+        return Filter(predicate_expr=residual_predicate, input_dependencies=[new_op])
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -458,6 +468,11 @@ class ListFiles(LogicalOperator, SourceOperator):
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None
+    # Disjoint from ``predicate``: ``ReadFiles.apply_predicate`` routes
+    # partition columns here and data columns there. An indexer whose catalog
+    # records partition values (e.g. the Delta transaction log) can skip whole
+    # files from this without touching the filesystem.
+    partition_predicate: Optional[Expr] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list

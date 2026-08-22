@@ -175,6 +175,10 @@ class ArrowFileScanner(
         return replace(self, partition_predicate=combined)
 
     @override
+    def pushed_partition_predicate(self) -> Optional["Expr"]:
+        return self.partition_predicate
+
+    @override
     def prune_manifest(self, manifest: FileManifest) -> FileManifest:
         """Filter manifest to only files matching ``self.partition_predicate``.
 

@@ -622,13 +622,14 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
-            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
-            driver-side first-file sampling for schema inference,
-            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to True;
-            override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
-            V2). Parquet is the only reader migrated to V2 so far; the others
-            read through V1 for now regardless of this flag.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
+            ``ray.data.read_delta()`` route through the DataSourceV2 pipeline
+            (``ListFiles → ReadFiles`` logical chain, driver-side sampling for
+            schema inference, ``ParquetScanner`` / ``ParquetFileReader``).
+            Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
+            (``0`` for V1, ``1`` for V2). Parquet and Delta are the readers
+            migrated to V2 so far; the others read through V1 for now
+            regardless of this flag.
         parquet_chunker_target_chunk_size: Target chunk size in bytes used by
             ``ParquetFileChunker`` when splitting large Parquet files into
             multiple read tasks. When ``None``, the chunker's built-in default

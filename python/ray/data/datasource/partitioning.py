@@ -27,6 +27,11 @@ if TYPE_CHECKING:
 PartitionDataType = Type[Union[int, float, str, bool]]
 logger = logging.getLogger(__name__)
 
+#: Directory name Hive and Delta Lake write when a partition value is null.
+#: Pass it as ``Partitioning(null_fallback=...)`` to parse such a directory
+#: back to ``None`` instead of the literal string.
+HIVE_DEFAULT_PARTITION = "__HIVE_DEFAULT_PARTITION__"
+
 
 @DeveloperAPI
 class PartitionStyle(str, Enum):
@@ -106,6 +111,12 @@ class Partitioning:
     field_types: Optional[Dict[str, PartitionDataType]] = None
     #: Filesystem that will be used for partition path file I/O.
     filesystem: Optional["pyarrow.fs.FileSystem"] = None
+    #: Directory-name placeholder that stands for a null partition value, parsed
+    #: back as ``None``. Writers that encode nulls in the path use a sentinel
+    #: string -- Hive and Delta Lake both use ``__HIVE_DEFAULT_PARTITION__``.
+    #: Left unset, such a directory parses as that literal string, which is the
+    #: long-standing behavior for ``read_parquet``.
+    null_fallback: Optional[str] = None
 
     def __post_init__(self):
         if self.base_dir is None:
@@ -288,7 +299,20 @@ class PathPartitionParser:
         partitions: Dict[str, str] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
-            partitions[field] = _cast_value(partitions[field], data_type)
+            # ``field_types`` describes the scheme, not any one path, so a typed
+            # field need not appear in every path. A file outside -- or at the
+            # first level of -- ``base_dir`` is unpartitioned and parses to
+            # ``{}``, which both ``Partitioning.base_dir`` and
+            # ``PathPartitionFilter`` document as supported. Indexing blindly
+            # would raise ``KeyError`` and take those files down.
+            if field not in partitions:
+                continue
+            value = partitions[field]
+            # ``null_fallback`` already resolved this directory to a null;
+            # there is nothing to coerce, and ``_cast_value`` would raise.
+            if value is None:
+                continue
+            partitions[field] = _cast_value(value, data_type)
 
         return partitions
 
@@ -399,6 +423,16 @@ class PathPartitionParser:
         #       ensure the values are consistent when you read them back, we need to
         #       URL-decode them. See https://github.com/apache/arrow/issues/34905.
         kv_pairs = [[key, urllib.parse.unquote(value)] for key, value in kv_pairs]
+
+        # A path can't hold a null, so writers substitute a sentinel directory
+        # name. Map it back before any type coercion -- casting the sentinel to
+        # the column's real type fails outright.
+        null_fallback = self._scheme.null_fallback
+        if null_fallback is not None:
+            kv_pairs = [
+                [key, None if value == null_fallback else value]
+                for key, value in kv_pairs
+            ]
 
         field_names = self._scheme.field_names
         if field_names and kv_pairs:
