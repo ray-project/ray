@@ -842,12 +842,21 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
         ds2.take_all()
 
 
+@pytest.mark.parametrize(
+    "overshoot_ratio, pressure_fraction",
+    [(None, None), (1.5, 0.8)],
+)
 def test_e2e_liveness_with_output_backpressure_edge_case(
-    ray_start_10_cpus_shared, restore_data_context
+    ray_start_10_cpus_shared, restore_data_context, overshoot_ratio, pressure_fraction
 ):
     # At least one operator is ensured to be running, if the output becomes idle.
+    # Parametrized over the default (both thresholds unset, matching master) and the
+    # configured case, since the throttle and the bounded fallback are both gated on
+    # these thresholds.
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
+    ctx.object_store_reservation_overshoot_ratio = overshoot_ratio
+    ctx.object_store_memory_pressure_fraction = pressure_fraction
     ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
         object_store_memory=1
     )

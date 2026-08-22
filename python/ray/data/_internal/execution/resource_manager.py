@@ -527,6 +527,22 @@ class ResourceManager:
             for op in self._get_downstream_ineligible_ops(op)
         )
 
+    def _feeds_blocking_materializing_op(self, op: PhysicalOperator) -> bool:
+        """Whether a blocking, materializing operator consumes ``op``'s output.
+
+        Unlike ``_is_blocking_materializing_op``, eligibility is irrelevant: this
+        asks whether some downstream stage can't emit until ``op`` finishes
+        feeding it, which holds for every member of
+        ``_BLOCKING_MATERIALIZING_OPERATORS``.
+
+        Only the immediate consumer counts. In ``Map1 -> Map2 -> Join`` it's Map2
+        that holds the line, and exempting it keeps Map1 from backing up.
+        """
+        return any(
+            isinstance(downstream_op, _BLOCKING_MATERIALIZING_OPERATORS)
+            for downstream_op in self.get_downstream_eligible_ops(op)
+        )
+
 
 def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
@@ -648,11 +664,40 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     worse performance. And vice versa.
     """
 
-    def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
+    def __init__(
+        self,
+        resource_manager: ResourceManager,
+        reservation_ratio: float,
+        object_store_reservation_overshoot_ratio: Optional[float],
+        object_store_memory_pressure_fraction: Optional[float],
+    ):
         super().__init__(resource_manager)
 
         self._reservation_ratio = reservation_ratio
         assert 0.0 <= self._reservation_ratio <= 1.0
+        # The shared-allocation throttle requires both thresholds. The pressure
+        # threshold also enables the bounded task-submission liveness fallback.
+        if (
+            object_store_reservation_overshoot_ratio is not None
+            and not 1.0 <= object_store_reservation_overshoot_ratio < math.inf
+        ):
+            raise ValueError(
+                "object_store_reservation_overshoot_ratio must be None or a finite "
+                f"float >= 1.0, got {object_store_reservation_overshoot_ratio}"
+            )
+        if object_store_memory_pressure_fraction is not None and not (
+            0.0 < object_store_memory_pressure_fraction <= 1.0
+        ):
+            raise ValueError(
+                "object_store_memory_pressure_fraction must be None or in the "
+                f"range (0.0, 1.0], got {object_store_memory_pressure_fraction}"
+            )
+        self._object_store_reservation_overshoot_ratio = (
+            object_store_reservation_overshoot_ratio
+        )
+        self._object_store_memory_pressure_fraction = (
+            object_store_memory_pressure_fraction
+        )
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
         # Memory reserved exclusively for the outputs of each operator.
@@ -775,13 +820,28 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if budget is None:
             return True
 
+        if not op.incremental_resource_usage().satisfies_limit(budget):
+            return False
+
+        if not self._is_task_submission_blocked_on_output_budget(op, budget):
+            return True
+
+        # If an idle operator already has input, let one task consume it rather
+        # than releasing more upstream output. This bounds the liveness fallback
+        # to one task per operator while the execution is under memory pressure.
         return (
-            op.incremental_resource_usage().satisfies_limit(budget)
-            and
-            # Avoid scheduling if there's no more Object Store budget (for
-            # task outputs)
-            budget.object_store_memory
-            >= (op.metrics.obj_store_mem_max_pending_output_per_task or 0)
+            op.num_active_tasks() == 0
+            and self._topology[op].total_enqueued_input_blocks() > 0
+            and self._is_execution_object_store_under_pressure()
+        )
+
+    @staticmethod
+    def _is_task_submission_blocked_on_output_budget(
+        op: PhysicalOperator, budget: ExecutionResources
+    ) -> bool:
+        """Whether the task-output estimate exceeds the remaining budget."""
+        return budget.object_store_memory < (
+            op.metrics.obj_store_mem_max_pending_output_per_task or 0
         )
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
@@ -823,6 +883,93 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         assert res >= 0
         self._output_budgets[op] = res
         return res
+
+    def _is_execution_object_store_under_pressure(self) -> bool:
+        """Whether this execution exceeds the configured fraction of its
+        object-store memory limit.
+
+        When the limit is unknown (<=0), pressure can't be measured, so this
+        returns False -- leaving the throttle and liveness fallback disabled and
+        preserving the normal liveness behavior.
+        """
+        if self._object_store_memory_pressure_fraction is None:
+            return False
+        object_store_limit = (
+            self._resource_manager.get_global_limits().object_store_memory
+        )
+        if object_store_limit <= 0:
+            return False
+        object_store_usage = (
+            self._resource_manager.get_global_usage().object_store_memory
+        )
+        return (
+            object_store_usage
+            > self._object_store_memory_pressure_fraction * object_store_limit
+        )
+
+    def _is_op_overshooting_object_store_reservation(
+        self, op: PhysicalOperator
+    ) -> bool:
+        """Whether ``op`` should be excluded from this round's shared allocation.
+
+        The op is dropped from the whole shared pool, not just its object-store
+        share: granting shared object-store budget would directly undo the
+        throttle, and shared CPU/GPU without it would only fund task submissions
+        the throttle is trying to suppress. The op keeps its own reservation, so
+        the bounded fallback in ``can_submit_new_task`` can still run one task
+        and preserve liveness.
+
+        Off unless both thresholds are set. Operators that are, or that feed, a
+        blocking materializing operator are always exempt. Otherwise both
+        conditions must hold:
+
+        1. ``op``'s object-store usage exceeds
+           ``object_store_reservation_overshoot_ratio`` times its total
+           reservation (``_op_reserved`` + ``_reserved_for_op_outputs``). The
+           >1x headroom absorbs the ordinary fluctuation of the op's own output
+           buffer; a zero reservation is skipped so an under-provisioned op
+           isn't permanently excluded.
+        2. This execution's object-store usage is above
+           ``object_store_memory_pressure_fraction`` of this execution's limit
+           -- below that threshold throttling would only slow the pipeline.
+        """
+        if (
+            self._object_store_reservation_overshoot_ratio is None
+            or self._object_store_memory_pressure_fraction is None
+        ):
+            return False
+        # Never throttle a materializer or its feeder: the materializer emits
+        # nothing until fully fed, so slowing the feeder just delays the release
+        # of everything it holds.
+        #
+        # Two checks because they ask different questions.
+        # `_is_blocking_materializing_op` only walks ineligible deps, i.e. "is a
+        # downstream materializer billed to me" -- right for the unbounded-budget
+        # grant in `update_budgets`, but blind to the hash-shuffle family, which
+        # bills itself. `_feeds_blocking_materializing_op` covers those.
+        #
+        # NOTE: The grant in `update_budgets` intentionally keeps only the first
+        #       check. Widening it there would remove object-store backpressure
+        #       from every hash-shuffle feeder.
+        if self._resource_manager._is_blocking_materializing_op(op):
+            return False
+        if self._resource_manager._feeds_blocking_materializing_op(op):
+            return False
+        total_reserved_os = (
+            self._op_reserved[op].object_store_memory
+            + self._reserved_for_op_outputs[op]
+        )
+        if total_reserved_os <= 0:
+            return False
+        op_usage_os = self._resource_manager.get_op_usage(
+            op, include_ineligible_downstream=True
+        ).object_store_memory
+        if (
+            op_usage_os
+            <= self._object_store_reservation_overshoot_ratio * total_reserved_os
+        ):
+            return False
+        return self._is_execution_object_store_under_pressure()
 
     def update_budgets(
         self,
@@ -872,10 +1019,20 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
 
+        # Pre-filter (instead of `continue` inside the loop below) so the
+        # sliding-fraction divisor stays aligned with the number of ops still
+        # receiving a share -- otherwise `remaining_shared` doesn't shrink on
+        # skipped iterations and the split skews toward upstream.
+        non_overshooting_ops = [
+            op
+            for op in eligible_ops
+            if not self._is_op_overshooting_object_store_reservation(op)
+        ]
+
         # Allocate the remaining shared resources to each operator.
-        for i, op in enumerate(reversed(eligible_ops)):
+        for i, op in enumerate(reversed(non_overshooting_ops)):
             # By default, divide the remaining shared resources equally.
-            op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
+            op_shared = remaining_shared.scale(1.0 / (len(non_overshooting_ops) - i))
             # But if the op's budget is less than `min_scheduling_resources`,
             # it will be useless. So we'll let the downstream operator
             # borrow some resources from the upstream operator, if remaining_shared
@@ -914,9 +1071,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._op_budgets[op] = self._op_budgets[op].add(op_shared)
 
         # Give any remaining shared resources to the most downstream uncapped op.
-        # This can happen when some ops have their shared allocation capped.
-        if eligible_ops and not remaining_shared.is_zero():
-            for op in reversed(eligible_ops):
+        # Iterating the pre-filtered list ensures leftover object-store budget
+        # doesn't undo the throttle. Note this withholds the leftover CPU/GPU too:
+        # if the only uncapped op is being throttled, the leftover stays
+        # unallocated and the cluster may briefly idle. That's accepted because
+        # the split is recomputed from fresh usage next iteration.
+        if non_overshooting_ops and not remaining_shared.is_zero():
+            for op in reversed(non_overshooting_ops):
                 _, max_resource_usage = op.min_max_resource_requirements()
                 if max_resource_usage == ExecutionResources.inf():
                     self._op_budgets[op] = self._op_budgets[op].add(remaining_shared)
