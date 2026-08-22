@@ -266,9 +266,34 @@ myst_enable_extensions = [
     "colon_fence",
     "smartquotes",
     "replacements",
+    "substitution",
 ]
 
 myst_heading_anchors = 4
+
+# Reusable prose fragments for deprecation notices.
+#
+# A deprecation timeline that engineering and product have publicly committed to is a
+# real future event, so these fragments say "will". Keeping the wording here rather than
+# in the pages does three things: every notice reads the same, the phrasing changes in
+# one place, and the sentence sits outside the paths Vale lints, so the blanket
+# `Google.Will` rule can keep guarding ordinary prose.
+#
+# Pages supply the values through front matter. See doc/source/_includes/README.md.
+myst_substitutions = {
+    "deprecation_planned": (
+        "Ray will deprecate {{ deprecated_feature }} in Ray {{ deprecated_in }}."
+        '{{ " Use " + deprecation_replacement + " instead."'
+        ' if deprecation_replacement is defined else "" }}'
+    ),
+    "deprecation_notice": (
+        "Ray deprecated {{ deprecated_feature }} in Ray {{ deprecated_in }} and will "
+        'remove it in {{ ("Ray " + removed_in) if removed_in is defined'
+        ' else "a future release" }}.'
+        '{{ " Use " + deprecation_replacement + " instead."'
+        ' if deprecation_replacement is defined else "" }}'
+    ),
+}
 
 # Add these for attachment handling
 nb_render_key_pairs = {
@@ -400,6 +425,10 @@ autogen_files = AUTOGEN_FILES
 exclude_patterns = [
     # Committed intersphinx inventory snapshots + refresh tooling, not docs.
     "_intersphinx/**",
+    # Prose fragments spliced into pages with `include`, not pages themselves.
+    # They reference substitutions the including page supplies, so building them
+    # standalone raises an undefined-substitution error and a missing-toctree warning.
+    "_includes/**",
     "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
