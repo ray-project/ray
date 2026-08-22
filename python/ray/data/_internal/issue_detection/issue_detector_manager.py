@@ -43,7 +43,7 @@ class IssueDetectorManager:
         # consumer thread that checks the set of detected issues on shutdown (in the usage callback).
         self._detected_issues_lock = threading.Lock()
 
-    def invoke_detectors(self) -> None:
+    def invoke_detectors(self, force: bool = False) -> None:
         curr_time = time.perf_counter()
         issues = []
         for detector in self._issue_detectors:
@@ -51,25 +51,32 @@ class IssueDetectorManager:
                 continue
 
             if (
-                curr_time - self._last_detection_times[detector]
+                force
+                or curr_time - self._last_detection_times[detector]
                 > detector.detection_time_interval_s()
             ):
                 issues.extend(detector.detect())
 
                 self._last_detection_times[detector] = time.perf_counter()
 
-        self._report_issues(issues)
+        self._report_issues(issues, reset_existing_indicators=not force)
 
-    def _report_issues(self, issues: List[Issue]) -> None:
+    def _report_issues(
+        self,
+        issues: List[Issue],
+        *,
+        reset_existing_indicators: bool = True,
+    ) -> None:
         operators: Dict[str, "PhysicalOperator"] = {}
         op_to_id: Dict["PhysicalOperator", str] = {}
         for i, operator in enumerate(self.executor._topology.keys()):
             operators[operator.id] = operator
             op_to_id[operator] = self.executor._get_operator_id(operator, i)
-            # Reset issue detector metrics for each operator so that previous issues
-            # don't affect the current ones.
-            operator.metrics._issue_detector_hanging = 0
-            operator.metrics._issue_detector_high_memory = 0
+            if reset_existing_indicators:
+                # Regular detection replaces the current issue indicators. A forced
+                # final pass preserves indicators reported by earlier detections.
+                operator.metrics._issue_detector_hanging = 0
+                operator.metrics._issue_detector_high_memory = 0
 
         for issue in issues:
             logger.warning(issue.message)
