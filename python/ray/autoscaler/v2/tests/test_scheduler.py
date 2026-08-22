@@ -3638,6 +3638,178 @@ class TestSchedulerPerformanceOptimizations:
         # Existing nodes can handle all requests (5 nodes × 10 CPU ÷ 2 CPU = 25 slots).
         assert to_launch == {}
 
+    def test_quick_reject_cpu_exhausted_but_memory_available(self):
+        """Nodes with CPU exhausted but memory available should be skipped."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1, "memory": 1000},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # CPU is fully used but memory is abundant.
+        instances = []
+        for i in range(50):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 800},
+                        total_resources={"CPU": 1, "memory": 1000},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+
+        # All requests need both CPU and memory.
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 0.2, "memory": 30})]
+            * 10,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # 50 nodes have CPU=0, no request (needing CPU=0.2) can fit.
+        # 10 requests * 0.2 CPU, each new node has 1 CPU -> need 2 nodes.
+        assert to_launch == {"type_1": 2}
+
+    def test_quick_reject_mixed_shapes_or_across_shapes(self):
+        """Nodes kept if they can fit at least one request shape (OR across shapes).
+
+        Scenario: two types of requests with different resource shapes.
+        - Shape A: {CPU: 2} (CPU-only)
+        - Shape B: {GPU: 1} (GPU-only)
+        Nodes have CPU available but no GPU. They should NOT be rejected because
+        shape A can still fit (OR across shapes keeps the node).
+        """
+        node_type_configs = {
+            "type_cpu": NodeTypeConfig(
+                name="type_cpu",
+                resources={"CPU": 8},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+            "type_gpu": NodeTypeConfig(
+                name="type_gpu",
+                resources={"CPU": 4, "GPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # CPU nodes with available CPU but no GPU.
+        instances = []
+        for i in range(3):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_cpu",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_cpu-{i}",
+                        node_id=f"r{i}type_cpu",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_cpu".encode("utf-8"),
+                        ray_node_type_name="type_cpu",
+                        available_resources={"CPU": 4},
+                        total_resources={"CPU": 8},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_cpu-{i}",
+                )
+            )
+
+        # Mix of CPU-only and GPU-only requests.
+        resource_requests = [ResourceRequestUtil.make({"CPU": 2})] * 4 + [
+            ResourceRequestUtil.make({"GPU": 1})
+        ] * 2
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # CPU requests: 4 × 2 CPU = 8 CPU needed. 3 nodes × 4 CPU avail = 12 CPU.
+        # Existing CPU nodes can handle all CPU requests (no new CPU nodes needed).
+        # GPU requests: 2 × 1 GPU. No existing node has GPU → need new GPU nodes.
+        # type_gpu has 1 GPU each → need 2 GPU nodes.
+        assert to_launch == {"type_gpu": 2}
+
+    def test_quick_reject_mixed_shapes_all_exhausted(self):
+        """Nodes rejected when they cannot fit ANY request shape.
+
+        Scenario: two types of requests with different resource shapes.
+        - Shape A: {CPU: 2, memory: 100}
+        - Shape B: {GPU: 1}
+        Nodes have CPU=0 (exhausted) and no GPU. Neither shape can fit, so the
+        node should be rejected by the pre-filter.
+        """
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 4, "memory": 500},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+            "type_gpu": NodeTypeConfig(
+                name="type_gpu",
+                resources={"CPU": 1, "GPU": 1, "memory": 500},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # Nodes with CPU exhausted, plenty of memory, no GPU.
+        instances = []
+        for i in range(5):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 400},
+                        total_resources={"CPU": 4, "memory": 500},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+
+        # Shape A needs CPU+memory; Shape B needs GPU.
+        # Existing nodes have CPU=0 (fails shape A) and no GPU (fails shape B).
+        resource_requests = [
+            ResourceRequestUtil.make({"CPU": 2, "memory": 100})
+        ] * 3 + [ResourceRequestUtil.make({"GPU": 1})] * 2
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # All existing nodes are rejected (can't fit shape A or B).
+        # Shape A: 3 × {CPU:2, memory:100}. type_1 has 4 CPU, 500 mem → fits 2/node → need 2.
+        # Shape B: 2 × {GPU:1}. type_gpu has 1 GPU each (CPU=1 can't fit shape A) → need 2.
+        assert to_launch == {"type_1": 2, "type_gpu": 2}
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
