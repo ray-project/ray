@@ -70,6 +70,7 @@ import gc
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -528,6 +529,13 @@ def main():
     if jemalloc:
         arm_defs["rs_jemalloc"] = ("rs", {"LD_PRELOAD": jemalloc})
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
+    # rs_trim<N>: glibc trim threshold at N MiB (rs_trim alone = 0 = every free).
+    # Sweeping N asks how much of rs_trim's floor collapse survives at a
+    # threshold cheap enough to leave wall time intact.
+    for a in arms:
+        m = re.fullmatch(r"rs_trim(\d+)", a)
+        if m and a not in arm_defs:
+            arm_defs[a] = ("rs", {"MALLOC_TRIM_THRESHOLD_": str(int(m.group(1)) * MiB)})
     if "rs_jemalloc" in arms and not jemalloc:
         print(
             "WARNING: rs_jemalloc arm skipped - no libjemalloc found "
