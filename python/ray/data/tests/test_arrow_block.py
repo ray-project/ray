@@ -19,6 +19,7 @@ from ray.data._internal.arrow_block import (
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 
@@ -471,6 +472,34 @@ def test_to_pandas_does_not_downcast_out_of_range_floats(
     assert len(df) == 2
     assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
     assert float_value in df["v"].dropna().tolist()
+
+
+
+def test_normalize_block_types_picks_majority_type():
+    # normalize_block_types with target_block_type=None must convert every block
+    # to the *most prevalent* block type to minimize conversions, per its
+    # docstring. Regression test for the tuple being unpacked in the wrong order
+    # (the count was assigned to target_block_type instead of the block type),
+    # which silently coerced every mixed-type input to pandas.
+    arrow1 = pa.table({"id": [1, 2]})
+    arrow2 = pa.table({"id": [3, 4]})
+    pandas1 = pd.DataFrame({"id": [5, 6]})
+
+    # Arrow is the majority (2 vs. 1) -> normalize to Arrow.
+    normalized = TableBlockAccessor.normalize_block_types(
+        [arrow1, arrow2, pandas1], target_block_type=None
+    )
+    assert all(isinstance(b, pa.Table) for b in normalized), [
+        type(b) for b in normalized
+    ]
+
+    # pandas is the majority (2 vs. 1) -> normalize to pandas.
+    normalized = TableBlockAccessor.normalize_block_types(
+        [pandas1, pd.DataFrame({"id": [7, 8]}), arrow1], target_block_type=None
+    )
+    assert all(isinstance(b, pd.DataFrame) for b in normalized), [
+        type(b) for b in normalized
+    ]
 
 
 if __name__ == "__main__":
