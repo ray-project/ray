@@ -308,6 +308,11 @@ class TestIsRemotePath:
             is True
         )
 
+    def test_az_paths(self):
+        """Test az:// path detection."""
+        assert is_remote_path("az://container/path") is True
+        assert is_remote_path("az://container") is True
+
     def test_local_paths(self):
         """Test local path detection."""
         assert is_remote_path("/local/path") is False
