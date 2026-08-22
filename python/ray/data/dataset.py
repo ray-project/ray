@@ -53,7 +53,10 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
+from ray.data._internal.datasource.webdataset_datasink import (
+    WebDatasetDatasink,
+    WebDatasetEncoderConfig,
+)
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.executor import OutputIterator
@@ -5320,20 +5323,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
-        encoder: Optional[
-            Union[
-                bool,
-                str,
-                Callable[[Dict[str, Any]], Dict[str, Any]],
-                List[
-                    Union[
-                        bool,
-                        str,
-                        Callable[[Dict[str, Any]], Dict[str, Any]],
-                    ]
-                ],
-            ]
-        ] = True,
+        encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5346,9 +5336,8 @@ class Dataset:
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
 
-        Unless a custom filename provider is given, the format of the output
-        files is ``{uuid}_{block_idx}.tar``, where ``uuid`` is a unique id
-        for the dataset.
+        Unless a custom filename provider is given, generated output filenames end
+        in ``.tar``.
 
         Examples:
 
