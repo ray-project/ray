@@ -12,6 +12,9 @@ from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     BlockMapTransformFn,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
+    ShuffleReduceOp,
+)
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
     Filter,
@@ -59,6 +62,26 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
     assert isinstance(input, InputDataBuffer)
     assert physical_op in input.output_dependencies, input.output_dependencies
     assert physical_op._logical_operators == [read_op, op]
+
+
+def test_map_with_task_kwargs_not_fused_with_all_to_all(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    DataContext.get_current().enable_dereference_object_refs_in_fn_args = True
+
+    def map_fn(row, arg):
+        assert arg == 1
+        return row
+
+    ds = (
+        ray.data.range(1)
+        .map(map_fn, fn_args=(ray.put(1),))
+        .random_shuffle()
+        .materialize()
+    )
+
+    assert ds.take_all() == [{"id": 0}]
+    assert "Map(map_fn)->RandomShuffle" not in ds.stats()
 
 
 def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
@@ -571,6 +594,29 @@ def test_fuse_map_into_shuffle_reduce(
     )
     assert dag._fused_output_map_transformer is not None
 
+    assert sorted(extract_values("id", ds.take_all())) == list(range(100))
+
+
+def test_map_with_task_kwargs_not_fused_into_shuffle_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.enable_dereference_object_refs_in_fn_args = True
+
+    def map_fn(row, arg):
+        assert arg == 1
+        return row
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"])
+        .map(map_fn, fn_args=(ray.put(1),))
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert isinstance(dag, MapOperator)
+    assert isinstance(dag.input_dependencies[0], ShuffleReduceOp)
     assert sorted(extract_values("id", ds.take_all())) == list(range(100))
 
 

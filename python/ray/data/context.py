@@ -215,6 +215,10 @@ DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
+DEFAULT_ENABLE_DEREFERENCE_OBJECT_REFS_IN_FN_ARGS = env_bool(
+    "RAY_DATA_ENABLE_DEREFERENCE_OBJECT_REFS_IN_FN_ARGS", False
+)
+
 
 # `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
 # shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
@@ -666,6 +670,12 @@ class DataContext:
             ``get_object_locations`` for metrics. This is useful for tracking whether
             the object input of a task is local (cache hit) or not local (cache miss)
             to the node that task is running on.
+        enable_dereference_object_refs_in_fn_args: Whether Ray Data passes direct
+            ``ObjectRef`` values in UDF ``fn_args`` as top-level task arguments so Ray
+            Core dereferences them before invoking the UDF. Defaults to ``False`` for
+            backward compatibility. Set
+            ``RAY_DATA_ENABLE_DEREFERENCE_OBJECT_REFS_IN_FN_ARGS=1`` to enable this
+            behavior by default.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.
@@ -971,6 +981,9 @@ class DataContext:
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
+    )
+    enable_dereference_object_refs_in_fn_args: bool = (
+        DEFAULT_ENABLE_DEREFERENCE_OBJECT_REFS_IN_FN_ARGS
     )
     write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
     warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES

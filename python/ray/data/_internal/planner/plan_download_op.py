@@ -135,7 +135,7 @@ def plan_download_op(
             enable_true_multi_threading=True,
         )
 
-        fn, init_fn = _get_udf(
+        fn, init_fn, resolve_fn_args, map_task_kwargs = _get_udf(
             partition_cls,
             (),
             {},
@@ -143,7 +143,7 @@ def plan_download_op(
             {},
             compute=metadata_compute,
         )
-        block_fn = _generate_transform_fn_for_map_batches(fn)
+        block_fn = _generate_transform_fn_for_map_batches(fn, resolve_fn_args)
 
         metadata_transform_fns = [
             BlockMapTransformFn(
@@ -162,6 +162,7 @@ def plan_download_op(
             split_map_operator,
             data_context,
             name=f"PlanDownloadBlocks({uri_column_names_str})",
+            map_task_kwargs=map_task_kwargs,
             # NOTE: The metadata planning actor doesn't use the user-provided
             #       `ray_remote_args` since those only apply to the actual
             #       download tasks. Planning is a lightweight internal operation
@@ -186,7 +187,7 @@ def plan_download_op(
         if not OBSTORE_AVAILABLE:
             _log_fallback_warning()
 
-    fn, init_fn = _get_udf(
+    fn, init_fn, resolve_fn_args, map_task_kwargs = _get_udf(
         download_fn,
         (uri_column_names, output_bytes_column_names, data_context, filesystem),
         {},
@@ -195,7 +196,7 @@ def plan_download_op(
         None,
     )
 
-    download_transform_fn = _generate_transform_fn_for_map_batches(fn)
+    download_transform_fn = _generate_transform_fn_for_map_batches(fn, resolve_fn_args)
     transform_fns = [
         BlockMapTransformFn(
             download_transform_fn,
@@ -217,6 +218,7 @@ def plan_download_op(
         data_context,
         name=f"DownloadURIBytes({uri_column_names_str})",
         compute_strategy=download_compute,
+        map_task_kwargs=map_task_kwargs,
         ray_remote_args=ray_remote_args,
     )
 
