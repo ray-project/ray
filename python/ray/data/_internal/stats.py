@@ -681,7 +681,7 @@ class _StatsActor:
 
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
-    ) -> Dict[str, Metric]:
+    ) -> Dict[str, Union[Metric, Dict[str, Gauge]]]:
         metrics = {}
         for metric in OpRuntimeMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
@@ -709,6 +709,15 @@ class _StatsActor:
                     description=metric_description,
                     tag_keys=tag_keys,
                 )
+            elif metric.metrics_type == MetricsType.Distribution:
+                metrics[metric.name] = {
+                    statistic: Gauge(
+                        f"{metric_name}_{statistic}",
+                        description=f"{metric_description} ({statistic})",
+                        tag_keys=tag_keys,
+                    )
+                    for statistic in metric.metrics_args["statistics"]
+                }
         return metrics
 
     def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
@@ -731,14 +740,14 @@ class _StatsActor:
     def update_execution_metrics(
         self,
         dataset_tag: str,
-        op_metrics: List[Dict[str, int | float]],
+        op_metrics: List[Dict[str, Any]],
         operator_tags: List[str],
         state: Dict[str, Any],
         per_node_metrics: Optional[Dict[str, Dict[str, int | float]]] = None,
     ):
         def _record(
-            prom_metric: Metric,
-            value: Union[int, float, List[int]],
+            prom_metric: Union[Metric, Dict[str, Gauge]],
+            value: Any,
             tags: Dict[str, str] = None,
         ):
             if isinstance(prom_metric, Gauge):
@@ -748,6 +757,13 @@ class _StatsActor:
             elif isinstance(prom_metric, Histogram):
                 if isinstance(value, RuntimeMetricsHistogram):
                     value.export_to(prom_metric, tags)
+            elif isinstance(prom_metric, dict) and isinstance(value, dict):
+                if value.get("num_samples", 0) == 0:
+                    return
+                for statistic, gauge in prom_metric.items():
+                    statistic_value = value.get(statistic)
+                    if statistic_value is not None:
+                        gauge.set(statistic_value, tags)
 
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
