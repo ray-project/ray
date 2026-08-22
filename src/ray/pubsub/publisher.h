@@ -197,6 +197,24 @@ class SubscriptionIndex {
   int64_t GetNumBufferedBytes() const;
 
   /**
+   * @brief Returns the number of subscribers subscribed to all entities of
+   * the channel.
+   *
+   * @return Number of all-entity subscribers.
+   */
+  size_t GetNumAllEntitySubscribers() const {
+    return subscribers_to_all_->Subscribers().size();
+  }
+
+  /**
+   * @brief Returns the number of distinct entity keys with at least one
+   * keyed subscriber.
+   *
+   * @return Number of entity keys with keyed subscribers.
+   */
+  size_t GetNumKeySubscriptions() const { return entities_.size(); }
+
+  /**
    * @brief Checks if there's no metadata remaining in the private attributes.
    *
    * @return true if no metadata remains, false otherwise.
