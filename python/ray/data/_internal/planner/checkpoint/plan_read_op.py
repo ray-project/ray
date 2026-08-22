@@ -59,7 +59,8 @@ def create_checkpoint_filter_op(
     if info.type == fs.FileType.NotFound:
         return physical_input_op
 
-    checkpoint_manager = IdColumnCheckpointManager(
+    manager_cls = checkpoint_config.checkpoint_manager_cls or IdColumnCheckpointManager
+    checkpoint_manager = manager_cls(
         checkpoint_config=checkpoint_config,
         data_context=data_context,
     )

@@ -294,6 +294,22 @@ class TestCheckpointConfig:
         )
         assert config.checkpoint_filter_cls is NumpyArrayBasedCheckpointFilter
 
+    @pytest.mark.parametrize("manager_cls", [1, "not_a_class", int])
+    def test_invalid_checkpoint_manager_cls(self, manager_cls, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="`checkpoint_manager_cls` must be a subclass of `CheckpointManager`",
+        ):
+            CheckpointConfig(ID_COL, local_path, checkpoint_manager_cls=manager_cls)
+
+    def test_valid_checkpoint_manager_cls(self, local_path):
+        assert CheckpointConfig(ID_COL, local_path).checkpoint_manager_cls is None
+
+        config = CheckpointConfig(
+            ID_COL, local_path, checkpoint_manager_cls=IdColumnCheckpointManager
+        )
+        assert config.checkpoint_manager_cls is IdColumnCheckpointManager
+
 
 @pytest.mark.parametrize(
     "backend,fs,data_path",
@@ -416,6 +432,47 @@ def test_custom_checkpoint_filter_cls(
 
     # Pre-populate the checkpoint dir. The default filter would drop these IDs
     # on restore; the no-op filter must keep them.
+    checkpointed_ids = list(range(SAMPLE_DATA_NUM_ROWS // 2))
+    os.makedirs(ckpt_path, exist_ok=True)
+    pq.write_table(
+        pa.table({ID_COL: checkpointed_ids}),
+        os.path.join(ckpt_path, "pre_checkpoint.parquet"),
+    )
+
+    output_path = os.path.join(tmp_path, "output")
+    ds = ray.data.read_csv(csv_file)
+    ds.write_parquet(output_path)
+
+    # Disable checkpointing before reading back to avoid filtering.
+    ctx.checkpoint_config = None
+    ds_readback = ray.data.read_parquet(output_path)
+    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
+    assert actual_output == list(range(SAMPLE_DATA_NUM_ROWS))
+
+
+def test_custom_checkpoint_manager_cls(
+    ray_start_10_cpus_shared, generate_sample_data_csv, tmp_path
+):
+    """A custom `checkpoint_manager_cls` replaces the default manager during restore."""
+
+    class EmptyCheckpointManager(IdColumnCheckpointManager):
+        def load_checkpoint(self, data_file_dir=None, data_file_filesystem=None):
+            # Report no checkpoint data, so no filter operator is added.
+            return None, 0
+
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(tmp_path, "ckpt")
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        checkpoint_manager_cls=EmptyCheckpointManager,
+    )
+
+    csv_file = generate_sample_data_csv()
+
+    # Pre-populate the checkpoint dir. The default manager would load these
+    # IDs and filter them out on restore; the custom manager reports no
+    # checkpoint data, so every row must be written.
     checkpointed_ids = list(range(SAMPLE_DATA_NUM_ROWS // 2))
     os.makedirs(ckpt_path, exist_ok=True)
     pq.write_table(

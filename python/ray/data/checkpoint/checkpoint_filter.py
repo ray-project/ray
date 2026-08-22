@@ -167,8 +167,19 @@ def convert_and_sort_checkpointed_ids(
     return checkpointed_ids_ndarray, checkpoint_size
 
 
+@DeveloperAPI
 class CheckpointManager(abc.ABC):
-    """Manage checkpoint data."""
+    """Manage checkpoint data.
+
+    Subclasses passed as ``CheckpointConfig.checkpoint_manager_cls`` must have
+    a constructor accepting ``(checkpoint_config=..., data_context=...)``
+    keyword arguments, and their ``load_checkpoint`` must return an
+    ``(ObjectRef, int)`` tuple: the ref is passed opaquely to the configured
+    ``CheckpointFilter`` class's constructor, and the int (size in bytes) is
+    used for the per-actor memory reservation of the filter actors. Returning
+    ``(None, 0)`` means there is no checkpoint data to restore from, and the
+    checkpoint filter operator is not added to the plan.
+    """
 
     def __init__(
         self,
@@ -366,6 +377,7 @@ class CheckpointManager(abc.ABC):
         pass
 
 
+@DeveloperAPI
 class IdColumnCheckpointManager(CheckpointManager):
     """Manager for regular ID columns."""
 

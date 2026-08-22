@@ -4,14 +4,23 @@ __all__ = [
     "CheckpointConfig",
     "CheckpointBackend",
     "CheckpointFilter",
+    "CheckpointManager",
+    "IdColumnCheckpointManager",
     "NumpyArrayBasedCheckpointFilter",
 ]
 
+_LAZY_EXPORTS = (
+    "CheckpointFilter",
+    "CheckpointManager",
+    "IdColumnCheckpointManager",
+    "NumpyArrayBasedCheckpointFilter",
+)
+
 
 def __getattr__(name):
-    # Lazily import filter classes to avoid a circular import:
+    # Lazily import filter/manager classes to avoid a circular import:
     # checkpoint_filter -> ray.data.context -> this package.
-    if name in ("CheckpointFilter", "NumpyArrayBasedCheckpointFilter"):
+    if name in _LAZY_EXPORTS:
         from ray.data.checkpoint import checkpoint_filter
 
         return getattr(checkpoint_filter, name)
