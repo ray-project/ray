@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/object_recovery_manager.h"
 
+#include <future>
 #include <list>
 #include <memory>
 #include <string>
@@ -144,7 +145,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
             rpc::Address(),
             publisher_.get(),
             subscriber_.get(),
-            /*is_node_dead=*/[](const NodeID &) { return false; },
+            /*is_node_dead=*/
+            [this](const NodeID &node_id) { return dead_nodes_.contains(node_id); },
             /*free_object_on_nodes_async=*/
             [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
             *std::make_shared<ray::observability::FakeGauge>(),
@@ -183,7 +185,70 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
     io_context_.Stop();
   }
 
+  // Blocks until every callback already posted to the io_context has run. The
+  // io_context is single-threaded and posts are FIFO, so once this sentinel runs
+  // so have all callbacks posted before it -- including the memory store's async
+  // get callbacks, one of which clears ObjectRecoveryManager's pending-recovery
+  // set. Without this, a subsequent RecoverObject call would race that erase.
+  void DrainIoContext() {
+    std::promise<void> drained;
+    io_context_.GetIoService().post([&drained] { drained.set_value(); },
+                                    "TestOnly.DrainIoContext");
+    drained.get_future().wait();
+  }
+
+  // Simulates a node failure. In production the owner's GCS liveness view and
+  // its node-change callback are updated in the same call
+  // (NodeInfoAccessor::HandleNotification), so these two always happen together:
+  // nothing can observe is_node_dead() == true before the reference counter has
+  // reset the primary copies that lived on that node.
+  void KillNode(const NodeID &node_id) {
+    dead_nodes_.insert(node_id);
+    ref_counter_->ResetObjectsOnRemovedNode(node_id);
+  }
+
+  // Puts the OBJECT_IN_PLASMA sentinel that the owner uses to mark a large
+  // object as available.
+  void PutInPlasmaSentinel(const ObjectID &object_id) {
+    std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    memory_store_->Put(
+        RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>()),
+        object_id,
+        ref_counter_->HasReference(object_id));
+  }
+
+  // Simulates a resubmitted task finishing: its return value lands in plasma on
+  // `node_id` and the owner records the new primary copy. Drains the io_context
+  // so the recovery is fully settled -- i.e. not still pending -- on return.
+  void FinishReconstruction(const ObjectID &object_id, const NodeID &node_id) {
+    PutInPlasmaSentinel(object_id);
+    ref_counter_->UpdateObjectPinnedAtRaylet(object_id, node_id);
+    DrainIoContext();
+  }
+
+  NodeID PinnedAt(const ObjectID &object_id) {
+    bool owned_by_us = false;
+    NodeID pinned_at;
+    bool spilled = false;
+    RAY_CHECK(ref_counter_->IsPlasmaObjectPinnedOrSpilled(
+        object_id, &owned_by_us, &pinned_at, &spilled));
+    return pinned_at;
+  }
+
+  bool IsSpilled(const ObjectID &object_id) {
+    bool owned_by_us = false;
+    NodeID pinned_at;
+    bool spilled = false;
+    RAY_CHECK(ref_counter_->IsPlasmaObjectPinnedOrSpilled(
+        object_id, &owned_by_us, &pinned_at, &spilled));
+    return spilled;
+  }
+
   NodeID local_node_id_;
+  // Nodes the owner's GCS view considers dead. Mutated only via KillNode.
+  absl::flat_hash_set<NodeID> dead_nodes_;
   absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
   // Used by memory_store_.
@@ -546,6 +611,98 @@ TEST_F(ObjectRecoveryManagerTest, TestTaskCancelledReconstructionFails) {
   ASSERT_EQ(failed_reconstructions_[object_id],
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
   ASSERT_EQ(task_manager_->num_tasks_resubmitted, 0);
+}
+
+// Regression test for a stale spill report poisoning an object's location state.
+// This is the deterministic counterpart of
+// python/ray/tests/test_reconstruction_spilled_out_of_scope.py::
+// test_reconstruct_object_after_spill_report_from_dead_node, which needs an
+// injected RPC delay to line the same events up.
+//
+// A raylet reports a spilled location to the owner as a fire-and-forget location
+// update. If the reporting node dies while that update is in flight, the owner
+// applies a report describing a copy that no longer exists. Doing so must not
+// leave the reference claiming a location, or the owner will refuse to
+// reconstruct the object the next time its real copy is lost.
+TEST_F(ObjectRecoveryManagerTest, TestReconstructionAfterSpillReportFromDeadNode) {
+  const NodeID node_a = NodeID::FromRandom();
+  const NodeID node_b = NodeID::FromRandom();
+  const ObjectID object_id = ObjectID::FromRandom();
+
+  // 1. A task is submitted and its return value is pinned on node A.
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               LineageReconstructionEligibility::ELIGIBLE,
+                               /*add_local_ref=*/true);
+  task_manager_->AddTask(object_id.TaskId(), {});
+  ref_counter_->UpdateObjectPinnedAtRaylet(object_id, node_a);
+  // Node A spills the object and sends the owner a spilled-location update. The
+  // owner has not processed it yet -- it is applied in step 4.
+
+  // 2. Node A fails.
+  KillNode(node_a);
+  auto lost = ref_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(lost.size(), 1u);
+  ASSERT_EQ(lost[0], object_id);
+  memory_store_->Delete(lost);
+
+  // 3. The object is reconstructed successfully: no copy is left to pin, so the
+  //    task is resubmitted, and its output is pinned on node B.
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(task_manager_->num_tasks_resubmitted, 1);
+  ASSERT_TRUE(failed_reconstructions_.empty());
+  FinishReconstruction(object_id, node_b);
+  ASSERT_EQ(PinnedAt(object_id), node_b);
+  ASSERT_FALSE(IsSpilled(object_id));
+
+  // 4. Node A's spill report finally arrives, naming a node that is already
+  //    dead. This is the first spill report the owner has processed for this
+  //    object, so its stored spilled_node_id is still nil.
+  ASSERT_TRUE(ref_counter_->HandleObjectSpilled(object_id, "/tmp/spill/url", node_a));
+
+  // 5. The stale report must not be recorded as a location. `spilled` has to
+  //    stay false, and the live copy on node B has to keep its primary-copy
+  //    record -- node B's failure in step 6 matches on exactly that.
+  // Non-fatal so that a broken owner reports the whole chain of consequences
+  // below in one run, rather than stopping at the first corrupted field.
+  EXPECT_FALSE(IsSpilled(object_id))
+      << "a spill report naming a dead node was recorded as a live location";
+  EXPECT_EQ(PinnedAt(object_id), node_b)
+      << "a stale spill report discarded the primary copy on a different, live node";
+
+  // Any recovery the report asks for is a no-op: the object really is available
+  // on node B, so nothing is reconstructed.
+  for (const auto &id : ref_counter_->FlushObjectsToRecover()) {
+    ASSERT_FALSE(manager_.RecoverObject(id).has_value());
+  }
+  ASSERT_EQ(object_directory_->Flush(), 0);
+  ASSERT_EQ(task_manager_->num_tasks_resubmitted, 1);
+  DrainIoContext();
+
+  // 6. Node B fails, taking the last remaining copy with it.
+  KillNode(node_b);
+  lost = ref_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(lost.size(), 1u)
+      << "losing the last copy did not queue the object for recovery; the stale "
+         "spill report had already cleared the primary copy that this matches on";
+  ASSERT_EQ(lost[0], object_id);
+  memory_store_->Delete(lost);
+
+  // 7. So the task must be resubmitted again. Before the fix, HandleObjectSpilled
+  //    set `spilled` before checking node liveness and its dead-node branch never
+  //    assigned spilled_node_id, so UnsetObjectPrimaryCopy's
+  //    `spilled && !spilled_node_id.IsNil()` guard could not clear the flag.
+  //    RecoverObject's `pinned_at.IsNil() && !spilled` test then refused to
+  //    reconstruct an object it believed was still spilled somewhere.
+  ASSERT_FALSE(manager_.RecoverObject(object_id).has_value());
+  ASSERT_EQ(object_directory_->Flush(), 1);
+  ASSERT_EQ(task_manager_->num_tasks_resubmitted, 2)
+      << "the object's last copy was lost and it was never reconstructed";
+  ASSERT_TRUE(failed_reconstructions_.empty());
 }
 
 }  // namespace core
