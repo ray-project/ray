@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -48,7 +49,6 @@ from ray.serve._private.test_utils import (
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import (
@@ -410,18 +410,14 @@ def test_http_request_id(_skip_if_ff_not_enabled, serve_instance, use_fastapi: b
     assert r.text == "TEST-HEADER" and r.text == r.headers["x-request-id"]
 
 
-def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
-    pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
-
-
-def test_multiplexing_on_ingress_not_supported(_skip_if_ff_not_enabled, serve_instance):
-    """Model multiplexing on the ingress deployment is unsupported with direct ingress.
-
-    The multiplexed model ID is propagated through the proxy, which direct ingress
-    bypasses, so deploying such an app is rejected at build time with a clear error.
-    """
-
-    @serve.deployment(name="multiplexed-ingress")
+@pytest.mark.parametrize(
+    "header_name",
+    [SERVE_MULTIPLEXED_MODEL_ID, SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-")],
+)
+def test_multiplexed_model_id(
+    _skip_if_ff_not_enabled, serve_instance, header_name: str
+):
+    @serve.deployment
     class MultiplexedIngress:
         @serve.multiplexed(max_num_models_per_replica=2)
         async def load_model(self, model_id: str) -> str:
@@ -430,8 +426,13 @@ def test_multiplexing_on_ingress_not_supported(_skip_if_ff_not_enabled, serve_in
         async def __call__(self, request: Request) -> str:
             return await self.load_model(serve.get_multiplexed_model_id())
 
-    with pytest.raises(RayServeException, match="model multiplexing"):
-        serve.run(MultiplexedIngress.bind())
+    serve.run(MultiplexedIngress.bind())
+    response = httpx.get(
+        get_application_url("HTTP", from_proxy_manager=True),
+        headers={header_name: "adapter"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.text == "adapter"
 
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):
