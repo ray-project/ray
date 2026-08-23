@@ -87,6 +87,24 @@ class PDServingArgs(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
+    def _validate_lora_configs(self):
+        """Ensure P/D can resolve the same requested adapter on both legs."""
+        prefill_lora = self.prefill_config.lora_config
+        decode_lora = self.decode_config.lora_config
+        if (prefill_lora is None) != (decode_lora is None):
+            raise ValueError("P/D LoRA must be configured on both prefill and decode")
+        if (
+            prefill_lora is not None
+            and decode_lora is not None
+            and prefill_lora.dynamic_lora_loading_path
+            != decode_lora.dynamic_lora_loading_path
+        ):
+            raise ValueError(
+                "P/D prefill and decode LoRA loading paths must be the same"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_kv_transfer_config(self):
         """Validate that kv_transfer_config is set for both prefill and decode configs."""
         for config in [self.prefill_config, self.decode_config]:
