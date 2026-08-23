@@ -209,15 +209,9 @@ struct hash<ray::ResourceSet> {
     // Hash the underlying ResourceID -> FixedPoint map directly. GetResourceMap()
     // would allocate a fresh string-keyed map and take a lock per entry (via
     // ResourceID::Binary()) on every call, and this runs on the scheduling path.
-    size_t seed = k.Resources().size();
-    for (const auto &[id, quantity] : k.Resources()) {
-      // absl::HashOf mixes id and quantity with avalanche, so swapping
-      // quantities between resources or repeated quantities do not collide.
-      // XOR-accumulate entries so the result is independent of map iteration
-      // order, which is not stable for flat_hash_map.
-      seed ^= absl::HashOf(id.ToInt(), quantity.Double());
-    }
-    return seed;
+    // absl::Hash hashes the container itself, so the result does not depend on
+    // flat_hash_map's iteration order, which is not stable.
+    return absl::HashOf(k.Resources());
   }
 };
 }  // namespace std

@@ -116,7 +116,7 @@ TEST_F(ResourceSetTest, TestHashConsistentWithEquality) {
   ResourceSet e(map_e);
   EXPECT_NE(std::hash<ResourceSet>()(d), std::hash<ResourceSet>()(e));
 
-  // Repeated quantities on different resources must not cancel out.
+  // Repeated quantities on different resources must not collide.
   absl::flat_hash_map<std::string, double> map_f = {{"CPU", 1}, {"GPU", 1}};
   absl::flat_hash_map<std::string, double> map_g = {{"CPU", 2}, {"GPU", 2}};
   ResourceSet f(map_f);
