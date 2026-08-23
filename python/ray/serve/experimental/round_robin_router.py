@@ -18,6 +18,7 @@ from ray.serve._private.request_router.replica_wrapper import (
 )
 from ray.serve._private.request_router.request_router import (
     FIFOMixin,
+    MultiplexMixin,
     RequestRouter,
 )
 
@@ -54,7 +55,7 @@ class _RoundRobinReplicaRanks(Sequence[List[RunningReplica]]):
             yield [self._replicas[(self._start_index + offset) % num_replicas]]
 
 
-class RoundRobinRouter(FIFOMixin, RequestRouter):
+class RoundRobinRouter(FIFOMixin, MultiplexMixin, RequestRouter):
     """Routes requests by cycling through candidate replicas.
 
     Each call to ``choose_replicas`` advances a shared cursor by one position
@@ -75,14 +76,22 @@ class RoundRobinRouter(FIFOMixin, RequestRouter):
         candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> Sequence[List[RunningReplica]]:
-        if not candidate_replicas:
-            return []
-
         if pending_request is not None:
             # Enable exponential-backoff sleep between outer retry iterations.
             # Without this, the base class tight-loops calling choose_replicas
             # when every replica is at capacity.
             pending_request.routing_context.should_backoff = True
+
+            if pending_request.metadata.multiplexed_model_id:
+                candidate_replica_ids = self.apply_multiplex_routing(pending_request)
+                candidate_replicas = [
+                    replica
+                    for replica in candidate_replicas
+                    if replica.replica_id in candidate_replica_ids
+                ]
+
+        if not candidate_replicas:
+            return []
 
         index = self._round_robin_counter % len(candidate_replicas)
         self._round_robin_counter += 1

@@ -100,7 +100,7 @@ async def test_choose_replicas_round_robin_order(router):
 
 
 @pytest.mark.asyncio
-async def test_choose_replicas_ignores_request_metadata(router):
+async def test_prefers_loaded_model(router):
     replicas = [
         FakeRunningReplica("r0", model_ids={"model-a"}),
         FakeRunningReplica("r1"),
@@ -114,13 +114,13 @@ async def test_choose_replicas_ignores_request_metadata(router):
 
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-a"))
-    ) == [["r0"], ["r1"], ["r2"]]
+    ) == [["r0"], ["r2"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-a"))
-    ) == [["r1"], ["r2"], ["r0"]]
+    ) == [["r2"], ["r0"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-a"))
-    ) == [["r2"], ["r0"], ["r1"]]
+    ) == [["r0"], ["r2"]]
 
 
 @pytest.mark.parametrize(
