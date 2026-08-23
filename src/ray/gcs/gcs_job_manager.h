@@ -16,11 +16,14 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -30,6 +33,7 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/stats/metric.h"
 #include "ray/util/clock.h"
 #include "ray/util/event.h"
 #include "ray/util/thread_checker.h"
@@ -77,9 +81,20 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
         running_job_gauge_(running_job_gauge),
         finished_job_counter_(finished_job_counter),
         job_duration_in_seconds_gauge_(job_duration_in_seconds_gauge),
-        clock_(clock) {}
+        clock_(clock) {
+    function_manager_.SetJobReferenceReleasedCallback(
+        [this](const JobID &job_id) { OnJobReferenceReleased(job_id); });
+  }
+
+  ~GcsJobManager() override {
+    function_manager_.SetJobReferenceReleasedCallback(nullptr);
+  }
 
   void Initialize(const GcsInitData &gcs_init_data);
+
+  /// Rebuild finished-job retention state after all operational job references have
+  /// been restored, then incrementally trim persisted history to the configured cap.
+  void RestoreFinishedJobs(const GcsInitData &gcs_init_data);
 
   void HandleAddJob(rpc::AddJobRequest request,
                     rpc::AddJobReply *reply,
@@ -124,10 +139,18 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   void RecordMetrics();
 
  private:
+  using FinishedJobSortKey = std::pair<int64_t, std::string>;
+
   void ClearJobInfos(const rpc::JobTableData &job_data);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
                          std::function<void(Status)> done_callback);
+
+  void TrackFinishedJob(const JobID &job_id, int64_t end_time_ms);
+
+  void OnJobReferenceReleased(const JobID &job_id);
+
+  void TrimFinishedJobs();
 
   // Used to validate invariants for threading; for example, all callbacks are executed on
   // the same thread.
@@ -139,6 +162,17 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
 
   // Number of finished jobs since start of this GCS Server, used to report metrics.
   int64_t finished_jobs_count_ = 0;
+
+  /// End time for each retained finished-job record. This includes jobs pinned by a
+  /// live actor reference, which cannot be evicted safely yet.
+  absl::flat_hash_map<JobID, int64_t> finished_job_end_times_;
+
+  /// Evictable finished jobs ordered deterministically by end time and then job id.
+  std::map<FinishedJobSortKey, JobID> evictable_finished_jobs_;
+
+  /// Serializes bounded cleanup batches. Entries selected for an in-flight batch are
+  /// removed from the two indexes above and restored if storage deletion fails.
+  bool finished_job_cleanup_in_progress_ = false;
 
   GcsTableStorage &gcs_table_storage_;
   pubsub::GcsPublisher &gcs_publisher_;
@@ -164,6 +198,11 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   ray::observability::MetricInterface &finished_job_counter_;
   ray::observability::MetricInterface &job_duration_in_seconds_gauge_;
   ClockInterface &clock_;
+
+  ray::stats::Count ray_metric_finished_job_evictions_total_{
+      /*name=*/"gcs_finished_job_evictions_total",
+      /*description=*/"Number of finished job records evicted from the GCS job table.",
+      /*unit=*/""};
 };
 
 }  // namespace gcs

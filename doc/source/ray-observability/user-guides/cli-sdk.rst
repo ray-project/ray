@@ -738,7 +738,10 @@ through the APIs because they are already garbage collected.
 
     Do not to rely on this API to obtain correct information on finished resources.
     For example, Ray periodically garbage collects DEAD state Actor data to reduce memory usage.
-    Or it cleans up the FINISHED state of Tasks when its lineage goes out of scope.
+    It also retains a bounded history of dead Workers and finished Jobs, and cleans up the
+    FINISHED state of Tasks when its lineage goes out of scope. The default GCS limits are
+    100,000 dead Workers and 100,000 finished Jobs. Operational Job records that are still
+    referenced by live actors are not garbage collected until those references are released.
 
 API Reference
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

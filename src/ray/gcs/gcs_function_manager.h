@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <functional>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
@@ -43,6 +46,15 @@ class GCSFunctionManager {
 
   void AddJobReference(const JobID &job_id) { job_counter_[job_id]++; }
 
+  bool HasJobReference(const JobID &job_id) const {
+    return job_counter_.contains(job_id);
+  }
+
+  void SetJobReferenceReleasedCallback(
+      std::function<void(const JobID &)> job_reference_released_callback) {
+    job_reference_released_callback_ = std::move(job_reference_released_callback);
+  }
+
   void RemoveJobReference(const JobID &job_id) {
     auto iter = job_counter_.find(job_id);
     if (iter == job_counter_.end()) {
@@ -54,6 +66,9 @@ class GCSFunctionManager {
     if (iter->second == 0) {
       job_counter_.erase(job_id);
       RemoveExportedFunctions(job_id);
+      if (job_reference_released_callback_) {
+        job_reference_released_callback_(job_id);
+      }
     }
   }
 
@@ -76,6 +91,10 @@ class GCSFunctionManager {
   /// 1. The job/driver has exited, AND 2. All detached actors from the job are dead.
   /// When count reaches zero, function/actor metadata cleanup is triggered.
   absl::flat_hash_map<JobID, size_t> job_counter_;
+
+  /// Invoked when a finished job no longer has an operational reference. This allows
+  /// observability-only metadata to become eligible for retention eviction.
+  std::function<void(const JobID &)> job_reference_released_callback_;
 };
 
 }  // namespace gcs

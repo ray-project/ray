@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_job_manager.h"
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <string>
@@ -41,6 +42,112 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
       running_job_start_times_.insert({job_id, job_table_data.start_time()});
     }
   }
+}
+
+void GcsJobManager::RestoreFinishedJobs(const GcsInitData &gcs_init_data) {
+  for (const auto &[job_id, job_table_data] : gcs_init_data.Jobs()) {
+    if (!job_table_data.is_dead()) {
+      continue;
+    }
+    const int64_t end_time_ms = job_table_data.end_time() != 0
+                                    ? static_cast<int64_t>(job_table_data.end_time())
+                                    : job_table_data.timestamp();
+    // Initialize() restores one reference for the driver. Actor initialization has
+    // already restored any actor references, so releasing the driver reference here
+    // leaves only the operational references that must pin the job config.
+    function_manager_.RemoveJobReference(job_id);
+    TrackFinishedJob(job_id, end_time_ms);
+  }
+  TrimFinishedJobs();
+}
+
+void GcsJobManager::TrackFinishedJob(const JobID &job_id, int64_t end_time_ms) {
+  if (!finished_job_end_times_.emplace(job_id, end_time_ms).second) {
+    return;
+  }
+  if (!function_manager_.HasJobReference(job_id)) {
+    evictable_finished_jobs_.emplace(FinishedJobSortKey{end_time_ms, job_id.Binary()},
+                                     job_id);
+  }
+}
+
+void GcsJobManager::OnJobReferenceReleased(const JobID &job_id) {
+  auto finished_job_it = finished_job_end_times_.find(job_id);
+  if (finished_job_it == finished_job_end_times_.end()) {
+    return;
+  }
+  evictable_finished_jobs_.emplace(
+      FinishedJobSortKey{finished_job_it->second, job_id.Binary()}, job_id);
+  TrimFinishedJobs();
+}
+
+void GcsJobManager::TrimFinishedJobs() {
+  if (finished_job_cleanup_in_progress_) {
+    return;
+  }
+
+  const size_t cap = RayConfig::instance().maximum_gcs_dead_job_cached_count();
+  const size_t overflow =
+      finished_job_end_times_.size() > cap ? finished_job_end_times_.size() - cap : 0;
+  if (overflow == 0) {
+    return;
+  }
+  const size_t batch_size = std::min(
+      overflow,
+      std::max<size_t>(1, RayConfig::instance().maximum_gcs_deletion_batch_size()));
+  std::vector<std::pair<FinishedJobSortKey, JobID>> entries_to_evict;
+  entries_to_evict.reserve(batch_size);
+
+  while (finished_job_end_times_.size() > cap && entries_to_evict.size() < batch_size &&
+         !evictable_finished_jobs_.empty()) {
+    auto oldest = evictable_finished_jobs_.begin();
+    const auto sort_key = oldest->first;
+    const auto job_id = oldest->second;
+    evictable_finished_jobs_.erase(oldest);
+
+    // References can be added after the job was initially marked finished. Keep its
+    // config available for detached actors and other operational users in that case.
+    if (function_manager_.HasJobReference(job_id)) {
+      continue;
+    }
+
+    finished_job_end_times_.erase(job_id);
+    entries_to_evict.emplace_back(sort_key, job_id);
+  }
+
+  if (entries_to_evict.empty()) {
+    return;
+  }
+
+  std::vector<JobID> job_ids;
+  job_ids.reserve(entries_to_evict.size());
+  for (const auto &entry : entries_to_evict) {
+    job_ids.push_back(entry.second);
+  }
+
+  finished_job_cleanup_in_progress_ = true;
+  gcs_table_storage_.JobTable().BatchDelete(
+      job_ids,
+      {[this, entries_to_evict = std::move(entries_to_evict)](const Status &status) {
+         finished_job_cleanup_in_progress_ = false;
+         if (!status.ok()) {
+           RAY_LOG(ERROR) << "Failed to evict a batch of finished jobs: " << status;
+           for (const auto &[sort_key, job_id] : entries_to_evict) {
+             finished_job_end_times_.emplace(job_id, sort_key.first);
+             if (!function_manager_.HasJobReference(job_id)) {
+               evictable_finished_jobs_.emplace(sort_key, job_id);
+             }
+           }
+           return;
+         }
+
+         for (const auto &entry : entries_to_evict) {
+           cached_job_configs_.erase(entry.second);
+         }
+         ray_metric_finished_job_evictions_total_.Record(entries_to_evict.size());
+         TrimFinishedJobs();
+       },
+       io_context_});
 }
 
 void GcsJobManager::WriteDriverJobExportEvent(
@@ -169,6 +276,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       gcs_publisher_.PublishJob(job_id, job_table_data);
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_table_data);
+      TrackFinishedJob(job_id, job_table_data.end_time());
       RAY_LOG(DEBUG).WithField(job_id) << "Marked job as finished.";
     }
     function_manager_.RemoveJobReference(job_id);
