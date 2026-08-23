@@ -86,6 +86,9 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                double timestamp)>;
 using ExecutionSignalCallback = std::function<void(Status)>;
 using ConsumptionUpdateCallback = std::function<void(Status, int64_t)>;
+// Callback to asynchronously free an object's copies on the given set of nodes.
+using FreeObjectOnNodesCallback = std::function<void(
+    const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations)>;
 
 /**
  * When the streaming generator tasks are submitted,
@@ -318,6 +321,7 @@ class TaskManager : public TaskManagerInterface {
       ray::observability::MetricInterface &total_lineage_bytes_gauge,
       FreeActorObjectCallback free_actor_object_callback,
       SetDirectTransportMetadata set_direct_transport_metadata,
+      FreeObjectOnNodesCallback free_stale_unconsumed_generator_objects_async,
       ClockInterface &clock)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
@@ -334,6 +338,8 @@ class TaskManager : public TaskManagerInterface {
         total_lineage_bytes_gauge_(total_lineage_bytes_gauge),
         free_actor_object_callback_(std::move(free_actor_object_callback)),
         set_direct_transport_metadata_(std::move(set_direct_transport_metadata)),
+        free_stale_unconsumed_generator_objects_async_(
+            std::move(free_stale_unconsumed_generator_objects_async)),
         clock_(clock) {
     // On change, only retract keys that dropped to zero (emit their final 0). Live
     // keys are re-asserted every tick by the ForEachEntry loop in RecordMetrics, so
@@ -1183,6 +1189,9 @@ class TaskManager : public TaskManagerInterface {
 
   /// Callback to set the direct transport metadata for a object.
   SetDirectTransportMetadata set_direct_transport_metadata_;
+
+  /// Callback to asynchronously free an object's copies on a set of nodes.
+  FreeObjectOnNodesCallback free_stale_unconsumed_generator_objects_async_;
 
   ClockInterface &clock_;
 
