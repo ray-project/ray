@@ -118,12 +118,18 @@ class TestDatasource(Datasource):
 
 def test_read_datasource_ray_remote_args_deprecation_warning(shutdown_only):
     with pytest.warns(
-        RayDeprecationWarning, match="ray_remote_args"
+        RayDeprecationWarning, match="`ray_remote_args` is deprecated"
     ) as warning_records:
         ray.data.read_datasource(
             RangeDatasource(n=1),
             ray_remote_args={"scheduling_strategy": "SPREAD"},
         )
+
+    warning_records = [
+        warning
+        for warning in warning_records
+        if "`ray_remote_args` is deprecated" in str(warning.message)
+    ]
 
     # The deprecated argument should produce exactly one warning.
     assert len(warning_records) == 1

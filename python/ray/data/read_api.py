@@ -3606,7 +3606,6 @@ def read_webdataset(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
-    ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     decoder: Optional[Union[bool, str, callable, list]] = True,
@@ -3620,6 +3619,14 @@ def read_webdataset(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     expand_json: bool = False,
+    # Advanced Ray remote parameters
+    label_selector: Optional[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+    max_calls: Optional[int] = None,
+    resources: Optional[Dict[str, float]] = None,
+    accelerator_type: Optional[str] = None,
+    runtime_env: Optional[Dict[str, Any]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://github.com/webdataset/webdataset>`_ files.
@@ -3634,7 +3641,6 @@ def read_webdataset(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
-        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: Key-word arguments passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
             To read a compressed TFRecord file,
@@ -3664,6 +3670,18 @@ def read_webdataset(
             value in most cases.
         expand_json: If ``True``, expand JSON objects into individual samples.
             Defaults to ``False``.
+
+        label_selector: Labels required on the node where each read task runs.
+        fallback_strategy: Alternative label requirements that Ray tries in order if
+            ``label_selector`` can't be satisfied.
+        max_calls: The maximum number of read tasks a worker runs before exiting.
+        resources: Custom resources to reserve for each read task, expressed as a
+            mapping from resource name to quantity.
+        accelerator_type: The accelerator type required for each read task.
+        runtime_env: The runtime environment to use for each read task.
+        ray_remote_args: Additional options passed to :func:`ray.remote` for each read
+            task. This argument is deprecated and will be removed in Ray 2.64. Use the
+            named remote parameters instead.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -3697,6 +3715,12 @@ def read_webdataset(
         num_gpus=num_gpus,
         memory=memory,
         ray_remote_args=ray_remote_args,
+        label_selector=label_selector,
+        fallback_strategy=fallback_strategy,
+        max_calls=max_calls,
+        resources=resources,
+        accelerator_type=accelerator_type,
+        runtime_env=runtime_env,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
