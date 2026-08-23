@@ -14,6 +14,7 @@ from fastapi.routing import APIRoute
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ray import serve
 from ray.llm._internal.common.patches.vllm.tokenize_once import (
     install as _install_tokenize_once,
     reuse_prompt_token_ids as _reuse_prompt_token_ids,
@@ -214,6 +215,14 @@ class PDOrchestratorMixin:
         backend = self._get_connector_backend()
 
         prefill_handle = self._prefill_handle
+        multiplexed_model_id = serve.get_multiplexed_model_id()
+        if multiplexed_model_id:
+            # P/D runs the adapter on both engines. The decode request already
+            # has this metadata in its Serve context; explicitly propagate it
+            # to the prefill handle so its LLMServer resolves the same adapter.
+            prefill_handle = prefill_handle.options(
+                multiplexed_model_id=multiplexed_model_id
+            )
         if raw_request_info is not None:
             session_id = session_id_from_headers(raw_request_info.headers)
             if session_id:
