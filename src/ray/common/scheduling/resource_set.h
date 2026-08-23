@@ -206,14 +206,10 @@ namespace std {
 template <>
 struct hash<ray::ResourceSet> {
   size_t operator()(ray::ResourceSet const &k) const {
-    // Hash the underlying ResourceID -> FixedPoint map directly. GetResourceMap()
-    // would allocate a fresh string-keyed map and take a lock per entry (via
-    // ResourceID::Binary()) on every call, and this runs on the scheduling path.
-    // Hashing resources_ agrees with operator==, which compares it directly, and
-    // absl combines an unordered container order-independently. absl::Hash is not
-    // stable across processes or across dynamically loaded libraries, so never
-    // persist this value, send it in an RPC, or compare it against one computed
-    // elsewhere.
+    // Hash resources_ directly, the same map operator== compares. GetResourceMap()
+    // would allocate and take a lock per entry, and this is on the scheduling path.
+    // absl's hash is not stable across processes or shared libraries, so do not
+    // persist or transmit the value.
     return absl::HashOf(k.Resources());
   }
 };

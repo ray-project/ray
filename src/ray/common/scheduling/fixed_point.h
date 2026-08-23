@@ -108,8 +108,7 @@ class FixedPoint {
 
   [[nodiscard]] double Double() const { return round(i_) / kResourceUnitScaling; };
 
-  /// Hash on the scaled integer, so it agrees with operator== exactly rather
-  /// than through the rounding in Double().
+  /// Hashes i_, not Double(), which rounds. operator== compares i_.
   template <typename H>
   friend H AbslHashValue(H h, const FixedPoint &fp) {
     return H::combine(std::move(h), fp.i_);
