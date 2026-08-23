@@ -1753,6 +1753,7 @@ pygments==2.18.0
     #   ipython
     #   knack
     #   nbconvert
+    #   pytest
     #   rich
 pyiceberg==0.11.0
     # via -r python/requirements/ml/data-test-requirements.txt

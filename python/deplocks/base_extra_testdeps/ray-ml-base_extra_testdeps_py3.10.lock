@@ -5304,6 +5304,7 @@ pygments==2.18.0 \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipython
     #   nbconvert
+    #   pytest
     #   rich
 pyjwt==2.12.1 \
     --hash=sha256:28ca37c070cad8ba8cd9790cd940535d40274d22f80ab87f3ac6a713e6e8454c \
@@ -5341,9 +5342,9 @@ pytablewriter==1.2.1 \
     --hash=sha256:7bd0f4f397e070e3b8a34edcf1b9257ccbb18305493d8350a5dbc9957fced959 \
     --hash=sha256:e906ff7ff5151d70a5f66e0f7b75642a7f2dce8d893c265b79cc9cf6bc04ddb4
     # via lm-eval
-pytest==7.4.4 \
-    --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
-    --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
+pytest==9.0.3 \
+    --hash=sha256:2c5efc453d45394fdd706ade797c0a81091eccd1d6e4bccfcd476e2b8e0ab5d9 \
+    --hash=sha256:b86ada508af81d19edeb213c681b1d48246c1a91d304c6c81a427674c17eb91c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
