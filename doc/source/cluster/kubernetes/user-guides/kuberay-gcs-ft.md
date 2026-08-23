@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Make the GCS fault tolerant on KubeRay by backing cluster metadata with Redis, so head pod failure doesn't kill the cluster."
+---
+
 (kuberay-gcs-ft)=
 # GCS fault tolerance in KubeRay
 
@@ -16,6 +22,12 @@ See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide
 ```{seealso}
 If you need fault tolerance for Redis as well, see {ref}`Tuning Redis for a
 Persistent Fault Tolerant GCS <kuberay-gcs-persistent-ft>`.
+
+To make the GCS fault tolerant without running Redis, see the alpha
+{ref}`embedded RocksDB backend <kuberay-gcs-rocksdb-ft>`.
+
+For the concepts, the Redis-vs-RocksDB trade-offs, and non-Kubernetes usage, see
+{ref}`fault-tolerance-gcs-rocksdb`.
 ```
 
 ## Use cases
@@ -162,7 +174,7 @@ kubectl exec -it $REDIS_POD -- env REDISCLI_AUTH="5241590000000000" redis-cli HG
 # HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
 ```
 
-In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `gcsFaultToleranceOptions.externalStorageNamespace` option isn't set for the RayCluster. Therefore, KubeRay automatically injects the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster with the RayCluster's UID as the external storage namespace by default. See [this section](kuberay-external-storage-namespace) to learn more about the option.
+In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `gcsFaultToleranceOptions.externalStorageNamespace` option isn't set for the RayCluster. Therefore, KubeRay automatically injects the environment variable `RAY_external_storage_namespace` to all Pods managed by the RayCluster with the RayCluster's UID as the external storage namespace by default. See [this section](kuberay-external-storage-namespace) to learn more about the option.
 
 ### Step 7: Kill the GCS process in the head Pod
 
@@ -300,7 +312,7 @@ For the old GCS fault tolerance configurations, including the `ray.io/ft-enabled
 (kuberay-external-storage-namespace)=
 ### 3. Use an external storage namespace
 
-* **`externalStorageNamespace`** (**optional**): Add `externalStorageNamespace` to the `gcsFaultToleranceOptions` field. KubeRay uses the value of this option to set the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster. In most cases, ***you don't need to set `externalStorageNamespace`*** because KubeRay automatically sets it to the UID of RayCluster. Only modify this option if you fully understand the behaviors of the GCS fault tolerance and RayService to avoid [this issue](kuberay-raysvc-issue10). Refer to [this section](kuberay-external-storage-namespace-example) in the earlier quickstart example for more details.
+* **`externalStorageNamespace`** (**optional**): Add `externalStorageNamespace` to the `gcsFaultToleranceOptions` field. KubeRay uses the value of this option to set the environment variable `RAY_external_storage_namespace` to all Pods managed by the RayCluster. In most cases, ***you don't need to set `externalStorageNamespace`*** because KubeRay automatically sets it to the UID of RayCluster. Only modify this option if you fully understand the behaviors of the GCS fault tolerance and RayService to avoid [this issue](kuberay-raysvc-issue10). Refer to [this section](kuberay-external-storage-namespace-example) in the earlier quickstart example for more details.
     ```yaml
     kind: RayCluster
     metadata:

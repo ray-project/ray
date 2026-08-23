@@ -8,13 +8,13 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
-from kubernetes.client.rest import ApiException
 
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.platform_event_pb2 import Source
 from ray.dashboard.modules.platform_events.providers.k8s_provider import (
     KUBERAY_LABEL_KEY_CLUSTER,
     MAX_NON_CLUSTER_POD_CACHE,
+    ApiException,
     KubernetesEventProvider,
 )
 
@@ -32,6 +32,8 @@ def _make_k8s_event(
     first_timestamp: datetime = None,
     event_timestamp: datetime = None,
     component: str = "kubelet",
+    reporting_component: str = "",
+    with_source: bool = True,
 ) -> MagicMock:
     evt = MagicMock()
     evt.metadata.uid = uid
@@ -46,7 +48,11 @@ def _make_k8s_event(
     evt.last_timestamp = last_timestamp
     evt.first_timestamp = first_timestamp
     evt.event_time = event_timestamp
-    evt.source.component = component
+    evt.reporting_component = reporting_component
+    if with_source:
+        evt.source.component = component
+    else:
+        evt.source = None
     return evt
 
 
@@ -104,6 +110,45 @@ def test_platform_source_is_kubernetes():
     assert source.component == "kubelet"
     assert source.metadata["namespace"] == "my-namespace"
     assert source.metadata["ray_cluster_name"] == "prod-cluster"
+
+
+@pytest.mark.parametrize(
+    "component, reporting_component, with_source, expected",
+    [
+        # Legacy core/v1 recorders populate `source`.
+        ("kubelet", "", True, "kubelet"),
+        # `source` wins when both are set
+        ("kubelet", "default-scheduler", True, "kubelet"),
+        # events.k8s.io/v1 emitters leave `source.component` empty or unset.
+        (None, "default-scheduler", True, "default-scheduler"),
+        ("", "default-scheduler", True, "default-scheduler"),
+        (None, "default-scheduler", False, "default-scheduler"),
+        # Neither field set, must not pass None to the proto string field.
+        (None, None, True, ""),
+        (None, None, False, ""),
+    ],
+)
+def test_component_falls_back_to_reporting_component(
+    component, reporting_component, with_source, expected
+):
+    delivered_event = None
+
+    def callback(event: RayEvent):
+        nonlocal delivered_event
+        delivered_event = event
+
+    provider = KubernetesEventProvider(callback)
+    provider._cluster_name = "my-cluster"
+
+    evt = _make_k8s_event(
+        component=component,
+        reporting_component=reporting_component,
+        with_source=with_source,
+    )
+    provider._process_k8s_event(evt)
+
+    assert delivered_event is not None
+    assert delivered_event.platform_event.source.component == expected
 
 
 def test_platform_event_object_fields():

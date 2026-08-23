@@ -12,7 +12,6 @@ from ray import serve
 from ray._common.test_utils import SignalActor
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
-    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.test_utils import (
@@ -81,9 +80,8 @@ def test_serving_grpc_requests(ray_cluster):
     # Ensures another custom defined method is responding correctly.
     ping_grpc_another_method(channel, app_name)
 
-    if not RAY_SERVE_ENABLE_HA_PROXY:
-        # Ensure Streaming method is responding correctly.
-        ping_grpc_streaming(channel, app_name)
+    # Ensure Streaming method is responding correctly.
+    ping_grpc_streaming(channel, app_name)
 
     serve.run(g2)
 
@@ -269,7 +267,7 @@ def test_grpc_request_with_request_id(ray_cluster):
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
+def test_grpc_request_timeouts(ray_instance, streaming: bool):
     """Test gRPC request timed out.
 
     When the request timed out, gRPC proxy should return timeout response for both
@@ -332,7 +330,7 @@ def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_grpc_request_internal_error(ray_instance, ray_shutdown, streaming: bool):
+def test_grpc_request_internal_error(ray_instance, streaming: bool):
     """Test gRPC request error out.
 
     When the request error out, gRPC proxy should return INTERNAL status and the error
@@ -381,7 +379,7 @@ def test_grpc_request_internal_error(ray_instance, ray_shutdown, streaming: bool
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
-async def test_grpc_request_cancellation(ray_instance, ray_shutdown, streaming: bool):
+async def test_grpc_request_cancellation(ray_instance, streaming: bool):
     """Test gRPC request client cancelled.
 
     When the request is canceled, gRPC proxy should cancel the underlying task.
@@ -442,7 +440,7 @@ async def test_grpc_request_cancellation(ray_instance, ray_shutdown, streaming: 
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
+def test_using_grpc_context(ray_instance, streaming: bool):
     """Test using gRPC context.
 
     When the deployment sets code, details, and trailing metadata in the gRPC context,
@@ -509,7 +507,7 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: bool):
+def test_using_grpc_context_exception(ray_instance, streaming: bool):
     """Test setting code on gRPC context then raised exception.
 
     When the deployment sets a status code on the gRPC context and then raises an
@@ -569,9 +567,7 @@ def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: boo
 
 
 @pytest.mark.parametrize("streaming", [False, True])
-def test_exception_without_grpc_context_code(
-    ray_instance, ray_shutdown, streaming: bool
-):
+def test_exception_without_grpc_context_code(ray_instance, streaming: bool):
     """Test raising exception without setting gRPC status code.
 
     When the deployment raises an exception without setting a status code on the
@@ -632,7 +628,7 @@ def test_exception_without_grpc_context_code(
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("issue", ["incorrect_spelling", "more_args"])
 def test_using_grpc_context_bad_function_signature(
-    ray_instance, ray_shutdown, streaming: bool, issue: str
+    ray_instance, streaming: bool, issue: str
 ):
     """Test using gRPC context with bad function signature.
 
@@ -732,7 +728,7 @@ def test_using_grpc_context_bad_function_signature(
         assert "extra_required_arg" in rpc_error.details()
 
 
-def test_grpc_client_sending_large_payload(ray_instance, ray_shutdown):
+def test_grpc_client_sending_large_payload(ray_instance):
     """Test gRPC client sending large payload.
 
     Serve's gRPC proxy should be configured to allow the client to send large payloads
@@ -770,10 +766,7 @@ def test_grpc_client_sending_large_payload(ray_instance, ray_shutdown):
     )
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
-def test_grpc_client_streaming(ray_instance, ray_shutdown):
+def test_grpc_client_streaming(ray_instance):
     """Test gRPC client streaming (stream-unary) requests.
 
     When a client sends a stream of requests, the deployment should receive
@@ -822,7 +815,7 @@ def test_grpc_client_streaming(ray_instance, ray_shutdown):
     assert response.num_x2 == 30  # (1+2+3+4+5) * 2 = 30
 
 
-def test_grpc_unary_not_found(ray_instance, ray_shutdown):
+def test_grpc_unary_not_found(ray_instance):
     """Test gRPC unary returns clean NOT_FOUND when app doesn't exist.
 
     When proxy_request yields only ResponseStatus (no body), returning None would
@@ -861,7 +854,7 @@ def test_grpc_unary_not_found(ray_instance, ray_shutdown):
     assert exc_info.value.code() == grpc.StatusCode.NOT_FOUND
 
 
-def test_grpc_client_streaming_not_found(ray_instance, ray_shutdown):
+def test_grpc_client_streaming_not_found(ray_instance):
     """Test gRPC client streaming returns clean NOT_FOUND when app doesn't exist.
 
     When proxy_request yields only ResponseStatus (no body), returning None would
@@ -909,10 +902,7 @@ def test_grpc_client_streaming_not_found(ray_instance, ray_shutdown):
     assert exc_info.value.code() == grpc.StatusCode.NOT_FOUND
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
-def test_grpc_bidirectional_streaming(ray_instance, ray_shutdown):
+def test_grpc_bidirectional_streaming(ray_instance):
     """Test gRPC bidirectional streaming (stream-stream) requests.
 
     When a client sends a stream of requests, the deployment should
@@ -962,10 +952,7 @@ def test_grpc_bidirectional_streaming(ray_instance, ray_shutdown):
     assert responses[2].num_x2 == 40
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
-def test_grpc_client_streaming_with_grpc_context(ray_instance, ray_shutdown):
+def test_grpc_client_streaming_with_grpc_context(ray_instance):
     """Test gRPC client streaming with gRPC context.
 
     The deployment should be able to access and modify the gRPC context
@@ -1025,10 +1012,7 @@ def test_grpc_client_streaming_with_grpc_context(ray_instance, ray_shutdown):
     assert ("custom-key", "custom-value") in rpc_error.trailing_metadata()
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
-def test_grpc_bidirectional_streaming_with_grpc_context(ray_instance, ray_shutdown):
+def test_grpc_bidirectional_streaming_with_grpc_context(ray_instance):
     """Test gRPC bidirectional streaming with gRPC context.
 
     The deployment should be able to access and modify the gRPC context
@@ -1086,11 +1070,8 @@ def test_grpc_bidirectional_streaming_with_grpc_context(ray_instance, ray_shutdo
     assert ("bidi-key", "bidi-value") in rpc_error.trailing_metadata()
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
-def test_grpc_streaming_internal_error(ray_instance, ray_shutdown, streaming_type: str):
+def test_grpc_streaming_internal_error(ray_instance, streaming_type: str):
     """Test gRPC streaming request with internal error.
 
     When the handler raises an exception, it should return INTERNAL status.
@@ -1142,11 +1123,8 @@ def test_grpc_streaming_internal_error(ray_instance, ray_shutdown, streaming_typ
     assert error_message in rpc_error.details()
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
-def test_grpc_streaming_timeout(ray_instance, ray_shutdown, streaming_type: str):
+def test_grpc_streaming_timeout(ray_instance, streaming_type: str):
     """Test gRPC streaming request timeout.
 
     When the request takes longer than the timeout, it should return
@@ -1209,10 +1187,7 @@ def test_grpc_streaming_timeout(ray_instance, ray_shutdown, streaming_type: str)
     ray.get(signal_actor.send.remote(clear=True))
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
-def test_grpc_client_streaming_empty_stream(ray_instance, ray_shutdown):
+def test_grpc_client_streaming_empty_stream(ray_instance):
     """Test gRPC client streaming with empty stream.
 
     When the client sends no messages, the handler should still work.
@@ -1256,10 +1231,7 @@ def test_grpc_client_streaming_empty_stream(ray_instance, ray_shutdown):
     assert response.num_x2 == 0
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
-def test_grpc_bidi_streaming_empty_stream(ray_instance, ray_shutdown):
+def test_grpc_bidi_streaming_empty_stream(ray_instance):
     """Test gRPC bidirectional streaming with empty stream.
 
     When the client sends no messages, the handler should yield no responses.
@@ -1301,13 +1273,8 @@ def test_grpc_bidi_streaming_empty_stream(ray_instance, ray_shutdown):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
-async def test_grpc_streaming_cancellation(
-    ray_instance, ray_shutdown, streaming_type: str
-):
+async def test_grpc_streaming_cancellation(ray_instance, streaming_type: str):
     """Test gRPC streaming request client cancellation.
 
     When the client cancels the request, it should propagate to the handler.
@@ -1374,13 +1341,8 @@ async def test_grpc_streaming_cancellation(
     ray.get(cancelled_signal_actor.send.remote(clear=True))
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
-def test_grpc_streaming_context_with_exception(
-    ray_instance, ray_shutdown, streaming_type: str
-):
+def test_grpc_streaming_context_with_exception(ray_instance, streaming_type: str):
     """Test setting gRPC context then raising exception in streaming.
 
     When the handler sets a custom gRPC status code on the context then raises
@@ -1444,11 +1406,8 @@ def test_grpc_streaming_context_with_exception(
     assert real_error_message in rpc_error.details()
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
-def test_grpc_streaming_backpressure(ray_instance, ray_shutdown, streaming_type: str):
+def test_grpc_streaming_backpressure(ray_instance, streaming_type: str):
     """Test gRPC streaming with slow consumer (backpressure).
 
     When the server processes messages slower than the client sends them,
@@ -1517,13 +1476,8 @@ def test_grpc_streaming_backpressure(ray_instance, ray_shutdown, streaming_type:
             assert response.num_x2 == i + 1
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
 @pytest.mark.parametrize("streaming_type", ["client", "bidi"])
-def test_grpc_streaming_client_error_mid_stream(
-    ray_instance, ray_shutdown, streaming_type: str
-):
+def test_grpc_streaming_client_error_mid_stream(ray_instance, streaming_type: str):
     """Test gRPC streaming when client raises error mid-stream.
 
     When the client generator raises an exception while streaming,
@@ -1588,10 +1542,7 @@ def test_grpc_streaming_client_error_mid_stream(
             list(stub.BidiStreaming(error_request_generator()))
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_HA_PROXY, reason="HAProxy does not support streaming."
-)
-def test_grpc_streaming_client_closes_channel_mid_stream(ray_instance, ray_shutdown):
+def test_grpc_streaming_client_closes_channel_mid_stream(ray_instance):
     """Test gRPC streaming when client closes channel mid-stream.
 
     When the client closes the gRPC channel while streaming, the server
