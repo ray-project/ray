@@ -1,11 +1,13 @@
 group: lint
-# The lint matrix is split in two by tag so a documentation-prose pull request
-# skips the checks that cannot apply to it. See the prose rule in
-# always.rules.txt for the mechanism: `always` is emitted for every changed
-# file, `lint` only for files that are not prose.
+# The lint matrix is split by tag so a pull request only runs the checks that
+# can apply to it. See the prose rule in always.rules.txt for the mechanism:
+# `always` is emitted for every changed file, `lint` only for files that are
+# not prose, and narrower tags only for the paths that feed one specific check.
 steps:
   # Lint checks a Markdown or reStructuredText change can actually fail. These
-  # keep `always`, so they run on every pull request.
+  # keep `always`, so they run on every pull request. Adding a step here
+  # asserts that a prose-only diff can fail it; if it can't, give the step a
+  # tag matching its real inputs instead, as `doc_readme` does below.
   #
   # The pre-commit whitespace and end-of-file hooks are deliberately not here.
   # `.pre-commit-config.yaml` excludes `doc/source/` globally, so those hooks
@@ -22,9 +24,30 @@ steps:
     commands:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
-      - doc_readme
       - documentation_style
       - doc_no_new_rst
+
+  # `doc_readme` runs `setup.py check --restructuredtext --strict --metadata`,
+  # which guards how Ray's PyPI long description renders. Its inputs are the
+  # repo-root README.rst and python/setup.py; nothing under doc/ feeds it, so a
+  # prose change cannot change its result. The name reads like documentation,
+  # which is how it ended up in the prose matrix above, but it belongs to
+  # packaging.
+  #
+  # It carries `pypi_readme` alone so the rule in always.rules.txt naming those
+  # two files is its only trigger. Prose pull requests and code pull requests
+  # that leave both files alone both stop selecting it. One consequence of
+  # dropping `lint`: the microcheck pipeline's hardcoded `tag:lint` selector no
+  # longer makes the step eligible there, so it runs on premerge only.
+  # Microcheck is non-blocking, and premerge is the gate this check has to hold.
+  - label: ":lint-roller: lint: doc_readme"
+    key: lint-pypi-readme
+    tags:
+      - pypi_readme
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh doc_readme
 
   # Code-oriented lint checks. These carry `lint` without `always`, so they are
   # filtered out when every changed file is documentation prose. Selects and

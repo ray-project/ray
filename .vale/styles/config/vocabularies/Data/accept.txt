@@ -19,6 +19,7 @@ FLAC
 [Ii]ndexable
 [Ii]ngest
 [Ii]nqueue(s)?
+Instacart('s)?
 [Ll]ookup(s)?
 LLM(s)?
 LeRobot
@@ -35,6 +36,7 @@ ORC
 [Oo]utqueue(s)?
 PDFs
 PIL
+[Pp]interest('s)?
 [Pp]ipelined
 [Pp]olars
 Predibase('s)?
