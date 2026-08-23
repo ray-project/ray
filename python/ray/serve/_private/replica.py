@@ -107,6 +107,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     USER_HEALTH_CHECK_PROBE_INTERVAL_S,
     USER_HEALTH_CHECK_PROBE_MAX_FAIL,
@@ -176,7 +177,6 @@ from ray.serve._private.tracing_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
-    _callable_uses_multiplexing,
     asyncio_grpc_exception_handler,
     check_obj_ref_ready_nowait,
     compress_metric_report,
@@ -1848,25 +1848,6 @@ class Replica:
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - self._initialization_start_time
 
-    def _raise_if_multiplexing_with_direct_ingress(self):
-        """Reject model multiplexing on the ingress deployment under direct ingress.
-
-        Model multiplexing relies on the multiplexed model ID being propagated through
-        the proxy, which direct ingress bypasses (the model ID is never populated).
-
-        This runs after the user callable is initialized so it also catches
-        multiplexing that is wired up dynamically in the constructor (e.g.
-        `self._load_model = serve.multiplexed(...)(fn)`), which is invisible to the
-        static check performed at deploy time.
-        """
-        if self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-            if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
-                raise RuntimeError(
-                    "Model multiplexing (`@serve.multiplexed`) is not supported on the "
-                    "ingress deployment when direct ingress or HAProxy is enabled "
-                    "(RAY_SERVE_ENABLE_DIRECT_INGRESS)."
-                )
-
     async def initialize(
         self,
         deployment_config: Optional[DeploymentConfig],
@@ -1890,7 +1871,6 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
-                    self._raise_if_multiplexing_with_direct_ingress()
                     self._user_callable_wrapper.start_user_loop_watchdog(
                         self._event_loop
                     )
@@ -3150,6 +3130,11 @@ class Replica:
         request_disconnect_disabled = parse_disconnect_disabled_header(headers)
         request_timeout_s = self._parse_request_timeout(headers)
         session_id = parse_session_id_header(headers)
+        multiplexed_model_id = ""
+        for key, value in headers.items():
+            if key.decode().lower().replace("-", "_") == SERVE_MULTIPLEXED_MODEL_ID:
+                multiplexed_model_id = value.decode()
+                break
 
         request_metadata = RequestMetadata(
             request_id=request_id,
@@ -3157,8 +3142,7 @@ class Replica:
             call_method="__call__",
             route=self._determine_http_route(scope),
             app_name=self._deployment_id.app_name,
-            # TODO(edoakes): populate the multiplexed model ID.
-            multiplexed_model_id="",
+            multiplexed_model_id=multiplexed_model_id,
             session_id=session_id,
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
