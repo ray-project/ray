@@ -209,8 +209,11 @@ struct hash<ray::ResourceSet> {
     // Hash the underlying ResourceID -> FixedPoint map directly. GetResourceMap()
     // would allocate a fresh string-keyed map and take a lock per entry (via
     // ResourceID::Binary()) on every call, and this runs on the scheduling path.
-    // absl::Hash hashes the container itself, so the result does not depend on
-    // flat_hash_map's iteration order, which is not stable.
+    // Hashing resources_ agrees with operator==, which compares it directly, and
+    // absl combines an unordered container order-independently. absl::Hash is not
+    // stable across processes or across dynamically loaded libraries, so never
+    // persist this value, send it in an RPC, or compare it against one computed
+    // elsewhere.
     return absl::HashOf(k.Resources());
   }
 };

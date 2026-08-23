@@ -103,11 +103,12 @@ TEST_F(ResourceSetTest, TestHashConsistentWithEquality) {
   ASSERT_EQ(a, b);
   EXPECT_EQ(std::hash<ResourceSet>()(a), std::hash<ResourceSet>()(b));
 
-  // Different quantity -> not equal.
+  // Different quantity -> not equal, and must not hash equal either.
   absl::flat_hash_map<std::string, double> map_c = {
       {"CPU", 2}, {"GPU", 2}, {"custom1", 3}};
   ResourceSet c(map_c);
   ASSERT_NE(a, c);
+  EXPECT_NE(std::hash<ResourceSet>()(a), std::hash<ResourceSet>()(c));
 
   // Swapping quantities between resources must not collide.
   absl::flat_hash_map<std::string, double> map_d = {{"CPU", 1}, {"GPU", 2}};
