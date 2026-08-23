@@ -24,6 +24,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -999,6 +1000,14 @@ def test_ingress_request_router_forward_body_gate_renders(
             "http-request del-header x-serve-router- -m beg "
             "if has_ingress_request_router_app"
         ) in cfg
+        assert (
+            "http-request del-header serve_multiplexed_model_id "
+            "if has_ingress_request_router_app"
+        ) in cfg
+        assert (
+            "http-request del-header serve-multiplexed-model-id "
+            "if has_ingress_request_router_app"
+        ) in cfg
         assert "extract_json_string" not in lua
 
 
@@ -1015,6 +1024,10 @@ def _create_replica_server(port: int, replica_id_header: str):
         res.headers["x-replica-id"] = replica_id_header
         for name, value in req.headers.items():
             if name.startswith(SERVE_INGRESS_ROUTER_HEADER_PREFIX):
+                res.headers[f"echo-{name}"] = value
+            if name.replace("-", "_") == SERVE_MULTIPLEXED_MODEL_ID.replace(
+                "-", "_"
+            ):
                 res.headers[f"echo-{name}"] = value
         res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
@@ -1240,6 +1253,10 @@ async def test_ingress_request_router_forwards_trusted_headers(
         token_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
         metadata_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "metadata"
         spoofed_only_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "spoofed-only"
+        multiplexed_model_header = SERVE_MULTIPLEXED_MODEL_ID
+        hyphenated_multiplexed_model_header = multiplexed_model_header.replace(
+            "_", "-"
+        )
 
         replica, replica_thread = _create_replica_server(
             replica_port, replica_id_header="A"
@@ -1251,6 +1268,7 @@ async def test_ingress_request_router_forwards_trusted_headers(
                 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: {
                     token_header: "trusted-key",
                     metadata_header: "trusted-metadata",
+                    multiplexed_model_header: "base:adapter",
                 }
             },
         )
@@ -1289,12 +1307,18 @@ async def test_ingress_request_router_forwards_trusted_headers(
                     token_header: "spoofed-key",
                     metadata_header: "spoofed-metadata",
                     spoofed_only_header: "must-be-removed",
+                    multiplexed_model_header: "spoofed:adapter",
+                    hyphenated_multiplexed_model_header: "spoofed-hyphen:adapter",
                 },
                 timeout=5,
             )
             assert resp.status_code == 200, resp.text
             assert resp.headers.get(f"echo-{token_header}") == "trusted-key"
             assert resp.headers.get(f"echo-{metadata_header}") == "trusted-metadata"
+            assert (
+                resp.headers.get(f"echo-{multiplexed_model_header}") == "base:adapter"
+            )
+            assert f"echo-{hyphenated_multiplexed_model_header}" not in resp.headers
             assert f"echo-{spoofed_only_header}" not in resp.headers
 
         finally:

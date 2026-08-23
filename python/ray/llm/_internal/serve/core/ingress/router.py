@@ -2,11 +2,12 @@ import asyncio
 import json
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
@@ -15,6 +16,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
@@ -37,7 +39,20 @@ _ROUTING_KEY_FIELDS = ("messages", "prompt")
 router_app = FastAPI()
 
 
-def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
+def _parse_request_body(body: bytes) -> Optional[Dict[str, Any]]:
+    """Parse an OpenAI JSON request body into an object."""
+    if not body:
+        return None
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _get_routing_payload_from_body(
+    data: Optional[Dict[str, Any]],
+) -> Optional[SimpleNamespace]:
     """Wrap a request body as a namespace a body-aware router routes on.
 
     Routers read a routing field (``messages`` or ``prompt``) off the first
@@ -47,17 +62,13 @@ def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
     way regardless of request type. Returns ``None`` for an empty, non-object,
     unparseable, or keyless body, so the caller falls back to load-balancing.
     """
-    if not body:
-        return None
-    try:
-        data = json.loads(body)
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    if not any(data.get(field) for field in _ROUTING_KEY_FIELDS):
+    if data is None or not any(data.get(field) for field in _ROUTING_KEY_FIELDS):
         return None
     return SimpleNamespace(**data)
+
+
+def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
+    return _get_routing_payload_from_body(_parse_request_body(body))
 
 
 @serve.ingress(router_app)
@@ -100,10 +111,12 @@ class LLMRouter:
 
     Responses:
         200 ``{"host": str, "port": int, "replica_id": str, "request_headers"?: dict}``:
-            pick succeeded. ``request_headers["x-serve-router-kv-token-key"]``
-            is present only when prompt token IDs were enqueued to the selected
-            replica's best-effort ZMQ side channel; the engine falls back to
-            tokenization when it is absent or missing at consume time.
+            pick succeeded. With LoRA, ``request_headers`` carries the
+            router-derived multiplexed model ID for the direct replica. Its
+            ``"x-serve-router-kv-token-key"`` entry is present only when prompt
+            token IDs were enqueued to the selected replica's best-effort ZMQ
+            side channel; the engine falls back to tokenization when it is
+            absent or missing at consume time.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
             treats any non-200 as a routing failure. When using KV aware routing,
             a pre-routing ``/tokenize`` rejection is surfaced here.
@@ -122,8 +135,11 @@ class LLMRouter:
         self,
         server: DeploymentHandle,
         llm_config: Optional["LLMConfig"] = None,
+        base_model_id: Optional[str] = None,
     ):
         self._handle: DeploymentHandle = server
+        self._base_model_id = base_model_id
+        self._multiplexed_handles: Dict[str, DeploymentHandle] = {}
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
@@ -164,7 +180,8 @@ class LLMRouter:
     async def route(self, request: Request):
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
-        routing_payload = _parse_routing_payload(body)
+        request_body = _parse_request_body(body)
+        routing_payload = _get_routing_payload_from_body(request_body)
         if routing_payload is None and not self._warned_no_routing_key:
             self._warned_no_routing_key = True
             logger.warning(
@@ -198,9 +215,10 @@ class LLMRouter:
             (v for k, v in request.headers.items() if _matches_session_id_header(k)),
             None,
         )
-        handle = (
-            self._handle.options(session_id=session_id) if session_id else self._handle
-        )
+        multiplexed_model_id = self._get_multiplexed_model_id(request_body)
+        handle = self._get_handle(multiplexed_model_id)
+        if session_id:
+            handle = handle.options(session_id=session_id)
         try:
             host, port, replica_id, token_endpoint = await self._pick_replica(
                 handle=handle,
@@ -213,6 +231,9 @@ class LLMRouter:
             raise HTTPException(status_code=503, detail=str(e))
 
         response = {"host": host, "port": port, "replica_id": replica_id}
+        request_headers = {}
+        if multiplexed_model_id:
+            request_headers[SERVE_MULTIPLEXED_MODEL_ID] = multiplexed_model_id
         if request_token_ids:
             token_key = self._push_prompt_tokens(
                 token_endpoint=token_endpoint,
@@ -220,10 +241,39 @@ class LLMRouter:
                 request_token_ids=request_token_ids,
             )
             if token_key:
-                response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] = {
-                    KV_TOKEN_KEY_HEADER: token_key
-                }
+                request_headers[KV_TOKEN_KEY_HEADER] = token_key
+        if request_headers:
+            response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] = (
+                request_headers
+            )
         return response
+
+    def _get_multiplexed_model_id(self, request_body: Optional[Dict[str, Any]]) -> str:
+        """Return the requested adapter ID when this deployment enables LoRA."""
+        if self._base_model_id is None or request_body is None:
+            return ""
+
+        model_id = request_body.get("model")
+        if not isinstance(model_id, str) or model_id == self._base_model_id:
+            return ""
+        if get_base_model_id(model_id) != self._base_model_id:
+            # A non-200 route response is translated by HAProxy into a 503.
+            # Let the selected native ASGI app return its ordinary unknown-model
+            # response instead of turning a client error into a routing failure.
+            return ""
+        return model_id
+
+    def _get_handle(self, multiplexed_model_id: str) -> DeploymentHandle:
+        if not multiplexed_model_id:
+            return self._handle
+
+        handle = self._multiplexed_handles.get(multiplexed_model_id)
+        if handle is None:
+            handle = self._handle.options(
+                multiplexed_model_id=multiplexed_model_id,
+            )
+            self._multiplexed_handles[multiplexed_model_id] = handle
+        return handle
 
     @router_app.get("/health")
     async def health(self):

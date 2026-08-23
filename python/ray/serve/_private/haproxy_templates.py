@@ -221,6 +221,9 @@ frontend http_frontend
     # Remove client-supplied values from the router-owned header namespace.
     # Lua then applies trusted metadata returned by /internal/route.
     http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
+    {%- for header in multiplexed_model_id_headers %}
+    http-request del-header {{ header }} if has_ingress_request_router_app
+    {%- endfor %}
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}

@@ -177,7 +177,11 @@ class MockVLLMEngine(LLMEngine):
             return response
 
         def check_model(model: Optional[str]) -> None:
-            if model is not None and model != self.llm_config.model_id:
+            if (
+                model is not None
+                and model != self.llm_config.model_id
+                and model not in self._current_lora_model
+            ):
                 raise HTTPException(
                     status_code=404,
                     detail=f"Could not find model {model}",

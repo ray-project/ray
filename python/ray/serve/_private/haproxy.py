@@ -82,6 +82,7 @@ from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     SERVE_SESSION_ID,
 )
@@ -1403,6 +1404,10 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_header_prefix": (
                         SERVE_INGRESS_ROUTER_HEADER_PREFIX
+                    ),
+                    "multiplexed_model_id_headers": (
+                        SERVE_MULTIPLEXED_MODEL_ID,
+                        SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-"),
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "metrics_enabled": self.cfg.metrics_enabled,
