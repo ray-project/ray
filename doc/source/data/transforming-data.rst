@@ -1,3 +1,6 @@
+.. meta::
+   :description: Transform Ray Data Datasets with map, flat_map, and map_batches, and choose the right batch format and batch size for the work.
+
 .. _transforming_data:
 
 =================
