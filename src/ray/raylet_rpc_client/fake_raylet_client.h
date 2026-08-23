@@ -221,8 +221,7 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  bool GrantRemovePlacementGroupBundles(bool success = true) {
-    Status status = Status::OK();
+  bool GrantRemovePlacementGroupBundles(const Status &status = Status::OK()) {
     RemovePlacementGroupBundlesReply reply;
     if (remove_pg_bundles_callbacks.size() == 0) {
       return false;

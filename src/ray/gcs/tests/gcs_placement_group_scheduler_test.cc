@@ -16,8 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <list>
 #include <memory>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -591,6 +593,72 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   // Subsequent destroy request should not do anything.
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_FALSE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupRetriesWhileNodeAlive) {
+  auto node = GenNodeInfo();
+  AddNode(node);
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      }});
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group->GetPlacementGroupID());
+
+  const auto unavailable = Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE);
+  for (int attempt = 0; attempt < 5; ++attempt) {
+    WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+    ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(unavailable));
+  }
+
+  // GCS still considers the raylet alive, so the cleanup obligation must
+  // survive the fixed retry threshold.
+  WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 6);
+
+  // Once GCS knows the node is dead, the pending cleanup obligation can stop.
+  RemoveNode(node);
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(unavailable));
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  EXPECT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 6);
+  EXPECT_TRUE(raylet_clients_[0]->remove_pg_bundles_callbacks.empty());
+}
+TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroupStopsAfterNonRetryableError) {
+  auto node = GenNodeInfo();
+  AddNode(node);
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group->GetPlacementGroupID());
+  WaitPendingDone(raylet_clients_[0]->remove_pg_bundles_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles(
+      Status::Invalid("non-retryable")));
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+
+  EXPECT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 1);
+  EXPECT_TRUE(raylet_clients_[0]->remove_pg_bundles_callbacks.empty());
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
