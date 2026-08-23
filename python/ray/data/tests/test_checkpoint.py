@@ -429,8 +429,12 @@ def test_custom_checkpoint_filter_cls(
     ray_start_10_cpus_shared, generate_sample_data_csv, tmp_path
 ):
     """A custom `checkpoint_filter_cls` replaces the default filter during restore."""
+    from ray.data.checkpoint.checkpoint_filter import CheckpointFilter
 
-    class NoOpCheckpointFilter(NumpyArrayBasedCheckpointFilter):
+    # Subclasses the ABC directly without defining `__init__`, so this also
+    # verifies that the inherited base constructor accepts the
+    # `(checkpoint_config, checkpoint_ref)` call from the filter actor.
+    class NoOpCheckpointFilter(CheckpointFilter):
         def filter_rows_for_block(self, block):
             # Keep every row, including already-checkpointed ones.
             return block

@@ -387,16 +387,24 @@ class CheckpointFilter(abc.ABC):
     """Abstract class which defines the interface for filtering checkpointed rows
     based on varying backends.
 
-    Subclasses passed as ``CheckpointConfig.checkpoint_filter_cls`` must have a
-    constructor accepting ``(checkpoint_config, checkpointed_ids_ref)``, where
-    ``checkpointed_ids_ref`` is an ``ObjectRef`` to the sorted NumPy array of
-    checkpointed IDs. The class is instantiated once per checkpoint filter
-    actor on a remote worker, so it must be serializable (or importable) there.
+    Subclasses passed as ``CheckpointConfig.checkpoint_filter_cls`` are
+    constructed with ``(checkpoint_config, checkpoint_ref)``, where
+    ``checkpoint_ref`` is the ``ObjectRef`` returned by the checkpoint
+    manager's ``load_checkpoint`` (by default, a sorted NumPy array of
+    checkpointed IDs). Subclasses that define their own constructor must
+    accept the same two arguments. The class is instantiated once per
+    checkpoint filter actor on a remote worker, so it must be serializable
+    (or importable) there.
     """
 
-    def __init__(self, config: CheckpointConfig):
+    def __init__(
+        self,
+        config: CheckpointConfig,
+        checkpoint_ref: Optional[ObjectRef] = None,
+    ):
         self.ckpt_config = config
         self.id_column = self.ckpt_config.id_column
+        self.checkpoint_ref = checkpoint_ref
 
     @abstractmethod
     def filter_rows_for_block(self, block: Block) -> Block:
@@ -424,7 +432,7 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
         checkpoint_config: CheckpointConfig,
         checkpoint_ref: ObjectRef[np.ndarray],
     ):
-        super().__init__(checkpoint_config)
+        super().__init__(checkpoint_config, checkpoint_ref)
         self.checkpointed_ids = ray.get(checkpoint_ref)
         assert isinstance(self.checkpointed_ids, np.ndarray)
 

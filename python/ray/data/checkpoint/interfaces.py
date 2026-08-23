@@ -100,8 +100,8 @@ class CheckpointConfig:
         checkpoint_filter_cls: Override the :class:`~ray.data.checkpoint.CheckpointFilter`
             subclass used to filter out already-checkpointed rows during
             restoration. The class is instantiated once per checkpoint filter
-            actor with ``(checkpoint_config, checkpointed_ids_ref)``, where
-            ``checkpointed_ids_ref`` is the ``ObjectRef`` returned by the
+            actor with ``(checkpoint_config, checkpoint_ref)``, where
+            ``checkpoint_ref`` is the ``ObjectRef`` returned by the
             checkpoint manager's ``load_checkpoint`` (by default, a sorted
             NumPy array of checkpointed IDs). Defaults to
             :class:`~ray.data.checkpoint.NumpyArrayBasedCheckpointFilter`.
