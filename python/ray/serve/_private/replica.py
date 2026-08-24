@@ -1180,6 +1180,10 @@ class Replica:
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
 
+    @property
+    def _is_direct_ingress(self) -> bool:
+        return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
     def get_num_ongoing_requests(self) -> int:
         return self._metrics_manager.get_num_ongoing_requests() + len(
             self._reserved_slots
@@ -2027,6 +2031,49 @@ class Replica:
                 )
                 break
 
+    def _stop_accepting_direct_ingress(self) -> None:
+        """Close the direct-ingress HTTP listener; in-flight requests finish.
+
+        Only the HTTP listener: the direct-ingress gRPC server (if any) keeps
+        accepting until the post-drain quiesce, as before.
+        """
+        if self._direct_ingress_http_server is not None:
+            self._direct_ingress_http_server.should_exit = True
+
+    async def _drain_behind_haproxy(self, min_draining_period_s: float) -> None:
+        """Two-phase drain for replicas fronted by HAProxy.
+
+        Stay fully reachable for the deregistration window, then close the
+        HTTP listener and wait for in-flight requests. A stale HAProxy worker
+        (an old soft-stopping process with a frozen backend list) can keep
+        routing here for minutes after a reload; refusing it at connect time
+        makes it retry another replica (`retry-on conn-failure` + `option
+        redispatch`) instead of admitting a request that would be severed
+        when the replica exits.
+
+        Only safe with a retrying proxy in front -- without HAProxy the
+        refusal would reach the client, so callers use the plain drain there.
+        """
+        # Phase 1: remain fully reachable for the deregistration window.
+        if min_draining_period_s > 0:
+            logger.info(
+                f"Draining: staying reachable for {min_draining_period_s:.1f}s "
+                "so load balancers can deregister this replica.",
+                extra={"log_to_stderr": False},
+            )
+            await asyncio.sleep(min_draining_period_s)
+
+        # Phase 2: refuse new connections; stale routers retry elsewhere.
+        logger.info(
+            "Draining: closing the direct ingress HTTP listener; late arrivals "
+            "will be refused so the caller can retry another replica.",
+            extra={"log_to_stderr": False},
+        )
+        self._stop_accepting_direct_ingress()
+
+        # Phase 3: wait for in-flight requests (window already served).
+        await self._drain_ongoing_requests()
+
     async def shutdown(self):
         try:
             self._user_callable_wrapper.stop_user_loop_watchdog()
@@ -2064,10 +2111,16 @@ class Replica:
             # deregister it; the drain also waits for in-flight requests.
             min_draining_period_s = (
                 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
-                if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress
+                if self._is_direct_ingress
                 else 0.0
             )
-            await self._drain_ongoing_requests(min_draining_period_s)
+            if self._is_direct_ingress and RAY_SERVE_ENABLE_HA_PROXY:
+                # HAProxy retries refused connections, so stop accepting once
+                # the deregistration window is over.
+                await self._drain_behind_haproxy(min_draining_period_s)
+            else:
+                # No retrying party in front; a refusal would reach the client.
+                await self._drain_ongoing_requests(min_draining_period_s)
 
         # Requests can still arrive after the drain (stale routers, keep-alive
         # connections). Quiesce before reporting shutdown complete: reject new
