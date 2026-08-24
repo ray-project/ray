@@ -180,7 +180,7 @@ class ChannelStats(NamedTuple):
 class PublisherStats(NamedTuple):
     """Current state of one publisher from the GCS debug dump."""
 
-    # Long-polling connections into the publisher. There is one per subscriber
+    # Long-polling RPCs into the publisher. There is one per subscriber
     # process regardless of how many channels or keys it subscribes to, so this
     # is the channel-agnostic connection count.
     long_polling_subscribers: int
@@ -298,7 +298,7 @@ def test_pubsub_subscriptions_bounded_for_regular_cluster(ray_start_cluster):
     # num_nodes raylets + the driver + the generator actor's worker + 2 from the
     # dashboard head. The dashboard counts twice because its node-info and actor
     # subscribers each mint their own subscriber id (see _SubscriberBase.__init__
-    # in gcs_pubsub.py), so one process holds two long-poll connections.
+    # in gcs_pubsub.py), so one process holds two long-poll RPCs.
     # The exact value matters less than the invariant it pins: it must not grow
     # with num_workers (verified unchanged at num_workers=6 and 12).
     expected_long_polling_subscribers = num_nodes + 4

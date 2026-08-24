@@ -559,7 +559,7 @@ std::string Publisher::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::stringstream result;
   result << "Publisher:";
-  // Total long-polling connections into this publisher. One SubscriberState
+  // Total long-polling RPCs into this publisher. One SubscriberState
   // per subscriber process, regardless of how many channels or keys it
   // subscribes to, so this is the channel-agnostic connection count.
   result << "\n- current long-polling subscribers: " << subscribers_.size();
