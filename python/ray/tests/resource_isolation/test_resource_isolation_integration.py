@@ -92,7 +92,7 @@ _EXPECTED_DASHBOARD_SUBPROCESS_MODULES = [
 # loader (is_enabled reads the same flag) so the expected count tracks the flag rather
 # than assuming a fixed default.
 if ray._config.enable_task_events_to_dashboard_head():
-    _EXPECTED_DASHBOARD_MODULES.append(
+    _EXPECTED_DASHBOARD_SUBPROCESS_MODULES.append(
         "ray.dashboard.modules.task_events.task_events_head.TaskEventsHead"
     )
 
