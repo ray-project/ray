@@ -559,6 +559,10 @@ std::string Publisher::DebugString() const {
   absl::MutexLock lock(&mutex_);
   std::stringstream result;
   result << "Publisher:";
+  // Total long-polling connections into this publisher. One SubscriberState
+  // per subscriber process, regardless of how many channels or keys it
+  // subscribes to, so this is the channel-agnostic connection count.
+  result << "\n- current long-polling subscribers: " << subscribers_.size();
   // Iterate the subscription indexes (one per registered channel) rather
   // than the cumulative publish counters so channels that have subscribers
   // but no publishes yet are still reported.
@@ -581,6 +585,8 @@ std::string Publisher::DebugString() const {
            << subscription_index.GetNumAllEntitySubscribers();
     result << "\n- current keyed subscription keys: "
            << subscription_index.GetNumKeySubscriptions();
+    result << "\n- current keyed subscribers: "
+           << subscription_index.GetNumKeyedSubscribers();
   }
   return result.str();
 }

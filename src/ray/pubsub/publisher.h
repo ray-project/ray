@@ -215,6 +215,18 @@ class SubscriptionIndex {
   size_t GetNumKeySubscriptions() const { return entities_.size(); }
 
   /**
+   * @brief Returns the number of subscribers holding at least one keyed
+   * subscription.
+   *
+   * Distinct from GetNumKeySubscriptions(), which counts keys: any number of
+   * subscribers can watch the same key, so only this count reveals keyed
+   * subscriptions that scale with the number of workers.
+   *
+   * @return Number of subscribers with keyed subscriptions.
+   */
+  size_t GetNumKeyedSubscribers() const { return subscribers_to_key_id_.size(); }
+
+  /**
    * @brief Checks if there's no metadata remaining in the private attributes.
    *
    * @return true if no metadata remains, false otherwise.
