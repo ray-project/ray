@@ -16,6 +16,7 @@ from ray._private.ray_constants import (
 )
 from ray.experimental.rdt.nixl_memory_pool import (
     MemoryPoolManager,
+    TensorLayout,
     group_tensors_by_desc,
     packed_offsets,
 )
@@ -448,14 +449,16 @@ class NixlTensorTransport(TensorTransportManager):
         try:
             nixl_agent = self.get_nixl_agent()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
-            desc_lens = [
+            packed_group_nbytes = [
                 remote_xfer_descs[i][1] for i in range(remote_xfer_descs.descCount())
             ]
 
-            sizes = [math.prod(shape) * dtype.itemsize for shape, dtype in tensor_meta]
-            alignments = [dtype.itemsize for _shape, dtype in tensor_meta]
+            tensor_layouts = [
+                TensorLayout(math.prod(shape) * dtype.itemsize, dtype.itemsize)
+                for shape, dtype in tensor_meta
+            ]
 
-            desc_groups = group_tensors_by_desc(sizes, alignments, desc_lens)
+            desc_groups = group_tensors_by_desc(tensor_layouts, packed_group_nbytes)
 
             if target_buffers:
                 tensors = target_buffers
@@ -469,8 +472,7 @@ class NixlTensorTransport(TensorTransportManager):
                 for desc_idx, desc_group in enumerate(desc_groups):
                     addr, _length, dev_id = remote_xfer_descs[desc_idx]
                     offsets, packed_nbytes = packed_offsets(
-                        [sizes[j] for j in desc_group],
-                        [alignments[j] for j in desc_group],
+                        [tensor_layouts[j] for j in desc_group]
                     )
                     merged = _merged_desc(tensors, desc_group, offsets, packed_nbytes)
                     if merged is not None:
@@ -479,10 +481,11 @@ class NixlTensorTransport(TensorTransportManager):
                         continue
                     for offset, tensor_i in zip(offsets, desc_group):
                         buf = tensors[tensor_i]
+                        nbytes = tensor_layouts[tensor_i].nbytes
                         local_descs.append(
-                            (buf.data_ptr(), sizes[tensor_i], max(buf.get_device(), 0))
+                            (buf.data_ptr(), nbytes, max(buf.get_device(), 0))
                         )
-                        remote_descs.append((addr + offset, sizes[tensor_i], dev_id))
+                        remote_descs.append((addr + offset, nbytes, dev_id))
                 if len(local_descs) > len(desc_groups):
                     # TODO(swang): There is a circular import error because
                     # ray.util currently depends on ray.experimental.internal_kv.
@@ -512,18 +515,15 @@ class NixlTensorTransport(TensorTransportManager):
             else:
                 # One buffer per remote descriptor; views at recovered offsets.
                 group_buffers = [
-                    torch.empty(desc_len, dtype=torch.uint8, device=device)
-                    for desc_len in desc_lens
+                    torch.empty(nbytes, dtype=torch.uint8, device=device)
+                    for nbytes in packed_group_nbytes
                 ]
                 tensors = [None] * len(tensor_meta)  # type: ignore[list-item]
                 for desc_idx, desc_group in enumerate(desc_groups):
-                    offsets, _ = packed_offsets(
-                        [sizes[j] for j in desc_group],
-                        [alignments[j] for j in desc_group],
-                    )
+                    offsets, _ = packed_offsets([tensor_layouts[j] for j in desc_group])
                     for offset, tensor_i in zip(offsets, desc_group):
                         shape, dtype = tensor_meta[tensor_i]
-                        nbytes = sizes[tensor_i]
+                        nbytes = tensor_layouts[tensor_i].nbytes
                         tensors[tensor_i] = (
                             group_buffers[desc_idx][offset : offset + nbytes]
                             .view(dtype)

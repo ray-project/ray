@@ -725,7 +725,10 @@ def test_nixl_memory_pool_collapses_descriptors(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_nixl_memory_pool_fragmented_multi_descriptor(ray_start_regular):
     """Fragmented free list yields multiple descriptors with correct data."""
-    from ray.experimental.rdt.nixl_memory_pool import group_tensors_by_desc
+    from ray.experimental.rdt.nixl_memory_pool import (
+        TensorLayout,
+        group_tensors_by_desc,
+    )
     from ray.experimental.rdt.nixl_tensor_transport import (
         NixlTensorTransport,
     )
@@ -753,10 +756,11 @@ def test_nixl_memory_pool_fragmented_multi_descriptor(ray_start_regular):
 
     # Neither hole fits both tensors, so the receiver recovers one tensor per
     # descriptor from the lengths alone.
-    sizes = [t0.numel() * t0.element_size(), t1.numel() * t1.element_size()]
-    aligns = [t0.element_size(), t1.element_size()]
-    desc_lens = [descs[i][1] for i in range(descs.descCount())]
-    assert group_tensors_by_desc(sizes, aligns, desc_lens) == [[0], [1]]
+    layouts = [
+        TensorLayout(t.numel() * t.element_size(), t.element_size()) for t in (t0, t1)
+    ]
+    packed_group_nbytes = [descs[i][1] for i in range(descs.descCount())]
+    assert group_tensors_by_desc(layouts, packed_group_nbytes) == [[0], [1]]
 
     transport.garbage_collect(obj_id, meta, [t0, t1])
     transport.garbage_collect("filler_1", filler_metas[1], [fillers[1]])

@@ -1,6 +1,6 @@
 """Memory pool management for NIXL RDT optimization."""
 
-from typing import TYPE_CHECKING, Dict, List, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Sequence, Tuple
 
 if TYPE_CHECKING:
     import torch
@@ -30,8 +30,20 @@ def _align_up(value: int, alignment: int) -> int:
     return (value + alignment - 1) // alignment * alignment
 
 
+class TensorLayout(NamedTuple):
+    """A tensor's size and alignment.
+
+    Attributes:
+        nbytes: The tensor's own byte size without padding, ``numel * element_size``.
+        alignment: The boundary the tensor must start on, its element size.
+    """
+
+    nbytes: int
+    alignment: int
+
+
 def packed_offsets(
-    sizes: Sequence[int], alignments: Sequence[int]
+    tensor_layouts: Sequence[TensorLayout],
 ) -> Tuple[List[int], int]:
     """Compute offsets for one consecutive group of tensors.
 
@@ -44,80 +56,80 @@ def packed_offsets(
     The returned byte count ends at the last tensor with no trailing pad.
 
     Args:
-        sizes: Byte sizes of the tensors in the group, in tensor order.
-        alignments: Element size of each tensor, in tensor order.
+        tensor_layouts: Size and alignment of each tensor in the group, in
+            tensor order.
 
     Returns:
         (offsets, packed_nbytes) for the group.
     """
     offsets: List[int] = []
     byte_index = 0
-    for size, alignment in zip(sizes, alignments):
+    for nbytes, alignment in tensor_layouts:
         byte_index = _align_up(byte_index, alignment)
         offsets.append(byte_index)
-        byte_index += size
+        byte_index += nbytes
     return offsets, byte_index
 
 
 def group_tensors_by_desc(
-    tensor_sizes: Sequence[int], alignments: Sequence[int], desc_lens: Sequence[int]
+    tensor_layouts: Sequence[TensorLayout],
+    packed_group_nbytes: Sequence[int],
 ) -> List[List[int]]:
     """Recover which tensors each descriptor covers from the packed sizes.
 
-    Walks the sizes in order and closes a group when its packed byte count equals
-    the current descriptor length. Raises if the sizes and lengths are not
-    consumed exactly.
-
-    The byte count is carried forward one tensor at a time rather than repacking
-    the group from scratch on each step, which keeps this linear in the tensor
-    count.
+    Walks the tensors in order and closes a group when its packed byte count
+    equals the current descriptor's. Raises if the tensors and byte counts are
+    not consumed exactly.
 
     Args:
-        tensor_sizes: Byte sizes of the tensors, in tensor order.
-        alignments: Element size of each tensor, in tensor order.
-        desc_lens: Length of each NIXL transfer descriptor, in order.
+        tensor_layouts: Size and alignment of each tensor, in tensor order.
+        packed_group_nbytes: Total byte count of each NIXL transfer descriptor,
+            in order. Each descriptor covers a consecutive group of tensors, so
+            there are no more of these than there are tensors.
 
     Returns:
-        One group per descriptor, each a list of indices into tensor_sizes.
+        One list per packed descriptor. Each list contains indices into
+        tensor_layouts corresponding to the contained tensors.
     """
+    num_tensors = len(tensor_layouts)
     desc_groups: List[List[int]] = []
-    size_idx = 0
-    for desc_len in desc_lens:
-        if size_idx >= len(tensor_sizes):
+    tensor_idx = 0
+    for group_nbytes in packed_group_nbytes:
+        if tensor_idx >= num_tensors:
             raise ValueError(
-                f"Extra descriptor length {desc_len} after consuming all "
-                f"{len(tensor_sizes)} tensor sizes"
+                f"Extra descriptor byte count {group_nbytes} after consuming "
+                f"all {num_tensors} tensors"
             )
         desc_group: List[int] = []
         packed_nbytes = 0
         closed = False
-        while size_idx < len(tensor_sizes):
-            candidate_nbytes = (
-                _align_up(packed_nbytes, alignments[size_idx]) + tensor_sizes[size_idx]
-            )
-            if candidate_nbytes > desc_len:
+        while tensor_idx < num_tensors:
+            nbytes, alignment = tensor_layouts[tensor_idx]
+            candidate_nbytes = _align_up(packed_nbytes, alignment) + nbytes
+            if candidate_nbytes > group_nbytes:
                 raise ValueError(
-                    f"Tensor sizes {[tensor_sizes[i] for i in desc_group + [size_idx]]}"
-                    f" do not pack into descriptor length {desc_len} under the wire "
-                    f"contract (packed_nbytes={candidate_nbytes})"
+                    f"Tensor sizes "
+                    f"{[tensor_layouts[i].nbytes for i in desc_group + [tensor_idx]]}"
+                    f" do not pack into descriptor byte count {group_nbytes} under "
+                    f"the wire contract (packed_nbytes={candidate_nbytes})"
                 )
-            desc_group.append(size_idx)
+            desc_group.append(tensor_idx)
             packed_nbytes = candidate_nbytes
-            size_idx += 1
-            if packed_nbytes == desc_len:
+            tensor_idx += 1
+            if packed_nbytes == group_nbytes:
                 closed = True
                 break
         if not closed:
             raise ValueError(
-                f"Descriptor length {desc_len} does not match packed byte count "
-                f"{packed_nbytes} for tensor indices {desc_group}"
+                f"Descriptor byte count {group_nbytes} does not match packed byte "
+                f"count {packed_nbytes} for tensor indices {desc_group}"
             )
         desc_groups.append(desc_group)
 
-    if size_idx != len(tensor_sizes):
+    if tensor_idx != num_tensors:
         raise ValueError(
-            f"Descriptor lengths {list(desc_lens)} did not consume all "
-            f"{len(tensor_sizes)} tensor sizes (stopped at index {size_idx})"
+            f"Descriptor byte counts {list(packed_group_nbytes)} did not consume "
+            f"all {num_tensors} tensors (stopped at index {tensor_idx})"
         )
     return desc_groups
 
@@ -217,8 +229,11 @@ class MemoryPoolManager:
         Raises:
             NixlOutOfMemoryError: If the pool has insufficient space.
         """
-        sizes = [t.numel() * t.element_size() for t in tensors]
-        alignments = [t.element_size() for t in tensors]
+        tensor_layouts = [
+            TensorLayout(t.numel() * t.element_size(), t.element_size())
+            for t in tensors
+        ]
+        sizes = [layout.nbytes for layout in tensor_layouts]
 
         # Snapshot the free list so the whole group is atomic. If this obj_id
         # already owns blocks (re-extract), treat them as free for packing so
@@ -246,9 +261,8 @@ class MemoryPoolManager:
         remaining = list(range(len(tensors)))
 
         while remaining:
-            rem_sizes = [sizes[i] for i in remaining]
-            rem_aligns = [alignments[i] for i in remaining]
-            offsets, total_nbytes = packed_offsets(rem_sizes, rem_aligns)
+            rem_layouts = [tensor_layouts[i] for i in remaining]
+            offsets, total_nbytes = packed_offsets(rem_layouts)
 
             # Prefer the smallest free block that fits everything remaining.
             free_idx = min(
@@ -261,8 +275,6 @@ class MemoryPoolManager:
                 placed_nbytes = total_nbytes
             else:
                 # Take the largest free block and pack as many as fit in order.
-                # Each offset already carries the packing forward, so a prefix's
-                # byte count is a lookup rather than a repack.
                 free_idx = max(
                     range(len(temp_free)),
                     key=lambda i: temp_free[i].size,
@@ -271,17 +283,17 @@ class MemoryPoolManager:
                 hole_size = 0 if free_idx is None else temp_free[free_idx].size
                 take_count = 0
                 placed_nbytes = 0
-                for n, size in enumerate(rem_sizes):
-                    if offsets[n] + size > hole_size:
+                for n, layout in enumerate(rem_layouts):
+                    if offsets[n] + layout.nbytes > hole_size:
                         break
                     take_count = n + 1
-                    placed_nbytes = offsets[n] + size
+                    placed_nbytes = offsets[n] + layout.nbytes
                 if take_count == 0:
                     raise NixlOutOfMemoryError(
                         f"NIXL memory pool out of memory: cannot allocate next "
-                        f"tensor of {rem_sizes[0]} bytes (largest free block is "
-                        f"{hole_size} bytes). Consider increasing the pool size "
-                        f"when calling register_nixl_memory_pool."
+                        f"tensor of {rem_layouts[0].nbytes} bytes (largest free "
+                        f"block is {hole_size} bytes). Consider increasing the "
+                        f"pool size when calling register_nixl_memory_pool."
                     )
 
             # Round the carved block up so subsequent offsets stay aligned.
