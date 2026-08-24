@@ -1,3 +1,5 @@
+import contextlib
+import os
 import subprocess
 import sys
 import time
@@ -332,6 +334,22 @@ def test_resource_isolation_enabled_with_full_overrides_happy_path(monkeypatch):
     assert override_config.system_reserved_memory == 15 * (1024**3)
 
 
+def test_system_processes_omit_pids_that_no_longer_exist():
+    """The raylet dies if it cannot move a pid into the system cgroup.
+
+    A system process is allowed to exit before the raylet starts, so its pid must not
+    reach the raylet.
+    """
+    exited = subprocess.Popen([sys.executable, "-c", ""])
+    exited.wait()
+
+    node = SimpleNamespace(all_processes=_all_processes(os.getpid(), exited.pid))
+    pids = Node._get_system_processes_for_resource_isolation(node)
+
+    assert str(exited.pid) not in pids.split(",")
+    assert str(os.getpid()) in pids.split(",")
+
+
 @pytest.mark.parametrize("error", [psutil.NoSuchProcess, psutil.AccessDenied])
 def test_system_processes_collected_when_dashboard_is_unreadable(monkeypatch, error):
     """An api server that cannot be inspected must not fail node startup.
@@ -345,7 +363,8 @@ def test_system_processes_collected_when_dashboard_is_unreadable(monkeypatch, er
         raise error(pid)
 
     monkeypatch.setattr(psutil, "Process", raise_error)
-    gcs_pid, dashboard_pid = 1234, 5678
+    # Real pids: dead ones are filtered out before the raylet sees them.
+    gcs_pid, dashboard_pid = os.getpid(), os.getppid()
 
     node = SimpleNamespace(all_processes=_all_processes(gcs_pid, dashboard_pid))
     pids = Node._get_system_processes_for_resource_isolation(node)
@@ -385,13 +404,16 @@ def test_system_processes_include_grandchildren_of_the_dashboard():
         assert found, "the test never built a two-level process tree"
         grandchild_pid = found[0].pid
 
-        node = SimpleNamespace(all_processes=_all_processes(1234, dashboard.pid))
+        node = SimpleNamespace(all_processes=_all_processes(os.getpid(), dashboard.pid))
         pids = Node._get_system_processes_for_resource_isolation(node)
 
         assert str(grandchild_pid) in pids.split(",")
     finally:
-        for process in psutil.Process(dashboard.pid).children(recursive=True):
-            process.kill()
+        # The tree is gone already if the test failed early; that must not mask the
+        # original failure.
+        with contextlib.suppress(psutil.Error):
+            for process in psutil.Process(dashboard.pid).children(recursive=True):
+                process.kill()
         dashboard.kill()
         dashboard.wait()
 

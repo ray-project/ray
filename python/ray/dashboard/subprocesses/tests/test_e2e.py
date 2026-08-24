@@ -132,11 +132,14 @@ async def test_module_process_is_forked_from_the_forkserver(default_module_confi
     subprocess_handle.start_module()
     subprocess_handle.wait_for_module_ready()
 
-    module_process = psutil.Process(subprocess_handle.process.pid)
-    assert module_process.ppid() != os.getpid()
-    assert module_process.pid in {
-        p.pid for p in psutil.Process(os.getpid()).children(recursive=True)
-    }
+    try:
+        module_process = psutil.Process(subprocess_handle.process.pid)
+        assert module_process.ppid() != os.getpid()
+        assert module_process.pid in {
+            p.pid for p in psutil.Process(os.getpid()).children(recursive=True)
+        }
+    finally:
+        await subprocess_handle.destroy_module()
 
 
 @pytest.mark.asyncio

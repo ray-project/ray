@@ -1794,7 +1794,7 @@ class Node:
                 system_process_pids += [
                     str(p.pid) for p in dashboard_process.children(recursive=True)
                 ]
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except psutil.Error:
                 logger.warning(
                     "Could not enumerate the descendants of the dashboard process "
                     f"(pid {dashboard_pid}), so they will not be moved into the system "
@@ -1802,7 +1802,11 @@ class Node:
                     exc_info=True,
                 )
 
-        return ",".join(system_process_pids)
+        # The raylet fails fatally if it cannot move a pid into the system cgroup, and a
+        # system process is allowed to have died by now, so drop the ones that are gone.
+        return ",".join(
+            pid for pid in system_process_pids if psutil.pid_exists(int(pid))
+        )
 
     def _kill_process_type(
         self,

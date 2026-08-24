@@ -114,10 +114,8 @@ class SubprocessModuleHandle:
         """
         if cls.mp_context.get_start_method() != "forkserver":
             return
-        # `__main__` makes the forkserver import dashboard.py itself, which lets each
-        # child's `_fixup_main_from_path` return early instead of re-running it.
         cls.mp_context.set_forkserver_preload(
-            ["__main__", "ray", SubprocessModule.__module__]
+            ["ray", SubprocessModule.__module__]
             + sorted({module_cls.__module__ for module_cls in module_classes})
         )
 
