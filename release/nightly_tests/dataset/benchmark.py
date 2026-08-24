@@ -6,7 +6,7 @@ import os
 import threading
 import time
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 import dataclasses
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -303,6 +303,101 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
     return out
 
 
+def collect_task_distribution(case_start_unix_ms: float) -> Dict[str, Any]:
+    """How this case's tasks were spread over workers and nodes.
+
+    Answers the placement question the per-task memory distributions cannot:
+    two arms can run identical tasks yet land them on different worker pools —
+    a faster arm satisfies autoscaling demand with fewer workers, so each
+    worker runs MORE tasks and accumulates a higher between-tasks memory
+    floor. These aggregates make that visible per arm: tasks-per-worker /
+    per-node distributions, worker lifespan (first task start to last task
+    end), and worker busy fraction (summed task seconds over lifespan).
+
+    Uses the state API's task list, filtered to tasks that started after this
+    case began (cases run sequentially in one job). The API caps at 10k tasks;
+    ``task_dist_truncated`` flags when the cap was hit, in which case the
+    per-worker numbers undercount instead of erroring.
+    """
+    from ray.util.state.api import list_tasks
+
+    def _quantile(sorted_vals, q):
+        if not sorted_vals:
+            return None
+        i = max(0, min(len(sorted_vals) - 1, round(q * (len(sorted_vals) - 1))))
+        return sorted_vals[i]
+
+    out: Dict[str, Any] = {}
+    try:
+        tasks = list_tasks(detail=True, limit=10_000, raise_on_missing_output=False)
+        per_worker: Dict[str, List[Tuple[float, float]]] = {}
+        nodes = set()
+        durations = []
+        n = 0
+        for t in tasks:
+            if not t.start_time_ms or t.start_time_ms < case_start_unix_ms:
+                continue
+            if not t.worker_id or not t.end_time_ms:
+                continue
+            n += 1
+            per_worker.setdefault(t.worker_id, []).append(
+                (t.start_time_ms, t.end_time_ms)
+            )
+            if t.node_id:
+                nodes.add((t.node_id, t.worker_id))
+            durations.append((t.end_time_ms - t.start_time_ms) / 1000.0)
+
+        out["task_dist_num_tasks"] = n
+        out["task_dist_truncated"] = len(tasks) >= 10_000
+        out["task_dist_num_workers"] = len(per_worker)
+        node_ids = {nid for nid, _ in nodes}
+        out["task_dist_num_nodes"] = len(node_ids)
+
+        counts = sorted(len(v) for v in per_worker.values())
+        out["task_dist_tasks_per_worker_mean"] = (
+            round(n / len(per_worker), 2) if per_worker else None
+        )
+        out["task_dist_tasks_per_worker_p50"] = _quantile(counts, 0.5)
+        out["task_dist_tasks_per_worker_max"] = counts[-1] if counts else None
+
+        per_node: Dict[str, int] = {}
+        for nid, wid in nodes:
+            per_node[nid] = per_node.get(nid, 0) + 1
+        workers_per_node = sorted(per_node.values())
+        out["task_dist_workers_per_node_max"] = (
+            workers_per_node[-1] if workers_per_node else None
+        )
+
+        durations.sort()
+        out["task_dist_task_duration_s_p50"] = _quantile(durations, 0.5)
+        out["task_dist_task_duration_s_p90"] = _quantile(durations, 0.9)
+        out["task_dist_task_duration_s_max"] = durations[-1] if durations else None
+
+        lifespans = []
+        busy_fracs = []
+        for spans in per_worker.values():
+            start = min(s for s, _ in spans)
+            end = max(e for _, e in spans)
+            lifespan_s = (end - start) / 1000.0
+            lifespans.append(lifespan_s)
+            busy_s = sum(e - s for s, e in spans) / 1000.0
+            if lifespan_s > 0:
+                busy_fracs.append(busy_s / lifespan_s)
+        lifespans.sort()
+        busy_fracs.sort()
+        out["task_dist_worker_lifespan_s_p50"] = _quantile(lifespans, 0.5)
+        out["task_dist_worker_lifespan_s_max"] = lifespans[-1] if lifespans else None
+        out["task_dist_worker_busy_frac_p50"] = (
+            round(_quantile(busy_fracs, 0.5), 4) if busy_fracs else None
+        )
+        out["task_dist_worker_busy_frac_min"] = (
+            round(busy_fracs[0], 4) if busy_fracs else None
+        )
+    except Exception:
+        logger.warning("collect_task_distribution failed", exc_info=True)
+    return out
+
+
 class RuntimeEnvSetupTracker:
     """Collects runtime environment creation times across the cluster.
 
@@ -423,6 +518,8 @@ class Benchmark:
         # default path is byte-for-byte what it was.
         node_mem = _node_memory_monitor(name)
 
+        case_start_unix_ms = time.time() * 1000.0
+
         with node_mem, ObjectStoreMemorySampler(state) as memory_sampler:
             start_time = time.perf_counter()
             start_spilled_bytes = _get_spilled_bytes_total(state)
@@ -448,6 +545,7 @@ class Benchmark:
                 4,
             ),
             **node_mem.summary(),
+            **collect_task_distribution(case_start_unix_ms),
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():
