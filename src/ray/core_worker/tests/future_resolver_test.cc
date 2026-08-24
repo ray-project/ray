@@ -85,8 +85,8 @@ class FutureResolverTest : public ::testing::Test {
   FutureResolver resolver_;
 };
 
-// The owner freed the value. Must report that, not let the catch-all blame a node
-// failure that never happened.
+// FREED is the one status this build knows that no branch handles, so it lands on the
+// catch-all. No owner on master can send it, but nothing stops one on the wire.
 TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
   ObjectID object_id = AddBorrowedObject();
   rpc::GetObjectStatusReply reply;
@@ -98,11 +98,11 @@ TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
   ASSERT_NE(object, nullptr);
   rpc::ErrorType error_type;
   ASSERT_TRUE(object->IsException(&error_type));
-  ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_FREED);
+  ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
 }
 
-// A status this build has never heard of, which an owner on a newer version can send
-// during a rolling upgrade, has to leave an error too.
+// Same for a status this build has never heard of, which is what makes removing FREED
+// from the proto safe.
 TEST_F(FutureResolverTest, ProcessResolvedObjectUnknownStatusStoresError) {
   ObjectID object_id = AddBorrowedObject();
   rpc::GetObjectStatusReply reply;
@@ -117,7 +117,7 @@ TEST_F(FutureResolverTest, ProcessResolvedObjectUnknownStatusStoresError) {
   ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
 }
 
-// Sibling statuses, kept as regression anchors for the two branches above.
+// Sibling statuses, kept as regression anchors for the branches above.
 TEST_F(FutureResolverTest, ProcessResolvedObjectOutOfScopeStoresError) {
   ObjectID object_id = AddBorrowedObject();
   rpc::GetObjectStatusReply reply;
