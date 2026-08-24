@@ -72,17 +72,28 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class _LoRAResolver:
+class _ResolveLoRAMiddleware:
     """Resolve a requested LoRA before the native engine handles HTTP."""
 
     def __init__(self, app: ASGIApp, *, server: "LLMServer") -> None:
-        self._app = app
+        self.app = app
         self._server = server
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and serve.get_multiplexed_model_id():
             await self._server._maybe_resolve_lora_from_multiplex()
-        await self._app(scope, receive, send)
+        await self.app(scope, receive, send)
+
+
+def _add_middleware_to_built_app(app, middleware_cls, **options) -> None:
+    """Add a middleware to an app that already built its middleware stack.
+
+    vLLM's `build_app` eagerly builds the app stack, so calling `add_middleware` afterward fails.
+    Clearing the cached stack lets Starlette rebuild it lazily with the new middleware, while keeping
+    `app` as a FastAPI app so subclasses can still add routes.
+    """
+    app.middleware_stack = None
+    app.add_middleware(middleware_cls, **options)
 
 
 def _merge_replica_actor_and_child_actor_bundles(
@@ -237,11 +248,9 @@ class LLMServer(LLMServerProtocol):
     async def __serve_build_asgi_app__(self):
         app = await self.engine.build_asgi_app()
         # Native vLLM ASGI handlers bypass LLMServer's LoRA-resolving methods.
+        _add_middleware_to_built_app(app, _ResolveLoRAMiddleware, server=self)
         _add_openai_models_retrieve_route(app, self._llm_config)
-        # vLLM may have already started the FastAPI app while initializing its state,
-        # so add_middleware will be rejected by Starlette. Instead, wrap the native app
-        # so it can retain its own lifespan and middleware stack.
-        return _LoRAResolver(app, server=self)
+        return app
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
