@@ -72,17 +72,17 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class _ResolveMultiplexedLoRAMiddleware:
+class _LoRAResolver:
     """Resolve a requested LoRA before the native engine handles HTTP."""
 
     def __init__(self, app: ASGIApp, *, server: "LLMServer") -> None:
-        self.app = app
+        self._app = app
         self._server = server
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and serve.get_multiplexed_model_id():
             await self._server._maybe_resolve_lora_from_multiplex()
-        await self.app(scope, receive, send)
+        await self._app(scope, receive, send)
 
 
 def _merge_replica_actor_and_child_actor_bundles(
@@ -237,9 +237,11 @@ class LLMServer(LLMServerProtocol):
     async def __serve_build_asgi_app__(self):
         app = await self.engine.build_asgi_app()
         # Native vLLM ASGI handlers bypass LLMServer's LoRA-resolving methods.
-        app.add_middleware(_ResolveMultiplexedLoRAMiddleware, server=self)
         _add_openai_models_retrieve_route(app, self._llm_config)
-        return app
+        # vLLM may have already started the FastAPI app while initializing its state,
+        # so add_middleware will be rejected by Starlette. Instead, wrap the native app
+        # so it can retain its own lifespan and middleware stack.
+        return _LoRAResolver(app, server=self)
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
