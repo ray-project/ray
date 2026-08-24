@@ -128,7 +128,6 @@ py_test_module_list(
         "test_list_outbound_deployments.py",
         "test_max_replicas_per_node.py",
         "test_multiplex.py",
-        "test_proxy.py",
         "test_proxy_actor_wrapper.py",
         "test_proxy_response_generator.py",
         "test_queue_monitor.py",
@@ -156,13 +155,14 @@ py_test_module_list(
     ],
 )
 
-# Multi-node cluster test. On the shared Windows shard it runs at ~79% of the
-# default medium timeout, so a loaded runner tips it over; give it headroom.
+# Multi-node cluster tests. On the shared Windows shard these run at 65-79% of the
+# default medium timeout, so a loaded runner tips them over; give them headroom.
 py_test_module_list(
     size = "medium",
     timeout = "long",
     files = [
         "test_cluster.py",
+        "test_proxy.py",
     ],
     tags = [
         "exclusive",
