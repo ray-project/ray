@@ -1,7 +1,7 @@
 import ray
 from ray.data.aggregate import Count, CountDistinct
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, run_tpch_benchmark
+from common import parse_tpch_args, load_table, run_tpch_benchmark, record_dataset
 
 
 def main(args):
@@ -141,7 +141,7 @@ def main(args):
         )
 
         # Group by supplier name, count, sort, and limit.
-        _ = (
+        _ = record_dataset(
             ds.groupby("s_name")
             .aggregate(Count(alias_name="numwait"))
             .sort(key=["numwait", "s_name"], descending=[True, False])

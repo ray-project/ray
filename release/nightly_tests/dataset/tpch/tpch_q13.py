@@ -1,7 +1,7 @@
 import ray
 from ray.data.aggregate import Count
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, run_tpch_benchmark
+from common import parse_tpch_args, load_table, run_tpch_benchmark, record_dataset
 
 
 def main(args):
@@ -61,7 +61,7 @@ def main(args):
         # ...
         # GROUP BY c_count
         # ORDER BY custdist DESC, c_count DESC
-        _ = (
+        _ = record_dataset(
             c_orders.groupby(["c_count"])
             .aggregate(Count(alias_name="custdist"))
             .sort(key=["custdist", "c_count"], descending=[True, True])

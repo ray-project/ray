@@ -1,7 +1,13 @@
 import ray
 from ray.data.aggregate import Mean, Sum
 from ray.data.expressions import col
-from common import load_table, parse_tpch_args, run_tpch_benchmark, to_f64
+from common import (
+    load_table,
+    parse_tpch_args,
+    run_tpch_benchmark,
+    to_f64,
+    record_dataset,
+)
 
 
 def main(args):
@@ -50,7 +56,7 @@ def main(args):
         # result for dual consumption (avg_qty groupby + filter pipeline).
         # This avoids a double S3 read of lineitem and reduces the groupby
         # from the full lineitem table to only matching rows.
-        joined = (
+        joined = record_dataset(
             part_filtered.join(
                 lineitem,
                 join_type="inner",

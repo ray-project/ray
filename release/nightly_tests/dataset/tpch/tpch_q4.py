@@ -1,7 +1,7 @@
 import ray
 from ray.data.aggregate import Count
 from ray.data.expressions import col
-from common import load_table, parse_tpch_args, run_tpch_benchmark
+from common import load_table, parse_tpch_args, run_tpch_benchmark, record_dataset
 
 
 def main(args):
@@ -63,7 +63,7 @@ def main(args):
         )
 
         # Group by order priority and count.
-        _ = (
+        _ = record_dataset(
             ds.groupby("o_orderpriority")
             .aggregate(Count(alias_name="order_count"))
             .sort(key="o_orderpriority")

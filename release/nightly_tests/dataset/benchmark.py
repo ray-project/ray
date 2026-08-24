@@ -266,6 +266,10 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
             mem = {out_key: extra.get(in_key) for out_key, in_key in mem_keys}
             dists = {out_key: extra.get(in_key) for out_key, in_key in dist_keys}
             for op in node.operators_stats or []:
+                # Output-block granularity: StatsSummary is per-block, so its
+                # count/min/mean/max ARE the block-size distribution — the
+                # signal for shuffle-feeding-granularity questions.
+                osb = op.output_size_bytes
                 out["operators_detail"].append(
                     {
                         "operator_name": op.operator_name,
@@ -274,6 +278,10 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
                         "udf_time_s": _sum(op.udf_time),
                         "output_num_rows": _sum(op.output_num_rows),
                         "output_size_bytes": _sum(op.output_size_bytes),
+                        "output_num_blocks": osb.count if osb else None,
+                        "block_size_bytes_min": osb.min if osb else None,
+                        "block_size_bytes_mean": osb.mean if osb else None,
+                        "block_size_bytes_max": osb.max if osb else None,
                         **mem,
                         **dists,
                     }
@@ -283,6 +291,8 @@ def collect_operator_metrics(ds: "ray.data.Dataset") -> Dict[str, Any]:
                 out["read_operator_name"] = entry["operator_name"]
                 out["read_wall_time_s"] = entry["wall_time_s"]
                 out["read_output_size_bytes"] = entry["output_size_bytes"]
+                out["read_output_num_blocks"] = entry["output_num_blocks"]
+                out["read_block_size_bytes_mean"] = entry["block_size_bytes_mean"]
                 for out_key, _ in mem_keys:
                     out[f"read_{out_key}"] = entry[out_key]
                 for out_key, _ in dist_keys:
