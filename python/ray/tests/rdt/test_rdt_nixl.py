@@ -833,6 +833,53 @@ def test_nixl_memory_pool(ray_start_regular, device):
     assert ray.get(dst_actor.sum.remote(ref4, device)) == 21
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_memory_pool_cpu_pool_gpu_tensor(ray_start_regular):
+    """
+    Test that a CPU-based memory pool can serve GPU source tensors, and that
+    the tensor still lands on the GPU on the receiver.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolActor:
+        def __init__(self, pool_device, pool_size):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(pool_size, torch.device(pool_device))
+
+        @ray.method(tensor_transport="nixl")
+        def echo(self, data):
+            # Guard against the argument silently landing on CPU.
+            assert data.device.type == "cuda"
+            return data
+
+        def pool_device_type(self):
+            return (
+                get_tensor_transport_manager("NIXL")
+                ._memory_pool.get_pool_tensor()
+                .device.type
+            )
+
+    # Pool holds exactly one small tensor (24 bytes).
+    src_actor = PoolActor.remote("cpu", 24)
+    dst_actor = GPUTestActor.remote()
+    assert ray.get(src_actor.pool_device_type.remote()) == "cpu"
+
+    # Transfer the first small tensor (using memory pool internally).
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"))
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 6
+
+    # Second transfer: pool is full (ref1 still alive). The allocation raises
+    # NixlOutOfMemoryError, which surfaces as a RayTaskError, proving the
+    # pool (not direct registration) served ref1.
+    ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"))
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(dst_actor.sum.remote(ref2, "cuda"))
+    assert "NixlOutOfMemoryError" in str(excinfo.value) and "out of memory" in str(
+        excinfo.value
+    )
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     """
