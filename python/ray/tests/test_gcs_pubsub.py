@@ -258,8 +258,10 @@ def test_pubsub_subscriptions_bounded_for_regular_cluster(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.wait_for_nodes()
 
-    # Spin up several workers. and block them so that ray is forced to create new workers for each task
-    # we avoid using a signal actor for this because it would create a subscription for each worker.
+    # Spin up several workers and block them, so Ray is forced to create a new
+    # worker per task. We avoid a signal actor here because a worker holding an
+    # actor handle takes out a subscription of its own, which would make the
+    # counts below scale with num_workers and mask what this test guards.
     barrier_dir = tempfile.mkdtemp()
 
     @ray.remote(num_cpus=0.5)
@@ -293,12 +295,12 @@ def test_pubsub_subscriptions_bounded_for_regular_cluster(ray_start_cluster):
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     gcs_log_path = os.path.join(session_dir, "logs", "gcs_server.out")
 
-    # 3 raylets (num_nodes=3) + 1 driver + 1 generator actor's worker + 2 from the
-    # dashboard head(its node-info and actor subscribers each mint their own
-    # subscriber id (gcs_pubsub.py _SubscriberBase.__init__), so one process
-    # holds two long-poll connections). The exact value matters less than the
-    # invariant it pins: it must not grow with num_workers (verified unchanged
-    # at num_workers=6 and num_workers=12).
+    # num_nodes raylets + the driver + the generator actor's worker + 2 from the
+    # dashboard head. The dashboard counts twice because its node-info and actor
+    # subscribers each mint their own subscriber id (see _SubscriberBase.__init__
+    # in gcs_pubsub.py), so one process holds two long-poll connections.
+    # The exact value matters less than the invariant it pins: it must not grow
+    # with num_workers (verified unchanged at num_workers=6 and 12).
     expected_long_polling_subscribers = num_nodes + 4
 
     def check():
