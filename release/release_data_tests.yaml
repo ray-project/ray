@@ -798,6 +798,7 @@
 
 - name: backpressure_fast_producer_slow_consumer
   python: "3.10"
+  group: data-backpressure
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_8_cpu_compute.yaml
@@ -809,6 +810,7 @@
 
 - name: backpressure_training_prefetch
   python: "3.10"
+  group: data-backpressure
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_8_cpu_compute.yaml
@@ -873,10 +875,10 @@
 # CPU nodes (small memory) produce data faster than GPU nodes (large memory)
 # can consume it. The global object store threshold is the sum of all nodes,
 # so CPU stages may not trigger backpressure even when CPU nodes are full.
-- name: heterogeneous_memory_batch_inference
+- name: backpressure_heterogeneous_memory_nodes
   python: "3.10"
   frequency: nightly
-  group: data-batch-inference
+  group: data-backpressure
 
   cluster:
     anyscale_sdk_2026: true
