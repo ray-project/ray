@@ -83,10 +83,9 @@ If using the command line, connect to the Ray cluster as follow:
 Worker gRPC threads on high-CPU nodes
 -------------------------------------
 
-Each Ray worker process has its own gRPC runtime. On a node that runs many workers,
-the per-process gRPC threads can add up to a high node-level thread count. Ray logs a
-warning when a node has more than 32 configured CPUs and the worker gRPC thread setting
-isn't set to a positive value.
+Each Ray worker process has its own gRPC runtime. By default, each runtime assumes it
+owns the whole machine and sizes its internal threads from the machine's CPU count. On
+nodes with many worker processes, this can create a high aggregate thread count.
 
 Set ``RAY_worker_num_grpc_internal_threads`` to a positive integer before starting Ray
 to reduce the worker-side gRPC runtime's CPU-count hint. Set it on every Ray node where
@@ -100,49 +99,10 @@ you want the setting to apply. For example:
   # Worker node.
   RAY_worker_num_grpc_internal_threads=4 ray start --address=<HEAD_ADDRESS>
 
-For a local Ray application that starts its own runtime, set the variable before the
-Python process starts:
-
-.. code-block:: bash
-
-  RAY_worker_num_grpc_internal_threads=4 python app.py
-
-For KubeRay, add the environment variable to every Ray head and worker container that
-needs the setting. Restart existing Ray nodes after changing the value.
-
 The best value depends on the workload. Test small values such as 1, 2, and 4 while
-measuring task throughput and RPC latency. This setting changes the CPU count used to
-size parts of Ray's bundled gRPC runtime; it isn't an exact total-thread limit or a hard
-cap on every gRPC thread pool. The raylet passes the configured value to workers as the
-internal ``RAY_num_grpc_internal_threads`` environment variable.
+measuring task throughput and RPC latency.
 
-``RAY_core_worker_num_server_call_thread`` controls a separate CoreWorker gRPC reply
-executor and defaults to a small value. In most cases, tune
-``RAY_worker_num_grpc_internal_threads`` first and leave the reply executor at its
-default.
-
-To troubleshoot a high worker thread count on Linux, inspect thread names for a
-representative worker process:
-
-.. code-block:: bash
-
-  ps -L -p ${WORKER_PID} -o tid,comm
-
-  for task in /proc/${WORKER_PID}/task/*; do
-    cat "${task}/comm"
-  done | sort | uniq -c | sort -nr
-
-If the application imports the Python ``grpcio`` package, it can load a separate gRPC
-runtime that isn't controlled by ``RAY_worker_num_grpc_internal_threads``. Check the
-worker's mapped libraries to distinguish that runtime from Ray's bundled gRPC runtime:
-
-.. code-block:: bash
-
-  grep grpc /proc/${WORKER_PID}/maps
-
-When sizing a high-worker-density node or container, also monitor its process/thread
-limit, such as the applicable cgroup ``pids.max``, and the user process limit reported
-by ``ulimit -u``.
+To diagnose high worker thread counts, see :ref:`debug-worker-thread-count`.
 
 .. _temp-dir-log-files:
 
