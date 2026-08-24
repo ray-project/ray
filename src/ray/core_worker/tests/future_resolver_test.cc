@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"
 #include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/asio_util.h"
@@ -73,7 +74,7 @@ class FutureResolverTest : public ::testing::Test {
   void TearDown() override { io_context_.Stop(); }
 
  protected:
-  Clock clock_;
+  FakeClock clock_;
   InstrumentedIOContextWithThread io_context_;
   ray::observability::FakeGauge owned_object_count_by_state_;
   ray::observability::FakeGauge owned_object_sizes_by_state_;
@@ -84,9 +85,8 @@ class FutureResolverTest : public ::testing::Test {
   FutureResolver resolver_;
 };
 
-// A status no branch handles must still leave an error in the store, otherwise a
-// ray.get() on the reference blocks forever with nothing ever filling it. FREED is
-// the only such status this build knows; no in-tree owner sends it today.
+// The owner freed the value. Must report that, not let the catch-all blame a node
+// failure that never happened.
 TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
   ObjectID object_id = AddBorrowedObject();
   rpc::GetObjectStatusReply reply;
@@ -98,11 +98,11 @@ TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
   ASSERT_NE(object, nullptr);
   rpc::ErrorType error_type;
   ASSERT_TRUE(object->IsException(&error_type));
-  ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
+  ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_FREED);
 }
 
-// The same branch has to cover a status this build has never heard of, which is what
-// an owner on a newer version can send during a rolling upgrade.
+// A status this build has never heard of, which an owner on a newer version can send
+// during a rolling upgrade, has to leave an error too.
 TEST_F(FutureResolverTest, ProcessResolvedObjectUnknownStatusStoresError) {
   ObjectID object_id = AddBorrowedObject();
   rpc::GetObjectStatusReply reply;
@@ -117,7 +117,7 @@ TEST_F(FutureResolverTest, ProcessResolvedObjectUnknownStatusStoresError) {
   ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
 }
 
-// Sibling statuses, kept as regression anchors for the branch above.
+// Sibling statuses, kept as regression anchors for the two branches above.
 TEST_F(FutureResolverTest, ProcessResolvedObjectOutOfScopeStoresError) {
   ObjectID object_id = AddBorrowedObject();
   rpc::GetObjectStatusReply reply;
