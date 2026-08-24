@@ -44,17 +44,21 @@ class GCSFunctionManager {
                               instrumented_io_context &io_context)
       : kv_(kv), io_context_(io_context) {}
 
+  /// Add an operational reference that requires this job's metadata to remain available.
   void AddJobReference(const JobID &job_id) { job_counter_[job_id]++; }
 
+  /// Return whether the job still has any operational references.
   bool HasJobReference(const JobID &job_id) const {
     return job_counter_.contains(job_id);
   }
 
+  /// Set the callback invoked when a job loses its final operational reference.
   void SetJobReferenceReleasedCallback(
       std::function<void(const JobID &)> job_reference_released_callback) {
     job_reference_released_callback_ = std::move(job_reference_released_callback);
   }
 
+  /// Remove one operational reference, cleaning up job metadata at reference count zero.
   void RemoveJobReference(const JobID &job_id) {
     auto iter = job_counter_.find(job_id);
     if (iter == job_counter_.end()) {

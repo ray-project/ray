@@ -163,7 +163,7 @@ See the :ref:`SDK API Reference <ray-job-submission-sdk-ref>` for more details.
 
 The Ray Jobs API metadata above is stored separately from the core driver records used
 by the :ref:`State API <state-api-overview-ref>`. GCS retains a bounded history of
-finished driver records (100,000 by default). You can change the bound with the
+finished driver records (10,000 by default). You can change the bound with the
 ``RAY_maximum_gcs_dead_job_cached_count`` environment variable. Records still needed by
 live actors, including detached actors, remain pinned until their final reference is
 released. After a driver record is evicted, a submission job remains available through

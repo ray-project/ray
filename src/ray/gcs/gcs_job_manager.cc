@@ -52,23 +52,28 @@ void GcsJobManager::RestoreFinishedJobs(const GcsInitData &gcs_init_data) {
     const int64_t end_time_ms = job_table_data.end_time() != 0
                                     ? static_cast<int64_t>(job_table_data.end_time())
                                     : job_table_data.timestamp();
-    // Initialize() restores one reference for the driver. Actor initialization has
-    // already restored any actor references, so releasing the driver reference here
-    // leaves only the operational references that must pin the job config.
-    function_manager_.RemoveJobReference(job_id);
-    TrackFinishedJob(job_id, end_time_ms);
+    if (TrackFinishedJob(job_id, end_time_ms)) {
+      // Initialize() restores one reference for the driver. Actor initialization has
+      // already restored any actor references, so releasing the driver reference here
+      // leaves only the operational references that must pin the job config.
+      function_manager_.RemoveJobReference(job_id);
+    }
   }
   TrimFinishedJobs();
 }
 
-void GcsJobManager::TrackFinishedJob(const JobID &job_id, int64_t end_time_ms) {
+bool GcsJobManager::TrackFinishedJob(const JobID &job_id, int64_t end_time_ms) {
   if (!finished_job_end_times_.emplace(job_id, end_time_ms).second) {
-    return;
+    return false;
   }
   if (!function_manager_.HasJobReference(job_id)) {
     evictable_finished_jobs_.emplace(FinishedJobSortKey{end_time_ms, job_id.Binary()},
                                      job_id);
   }
+  // A newly finished job may itself be pinned, but it can still push an older,
+  // unreferenced job over the retention cap.
+  TrimFinishedJobs();
+  return true;
 }
 
 void GcsJobManager::OnJobReferenceReleased(const JobID &job_id) {
@@ -95,7 +100,7 @@ void GcsJobManager::TrimFinishedJobs() {
   const size_t batch_size = std::min(
       overflow,
       std::max<size_t>(1, RayConfig::instance().maximum_gcs_deletion_batch_size()));
-  std::vector<std::pair<FinishedJobSortKey, JobID>> entries_to_evict;
+  std::vector<FinishedJobEvictionCandidate> entries_to_evict;
   entries_to_evict.reserve(batch_size);
 
   while (finished_job_end_times_.size() > cap && entries_to_evict.size() < batch_size &&
@@ -111,41 +116,136 @@ void GcsJobManager::TrimFinishedJobs() {
       continue;
     }
 
-    finished_job_end_times_.erase(job_id);
-    entries_to_evict.emplace_back(sort_key, job_id);
+    entries_to_evict.push_back({sort_key, job_id, {}});
   }
 
   if (entries_to_evict.empty()) {
     return;
   }
 
+  finished_job_cleanup_in_progress_ = true;
+  LoadFinishedJobsForEviction(std::move(entries_to_evict));
+}
+
+void GcsJobManager::LoadFinishedJobsForEviction(
+    std::vector<FinishedJobEvictionCandidate> candidates) {
+  RAY_CHECK(!candidates.empty());
+  auto shared_candidates =
+      std::make_shared<std::vector<FinishedJobEvictionCandidate>>(std::move(candidates));
+  auto pending_loads = std::make_shared<size_t>(shared_candidates->size());
+  auto load_failed = std::make_shared<bool>(false);
+
+  for (size_t index = 0; index < shared_candidates->size(); index++) {
+    const auto job_id = (*shared_candidates)[index].job_id;
+    gcs_table_storage_.JobTable().Get(
+        job_id,
+        {[this, shared_candidates, pending_loads, load_failed, index, job_id](
+             const Status &status, std::optional<rpc::JobTableData> job_data) {
+           RAY_CHECK(thread_checker_.IsOnSameThread());
+           if (!status.ok() || !job_data.has_value()) {
+             RAY_LOG(ERROR).WithField(job_id)
+                 << "Failed to load a finished job selected for eviction: " << status;
+             *load_failed = true;
+           } else {
+             (*shared_candidates)[index].job_data = std::move(*job_data);
+           }
+
+           RAY_CHECK(*pending_loads > 0);
+           if (--(*pending_loads) != 0) {
+             return;
+           }
+
+           if (*load_failed) {
+             for (const auto &candidate : *shared_candidates) {
+               if (!function_manager_.HasJobReference(candidate.job_id)) {
+                 evictable_finished_jobs_.emplace(candidate.sort_key, candidate.job_id);
+               }
+             }
+             finished_job_cleanup_in_progress_ = false;
+             return;
+           }
+
+           DeleteFinishedJobs(std::move(*shared_candidates));
+         },
+         io_context_});
+  }
+}
+
+void GcsJobManager::DeleteFinishedJobs(
+    std::vector<FinishedJobEvictionCandidate> candidates) {
+  std::vector<FinishedJobEvictionCandidate> entries_to_evict;
+  entries_to_evict.reserve(candidates.size());
+  for (auto &candidate : candidates) {
+    if (!function_manager_.HasJobReference(candidate.job_id)) {
+      entries_to_evict.push_back(std::move(candidate));
+    }
+  }
+
+  if (entries_to_evict.empty()) {
+    finished_job_cleanup_in_progress_ = false;
+    TrimFinishedJobs();
+    return;
+  }
+
   std::vector<JobID> job_ids;
   job_ids.reserve(entries_to_evict.size());
   for (const auto &entry : entries_to_evict) {
-    job_ids.push_back(entry.second);
+    job_ids.push_back(entry.job_id);
   }
 
-  finished_job_cleanup_in_progress_ = true;
   gcs_table_storage_.JobTable().BatchDelete(
       job_ids,
       {[this, entries_to_evict = std::move(entries_to_evict)](const Status &status) {
-         finished_job_cleanup_in_progress_ = false;
          if (!status.ok()) {
            RAY_LOG(ERROR) << "Failed to evict a batch of finished jobs: " << status;
-           for (const auto &[sort_key, job_id] : entries_to_evict) {
-             finished_job_end_times_.emplace(job_id, sort_key.first);
-             if (!function_manager_.HasJobReference(job_id)) {
-               evictable_finished_jobs_.emplace(sort_key, job_id);
+           for (const auto &entry : entries_to_evict) {
+             if (!function_manager_.HasJobReference(entry.job_id)) {
+               evictable_finished_jobs_.emplace(entry.sort_key, entry.job_id);
              }
            }
+           finished_job_cleanup_in_progress_ = false;
            return;
          }
 
-         for (const auto &entry : entries_to_evict) {
-           cached_job_configs_.erase(entry.second);
+         auto entries_to_restore =
+             std::make_shared<std::vector<FinishedJobEvictionCandidate>>();
+         size_t num_evicted = 0;
+         for (auto &entry : entries_to_evict) {
+           if (function_manager_.HasJobReference(entry.job_id)) {
+             entries_to_restore->push_back(std::move(entry));
+             continue;
+           }
+           finished_job_end_times_.erase(entry.job_id);
+           cached_job_configs_.erase(entry.job_id);
+           num_evicted++;
          }
-         ray_metric_finished_job_evictions_total_.Record(entries_to_evict.size());
-         TrimFinishedJobs();
+         if (num_evicted > 0) {
+           ray_metric_finished_job_evictions_total_.Record(num_evicted);
+         }
+
+         if (entries_to_restore->empty()) {
+           finished_job_cleanup_in_progress_ = false;
+           TrimFinishedJobs();
+           return;
+         }
+
+         auto pending_restores = std::make_shared<size_t>(entries_to_restore->size());
+         for (const auto &entry : *entries_to_restore) {
+           gcs_table_storage_.JobTable().Put(
+               entry.job_id,
+               entry.job_data,
+               {[this, entries_to_restore, pending_restores, job_id = entry.job_id](
+                    const Status &restore_status) {
+                  RAY_CHECK_OK(restore_status)
+                      << "Failed to restore referenced job " << job_id;
+                  RAY_CHECK(*pending_restores > 0);
+                  if (--(*pending_restores) == 0) {
+                    finished_job_cleanup_in_progress_ = false;
+                    TrimFinishedJobs();
+                  }
+                },
+                io_context_});
+         }
        },
        io_context_});
 }
@@ -270,16 +370,22 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
                      const Status &status) {
     RAY_CHECK(thread_checker_.IsOnSameThread());
 
+    bool newly_finished = false;
     if (!status.ok()) {
       RAY_LOG(ERROR).WithField(job_id) << "Failed to mark job as finished.";
     } else {
       gcs_publisher_.PublishJob(job_id, job_table_data);
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_table_data);
-      TrackFinishedJob(job_id, job_table_data.end_time());
+      newly_finished = TrackFinishedJob(job_id, job_table_data.end_time());
       RAY_LOG(DEBUG).WithField(job_id) << "Marked job as finished.";
     }
-    function_manager_.RemoveJobReference(job_id);
+    // MarkJobFinished can be retried after its storage write succeeds. Release the
+    // driver's reference only for the first successful transition so retries cannot
+    // consume references held by detached actors.
+    if (newly_finished) {
+      function_manager_.RemoveJobReference(job_id);
+    }
     WriteDriverJobExportEvent(job_table_data,
                               rpc::events::DriverJobLifecycleEvent::FINISHED);
 
@@ -319,6 +425,10 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
          RAY_CHECK(thread_checker_.IsOnSameThread());
 
          if (get_status.ok() && result) {
+           if (result->is_dead()) {
+             send_reply(Status::OK());
+             return;
+           }
            MarkJobAsFinished(*result, send_reply);
            return;
          }

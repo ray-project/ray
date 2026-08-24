@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_job_manager.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -34,6 +35,21 @@
 
 namespace ray {
 
+class HookedInMemoryStoreClient : public gcs::InMemoryStoreClient {
+ public:
+  void AsyncBatchDelete(const std::string &table_name,
+                        const std::vector<std::string> &keys,
+                        Postable<void(int64_t)> callback) override {
+    gcs::InMemoryStoreClient::AsyncBatchDelete(table_name, keys, std::move(callback));
+    auto hook = batch_delete_hook;
+    if (hook) {
+      hook(table_name);
+    }
+  }
+
+  std::function<void(const std::string &)> batch_delete_hook;
+};
+
 class GcsJobManagerTest : public ::testing::Test {
  public:
   GcsJobManagerTest() : runtime_env_manager_(nullptr) {
@@ -49,7 +65,8 @@ class GcsJobManagerTest : public ::testing::Test {
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
+    in_memory_store_client_ = std::make_shared<HookedInMemoryStoreClient>();
+    store_client_ = in_memory_store_client_;
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
@@ -86,8 +103,59 @@ class GcsJobManagerTest : public ::testing::Test {
   }
 
  protected:
+  void AddJob(const JobID &job_id) {
+    auto request = GenAddJobRequest(job_id, "namespace");
+    rpc::AddJobReply reply;
+    std::promise<void> promise;
+    gcs_job_manager_->HandleAddJob(
+        *request,
+        &reply,
+        [&promise](Status status, std::function<void()>, std::function<void()>) {
+          EXPECT_TRUE(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().get();
+  }
+
+  void MarkJobFinished(const JobID &job_id) {
+    rpc::MarkJobFinishedRequest request;
+    request.set_job_id(job_id.Binary());
+    rpc::MarkJobFinishedReply reply;
+    std::promise<void> promise;
+    gcs_job_manager_->HandleMarkJobFinished(
+        request,
+        &reply,
+        [&promise](Status status, std::function<void()>, std::function<void()>) {
+          EXPECT_TRUE(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().get();
+  }
+
+  absl::flat_hash_map<JobID, rpc::JobTableData> GetJobs() {
+    std::promise<absl::flat_hash_map<JobID, rpc::JobTableData>> promise;
+    gcs_table_storage_->JobTable().GetAll(
+        {[&promise](absl::flat_hash_map<JobID, rpc::JobTableData> jobs) {
+           promise.set_value(std::move(jobs));
+         },
+         io_service_});
+    return promise.get_future().get();
+  }
+
+  void RemoveJobReference(const JobID &job_id) {
+    std::promise<void> promise;
+    io_service_.post(
+        [this, job_id, &promise] {
+          function_manager_->RemoveJobReference(job_id);
+          promise.set_value();
+        },
+        "GcsJobManagerTest.RemoveJobReference");
+    promise.get_future().get();
+  }
+
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
+  std::shared_ptr<HookedInMemoryStoreClient> in_memory_store_client_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
@@ -865,6 +933,29 @@ TEST_F(GcsJobManagerTest, TestFinishedJobEviction) {
   EXPECT_TRUE(jobs.contains(job3));
 }
 
+TEST_F(GcsJobManagerTest, TestPinnedFinishedJobTriggersEvictionOfOlderJob) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_job_cached_count": 1})");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  const auto old_job = JobID::FromInt(1);
+  const auto pinned_job = JobID::FromInt(2);
+  AddJob(old_job);
+  MarkJobFinished(old_job);
+
+  AddJob(pinned_job);
+  function_manager_->AddJobReference(pinned_job);
+  MarkJobFinished(pinned_job);
+
+  ASSERT_TRUE(WaitForCondition([this]() { return GetJobs().size() == 1; }, 2000));
+  const auto jobs = GetJobs();
+  EXPECT_FALSE(jobs.contains(old_job));
+  EXPECT_TRUE(jobs.contains(pinned_job));
+
+  RemoveJobReference(pinned_job);
+}
+
 TEST_F(GcsJobManagerTest, TestRestoreFinishedJobsUsesJobIdAsTieBreaker) {
   RayConfig::instance().initialize(R"({
     "maximum_gcs_dead_job_cached_count": 2,
@@ -1000,6 +1091,55 @@ TEST_F(GcsJobManagerTest, TestFinishedJobWithActorReferenceIsPinned) {
   EXPECT_TRUE(jobs.contains(job2));
 
   remove_job_reference(job2);
+}
+
+TEST_F(GcsJobManagerTest, TestReferenceAddedDuringEvictionRestoresJobRecord) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_job_cached_count": 0})");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  const auto job_id = JobID::FromInt(1);
+  AddJob(job_id);
+
+  std::promise<void> reference_added_promise;
+  in_memory_store_client_->batch_delete_hook =
+      [this, job_id, &reference_added_promise](const std::string &table_name) {
+        if (table_name != rpc::TablePrefix_Name(rpc::TablePrefix::JOB)) {
+          return;
+        }
+        in_memory_store_client_->batch_delete_hook = nullptr;
+        function_manager_->AddJobReference(job_id);
+        reference_added_promise.set_value();
+      };
+
+  MarkJobFinished(job_id);
+  reference_added_promise.get_future().get();
+
+  EXPECT_TRUE(WaitForCondition([this]() { return GetJobs().size() == 1; }, 2000));
+  EXPECT_TRUE(function_manager_->HasJobReference(job_id));
+  EXPECT_NE(gcs_job_manager_->GetJobConfig(job_id), nullptr);
+
+  RemoveJobReference(job_id);
+  EXPECT_TRUE(WaitForCondition([this]() { return GetJobs().empty(); }, 2000));
+}
+
+TEST_F(GcsJobManagerTest, TestMarkJobFinishedRetryKeepsActorReference) {
+  RayConfig::instance().initialize(R"({"maximum_gcs_dead_job_cached_count": 0})");
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->RestoreFinishedJobs(gcs_init_data);
+
+  const auto job_id = JobID::FromInt(1);
+  AddJob(job_id);
+  function_manager_->AddJobReference(job_id);
+
+  MarkJobFinished(job_id);
+  MarkJobFinished(job_id);
+  EXPECT_TRUE(function_manager_->HasJobReference(job_id));
+
+  RemoveJobReference(job_id);
+  EXPECT_TRUE(WaitForCondition([this]() { return GetJobs().empty(); }, 2000));
 }
 
 }  // namespace ray

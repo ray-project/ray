@@ -469,7 +469,7 @@ RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// their final reference is released.
 /// JobTableData contains variable-sized job config, runtime environment, entrypoint,
 /// and user metadata. Its serialized and deserialized footprint is workload-dependent.
-RAY_CONFIG(uint32_t, maximum_gcs_dead_job_cached_count, 100000)
+RAY_CONFIG(uint32_t, maximum_gcs_dead_job_cached_count, 10000)
 /// Maximum number of dead workers in GCS server memory cache.
 /// WorkerTableData entry ≈ ~130B serialized (~400-800B deserialized).
 /// Worst-case footprint: 100,000 x ~130B-800B =~ 13-80MB

@@ -141,16 +141,26 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
  private:
   using FinishedJobSortKey = std::pair<int64_t, std::string>;
 
+  struct FinishedJobEvictionCandidate {
+    FinishedJobSortKey sort_key;
+    JobID job_id;
+    rpc::JobTableData job_data;
+  };
+
   void ClearJobInfos(const rpc::JobTableData &job_data);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
                          std::function<void(Status)> done_callback);
 
-  void TrackFinishedJob(const JobID &job_id, int64_t end_time_ms);
+  bool TrackFinishedJob(const JobID &job_id, int64_t end_time_ms);
 
   void OnJobReferenceReleased(const JobID &job_id);
 
   void TrimFinishedJobs();
+
+  void LoadFinishedJobsForEviction(std::vector<FinishedJobEvictionCandidate> candidates);
+
+  void DeleteFinishedJobs(std::vector<FinishedJobEvictionCandidate> candidates);
 
   // Used to validate invariants for threading; for example, all callbacks are executed on
   // the same thread.
@@ -170,8 +180,9 @@ class GcsJobManager : public rpc::JobInfoGcsServiceHandler {
   /// Evictable finished jobs ordered deterministically by end time and then job id.
   std::map<FinishedJobSortKey, JobID> evictable_finished_jobs_;
 
-  /// Serializes bounded cleanup batches. Entries selected for an in-flight batch are
-  /// removed from the two indexes above and restored if storage deletion fails.
+  /// Serializes bounded cleanup batches. Selected entries remain in
+  /// finished_job_end_times_ until storage deletion succeeds. Their full records are
+  /// loaded before deletion so a job that gains a reference in flight can be restored.
   bool finished_job_cleanup_in_progress_ = false;
 
   GcsTableStorage &gcs_table_storage_;
