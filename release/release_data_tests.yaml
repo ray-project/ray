@@ -458,7 +458,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
+        - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=hash_shuffle_v2
         - RAY_DATA_SHUFFLE_COMPRESSION={{compression}}
         - RAY_DATA_HASH_SHUFFLE_COMPRESSION={{compression}}
         - RAY_max_direct_call_object_size=8192
