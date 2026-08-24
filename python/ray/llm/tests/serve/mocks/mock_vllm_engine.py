@@ -240,6 +240,10 @@ class MockVLLMEngine(LLMEngine):
             check_model(body.model)
             return await to_response(self.completions(body))
 
+        # Real vLLM's build_app returns an app whose middleware stack is already
+        # built, which makes Starlette reject add_middleware. Mirror that so tests
+        # exercise the same app shape LLMServer sees in reality.
+        app.middleware_stack = app.build_middleware_stack()
         return app
 
     async def chat(
