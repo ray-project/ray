@@ -1061,6 +1061,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   for (const auto &id : object_manager_.GetLocalObjectsOwnedBy(worker_id)) {
     ids.insert(id);
   }
+  RAY_LOG(DEBUG) << "Freeing local objects on worker failure. Objects to be freed: "
+                 << debug_string(ids);
   FreeLocalObjects(std::vector<ObjectID>(ids.begin(), ids.end()));
 }
 
