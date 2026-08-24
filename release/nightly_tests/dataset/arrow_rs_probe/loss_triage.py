@@ -127,8 +127,14 @@ def _reader_knobs():
             arrow_rs_parquet_file_reader as r,
         )
 
+        budget = r._ARROW_RS_DECODE_BUDGET_BYTES
+        if budget is None:
+            # Post-a1b095ec03 the module attr is None unless the env var is set
+            # (the default now follows DataContext.target_max_block_size);
+            # resolve it the way the reader would.
+            budget = r._default_decode_budget_bytes()
         return dict(
-            budget=r._ARROW_RS_DECODE_BUDGET_BYTES,
+            budget=budget,
             k=r._ARROW_RS_K,
             split=r._ARROW_RS_DEFAULT_SPLIT_THRESHOLD_BYTES,
             window=r._ARROW_RS_FETCH_WINDOW_MB,
