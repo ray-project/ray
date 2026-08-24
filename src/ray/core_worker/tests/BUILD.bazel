@@ -22,6 +22,18 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "context_test",
+    size = "small",
+    srcs = ["context_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/core_worker:core_worker_context",
+    ],
+)
+
+ray_cc_test(
     name = "memory_store_test",
     size = "small",
     srcs = ["memory_store_test.cc"],

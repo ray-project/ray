@@ -1,4 +1,4 @@
-name: "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
+name: "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX$WHEEL_NAME_SUFFIX"
 disable_caching: true
 froms:
   - "rayproject/manylinux2014:$MANYLINUX_VERSION$JDK_SUFFIX-$HOSTTYPE"
@@ -15,6 +15,8 @@ srcs:
 build_args:
   - PYTHON_VERSION
   - BUILDKITE_COMMIT
+  - RAYCI_IMAGE_PIP_INDEX_URL
+  - RAYCI_IMAGE_PIP_TRUSTED_HOST
   - ARCH_SUFFIX
   - WHEEL_TYPE=ray
   - MANYLINUX_IMAGE=rayproject/manylinux2014:$MANYLINUX_VERSION$JDK_SUFFIX-$HOSTTYPE

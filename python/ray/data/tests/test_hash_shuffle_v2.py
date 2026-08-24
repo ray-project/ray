@@ -53,9 +53,9 @@ def _assert_keys_colocated(per_block):
 
 
 @pytest.fixture(autouse=True)
-def data_context_hash_shuffle_v2(restore_data_context):
+def data_context_shuffle_v2(restore_data_context):
     ctx = restore_data_context
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
 
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
@@ -337,7 +337,7 @@ def test_shuffle_reduce_task_uses_operator_name():
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
 # shuffle_tasks tests above) into a dedicated operator/task-level test file --
-# they aren't specific to hash-shuffle-v2.
+# they aren't specific to shuffle-v2.
 def _ipc_shard_bundle(partition_id, table):
     """One partition's shard as a ShuffleMapOp emits it: an IPC-encoded buffer
     stamped with the partition id."""
