@@ -2,9 +2,9 @@ import os
 import sys
 
 import pytest
-import requests
 
 import ray
+from ray._private.test_utils import get_with_auth_token
 from ray.job_submission import JobSubmissionClient
 from ray.tests.conftest import *  # noqa
 
@@ -59,7 +59,7 @@ def test_unique_operator_id(ray_start_regular_shared):
     assert len(jobs) == 1, jobs
     job_id = jobs[0].job_id
 
-    data = requests.get(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
+    data = get_with_auth_token(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
     datasets = [
         dataset
         for dataset in data["datasets"]
@@ -85,7 +85,7 @@ def test_get_datasets(ray_start_regular_shared):
     assert len(jobs) == 1, jobs
     job_id = jobs[0].job_id
 
-    data = requests.get(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
+    data = get_with_auth_token(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
     datasets = [
         dataset
         for dataset in data["datasets"]
@@ -124,7 +124,7 @@ def test_get_datasets(ray_start_regular_shared):
 
     ds._set_name("another_data_head_test")
     ds.map_batches(lambda x: x).materialize()
-    data = requests.get(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
+    data = get_with_auth_token(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
 
     dataset = [
         dataset

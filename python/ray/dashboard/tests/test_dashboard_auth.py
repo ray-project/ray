@@ -5,11 +5,6 @@ import sys
 import pytest
 import requests
 
-# This suite drives the dashboard's auth itself (asserting both authorized and
-# 401/403 responses), so it must control every request's headers by hand rather
-# than have the token auto-attached.
-pytestmark = pytest.mark.no_auth_token
-
 
 def test_dashboard_request_requires_auth_with_valid_token(
     setup_cluster_with_token_auth,
