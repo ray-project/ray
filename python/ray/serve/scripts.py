@@ -513,7 +513,9 @@ def run(
         )
 
     http_options = {}
-    proxy_location = ProxyLocation.EveryNode
+    # Left unset so it resolves to the default (EveryNode) rather than requesting a
+    # change to an already-running instance's placement.
+    proxy_location = None
     grpc_options = gRPCOptions()
     controller_options = None
     # Merge http_options, grpc_options, and controller_options with the ones on
