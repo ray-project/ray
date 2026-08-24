@@ -44,7 +44,7 @@ _rayci_pypi_index_setup() {
   # mirror is deployed and this fleet has no route to it". getent is Linux-only;
   # on macOS the address line is simply absent.
   local resolved
-  resolved="$(getent hosts "${mirror#https://}" 2>/dev/null | awk '{print $1}' | paste -sd, -)"
+  resolved="$(getent hosts "${mirror#*://}" 2>/dev/null | awk '{print $1}' | paste -sd, -)"
   echo "pypi index: mirror=${mirror} resolves_to=${resolved:-<unresolved>}"
 
   # Bazel's own downloader is a separate mechanism from pip's index and gets its
