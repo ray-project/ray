@@ -1,0 +1,37 @@
+build_arg_sets:
+  py314_cuda128:
+    PYTHON_VERSION: "3.14"
+    PYTHON_SHORT: "314"
+    CUDA_CODE: cu128
+
+depsets:
+  # Shared ML layer for release tests running on the anyscale/ray-torch image.
+  # ray-ml is not built above Python 3.10, so ray-torch replaces it for GPU
+  # release testing on newer interpreters -- but the ray-torch image only
+  # carries the torch stack, not the rest of what ray-ml shipped. This depset
+  # expands the ray-torch base image deps with the handful of ML libraries those
+  # tests import (see requirements_ray_torch_ml.in).
+  #
+  # Consumed via `byod.python_depset` by torch_lightning,
+  # huggingface_transformers and huggingface_accelerate. The BYOD build installs
+  # it automatically with `uv pip install --system --no-deps`, so no
+  # post_build_script is needed.
+  - name: ray_torch_ml_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_torch_${CUDA_CODE}_base_depset_${PYTHON_SHORT}
+    requirements:
+      - release/ray_release/byod/requirements_ray_torch_ml.in
+    # Constrain to the ray-torch base image lock so this layer stays a
+    # consistent superset of the image it is installed onto -- torch and friends
+    # must match the image exactly rather than floating to latest.
+    constraints:
+      - python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
+    output: release/ray_release/byod/ray_torch_ml_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py314_cuda128

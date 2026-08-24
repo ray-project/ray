@@ -2366,7 +2366,7 @@
     script: python torchft_hello_world.py
 
 - name: torch_lightning
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/pytorch_lightning
 
@@ -2376,8 +2376,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
-      post_build_script: byod_pytorch_lightning_test.sh
+      type: torch-cu128
+      python_depset: ray_torch_ml_py3.14.lock
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2385,7 +2385,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_lightning.py
 
 - name: huggingface_transformers
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/huggingface_transformers
 
@@ -2395,7 +2395,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: ray_torch_ml_py3.14.lock
     cluster_compute: compute_aws.yaml
 
   run:
@@ -2403,7 +2404,7 @@
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_transformers.py
 
 - name: huggingface_accelerate
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/huggingface_accelerate
 
@@ -2413,7 +2414,8 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
+      python_depset: ray_torch_ml_py3.14.lock
     cluster_compute: compute_aws.yaml
 
   run:

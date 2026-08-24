@@ -1,0 +1,12 @@
+# Extra ML libraries layered on top of the anyscale/ray-torch release-test image
+# (py3.14, cu12.8) for Train release tests that used to run on the ray-ml image.
+#
+# The ray-torch lock already provides torch/torchvision/torchmetrics/transformers/
+# datasets/sentence-transformers, so only what the ml image additionally carried
+# is listed here:
+#   lightning  -> torch_lightning (import lightning.pytorch, ray.train.lightning)
+#   accelerate -> huggingface_accelerate, and transformers.Trainer requires it
+#   evaluate   -> huggingface_transformers, huggingface_accelerate
+lightning
+accelerate
+evaluate
