@@ -2009,8 +2009,11 @@ def test_stats_actor_iter_metrics():
 
 
 def test_stats_actor_exports_distribution_metrics():
+    """Distribution snapshots export mean/max Gauges and skip empty snapshots."""
+    # _StatsActor is wrapped by @ray.remote; instantiate its Python class locally.
     actor = _StatsActor.__ray_metadata__.modified_class()
 
+    # Distribution metrics create one Gauge for each exported statistic.
     metrics = actor.execution_metrics_tasks["max_uss_bytes"]
     assert set(metrics) == {"mean", "max"}
     for statistic, metric in metrics.items():
@@ -2024,6 +2027,7 @@ def test_stats_actor_exports_distribution_metrics():
         patch.object(metrics["mean"], "set") as set_mean,
         patch.object(metrics["max"], "set") as set_max,
     ):
+        # Empty distributions must not overwrite previously exported values.
         actor.update_execution_metrics(
             "dataset_1",
             [{"max_uss_bytes": {"num_samples": 0, "mean": 0, "max": None}}],
@@ -2033,6 +2037,7 @@ def test_stats_actor_exports_distribution_metrics():
         set_mean.assert_not_called()
         set_max.assert_not_called()
 
+        # Non-empty snapshots export each statistic with the operator tags.
         actor.update_execution_metrics(
             "dataset_1",
             [{"max_uss_bytes": {"mean": 200, "max": 300}}],

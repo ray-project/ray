@@ -894,7 +894,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Distribution of max USS bytes across tasks.",
         metrics_group=MetricsGroup.TASKS,
         metrics_type=MetricsType.Distribution,
-        metrics_args={"statistics": ("mean", "max")},
     )
     def max_uss_bytes(self) -> DistributionTracker:
         return self._max_uss_bytes
