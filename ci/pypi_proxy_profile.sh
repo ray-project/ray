@@ -22,9 +22,12 @@
 # trusted-host handling.
 #
 # Which index to use is decided by probing, not by assuming. Fail-open is
-# load-bearing: a package mirror must never be the reason a job fails. Every
-# failure path leaves the environment untouched, and a step that gets nothing
-# exported resolves from public PyPI exactly as it does today.
+# load-bearing: a package mirror must never be the reason a job fails. A failure
+# path exports nothing new -- with one deliberate exception: the CI images bake
+# PIP_INDEX_URL/UV_INDEX_URL at build time (ENV in base.test.Dockerfile and
+# friends, so derived image builds inherit the index), so when the hosted index
+# is unreachable at step time, those are reset to public PyPI rather than left
+# pointing at a dead index.
 
 _rayci_pypi_index_setup() {
   # Off CI the mirror is unreachable by design, so leave developer machines alone.
@@ -81,6 +84,16 @@ _rayci_pypi_index_setup() {
 
   if ! curl -sf -m 15 -o /dev/null "${index}/${probe_pkg}/" 2>/dev/null; then
     export RAYCI_PYPI_INDEX_MODE="pypi"
+    # The CI images bake PIP_INDEX_URL/UV_INDEX_URL to the hosted index at build
+    # time; pointing at an index just found unreachable would fail every resolve
+    # in the step, so put those back on public PyPI. Values someone else set stay
+    # untouched.
+    if [[ "${PIP_INDEX_URL:-}" == "${index}" ]]; then
+      export PIP_INDEX_URL="https://pypi.org/simple"
+    fi
+    if [[ "${UV_INDEX_URL:-}" == "${index}" ]]; then
+      export UV_INDEX_URL="https://pypi.org/simple"
+    fi
     echo "pypi index: mirror index unreachable from this agent; resolving from public PyPI" >&2
     return 0
   fi

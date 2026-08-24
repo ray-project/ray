@@ -27,8 +27,8 @@ ENV RAY_DISABLE_EXTRA_CPP=1
 # Empty for anyone building these images outside CI, and then this is exactly the index
 # pip would have used anyway, so an external build behaves as it does today.
 ARG RAYCI_IMAGE_PIP_INDEX_URL=""
-ARG PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
-ARG UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 
 RUN <<EOF
 #!/bin/bash

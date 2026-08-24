@@ -29,7 +29,7 @@ FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE} AS builder
 # RAYCI_IMAGE_PIP_INDEX_URL in the job environment. Empty outside CI, and then this is
 # the index pip would have used anyway.
 ARG RAYCI_IMAGE_PIP_INDEX_URL=""
-ARG PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 
 ARG BUILDKITE_COMMIT
 
