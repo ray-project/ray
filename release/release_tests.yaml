@@ -330,7 +330,7 @@
 
 # Ray Train distributed Torch benchmarks
 - name: air_benchmark_torch_mnist_gpu_4x4
-  python: "3.10"
+  python: "3.14"
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
@@ -340,7 +340,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -2242,7 +2242,7 @@
   alert: default
 
 - name: train_async_checkpointing_validation_benchmark
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/async_checkpointing_validation_benchmark
   frequency: nightly
@@ -2250,7 +2250,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_aws.yaml
   run:
     timeout: 10800
@@ -2260,7 +2260,7 @@
   alert: default
 
 - name: train_preemption_benchmark
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/preemption
   frequency: nightly
@@ -2268,7 +2268,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch-cu128
     cluster_compute: compute_aws.yaml
   run:
     timeout: 10800
@@ -2451,7 +2451,7 @@
   alert: default
 
 - name: train_elastic_e2e_with_node_killing
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/elastic_training
 
@@ -2460,7 +2460,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_gpu_aws.yaml
 
