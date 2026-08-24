@@ -49,3 +49,15 @@ kubectl get pods -n ray-system
 NAME                                READY   STATUS    RESTARTS   AGE
 kuberay-operator-6bc45dd644-gwtqv   1/1     Running   0          24s
 ```
+
+(kuberay-images)=
+
+## Container images
+
+KubeRay publishes its component images to [Quay.io](https://quay.io/organization/kuberay), under `quay.io/kuberay/`. Published components include `operator`, `apiserver`, `dashboard`, `historyserver`, and `collector`. Always pull from Quay.io. The `kuberay` organization on Docker Hub is a legacy mirror that stopped receiving updates in early 2024. Docker Hub also enforces [anonymous pull rate limits](https://docs.docker.com/docker-hub/download-rate-limit/) that make it a poor choice for automated environments.
+
+KubeRay tags each image three ways:
+
+* **Version tags** such as `quay.io/kuberay/operator:v1.6.0` identify a stable release. Use a version tag for anything you depend on. The operator's version tag matches the KubeRay release, so chart version `1.6.0` installs `operator:v1.6.0`.
+* **Commit tags** such as `quay.io/kuberay/operator:feeaf72` pin an image to an exact `master` commit. The tag is the short Git commit hash.
+* **The `nightly` tag** tracks the most recent `master` build. It moves with every merge, so it isn't a stable target. Use it only to try unreleased changes.
