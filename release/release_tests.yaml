@@ -1886,7 +1886,8 @@
         # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
 
-      # 'type: gpu' means: use the 'ray-ml' image.
+      # 'type: torch-cu128' means: use the 'ray-torch' image, which replaces
+      # ray-ml on Python versions where the ml image is not built.
       type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
@@ -2052,7 +2053,8 @@
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
-      # 'type: gpu' means: use the 'ray-ml' image.
+      # 'type: torch-cu128' means: use the 'ray-torch' image, which replaces
+      # ray-ml on Python versions where the ml image is not built.
       type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_fixed_size_gpu_4x4_aws.yaml
@@ -2086,7 +2088,8 @@
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
-      # 'type: gpu' means: use the 'ray-ml' image.
+      # 'type: torch-cu128' means: use the 'ray-torch' image, which replaces
+      # ray-ml on Python versions where the ml image is not built.
       type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_autoscaling_gpu_4x4_aws.yaml
