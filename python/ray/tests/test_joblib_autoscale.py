@@ -2,6 +2,7 @@ import concurrent.futures
 import gc
 import os
 import queue
+import sys
 import threading
 import time
 import weakref
@@ -34,6 +35,24 @@ class _FakeRemoteMethod:
 
     def remote(self, *args):
         return self._function(*args)
+
+
+class _RaisingRemoteMethod:
+    def __init__(self, error):
+        self._error = error
+        self.calls = 0
+
+    def remote(self, *args):
+        self.calls += 1
+        raise self._error
+
+
+class _BrokenCallbackObjectRef:
+    def future(self):
+        return self
+
+    def add_done_callback(self, _callback):
+        raise RuntimeError("callback registration failed")
 
 
 class _FakeActor:
@@ -128,6 +147,49 @@ def test_actor_creation_failure_leaves_slot_reusable():
     actor_set.join()
 
 
+def test_readiness_submission_failure_retains_actor_and_fails_closed(monkeypatch):
+    actor = _FakeActor(ready=False)
+    actor.ping = _RaisingRemoteMethod(RuntimeError("readiness submission failed"))
+    killed = []
+    monkeypatch.setattr(ray, "kill", killed.append)
+    actor_set = _ElasticActorSet(
+        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
+    )
+
+    with pytest.raises(RuntimeError, match="readiness submission failed"):
+        actor_set.submit(None, [])
+    assert actor_set.snapshot() == [(_ElasticSlotState.STARTING, 0)]
+    assert actor_set._slots[0].actor is actor
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+
+    actor_set.close()
+    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert killed == [actor]
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
+def test_constructor_callback_failure_kills_owned_actor(monkeypatch):
+    actor = _FakeActor(ready=False)
+    actor.readiness_ref = _BrokenCallbackObjectRef()
+    actor.ping = _FakeRemoteMethod(lambda: actor.readiness_ref)
+    killed = []
+    condition = threading.Condition()
+    monkeypatch.setattr(threading, "Condition", lambda: condition)
+
+    def assert_kill_outside_condition(target):
+        assert not condition._is_owned()
+        killed.append(target)
+
+    monkeypatch.setattr(ray, "kill", assert_kill_outside_condition)
+
+    with pytest.raises(RuntimeError, match="callback registration failed"):
+        _ElasticActorSet(lambda: actor, min_size=1, max_size=1, idle_timeout_s=60)
+
+    assert killed == [actor]
+
+
 def test_starting_slot_becomes_active_only_after_readiness():
     actor = _FakeActor(ready=False)
     actor_set = _ElasticActorSet(
@@ -145,6 +207,31 @@ def test_starting_slot_becomes_active_only_after_readiness():
     actor_set.close()
     actor.exit_ref.completion.set_result(None)
     actor_set.join()
+
+
+def test_cancelled_starting_slot_waits_for_dedicated_exit_ref(monkeypatch):
+    actor = _FakeActor(ready=False)
+    killed = []
+    actor_set = _ElasticActorSet(
+        lambda: actor, min_size=1, max_size=1, idle_timeout_s=60
+    )
+
+    def assert_kill_outside_condition(target):
+        assert not actor_set._condition._is_owned()
+        killed.append(target)
+
+    monkeypatch.setattr(ray, "kill", assert_kill_outside_condition)
+
+    actor_set.close()
+    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert killed == [actor]
+
+    actor.readiness_ref.completion.set_result(None)
+    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+    assert actor_set.snapshot() == [(_ElasticSlotState.EMPTY, 0)]
 
 
 def test_ready_actor_yields_capacity_to_pending_work():
@@ -174,6 +261,45 @@ def test_ready_actor_yields_capacity_to_pending_work():
     actor_set.close()
     second_actor.exit_ref.completion.set_result(None)
     actor_set.join()
+
+
+def test_batch_callback_registration_failure_fails_closed():
+    actor = _FakeActor()
+    actor.run_batch = _FakeRemoteMethod(lambda *_: _BrokenCallbackObjectRef())
+    actor_set = _ElasticActorSet(
+        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
+    )
+
+    actor_set.submit(None, [])
+    assert actor_set.snapshot() == [(_ElasticSlotState.ACTIVE, 1)]
+    with pytest.raises(RuntimeError, match="actor management failed"):
+        actor_set.submit(None, [])
+
+    actor_set.close()
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
+def test_idle_termination_submission_failure_has_no_retry_loop(monkeypatch):
+    actor = _FakeActor()
+    actor.__ray_terminate__ = _RaisingRemoteMethod(
+        RuntimeError("termination submission failed")
+    )
+    monkeypatch.setattr(ray, "kill", lambda _actor: None)
+    actor_set = _ElasticActorSet(
+        lambda: actor, min_size=0, max_size=1, idle_timeout_s=0
+    )
+
+    batch_ref = actor_set.submit(None, [])
+    batch_ref.completion.set_result([])
+    _wait_for(lambda: actor.__ray_terminate__.calls == 1)
+    time.sleep(0.05)
+
+    assert actor.__ray_terminate__.calls == 1
+    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    actor_set.terminate()
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        actor_set.join()
 
 
 def test_readiness_failure_releases_slot_for_retry():
@@ -366,6 +492,82 @@ def test_map_variants_stop_at_iteration_end(shutdown_only):
     assert list(pool.imap(abs, [], chunksize=None)) == []
     pool.close()
     pool.join()
+
+
+def test_map_iteration_failure_precedes_all_admission():
+    accepted = []
+
+    class RecordingActorSet:
+        def submit(self, _func, batch):
+            accepted.append(batch)
+            return _FakeObjectRef()
+
+    class FailingIterator:
+        def __init__(self):
+            self._index = 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self._index += 1
+            if self._index == 1:
+                return 1
+            raise RuntimeError("iterator failed after yielding")
+
+    pool = object.__new__(Pool)
+    pool._closed = False
+    pool._pool_lock = threading.Lock()
+    pool._pool_size = 1
+    pool._elastic_actor_set = RecordingActorSet()
+
+    with pytest.raises(RuntimeError, match="iterator failed after yielding"):
+        pool._chunk_and_run(abs, FailingIterator(), chunksize=1)
+
+    assert accepted == []
+
+
+def test_map_admission_is_atomic_with_close():
+    first_submission = threading.Event()
+    release_submission = threading.Event()
+    close_finished = threading.Event()
+    accepted = []
+
+    class BlockingActorSet:
+        def submit(self, _func, batch):
+            accepted.append(batch)
+            if len(accepted) == 1:
+                first_submission.set()
+                assert release_submission.wait(1)
+            return _FakeObjectRef()
+
+        def close(self):
+            pass
+
+    pool = object.__new__(Pool)
+    pool._closed = False
+    pool._pool_lock = threading.Lock()
+    pool._pool_size = 1
+    pool._elastic_actor_set = BlockingActorSet()
+    pool._registry = []
+    pool._registry_hashable = {}
+    map_result = []
+
+    mapper = threading.Thread(
+        target=lambda: map_result.extend(pool._chunk_and_run(abs, [1, 2], chunksize=1))
+    )
+    closer = threading.Thread(target=lambda: (pool.close(), close_finished.set()))
+    mapper.start()
+    assert first_submission.wait(1)
+    closer.start()
+    assert not close_finished.wait(0.05)
+    release_submission.set()
+    mapper.join()
+    closer.join()
+
+    assert len(accepted) == 2
+    assert len(map_result) == 2
+    assert close_finished.is_set()
 
 
 def test_callback_failure_does_not_replace_task_result(shutdown_only):
@@ -676,3 +878,7 @@ def test_zero_cpu_head_can_create_pending_pool_demand():
     finally:
         ray.shutdown()
         cluster.shutdown()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

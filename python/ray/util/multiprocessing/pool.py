@@ -214,9 +214,28 @@ class _ElasticActorSet:
         self._closed = False
         self._error: Optional[BaseException] = None
 
-        with self._condition:
-            for _ in range(min_size):
-                self._create_slot_locked()
+        actors_to_kill = []
+        try:
+            with self._condition:
+                try:
+                    for _ in range(min_size):
+                        self._create_slot_locked()
+                except BaseException:
+                    actors_to_kill = [
+                        slot.actor for slot in self._slots if slot.actor is not None
+                    ]
+                    raise
+        except BaseException:
+            # Construction has no caller-visible owner yet. Freeze the owned
+            # handles under the lock, then terminate them without the lock.
+            for actor in actors_to_kill:
+                try:
+                    ray.kill(actor)
+                except BaseException:
+                    logger.exception(
+                        "Failed to clean up a Pool actor after construction failed"
+                    )
+            raise
 
         self._reaper = threading.Thread(
             target=self._reap_idle_actors,
@@ -288,15 +307,18 @@ class _ElasticActorSet:
                         self._batch_completed(target, expected, future)
                     )
                 )
-            except BaseException:
+            except BaseException as error:
                 # The Ray call was accepted, so decrementing would make an
-                # idle retirement unsafe. Keep the slot active and occupied;
-                # close/terminate can still reclaim this bounded resource.
+                # idle retirement unsafe. Fail closed while the slot retains
+                # ownership; close/terminate can still reclaim it.
+                self._error = error
+                self._condition.notify_all()
                 logger.exception("Failed to observe a submitted Pool actor call")
             return object_ref
 
     def close(self) -> None:
         """Reject new calls and queue graceful exit after accepted calls."""
+        actors_to_kill = []
         with self._condition:
             if self._closed:
                 return
@@ -306,8 +328,22 @@ class _ElasticActorSet:
                     _ElasticSlotState.STARTING,
                     _ElasticSlotState.ACTIVE,
                 ):
+                    if (
+                        slot.state is _ElasticSlotState.STARTING
+                        and slot.outstanding == 0
+                    ):
+                        actors_to_kill.append(slot.actor)
                     self._begin_draining_locked(slot)
             self._condition.notify_all()
+        # ray.kill can block on Ray control-plane work. Never call it while
+        # holding the condition or from an ObjectRef completion callback.
+        for actor in actors_to_kill:
+            try:
+                ray.kill(actor)
+            except BaseException as error:
+                with self._condition:
+                    self._error = error
+                    self._condition.notify_all()
 
     def terminate(self) -> None:
         """Force actors already moved to DRAINING to exit."""
@@ -353,16 +389,20 @@ class _ElasticActorSet:
         # Do not publish ACTIVE until a handle exists, so the slot remains
         # reusable after a failed submission.
         actor = self._create_actor()
-        readiness_ref = actor.ping.remote()
+        # Publish ownership immediately after actor creation. Every later
+        # failure must retain this slot instead of making it reusable while
+        # the actor may still exist.
         slot.generation += 1
         slot.state = _ElasticSlotState.STARTING
         slot.actor = actor
         slot.outstanding = 0
         slot.idle_since = None
-        slot.readiness_ref = readiness_ref
+        slot.readiness_ref = None
         slot.exit_ref = None
         generation = slot.generation
         try:
+            readiness_ref = actor.ping.remote()
+            slot.readiness_ref = readiness_ref
             readiness_ref.future().add_done_callback(
                 lambda future, target=slot, expected=generation: self._actor_ready(
                     target, expected, future
@@ -384,7 +424,9 @@ class _ElasticActorSet:
             try:
                 error = future.exception()
             except BaseException as callback_error:
-                error = callback_error
+                self._error = callback_error
+                self._condition.notify_all()
+                return
             if error is not None:
                 self._clear_slot_locked(slot)
                 self._condition.notify_all()
@@ -453,10 +495,11 @@ class _ElasticActorSet:
         try:
             exit_ref = slot.actor.__ray_terminate__.remote()
         except BaseException as error:
-            if self._closed:
-                self._error = error
-            else:
-                slot.idle_since = time.monotonic()
+            # Whether the termination request reached Ray is ambiguous. Keep
+            # the actor owned by a non-reusable slot and fail the Pool closed.
+            slot.state = _ElasticSlotState.DRAINING
+            slot.exit_ref = None
+            self._error = error
             self._condition.notify_all()
             return
 
@@ -474,17 +517,21 @@ class _ElasticActorSet:
             self._condition.notify_all()
 
     def _cancel_starting_locked(self, slot: _ElasticSlot) -> None:
-        readiness_ref = slot.readiness_ref
+        # A readiness ref can succeed before ray.kill() has physically removed
+        # the actor, so it cannot confirm actor exit. Submit a dedicated
+        # termination ref; close/terminate may separately force cancellation.
         try:
-            ray.kill(slot.actor)
+            exit_ref = slot.actor.__ray_terminate__.remote()
         except BaseException as error:
+            slot.state = _ElasticSlotState.DRAINING
+            slot.exit_ref = None
             self._error = error
             return
         slot.state = _ElasticSlotState.DRAINING
-        slot.exit_ref = readiness_ref
+        slot.exit_ref = exit_ref
         generation = slot.generation
         try:
-            readiness_ref.future().add_done_callback(
+            exit_ref.future().add_done_callback(
                 lambda _future, target=slot, expected=generation: self._actor_exited(
                     target, expected
                 )
@@ -1200,20 +1247,23 @@ class Pool:
         return self._current_index
 
     # Batch should be a list of tuples: (args, kwargs).
+    def _run_batch_locked(self, actor_index, func, batch):
+        self._check_running()
+        if self._elastic_actor_set is not None:
+            return self._elastic_actor_set.submit(func, batch)
+        actor, count = self._actor_pool[actor_index]
+        object_ref = actor.run_batch.remote(func, batch)
+        count += 1
+        assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
+        if count == self._maxtasksperchild:
+            self._stop_actor(actor)
+            actor, count = self._new_actor_entry()
+        self._actor_pool[actor_index] = (actor, count)
+        return object_ref
+
     def _run_batch(self, actor_index, func, batch):
         with self._pool_lock:
-            self._check_running()
-            if self._elastic_actor_set is not None:
-                return self._elastic_actor_set.submit(func, batch)
-            actor, count = self._actor_pool[actor_index]
-            object_ref = actor.run_batch.remote(func, batch)
-            count += 1
-            assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
-            if count == self._maxtasksperchild:
-                self._stop_actor(actor)
-                actor, count = self._new_actor_entry()
-            self._actor_pool[actor_index] = (actor, count)
-            return object_ref
+            return self._run_batch_locked(actor_index, func, batch)
 
     def apply(
         self,
@@ -1260,9 +1310,12 @@ class Pool:
             AsyncResult containing the result.
         """
 
-        self._check_running()
-        func = self._convert_to_ray_batched_calls_if_needed(func)
-        object_ref = self._run_batch(self._next_actor_index(), func, [(args, kwargs)])
+        with self._pool_lock:
+            self._check_running()
+            func = self._convert_to_ray_batched_calls_if_needed(func)
+            object_ref = self._run_batch_locked(
+                self._next_actor_index(), func, [(args, kwargs)]
+            )
         return AsyncResult([object_ref], callback, error_callback, single_result=True)
 
     def _convert_to_ray_batched_calls_if_needed(self, func: Callable) -> Callable:
@@ -1331,17 +1384,29 @@ class Pool:
                 chunksize = 1
 
         iterator = iter(iterable)
-        chunk_object_refs = []
+        chunks = []
         while True:
-            actor_index = len(chunk_object_refs) % self._pool_size
-            object_ref = self._submit_chunk(
-                func, iterator, chunksize, actor_index, unpack_args=unpack_args
-            )
-            if object_ref is None:
+            chunk = []
+            while len(chunk) < chunksize:
+                try:
+                    args = next(iterator)
+                except StopIteration:
+                    break
+                if not unpack_args:
+                    args = (args,)
+                chunk.append((args, {}))
+            if not chunk:
                 break
-            chunk_object_refs.append(object_ref)
+            chunks.append(chunk)
 
-        return chunk_object_refs
+        # Input iteration is complete before the admission transaction begins.
+        # close() therefore observes either no submissions or the complete map.
+        with self._pool_lock:
+            self._check_running()
+            return [
+                self._run_batch_locked(index % self._pool_size, func, chunk)
+                for index, chunk in enumerate(chunks)
+            ]
 
     def _map_async(
         self,
