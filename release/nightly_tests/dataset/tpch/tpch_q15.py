@@ -1,7 +1,13 @@
 import ray
 from ray.data.aggregate import Max, Sum
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
+from common import (
+    parse_tpch_args,
+    load_table,
+    to_f64,
+    run_tpch_benchmark,
+    record_dataset,
+)
 
 
 def main(args):
@@ -62,7 +68,7 @@ def main(args):
 
         top = revenue.filter(expr=col("total_revenue") == max_revenue)
 
-        _ = (
+        _ = record_dataset(
             supplier.join(
                 top,
                 join_type="inner",

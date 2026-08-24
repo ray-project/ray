@@ -1,7 +1,13 @@
 import ray
 from ray.data.aggregate import Count, Sum
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
+from common import (
+    parse_tpch_args,
+    load_table,
+    to_f64,
+    run_tpch_benchmark,
+    record_dataset,
+)
 
 
 def main(args):
@@ -74,7 +80,7 @@ def main(args):
         )
 
         # Group by country code, aggregate count and total balance.
-        _ = (
+        _ = record_dataset(
             custsale.groupby("cntrycode")
             .aggregate(
                 Count(alias_name="numcust"),
