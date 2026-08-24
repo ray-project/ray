@@ -113,9 +113,9 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                           object_id,
                           reference_counter_->HasReference(object_id));
   } else {
-    // Nothing above matched, so nothing would fill the store and a get on this
-    // object would block forever. FREED is the only such status this build knows
-    // about; a peer on a newer version can send one it does not.
+    // Without this branch nothing fills the store and a get on the object blocks
+    // forever. It has to stay even once every named status has a branch: proto3 enums
+    // are open, so a reply can carry a value this build has no name for.
     RAY_LOG(WARNING).WithField(object_id)
         << "Owner replied with an object status this worker does not handle: "
         << static_cast<int>(reply.status());

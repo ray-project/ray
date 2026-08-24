@@ -15,6 +15,8 @@
 #include "ray/core_worker/future_resolver.h"
 
 #include <memory>
+#include <string>
+#include <string_view>
 
 #include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"
@@ -52,7 +54,14 @@ class FutureResolverTest : public ::testing::Test {
             memory_store_,
             ref_counter_,
             /*report_locality_data_callback=*/
-            [](const ObjectID &, const absl::flat_hash_set<NodeID> &, uint64_t) {},
+            [this](const ObjectID &object_id,
+                   const absl::flat_hash_set<NodeID> &locations,
+                   uint64_t object_size) {
+              locality_reports_++;
+              reported_object_id_ = object_id;
+              reported_locations_ = locations;
+              reported_object_size_ = object_size;
+            },
             // These tests only drive ProcessResolvedObject, which never touches the
             // client pool. A test for ResolveFutureAsync would need a real pool and a
             // non-empty owner worker ID, otherwise it either dereferences this null
@@ -63,7 +72,7 @@ class FutureResolverTest : public ::testing::Test {
   // Registers a local reference so that CoreWorkerMemoryStore::Put actually inserts
   // the object. Without a reference, Put treats the object as added-and-immediately-
   // deleted and GetIfExists would return null regardless of the resolved status.
-  ObjectID AddBorrowedObject() {
+  ObjectID NewObjectWithLocalRef() {
     ObjectID object_id = ObjectID::FromRandom();
     ref_counter_->AddLocalReference(object_id, "");
     return object_id;
@@ -82,13 +91,18 @@ class FutureResolverTest : public ::testing::Test {
   std::shared_ptr<pubsub::FakeSubscriber> subscriber_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   std::shared_ptr<ReferenceCounter> ref_counter_;
+  // Filled by report_locality_data_callback_.
+  int locality_reports_ = 0;
+  ObjectID reported_object_id_;
+  absl::flat_hash_set<NodeID> reported_locations_;
+  uint64_t reported_object_size_ = 0;
   FutureResolver resolver_;
 };
 
-// FREED is the one status this build knows that no branch handles, so it lands on the
-// catch-all. No owner on master can send it, but nothing stops one on the wire.
+// FREED is the one status named in this build that no branch handles, so it reaches the
+// catch-all without a cast.
 TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
-  ObjectID object_id = AddBorrowedObject();
+  ObjectID object_id = NewObjectWithLocalRef();
   rpc::GetObjectStatusReply reply;
   reply.set_status(rpc::GetObjectStatusReply::FREED);
 
@@ -101,10 +115,10 @@ TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
   ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
 }
 
-// Same for a status this build has never heard of, which is what makes removing FREED
-// from the proto safe.
+// A value this build has no name for. One case the catch-all exists for: proto3 enums
+// are open, so a reply can carry one.
 TEST_F(FutureResolverTest, ProcessResolvedObjectUnknownStatusStoresError) {
-  ObjectID object_id = AddBorrowedObject();
+  ObjectID object_id = NewObjectWithLocalRef();
   rpc::GetObjectStatusReply reply;
   reply.set_status(static_cast<rpc::GetObjectStatusReply::ObjectStatus>(99));
 
@@ -117,9 +131,56 @@ TEST_F(FutureResolverTest, ProcessResolvedObjectUnknownStatusStoresError) {
   ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
 }
 
-// Sibling statuses, kept as regression anchors for the branches above.
+// The branches that predate the catch-all. All of them pass without it, and are here so
+// that a later edit cannot reroute them into it unnoticed.
+
+// CREATED is the branch that carries the owner's reply through to the caller. An object
+// already in plasma comes back with data empty and only the marker in metadata, so this
+// is the case that catches a CREATED check narrowed to replies carrying data.
+TEST_F(FutureResolverTest, ProcessResolvedObjectCreatedInPlasmaStoresPlasmaMarker) {
+  ObjectID object_id = NewObjectWithLocalRef();
+  NodeID node_id = NodeID::FromRandom();
+  rpc::GetObjectStatusReply reply;
+  reply.set_status(rpc::GetObjectStatusReply::CREATED);
+  reply.mutable_object()->set_metadata(
+      std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA)));
+  reply.add_node_ids(node_id.Binary());
+  reply.set_object_size(1234);
+
+  resolver_.ProcessResolvedObject(object_id, rpc::Address(), Status::OK(), reply);
+
+  auto object = memory_store_->GetIfExists(object_id);
+  ASSERT_NE(object, nullptr);
+  ASSERT_FALSE(object->HasData());
+  ASSERT_TRUE(object->IsInPlasmaError());
+  ASSERT_EQ(locality_reports_, 1);
+  ASSERT_EQ(reported_object_id_, object_id);
+  ASSERT_EQ(reported_locations_, absl::flat_hash_set<NodeID>{node_id});
+  ASSERT_EQ(reported_object_size_, 1234U);
+}
+
+// Python inlines a value with metadata alongside it, so set both. The assertion is on
+// the data because metadata of "PYTHON" makes IsException() false whether or not the
+// payload arrived.
+TEST_F(FutureResolverTest, ProcessResolvedObjectCreatedInlineStoresValue) {
+  ObjectID object_id = NewObjectWithLocalRef();
+  rpc::GetObjectStatusReply reply;
+  reply.set_status(rpc::GetObjectStatusReply::CREATED);
+  reply.mutable_object()->set_data("hello");
+  reply.mutable_object()->set_metadata("PYTHON");
+
+  resolver_.ProcessResolvedObject(object_id, rpc::Address(), Status::OK(), reply);
+
+  auto object = memory_store_->GetIfExists(object_id);
+  ASSERT_NE(object, nullptr);
+  ASSERT_TRUE(object->HasData());
+  ASSERT_EQ(std::string_view(reinterpret_cast<const char *>(object->GetData()->Data()),
+                             object->GetData()->Size()),
+            "hello");
+}
+
 TEST_F(FutureResolverTest, ProcessResolvedObjectOutOfScopeStoresError) {
-  ObjectID object_id = AddBorrowedObject();
+  ObjectID object_id = NewObjectWithLocalRef();
   rpc::GetObjectStatusReply reply;
   reply.set_status(rpc::GetObjectStatusReply::OUT_OF_SCOPE);
 
@@ -132,8 +193,9 @@ TEST_F(FutureResolverTest, ProcessResolvedObjectOutOfScopeStoresError) {
   ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_DELETED);
 }
 
+// An RPC failure rather than a reply status, so this one enters through !status.ok().
 TEST_F(FutureResolverTest, ProcessResolvedObjectOwnerUnreachableStoresError) {
-  ObjectID object_id = AddBorrowedObject();
+  ObjectID object_id = NewObjectWithLocalRef();
   rpc::GetObjectStatusReply reply;
 
   resolver_.ProcessResolvedObject(
