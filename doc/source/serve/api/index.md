@@ -172,6 +172,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
    serve.grpc_util.RayServegRPCContext
    serve.grpc_util.gRPCInputStream
    serve.exceptions.BackPressureError
+   serve.exceptions.RayServeConfigException
    serve.exceptions.RayServeException
    serve.exceptions.RequestCancelledError
    serve.exceptions.gRPCStatusError

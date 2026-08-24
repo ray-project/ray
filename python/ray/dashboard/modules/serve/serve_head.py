@@ -147,6 +147,7 @@ class ServeHead(SubprocessModule):
     async def put_all_applications(self, req: Request) -> Response:
         from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
+        from ray.serve.exceptions import RayServeConfigException
         from ray.serve.schema import ServeDeploySchema
 
         try:
@@ -162,19 +163,19 @@ class ServeHead(SubprocessModule):
         full_http_options = config.http_options.model_dump()
         grpc_options = config.grpc_options.model_dump()
 
-        async with self._controller_start_lock:
-            client = await serve_start_async(
-                http_options=full_http_options,
-                proxy_location=config.proxy_location,
-                grpc_options=grpc_options,
-                global_logging_config=config.logging_config,
-                controller_options=config.controller_options,
-            )
-
-        # Serve ignores HTTP options if it was already running when
-        # serve_start_async() is called. Therefore we validate that no
-        # existing HTTP options are updated and print warning in case they are
-        self.validate_http_options(client, full_http_options)
+        try:
+            async with self._controller_start_lock:
+                client = await serve_start_async(
+                    http_options=full_http_options,
+                    proxy_location=config.proxy_location,
+                    grpc_options=grpc_options,
+                    global_logging_config=config.logging_config,
+                    controller_options=config.controller_options,
+                )
+        except RayServeConfigException as e:
+            # Reject the whole config: applying the applications while dropping the
+            # cluster-global options is what used to make the failure silent.
+            return Response(status=400, text=str(e))
 
         try:
             if config.logging_config:
@@ -273,22 +274,6 @@ class ServeHead(SubprocessModule):
                 return self._create_json_response(
                     {"error": "Internal Server Error"}, 503
                 )
-
-    def validate_http_options(self, client, http_options):
-        divergent_http_options = []
-
-        for option, new_value in http_options.items():
-            prev_value = getattr(client.http_config, option)
-            if prev_value != new_value:
-                divergent_http_options.append(option)
-
-        if divergent_http_options:
-            logger.warning(
-                "Serve is already running on this Ray cluster and "
-                "it's not possible to update its HTTP options without "
-                "restarting it. Following options are attempted to be "
-                f"updated: {divergent_http_options}."
-            )
 
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.
