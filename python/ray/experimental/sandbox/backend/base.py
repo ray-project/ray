@@ -87,6 +87,7 @@ class BaseSandboxBackend(ABC):
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command synchronously inside the sandbox.
 
@@ -96,6 +97,8 @@ class BaseSandboxBackend(ABC):
             timeout: Optional maximum execution time in seconds.
             cwd: Optional working directory override.
             env: Optional additional environment variables.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
 
         Returns:
             An ExecResult instance containing stdout, stderr, and exit code.
