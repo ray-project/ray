@@ -387,13 +387,16 @@ def test_checkpoint_isolation_namespace(ray_shutdown):
 
     address = info["address"]
 
+    # Neither driver requests a port: Serve's controller lives in the fixed
+    # SERVE_NAMESPACE, so both drivers share one instance no matter which Ray
+    # namespace they connect under, and a second port here would be a change to it.
     driver_template = """
 import ray
 from ray import serve
 
 ray.init(address="{address}", namespace="{namespace}")
 
-serve.start(http_options={{"port": {port}}})
+serve.start()
 
 @serve.deployment
 class A:
@@ -402,10 +405,10 @@ class A:
 serve.run(A.bind())"""
 
     run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace1", port=8000)
+        driver_template.format(address=address, namespace="test_namespace1")
     )
     run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace2", port=8001)
+        driver_template.format(address=address, namespace="test_namespace2")
     )
 
 
