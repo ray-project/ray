@@ -7,7 +7,8 @@ are incompressible, so encoded == decoded and there is nothing to "decode":
 the read is pure allocate-and-copy. That makes this the shape where the
 crate's allocator behavior (glibc malloc, fresh pages each batch) loses on
 wall clock to PyArrow's jemalloc (warm page reuse) while still winning ~2x on
-peak memory — findings M56/M69: rs/pa1 wall ~2.7x at peak RSS ~0.5x.
+peak memory — findings M56/M69/M70: rs/pa1 wall 1.7-2.7x at peak RSS 0.4-0.5x
+(the wall gap varies with box session; the memory win is stable).
 
 Usage (needs pyarrow + numpy + the branch-built ray_data_arrow_rs crate):
     python fat_col_bench.py                    # 1024 rows, 5 reps per arm
@@ -212,7 +213,7 @@ def main():
         f"wall {p50('rs', 'wall_s') / p50('pa1', 'wall_s'):.2f}x   "
         f"peak RSS {p50('rs', 'peak_rss_mib') / p50('pa1', 'peak_rss_mib'):.2f}x"
     )
-    print("expected on Linux (M69): wall ~2.7x slower, RSS ~0.5x (half the memory)")
+    print("expected on Linux (M69/M70): wall ~1.7-2.7x slower, RSS ~0.4-0.5x")
 
 
 if __name__ == "__main__":
