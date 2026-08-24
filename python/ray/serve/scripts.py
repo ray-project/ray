@@ -16,7 +16,7 @@ import yaml
 
 import ray
 from ray import serve
-from ray._common.network_utils import get_all_interfaces_ip, get_localhost_ip
+from ray._common.network_utils import get_all_interfaces_ip
 from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
@@ -25,7 +25,6 @@ from ray.serve._private import api as _private_api
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
-    DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -36,7 +35,7 @@ from ray.serve.config import (
 )
 from ray.serve.context import _get_global_client
 from ray.serve.deployment import Application, deployment_to_schema
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import RayServeConfigException, RayServeException
 from ray.serve.schema import (
     LoggingConfig,
     ServeApplicationSchema,
@@ -150,28 +149,28 @@ def cli():
 )
 @click.option(
     "--http-host",
-    default=DEFAULT_HTTP_HOST or get_localhost_ip(),
+    default=None,
     required=False,
     type=str,
     help="Host for HTTP proxies to listen on. Defaults to localhost.",
 )
 @click.option(
     "--http-port",
-    default=DEFAULT_HTTP_PORT,
+    default=None,
     required=False,
     type=int,
     help="Port for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
     "--proxy-location",
-    default=ProxyLocation.EveryNode,
+    default=None,
     required=False,
     type=click.Choice(list(ProxyLocation)),
     help="Location of the proxies. Defaults to EveryNode.",
 )
 @click.option(
     "--grpc-port",
-    default=DEFAULT_GRPC_PORT,
+    default=None,
     required=False,
     type=int,
     help="Port for gRPC proxies to listen on. " f"Defaults to {DEFAULT_GRPC_PORT}.",
@@ -196,17 +195,26 @@ def start(
         address=address,
         namespace=SERVE_NAMESPACE,
     )
-    serve.start(
-        proxy_location=proxy_location,
-        http_options=dict(
-            host=http_host,
-            port=http_port,
-        ),
-        grpc_options=gRPCOptions(
-            port=grpc_port,
-            grpc_servicer_functions=grpc_servicer_functions,
-        ),
-    )
+    # Only pass what was given on the command line: an unspecified flag must not
+    # read as a request to change an already-running instance's config.
+    http_options: Dict[str, Any] = {}
+    if http_host is not None:
+        http_options["host"] = http_host
+    if http_port is not None:
+        http_options["port"] = http_port
+    grpc_options: Dict[str, Any] = {}
+    if grpc_port is not None:
+        grpc_options["port"] = grpc_port
+    if grpc_servicer_functions:
+        grpc_options["grpc_servicer_functions"] = grpc_servicer_functions
+    try:
+        serve.start(
+            proxy_location=proxy_location,
+            http_options=http_options,
+            grpc_options=gRPCOptions(**grpc_options),
+        )
+    except RayServeConfigException as e:
+        raise click.ClickException(str(e))
 
 
 def _generate_config_from_file_or_import_path(
@@ -518,6 +526,7 @@ def run(
     proxy_location = None
     grpc_options = gRPCOptions()
     controller_options = None
+    declared_options = None
     # Merge http_options, grpc_options, and controller_options with the ones on
     # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
@@ -525,13 +534,20 @@ def run(
         http_options = config.http_options.model_dump()
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
         controller_options = config.controller_options
+        declared_options = _private_api.declared_start_time_options(config)
 
-    client = _private_api.serve_start(
-        http_options=http_options,
-        proxy_location=proxy_location,
-        grpc_options=grpc_options,
-        controller_options=controller_options,
-    )
+    try:
+        client = _private_api.serve_start(
+            http_options=http_options,
+            proxy_location=proxy_location,
+            grpc_options=grpc_options,
+            controller_options=controller_options,
+            declared_options=declared_options,
+        )
+    except RayServeConfigException as e:
+        # Raised before anything was deployed, so report it as a plain CLI error
+        # rather than falling into the handler below that shuts Serve down.
+        raise click.ClickException(str(e))
 
     try:
         if is_config:

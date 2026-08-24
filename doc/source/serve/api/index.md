@@ -201,6 +201,8 @@ The Serve REST API is exposed at the same port as the Ray Dashboard. The Dashboa
 
 Declaratively deploys a list of Serve applications. If Serve is already running on the Ray cluster, removes all applications not listed in the new config. If Serve is not running on the Ray cluster, starts Serve. See [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
+`proxy_location`, `http_options`, and `grpc_options` are global to the cluster and fixed when Serve starts. If Serve is already running and the config sets any of them to a different value, the whole request is rejected with a `400` naming each field, and no applications are deployed. Omitting a field is not a request to change it.
+
 **Example Request**:
 
 ```http

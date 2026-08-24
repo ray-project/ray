@@ -35,9 +35,12 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeConfigException, RayServeException
-from ray.serve.schema import LoggingConfig, TracingConfig
+from ray.serve.schema import LoggingConfig, ServeDeploySchema, TracingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Reported as "<redacted>" instead of their value in the start-time config error.
+_REDACTED_FIELDS = frozenset({"http_options.ssl_keyfile_password"})
 
 
 def _coerce_controller_options(
@@ -92,8 +95,13 @@ def _diff_start_time_options(
     }
 
 
-def _describe(value: Any) -> str:
-    """Render a config value for an error message, unwrapping enums."""
+def _describe(field: str, value: Any) -> str:
+    """Render a config value for an error message, unwrapping enums.
+
+    Secrets are redacted because the message reaches an HTTP 400 body and user logs.
+    """
+    if field in _REDACTED_FIELDS:
+        return "<redacted>"
     return repr(value.value if isinstance(value, Enum) else value)
 
 
@@ -149,15 +157,19 @@ def _check_start_time_config_unchanged(
         )
     )
 
+    # Compared against the placement the caller originally asked for, not the one
+    # in effect: direct-ingress mode overrides it, and the override isn't a change
+    # any config can request or avoid.
+    current_location = client.requested_proxy_location
     requested_location = _requested_proxy_location(http_options, proxy_location)
-    if requested_location is not None and requested_location != client.proxy_location:
-        diff["proxy_location"] = (client.proxy_location, requested_location)
+    if requested_location is not None and requested_location != current_location:
+        diff["proxy_location"] = (current_location, requested_location)
 
     if not diff:
         return
 
     changes = ", ".join(
-        f"{field}: {_describe(current)} -> {_describe(requested)}"
+        f"{field}: {_describe(field, current)} -> {_describe(field, requested)}"
         for field, (current, requested) in sorted(diff.items())
     )
     raise RayServeConfigException(
@@ -168,6 +180,44 @@ def _check_start_time_config_unchanged(
         "RayService); to keep the values Serve is running with, drop these fields "
         "from your config."
     )
+
+
+def declared_start_time_options(config: ServeDeploySchema) -> Dict[str, Any]:
+    """The start-time options a declarative config explicitly asked for.
+
+    The declarative paths send a fully-defaulted dump to start Serve with, so
+    without this every untouched schema default would read as a requested change.
+    """
+    return {
+        "http_options": config.http_options.model_dump(exclude_unset=True),
+        "grpc_options": config.grpc_options.model_dump(exclude_unset=True),
+        "proxy_location": (
+            config.proxy_location
+            if "proxy_location" in config.model_fields_set
+            else None
+        ),
+    }
+
+
+def _connect_to_existing_client(
+    client: ServeControllerClient,
+    http_options: Union[None, dict, HTTPOptions],
+    grpc_options: Union[None, dict, gRPCOptions],
+    proxy_location: Union[None, str, ProxyLocation],
+    declared_options: Optional[Dict[str, Any]],
+) -> None:
+    """Log the connection and reject changes to config fixed at controller startup."""
+    if declared_options is None:
+        declared_options = {
+            "http_options": http_options,
+            "grpc_options": grpc_options,
+            "proxy_location": proxy_location,
+        }
+    logger.info(
+        f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
+        " New controller_options will not be applied."
+    )
+    _check_start_time_config_unchanged(client, **declared_options)
 
 
 def _create_controller_and_proxy_refs(
@@ -254,6 +304,7 @@ async def serve_start_async(
     global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     proxy_location: Union[None, str, ProxyLocation] = None,
+    declared_options: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -279,15 +330,8 @@ async def serve_start_async(
         except RayServeException:
             client = None
     if client is not None:
-        logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New controller_options will not be applied."
-        )
-        _check_start_time_config_unchanged(
-            client,
-            http_options=http_options,
-            grpc_options=grpc_options,
-            proxy_location=proxy_location,
+        _connect_to_existing_client(
+            client, http_options, grpc_options, proxy_location, declared_options
         )
         return client
 
@@ -334,6 +378,7 @@ def serve_start(
     global_tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     proxy_location: Union[None, str, ProxyLocation] = None,
+    declared_options: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -388,6 +433,11 @@ def serve_start(
             the cluster. See ``ProxyLocation`` for supported options. Defaults
             to ``EveryNode`` when unspecified. An explicit (deprecated)
             ``HTTPOptions.location`` overrides this.
+        declared_options: The subset of the options above that the caller
+            explicitly asked for, checked against an already-running instance
+            instead of the values passed here. Declarative callers must pass
+            this (see ``declared_start_time_options``) because they send a
+            fully-defaulted config to start Serve with.
         **kwargs: Reserved for forwarding to internal controller-start hooks;
             no public keys are currently supported and unknown keys may raise.
 
@@ -407,15 +457,8 @@ def serve_start(
         except RayServeException:
             client = None
     if client is not None:
-        logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-            " New controller_options will not be applied."
-        )
-        _check_start_time_config_unchanged(
-            client,
-            http_options=http_options,
-            grpc_options=grpc_options,
-            proxy_location=proxy_location,
+        _connect_to_existing_client(
+            client, http_options, grpc_options, proxy_location, declared_options
         )
         return client
 

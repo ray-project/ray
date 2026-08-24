@@ -4,7 +4,6 @@ requires a shared Serve instance.
 """
 
 import asyncio
-import logging
 import os
 import random
 import shutil
@@ -41,6 +40,7 @@ from ray.serve.config import (
     ProxyLocation,
 )
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeConfigException
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema, TracingConfig
 from ray.serve.utils import get_trace_context
 from ray.util.state import list_actors
@@ -409,33 +409,20 @@ serve.run(A.bind())"""
     )
 
 
-def test_serve_start_different_http_checkpoint_options_warning(
-    ray_shutdown, propagate_logs, caplog
-):
-    logger = logging.getLogger("ray.serve")
-    caplog.set_level(logging.WARNING, logger="ray.serve")
-
-    warning_msg = []
-
-    class WarningHandler(logging.Handler):
-        def emit(self, record):
-            warning_msg.append(self.format(record))
-
-    logger.addHandler(WarningHandler())
-
+def test_serve_start_different_http_options_raises(ray_shutdown):
+    """HTTP config is fixed at controller startup, so a change must fail loudly."""
     ray.init(namespace="serve-test")
     serve.start()
 
     # create a different config
     test_http = dict(host="127.1.1.8", port=_get_random_port())
 
-    serve.start(http_options=test_http)
+    with pytest.raises(RayServeConfigException) as exc:
+        serve.start(http_options=test_http)
 
-    for test_config, msg in zip([["host", "port"]], warning_msg):
-        for test_msg in test_config:
-            if "Autoscaling metrics pusher thread" in msg:
-                continue
-            assert test_msg in msg
+    message = str(exc.value)
+    assert "http_options.host" in message
+    assert "http_options.port" in message
 
 
 def test_recovering_controller_no_redeploy():

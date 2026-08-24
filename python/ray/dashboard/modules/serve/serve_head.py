@@ -146,7 +146,10 @@ class ServeHead(SubprocessModule):
     @validate_endpoint()
     async def put_all_applications(self, req: Request) -> Response:
         from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
-        from ray.serve._private.api import serve_start_async
+        from ray.serve._private.api import (
+            declared_start_time_options,
+            serve_start_async,
+        )
         from ray.serve.exceptions import RayServeConfigException
         from ray.serve.schema import ServeDeploySchema
 
@@ -171,6 +174,7 @@ class ServeHead(SubprocessModule):
                     grpc_options=grpc_options,
                     global_logging_config=config.logging_config,
                     controller_options=config.controller_options,
+                    declared_options=declared_start_time_options(config),
                 )
         except RayServeConfigException as e:
             # Reject the whole config: applying the applications while dropping the

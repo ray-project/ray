@@ -208,6 +208,11 @@ class ServeController:
 
         self._ha_proxy_enabled = RAY_SERVE_ENABLE_HA_PROXY
         self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
+        # Captured before the mode-specific overrides below so a later config apply
+        # is diffed against what the caller asked for, not what we forced.
+        self._requested_proxy_location = (
+            http_options.location or proxy_location or ProxyLocation.EveryNode
+        )
         # Last full set of ingress-port tuples fed to update_ports (for the per-tick set-diff).
         self._last_ingress_port_tuples: set = set()
         # Last ingress membership version seen; -1 forces the first tick to run.
@@ -988,6 +993,10 @@ class ServeController:
         if self.proxy_state_manager is None:
             return None
         return self.proxy_state_manager.get_proxy_location()
+
+    def get_requested_proxy_location(self) -> ProxyLocation:
+        """Return the placement the caller asked for, before any mode override."""
+        return self._requested_proxy_location
 
     def get_grpc_config(self) -> gRPCOptions:
         """Return the gRPC proxy configuration."""

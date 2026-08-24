@@ -122,6 +122,10 @@ def start(
           running in this Ray cluster.
         **kwargs: Reserved for forward-compatibility; passed through to the
             internal Serve start helper.
+
+    Raises:
+        RayServeConfigException: If Serve is already running and this call asks to
+          change ``proxy_location``, ``http_options``, or ``grpc_options``.
     """
     _private_api.serve_start(
         http_options=http_options,
