@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Storage and dependency recommendations for Ray on Kubernetes, split between interactive development and production use."
+---
+
 (kuberay-storage)=
 
 # Best Practices for Storage and Dependencies

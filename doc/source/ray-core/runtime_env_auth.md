@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Authenticate private remote URIs in runtime_env with a netrc file or HTTPS bearer tokens, on VMs and with KubeRay secrets."
+---
+
 (runtime-env-auth)=
 # Authenticating Remote URIs in runtime_env
 
@@ -83,7 +89,7 @@ headGroupSpec:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           volumeMounts:
             - mountPath: "/home/ray/netrcvolume/"
@@ -101,7 +107,7 @@ workerGroupSpecs:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           volumeMounts:
             - mountPath: "/home/ray/netrcvolume/"
@@ -156,7 +162,7 @@ headGroupSpec:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           env:
             - name: RAY_RUNTIME_ENV_BEARER_TOKEN
@@ -169,7 +175,7 @@ workerGroupSpecs:
     ...
     containers:
         - name: ...
-          image: rayproject/ray:latest
+          image: rayproject/ray:2.56.1
           ...
           env:
             - name: RAY_RUNTIME_ENV_BEARER_TOKEN

@@ -27,6 +27,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
+#include "ray/util/container_util.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -1130,17 +1131,70 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     execution_signal_callback(Status::NotFound("Stream is already deleted"));
     return false;
   }
-  // Whether the caller has dropped the generator. Once dropped, it reads no
-  // further, so any index it has not already consumed is unwanted; only
-  // already-consumed indices reported here are lineage-reconstruction retries of
-  // still-referenced returns and must still be handled.
-  const bool caller_deleted = stream_it->second.IsCallerDeleted();
+
+  bool caller_deleted = stream_it->second.IsCallerDeleted();
+  size_t num_objects_written = 0;
+  for (int64_t i = 0; i < request.returned_objects_size(); i++) {
+    const rpc::ReturnObject &returned_object = request.returned_objects(i);
+    const ObjectID object_id = ObjectID::FromBinary(returned_object.object_id());
+    const int64_t object_index = item_index + i;
+
+    // Unconsumed objects for a deleted generator can no longer be used.
+    // They should be freed immediately. Only already-consumed indices reported here are
+    // lineage-reconstruction retries of still-referenced returns and must still be
+    // handled.
+    if (caller_deleted && !stream_it->second.IsObjectConsumed(object_index)) {
+      if (returned_object.in_plasma()) {
+        const NodeID worker_node_id = NodeID::FromBinary(request.worker_addr().node_id());
+        RAY_CHECK(!worker_node_id.IsNil()) << absl::StrFormat(
+            "Request worker node id is nill for reported generator object %s",
+            object_id.Hex());
+        const absl::flat_hash_set<NodeID> locations{worker_node_id};
+        RAY_LOG(DEBUG) << absl::StrFormat(
+            "Object %s for a deleted generator can no longer be used. They should be "
+            "freed immediately.",
+            object_id.Hex());
+        free_stale_unconsumed_generator_objects_async_(object_id, locations);
+      }
+    } else {
+      RAY_LOG(DEBUG) << absl::StrFormat(
+          "Write an object %s to the object ref stream of id %s",
+          object_id.Hex(),
+          generator_id.Hex());
+      bool index_not_used_yet = stream_it->second.InsertToStream(object_id, object_index);
+
+      // If the ref was written to a stream, we should also
+      // own the dynamically generated task return.
+      // NOTE: If we call this method while holding a lock, it can deadlock.
+      if (index_not_used_yet) {
+        reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+        num_objects_written += 1;
+      }
+      // When an object is reported, the object is ready to be fetched.
+      reference_counter_.UpdateObjectPendingCreation(object_id, false);
+      StatusOr<bool> put_res =
+          HandleTaskReturn(object_id,
+                           returned_object,
+                           NodeID::FromBinary(request.worker_addr().node_id()),
+                           /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
+      if (!put_res.ok()) {
+        RAY_LOG(WARNING).WithField(object_id)
+            << "Failed to handle streaming dynamic return: " << put_res.status();
+      } else if (!put_res.value()) {
+        // HandleTaskReturn returns false when the object was stored in plasma
+        // (true means it was inlined into the in-memory store). Remember the
+        // plasma-backed reports so they can be failed if the generator task fails
+        // before its first completion records them on the task spec. Inline
+        // reports live in the owner's memory store and are not lost this way.
+        stream_it->second.MarkReportedInPlasma(object_id);
+      }
+    }
+  }
+
   if (backpressure_threshold != -1) {
     // If the whole batch is unconsumed (its lowest index is unconsumed, and a
     // batch is contiguous), tell the executor the stream is deleted so it stops
-    // backpressuring - there is no consumer left. A batch whose lowest index is
-    // already consumed is handled below; its unconsumed tail, if any, is skipped
-    // per-object.
+    // backpressuring - there is no consumer left.
     if (caller_deleted && !stream_it->second.IsObjectConsumed(item_index)) {
       execution_signal_callback(Status::NotFound("Stream is deleted."));
       return false;
@@ -1150,58 +1204,12 @@ bool TaskManager::HandleReportGeneratorItemReturns(
           consumption_update_callback;
     }
   }
-  size_t num_objects_written = 0;
-
-  for (int64_t i = 0; i < request.returned_objects_size(); i++) {
-    const rpc::ReturnObject &returned_object = request.returned_objects(i);
-    const auto object_id = ObjectID::FromBinary(returned_object.object_id());
-    const auto object_index = item_index + i;
-
-    // A single report can batch multiple yields that straddle the consumed
-    // boundary (a consumed prefix followed by an unconsumed tail). If the caller
-    // has dropped the generator, skip storing the unconsumed tail: those refs
-    // would never be read and only need cleanup later. The consumed prefix is
-    // still handled below to re-materialize referenced returns.
-    if (caller_deleted && !stream_it->second.IsObjectConsumed(object_index)) {
-      continue;
-    }
-
-    RAY_LOG(DEBUG) << "Write an object " << object_id
-                   << " to the object ref stream of id " << generator_id;
-    auto index_not_used_yet = stream_it->second.InsertToStream(object_id, object_index);
-
-    // If the ref was written to a stream, we should also
-    // own the dynamically generated task return.
-    // NOTE: If we call this method while holding a lock, it can deadlock.
-    if (index_not_used_yet) {
-      reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
-      num_objects_written += 1;
-    }
-    // When an object is reported, the object is ready to be fetched.
-    reference_counter_.UpdateObjectPendingCreation(object_id, false);
-    StatusOr<bool> put_res =
-        HandleTaskReturn(object_id,
-                         returned_object,
-                         NodeID::FromBinary(request.worker_addr().node_id()),
-                         /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
-    if (!put_res.ok()) {
-      RAY_LOG(WARNING).WithField(object_id)
-          << "Failed to handle streaming dynamic return: " << put_res.status();
-    } else if (!put_res.value()) {
-      // HandleTaskReturn returns false when the object was stored in plasma
-      // (true means it was inlined into the in-memory store). Remember the
-      // plasma-backed reports so they can be failed if the generator task fails
-      // before its first completion records them on the task spec. Inline
-      // reports live in the owner's memory store and are not lost this way.
-      stream_it->second.MarkReportedInPlasma(object_id);
-    }
-  }
 
   // Handle backpressure if needed.
-  auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-  auto last_item_index = request.returned_objects_size() == 0
-                             ? item_index
-                             : item_index + request.returned_objects_size() - 1;
+  int64_t total_consumed = stream_it->second.TotalNumObjectConsumed();
+  int64_t last_item_index = request.returned_objects_size() == 0
+                                ? item_index
+                                : item_index + request.returned_objects_size() - 1;
 
   if (stream_it->second.IsObjectConsumed(last_item_index)) {
     execution_signal_callback(Status::OK());
@@ -1248,14 +1256,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
-  // Detect a streaming generator replay that produced a different number of
-  // objects than the first attempt, and fail before any return object is
-  // written to the store below — otherwise downstream consumers could observe
-  // the inconsistent objects before the failure propagates. Skipped on
-  // application-error completions, which already route through the failure
-  // path.
-  if (!is_application_error &&
-      FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
+  // Fail inconsistent streaming-generator replays before completion bookkeeping.
+  if (FailStreamingGeneratorReplayIfInconsistent(task_id, reply)) {
     return;
   }
 
@@ -1425,66 +1427,30 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   // If it is a streaming generator, mark the end of stream since the task is finished.
   // We handle this logic here because the lock shouldn't be held while calling
-  // HandleTaskReturn.
-  if (spec.IsStreamingGenerator()) {
+  // HandleTaskReturn. On re-execution the EOF was already pinned by the first
+  // successful attempt; stream values are rematerialized only via intermediate
+  // generator reports (retries must be reproducible). Do not copy
+  // return_objects(0) onto stream refs on app-error replay: for streaming
+  // generators the static return is intentionally serialized None.
+  if (spec.IsStreamingGenerator() && first_execution) {
     const ObjectID generator_id =
         ObjectID::FromBinary(reply.return_objects(0).object_id());
-    if (first_execution) {
-      const int streaming_generator_return_count =
-          reply.streaming_generator_return_ids_size();
-      if (is_application_error && streaming_generator_return_count == 0 &&
-          !reply.return_objects(0).in_plasma()) {
-        // A failure before the generator executor starts (for example, a
-        // failed by-reference dependency) has no streamed error item. Copy the
-        // generator completion error to EOF-region refs so an eagerly peeked
-        // ref surfaces the same serialized RayTaskError as gen.completed().
-        const rpc::ReturnObject &task_error = reply.return_objects(0);
-        MarkEndOfStream(generator_id,
-                        streaming_generator_return_count,
-                        rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                        /*error_info=*/std::nullopt,
-                        task_error);
-      } else {
-        MarkEndOfStream(generator_id, streaming_generator_return_count);
-      }
+    const int streaming_generator_return_count =
+        reply.streaming_generator_return_ids_size();
+    if (is_application_error && streaming_generator_return_count == 0 &&
+        !reply.return_objects(0).in_plasma()) {
+      // A failure before the generator executor starts (for example, a
+      // failed by-reference dependency) has no streamed error item. Copy the
+      // generator completion error to EOF-region refs so an eagerly peeked
+      // ref surfaces the same serialized RayTaskError as gen.completed().
+      const rpc::ReturnObject &task_error = reply.return_objects(0);
+      MarkEndOfStream(generator_id,
+                      streaming_generator_return_count,
+                      rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                      /*error_info=*/std::nullopt,
+                      task_error);
     } else {
-      // The end of the stream should already have been marked on the first
-      // successful execution.
-      if (is_application_error) {
-        // It means the task was re-executed but failed with an application
-        // error. In this case, we should fail the rest of known streaming
-        // generator returns with the same error.
-        RAY_LOG(DEBUG) << "Streaming generator task " << spec.TaskId()
-                       << " failed with application error, failing "
-                       << spec.NumStreamingGeneratorReturns() << " return objects.";
-        RAY_CHECK_EQ(reply.return_objects_size(), 1);
-        for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
-          const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-          RAY_CHECK_EQ(reply.return_objects_size(), 1);
-          const auto &return_object = reply.return_objects(0);
-          StatusOr<bool> res =
-              HandleTaskReturn(generator_return_id,
-                               return_object,
-                               NodeID::FromBinary(worker_addr.node_id()),
-                               store_in_plasma_ids.contains(generator_return_id));
-          if (!res.ok()) {
-            RAY_LOG(WARNING).WithField(generator_return_id)
-                << "Failed to handle generator return during app error propagation: "
-                << res.status();
-            Status st = res.status();
-            rpc::ErrorType err_type = MapPlasmaPutStatusToErrorType(st);
-            rpc::RayErrorInfo err_info;
-            err_info.set_error_message(st.ToString());
-            FailOrRetryPendingTask(spec.TaskId(),
-                                   err_type,
-                                   &st,
-                                   /*ray_error_info=*/&err_info,
-                                   /*mark_task_object_failed=*/true,
-                                   /*fail_immediately=*/true);
-            return;
-          }
-        }
-      }
+      MarkEndOfStream(generator_id, streaming_generator_return_count);
     }
   }
 

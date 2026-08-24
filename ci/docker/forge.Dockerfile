@@ -5,12 +5,37 @@ FROM ubuntu:22.04
 ARG BUILDKITE_BAZEL_CACHE_URL
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Where pip and uv resolve from while building this image. Docker builds cannot see an
+# index configured in the CI step's environment -- BuildKit RUN steps inherit nothing
+# from it -- so it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment.
+#
+# Empty for anyone building these images outside CI, and then this is exactly the index
+# pip would have used anyway, so an external build behaves as it does today.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
+# pip refuses a plain-HTTP index unless the host is named as trusted, with loopback the
+# one exemption -- and this address is a name, not loopback. The refusal is silent: the
+# index is dropped and the install fails with "from versions: none" rather than a
+# connection error (release 104844, cython==3.0.12 in the wheel build). Arrives the same
+# way as the index above and is empty outside CI, where the index is public PyPI over
+# HTTPS and there is nothing to trust.
+ARG RAYCI_IMAGE_PIP_TRUSTED_HOST=""
+ENV PIP_TRUSTED_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
+ENV UV_INSECURE_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
 ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 ENV RAY_BUILD_ENV=ubuntu22.04_forge
 
 RUN \
   --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
+  --mount=type=bind,source=ci/pypi_index_proxy.py,target=pypi_index_proxy.py \
+  --mount=type=bind,source=ci/pypi_proxy_profile.sh,target=pypi_proxy_profile.sh \
+  --mount=type=bind,source=ci/install_pypi_proxy.sh,target=install_pypi_proxy.sh \
+  --mount=type=bind,source=ci/bazel_mirror_downloader.sh,target=bazel_mirror_downloader.sh \
 <<EOF
 #!/bin/bash
 
@@ -82,6 +107,19 @@ ln -s "$UV_PYTHON_BIN" /usr/local/bin/python
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
 uv pip install --system pip==25.0 cffi==1.16.0
+
+# The PyPI index proxy (ci/pypi_index_proxy.py), used when the CI package mirror is
+# reachable but only serves the path-prefixed byte cache: PyPI's own index pages name
+# files.pythonhosted.org for the artifacts, so an index URL alone reroutes the
+# metadata request and leaves the download on the origin. The proxy rewrites those
+# URLs. ci/pypi_proxy_profile.sh decides whether it is needed and starts it.
+#
+# It needs Python >=3.11 (asgi-cross-origin-protection) while this image's default
+# interpreter is deliberately 3.10 above and symlinked as python/python3, so install
+# a second interpreter for the proxy alone and keep it in its own venv. Nothing else
+# resolves through /opt/pypiproxy and the default python is left untouched.
+uv python install --install-dir /usr/local/python 3.12
+bash install_pypi_proxy.sh "$(uv python find --no-project 3.12)"
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Create an Amazon EKS cluster with CPU and GPU node groups ready for KubeRay."
+---
+
 (kuberay-eks-gpu-cluster-setup)=
 
 # Start Amazon EKS Cluster with GPUs for KubeRay
