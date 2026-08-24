@@ -41,8 +41,9 @@ Byte-budgeted decode (no reader-side accumulation)
 --------------------------------------------------
 The native reader sizes each decode batch *by bytes, not rows*: it reads each
 row group's uncompressed size / row count from the footer and picks a row count
-so ``rows × bytes_per_row ≈ decode_budget_bytes`` (32 MiB default,
-:data:`_ARROW_RS_DECODE_BUDGET_BYTES`). A wide-string group gets few rows/batch,
+so ``rows × bytes_per_row ≈ decode_budget_bytes`` (default = the current
+``DataContext.target_max_block_size``; see :func:`_default_decode_budget_bytes`).
+A wide-string group gets few rows/batch,
 a numeric group many — both land near the budget, so the decoded working set is
 flat across schemas (this is *why* arrow-rs memory doesn't scale with the data
 the way PyArrow's whole-row-group materialization does). The ``batch_size`` we
@@ -236,7 +237,9 @@ _LOGGED_NATIVE_ACTIVE = False
 # below ``target_block_size`` so the decode transient is bounded while output
 # blocks are still coalesced to the normal Ray block size.
 #
-# Default 32 MiB, raised from 2 MiB after the 2026-08-07 Linux + real-S3 sweep
+# History: the default was 32 MiB, raised from 2 MiB after the 2026-08-07
+# Linux + real-S3 sweep, then replaced by the block-target default described at
+# the end of this comment (findings M59/M63). The 2026-08-07 evidence:
 # (arrow_rs_docs/regression_testing.md §8.2). The old default came from the
 # standalone benchmark, where the budget looked like a pure floor knob — it moved
 # peak RSS only ~12 MB across its range, so the smallest value that still held
@@ -266,8 +269,8 @@ _LOGGED_NATIVE_ACTIVE = False
 # the *old* default. The 1.47x max/avg that condemned 2 MiB is gone too — every arm
 # is within 1.5% of its own average, so that spike was the writer's, not the
 # decoder's. Wall time keeps the shape it had fused (32 MiB fastest, 0.87x against
-# 2 MiB, from two independent configurations), so **32 MiB stays, justified on
-# throughput and on the row-floor argument below, not on memory.**
+# 2 MiB, from two independent configurations) — so the budget is justified on
+# throughput and on the row-floor argument below, not on memory.
 #
 # It also settles why small batches seemed to cost more: they do not. The suspect
 # was that handing Ray's block builder many sub-block batches forces an
@@ -286,9 +289,35 @@ _LOGGED_NATIVE_ACTIVE = False
 # never the decoded batch itself.
 # Tuning: 32-128 MiB are within noise of each other on memory; go below 8 MiB only
 # to reproduce the pre-2026-08 behaviour.
-_ARROW_RS_DECODE_BUDGET_BYTES = env_integer(
-    "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES", 32 * MiB
+#
+# The DEFAULT (env unset, no kwarg) follows ``DataContext.target_max_block_size``
+# rather than a constant. Rationale (findings M59/M63): read tasks coalesce
+# decode batches through ``BlockOutputBuffer`` to ~one block anyway, so batches
+# below the block size buy NO resident memory (the block-in-progress dominates)
+# while paying the per-batch × per-column dispatch cost more often — on 5,000-col
+# schemas that cost was the whole in-Ray wall loss (M59: wall R 1.40 → 0.99 at
+# 128 MiB, tUSS unchanged). The 10-shape gate at 128 passed the memory gate on
+# every cell, including decoded-rg ≫ budget shapes (M63). Tying the default to
+# the block target hands the granularity decision to the optimizer/DataContext
+# instead of this reader.
+_ARROW_RS_DECODE_BUDGET_BYTES: Optional[int] = (
+    env_integer("RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES", 32 * MiB)
+    if "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES" in os.environ
+    else None
 )
+
+
+def _default_decode_budget_bytes() -> int:
+    """Decode budget when neither the env var nor the kwarg overrides it:
+    the current ``DataContext.target_max_block_size``, falling back to 128 MiB
+    when the block target is unset (blocks unbounded ≠ decode unbounded)."""
+    if _ARROW_RS_DECODE_BUDGET_BYTES is not None:
+        return _ARROW_RS_DECODE_BUDGET_BYTES
+    from ray.data.context import DataContext
+
+    target = DataContext.get_current().target_max_block_size
+    return target if target else 128 * MiB
+
 
 # Floor on the estimated *requested* batch size (rows) handed to the crate.
 # The crate treats it as an upper clamp and re-derives the byte-budgeted row
@@ -1147,11 +1176,11 @@ class ArrowRsParquetFileReader(ParquetFileReader):
 
         Priority: explicit ``batch_size`` > footer-stat estimate from the manifest
         (no I/O) > byte-budget estimate from a row-group footer read > default.
-        Unlike the base reader this targets
-        :data:`_ARROW_RS_DECODE_BUDGET_BYTES` (32 MiB) rather than
-        ``target_block_size`` (~128 MiB), because each decode batch is yielded
-        straight through in :meth:`_iter_fragment_tables` (the downstream
-        ``BlockOutputBuffer`` does the coalescing to the block size).
+        Unlike the base reader this targets the resolved decode budget (kwarg >
+        env > :func:`_default_decode_budget_bytes`, which follows
+        ``DataContext.target_max_block_size``), because each decode batch is
+        yielded straight through in :meth:`_iter_fragment_tables` (the
+        downstream ``BlockOutputBuffer`` does the coalescing to the block size).
 
         Preferring the manifest is not just a tidier source: ``ListFiles`` already
         read every footer to prune and pack the row groups, and it recorded the
@@ -1693,7 +1722,7 @@ class ArrowRsParquetFileReader(ParquetFileReader):
 
         return _ArrowRsTuning(
             decode_budget_bytes=resolve(
-                "arrow_rs_decode_budget_bytes", _ARROW_RS_DECODE_BUDGET_BYTES, 1
+                "arrow_rs_decode_budget_bytes", _default_decode_budget_bytes(), 1
             ),
             k=resolve("arrow_rs_k", _ARROW_RS_K, 1),
             split_threshold_bytes=resolve_optional(

@@ -3093,25 +3093,49 @@ def test_explicit_num_threads_env_overrides_arrow_rs_default(monkeypatch):
     assert reader._num_fragment_read_threads(64) == 4
 
 
-def test_arrow_rs_decode_budget_default_is_32_mib():
-    """Pin the default. It moved 2 -> 32 MiB on measurement
-    (arrow_rs_docs/regression_testing.md §8.2: 0.83x avg USS / 1.03x max / 0.87x
-    wall against PyArrow, where 2 MiB gave 1.00x / 1.47x / 0.99x), and 2 MiB is
-    also below the 2048-row batch floor for any schema wider than ~1 KiB/row, which
-    made the knob inert exactly where memory matters most. A silent revert would
-    reintroduce the regression with no test failing.
-    """
-    from ray.data._internal.datasource_v2.readers.arrow_rs_parquet_file_reader import (
-        _ARROW_RS_DECODE_BUDGET_BYTES,
-        _ARROW_RS_MIN_DECODE_BATCH_ROWS,
-    )
+def test_arrow_rs_decode_budget_default_follows_block_target(monkeypatch):
+    """Pin the default's semantics: budget = ``DataContext.target_max_block_size``.
 
-    if "RAY_DATA_ARROW_RS_DECODE_BUDGET_BYTES" in os.environ:
-        pytest.skip("default overridden in the environment")
-    assert _ARROW_RS_DECODE_BUDGET_BYTES == 32 * 1024 * 1024
-    # The budget only binds below budget/floor bytes per row; at 32 MiB that is
-    # ~16 KiB/row instead of 2 MiB's ~1 KiB/row.
-    assert _ARROW_RS_DECODE_BUDGET_BYTES / _ARROW_RS_MIN_DECODE_BATCH_ROWS > 8 * 1024
+    History: 2 MiB -> 32 MiB on the 2026-08-07 sweep (regression_testing.md
+    §8.2), then -> the block target on findings M59/M63: read tasks coalesce
+    decode batches through ``BlockOutputBuffer`` to ~one block anyway, so
+    sub-block batches bought no memory while the per-batch × per-column
+    dispatch cost was the whole in-Ray wall loss on 5,000-col schemas (M59
+    wall R 1.40 -> 0.99 at 128 MiB); the 10-shape gate at 128 MiB passed the
+    memory gate on every cell (M63). Env var must still win when set, and an
+    unset block target must NOT mean an unbounded decode budget.
+    """
+    from ray.data._internal.datasource_v2.readers import (
+        arrow_rs_parquet_file_reader as reader_mod,
+    )
+    from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
+
+    ctx = DataContext.get_current()
+
+    # No env override (None unless the var was set at import): follow the
+    # current block target.
+    monkeypatch.setattr(reader_mod, "_ARROW_RS_DECODE_BUDGET_BYTES", None)
+    monkeypatch.setattr(ctx, "target_max_block_size", 64 * 1024 * 1024)
+    assert reader_mod._default_decode_budget_bytes() == 64 * 1024 * 1024
+
+    # Unset block target: bounded 128 MiB fallback, never unbounded decode.
+    monkeypatch.setattr(ctx, "target_max_block_size", None)
+    assert reader_mod._default_decode_budget_bytes() == 128 * 1024 * 1024
+
+    # Env var (captured at import into _ARROW_RS_DECODE_BUDGET_BYTES) wins
+    # over the block target.
+    monkeypatch.setattr(ctx, "target_max_block_size", 64 * 1024 * 1024)
+    monkeypatch.setattr(reader_mod, "_ARROW_RS_DECODE_BUDGET_BYTES", 2 * 1024 * 1024)
+    assert reader_mod._default_decode_budget_bytes() == 2 * 1024 * 1024
+
+    # The budget only binds below budget/floor bytes per row; at the default
+    # 128 MiB block target that is ~64 KiB/row against the 2048-row request
+    # floor (the crate's own floor is 32 rows, so decoded batches stay
+    # budget-sized regardless).
+    assert (
+        DEFAULT_TARGET_MAX_BLOCK_SIZE / reader_mod._ARROW_RS_MIN_DECODE_BATCH_ROWS
+        > 8 * 1024
+    )
 
 
 if __name__ == "__main__":
