@@ -111,7 +111,6 @@ def _get_env_value(
         else:
             raw = default
     else:
-        _deprecation_warning(name)
         raw = explicitly_defined_value
 
     try:
@@ -362,39 +361,6 @@ _fully_deprecated_env_vars = {
     "RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER": "request_router_config.backoff_multiplier",
     "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S": "request_router_config.max_backoff_s",
 }
-
-
-def _deprecation_warning(name: str) -> None:
-    """Log replacement warning for wrong or legacy environment variables.
-
-    TODO: remove this function for the '3.0.0' release.
-
-    Args:
-        name: Environment variable name.
-    """
-
-    def get_new_name(name: str) -> str:
-        if name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S":
-            return "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S"
-        elif name == "SERVE_REQUEST_PROCESSING_TIMEOUT_S":
-            return "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S"
-        else:
-            return f"{required_prefix}{name}"
-
-    change_version = "3.0.0"
-    required_prefix = "RAY_SERVE_"
-
-    if (
-        name in _wrong_names_white_list
-        or name == "RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S"
-    ):
-        new_name = get_new_name(name)
-        warnings.warn(
-            f"Starting from version `{change_version}` environment variable "
-            f"`{name}` will be deprecated. Please use `{new_name}` instead.",
-            FutureWarning,
-            stacklevel=4,
-        )
 
 
 def warn_if_deprecated_env_var_set(name: str) -> None:

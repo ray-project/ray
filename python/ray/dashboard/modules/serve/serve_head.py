@@ -273,7 +273,7 @@ class ServeHead(SubprocessModule):
                 return self._create_json_response({"error": str(e.cause)}, 412)
             if isinstance(e, ValueError) and "not found" in str(e):
                 return self._create_json_response(
-                    {"error": "Application or Deployment not found"}, 400
+                    {"error": "Application or Deployment not found"}, 404
                 )
             else:
                 logger.error(
