@@ -185,7 +185,13 @@ message CancelWorkerLeaseRequest {
   bytes lease_id = 1;
 }
 
-message CancelWorkerLeaseReply {}
+message CancelWorkerLeaseReply {
+  // Whether the cancellation request was successful. Cancellation
+  // succeeds if the node manager has the task queued upon receiving
+  // the cancellation request, and the node manager has not yet
+  // granted the lease.
+  bool success = 1;
+}
 
 message PinObjectIDsRequest {
   // Address of the owner to ask when to unpin the objects.
@@ -529,7 +535,8 @@ service NodeManagerService {
   // network errors, the caller should retry the request.
   rpc ResizeLocalResourceInstances(ResizeLocalResourceInstancesRequest)
       returns (ResizeLocalResourceInstancesReply);
-  // Cancel a pending lease request.
+  // Cancel a pending lease request. This only returns success if the
+  // lease request was not yet granted.
   // Failure: Retries, it's idempotent.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Pin the provided object IDs.

@@ -18,7 +18,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -839,14 +838,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Checks the expiry time of the worker failures and garbage collect them.
   void GCWorkerFailureReason();
 
-  /// Records a CancelWorkerLease tombstone so a later-arriving RequestWorkerLease
-  /// for the same lease ID is rejected. Evicts the oldest tombstones if the cap
-  /// is exceeded.
-  void AddCancelledLeaseTombstone(const LeaseID &lease_id);
-
-  /// Garbage-collects CancelWorkerLease tombstones past their TTL.
-  void GCCancelledLeaseTombstones();
-
   /// Creates a AgentManager that creates and manages a dashboard agent.
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
@@ -942,13 +933,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Optional extra information about why the worker failed.
   absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
-
-  /// Lease IDs whose CancelWorkerLease we have already handled. Used to reject a
-  /// RequestWorkerLease that arrives after its cancellation due to message reordering.
-  absl::flat_hash_set<LeaseID> cancelled_lease_tombstones_;
-  /// Tombstones in insertion order, which is also expiry order because the TTL is
-  /// uniform. Used to evict the oldest entries first.
-  std::deque<std::pair<LeaseID, SteadyTimePoint>> cancelled_lease_tombstone_queue_;
 
   /// Whether to trigger global GC at the next gc check.
   /// This will broadcast a global GC message to all raylets except for this one.

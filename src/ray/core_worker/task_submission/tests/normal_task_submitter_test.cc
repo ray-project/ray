@@ -347,12 +347,13 @@ class MockRayletClient : public rpc::FakeRayletClient {
     return true;
   }
 
-  bool ReplyCancelWorkerLease() {
+  bool ReplyCancelWorkerLease(bool success = true) {
     rpc::ClientCallback<rpc::CancelWorkerLeaseReply> callback = PopCancelCallbackInLock();
     if (!callback) {
       return false;
     }
     rpc::CancelWorkerLeaseReply reply;
+    reply.set_success(success);
     callback(Status::OK(), std::move(reply));
     return true;
   }
@@ -1156,6 +1157,55 @@ TEST_F(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
+TEST_F(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
+
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Task 1 is pushed.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
+  // Task 1 finishes, Task 2 is scheduled on the same worker.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  // Task 2 finishes, Task 3 is scheduled on the same worker.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  // Task 3 finishes, the worker is returned.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+
+  // Simulate the lease cancellation request failing because it arrives at the
+  // raylet before the last worker lease request has been received.
+  int i = 1;
+  for (; i <= 3; i++) {
+    ASSERT_EQ(raylet_client->num_leases_canceled, i);
+    ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease(false));
+  }
+
+  // Simulate the lease cancellation request succeeding.
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_leases_canceled, i);
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_EQ(raylet_client->num_leases_canceled, i);
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "", 0, local_node_id, NodeID::Nil(), /*cancel=*/true));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  // The canceled lease is not returned.
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_manager->num_tasks_complete, 3);
+  ASSERT_EQ(task_manager->num_tasks_failed, 0);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
 TEST_F(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
@@ -1196,54 +1246,6 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
-
-  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
-  // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
-}
-
-TEST_F(NormalTaskSubmitterTest, TestLeaseCancellationSentOnlyOnce) {
-  auto submitter =
-      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
-  TaskSpecification task1 = BuildEmptyTaskSpec();
-  TaskSpecification task2 = BuildEmptyTaskSpec();
-  TaskSpecification task3 = BuildEmptyTaskSpec();
-
-  submitter.SubmitTask(task1);
-  submitter.SubmitTask(task2);
-
-  // Task 1 is pushed and a second lease is requested for task 2.
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
-
-  // Task 1 finishes and task 2 is scheduled on the same worker, so the task queue
-  // drains and the second lease request is canceled.
-  ASSERT_TRUE(worker_client->ReplyPushTask());
-  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
-
-  // Submit task 3 while the second lease request is still in flight. It is not
-  // pruned until its RequestWorkerLease replies, and no new lease is requested
-  // because the pending one already covers the queued task.
-  submitter.SubmitTask(task3);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
-
-  // Task 2 finishes and task 3 is scheduled on the same worker, draining the queue
-  // a second time. The still-pending lease request must not be canceled again.
-  ASSERT_TRUE(worker_client->ReplyPushTask());
-  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
-
-  // Task 3 finishes and the worker is returned.
-  ASSERT_TRUE(worker_client->ReplyPushTask());
-  ASSERT_EQ(raylet_client->num_workers_returned, 1);
-  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
-
-  // Drain the single cancellation and the canceled lease reply.
-  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
-  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
-  ASSERT_TRUE(raylet_client->GrantWorkerLease(
-      "", 0, local_node_id, NodeID::Nil(), /*cancel=*/true));
-  ASSERT_EQ(task_manager->num_tasks_complete, 3);
-  ASSERT_EQ(task_manager->num_tasks_failed, 0);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.

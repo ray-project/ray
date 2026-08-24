@@ -205,22 +205,32 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
 
   RAY_LOG(DEBUG) << "Task queue is empty; canceling lease request";
 
-  for (auto &[lease_id, pending_lease_request] :
-       scheduling_key_entry.pending_lease_requests) {
-    // The raylet tombstones the cancellation, so cancelling the same lease again
-    // would be a no-op there and we shouldn't send it again.
-    if (pending_lease_request.cancel_requested) {
-      continue;
-    }
+  for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
     // There is an in-flight lease request. Cancel it.
     auto raylet_client =
-        raylet_client_pool_->GetOrConnectByAddress(pending_lease_request.raylet_address);
+        raylet_client_pool_->GetOrConnectByAddress(pending_lease_request.second);
+    const auto &lease_id = pending_lease_request.first;
     RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
-    // The raylet tombstones CancelWorkerLease, so a later-arriving
-    // RequestWorkerLease for this lease ID is rejected
     raylet_client->CancelWorkerLease(
-        lease_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
-    pending_lease_request.cancel_requested = true;
+        lease_id,
+        [this, scheduling_key](const Status &status,
+                               const rpc::CancelWorkerLeaseReply &reply) {
+          absl::MutexLock lock(&mu_);
+          if (status.ok() && !reply.success()) {
+            // The cancellation request can fail if the raylet does not have
+            // the request queued. This can happen if: a) due to message
+            // reordering, the raylet has not yet received the worker lease
+            // request, b) we have already returned the worker lease
+            // request, or c) the current request is a retry and the server response to
+            // the initial request was lost after cancelling the lease. In case a), we
+            // should try the cancellation request again. In case b), the in-flight lease
+            // request should already have been removed from our local state, so we no
+            // longer need to cancel. In case c), the response for ReturnWorkerLease
+            // should have already been triggered and the pending lease request will be
+            // cleaned up.
+            CancelWorkerLeaseIfNeeded(scheduling_key);
+          }
+        });
   }
 }
 
@@ -490,8 +500,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
           tasks_to_fail.pop_front();
         }
       });
-  scheduling_key_entry.pending_lease_requests.emplace(
-      lease_id, PendingLeaseRequest{*raylet_address});
+  scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
 
   // Lease more workers if there are still pending tasks and
   // and we haven't hit the max_pending_lease_requests yet.

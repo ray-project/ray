@@ -164,8 +164,9 @@ struct GcsServerMocker {
       }
     }
 
-    bool ReplyCancelWorkerLease() {
+    bool ReplyCancelWorkerLease(bool success = true) {
       rpc::CancelWorkerLeaseReply reply;
+      reply.set_success(success);
       if (cancel_callbacks.size() == 0) {
         return false;
       } else {
