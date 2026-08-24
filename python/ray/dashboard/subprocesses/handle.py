@@ -103,6 +103,7 @@ class SubprocessModuleHandle:
         self.parent_conn = None
         self.process = None
         self.http_client_session: Optional[aiohttp.ClientSession] = None
+        self.stream_http_client_session: Optional[aiohttp.ClientSession] = None
         self.health_check_task = None
 
     def str_for_state(self, incarnation: int, pid: Optional[int]):
@@ -157,6 +158,9 @@ class SubprocessModuleHandle:
 
         module_name = self.module_cls.__name__
         self.http_client_session = get_http_session_to_module(
+            module_name, self.config.socket_dir, self.config.session_name
+        )
+        self.stream_http_client_session = get_http_session_to_module(
             module_name, self.config.socket_dir, self.config.session_name
         )
 
@@ -226,6 +230,9 @@ class SubprocessModuleHandle:
         if self.http_client_session:
             await self.http_client_session.close()
             self.http_client_session = None
+        if self.stream_http_client_session:
+            await self.stream_http_client_session.close()
+            self.stream_http_client_session = None
 
     async def _health_check(self) -> aiohttp.web.Response:
         """
@@ -326,7 +333,7 @@ class SubprocessModuleHandle:
         """
         url = f"http://localhost{request.path_qs}"
         body = await request.read()
-        async with self.http_client_session.request(
+        async with self.stream_http_client_session.request(
             request.method,
             url,
             data=body,

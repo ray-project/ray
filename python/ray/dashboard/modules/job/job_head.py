@@ -121,6 +121,7 @@ class JobAgentSubmissionClient:
     ):
         self._agent_address = dashboard_agent_address
         self._session = aiohttp.ClientSession()
+        self._stream_session = aiohttp.ClientSession()
 
     def _get_headers(self):
         """Get auth headers if token authentication is enabled."""
@@ -186,13 +187,14 @@ class JobAgentSubmissionClient:
     async def stream_job_logs_internal(
         self, job_id: str
     ) -> AsyncIterator[ClientResponse]:
-        async with self._session.get(
+        async with self._stream_session.get(
             f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs",
             headers=self._get_headers(),
             timeout=aiohttp.ClientTimeout(
                 total=None,
                 connect=30,
                 sock_connect=30,
+                sock_read=60,
             ),
         ) as resp:
             if resp.status != 200:
@@ -226,7 +228,10 @@ class JobAgentSubmissionClient:
 
     async def close(self, ignore_error=True):
         try:
-            await self._session.close()
+            await asyncio.gather(
+                self._session.close(),
+                self._stream_session.close(),
+            )
         except Exception:
             if not ignore_error:
                 raise
