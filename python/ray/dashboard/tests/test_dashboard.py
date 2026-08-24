@@ -694,7 +694,8 @@ def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard)
 
     # PATCH should also be blocked for browsers
     for testcase in testcases:
-        response = requests.patch(
+        response = request_with_auth_token(
+            "PATCH",
             webui_url + "/api/jobs/nonexistent-job-id",
             headers=testcase,
             json={},

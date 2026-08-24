@@ -27,6 +27,7 @@ from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
     format_web_url,
+    get_with_auth_token,
     wait_until_server_available,
 )
 from ray.core.generated.metrics_pb2 import Metric
@@ -1283,7 +1284,7 @@ def test_get_task_traceback_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{webui_url}/task/traceback", params=params)
+        resp = get_with_auth_token(f"{webui_url}/task/traceback", params=params)
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert "Process" in resp.text
@@ -1331,7 +1332,7 @@ def test_get_memory_profile_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{webui_url}/memory_profile", params=params)
+        resp = get_with_auth_token(f"{webui_url}/memory_profile", params=params)
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert resp.status_code == 200
@@ -1384,7 +1385,7 @@ def test_get_task_traceback_non_running_task(shutdown_only):
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{webui_url}/task/traceback", params=params)
+            resp = get_with_auth_token(f"{webui_url}/task/traceback", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -1423,7 +1424,7 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{webui_url}/task/cpu_profile", params=params)
+            resp = get_with_auth_token(f"{webui_url}/task/cpu_profile", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -1460,7 +1461,7 @@ def test_task_get_memory_profile_missing_params(shutdown_only):
 
     # Make sure the API works.
     def verify():
-        resp = requests.get(
+        resp = get_with_auth_token(
             f"{webui_url}/memory_profile", params=missing_node_id_params
         )
         content = resp.content.decode("utf-8")
@@ -1475,7 +1476,7 @@ def test_get_cluster_metadata(ray_start_with_dashboard):
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
     url = f"{webui_url}/api/v0/cluster_metadata"
 
-    resp = requests.get(url)
+    resp = get_with_auth_token(url)
     assert resp.status_code == 200
     resp_data = resp.json()["data"]
     meta = ray_usage_lib._generate_cluster_metadata(ray_init_cluster=True)
@@ -1881,7 +1882,7 @@ def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
     webui_url = format_web_url(address_info["webui_url"])
 
     def verify():
-        resp = requests.get(f"{webui_url}/api/profiling_enabled")
+        resp = get_with_auth_token(f"{webui_url}/api/profiling_enabled")
         resp.raise_for_status()
         data = resp.json()["data"]
         assert data["profilingEnabled"] is True

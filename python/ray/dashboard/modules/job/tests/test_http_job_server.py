@@ -11,7 +11,6 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
-import requests
 import yaml
 
 import ray
@@ -24,6 +23,8 @@ from ray._private.runtime_env.packaging import (
 from ray._private.test_utils import (
     chdir,
     format_web_url,
+    get_with_auth_token,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
@@ -759,16 +760,17 @@ async def test_get_upload_package(ray_start_context, tmp_path):
     package_file = tmp_path / package_name
     create_package(str(pkg_dir), package_file, include_gitignore=True)
 
-    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    resp = get_with_auth_token(url.format(protocol=protocol, package_name=package_name))
     assert resp.status_code == 404
 
-    resp = requests.put(
+    resp = request_with_auth_token(
+        "PUT",
         url.format(protocol=protocol, package_name=package_name),
         data=package_file.read_bytes(),
     )
     assert resp.status_code == 200
 
-    resp = requests.get(url.format(protocol=protocol, package_name=package_name))
+    resp = get_with_auth_token(url.format(protocol=protocol, package_name=package_name))
     assert resp.status_code == 200
 
     await download_and_unpack_package(package_uri, str(tmp_path), gcs_client)

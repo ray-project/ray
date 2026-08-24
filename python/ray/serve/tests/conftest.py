@@ -17,6 +17,7 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.usage import usage_lib
 from ray._common.utils import reset_ray_address
+from ray._private.test_utils import get_with_auth_token
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
@@ -226,7 +227,8 @@ def ray_start_stop():
     )
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        lambda: get_with_auth_token("http://localhost:8265/api/ray/version").status_code
+        == 200,
         timeout=15,
     )
     ray.init("auto")
@@ -251,7 +253,8 @@ def ray_start_stop_in_specific_directory(request):
 
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        lambda: get_with_auth_token("http://localhost:8265/api/ray/version").status_code
+        == 200,
         timeout=15,
     )
     try:
