@@ -1871,7 +1871,7 @@
 ########################
 
 - name: training_ingest_benchmark-task=image_classification
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -1887,7 +1887,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
@@ -2035,7 +2035,7 @@
         cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
 - name: training_ingest_benchmark-task=image_classification-heterogenous_fixed_size
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2053,7 +2053,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_fixed_size_gpu_4x4_aws.yaml
 
@@ -2069,7 +2069,7 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step True --skip_validation_at_epoch_end True --image_classification_data_format=s3_url
 
 - name: training_ingest_benchmark-task=image_classification-heterogenous_autoscaling
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2087,7 +2087,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/heterogenous_autoscaling_gpu_4x4_aws.yaml
 
@@ -2182,7 +2182,7 @@
         num_nodes: 1
 
 - name: training_ingest_benchmark-soak_test
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/benchmark
 
@@ -2191,7 +2191,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_configs/compute_gpu_4x4_cpu_4_aws.yaml
 
@@ -2302,7 +2302,7 @@
 
 
 - name: torch_local_mode
-  python: "3.10"
+  python: "3.14"
   group: Train tests
   working_dir: train_tests/local_mode
 
@@ -2311,7 +2311,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch-cu128
     anyscale_sdk_2026: true
     cluster_compute: compute_gpu_2x4_aws.yaml
 
