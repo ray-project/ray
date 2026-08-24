@@ -1,0 +1,3 @@
+/target
+# Cargo.lock IS committed: this crate builds a wheel for reproducible CI, and
+# ci/docker/dataarrowrs.build.wanda.yaml lists Cargo.lock in its build srcs.

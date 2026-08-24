@@ -44,6 +44,25 @@ logger = logging.getLogger(__name__)
 
 _UNSET = object()
 
+# arrow-rs tuning knobs. These travel on the V2 ``dataset_kwargs`` payload (see
+# ``arrow_rs_parquet_file_reader.py`` for semantics/defaults) but must never
+# reach ``pds.ParquetFileFormat``, so ``__init__`` pops them out of
+# ``parquet_format_kwargs`` before PyArrow can see them. The PyArrow reader then
+# ignores them entirely — the mirror image of the native reader ignoring
+# PyArrow's I/O-only kwargs — so a ``read_parquet`` call carrying these keys
+# stays valid whichever reader the ``use_arrow_rs_parquet_reader`` flag selects.
+ARROW_RS_TUNING_KWARGS = frozenset(
+    {
+        "arrow_rs_decode_budget_bytes",
+        "arrow_rs_k",
+        "arrow_rs_split_threshold_bytes",
+        "arrow_rs_fetch_window_mb",
+        "arrow_rs_column_fetch_mb",
+        "arrow_rs_prefetch_budget_mb",
+    }
+)
+_ARROW_RS_KWARG_PREFIX = "arrow_rs_"
+
 # Per-stream read-ahead buffer for ``use_buffered_stream=True``. PyArrow's
 # default (~8 KiB) produces many tiny range requests on S3; 8 MiB
 # amortizes per-request latency across meaningful payload sizes.
@@ -214,7 +233,29 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         )
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
-        self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
+        self._parquet_format_kwargs: Dict[str, Any] = dict(parquet_format_kwargs or {})
+        # Split out the arrow-rs tuning knobs (see ARROW_RS_TUNING_KWARGS): they
+        # must never be spread into ``pds.ParquetFileFormat``. This base reader
+        # ignores them; ``ArrowRsParquetFileReader`` resolves them in
+        # ``_tuning``. An unrecognized ``arrow_rs_*`` key can only be a typo'd
+        # tuning knob — fail loudly here rather than let PyArrow raise a baffling
+        # ``ParquetFileFormat`` TypeError (or let the native gate treat it as an
+        # unsupported format kwarg and silently fall back).
+        self._arrow_rs_tuning: Dict[str, Any] = {
+            key: self._parquet_format_kwargs.pop(key)
+            for key in ARROW_RS_TUNING_KWARGS
+            if key in self._parquet_format_kwargs
+        }
+        unknown_arrow_rs_keys = sorted(
+            key
+            for key in self._parquet_format_kwargs
+            if key.startswith(_ARROW_RS_KWARG_PREFIX)
+        )
+        if unknown_arrow_rs_keys:
+            raise ValueError(
+                f"Unknown arrow-rs tuning kwargs {unknown_arrow_rs_keys} in "
+                f"'dataset_kwargs'. Valid keys: {sorted(ARROW_RS_TUNING_KWARGS)}."
+            )
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
@@ -512,11 +553,23 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         # meaningful bytes per round-trip. Tunable via env var for
         # workloads that need a different point on the latency/memory-
         # peak curve.
+        scan_opts: Dict[str, Any] = {
+            "use_buffered_stream": True,
+            "buffer_size": _PARQUET_FRAGMENT_BUFFER_SIZE,
+        }
+        # ``page_checksum_verification`` is a *scan* option, not a format option.
+        # ``_make_format`` sets it on the format's ``default_fragment_scan_options``,
+        # but the explicit ``fragment_scan_options`` we hand the scanner below
+        # overrides that default — so an explicit request would be silently
+        # dropped (pyarrow's default is ``False``, i.e. no verification). Thread
+        # it through here so ``page_checksum_verification=True`` is actually
+        # honored on the PyArrow read path (matching the arrow-rs crate, which
+        # always verifies).
+        pcv = self._parquet_format_kwargs.get("page_checksum_verification")
+        if pcv is not None:
+            scan_opts["page_checksum_verification"] = pcv
         kwargs: dict = {
-            "fragment_scan_options": pds.ParquetFragmentScanOptions(
-                use_buffered_stream=True,
-                buffer_size=_PARQUET_FRAGMENT_BUFFER_SIZE,
-            ),
+            "fragment_scan_options": pds.ParquetFragmentScanOptions(**scan_opts),
             "fragment_readahead": 1,
         }
         return kwargs
