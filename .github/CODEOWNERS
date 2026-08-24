@@ -10,6 +10,13 @@
 # Authors responsible for documentation infrastructure and layout.
 # ray-ci co-owns doc CI/build config; ray-docs-reviewers is a silent fallback
 # (notifications disabled) so docs leads can unblock docs-required reviews.
+#
+# This catch-all covers cross-project meta content (ray-overview, ray-references,
+# ray-governance, ray-security, ray-contribute, apis, templates) and the doc
+# build infrastructure (_ext, _static, _templates, _includes, _intersphinx,
+# images). Content that belongs to a library maps to that library's team in the
+# sections below, so a library maintainer's approval unblocks their own docs
+# without a separate docs-team review.
 /doc/ @ray-project/ray-docs @ray-project/ray-ci @ray-project/ray-docs-reviewers
 
 # ==== Ray core ====
@@ -28,6 +35,8 @@
 
 /doc/source/cluster/ @ray-project/ray-core @ray-project/ray-docs
 /doc/source/ray-core/ @ray-project/ray-core @ray-project/ray-docs
+/doc/source/ray-observability/ @ray-project/ray-core @ray-project/ray-docs
+/doc/source/ray-more-libs/ @ray-project/ray-core @ray-project/ray-docs
 
 /doc/source/cluster/kubernetes/ @andrewsykim @ray-project/ray-core @ray-project/ray-docs
 
@@ -67,6 +76,7 @@
 
 # Ray AIR
 /python/ray/air/ @ray-project/ray-train
+/doc/source/ray-air/ @ray-project/ray-train @ray-project/ray-docs
 
 # Ray Serve
 /python/ray/serve/ @ray-project/ray-serve
@@ -81,6 +91,7 @@
 /python/ray/dashboard/modules/metrics/dashboards/serve_llm* @ray-project/ray-llm
 /python/ray/dashboard/modules/metrics/dashboards/data_llm* @ray-project/ray-llm
 /python/ray/serve/llm/ @ray-project/ray-llm
+/doc/source/llm/ @ray-project/ray-llm @ray-project/ray-docs
 /doc/source/serve/llm/ @ray-project/ray-llm @ray-project/ray-docs
 /doc/source/data/working-with-llms.rst @ray-project/ray-llm @ray-project/ray-docs
 /doc/source/data/doc_code/working-with-llms/ @ray-project/ray-llm @ray-project/ray-docs
