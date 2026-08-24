@@ -634,7 +634,7 @@ class TestPlanAllToAllOpRouting:
         )
 
         ctx = DataContext()
-        ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+        ctx._shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
         logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
         input_physical_op = _make_input_op_mock()
