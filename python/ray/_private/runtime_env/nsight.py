@@ -17,12 +17,8 @@ from ray.exceptions import RuntimeEnvSetupError
 default_logger = logging.getLogger(__name__)
 
 # Nsight options used when runtime_env={"_nsight": "default"}
-NSIGHT_DEFAULT_CONFIG = {
-    "t": "cuda,cudnn,cublas,nvtx",
-    "o": "'worker_process_%p'",
-    "stop-on-exit": "true",
-}
-
+# use default cnperf config, no need to specify any options
+NSIGHT_DEFAULT_CONFIG = {}
 
 def parse_nsight_config(nsight_config: Dict[str, str]) -> List[str]:
     """
@@ -32,7 +28,7 @@ def parse_nsight_config(nsight_config: Dict[str, str]) -> List[str]:
     The function returns:
     - List[str]: nsys profile cmd line split into list of str
     """
-    nsight_cmd = ["nsys", "profile"]
+    nsight_cmd = ["cnperf-cli", "record"]
     for option, option_val in nsight_config.items():
         # option standard based on
         # https://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html
@@ -68,10 +64,11 @@ class NsightPlugin(RuntimeEnvPlugin):
 
         # use empty as nsight report test filename
         nsight_config_copy = copy.deepcopy(nsight_config)
-        nsight_config_copy["o"] = str(Path(self._nsight_dir) / "empty")
+        try_to_create_directory(Path(self._nsight_dir) / "empty")
+        nsight_config_copy["o"] = str(Path(self._nsight_dir) / "empty/test")
         nsight_cmd = parse_nsight_config(nsight_config_copy)
         try:
-            nsight_cmd = nsight_cmd + [sys.executable, "-c", '""']
+            nsight_cmd = nsight_cmd + ["python", "-c", '""']
             process = await asyncio.create_subprocess_exec(
                 *nsight_cmd,
                 stdout=subprocess.PIPE,
@@ -80,8 +77,8 @@ class NsightPlugin(RuntimeEnvPlugin):
             stdout, stderr = await process.communicate()
             error_msg = stderr.strip() if stderr.strip() != "" else stdout.strip()
 
-            # cleanup test.nsys-rep file
-            clean_up_cmd = ["rm", f"{nsight_config_copy['o']}.nsys-rep"]
+            # cleanup test.cnperf-rep file
+            clean_up_cmd = ["rm", f"{nsight_config_copy['o']}.cnperf-rep"]
             cleanup_process = await asyncio.create_subprocess_exec(
                 *clean_up_cmd,
                 stdout=subprocess.PIPE,
@@ -93,7 +90,7 @@ class NsightPlugin(RuntimeEnvPlugin):
             else:
                 return False, error_msg
         except FileNotFoundError:
-            return False, ("nsight is not installed")
+            return False, ("cnperf-cli is not installed")
 
     async def create(
         self,
@@ -108,7 +105,7 @@ class NsightPlugin(RuntimeEnvPlugin):
 
         if nsight_config and sys.platform != "linux":
             raise RuntimeEnvSetupError(
-                "Nsight CLI is only available in Linux.\n"
+                "CNPerf CLI is only available in Linux.\n"
                 "More information can be found in "
                 "https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html"
             )
@@ -120,21 +117,16 @@ class NsightPlugin(RuntimeEnvPlugin):
                 raise RuntimeEnvSetupError(
                     f"Unsupported nsight config: {nsight_config}. "
                     "The supported config is 'default' or "
-                    "Dictionary of nsight options"
+                    "Dictionary of cnperf options"
                 )
 
         is_valid_nsight_cmd, error_msg = await self._check_nsight_script(nsight_config)
         if not is_valid_nsight_cmd:
             logger.warning(error_msg)
             raise RuntimeEnvSetupError(
-                "nsight profile failed to run with the following "
+                "cnperf-cli failed to run with the following "
                 f"error message:\n {error_msg}"
             )
-        # add set output path to logs dir
-        nsight_config["o"] = str(
-            Path(self._nsight_dir) / nsight_config.get("o", NSIGHT_DEFAULT_CONFIG["o"])
-        )
-
         self.nsight_cmd = parse_nsight_config(nsight_config)
         return 0
 
@@ -145,5 +137,5 @@ class NsightPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
-        logger.info("Running nsight profiler")
         context.py_executable = " ".join(self.nsight_cmd) + " python"
+        logger.info("Running CNPerf cmd: %s", context.py_executable)

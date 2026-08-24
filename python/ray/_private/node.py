@@ -815,10 +815,29 @@ class Node:
         log_stdout = None
         log_stderr = None
 
-        if create_out:
+        '''
+        =============================
+        Modify by vllm_mlu
+        =============================
+        @brief: disable ray dump log to prevent log files from continuously growing
+        '''
+        DEVNULL_PATH = '/dev/null' if sys.platform != 'win32' else 'NUL'
+        if (
+            name in ["gcs_server", "raylet"] \
+            and ("VLLM_DUMP_RAY_LOG_EN" not in os.environ or \
+                os.environ["VLLM_DUMP_RAY_LOG_EN"].lower() not in ["true", "1"])
+            ):
+             log_stdout = DEVNULL_PATH
+        elif create_out:
             log_stdout = self._get_log_file_name(name, "out", unique=unique)
+        '''
+        ==================
+        End of MLU Hijack
+        ==================
+        '''
         if create_err:
             log_stderr = self._get_log_file_name(name, "err", unique=unique)
+
         return log_stdout, log_stderr
 
     def get_log_file_handles(
