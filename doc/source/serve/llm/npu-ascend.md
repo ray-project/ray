@@ -1,18 +1,26 @@
+---
+myst:
+  html_meta:
+    description: "Deploy DeepSeek-V4-Flash-w8a8-mtp on Huawei Ascend NPUs with Ray Serve LLM and vLLM-Ascend: Docker setup, NPU environment variables, Ray cluster startup, and an OpenAI-compatible endpoint."
+---
+
 # Deploy an LLM on Ascend NPU
 
-This guide provides a step-by-step recipe for deploying DeepSeek-V4-Flash-w8a8-mtp (w8a8 quantized with multi-token prediction) on Huawei Ascend NPUs using [Ray Serve LLM](https://docs.ray.io/en/latest/serve/tutorials/deployment-serve-llm/medium-size-llm/README.html) and [vLLM-Ascend](https://github.com/vllm-project/vllm-ascend), enabling scalable, efficient, and OpenAI-compatible LLM serving on Ascend NPU hardware. If you want to deploy other large language models, you can combine the approach in this guide with the deployment solutions for other models provided in the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html).
+This guide is a step-by-step recipe for deploying DeepSeek-V4-Flash-w8a8-mtp on Huawei Ascend NPUs with {ref}`Ray Serve LLM <serving-llms>` and [vLLM-Ascend](https://github.com/vllm-project/vllm-ascend). The model is w8a8 quantized with multi-token prediction. To deploy a different model, combine the approach here with the per-model deployment guidance in the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html).
 
-## Step 1: Download Model Weights
+## Step 1: Download model weights
 
-`DeepSeek-V4-Flash-w8a8-mtp` (Quantized version): requires 1 Atlas 800 A3 (128G × 8) node or 1 Atlas 800 A2 (64G × 8) node. [Download model weights](https://www.modelscope.cn/models/Eco-Tech/DeepSeek-V4-Flash-w8a8-mtp)
+`DeepSeek-V4-Flash-w8a8-mtp` requires one Atlas 800 A3 node (128G × 8) or one Atlas 800 A2 node (64G × 8). [Download the model weights](https://www.modelscope.cn/models/Eco-Tech/DeepSeek-V4-Flash-w8a8-mtp).
 
-It is recommended to download the model weights to a shared directory accessible by multiple nodes, such as `/root/.cache/`
+Download the model weights to a shared directory that all nodes can reach, such as `/root/.cache/`.
 
-## Step 2: Start the Docker Container
+## Step 2: Start the Docker container
 
-This guide demonstrates single-node deployment of DeepSeek-V4-Flash-w8a8-mtp on an Atlas 800 A2 node. For A3 series deployment, refer to the [vLLM-Ascend DeepSeek-V4-Flash tutorial](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/DeepSeek-V4-Flash.html). You can use the official Docker image to run DeepSeek-V4 directly — for the latest available versions, see the [vllm-ascend image tags](https://quay.io/repository/ascend/vllm-ascend) on Quay.io. The docker run command below is tailored to a single-node Atlas 800 A2. Adjust the --device entries and volume mounts to match your hardware and model, and refer to the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html) for model-specific guidance.
+This guide covers single-node deployment of DeepSeek-V4-Flash-w8a8-mtp on an Atlas 800 A2 node. For A3 series deployment, see the [vLLM-Ascend DeepSeek-V4-Flash tutorial](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/DeepSeek-V4-Flash.html).
 
-You can use the official Docker image to run `DeepSeek-V4` directly. Adjust the component versions in the image as follows:
+You can run `DeepSeek-V4` directly from the official Docker image. For the available versions, see the [vllm-ascend image tags](https://quay.io/repository/ascend/vllm-ascend) on Quay.io. The `docker run` command below targets a single-node Atlas 800 A2, so adjust the `--device` entries and the volume mounts to match your hardware and model. For model-specific guidance, see the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html).
+
+Adjust the component versions in the image as follows:
 
 | Package | Version |
 |---------|---------|
@@ -22,7 +30,7 @@ You can use the official Docker image to run `DeepSeek-V4` directly. Adjust the 
 | torch-npu | 2.10.0 |
 | cann | 9.0.0 |
 
-```sh
+```bash
 export IMAGE=quay.io/ascend/vllm-ascend:v0.22.1rc1
 docker run --rm \
     --name vllm-ascend \
@@ -51,13 +59,13 @@ docker run --rm \
     -it $IMAGE bash
 ```
 
-## Step 3: Set Environment Variables
+## Step 3: Set environment variables
 
-NPU environment variables are required, but specific values vary across models and deployment scenarios (single-node vs. multi-node, prefill-decode disaggregation, etc.). Refer to the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html) for the recommended values for your model.
+NPU environment variables are required, but the values vary by model and deployment scenario, such as single-node versus multi-node or prefill-decode disaggregation. For the recommended values for your model, see the [vLLM-Ascend documentation](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/index.html).
 
 The following is an example for DeepSeek-V4-Flash-w8a8-mtp on an Atlas 800 A2 single-node deployment:
 
-```sh
+```bash
 export OMP_PROC_BIND=false
 export OMP_NUM_THREADS=10
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
@@ -68,24 +76,26 @@ export TASK_QUEUE_ENABLE=1
 export HCCL_OP_EXPANSION_MODE="AIV"
 ```
 
-## Step 4: Install Ray and Start the Ray Cluster
+## Step 4: Install Ray and start the Ray cluster
 
-```sh
+```bash
 pip install "ray[llm]"
 ```
 
-> **Note:** The image includes Ray version 2.48.0, which does not support NPU. You need to install a version of Ray that includes NPU support (NPUConfig, NPUAccelerator).
+:::{important}
+The image includes Ray version 2.48.0, which does not support NPU. You need to install a version of Ray that includes NPU support (NPUConfig, NPUAccelerator).
+:::
 
 Start the Ray cluster and verify that it is running:
 
-```sh
+```bash
 ray start --head
 ray status
 ```
 
 ## Step 5: Configure Ray Serve LLM
 
-Create a Python script (e.g., `serve_npu.py`) with the following content. For more details on how to use Ray Serve LLM to deploy LLMs, refer to the [Ray Serve LLM documentation](https://docs.ray.io/en/latest/serve/llm/index.html).
+Create a Python script, for example `serve_npu.py`, with the following content. For more on deploying LLMs with Ray Serve LLM, see {ref}`the Ray Serve LLM documentation <serving-llms>`.
 
 ```python
 from ray.serve.llm import LLMConfig, build_openai_app
@@ -124,19 +134,19 @@ serve.run(app, blocking=True)
 
 Run the deployment:
 
-```sh
+```bash
 python serve_npu.py
 ```
 
-## Step 6: Send Requests
+## Step 6: Send requests
 
-You can query the deployed model with cURL:
+Query the deployed model with `curl`:
 
-```sh
+```bash
 curl http://localhost:8000/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{
-        "model": "dsv4",
+        "model": "deepseek-v4-flash",
         "messages": [
             {
                 "role": "user",
