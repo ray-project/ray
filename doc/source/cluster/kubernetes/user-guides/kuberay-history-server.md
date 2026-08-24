@@ -247,7 +247,7 @@ Configure the collector sidecar container with the following environment variabl
 * - `STORAGE_BACKEND`
   - `--storage-backend`
   - Yes (all nodes)
-  - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`). The `--runtime-class-name` flag is specific to the collector storage backend.
+  - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`).
 * - `RAY_ROLE`
   - `--role`
   - Yes (all nodes)
