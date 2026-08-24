@@ -130,6 +130,7 @@ class LLMRouter:
     # keeps the guard safe before __init__ runs.
     _warned_no_routing_key: bool = False
     _warned_no_token_endpoint: bool = False
+    _base_model_id: Optional[str] = None
 
     async def __init__(
         self,
@@ -243,9 +244,9 @@ class LLMRouter:
             if token_key:
                 request_headers[KV_TOKEN_KEY_HEADER] = token_key
         if request_headers:
-            response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] = (
-                request_headers
-            )
+            response[
+                RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD
+            ] = request_headers
         return response
 
     def _get_multiplexed_model_id(self, request_body: Optional[Dict[str, Any]]) -> str:
