@@ -84,9 +84,9 @@ class FutureResolverTest : public ::testing::Test {
   FutureResolver resolver_;
 };
 
-// The owner replies FREED when the object was freed (ray.internal.free) while the
-// reference was still in scope. The borrower must store an error, otherwise a
-// ray.get() on the reference blocks forever with nothing ever filling the store.
+// A status no branch handles must still leave an error in the store, otherwise a
+// ray.get() on the reference blocks forever with nothing ever filling it. FREED is
+// the only such status this build knows; no in-tree owner sends it today.
 TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
   ObjectID object_id = AddBorrowedObject();
   rpc::GetObjectStatusReply reply;
@@ -98,7 +98,23 @@ TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
   ASSERT_NE(object, nullptr);
   rpc::ErrorType error_type;
   ASSERT_TRUE(object->IsException(&error_type));
-  ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_FREED);
+  ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
+}
+
+// The same branch has to cover a status this build has never heard of, which is what
+// an owner on a newer version can send during a rolling upgrade.
+TEST_F(FutureResolverTest, ProcessResolvedObjectUnknownStatusStoresError) {
+  ObjectID object_id = AddBorrowedObject();
+  rpc::GetObjectStatusReply reply;
+  reply.set_status(static_cast<rpc::GetObjectStatusReply::ObjectStatus>(99));
+
+  resolver_.ProcessResolvedObject(object_id, rpc::Address(), Status::OK(), reply);
+
+  auto object = memory_store_->GetIfExists(object_id);
+  ASSERT_NE(object, nullptr);
+  rpc::ErrorType error_type;
+  ASSERT_TRUE(object->IsException(&error_type));
+  ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
 }
 
 // Sibling statuses, kept as regression anchors for the branch above.

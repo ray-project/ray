@@ -64,15 +64,6 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED),
                           object_id,
                           reference_counter_->HasReference(object_id));
-  } else if (reply.status() == rpc::GetObjectStatusReply::FREED) {
-    // The owner replied that the object's value was freed while our reference
-    // was still in scope (ray.internal.free). Store an error so that an
-    // exception will be thrown immediately when the worker tries to get the
-    // value; otherwise nothing would ever fill the store and the get would
-    // block forever.
-    in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED),
-                          object_id,
-                          reference_counter_->HasReference(object_id));
   } else if (reply.status() == rpc::GetObjectStatusReply::CREATED) {
     // The object is either an indicator that the object is in Plasma, or
     // the object has been returned directly in the reply. In either
@@ -119,6 +110,16 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                                             inlined_ref.owner_address());
     }
     in_memory_store_->Put(RayObject(data_buffer, metadata_buffer, inlined_refs),
+                          object_id,
+                          reference_counter_->HasReference(object_id));
+  } else {
+    // No branch above matched, so nothing would fill the store and a get on this
+    // object would block forever. FREED is the only such status this build knows
+    // about; a peer on a newer version can send one it does not.
+    RAY_LOG(WARNING).WithField(object_id)
+        << "Owner replied with an object status this worker does not handle: "
+        << static_cast<int>(reply.status());
+    in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_LOST),
                           object_id,
                           reference_counter_->HasReference(object_id));
   }
