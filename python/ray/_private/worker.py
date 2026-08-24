@@ -2496,12 +2496,13 @@ def connect(
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
 
-    # Enable nice stack traces on SIGSEGV etc.
-    try:
-        if not faulthandler.is_enabled():
-            faulthandler.enable(all_threads=False)
-    except io.UnsupportedOperation:
-        pass  # ignore
+    # FIXME: tmp disable faulthandler
+    # # Enable nice stack traces on SIGSEGV etc.
+    # try:
+    #     if not faulthandler.is_enabled():
+    #         faulthandler.enable(all_threads=False)
+    # except io.UnsupportedOperation:
+    #     pass  # ignore
 
     worker.gcs_client = node.get_gcs_client()
     assert worker.gcs_client is not None
