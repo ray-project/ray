@@ -50,7 +50,7 @@ class gRPCGenericServer(Server):
             compression=None,
             options=DEFAULT_GRPC_SERVER_OPTIONS + (extra_options or []),
         )
-        self.generic_rpc_handlers = []
+        self.generic_rpc_handlers: List[Sequence[grpc.GenericRpcHandler]] = []
         self.service_handler_factory = service_handler_factory
 
     def add_generic_rpc_handlers(
@@ -144,10 +144,14 @@ def _truncate_message(
 
 
 def get_grpc_response_status(
-    exc: BaseException, request_timeout_s: float, request_id: str
+    exc: BaseException, request_timeout_s: Optional[float], request_id: str
 ) -> ResponseStatus:
     if isinstance(exc, TimeoutError):
-        message = f"Request timed out after {request_timeout_s}s."
+        message = (
+            f"Request timed out after {request_timeout_s}s."
+            if request_timeout_s is not None
+            else "Request timed out."
+        )
         return ResponseStatus(
             code=grpc.StatusCode.DEADLINE_EXCEEDED,
             is_error=True,

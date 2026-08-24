@@ -340,7 +340,11 @@ def configure_shuffle_method(request):
     # NOTE: We override default parallelism for hash-based shuffling to
     #       avoid excessive partitioning of the data (to achieve desired
     #       parallelism
-    if shuffle_strategy in [ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.GPU_SHUFFLE]:
+    if shuffle_strategy in [
+        ShuffleStrategy.HASH_SHUFFLE,
+        ShuffleStrategy.SHUFFLE_V2,
+        ShuffleStrategy.GPU_SHUFFLE,
+    ]:
         ctx.default_hash_shuffle_parallelism = 8
 
     if shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
@@ -811,5 +815,5 @@ def assert_blocks_expected_in_plasma(
 
 
 @pytest.fixture(autouse=True, scope="function")
-def log_internal_stack_trace_to_stdout(restore_data_context):
-    ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+def log_internal_stack_trace(restore_data_context):
+    ray.data.context.DataContext.get_current().log_internal_stack_trace = True

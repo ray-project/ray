@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+from typing import Optional
 
 from ray._common.utils import env_bool, env_float, env_integer  # noqa: F401
 
@@ -28,6 +29,27 @@ RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
 
 # Filter level under which events will be filtered out, i.e. not printing to driver
 RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
+
+# When `ray start --block` (which becomes PID 1 in a container) receives
+# SIGTERM, the number of seconds to mark the local node as draining and wait
+# before tearing down local processes. This gives drain-aware components (e.g.
+# Ray Serve proxies) time to stop accepting new traffic and finish in-flight
+# requests before the raylet and replicas are killed, avoiding HTTP 500s during
+# RayService upgrades (https://github.com/ray-project/ray/issues/64181).
+# Defaults to 30s; cluster managers (e.g. KubeRay) tune it, typically to just
+# under the pod termination grace period. 0 disables draining (immediate teardown).
+RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S = env_float(
+    "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S", 30.0
+)
+
+# How often (seconds) the SIGTERM drain wait polls for the node having finished
+# draining (the raylet self-terminating once it is draining AND idle) before
+# falling back to RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S as an upper bound. Floored
+# at a small positive value so a misconfigured 0 (or negative) can never turn the
+# wait into a 100% busy-wait.
+RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S = max(
+    env_float("RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S", 0.5), 0.001
+)
 
 # Internal kv keys for storing monitor debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
@@ -160,6 +182,142 @@ RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S",
 
 # Enable profiling endpoints in the dashboard.
 RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
+
+# Redact `runtime_env` secrets (e.g. `env_vars` values) in dashboard responses to
+# browser-originated requests. Set to 0 to return the plaintext values instead.
+RAY_DASHBOARD_REDACT_RUNTIME_ENV = env_bool("RAY_DASHBOARD_REDACT_RUNTIME_ENV", True)
+
+# --- Default values for dashboard profiling parameters (py-spy / memray). ---
+# Each applies only when the corresponding request query param is omitted, so
+# behavior is unchanged unless an operator overrides it on the Ray head node.
+# An explicit query param always takes precedence.
+
+# Include native (C/C++) stack frames. Higher overhead; only takes effect on
+# Linux (see CpuProfilingManager in the reporter's profile_manager).
+RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT", False
+)
+# Also profile child processes of the target (py-spy --subprocesses).
+RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT", False
+)
+# Include off-CPU / sleeping threads (py-spy --idle; CPU profiling only).
+RAY_DASHBOARD_PROFILING_IDLE_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_IDLE_DEFAULT", False
+)
+# Report memory leaks instead of peak usage (memray; memory profiling only).
+# Defaults to False to preserve the pre-existing behavior, where an omitted
+# `leaks` query param meant peak-usage mode rather than leak mode.
+RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT", False
+)
+# Record pymalloc allocations (memray; memory profiling only).
+RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT", False
+)
+# Accepted range for a profiling `duration` (seconds). The dashboard endpoint
+# rejects explicit query values outside this range; the configured defaults below
+# are clamped to it too, so a misconfigured env var can never exceed the cap.
+# The minimum is a hard floor. The maximum is operator-configurable via
+# RAY_DASHBOARD_PROFILING_MAX_DURATION_S and defaults to 60s, the cap the endpoint
+# has always enforced: a synchronous profile blocks the request for its whole
+# duration and py-spy/memray output grows with it, so it is capped rather than
+# left open-ended, but the cap is raised or lowered per cluster.
+MIN_PROFILING_DURATION_S = 1
+MAX_PROFILING_DURATION_S_ENV_KEY = "RAY_DASHBOARD_PROFILING_MAX_DURATION_S"
+
+
+def _profiling_duration_cap() -> int:
+    """Read the operator-configured profiling duration cap (seconds).
+
+    Returns:
+        The configured cap, floored at ``MIN_PROFILING_DURATION_S``. A cap below
+        the minimum would invert the accepted range and reject every duration, so
+        it is floored (with a warning) rather than honored.
+    """
+    configured = env_integer(MAX_PROFILING_DURATION_S_ENV_KEY, 60)
+    if configured < MIN_PROFILING_DURATION_S:
+        logger.warning(
+            "%s=%d is below the minimum profiling duration; using %ds instead.",
+            MAX_PROFILING_DURATION_S_ENV_KEY,
+            configured,
+            MIN_PROFILING_DURATION_S,
+        )
+        return MIN_PROFILING_DURATION_S
+    return configured
+
+
+MAX_PROFILING_DURATION_S = _profiling_duration_cap()
+
+
+def _clamp_profiling_duration(seconds: int, env_key: Optional[str] = None) -> int:
+    """Clamp a profiling duration (seconds) into the accepted range.
+
+    Args:
+        seconds: The configured duration to clamp.
+        env_key: Name of the environment variable ``seconds`` was read from. Used
+            to make the out-of-range warning actionable; omit when the value did
+            not come from the environment.
+
+    Returns:
+        ``seconds`` clamped to
+        ``[MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S]``.
+    """
+    clamped = max(MIN_PROFILING_DURATION_S, min(seconds, MAX_PROFILING_DURATION_S))
+    if clamped != seconds:
+        logger.warning(
+            "%s is outside the accepted profiling duration range [%ds, %ds]; "
+            "clamping to %ds.",
+            f"{env_key}={seconds}" if env_key else f"Profiling duration {seconds}s",
+            MIN_PROFILING_DURATION_S,
+            MAX_PROFILING_DURATION_S,
+            clamped,
+        )
+    return clamped
+
+
+# Duration in seconds for CPU profiling. Clamped to
+# [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT = _clamp_profiling_duration(
+    env_integer("RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT", 5),
+    "RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT",
+)
+# Duration in seconds for memory profiling. Clamped to
+# [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT = _clamp_profiling_duration(
+    env_integer("RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT", 10),
+    "RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT",
+)
+
+# Output format defaults. The valid sets DIFFER by profiler: py-spy (CPU) accepts
+# flamegraph/raw/speedscope while memray (memory) accepts flamegraph/table, so
+# each is validated independently against its own set. `profile_manager` reads
+# these too, so the accepted formats are defined in exactly one place.
+VALID_CPU_PROFILING_FORMATS = ("flamegraph", "raw", "speedscope")
+VALID_MEMORY_PROFILING_FORMATS = ("flamegraph", "table")
+
+
+def _validated_profiling_format(env_key, valid_formats, fallback="flamegraph"):
+    """Read a profiling-format env var, falling back if it's not a valid choice."""
+    value = os.environ.get(env_key, fallback)
+    if value not in valid_formats:
+        logger.warning(
+            "%s=%r is invalid; expected one of %s. Falling back to %r.",
+            env_key,
+            value,
+            valid_formats,
+            fallback,
+        )
+        return fallback
+    return value
+
+
+RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT = _validated_profiling_format(
+    "RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT", VALID_CPU_PROFILING_FORMATS
+)
+RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT = _validated_profiling_format(
+    "RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT", VALID_MEMORY_PROFILING_FORMATS
+)
 
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
@@ -389,6 +547,12 @@ DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 
+# Environment variable key for GCS leader election.
+RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR = "RAY_ENABLE_GCS_LEADER_ELECTION"
+
+# Whether to enable active-passive GCS leader election for high availability.
+RAY_ENABLE_GCS_LEADER_ELECTION = env_bool(RAY_ENABLE_GCS_LEADER_ELECTION_ENV_VAR, False)
+
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
 # Filename of "shim process" that sets up Python worker environment.
@@ -571,12 +735,12 @@ RAY_ENABLE_PYTHON_RAY_EVENT_TYPES = frozenset(
 # manually set the py_executable in your runtime environment hook.
 RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)
 
-# Prometheus metric cardinality level setting, either "legacy" or "recommended".
+# Prometheus metric cardinality level setting: "legacy", "recommended", or "low".
 #
-# Legacy: report all metrics to prometheus with the set of labels that are reported by
-#   the component, including WorkerId, (task or actor) Name, etc. This is the default.
-# Recommended: report only the node level metrics to prometheus. This means that the
-#   WorkerId will be removed from all metrics.
+# Legacy: report all metrics to Prometheus with the set of labels that are reported by
+#   the component, including WorkerId, (task or actor) Name, etc.
+# Recommended: report metrics to Prometheus with high-cardinality labels removed.
+#   Currently, WorkerId will be removed from all metrics. This is the default.
 # Low: Same as recommended, but also drop the Name label for tasks and actors.
 RAY_METRIC_CARDINALITY_LEVEL = os.environ.get(
     "RAY_metric_cardinality_level", "recommended"

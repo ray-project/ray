@@ -82,13 +82,12 @@ depsets:
     packages:
       - cupy-cuda12x
     output: python/deplocks/ray_img/ray_img_cu130_py${PYTHON_SHORT}.lock
-    # py3.10-3.13 only: cupy-cuda13x==13.6.0 has no cp314 wheel, and no cu130
-    # gpu release test / published image targets py3.14.
     build_arg_sets:
       - py310_cu130
       - py311_cu130
       - py312_cu130
       - py313_cu130
+      - py314_cu130
 
   - name: ray_base_extra_testdeps_${PYTHON_SHORT}
     operation: expand
@@ -261,6 +260,7 @@ depsets:
       - py311
       - py312
       - py313
+      - py314
     include_setuptools: true
 
     # Second layer of the ray release images. Contains anyscale cli deps (and others)
