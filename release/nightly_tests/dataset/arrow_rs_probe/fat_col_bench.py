@@ -101,7 +101,19 @@ def leg_rs(path):
     return rows, nbytes
 
 
-def child(leg, path):
+def child(leg, path, rows):
+    if leg == "create":
+        if not os.path.exists(path):
+            make_fixture(path, rows)
+        print(
+            json.dumps(
+                {
+                    "size_mib": os.path.getsize(path) / MiB,
+                    "batch_rows": batch_size_for(path),
+                }
+            )
+        )
+        return
     t0 = time.perf_counter()
     if leg == "pa":
         rows, nb = leg_pa(path, use_threads=True)
@@ -120,21 +132,41 @@ def main():
     ap.add_argument("--rows", type=int, default=1024)
     ap.add_argument("--reps", type=int, default=5)
     ap.add_argument("--dir", default=os.path.expanduser("~/fat_col_bench_data"))
-    ap.add_argument("--leg", choices=["pa", "pa1", "rs"], help="internal")
+    ap.add_argument("--leg", choices=["create", "pa", "pa1", "rs"], help="internal")
     args = ap.parse_args()
 
     os.makedirs(args.dir, exist_ok=True)
     path = os.path.join(args.dir, f"fat_col_{args.rows}.parquet")
-    if not os.path.exists(path):
-        print(f"creating {path} ({args.rows} rows x 256 KiB) ...", file=sys.stderr)
-        make_fixture(path, args.rows)
 
     if args.leg:
-        child(args.leg, path)
+        child(args.leg, path, args.rows)
         return
 
-    print(f"file: {path} ({os.path.getsize(path) / MiB:.0f} MiB on disk)")
-    print(f"batch request: {batch_size_for(path)} rows, budget {BUDGET // MiB} MiB")
+    # The parent must stay small: on Linux subprocess forks, so each child's
+    # ru_maxrss high-water starts at the parent's RSS at fork time — building
+    # the fixture (or importing pyarrow) here would floor every child at the
+    # parent's footprint and erase the per-arm memory signal.
+    def spawn(leg):
+        out = subprocess.run(
+            [
+                sys.executable,
+                os.path.abspath(__file__),
+                "--leg",
+                leg,
+                "--rows",
+                str(args.rows),
+                "--dir",
+                args.dir,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    info = spawn("create")
+    print(f"file: {path} ({info['size_mib']:.0f} MiB on disk)")
+    print(f"batch request: {info['batch_rows']} rows, budget {BUDGET // MiB} MiB")
     results = {"pa": [], "pa1": [], "rs": []}
     for rep in range(args.reps):
         for leg in ("pa", "pa1", "rs"):
