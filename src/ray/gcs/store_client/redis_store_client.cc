@@ -512,106 +512,6 @@ void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
   primary_context_->RunArgvAsync({"PING"}, redis_callback);
 }
 
-namespace {
-
-// A table name no GCS table uses. The probe key lives under the namespace
-// prefix that cleanup is about to delete, so probing with a real UNLINK cannot
-// touch anything cleanup would have kept.
-constexpr std::string_view kUnlinkProbeTable = "__unlink_probe__";
-
-// Returns whether the connected Redis server accepts UNLINK.
-//
-// The probe runs on the *sync* connection on purpose. RunArgvAsync treats
-// every error reply as transient: it retries num_redis_request_retries times
-// and then RAY_LOG(FATAL)s (see RedisRequestContext::RedisResponseFn), so "ERR
-// unknown command 'UNLINK'" or "NOPERM ..." is not observable there -- it is a
-// process abort. Raw hiredis is used because RunArgvSync is private;
-// ConnectRedisSentinel and ConnectRedisCluster use the same idiom.
-//
-// Every outcome other than the integer reply UNLINK is specified to return --
-// error reply, unexpected reply type, timeout, transport error -- degrades to
-// DEL, which is exactly the pre-UNLINK behavior.
-bool ServerAcceptsUnlink(RedisContext &context, const std::string &probe_key) {
-  // After Connect() the sync context has no timeout: the connect path brackets
-  // its own probes and leaves the socket at {0, 0} == block forever (see
-  // RestoreRedisTimeout in redis_context.cc). This probe is the first sync
-  // command the cleanup path issues, so it brackets itself the same way. Raw
-  // ::redisSetTimeout because SetRedisProbeTimeout/RestoreRedisTimeout are
-  // file-local to redis_context.cc.
-  const int64_t timeout_ms = RayConfig::instance().redis_db_probe_timeout_milliseconds();
-  struct timeval timeout;
-  timeout.tv_sec = timeout_ms / 1000;
-  timeout.tv_usec = (timeout_ms % 1000) * 1000;
-  // Restore the no-timeout state the connection was found in on every return
-  // path -- redisSetTimeout can fail after setting one of the two socket
-  // timeouts. Best-effort: the cleanup path issues no further sync commands.
-  auto restore_timeout = absl::MakeCleanup([&context]() {
-    struct timeval no_timeout = {0, 0};
-    ::redisSetTimeout(context.sync_context(), no_timeout);
-  });
-  if (::redisSetTimeout(context.sync_context(), timeout) != REDIS_OK) {
-    RAY_LOG(WARNING) << "Failed to set a timeout on the UNLINK probe ("
-                     << context.sync_context()->errstr
-                     << "); falling back to DEL for namespace cleanup.";
-    return false;
-  }
-
-  const std::vector<std::string> cmd = {"UNLINK", probe_key};
-  std::vector<const char *> argv;
-  std::vector<size_t> argc;
-  for (const auto &arg : cmd) {
-    argv.push_back(arg.data());
-    argc.push_back(arg.size());
-  }
-  auto *reply = reinterpret_cast<redisReply *>(
-      ::redisCommandArgv(context.sync_context(), cmd.size(), argv.data(), argc.data()));
-  if (reply == nullptr) {
-    // Includes the timeout case: SO_RCVTIMEO expiry surfaces as REDIS_ERR_IO
-    // with errno EAGAIN (same decoding as RunArgvSync).
-    RAY_LOG(WARNING) << "No reply while probing UNLINK support ("
-                     << context.sync_context()->errstr
-                     << "); falling back to DEL for namespace cleanup.";
-    return false;
-  }
-  auto free_reply = absl::MakeCleanup([reply]() { freeReplyObject(reply); });
-  if (reply->type == REDIS_REPLY_ERROR) {
-    RAY_LOG(WARNING)
-        << "Redis rejected UNLINK (" << std::string(reply->str, reply->len)
-        << "); falling back to DEL for namespace cleanup. DEL frees large values "
-           "on the Redis main thread, so this cleanup may add latency to "
-           "concurrent Redis operations.";
-    return false;
-  }
-  // UNLINK's only specified reply is an integer. Anything else (e.g. a
-  // Redis-compatible proxy answering +OK) is not proof the command deletes
-  // keys, so treat it as unsupported.
-  if (reply->type != REDIS_REPLY_INTEGER) {
-    RAY_LOG(WARNING) << "Unexpected reply type " << reply->type
-                     << " while probing UNLINK support; falling back to DEL "
-                        "for namespace cleanup.";
-    return false;
-  }
-  return true;
-}
-
-// Chooses the Redis command used to delete whole GCS table hashes. UNLINK
-// (Redis >= 4.0) unlinks the key from the keyspace and reclaims the value in a
-// background thread; DEL frees it inline on the Redis main thread, so deleting
-// a multi-GB GCS hash stalls every other Redis client for the duration.
-std::string ChooseDeleteCommand(RedisContext &context,
-                                const std::string &external_storage_namespace) {
-  if (!RayConfig::instance().redis_namespace_cleanup_use_unlink()) {
-    RAY_LOG(INFO) << "redis_namespace_cleanup_use_unlink is disabled; using DEL "
-                  << "to clean up external storage namespace "
-                  << external_storage_namespace << ".";
-    return "DEL";
-  }
-  const RedisKey probe_key{external_storage_namespace, std::string(kUnlinkProbeTable)};
-  return ServerAcceptsUnlink(context, probe_key.ToString()) ? "UNLINK" : "DEL";
-}
-
-}  // namespace
-
 // Cleans up all Redis HASHes whose keys carry the given external storage
 // namespace prefix. Returns true unless the cleanup process aborted; a key that
 // is already absent counts as success, so cleanup is idempotent.
@@ -683,7 +583,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   }
 
   const std::string delete_command =
-      ChooseDeleteCommand(context, external_storage_namespace);
+      RayConfig::instance().redis_namespace_cleanup_use_unlink() ? "UNLINK" : "DEL";
 
   auto delete_one_sync = [&context, &delete_command](const std::string &key) {
     // One key per command: Redis Cluster rejects multi-key commands whose keys

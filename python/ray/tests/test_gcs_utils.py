@@ -333,14 +333,12 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     assert gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
     assert set(cli.keys()) == set(c2_keys)
     if not is_cluster_mode:
-        # Cleanup must delete with UNLINK: one capability probe plus one per
-        # key. The only DEL is the DEL DUMMY that cleanup's own Redis
-        # connection setup issues, so an exact delta proves the verb the
-        # delete loop used. Look entries up with .get so a missing cmdstat
-        # fails the assertion instead of raising KeyError.
+        # Cleanup uses DEL by default: one DEL DUMMY from its Redis connection
+        # setup plus one DEL per key. An exact delta proves which verb the
+        # delete loop used.
         commandstats = cli.info("commandstats")
-        assert commandstats.get("cmdstat_unlink", {}).get("calls") == len(c1_keys) + 1
-        assert commandstats.get("cmdstat_del", {}).get("calls") == 1
+        assert commandstats.get("cmdstat_del", {}).get("calls") == len(c1_keys) + 1
+        assert commandstats.get("cmdstat_unlink", {}).get("calls", 0) == 0
     # Cleaning an already-clean namespace is idempotent and still succeeds.
     assert gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
     assert set(cli.keys()) == set(c2_keys)
