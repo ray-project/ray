@@ -73,6 +73,37 @@ or readiness polling. Actor resources do not change implicitly; use
 Elastic pools do not currently support ``maxtasksperchild``. Fixed pools retain
 their existing construction, scheduling, and ``maxtasksperchild`` behavior.
 
+Guarantees and failure boundaries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Elastic capacity has the following guarantees:
+
+- The number of actor slots never exceeds ``max_size``. A retiring slot is not
+  reused until Ray reports that its actor has exited.
+- ``close()`` rejects new submissions but preserves calls that Ray has already
+  accepted. ``terminate()`` may abort accepted calls. Call ``join()`` after
+  either method to wait for actor cleanup.
+- A user-function exception fails its result without poisoning a live actor.
+  A confirmed actor death releases its slot so later submissions can replace
+  it. If actor ownership is ambiguous, the pool fails closed instead of
+  risking two actors in one slot.
+- Autoscaling changes actor capacity only. Ray actor mailboxes remain the task
+  queue and Ray object references remain the result protocol.
+
+These guarantees deliberately have the following boundaries:
+
+- A sequence of Ray submissions, such as the chunks of one ``map_async()``
+  call, is not a distributed transaction. If the Ray control plane fails
+  synchronously between submissions, earlier chunks may already be accepted.
+- A pool does not reconnect actor handles after a Ray session is replaced or
+  recover transparently from an unavailable control plane. Management failures
+  are reported to the caller.
+- Actor capacity is bounded, but queued calls, result objects, and Joblib's
+  input cache remain proportional to accepted work. The pool does not impose
+  backpressure or a fixed memory limit independent of the workload.
+- Applications are responsible for completing the normal pool lifecycle with
+  ``close()`` or ``terminate()`` followed by ``join()``.
+
 Run on a Cluster
 ----------------
 

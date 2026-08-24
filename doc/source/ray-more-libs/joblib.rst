@@ -92,6 +92,11 @@ resources. Requesting resources with ``ray_remote_args`` therefore exposes
 pending demand to the Ray cluster autoscaler, including from a zero-CPU head.
 The default actor resource requirement remains unchanged.
 
+The actor bound, shutdown behavior, and failure boundaries are the same as for
+:ref:`elastic multiprocessing pools <ray-multiprocessing>`. In particular,
+elastic capacity is not a distributed transaction or a transparent recovery
+mechanism for a replaced Ray session.
+
 Run on a Cluster
 ----------------
 

@@ -180,7 +180,16 @@ class _ElasticSlotState(Enum):
 
 @dataclass
 class _ElasticSlot:
-    """One bounded actor slot owned by ``_ElasticActorSet``."""
+    """One bounded actor slot owned by ``_ElasticActorSet``.
+
+    All fields are protected by the actor set's condition. ``EMPTY`` owns no
+    actor or refs. Every other state owns an actor. ``STARTING`` may own a
+    readiness ref, ``ACTIVE`` owns neither a readiness nor exit ref, and
+    ``DRAINING`` may own both a stale readiness ref and an exit ref until Ray
+    confirms that the actor has exited. ``STARTING`` without a readiness ref or
+    ``DRAINING`` without an exit ref is retained only after observation setup
+    failed and the actor set has failed closed.
+    """
 
     generation: int = 0
     state: _ElasticSlotState = _ElasticSlotState.EMPTY
@@ -287,11 +296,20 @@ class _ElasticActorSet:
                         for slot in self._slots
                         if slot.state is _ElasticSlotState.STARTING
                     ]
-                if active:
-                    slot = min(active, key=lambda candidate: candidate.outstanding)
-                    break
-                if starting:
-                    slot = min(starting, key=lambda candidate: candidate.outstanding)
+                capacity = active + starting
+                if capacity:
+                    # Prefer a hot actor when its queue is only one batch
+                    # longer, but assign deeper backlog to new actors so the
+                    # current burst can benefit from scale-out. The actor
+                    # mailbox still expresses demand without local polling.
+                    slot = min(
+                        capacity,
+                        key=lambda candidate: (
+                            candidate.outstanding
+                            + (candidate.state is _ElasticSlotState.STARTING),
+                            candidate.state is _ElasticSlotState.STARTING,
+                        ),
+                    )
                     break
                 # Every bounded slot is finishing an idle retirement. Waiting
                 # for one exit preserves the strict max-size bound.

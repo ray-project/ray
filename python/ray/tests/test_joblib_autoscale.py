@@ -9,10 +9,11 @@ import weakref
 
 import joblib
 import pytest
+from joblib.pool import PicklingPool
 
 import ray
 from ray.util.joblib import register_ray
-from ray.util.joblib.ray_backend import RayBackend
+from ray.util.joblib.ray_backend import RayBackend, _configure_pool_args
 from ray.util.multiprocessing import Pool
 from ray.util.multiprocessing.pool import (
     PoolTaskError,
@@ -85,6 +86,53 @@ def _state_count(pool, state):
         slot_state is state
         for slot_state, _outstanding in pool._elastic_actor_set.snapshot()
     )
+
+
+def _assert_actor_set_invariants(actor_set):
+    with actor_set._condition:
+        assert len(actor_set._slots) == actor_set.max_size
+        for slot in actor_set._slots:
+            assert slot.outstanding >= 0
+            if slot.state is _ElasticSlotState.EMPTY:
+                assert slot.actor is None
+                assert slot.outstanding == 0
+                assert slot.idle_since is None
+                assert slot.readiness_ref is None
+                assert slot.exit_ref is None
+            else:
+                assert slot.actor is not None
+
+            if slot.state is _ElasticSlotState.STARTING:
+                assert slot.idle_since is None
+                assert slot.exit_ref is None
+                assert slot.readiness_ref is not None or actor_set._error is not None
+            elif slot.state is _ElasticSlotState.ACTIVE:
+                assert slot.readiness_ref is None
+                assert slot.exit_ref is None
+                assert (slot.idle_since is not None) == (slot.outstanding == 0)
+            elif slot.state is _ElasticSlotState.DRAINING:
+                assert slot.exit_ref is not None or actor_set._error is not None
+
+
+def test_slot_invariants_hold_across_the_complete_lifecycle():
+    actor = _FakeActor(ready=False)
+    actor_set = _ElasticActorSet(
+        lambda: actor, min_size=0, max_size=1, idle_timeout_s=60
+    )
+    _assert_actor_set_invariants(actor_set)
+
+    batch_ref = actor_set.submit(None, [])
+    _assert_actor_set_invariants(actor_set)
+    actor.readiness_ref.completion.set_result(None)
+    _assert_actor_set_invariants(actor_set)
+    batch_ref.completion.set_result([])
+    _assert_actor_set_invariants(actor_set)
+
+    actor_set.close()
+    _assert_actor_set_invariants(actor_set)
+    actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+    _assert_actor_set_invariants(actor_set)
 
 
 def test_draining_slot_is_not_reused_before_exit_confirmation():
@@ -263,6 +311,37 @@ def test_ready_actor_yields_capacity_to_pending_work():
     actor_set.join()
 
 
+def test_hot_actor_hedges_short_burst_then_scales_deeper_backlog():
+    hot_actor = _FakeActor()
+    cold_actor = _FakeActor(ready=False)
+    actors = [hot_actor, cold_actor]
+    actor_set = _ElasticActorSet(
+        lambda: actors.pop(0), min_size=1, max_size=2, idle_timeout_s=60
+    )
+
+    refs = [actor_set.submit(None, []) for _ in range(3)]
+
+    assert len(hot_actor.batch_refs) == 2
+    assert len(cold_actor.batch_refs) == 1
+    assert actor_set.snapshot() == [
+        (_ElasticSlotState.ACTIVE, 2),
+        (_ElasticSlotState.STARTING, 1),
+    ]
+    _assert_actor_set_invariants(actor_set)
+
+    refs[0].completion.set_result([])
+    refs[1].completion.set_result([])
+    assert actor_set.snapshot()[0] == (_ElasticSlotState.DRAINING, 0)
+    hot_actor.exit_ref.completion.set_result(None)
+
+    cold_actor.readiness_ref.completion.set_result(None)
+    refs[2].completion.set_result([])
+    actor_set.close()
+    cold_actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+    _assert_actor_set_invariants(actor_set)
+
+
 def test_batch_callback_registration_failure_fails_closed():
     actor = _FakeActor()
     actor.run_batch = _FakeRemoteMethod(lambda *_: _BrokenCallbackObjectRef())
@@ -277,6 +356,26 @@ def test_batch_callback_registration_failure_fails_closed():
 
     actor_set.close()
     actor.exit_ref.completion.set_result(None)
+    actor_set.join()
+
+
+def test_termination_callback_failure_retains_slot_and_fails_closed():
+    actor = _FakeActor()
+    actor.exit_ref = _BrokenCallbackObjectRef()
+    actor.__ray_terminate__ = _FakeRemoteMethod(lambda: actor.exit_ref)
+    actor_set = _ElasticActorSet(
+        lambda: actor, min_size=1, max_size=1, idle_timeout_s=60
+    )
+
+    actor_set.close()
+    assert actor_set.snapshot() == [(_ElasticSlotState.DRAINING, 0)]
+    assert actor_set._slots[0].actor is actor
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        actor_set.join()
+
+    # Simulate a separately confirmed exit so the test-owned reaper can stop.
+    slot = actor_set._slots[0]
+    actor_set._actor_exited(slot, slot.generation)
     actor_set.join()
 
 
@@ -364,6 +463,29 @@ def test_elastic_pool_scales_on_submission_and_reaps_on_idle(shutdown_only):
     pool.join()
 
 
+def test_active_pool_scales_deep_burst_across_actors(shutdown_only):
+    ray.init(num_cpus=2)
+    pool = Pool(
+        min_size=1,
+        max_size=2,
+        idle_timeout_s=60,
+        ray_remote_args={"num_cpus": 1},
+    )
+    hot_actor_pid = pool.apply(os.getpid)
+
+    def sleep_and_return_pid(delay):
+        time.sleep(delay)
+        return os.getpid()
+
+    results = [pool.apply_async(sleep_and_return_pid, (0.1,)) for _ in range(3)]
+    burst_actor_pids = {result.get(timeout=20) for result in results}
+
+    assert hot_actor_pid in burst_actor_pids
+    assert len(burst_actor_pids) == 2
+    pool.close()
+    pool.join()
+
+
 def test_elastic_pool_close_preserves_accepted_results(shutdown_only):
     ray.init(num_cpus=2)
     pool = Pool(
@@ -399,6 +521,44 @@ def test_elastic_pool_terminate_kills_outstanding_work(shutdown_only):
 
     with pytest.raises(ray.exceptions.RayError):
         result.get()
+    assert _state_count(pool, _ElasticSlotState.EMPTY) == 1
+
+
+def test_concurrent_close_and_terminate_converge(shutdown_only):
+    ray.init(num_cpus=1)
+    pool = Pool(
+        min_size=0,
+        max_size=1,
+        idle_timeout_s=60,
+        ray_remote_args={"num_cpus": 1},
+    )
+    result = pool.apply_async(time.sleep, (30,))
+    _wait_for(lambda: _state_count(pool, _ElasticSlotState.ACTIVE) == 1)
+    barrier = threading.Barrier(3)
+    errors = []
+
+    def run_lifecycle(method):
+        try:
+            barrier.wait()
+            method()
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [
+        threading.Thread(target=run_lifecycle, args=(pool.close,)),
+        threading.Thread(target=run_lifecycle, args=(pool.terminate,)),
+    ]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive()
+
+    assert not errors
+    pool.join()
+    result.wait(timeout=20)
+    assert result.ready()
     assert _state_count(pool, _ElasticSlotState.EMPTY) == 1
 
 
@@ -791,9 +951,24 @@ def test_fixed_pool_path_is_unchanged(shutdown_only):
     pool.join()
 
 
+def test_joblib_pool_argument_filter_is_explicit():
+    assert _configure_pool_args(
+        {
+            "min_size": 0,
+            "idle_timeout_s": 1,
+            "temp_folder": "/joblib-only",
+            "context": "spawn",
+        }
+    ) == {"min_size": 0, "idle_timeout_s": 1}
+
+    with pytest.raises(TypeError, match="unexpected Pool argument: max_sze"):
+        _configure_pool_args({"max_sze": 2})
+
+
 def test_joblib_uses_n_jobs_as_elastic_ceiling(shutdown_only):
     ray.init(num_cpus=2)
     register_ray()
+    original_pickling_pool_bases = PicklingPool.__bases__
 
     backend = RayBackend(
         min_size=0,
@@ -816,6 +991,7 @@ def test_joblib_uses_n_jobs_as_elastic_ceiling(shutdown_only):
         values = joblib.Parallel()(joblib.delayed(abs)(value) for value in range(-4, 0))
 
     assert values == [4, 3, 2, 1]
+    assert PicklingPool.__bases__ == original_pickling_pool_bases
 
 
 def test_joblib_failure_propagates_and_backend_can_be_reused(shutdown_only):
