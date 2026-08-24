@@ -54,7 +54,9 @@ kuberay-operator-6bc45dd644-gwtqv   1/1     Running   0          24s
 
 ## Container images
 
-KubeRay publishes its component images to [Quay.io](https://quay.io/organization/kuberay), under `quay.io/kuberay/`. Published components include `operator`, `apiserver`, `dashboard`, `historyserver`, and `collector`. Always pull from Quay.io. The `kuberay` organization on Docker Hub is a legacy mirror that stopped receiving updates in early 2024. Docker Hub also enforces [anonymous pull rate limits](https://docs.docker.com/docker-hub/download-rate-limit/) that make it a poor choice for automated environments.
+KubeRay publishes its own component images to [Quay.io](https://quay.io/organization/kuberay), under `quay.io/kuberay/`. Published components include `operator`, `apiserver`, `dashboard`, `historyserver`, and `collector`. These are KubeRay's own components, separate from the Ray runtime images that your Ray clusters run, such as `rayproject/ray`, which Ray distributes on Docker Hub.
+
+Always pull KubeRay images from Quay.io. The `kuberay` organization on Docker Hub is a legacy mirror that stopped receiving updates in early 2024.
 
 KubeRay tags each image three ways:
 
