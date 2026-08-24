@@ -154,24 +154,11 @@ class GcsServer {
   }
 
  protected:
-  // Wraps `real_handler` in the corresponding LeaderGated* proxy and returns a
-  // reference (typed as the wrapper's base handler interface `GatedT::HandlerType`,
-  // the exact type the GrpcService expects) suitable to pass to RegisterService.
-  // The wrapper is stored in `slot` to keep it alive for the lifetime of the
-  // GrpcService, which holds the handler by reference.
-  //
-  // The wrapper is always installed, regardless of whether leader election is
-  // enabled: when it is disabled, `IsLeader()` is always true so every RPC is
-  // forwarded to the real handler unchanged (identical behavior to registering the
-  // raw handler). This keeps the registration path uniform and avoids per-service
-  // branching on the feature flag.
-  //
-  // Typing the return as `GatedT::HandlerType` (rather than deducing it from the
-  // concrete manager) matters for managers that implement multiple handler
-  // interfaces (e.g. GcsTaskManager implements both TaskInfo and RayEventExport
-  // handlers): the interface must be selected by the wrapper. Any `extra` arguments
-  // are forwarded to the wrapper's constructor after the is-leader callback (e.g.
-  // the cache-local-node callback for NodeInfo).
+  // Builds the leader-gated handler to pass to a GrpcService's RegisterService.
+  // Given the real handler, returns a `GatedT` proxy that forwards each RPC only
+  // when IsLeader() is true and otherwise rejects it (see GatedT for per-RPC
+  // policy). With leader election off IsLeader() is always true, so this is a
+  // transparent pass-through.
   template <typename GatedT, typename RealHandlerT, typename... ExtraArgs>
   typename GatedT::HandlerType &MaybeGate(std::unique_ptr<GatedT> &slot,
                                           RealHandlerT &real_handler,
@@ -183,11 +170,8 @@ class GcsServer {
 
   void DoStart(const GcsInitData &gcs_init_data);
 
-  /// Register all GCS gRPC services on rpc_server_. This is the single, centralized
-  /// place where every service is registered, so whether a service is leader-gated
-  /// (via MaybeGate) or intentionally exempt is explicit and auditable in one spot.
-  /// Adding a new GCS service requires editing this method, which makes it hard to
-  /// forget to make a new mutating service leader-gated.
+  /// Register all GCS gRPC services on rpc_server_ in one place, so each service's
+  /// gated-vs-exempt status is explicit and a new service must be added here.
   void RegisterRpcServices();
 
   /// Initialize gcs node manager.
