@@ -183,6 +183,10 @@ RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S",
 # Enable profiling endpoints in the dashboard.
 RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
+# Redact `runtime_env` secrets (e.g. `env_vars` values) in dashboard responses to
+# browser-originated requests. Set to 0 to return the plaintext values instead.
+RAY_DASHBOARD_REDACT_RUNTIME_ENV = env_bool("RAY_DASHBOARD_REDACT_RUNTIME_ENV", True)
+
 # --- Default values for dashboard profiling parameters (py-spy / memray). ---
 # Each applies only when the corresponding request query param is omitted, so
 # behavior is unchanged unless an operator overrides it on the Ray head node.
