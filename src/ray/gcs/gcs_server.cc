@@ -361,10 +361,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsResourceLoadPuller();
   InitUsageStatsClient();
 
-  // Register all gRPC services in one centralized place, after every manager /
-  // handler above has been constructed. Keeping registration out of the InitXxx
-  // methods makes the gated-vs-exempt decision for each service explicit and
-  // auditable, and forces new services to be added here.
+  // Register all gRPC services centrally, after every manager/handler is built.
   RegisterRpcServices();
 
   // Start RPC server when all tables have finished loading initial
@@ -402,16 +399,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::RegisterRpcServices() {
   const int64_t max_rpcs = RayConfig::instance().gcs_max_active_rpcs_per_handler();
 
-  // ==========================================================================
-  // Leader-gated services.
-  //
-  // Each real handler is wrapped via MaybeGate() so that, on a passive GCS, the
-  // service's mutating RPCs are rejected with Status::GcsPassive() while bootstrap
-  // / read-only RPCs are still forwarded. When leader election is disabled,
-  // IsLeader() is always true, so every RPC is forwarded unchanged (identical to
-  // the pre-feature behavior). The exact gated-vs-allowed status of each RPC lives
-  // in gcs_leader_gated_handlers.h.
-  // ==========================================================================
+  // Leader-gated services: MaybeGate() wraps each handler so a passive GCS
+  // rejects mutating RPCs with Status::GcsPassive() while forwarding bootstrap/
+  // read RPCs. When leader election is off, IsLeader() is always true and every
+  // RPC is forwarded unchanged. Per-RPC gated/allowed status lives in
+  // gcs_leader_gated_handlers.h.
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
       io_context_provider_.GetIOContext<GcsNodeManager>(),
       MaybeGate(gated_node_info_handler_,
@@ -485,17 +477,9 @@ void GcsServer::RegisterRpcServices() {
         max_rpcs));
   }
 
-  // ==========================================================================
-  // Intentionally NOT leader-gated.
-  //
-  // RaySyncer is an in-memory resource-view sync channel (a bidirectional stream,
-  // architecturally distinct from the request/response GcsService handlers above,
-  // so it does not fit the LeaderGated* proxy pattern). A passive GCS must keep
-  // receiving these updates to maintain a warm resource view; gating it would
-  // leave the passive GCS with a stale view and slow failover. It performs no
-  // shared-storage writes and has no leader-only side effects, so it is exempt by
-  // design.
-  // ==========================================================================
+  // RaySyncer is an in-memory resource-view stream (not a request/response handler).
+  // It cannot follow the above pattern to be leader gated.
+  // It has no shared-storage writes or leader-only side effects, so it is exempt.
   rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
       *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
 }

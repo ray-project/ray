@@ -165,6 +165,8 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
   reply->set_ray_version(kRayVersion);
   for (const auto &id : request.node_ids()) {
     const auto node_id = NodeID::FromBinary(id);
+    // CheckAlive is un-gated on a passive GCS (cluster-bootstrap allowlist), so it
+    // must report passive_local_node_ alive for visibility only.
     const bool is_alive = alive_nodes_.contains(node_id) ||
                           (passive_local_node_ != nullptr &&
                            NodeID::FromBinary(passive_local_node_->node_id()) == node_id);
@@ -375,6 +377,8 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
         }
       };
 
+  // GetAllNodeInfo is un-gated on a passive GCS (cluster-bootstrap allowlist), so
+  // it must surface passive_local_node_ in listings for visibility only
   auto check_and_add_passive_node = [&]() {
     if (passive_local_node_ != nullptr && num_added < limit) {
       NodeID node_id = NodeID::FromBinary(passive_local_node_->node_id());
@@ -488,6 +492,8 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
         }
       };
 
+  // GetAllNodeAddressAndLiveness is un-gated on a passive GCS (cluster-bootstrap
+  // allowlist), so it must surface passive_local_node_. for visibility only.
   auto check_and_add_passive_node = [&]() {
     if (passive_local_node_ != nullptr && num_added < limit) {
       callback(ConvertToGcsNodeAddressAndLiveness(*passive_local_node_));
@@ -596,6 +602,9 @@ bool GcsNodeManager::IsNodeDead(const ray::NodeID &node_id) const {
 
 bool GcsNodeManager::IsNodeAlive(const ray::NodeID &node_id) const {
   absl::ReaderMutexLock lock(&mutex_);
+  // Counts passive_local_node_ as alive so the visibility RPCs un-gated on a
+  // passive GCS (CheckAlive/GetAllNodeInfo, the cluster-bootstrap allowlist) can
+  // report it.
   if (passive_local_node_ != nullptr &&
       NodeID::FromBinary(passive_local_node_->node_id()) == node_id) {
     return true;
